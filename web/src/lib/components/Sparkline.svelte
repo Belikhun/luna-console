@@ -49,30 +49,110 @@
 	const gridY = (fraction: number): number =>
 		height - PAD_Y - fraction * (height - PAD_Y * 2);
 
-	const line = $derived.by(() => {
-		if (valid.length < 2) {
-			return '';
+	// contiguous stretches of present samples: the line is drawn per run so it
+	// never bridges a gap, which would read as a real (flat) measurement
+	const runs = $derived.by(() => {
+		const out: Array<Array<{ t: number; v: number }>> = [];
+		let run: Array<{ t: number; v: number }> = [];
+
+		for (const point of points) {
+			if (point.v === undefined) {
+				if (run.length) {
+					out.push(run);
+					run = [];
+				}
+
+				continue;
+			}
+
+			run.push({ t: point.t, v: point.v });
 		}
 
-		return valid
-			.map((point, i) => {
-				const command = i === 0 ? 'M' : 'L';
+		if (run.length) {
+			out.push(run);
+		}
 
-				return `${command}${scaleX(point.t).toFixed(1)},${scaleY(point.v).toFixed(1)}`;
-			})
-			.join(' ');
+		return out;
 	});
 
-	// close the line down to the baseline at both ends to get the filled area
-	const fill = $derived.by(() => {
-		if (!line) {
-			return '';
+	// each run gets a line plus the same line closed down to the baseline for the fill
+	const paths = $derived.by(() =>
+		runs
+			.filter((run) => run.length >= 2)
+			.map((run) => {
+				const line = run
+					.map((point, i) => {
+						const command = i === 0 ? 'M' : 'L';
+
+						return `${command}${scaleX(point.t).toFixed(1)},${scaleY(point.v).toFixed(1)}`;
+					})
+					.join(' ');
+
+				const left = scaleX(run[0]!.t).toFixed(1);
+				const right = scaleX(run.at(-1)!.t).toFixed(1);
+
+				return {
+					line,
+					fill: `${line} L${right},${height} L${left},${height} Z`
+				};
+			})
+	);
+
+	/**
+	 * Samples with no present neighbour to draw a line to, positioned as a % of
+	 * the plot area: an isolated reading walled in by hazard bands still has to
+	 * be visible, and an svg circle would be sheared into an ellipse.
+	 */
+	const lone = $derived(
+		runs
+			.filter((run) => run.length === 1)
+			.map((run) => ({
+				left: (scaleX(run[0]!.t) / W) * 100,
+				top: (scaleY(run[0]!.v) / height) * 100
+			}))
+	);
+
+	/**
+	 * Missing stretches, as a % of the plot area, for the hazard bands. A band
+	 * spans the two samples the line would otherwise have been bridged between,
+	 * and reaches the plot edge where the series starts or ends missing.
+	 */
+	const gaps = $derived.by(() => {
+		if (!valid.length) {
+			return [{ left: 0, width: 100 }];
 		}
 
-		const right = scaleX(valid.at(-1)!.t).toFixed(1);
-		const left = scaleX(valid[0]!.t).toFixed(1);
+		const out: Array<{ left: number; width: number }> = [];
+		const span = Math.max(1, t1 - t0);
+		let i = 0;
 
-		return `${line} L${right},${height} L${left},${height} Z`;
+		while (i < points.length) {
+			if (points[i]!.v !== undefined) {
+				i += 1;
+
+				continue;
+			}
+
+			const before = points[i - 1];
+			let end = i;
+
+			while (end < points.length && points[end]!.v === undefined) {
+				end += 1;
+			}
+
+			const after = points[end];
+			const from = before?.t ?? t0;
+			const to = after?.t ?? t1;
+
+			out.push({
+				left: ((from - t0) / span) * 100,
+				width: ((to - from) / span) * 100
+			});
+
+			i = end;
+		}
+
+		return out;
 	});
 
 	const fmtTick = (v: number): string =>
@@ -102,12 +182,20 @@
 		const fraction = Math.min(1, Math.max(0, (event.clientX - area.left) / area.width));
 		const t = t0 + fraction * Math.max(1, t1 - t0);
 
-		let near = valid[0]!;
+		let near = points[0]!;
 
-		for (const point of valid) {
+		for (const point of points) {
 			if (Math.abs(point.t - t) < Math.abs(near.t - t)) {
 				near = point;
 			}
+		}
+
+		// nearest sample is inside a gap — read out nothing rather than a value
+		// from the far side of the hazard band
+		if (near.v === undefined) {
+			hover = null;
+
+			return;
 		}
 
 		hover = {
@@ -145,17 +233,30 @@
 					vector-effect="non-scaling-stroke"
 				/>
 			{/each}
-			{#if line}
-				<path d={fill} fill={color} opacity="0.12" />
+			{#each paths as path}
+				<path d={path.fill} fill={color} opacity="0.12" />
 				<path
-					d={line}
+					d={path.line}
 					fill="none"
 					stroke={color}
 					stroke-width="2"
 					vector-effect="non-scaling-stroke"
 				/>
-			{/if}
+			{/each}
 		</svg>
+
+		{#each gaps as gap}
+			<span class="gap" style:left="{gap.left}%" style:width="{gap.width}%"></span>
+		{/each}
+
+		{#each lone as point}
+			<span
+				class="spot"
+				style:left="{point.left}%"
+				style:top="{point.top}%"
+				style:background={color}
+			></span>
+		{/each}
 
 		{#each yTicks as tick}
 			<span class="yl" style:top={`calc(${tick.top}% + 0.25rem)`}>{tick.label}</span>
@@ -220,6 +321,37 @@
 
 		width: 100%;
 		height: 100%;
+	}
+
+	// stretches with no samples, hazard-taped so a gap reads as "nothing was
+	// recorded here" instead of as a measurement. The stripes are a CSS gradient
+	// rather than an svg pattern because the svg is stretched to the container
+	// (preserveAspectRatio="none"), which would shear them and make their pitch
+	// depend on the card's width.
+	.gap {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		background-image: repeating-linear-gradient(
+			45deg,
+			color-mix(in srgb, var(--warning) 30%, transparent) 0 0.375rem,
+			color-mix(in srgb, var(--bg-nav) 55%, transparent) 0.375rem 0.75rem
+		);
+		pointer-events: none;
+
+		// a single missing sample in an hour of history is a sub-pixel band; widen
+		// it just enough to be seen, since the alternative is to draw nothing
+		min-width: 0.125rem;
+	}
+
+	// an isolated sample, with a gap on both sides and so no line to sit on
+	.spot {
+		position: absolute;
+		width: 0.375rem;
+		height: 0.375rem;
+		border-radius: 50%;
+		transform: translate(-50%, -50%);
+		pointer-events: none;
 	}
 
 	// in-plot axis labels: readable over the 12% fill without a solid box

@@ -138,6 +138,20 @@
 		v: Math.round(30 + 25 * Math.sin(i / 4) + (i % 7) * 2)
 	}));
 
+	// the reporting holes a heartbeat-sourced series really has, one of each shape:
+	// missing at the start, a stretch in the middle, an isolated sample, no tail
+	const SPARK_HOLES: Array<[number, number]> = [
+		[0, 4],
+		[12, 18],
+		[20, 25],
+		[37, 39]
+	];
+
+	const SPARK_GAPS = SPARK_POINTS.map((point, i) => ({
+		t: point.t,
+		v: SPARK_HOLES.some(([from, to]) => i >= from && i <= to) ? undefined : point.v
+	}));
+
 	/** Raise a loading notification that walks itself to completion. */
 	function raiseLoading(withProgress: boolean): void {
 		const note = Notify.loading('Working on something slow…', withProgress ? { progress: 0 } : {});
@@ -449,6 +463,7 @@
 	<Panel title="Metric chart">
 		<div class="cols2">
 			<Sparkline points={SPARK_POINTS} label="CPU utilization" unit="%" maxY={100} />
+			<Sparkline points={SPARK_GAPS} label="Tick rate (with gaps)" unit=" TPS" maxY={100} />
 			<Sparkline points={[]} label="No data" unit="%" />
 		</div>
 	</Panel>
