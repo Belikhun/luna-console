@@ -25,7 +25,17 @@
 	type Row = InstanceRow & { externalOnly?: boolean };
 
 	let rows: InstanceRow[] = $state([]);
-	let externals: Array<{ name: string; external: string }> = $state([]);
+	/** Externals run on another machine, so LunaCore's heartbeat is all we know of them. */
+	let externals: Array<{
+		name: string;
+		external: string;
+		lunaStatus: string | null;
+		players: { online: number; max: number } | null;
+		tps: number | null;
+		heapUsedMb: number | null;
+		heapMaxMb: number | null;
+		uptimeMs: number | null;
+	}> = $state([]);
 	let hostMemMb = $state(0);
 	let selected: Set<string> = $state(new Set());
 	let filter = $state('');
@@ -41,7 +51,18 @@
 		...rows,
 		...externals.map(
 			(entry) =>
-				({ name: entry.name, external: entry.external, externalOnly: true }) as unknown as Row
+				({
+					name: entry.name,
+					external: entry.external,
+					externalOnly: true,
+					// heartbeat-derived metrics; everything else stays blank for externals
+					players: entry.players,
+					tps: entry.tps,
+					heapUsedMb: entry.heapUsedMb,
+					heapMaxMb: entry.heapMaxMb,
+					uptimeMs: entry.uptimeMs,
+					lunaStatus: entry.lunaStatus
+				}) as unknown as Row
 		)
 	]);
 
@@ -114,6 +135,10 @@
 		{ id: 'memory', label: 'Memory' },
 		{ id: 'cpu', label: 'CPU', sortable: true },
 		{ id: 'rss', label: 'Mem (RSS)', sortable: true },
+		{ id: 'tps', label: 'TPS', sortable: true, width: 80, align: 'right' },
+		// heap duplicates what Mem (RSS) already conveys at a glance, and thirteen
+		// visible columns overflow the table — it is one gear-click away instead
+		{ id: 'heap', label: 'Heap', sortable: true, hidden: true },
 		{ id: 'uptime', label: 'Uptime', sortable: true },
 		{ id: 'players', label: 'Players', sortable: true },
 		{ id: 'profile', label: 'Java profile', hidden: true },
@@ -144,6 +169,12 @@
 
 			case 'rss':
 				return row.rssMb ?? -1;
+
+			case 'tps':
+				return row.tps ?? -1;
+
+			case 'heap':
+				return row.heapUsedMb ?? -1;
 
 			case 'uptime':
 				return row.uptimeMs ?? -1;
@@ -235,6 +266,28 @@
 		}
 
 		return parsed[2]?.toLowerCase() === 'g' ? Number(parsed[1]) * 1024 : Number(parsed[1]);
+	}
+
+	/** Tick-rate band: 20 is the ceiling, below 15 the server is visibly lagging. */
+	function tpsClass(tps: number): string {
+		if (tps >= 19) {
+			return 'good';
+		}
+
+		return tps >= 15 ? 'fair' : 'poor';
+	}
+
+	/**
+	 * Tone for the tick-rate bar. It cannot use `color="auto"`: that reads a full bar
+	 * as danger, which is right for CPU and heap but exactly backwards for TPS, where
+	 * a full bar is a healthy server.
+	 */
+	function tpsTone(tps: number): 'success' | 'warning' | 'danger' {
+		if (tps >= 19) {
+			return 'success';
+		}
+
+		return tps >= 15 ? 'warning' : 'danger';
 	}
 
 	const menuItems: ContextMenuItem[] = $derived.by(() => {
@@ -489,8 +542,60 @@
 							{row.name}
 						{:else if col === 'state'}
 							<StatusBadge state="external" label="External" />
+						{:else if col === 'checks'}
+							<!-- externals run elsewhere, so LunaCore's heartbeat is the only
+							     thing that can say whether they are actually up -->
+							{#if !row.lunaStatus}
+								<span class="dim">–</span>
+							{:else if row.lunaStatus === 'ONLINE'}
+								<StatusBadge
+									state="passed"
+									label="Heartbeat ok"
+									detail={[
+										{
+											state: 'passed',
+											label: 'LunaCore heartbeat',
+											detail: `${(row.tps ?? 0).toFixed(2)} TPS · ${row.players?.online ?? 0}/${row.players?.max ?? 0} players`
+										}
+									]}
+								/>
+							{:else}
+								<StatusBadge
+									state="warning"
+									label="No heartbeat"
+									detail={[
+										{
+											state: 'failed',
+											label: 'LunaCore heartbeat',
+											detail: 'not reporting to the proxy — the server is down or unreachable'
+										}
+									]}
+								/>
+							{/if}
 						{:else if col === 'port'}
 							<span class="mono">{row.external}</span>
+						{:else if col === 'players'}
+							{row.players ? `${row.players.online}/${row.players.max}` : '–'}
+						{:else if col === 'tps'}
+							{#if row.tps == null}
+								<span class="dim">–</span>
+							{:else}
+								<span class="tps {tpsClass(row.tps)}">{row.tps.toFixed(2)}</span>
+							{/if}
+						{:else if col === 'heap'}
+							{#if row.heapUsedMb == null || row.heapMaxMb == null}
+								<span class="dim">–</span>
+							{:else}
+								<ProgressBar
+									compact
+									value={row.heapUsedMb}
+									max={row.heapMaxMb}
+									color="auto"
+									right="{(row.heapUsedMb / 1024).toFixed(1)} GB"
+								/>
+							{/if}
+						{:else if col === 'uptime'}
+							{row.uptimeMs == null ? '–' : fmtDuration(row.uptimeMs)}
 						{:else}
 							<span class="dim">–</span>
 						{/if}
@@ -540,6 +645,24 @@
 								max={hostMemMb || heapMb(row.memory) || row.rssMb}
 								color="auto"
 								right="{(row.rssMb / 1024).toFixed(1)} GB"
+							/>
+						{/if}
+					{:else if col === 'tps'}
+						{#if row.tps == null}
+							<span class="dim">–</span>
+						{:else}
+							<span class="tps {tpsClass(row.tps)}">{row.tps.toFixed(2)}</span>
+						{/if}
+					{:else if col === 'heap'}
+						{#if row.heapUsedMb == null || row.heapMaxMb == null}
+							<span class="dim">–</span>
+						{:else}
+							<ProgressBar
+								compact
+								value={row.heapUsedMb}
+								max={row.heapMaxMb}
+								color="auto"
+								right="{(row.heapUsedMb / 1024).toFixed(1)} GB"
 							/>
 						{/if}
 					{:else if col === 'uptime'}
@@ -600,6 +723,24 @@
 								color="auto"
 								right="{((one.rssMb ?? 0) / 1024).toFixed(1)} GB of {((hostMemMb || 0) / 1024).toFixed(0)} GB"
 							/>
+							{#if one.tps != null}
+								<ProgressBar
+									left="Tick rate"
+									value={one.tps}
+									max={20}
+									color={tpsTone(one.tps)}
+									right="{one.tps.toFixed(2)} of 20 TPS"
+								/>
+							{/if}
+							{#if one.heapUsedMb != null && one.heapMaxMb != null}
+								<ProgressBar
+									left="JVM heap"
+									value={one.heapUsedMb}
+									max={one.heapMaxMb}
+									color="auto"
+									right="{(one.heapUsedMb / 1024).toFixed(1)} GB of {(one.heapMaxMb / 1024).toFixed(1)} GB"
+								/>
+							{/if}
 						</div>
 					{/if}
 				{:else if detailTab === 'checks'}
@@ -638,6 +779,23 @@
 		margin-top: 1rem;
 		text-align: center;
 		font-size: 0.875rem;
+	}
+
+	// TPS is only meaningful against 20 — the colour carries that, the number alone doesn't
+	.tps {
+		font-variant-numeric: tabular-nums;
+
+		&.good {
+			color: var(--success);
+		}
+
+		&.fair {
+			color: var(--warning);
+		}
+
+		&.poor {
+			color: var(--error);
+		}
 	}
 
 	// a min-height keeps the panel from resizing as tabs change

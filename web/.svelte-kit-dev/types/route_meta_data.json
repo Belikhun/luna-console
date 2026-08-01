@@ -38,6 +38,18 @@
 	"/api/instances/[name]/state": [
 		"src/routes/api/instances/[name]/state/+server.ts"
 	],
+	"/api/luna/admin": [
+		"src/routes/api/luna/admin/+server.ts"
+	],
+	"/api/luna/players": [
+		"src/routes/api/luna/players/+server.ts"
+	],
+	"/api/luna/stream": [
+		"src/routes/api/luna/stream/+server.ts"
+	],
+	"/api/luna/telemetry": [
+		"src/routes/api/luna/telemetry/+server.ts"
+	],
 	"/api/paper": [
 		"src/routes/api/paper/+server.ts"
 	],

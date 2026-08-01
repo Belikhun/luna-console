@@ -35,6 +35,16 @@ export interface InstanceConfig {
 	proxy?: ProxyRegistration;
 }
 
+/** Where the in-house `luna-*` plugin sources live and how they are built. */
+export interface LunaSourceConfig {
+	/** Absolute path of the luna-plugins gradle workspace (default ~/luna-plugins) */
+	dir: string;
+	/** Gradle task that produces the shadow jars */
+	task?: string;
+	/** Platforms whose artifacts are pooled — neoforge is built but not deployed here */
+	platforms?: string[];
+}
+
 export interface ClusterConfig {
 	screenPrefix: string;
 	/** Port pool for new paper instances */
@@ -42,6 +52,8 @@ export interface ClusterConfig {
 	javaProfiles: Record<string, JavaProfile>;
 	proxy: InstanceConfig;
 	instances: Record<string, InstanceConfig>;
+	/** In-house plugin build source, for `mrds luna …` */
+	luna?: LunaSourceConfig;
 }
 
 export type PluginSource = "modrinth" | "luna" | "manual";
@@ -72,6 +84,18 @@ export interface PluginVariant {
 	gameVersions?: string[];
 }
 
+/** Build provenance of an in-house (`source: "luna"`) jar, recorded on deploy. */
+export interface LunaBuildInfo {
+	/** Gradle module the jar is built from, e.g. "luna-core-paper" */
+	module: string;
+	/** Short commit hash of the source tree at build time */
+	commit?: string;
+	/** Whether that tree had uncommitted changes */
+	dirty?: boolean;
+	/** When the jar was pooled, ISO 8601 */
+	pooledAt?: string;
+}
+
 export interface PluginEntry {
 	/** File name in the common pool (the primary/newest version) */
 	file: string;
@@ -99,6 +123,8 @@ export interface PluginEntry {
 	/** Instance names, or wildcards: "*", "*paper", "*velocity" */
 	targets: string[];
 	ports?: PortBindingSpec[];
+	/** Build provenance, for `source: "luna"` entries only */
+	luna?: LunaBuildInfo;
 }
 
 export interface PluginsLock {

@@ -309,7 +309,7 @@ command({
  * Push pool jars to the instances, then reconcile plugin port allocations. Shared
  * by `plugins deploy` and by every command that changes the pool.
  */
-async function runDeploy(instances: string[] | undefined, plugin?: string): Promise<void> {
+export async function runDeploy(instances: string[] | undefined, plugin?: string): Promise<void> {
 	const cfg = await loadCluster();
 	const lock = await loadLock();
 	const spin = new Spinner().start("deploying plugins...");

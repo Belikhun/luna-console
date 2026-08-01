@@ -35,6 +35,7 @@ export interface TableFilterGroup<T = any> {
 export type StickyFirst = 0 | 1 | 2;
 
 export interface TablePrefs {
+	/** resized column widths in px, keyed by column id */
 	widths: Record<string, number>;
 	hidden: string[];
 	/** column ids in display order; unknown/missing ids fall back to declaration order */
@@ -45,6 +46,9 @@ export interface TablePrefs {
 	compact?: boolean;
 	stickyFirst?: StickyFirst;
 	stickyLast?: boolean;
+	/** id of the sorted column, or null while the table is in its natural order */
+	sortCol?: string | null;
+	sortDir?: 'asc' | 'desc';
 }
 
 export const DEFAULT_PREFS: TablePrefs = {
@@ -56,7 +60,9 @@ export const DEFAULT_PREFS: TablePrefs = {
 	striped: false,
 	compact: false,
 	stickyFirst: 1,
-	stickyLast: false
+	stickyLast: false,
+	sortCol: null,
+	sortDir: 'asc'
 };
 
 /** Page sizes offered in the preferences dialog. */
@@ -70,15 +76,34 @@ export function loadPrefs(tableId: string | undefined): TablePrefs {
 
 	try {
 		const raw = localStorage.getItem(`mrds.table.${tableId}`);
+		const parsed = raw ? JSON.parse(raw) : null;
 
-		if (raw) {
-			return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+		if (parsed && typeof parsed === 'object') {
+			return { ...DEFAULT_PREFS, ...parsed, widths: sanitizeWidths(parsed.widths) };
 		}
 	} catch {
 		// unreadable or corrupt entry — fall back to the defaults
 	}
 
 	return { ...DEFAULT_PREFS };
+}
+
+// stored widths feed the table's own width, so a corrupt entry would break the
+// layout rather than just look wrong — anything not a usable length is dropped
+function sanitizeWidths(stored: unknown): Record<string, number> {
+	if (!stored || typeof stored !== 'object') {
+		return {};
+	}
+
+	const out: Record<string, number> = {};
+
+	for (const [id, width] of Object.entries(stored)) {
+		if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+			out[id] = width;
+		}
+	}
+
+	return out;
 }
 
 /** Persist a table's preferences. Tables without an id are not remembered. */

@@ -28,3 +28,19 @@ export async function pluginNames(): Promise<string[]> {
 export async function targetSelectors(): Promise<string[]> {
 	return ["*", "*paper", "*velocity", ...(await instanceNames())];
 }
+
+/** Gradle module names in the luna-plugins workspace that produce a deployable jar. */
+export async function lunaModules(): Promise<string[]> {
+	try {
+		const { lunaSource, listModules } = await import("../core/luna");
+		const source = lunaSource(await loadCluster());
+		const modules = await listModules(source);
+
+		return modules
+			.filter((module) => module.file && source.platforms.includes(module.platform))
+			.map((module) => module.name)
+			.sort();
+	} catch {
+		return [];
+	}
+}

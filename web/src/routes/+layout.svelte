@@ -131,7 +131,7 @@
 					<ProgressBar
 						compact
 						transition={false}
-						width="7rem"
+						width="12rem"
 						value={disk.usedBytes}
 						max={disk.totalBytes}
 						color="auto"

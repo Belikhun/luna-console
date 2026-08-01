@@ -4,6 +4,8 @@
 
 import "./commands/instance";
 import "./commands/plugins";
+import "./commands/luna";
+import "./commands/net";
 import "./commands/misc";
 import "./commands/web";
 

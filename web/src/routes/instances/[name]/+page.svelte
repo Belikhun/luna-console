@@ -289,6 +289,17 @@
 		Math.max(5, ...playerPoints.map((point: any) => point.v ?? 0)) * PLAYER_HEADROOM
 	);
 
+	// heartbeat-sourced series: only present for samples where LunaCore was reporting
+	const tpsPoints = $derived(metrics.history.map((sample: any) => ({ t: sample.t, v: sample.tps })));
+	const heapPoints = $derived(
+		metrics.history.map((sample: any) => ({ t: sample.t, v: sample.heapUsedMb }))
+	);
+
+	const hasHeartbeatSeries = $derived(
+		tpsPoints.some((point: any) => point.v != null) ||
+			heapPoints.some((point: any) => point.v != null)
+	);
+
 	const hostMemMb = $derived(inst?.hostMemMb ?? 0);
 
 	const summaryCells: InfoCell[] = $derived.by(() => {
@@ -306,6 +317,10 @@
 			{ label: 'Java PID', value: inst.javaPid },
 			{ id: 'cpu', label: 'CPU utilization' },
 			{ id: 'rss', label: 'Resident memory' },
+			// heartbeat-only figures: the server's own tick rate and heap, which the
+			// host-side /proc sampling above cannot see
+			{ id: 'tps', label: 'Tick rate' },
+			{ id: 'heap', label: 'JVM heap' },
 			{ label: 'Uptime', value: fmtDuration(inst.uptimeMs) },
 			{
 				label: 'Players',
@@ -502,6 +517,34 @@
 									width="10rem"
 								/>
 							{/if}
+						{:else if cell.id === 'tps'}
+							{#if inst.tps == null}
+								<span class="dim" title="LunaCore is not reporting for this instance">–</span>
+							{:else}
+								<!-- an explicit tone: color="auto" reads a full bar as danger, which is
+								     backwards for TPS, where full is healthy -->
+								<ProgressBar
+									compact
+									value={inst.tps}
+									max={20}
+									color={inst.tps >= 19 ? 'success' : inst.tps >= 15 ? 'warning' : 'danger'}
+									right="{inst.tps.toFixed(2)} TPS"
+									width="10rem"
+								/>
+							{/if}
+						{:else if cell.id === 'heap'}
+							{#if inst.heapUsedMb == null || inst.heapMaxMb == null}
+								<span class="dim">–</span>
+							{:else}
+								<ProgressBar
+									compact
+									value={inst.heapUsedMb}
+									max={inst.heapMaxMb}
+									color="auto"
+									right="{inst.heapUsedMb} / {inst.heapMaxMb} MB"
+									width="10rem"
+								/>
+							{/if}
 						{/if}
 					{/snippet}
 				</InfoGrid>
@@ -567,9 +610,16 @@
 					color="#2bb534"
 					maxY={playerMax}
 				/>
+				{#if hasHeartbeatSeries}
+					<Sparkline points={tpsPoints} label="Tick rate" unit=" TPS" color="#e0ca57" maxY={20} />
+					<Sparkline points={heapPoints} label="JVM heap" unit=" MB" color="#ff9d5c" />
+				{/if}
 			</div>
 			<p class="dim note">
 				Sampled every 5s while the console server runs (last hour kept in memory).
+				{#if hasHeartbeatSeries}
+					Tick rate and heap come from LunaCore's heartbeat.
+				{/if}
 			</p>
 		{:else if tab === 'plugins'}
 			<Panel title="Plugins on {name}" count={instPlugins.length} flush>

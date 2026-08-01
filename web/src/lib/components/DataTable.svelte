@@ -77,6 +77,19 @@
 	const DEFAULT_COL_W = 120;
 	const MIN_COL_W = 56;
 
+	/** px — mirrors the `2.75rem` the selection column is given in CSS */
+	const SEL_COL_W = 44;
+
+	/**
+	 * px — how far the container may drift before the measured widths are re-fitted
+	 * to it. Comfortably clear of a scrollbar appearing (~15px), which must never
+	 * be mistaken for a resize: re-fitting would toggle the scrollbar right back.
+	 */
+	const SETTLE_SLOP = 24;
+
+	/** ms the container must hold a new width before the columns re-fit to it */
+	const SETTLE_MS = 150;
+
 	/** px per rem, for turning measured geometry back into the rem scale */
 	const REM = 16;
 
@@ -92,8 +105,8 @@
 	let stickyFirst: StickyFirst = $state(initial.stickyFirst ?? 1);
 	let stickyLast = $state(initial.stickyLast ?? false);
 
-	let sortCol: string | null = $state(null);
-	let sortDir: 'asc' | 'desc' = $state('asc');
+	let sortCol: string | null = $state(initial.sortCol ?? null);
+	let sortDir: 'asc' | 'desc' = $state(initial.sortDir ?? 'asc');
 	let page = $state(1);
 	let prefsOpen = $state(false);
 
@@ -117,12 +130,17 @@
 		matchers.length ? rows.filter((row) => matchers.every((match) => match(row))) : rows
 	);
 
+	// a restored sort holds only while its column is still there and still sortable
+	const activeSort = $derived(
+		columns.some((col) => col.id === sortCol && col.sortable) ? sortCol : null
+	);
+
 	const sorted = $derived.by(() => {
-		if (!sortCol || !sortValue) {
+		if (!activeSort || !sortValue) {
 			return filtered;
 		}
 
-		const col = sortCol;
+		const col = activeSort;
 		const dir = sortDir === 'asc' ? 1 : -1;
 
 		return [...filtered].sort((a, b) => {
@@ -164,7 +182,9 @@
 			striped,
 			compact,
 			stickyFirst,
-			stickyLast
+			stickyLast,
+			sortCol,
+			sortDir
 		};
 		savePrefs(tableId, prefs);
 	}
@@ -177,12 +197,14 @@
 
 		if (sortCol === col.id) {
 			sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+			persist();
 
 			return;
 		}
 
 		sortCol = col.id;
 		sortDir = 'asc';
+		persist();
 	}
 
 	function toggle(row: T): void {
@@ -238,8 +260,156 @@
 		selected = allSelected ? new Set() : new Set(selectableRows.map(getId));
 	}
 
-	// ----- pinned columns: offsets are measured, since widths may be automatic -----
+	// ----- column widths -----
+	// Every visible column carries an explicit width so `table-layout: fixed` can
+	// never redistribute a drag across its neighbours. Columns that declare no
+	// width are measured from the natural (auto) layout instead of being guessed,
+	// so the table starts out looking exactly as it did before.
 	let headCells: HTMLTableCellElement[] = $state([]);
+	let tableEl: HTMLTableElement | undefined = $state();
+	let wrapEl: HTMLDivElement | undefined = $state();
+	let wrapWidth = $state(0);
+	let autoWidths: Record<string, number> = $state({});
+
+	/** px — the container width the current measurements were taken at */
+	let measuredAt = $state(0);
+
+	/**
+	 * px — a column's authoritative width: the user's own resize, else what the
+	 * natural layout measured. A declared width only stands in until that
+	 * measurement exists: it is a hint the natural layout has already honoured, so
+	 * preferring it afterwards would hold the column at its minimum and leave the
+	 * space it should have taken to the filler.
+	 */
+	function sizeOf(col: Column): number | undefined {
+		return widths[col.id] ?? autoWidths[col.id] ?? col.width;
+	}
+
+	const layoutReady = $derived(visibleCols.every((col) => autoWidths[col.id] !== undefined));
+
+	const selWidth = $derived(selectable !== 'none' ? SEL_COL_W : 0);
+
+	const contentWidth = $derived(
+		visibleCols.reduce((acc, col) => acc + (sizeOf(col) ?? 0), selWidth)
+	);
+
+	// The table is sized to its columns, never to its container: that is what lets
+	// the sum overflow into a horizontal scroll instead of squeezing columns. Any
+	// leftover space when the columns are narrower than the viewport goes to a
+	// trailing filler column, so the header strip and row rules still span the
+	// full width without a single real column being stretched.
+	const tableWidth = $derived(Math.max(contentWidth, wrapWidth));
+	const slack = $derived(layoutReady ? tableWidth - contentWidth : 0);
+	const overflowing = $derived(layoutReady && contentWidth > wrapWidth);
+
+	$effect(() => {
+		if (!wrapEl) {
+			return;
+		}
+
+		const observer = new ResizeObserver((entries) => {
+			wrapWidth = entries[0]?.contentRect.width ?? 0;
+		});
+
+		observer.observe(wrapEl);
+
+		return () => observer.disconnect();
+	});
+
+	/**
+	 * Measure what the browser would give each column if the table laid itself out
+	 * freely, and restore the applied widths before anything is painted.
+	 *
+	 * The measurement has to be its own synchronous write-read-restore rather than
+	 * "clear the widths and read them back in the next effect": Svelte coalesces
+	 * the clear with the re-measure into a single flush, so that DOM state is never
+	 * reached and the effect just re-reads the widths already in force. Reading a
+	 * rect forces the reflow, so the natural geometry is real — and the widths are
+	 * back in place by the end of the function, well before the frame is painted.
+	 *
+	 * The user's own resizes must come off for the pass, or a pinned neighbour
+	 * would leave the others measuring only the space it did not take — reloading
+	 * a table with one widened column would quietly re-compact everything around
+	 * it. Widths a page *declares* stay on: they are a static hint, identical on
+	 * every load, and the layout being measured is meant to respect them.
+	 */
+	function naturalWidths(table: HTMLTableElement): Record<string, number> {
+		const cols = [...table.querySelectorAll('col')];
+		const savedCols = cols.map((col) => col.style.width);
+		const savedLayout = table.style.tableLayout;
+		const savedWidth = table.style.width;
+		const offset = selectable !== 'none' ? 1 : 0;
+
+		// the selection column is left alone — it is a fixed box in CSS, not a
+		// measured one — while the filler must not hold space during the pass
+		visibleCols.forEach((col, ci) => {
+			const element = cols[ci + offset];
+
+			if (element) {
+				element.style.width = col.width ? `${col.width / REM}rem` : '';
+			}
+		});
+
+		const filler = cols[visibleCols.length + offset];
+
+		if (filler) {
+			filler.style.width = '';
+		}
+
+		table.style.tableLayout = 'auto';
+		table.style.width = '100%';
+
+		const next: Record<string, number> = {};
+
+		visibleCols.forEach((col, ci) => {
+			const head = headCells[ci + offset];
+
+			// floored, never rounded: rounding up can push the total a pixel past
+			// the container and raise a scrollbar over nothing, while the few pixels
+			// a floor leaves behind disappear into the filler
+			const natural = Math.floor(head?.getBoundingClientRect().width ?? 0);
+
+			// a cell that measures as nothing is not a column worth keeping — a
+			// declared or default width beats collapsing it to a sliver
+			next[col.id] = natural >= MIN_COL_W ? natural : (col.width ?? DEFAULT_COL_W);
+		});
+
+		cols.forEach((col, index) => (col.style.width = savedCols[index] ?? ''));
+		table.style.tableLayout = savedLayout;
+		table.style.width = savedWidth;
+
+		return next;
+	}
+
+	$effect(() => {
+		// Header labels alone measure far narrower than the data, so the pass waits
+		// for the first rendered rows rather than locking in a width nothing fits.
+		// A zero-width container means the table is not on screen yet (a closed tab
+		// panel), where every cell would measure as nothing.
+		if (layoutReady || !paged.length || !wrapWidth || !tableEl) {
+			return;
+		}
+
+		autoWidths = naturalWidths(tableEl);
+		measuredAt = wrapWidth;
+	});
+
+	// A window resize or a collapsed side nav moves the container the columns were
+	// fitted to, which would otherwise leave the filler holding the difference for
+	// good. Dropping the measurements re-runs the pass; anything the user resized
+	// by hand lives in `widths` and survives untouched. The wait lets a drag finish
+	// first, so the table re-fits once instead of on every frame.
+	$effect(() => {
+		if (!layoutReady || Math.abs(wrapWidth - measuredAt) <= SETTLE_SLOP) {
+			return;
+		}
+
+		const timer = setTimeout(() => (autoWidths = {}), SETTLE_MS);
+
+		return () => clearTimeout(timer);
+	});
+
+	// ----- pinned columns: offsets are measured, since widths may be automatic -----
 	let stickyOffsets: number[] = $state([]);
 
 	/** number of leading cells (selection column included) that stay pinned */
@@ -247,7 +417,8 @@
 
 	$effect(() => {
 		// anything that can change a leading column's width re-measures the offsets
-		void [stickyCount, visibleCols, widths, compact, wrapLines, rows.length];
+		void [stickyCount, visibleCols, widths, autoWidths, tableWidth];
+		void [compact, wrapLines, rows.length];
 
 		const offsets: number[] = [];
 		let acc = 0;
@@ -276,11 +447,13 @@
 		event.stopPropagation();
 
 		const header = (event.target as HTMLElement).closest('th');
+		const col = columns.find((candidate) => candidate.id === colId);
 
 		resizing = {
 			col: colId,
 			startX: event.clientX,
-			startW: widths[colId] ?? header?.offsetWidth ?? DEFAULT_COL_W
+			// the rendered width is what the user grabbed, so a drag never jumps
+			startW: (col ? sizeOf(col) : undefined) ?? header?.offsetWidth ?? DEFAULT_COL_W
 		};
 	}
 
@@ -391,11 +564,18 @@
 		return `${from}–${to} of ${sorted.length}`;
 	});
 
-	/** Column width in rem, from a resize or the column's own declared width. */
+	/**
+	 * Column width in rem, from a resize, a declared width or the measured one —
+	 * and nothing at all during the measuring pass, which must stay natural.
+	 */
 	function colWidth(col: Column): string | undefined {
-		const measured = widths[col.id] ?? col.width;
+		if (!layoutReady) {
+			return undefined;
+		}
 
-		return measured ? `${measured / REM}rem` : undefined;
+		const size = sizeOf(col);
+
+		return size ? `${size / REM}rem` : undefined;
 	}
 
 	const STICKY_FIRST_OPTIONS: Array<{ value: StickyFirst; label: string }> = [
@@ -446,13 +626,18 @@
 		</div>
 	{/if}
 
-	<div class="wrap" style:max-height={maxHeight}>
-		<table style:table-layout={Object.keys(widths).length ? 'fixed' : 'auto'}>
+	<div class="wrap" style:max-height={maxHeight} bind:this={wrapEl}>
+		<table
+			bind:this={tableEl}
+			style:table-layout={layoutReady ? 'fixed' : 'auto'}
+			style:width={layoutReady ? `${tableWidth / REM}rem` : '100%'}
+		>
 			<colgroup>
 				{#if selectable !== 'none'}<col style="width: 2.75rem" />{/if}
 				{#each visibleCols as col (col.id)}
 					<col style:width={colWidth(col)} />
 				{/each}
+				<col style:width={`${slack / REM}rem`} />
 			</colgroup>
 			<thead>
 				<tr>
@@ -480,7 +665,7 @@
 						<th
 							data-align={col.align ?? 'left'}
 							class:sticky={index < stickyCount}
-							class:sticky-last={stickyLast && ci === visibleCols.length - 1}
+							class:sticky-last={stickyLast && overflowing && ci === visibleCols.length - 1}
 							style={stickyStyle(index)}
 							bind:this={headCells[index]}
 						>
@@ -492,7 +677,7 @@
 							>
 								<span class="name">{col.label}</span>
 								{#if col.sortable}
-									{@const on = sortCol === col.id}
+									{@const on = activeSort === col.id}
 									<span class="sort" class:on class:asc={on && sortDir === 'asc'}>
 										<Icon name="sortDown" size="0.875rem" style={on ? 'solid' : 'light'} />
 									</span>
@@ -500,6 +685,7 @@
 							</div>
 							<span
 								class="rz"
+								class:edge={ci === visibleCols.length - 1}
 								role="separator"
 								aria-label="Resize column"
 								onpointerdown={(event) => startResize(col.id, event)}
@@ -508,6 +694,7 @@
 							</span>
 						</th>
 					{/each}
+					<th class="filler" aria-hidden="true"></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -540,12 +727,13 @@
 							<td
 								data-align={col.align ?? 'left'}
 								class:sticky={index < stickyCount}
-								class:sticky-last={stickyLast && ci === visibleCols.length - 1}
+								class:sticky-last={stickyLast && overflowing && ci === visibleCols.length - 1}
 								style={stickyStyle(index)}
 							>
 								<div class="cell">{@render cell(row, col.id)}</div>
 							</td>
 						{/each}
+						<td class="filler"></td>
 					</tr>
 				{/each}
 			</tbody>
@@ -752,10 +940,12 @@
 		overflow: auto;
 	}
 
+	// the width is set inline, from the sum of the column widths — the table sizes
+	// itself to its columns so that a resize can overflow into .wrap's scroll
+	// instead of being paid for by the neighbouring columns
 	table {
 		border-collapse: separate;
 		border-spacing: 0;
-		width: 100%;
 		font-size: 0.875rem;
 	}
 
@@ -879,6 +1069,16 @@
 		cursor: col-resize;
 		z-index: 3;
 
+		// The last column's grab area may not overhang: it would reach past the
+		// table's own right edge and give .wrap a scrollbar with nothing to scroll.
+		// Half the width keeps the live area identical to every other column's —
+		// the overhanging half is painted over by the next header anyway.
+		&.edge {
+			right: 0;
+			width: 0.75rem;
+			padding-right: 0;
+		}
+
 		&:hover .rzline {
 			background: var(--link);
 			width: 0.125rem;
@@ -898,6 +1098,9 @@
 	// moves anything. Interior cells deliberately have no side borders — a
 	// coloured top border mitering into a transparent side border is what leaves
 	// little empty triangles at the cell corners.
+	//
+	// The filler cell is always in the DOM (0-wide once the columns overflow), so
+	// the row's own last cell is reliably :nth-last-child(2) — never :last-child.
 	td {
 		padding: 0;
 		border-top: 0.125rem solid transparent;
@@ -910,7 +1113,7 @@
 			border-left: 0.125rem solid transparent;
 		}
 
-		&:last-child {
+		&:nth-last-child(2) {
 			border-right: 0.125rem solid transparent;
 		}
 
@@ -979,7 +1182,7 @@
 		// miters into the transparent bottom border and bites a notch out of every
 		// cell corner. A gradient anchored to the border box has square ends.
 		&:first-child,
-		&:last-child {
+		&:nth-last-child(2) {
 			background-origin: border-box;
 			background-clip: border-box;
 			background-repeat: no-repeat;
@@ -989,12 +1192,12 @@
 			background-image: linear-gradient(to right, var(--link) 0.125rem, transparent 0.125rem);
 		}
 
-		&:last-child {
+		&:nth-last-child(2) {
 			background-image: linear-gradient(to left, var(--link) 0.125rem, transparent 0.125rem);
 		}
 
 		// a single-column table needs both edges on the same cell
-		&:first-child:last-child {
+		&:first-child:nth-last-child(2) {
 			background-image:
 				linear-gradient(to right, var(--link) 0.125rem, transparent 0.125rem),
 				linear-gradient(to left, var(--link) 0.125rem, transparent 0.125rem);
@@ -1016,6 +1219,24 @@
 		&:hover > td {
 			background-color: transparent;
 		}
+	}
+
+	// ---- trailing filler ----
+	// It exists only to absorb the space left over when the columns are narrower
+	// than the viewport, so the header strip, the striped rows and the row rules
+	// still reach the right edge without a real column being stretched. It shares
+	// the row's stripe and hover, but stays outside the selection block — those
+	// edges belong to the last real column.
+	.filler {
+		padding: 0;
+	}
+
+	tbody tr.selected > td.filler,
+	tbody tr.after-selected > td.filler {
+		background-color: transparent;
+		background-image: none;
+		border-top-color: transparent;
+		border-bottom-color: var(--border-divider);
 	}
 
 	// ---- pinned columns ----

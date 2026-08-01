@@ -63,6 +63,14 @@ export interface InstanceRow {
 	pingVersion: string | null;
 	cpu: number | null;
 	rssMb: number | null;
+	/** From LunaCore's heartbeat — null when the plugin is not reporting for this instance */
+	tps: number | null;
+	heapUsedMb: number | null;
+	heapMaxMb: number | null;
+	/** ONLINE | MAINT | OFFLINE as the proxy sees it */
+	lunaStatus: string | null;
+	lunaDisplayName: string | null;
+	lastHeartbeatMs: number | null;
 	ports: Record<string, number>;
 	proxy: { register: boolean; forcedHosts?: string[]; priority?: number } | null;
 	external: string | null;

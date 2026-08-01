@@ -16,6 +16,8 @@ import {
 	expandTargets
 } from '$core/config';
 import * as instances from '$core/instances';
+import * as luna from '$core/services/luna';
+import type { BackendCard } from '$core/services/luna';
 import type { ClusterConfig } from '$core/types';
 
 export { loadCluster, loadLock, managedInstances, instanceDir, root, expandTargets };
@@ -31,6 +33,10 @@ export interface MetricSample {
 	rssMb?: number;
 	players?: number;
 	pingMs?: number;
+	/** From LunaCore's heartbeat, when the plugin is installed and reporting */
+	tps?: number;
+	heapUsedMb?: number;
+	heapMaxMb?: number;
 }
 
 export interface ClusterEvent {
@@ -60,6 +66,9 @@ interface SamplerGlobals {
 	events: ClusterEvent[];
 	sampler?: ReturnType<typeof setInterval>;
 	lastStatuses: Map<string, CoreStatus>;
+	/** Latest LunaCore telemetry per backend, empty when the plugin is unreachable */
+	lunaBackends: Map<string, BackendCard>;
+	lunaProblem?: string;
 }
 
 // survive vite HMR without duplicating the sampler
@@ -67,7 +76,8 @@ const g: SamplerGlobals = ((globalThis as any).__mrds ??= {
 	runtime: new Map(),
 	transitions: new Map(),
 	events: [],
-	lastStatuses: new Map()
+	lastStatuses: new Map(),
+	lunaBackends: new Map()
 });
 
 /** Per-instance sampler state, created on first use. */
@@ -135,11 +145,40 @@ function settleTransition(name: string, coreState: CoreStatus['state']): void {
 	}
 }
 
+/**
+ * LunaCore's view of every backend, keyed by name. Returns an empty map whenever
+ * the plugin or the proxy is unavailable — the sampler's own /proc and ping data is
+ * the baseline, and Luna telemetry only enriches it.
+ */
+async function lunaBackends(): Promise<Map<string, BackendCard>> {
+	const result = await luna.dashboard();
+
+	if (!result.ok || !result.data) {
+		g.lunaProblem = result.error;
+
+		return new Map();
+	}
+
+	g.lunaProblem = undefined;
+
+	return new Map(result.data.backends.map((backend) => [backend.id, backend]));
+}
+
+/** Why Luna telemetry is missing, for the UI to surface. */
+export function lunaProblem(): string | undefined {
+	return g.lunaProblem;
+}
+
 /** Record one metrics sample per instance and emit state-change events. */
 async function sampleOnce(): Promise<void> {
 	try {
 		const cfg = await loadCluster();
-		const statuses = await instances.getAllStatuses(cfg);
+		const [statuses, backends] = await Promise.all([
+			instances.getAllStatuses(cfg),
+			lunaBackends()
+		]);
+
+		g.lunaBackends = backends;
 
 		for (const status of statuses) {
 			const runtime = rt(status.name);
@@ -180,6 +219,18 @@ async function sampleOnce(): Promise<void> {
 
 			if (status.players) {
 				sample.players = status.players.online;
+			}
+
+			// Heartbeat metrics come from inside the JVM, so they say things /proc cannot:
+			// tick rate, and heap as the server itself sees it.
+			const backend = backends.get(status.name);
+
+			if (backend?.online) {
+				sample.tps = backend.metrics.tps;
+				sample.heapUsedMb = Math.round(backend.metrics.ramUsedBytes / 1024 / 1024);
+				sample.heapMaxMb = Math.round(backend.metrics.ramMaxBytes / 1024 / 1024);
+
+				sample.players ??= backend.metrics.onlinePlayers;
 			}
 
 			runtime.history.push(sample);
@@ -233,12 +284,86 @@ export interface StatusCheck {
 }
 
 /** The three health checks the instance detail page renders. */
+/** Coarse "N seconds/minutes ago" for a heartbeat timestamp. */
+function agoText(epochMs: number): string {
+	const seconds = Math.max(0, Math.round((Date.now() - epochMs) / 1000));
+
+	if (seconds < 60) {
+		return `${seconds}s ago`;
+	}
+
+	return `${Math.floor(seconds / 60)}m ${seconds % 60}s ago`;
+}
+
+/**
+ * Whether LunaCore is reporting for this instance.
+ *
+ * This is the check the other three cannot make: a backend can hold its screen
+ * session, own its port and answer server-list pings while LunaCore has stopped
+ * publishing — a broken plugin config, a dead heartbeat thread, a wrong forwarding
+ * secret. In all of those the server looks healthy from the outside and is invisible
+ * to the network.
+ *
+ * The proxy is the heartbeat *receiver*, so it is judged on serving the API instead.
+ */
+function heartbeatCheck(st: CoreStatus): StatusCheck {
+	const name = 'LunaCore heartbeat';
+
+	if (g.lunaProblem) {
+		return { name, ok: undefined, detail: g.lunaProblem };
+	}
+
+	if (st.name === 'proxy') {
+		const reporting = [...g.lunaBackends.values()].filter((backend) => backend.online).length;
+
+		return {
+			name: 'LunaCore API',
+			ok: true,
+			detail: `serving telemetry — ${reporting} backend(s) reporting`
+		};
+	}
+
+	const backend = g.lunaBackends.get(st.name);
+
+	if (!backend) {
+		return { name, ok: undefined, detail: 'not registered with LunaCore on the proxy' };
+	}
+
+	if (!backend.online) {
+		// A booting server has not loaded its plugins yet, so a missing heartbeat is
+		// expected rather than a fault — only a server that is up and quiet is failing.
+		if (st.state !== 'running') {
+			return { name, ok: undefined, detail: 'waiting for the first heartbeat' };
+		}
+
+		return {
+			name,
+			ok: false,
+			detail: backend.lastHeartbeatEpochMillis
+				? `no heartbeat since ${agoText(backend.lastHeartbeatEpochMillis)} — the plugin has stopped reporting`
+				: 'never reported to the proxy — check the LunaCore config'
+		};
+	}
+
+	const heapMb = Math.round(backend.metrics.ramUsedBytes / 1024 / 1024);
+	const heapMaxMb = Math.round(backend.metrics.ramMaxBytes / 1024 / 1024);
+
+	return {
+		name,
+		ok: true,
+		detail:
+			`${backend.metrics.tps.toFixed(2)} TPS · heap ${heapMb}/${heapMaxMb} MB · ` +
+			`beat ${agoText(backend.lastHeartbeatEpochMillis)} (${backend.metrics.heartbeatLatencyMillis}ms)`
+	};
+}
+
 export function statusChecks(st: CoreStatus): StatusCheck[] {
 	if (st.state === 'stopped') {
 		return [
 			{ name: 'Process check', ok: undefined, detail: 'Instance is stopped' },
 			{ name: 'Port reachability', ok: undefined, detail: 'Instance is stopped' },
-			{ name: 'Server ping', ok: undefined, detail: 'Instance is stopped' }
+			{ name: 'Server ping', ok: undefined, detail: 'Instance is stopped' },
+			{ name: 'LunaCore heartbeat', ok: undefined, detail: 'Instance is stopped' }
 		];
 	}
 
@@ -261,15 +386,23 @@ export function statusChecks(st: CoreStatus): StatusCheck[] {
 			detail: st.players
 				? `responding — ${st.players.online}/${st.players.max} players`
 				: 'not answering server-list pings yet'
-		}
+		},
+		heartbeatCheck(st)
 	];
 }
 
 /** Serialize an instance status for the API. */
 export function statusJson(cfg: ClusterConfig, st: CoreStatus) {
 	const latest = rt(st.name).history.at(-1);
+	const backend = g.lunaBackends.get(st.name);
 
 	return {
+		tps: backend?.online ? backend.metrics.tps : null,
+		heapUsedMb: backend?.online ? Math.round(backend.metrics.ramUsedBytes / 1024 / 1024) : null,
+		heapMaxMb: backend?.online ? Math.round(backend.metrics.ramMaxBytes / 1024 / 1024) : null,
+		lunaStatus: backend?.status ?? null,
+		lunaDisplayName: backend?.displayName ?? null,
+		lastHeartbeatMs: backend?.lastHeartbeatEpochMillis ?? null,
 		name: st.name,
 		state: effectiveState(st.name, st.state),
 		software: st.inst.software,
@@ -318,9 +451,28 @@ export async function listStatuses() {
 	const cfg = await loadCluster();
 	const statuses = await instances.getAllStatuses(cfg);
 
+	// External servers run on another machine, so mrds can only TCP-probe them —
+	// LunaCore's heartbeat is the only real telemetry the console has for these.
 	const externals = Object.entries(cfg.instances)
 		.filter(([, inst]) => inst.external)
-		.map(([name, inst]) => ({ name, external: inst.external!, proxy: inst.proxy ?? null }));
+		.map(([name, inst]) => {
+			const backend = g.lunaBackends.get(name);
+
+			return {
+				name,
+				external: inst.external!,
+				proxy: inst.proxy ?? null,
+				lunaStatus: backend?.status ?? null,
+				online: backend?.online ?? null,
+				players: backend?.online
+					? { online: backend.metrics.onlinePlayers, max: backend.metrics.maxPlayers }
+					: null,
+				tps: backend?.online ? backend.metrics.tps : null,
+				heapUsedMb: backend?.online ? Math.round(backend.metrics.ramUsedBytes / 1024 / 1024) : null,
+				heapMaxMb: backend?.online ? Math.round(backend.metrics.ramMaxBytes / 1024 / 1024) : null,
+				uptimeMs: backend?.online ? backend.metrics.uptimeMillis : null
+			};
+		});
 
 	// the proxy always heads the list, backends follow alphabetically
 	const ordered = statuses
@@ -340,7 +492,8 @@ export async function listStatuses() {
 	return {
 		instances: ordered,
 		externals,
-		hostMemMb: await readHostMemMb()
+		hostMemMb: await readHostMemMb(),
+		lunaProblem: g.lunaProblem ?? null
 	};
 }
 
