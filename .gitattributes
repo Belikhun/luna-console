@@ -1,0 +1,10 @@
+* text=auto eol=crlf
+
+*.jar binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.woff2 binary
+*.gz binary
+*.db binary
+*.dat binary

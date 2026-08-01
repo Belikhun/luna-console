@@ -1,0 +1,21 @@
+{
+  "name": "mrds-control",
+  "module": "src/cli/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run src/cli/index.ts",
+    "build": "bun build --compile --minify src/cli/index.ts --outfile dist/mrds",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0",
+    "picocolors": "^1.1.1"
+  }
+}

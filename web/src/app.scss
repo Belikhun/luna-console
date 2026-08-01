@@ -1,0 +1,334 @@
+// mrds console — dark design system.
+// The colours and metrics below are fixed: they are the reference values the
+// whole console is built against, so treat them as the source of truth.
+// Primary font: Albula Pro (static/AlbulaPro). Icons: Font Awesome via <icon data-icon>.
+
+:root {
+	--font: 'Albula Pro', 'Helvetica Neue', Roboto, Arial, sans-serif;
+	--font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+
+	--bg-body: #0f141a;
+	--bg-nav: #000716;
+	--bg-nav-side: #1b232d;
+	--bg-panel: #161d26;
+	--bg-panel-raised: #1a2330;
+	--bg-table-header: #131920;
+	--bg-input: #0f1b2a;
+	--bg-hover: #232b37;
+	--bg-selected: #001129;
+	--bg-dropdown: #1b232d;
+	--bg-terminal: #0b0f14;
+	--bg-track: #47546a;
+
+	--border: #414d5c;
+	--border-divider: #232b37;
+	--border-drawer: #464650;
+	--border-input: #7d8998;
+
+	// console chrome (top nav, breadcrumb strip, side nav) and select triggers
+	// run on their own, lighter divider token than the in-panel one
+	--border-nav: #424650;
+	--border-field: #656871;
+
+	--text: #c6c6cd;
+	--text-heading: #dedee3;
+	--text-secondary: #a4a4ad;
+	--text-label: #b4b4bb;
+	--text-disabled: #5f6b7a;
+
+	--link: #42b4ff;
+	--link-hover: #89bdee;
+	--success: #2bb534;
+	--error: #ff7a7a;
+	--warning: #e0ca57;
+	--info: #42b4ff;
+
+	--primary: #ff9900;
+	--primary-hover: #ffb84d;
+	--primary-text: #0f141a;
+
+	// control metrics: 28px controls, 20px pill radius, 2px control borders
+	--control-h: 1.75rem;
+	--radius-container: 1rem;
+	--radius-button: 1.25rem;
+	--radius-input: 0.5rem;
+	--border-control: 0.125rem;
+
+	// exactly one CSS pixel: the only width that renders identically at every
+	// column boundary. 0.1rem (1.6px) resolves to a different number of device
+	// pixels depending on where the edge falls, so rules drawn with it look
+	// uneven across a table header. Use it only for single-pixel rules.
+	--hairline: 0.0625rem;
+
+	--shadow-dropdown: 0 0.25rem 1.25rem 0.1rem rgba(0, 7, 22, 0.7);
+	--shadow-panel: 0 0.1rem 0.5rem 0.1rem rgba(0, 7, 22, 0.6);
+	--focus-ring: 0 0 0 0.125rem var(--link);
+
+	// one stacking scale for the whole console — everything that floats must
+	// pick a step from here, so popovers never end up under the split panel
+	--z-sticky: 2;
+	--z-split-panel: 840;
+	--z-shell: 850;
+	--z-popover: 870;
+	--z-menu: 900;
+	--z-modal: 1000;
+	--z-tooltip: 1100;
+
+	--nav-w: 13.75rem;
+	--split-bottom: 0rem;
+	--split-right: 0rem;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	font-size: 100%;
+	height: 100%;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	background: var(--bg-body);
+	color: var(--text);
+	font-family: var(--font);
+	font-size: 0.875rem;
+	line-height: 1.4285;
+	height: 100%;
+}
+
+// Every in-content link carries a solid underline; chrome links (brand, side
+// nav, tabs, buttons-as-links) opt out in their own component.
+a {
+	color: var(--link);
+	text-decoration: underline;
+
+	// `auto` resolves to a single device pixel — an explicit rem thickness reads
+	// far too heavy at 0.875rem body text
+	text-decoration-thickness: auto;
+	text-underline-offset: 0.25rem;
+
+	&:hover {
+		color: var(--link-hover);
+	}
+
+	// A link's underline is painted across atomic inlines as well, and no rule on
+	// the descendant can cancel it — so a link that contains an icon drops the
+	// anchor-level underline and hands it to the text run instead. Forgetting the
+	// span degrades to "no underline" rather than "rule through the glyph".
+	&:has(icon) {
+		text-decoration: none;
+
+		.lt {
+			text-decoration: underline;
+			text-underline-offset: 0.25rem;
+		}
+	}
+}
+
+// Text that isn't a link but reveals more detail on click (status values,
+// timestamps): body colour with a dashed rule, never link blue.
+.info-trigger {
+	@include bare-button;
+
+	color: var(--text);
+	text-decoration: underline;
+	text-decoration-style: dashed;
+	text-decoration-thickness: auto;
+	text-underline-offset: 0.25rem;
+
+	&:hover {
+		color: var(--text-heading);
+	}
+}
+
+h1,
+h2,
+h3 {
+	color: var(--text-heading);
+	margin: 0;
+	font-weight: 700;
+}
+
+h1 {
+	font-size: 1.25rem;
+	line-height: 1.4;
+}
+
+h2 {
+	font-size: 1.125rem;
+	line-height: 1.4;
+}
+
+h3 {
+	font-size: 1rem;
+}
+
+::-webkit-scrollbar {
+	width: 0.625rem;
+	height: 0.625rem;
+}
+
+::-webkit-scrollbar-thumb {
+	background: #33404f;
+	border-radius: 0.375rem;
+	border: 0.125rem solid var(--bg-body);
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+button {
+	font-family: var(--font);
+}
+
+// icon element defaults (FontAwesome.css provides the glyphs).
+// Normalize alignment: icons behave as fixed square inline boxes centered
+// on the text cap height, so they line up in buttons, badges and labels.
+icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1em;
+	height: 1em;
+	line-height: 1;
+	vertical-align: -0.125em;
+
+	&::after {
+		line-height: 1 !important;
+	}
+}
+
+// ---------- inputs ----------
+
+.input,
+select.input {
+	background: var(--bg-input);
+	border: var(--border-control) solid var(--border-input);
+	border-radius: var(--radius-input);
+	color: var(--text);
+	font-family: var(--font);
+	font-size: 0.875rem;
+	padding: 0.125rem 0.75rem;
+	line-height: 1.25rem;
+	min-height: var(--control-h);
+	outline: none;
+	width: 100%;
+}
+
+.input {
+	&:focus {
+		border-color: var(--link);
+		box-shadow: 0 0 0 0.1rem var(--link);
+	}
+
+	&::placeholder {
+		color: var(--text-secondary);
+	}
+
+	&:disabled {
+		color: var(--text-disabled);
+		border-color: var(--border-divider);
+	}
+}
+
+select.input option {
+	background: var(--bg-dropdown);
+}
+
+.field {
+	display: block;
+	margin-bottom: 0.875rem;
+
+	.lbl {
+		display: block;
+		font-weight: 700;
+		color: var(--text-heading);
+		margin-bottom: 0.1rem;
+	}
+
+	.hint {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+		margin-bottom: 0.25rem;
+	}
+}
+
+input[type='radio'] {
+	appearance: none;
+	width: 1rem;
+	height: 1rem;
+	border: 0.125rem solid var(--border-input);
+	border-radius: 50%;
+	cursor: pointer;
+	position: relative;
+	flex: none;
+
+	&:checked {
+		border-color: var(--link);
+
+		&::after {
+			content: '';
+			position: absolute;
+			inset: 0.125rem;
+			border-radius: 50%;
+			background: var(--link);
+		}
+	}
+}
+
+// ---------- text utilities ----------
+
+.counter {
+	color: var(--text-secondary);
+	font-weight: 400;
+}
+
+.dim {
+	color: var(--text-secondary);
+}
+
+.mono {
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+}
+
+.nowrap {
+	white-space: nowrap;
+}
+
+code.inline {
+	background: var(--bg-panel-raised);
+	border: 0.1rem solid var(--border-divider);
+	border-radius: 0.25rem;
+	padding: 0.1rem 0.375rem;
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.spin {
+	display: inline-block;
+	animation: spin 0.9s linear infinite;
+}
+
+@keyframes fadein {
+	from {
+		opacity: 0;
+		transform: translateY(-0.125rem);
+	}
+
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}

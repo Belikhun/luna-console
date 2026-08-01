@@ -1,0 +1,51 @@
+// Auto-injected into every `<style lang="scss">` block and into app.scss by the
+// `css.preprocessorOptions.scss.additionalData` hook in vite.config.ts, so no
+// component needs an @use line. Emits no CSS on its own — variables, mixins and
+// functions only — otherwise every component would carry a copy of the output.
+//
+// Design tokens stay CSS custom properties in app.scss: they are read at runtime
+// (theming, per-instance colours, the `--split-*` chrome offsets) and must not be
+// flattened into build-time Sass values.
+
+// Breakpoints, matching the widths the console already collapses at.
+$bp-narrow: 40rem;
+$bp-medium: 64rem;
+$bp-wide: 68.75rem;
+
+/// Collapse-to-narrow media query: `@include below($bp-medium) { … }`.
+@mixin below($width) {
+	@media (max-width: $width) {
+		@content;
+	}
+}
+
+/// Single-line text that clips with an ellipsis. Needs a bounded width to work,
+/// which in a flex or grid child means `min-width: 0` on the same element.
+@mixin ellipsis {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+/// The keyboard focus ring — a 2px link-coloured outer ring.
+@mixin focus-ring {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+/// Fill the nearest positioned ancestor.
+@mixin fill {
+	position: absolute;
+	inset: 0;
+}
+
+/// Reset the browser chrome on a `<button>` used as a bare interactive target.
+@mixin bare-button {
+	background: none;
+	border: none;
+	padding: 0;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+}

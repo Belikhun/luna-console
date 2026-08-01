@@ -1,0 +1,95 @@
+{
+	"/": [
+		"src/routes/+page.ts"
+	],
+	"/api/cleanup": [
+		"src/routes/api/cleanup/+server.ts"
+	],
+	"/api/events": [
+		"src/routes/api/events/+server.ts"
+	],
+	"/api/host": [
+		"src/routes/api/host/+server.ts"
+	],
+	"/api/instances": [
+		"src/routes/api/instances/+server.ts"
+	],
+	"/api/instances/create": [
+		"src/routes/api/instances/create/+server.ts"
+	],
+	"/api/instances/[name]": [
+		"src/routes/api/instances/[name]/+server.ts"
+	],
+	"/api/instances/[name]/config": [
+		"src/routes/api/instances/[name]/config/+server.ts"
+	],
+	"/api/instances/[name]/console": [
+		"src/routes/api/instances/[name]/console/+server.ts"
+	],
+	"/api/instances/[name]/logs": [
+		"src/routes/api/instances/[name]/logs/+server.ts"
+	],
+	"/api/instances/[name]/metrics": [
+		"src/routes/api/instances/[name]/metrics/+server.ts"
+	],
+	"/api/instances/[name]/plugins": [
+		"src/routes/api/instances/[name]/plugins/+server.ts"
+	],
+	"/api/instances/[name]/state": [
+		"src/routes/api/instances/[name]/state/+server.ts"
+	],
+	"/api/paper": [
+		"src/routes/api/paper/+server.ts"
+	],
+	"/api/plugins": [
+		"src/routes/api/plugins/+server.ts"
+	],
+	"/api/plugins/add": [
+		"src/routes/api/plugins/add/+server.ts"
+	],
+	"/api/plugins/check": [
+		"src/routes/api/plugins/check/+server.ts"
+	],
+	"/api/plugins/deploy": [
+		"src/routes/api/plugins/deploy/+server.ts"
+	],
+	"/api/plugins/pin": [
+		"src/routes/api/plugins/pin/+server.ts"
+	],
+	"/api/plugins/scan": [
+		"src/routes/api/plugins/scan/+server.ts"
+	],
+	"/api/plugins/search": [
+		"src/routes/api/plugins/search/+server.ts"
+	],
+	"/api/plugins/unpin": [
+		"src/routes/api/plugins/unpin/+server.ts"
+	],
+	"/api/plugins/update": [
+		"src/routes/api/plugins/update/+server.ts"
+	],
+	"/api/plugins/[name]": [
+		"src/routes/api/plugins/[name]/+server.ts"
+	],
+	"/api/ports": [
+		"src/routes/api/ports/+server.ts"
+	],
+	"/api/proxy": [
+		"src/routes/api/proxy/+server.ts"
+	],
+	"/api/shell/complete": [
+		"src/routes/api/shell/complete/+server.ts"
+	],
+	"/api/shell/exec": [
+		"src/routes/api/shell/exec/+server.ts"
+	],
+	"/cleanup": [],
+	"/gallery": [],
+	"/instances": [],
+	"/instances/launch": [],
+	"/instances/[name]": [],
+	"/instances/[name]/console": [],
+	"/network": [],
+	"/plugins": [],
+	"/proxy": []
+}
