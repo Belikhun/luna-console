@@ -1,7 +1,8 @@
 import { join } from "node:path";
 
 import type { ClusterConfig, PluginEntry, PluginsLock, PortBindingSpec } from "./types";
-import { expandTargets, instanceDir, managedInstances } from "./config";
+import { instanceDir, managedInstances } from "./config";
+import { effectiveTargets } from "./families";
 import { getConfValue, setConfValue } from "./confedit";
 
 /** Built-in port binding presets for known plugins, keyed by "<modrinth-slug>:<loader>". */
@@ -83,14 +84,20 @@ function allocKey(plugin: string, portId: string): string {
 
 /**
  * Instances a spec applies to: proxy-scoped specs bind on the proxy alone,
- * instance-scoped ones on every backend the plugin targets.
+ * instance-scoped ones on every backend the plugin reaches (explicit targets
+ * and group coverage alike).
  */
-function specTargets(cfg: ClusterConfig, entry: PluginEntry, spec: PortBindingSpec): string[] {
+function specTargets(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	name: string,
+	spec: PortBindingSpec,
+): string[] {
 	if (spec.scope === "proxy") {
 		return ["proxy"];
 	}
 
-	return expandTargets(cfg, entry.targets).filter((target) => target !== "proxy");
+	return effectiveTargets(cfg, lock, name).filter((target) => target !== "proxy");
 }
 
 /** Every port the registry has handed out, mapped to a human-readable owner. */
@@ -158,7 +165,7 @@ export async function ensurePortAllocations(
 		}
 
 		for (const spec of specs) {
-			for (const target of specTargets(cfg, entry, spec)) {
+			for (const target of specTargets(cfg, lock, pluginName, spec)) {
 				const inst = insts[target];
 
 				if (!inst) {
@@ -283,7 +290,7 @@ async function auditConfigDrift(cfg: ClusterConfig, lock: PluginsLock): Promise<
 		}
 
 		for (const spec of specs) {
-			for (const target of specTargets(cfg, entry, spec)) {
+			for (const target of specTargets(cfg, lock, pluginName, spec)) {
 				const inst = insts[target];
 
 				if (!inst) {

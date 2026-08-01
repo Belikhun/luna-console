@@ -1,21 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { api, post, patch, del } from '$lib/api';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import Dropdown from '$lib/components/Dropdown.svelte';
-	import Tabs from '$lib/components/Tabs.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
-	import Flash from '$lib/components/Flash.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import SearchInput from '$lib/components/SearchInput.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import DetailPanel from '$lib/components/DetailPanel.svelte';
-	import InfoGrid from '$lib/components/InfoGrid.svelte';
-	import type { InfoCell } from '$lib/components/grid';
 	import Modal from '$lib/components/Modal.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -24,14 +19,37 @@
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 
-	/** how many MC versions a pin option lists before it trails off */
-	const MC_LABEL_LIMIT = 6;
+	/**
+	 * The plugin universe, one row per *identity* — a plugin's paper, velocity
+	 * and neoforge builds are one thing here; the info view unpacks them.
+	 */
 
-	let plugins: any[] = $state([]);
+	interface FamilyRow {
+		key: string;
+		family: string;
+		source: string;
+		autoUpdate: boolean;
+		channel: string;
+		version: string | null;
+		modrinth: { slug: string } | null;
+		effective: string[];
+	}
+
+	interface PluginRow {
+		plugin: string;
+		displayName: string;
+		description: string | null;
+		families: FamilyRow[];
+		sources: string[];
+		effective: string[];
+		autoUpdate: boolean;
+		pinned: boolean;
+		variantCount: number;
+	}
+
+	let plugins: PluginRow[] = $state([]);
 	let filter = $state('');
-	let selected: Set<string> = $state(new Set());
 	let busy = $state('');
-	let detailTab = $state('info');
 	let updates: any[] = $state([]);
 	let checked = $state(false);
 
@@ -41,13 +59,8 @@
 	let addHits: any[] = $state([]);
 	let addSlug = $state('');
 	let addTargets: string[] = $state([]);
-	let pinOpen = $state(false);
-	let pinVersions: any[] = $state([]);
-	let pinVersion = $state('');
-	let pinTargets: string[] = $state([]);
+	let removeTarget: PluginRow | null = $state(null);
 	let removeOpen = $state(false);
-	let panelLocation: 'bottom' | 'right' = $state('bottom');
-	let panelSize = $state(42);
 
 	const filtered = $derived.by(() => {
 		if (!filter) {
@@ -57,21 +70,24 @@
 		const needle = filter.toLowerCase();
 
 		return plugins.filter(
-			(plugin) => plugin.name.includes(needle) || plugin.source.includes(needle)
+			(row) =>
+				row.plugin.includes(needle) ||
+				row.displayName.toLowerCase().includes(needle) ||
+				row.sources.some((source) => source.includes(needle))
 		);
 	});
 
-	const one = $derived(
-		selected.size === 1 ? plugins.find((plugin) => selected.has(plugin.name)) : undefined
-	);
-
 	const instanceNames = $derived(
-		[...new Set(plugins.flatMap((plugin) => plugin.expandedTargets))].sort() as string[]
+		[...new Set(plugins.flatMap((row) => row.effective))].sort()
 	);
 
-	const updatesFor = (name: string) => updates.find((entry) => entry.name === name);
+	/** Update candidates whose entry key belongs to this plugin's families. */
+	const updatesFor = (row: PluginRow) =>
+		updates.filter((candidate) =>
+			row.families.some((family) => family.key === candidate.name)
+		);
 
-	const filters: TableFilterGroup<any>[] = [
+	const filters: TableFilterGroup<PluginRow>[] = [
 		{
 			id: 'source',
 			label: 'Filter source',
@@ -80,23 +96,36 @@
 				{
 					value: 'modrinth',
 					label: 'Modrinth managed',
-					match: (plugin) => plugin.source === 'modrinth'
+					match: (row) => row.sources.includes('modrinth')
 				},
-				{ value: 'luna', label: 'Luna in-house', match: (plugin) => plugin.source === 'luna' },
+				{ value: 'luna', label: 'Luna in-house', match: (row) => row.sources.includes('luna') },
 				{
 					value: 'manual',
 					label: 'Manually installed',
-					match: (plugin) => plugin.source === 'manual'
+					match: (row) => row.sources.includes('manual')
 				}
 			]
 		},
 		{
-			id: 'loader',
-			label: 'Filter loader',
+			id: 'family',
+			label: 'Filter family',
 			options: [
-				{ value: 'any', label: 'Any loader' },
-				{ value: 'paper', label: 'Paper', match: (plugin) => plugin.loader === 'paper' },
-				{ value: 'velocity', label: 'Velocity', match: (plugin) => plugin.loader === 'velocity' }
+				{ value: 'any', label: 'Any family' },
+				{
+					value: 'paper',
+					label: 'Has a paper build',
+					match: (row) => row.families.some((family) => family.family === 'paper')
+				},
+				{
+					value: 'velocity',
+					label: 'Has a velocity build',
+					match: (row) => row.families.some((family) => family.family === 'velocity')
+				},
+				{
+					value: 'universal',
+					label: 'Universal jar',
+					match: (row) => row.families.some((family) => family.family === 'universal')
+				}
 			]
 		},
 		{
@@ -104,16 +133,8 @@
 			label: 'Filter update policy',
 			options: [
 				{ value: 'any', label: 'Any policy' },
-				{
-					value: 'auto-off',
-					label: 'Auto-update disabled',
-					match: (plugin) => !plugin.autoUpdate
-				},
-				{
-					value: 'pinned',
-					label: 'Has pinned versions',
-					match: (plugin) => Object.keys(plugin.pins ?? {}).length > 0
-				}
+				{ value: 'auto-off', label: 'Auto-update disabled', match: (row) => !row.autoUpdate },
+				{ value: 'pinned', label: 'Has pinned versions', match: (row) => row.pinned }
 			]
 		}
 	];
@@ -121,12 +142,11 @@
 	const columns: Column[] = [
 		{ id: 'name', label: 'Name', sortable: true },
 		{ id: 'source', label: 'Source', sortable: true },
-		{ id: 'loader', label: 'Loader', sortable: true },
+		{ id: 'families', label: 'Families', width: 170 },
 		{ id: 'version', label: 'Version' },
 		{ id: 'update', label: 'Update' },
 		{ id: 'auto', label: 'Auto-update', sortable: true },
-		{ id: 'channel', label: 'Channel' },
-		{ id: 'targets', label: 'Targets' }
+		{ id: 'targets', label: 'Deploys to' }
 	];
 
 	let loading = $state(true);
@@ -144,14 +164,16 @@
 	}
 
 	onMount(async () => {
-		await refresh();
-
-		// other pages deep-link a plugin into the split panel
+		// old deep links selected a row in a side panel; the info view replaced it
 		const preselect = page.url.searchParams.get('sel');
 
 		if (preselect) {
-			selected = new Set([preselect]);
+			await goto(`/plugins/${preselect}`, { replaceState: true });
+
+			return;
 		}
+
+		await refresh();
 	});
 
 	/**
@@ -186,24 +208,37 @@
 		busy = '';
 	}
 
-	/** Deploy one plugin to its targets, behind a loading flash. */
-	function deployOne(name: string): Promise<void> {
-		return run('deploy1', `Deploying ${name}…`, async (note) => {
-			await post('/plugins/deploy', { plugin: name });
-			note.set({ level: 'success', message: `Deployed ${name}`, closeable: true });
-		});
-	}
+	/** Deploy every family build of one plugin, behind a loading flash. */
+	function deployOne(row: PluginRow): Promise<void> {
+		return run('deploy1', `Deploying ${row.plugin}…`, async (note) => {
+			let changed = 0;
 
-	/** Flip a plugin's auto-update flag, behind a loading flash. */
-	function toggleAutoUpdate(plugin: any): Promise<void> {
-		const verb = plugin.autoUpdate ? 'Disabling' : 'Enabling';
+			for (const family of row.families) {
+				const res = await post('/plugins/deploy', { plugin: family.key });
 
-		return run('auto', `${verb} auto-update for ${plugin.name}…`, async (note) => {
-			await patch(`/plugins/${plugin.name}`, { autoUpdate: !plugin.autoUpdate });
+				changed += res.actions.filter((action: any) => action.action !== 'unchanged').length;
+			}
 
 			note.set({
 				level: 'success',
-				message: `Auto-update ${plugin.autoUpdate ? 'disabled' : 'enabled'} for ${plugin.name}`,
+				message: `Deployed ${row.plugin} — ${changed} change(s)`,
+				closeable: true
+			});
+		});
+	}
+
+	/** Flip auto-update on every family build of one plugin. */
+	function toggleAutoUpdate(row: PluginRow): Promise<void> {
+		const next = !row.autoUpdate;
+
+		return run('auto', `${next ? 'Enabling' : 'Disabling'} auto-update for ${row.plugin}…`, async (note) => {
+			for (const family of row.families) {
+				await patch(`/plugins/${encodeURIComponent(family.key)}`, { autoUpdate: next });
+			}
+
+			note.set({
+				level: 'success',
+				message: `Auto-update ${next ? 'enabled' : 'disabled'} for ${row.plugin}`,
 				closeable: true
 			});
 
@@ -219,7 +254,7 @@
 			note.set({
 				level: updates.length ? 'info' : 'success',
 				message: updates.length
-					? `${updates.length} plugin(s) have updates or holdbacks`
+					? `${updates.length} build(s) have updates or holdbacks`
 					: 'Everything is up to date',
 				closeable: true
 			});
@@ -228,12 +263,14 @@
 	const updateAll = () =>
 		run('update', 'Downloading and deploying updates…', async (note) => {
 			const res = await post('/plugins/update', { deploy: true });
+
 			note.set({
 				level: 'success',
 				message: `Updated ${res.applied.length} version group(s), deployed ${res.deployed} file(s)`,
 				detail: 'Restart the affected instances to load them.',
 				closeable: true
 			});
+
 			updates = [];
 
 			await refresh();
@@ -296,55 +333,20 @@
 			await refresh();
 		});
 
-	async function openPin(): Promise<void> {
-		if (!one) {
-			return;
-		}
-
-		pinOpen = true;
-		pinVersions = [];
-		pinTargets = [...one.expandedTargets];
-		pinVersions = (await api(`/plugins/pin?name=${one.name}`)).versions;
-		pinVersion = pinVersions[0]?.versionNumber ?? '';
-	}
-
-	const doPin = () =>
-		run('pin', `Pinning ${one?.name} to ${pinVersion}…`, async (note) => {
-			await post('/plugins/pin', { name: one!.name, version: pinVersion, targets: pinTargets });
-			await post('/plugins/deploy', { plugin: one!.name });
-
-			note.set({
-				level: 'success',
-				message: `Pinned ${one!.name} to ${pinVersion} and deployed`,
-				closeable: true
-			});
-
-			pinOpen = false;
-
-			await refresh();
-		});
-
-	const doUnpin = () =>
-		run('unpin', `Unpinning ${one?.name}…`, async (note) => {
-			await post('/plugins/unpin', { name: one!.name });
-
-			note.set({
-				level: 'success',
-				message: `Unpinned ${one!.name}`,
-				detail: 'Run Update to re-resolve versions.',
-				closeable: true
-			});
-
-			await refresh();
-		});
-
 	const doRemove = () =>
-		run('remove', `Removing ${one?.name}…`, async (note) => {
-			await del(`/plugins/${one!.name}`);
-			note.set({ level: 'success', message: `Removed ${one!.name}`, closeable: true });
+		run('remove', `Removing ${removeTarget?.plugin}…`, async (note) => {
+			for (const family of removeTarget!.families) {
+				await del(`/plugins/${encodeURIComponent(family.key)}`);
+			}
+
+			note.set({
+				level: 'success',
+				message: `Removed ${removeTarget!.plugin} (${removeTarget!.families.length} build(s))`,
+				closeable: true
+			});
 
 			removeOpen = false;
-			selected = new Set();
+			removeTarget = null;
 
 			await refresh();
 		});
@@ -363,52 +365,44 @@
 		addTargets = [];
 	}
 
-	const versionCols: Column[] = [
-		{ id: 'kind', label: 'Kind', width: 110 },
-		{ id: 'version', label: 'Version', width: 180 },
-		{ id: 'mc', label: 'Supports MC (server version requirement)' }
-	];
-	const assignCols: Column[] = [
-		{ id: 'instance', label: 'Instance', width: 180 },
-		{ id: 'version', label: 'Runs version', width: 180 },
-		{ id: 'why', label: 'Why' }
-	];
-
 	let rowMenu: ContextMenu | undefined = $state();
-	let menuRow: any = $state();
+	let menuRow: PluginRow | undefined = $state();
 
 	const menuItems: ContextMenuItem[] = $derived.by(() => {
-		const plugin = menuRow;
+		const row = menuRow;
 
-		if (!plugin) {
+		if (!row) {
 			return [];
 		}
 
+		const modrinth = row.families.find((family) => family.modrinth);
+
 		return [
+			{
+				label: 'Plugin details',
+				icon: 'circleInfo',
+				action: () => goto(`/plugins/${row.plugin}`)
+			},
 			{
 				label: 'Deploy to targets',
 				icon: 'upload',
-				action: () => deployOne(plugin.name)
+				action: () => deployOne(row)
 			},
 			{
-				label: plugin.autoUpdate ? 'Disable auto-update' : 'Enable auto-update',
-				icon: plugin.autoUpdate ? 'ban' : 'circleCheck',
-				action: () => toggleAutoUpdate(plugin)
-			},
-			{ separator: true },
-			{ label: 'Pin a version…', icon: 'tag', disabled: !plugin.modrinth, action: openPin },
-			{
-				label: 'Unpin all',
-				icon: 'unlink',
-				disabled: !Object.keys(plugin.pins ?? {}).length,
-				action: doUnpin
+				label: row.autoUpdate ? 'Disable auto-update' : 'Enable auto-update',
+				icon: row.autoUpdate ? 'ban' : 'circleCheck',
+				action: () => toggleAutoUpdate(row)
 			},
 			{
 				label: 'Open on Modrinth',
 				icon: 'externalLink',
-				disabled: !plugin.modrinth,
+				disabled: !modrinth,
 				action: () => {
-					window.open(`https://modrinth.com/plugin/${plugin.modrinth.slug}`, '_blank', 'noreferrer');
+					window.open(
+						`https://modrinth.com/plugin/${modrinth!.modrinth!.slug}`,
+						'_blank',
+						'noreferrer'
+					);
 				}
 			},
 			{ separator: true },
@@ -417,33 +411,18 @@
 				icon: 'trash',
 				color: 'danger',
 				action: () => {
+					removeTarget = row;
 					removeOpen = true;
 				}
 			}
 		];
 	});
 
-	async function openRowMenu(row: any, event: MouseEvent): Promise<void> {
+	async function openRowMenu(row: PluginRow, event: MouseEvent): Promise<void> {
 		menuRow = row;
 
 		await rowMenu?.openAt(event.clientX, event.clientY);
 	}
-
-	const detailCells: InfoCell[] = $derived.by(() => {
-		if (!one) {
-			return [];
-		}
-
-		return [
-			{ label: 'Pool file', value: one.file, copyable: true, style: 'mono' },
-			{ id: 'source', label: 'Source' },
-			{ label: 'Loader', value: one.loader },
-			{ label: 'Update channel', value: one.channel },
-			{ label: 'Auto-update', value: one.autoUpdate ? 'Enabled' : 'Disabled' },
-			{ label: 'Targets', value: one.targets.join(', ') },
-			{ label: 'Resolved instances', value: one.expandedTargets.join(', '), colSpan: 2 }
-		];
-	});
 </script>
 
 <svelte:head><title>Plugins | MRDS Console</title></svelte:head>
@@ -472,13 +451,19 @@
 
 <Panel flush>
 	<DataTable
-		tableId="plugins"
+		tableId="plugins-grouped"
 		{columns}
 		rows={filtered}
-		getId={(plugin) => plugin.name}
-		selectable="single"
-		bind:selected
-		sortValue={(plugin, col) => (plugin as any)[col === 'auto' ? 'autoUpdate' : col] ?? ''}
+		getId={(row) => row.plugin}
+		sortValue={(row, col) =>
+			col === 'name'
+				? row.plugin
+				: col === 'source'
+					? row.sources.join(',')
+					: col === 'auto'
+						? String(row.autoUpdate)
+						: ''}
+		onRowClick={(row) => goto(`/plugins/${row.plugin}`)}
 		onRowContextMenu={openRowMenu}
 		{filters}
 		paging
@@ -489,183 +474,60 @@
 		{#snippet toolbar()}
 			<SearchInput bind:value={filter} placeholder="Find plugin by name or source" width="26rem" />
 		{/snippet}
-		{#snippet cell(plugin, col)}
-			{@const update = updatesFor(plugin.name)}
+		{#snippet cell(row, col)}
+			{@const pending = updatesFor(row)}
 			{#if col === 'name'}
-				<b>{plugin.name}</b>
+				<a href="/plugins/{row.plugin}" onclick={(event) => event.stopPropagation()}>
+					<b>{row.plugin}</b>
+				</a>
+				{#if row.displayName && row.displayName !== row.plugin}
+					<span class="dim">({row.displayName})</span>
+				{/if}
 			{:else if col === 'source'}
-				<span class="src {plugin.source}">{plugin.source}</span>
-			{:else if col === 'loader'}
-				{plugin.loader}
+				{#each row.sources as source, index}
+					{#if index > 0}<span class="dim">, </span>{/if}
+					<span class="src {source}">{source}</span>
+				{/each}
+			{:else if col === 'families'}
+				<span class="fams">
+					{#each row.families as family (family.key)}
+						<span class="fam">{family.family}</span>
+					{/each}
+				</span>
 			{:else if col === 'version'}
-				<span class="mono">{plugin.version ?? '?'}</span>
-				{#if plugin.variants.length}
-					<span class="variant"> +{plugin.variants.length}v</span>
+				{@const versions = [...new Set(row.families.map((family) => family.version ?? '?'))]}
+				<span class="mono">{versions.join(' / ')}</span>
+				{#if row.variantCount}
+					<span class="variant"> +{row.variantCount}v</span>
 				{/if}
 			{:else if col === 'update'}
-				{#if update?.groups?.length}
+				{#if pending.some((candidate) => candidate.groups?.length)}
 					<span class="upd">
 						<Icon name="arrowUp" size="0.75rem" />
-						{update.groups.map((group: any) => group.version).join(', ')}
+						{[
+							...new Set(
+								pending.flatMap((candidate) =>
+									candidate.groups.map((group: any) => group.version)
+								)
+							)
+						].join(', ')}
 					</span>
-				{:else if checked && plugin.source === 'modrinth'}
+				{:else if checked && row.sources.includes('modrinth')}
 					<span class="dim">current</span>
 				{:else}
 					<span class="dim">–</span>
 				{/if}
 			{:else if col === 'auto'}
 				<StatusBadge
-					state={plugin.autoUpdate ? 'ok' : 'stopped'}
-					label={plugin.autoUpdate ? 'On' : 'Off'}
+					state={row.autoUpdate ? 'ok' : 'stopped'}
+					label={row.autoUpdate ? 'On' : 'Off'}
 				/>
-			{:else if col === 'channel'}
-				{plugin.channel}
 			{:else if col === 'targets'}
-				<span class="dim">{plugin.targets.join(', ')}</span>
+				<span class="dim">{row.effective.join(', ') || '–'}</span>
 			{/if}
 		{/snippet}
 	</DataTable>
 </Panel>
-
-{#if one}
-	<DetailPanel
-		title={one.name}
-		subtitle="({one.source} · {one.loader})"
-		bind:location={panelLocation}
-		bind:size={panelSize}
-		onclose={() => (selected = new Set())}
-	>
-		{#snippet actions()}
-			<StatusBadge
-				state={one.autoUpdate ? 'ok' : 'stopped'}
-				label={one.autoUpdate ? 'Auto-update on' : 'Auto-update off'}
-			/>
-		{/snippet}
-		<div class="detacts">
-			<Btn icon="upload" onclick={() => deployOne(one.name)}>Deploy</Btn>
-			<Btn onclick={() => toggleAutoUpdate(one)}>
-				Auto-update: {one.autoUpdate ? 'turn off' : 'turn on'}
-			</Btn>
-			<Dropdown
-				label="Actions"
-				items={[
-					{ label: 'Pin a version…', icon: 'tag', disabled: !one.modrinth, action: openPin },
-					{
-						label: 'Unpin all',
-						icon: 'unlink',
-						disabled: !Object.keys(one.pins).length,
-						action: doUnpin
-					},
-					{ divider: true, label: '' },
-					{
-						label: 'Remove plugin',
-						icon: 'trash',
-						danger: true,
-						action: () => {
-							removeOpen = true;
-						}
-					}
-				]}
-			/>
-		</div>
-		<Tabs
-			tabs={[
-				{ id: 'info', label: 'Details' },
-				{ id: 'versions', label: 'Versions & requirements' },
-				{ id: 'assign', label: 'Per-instance versions' }
-			]}
-			bind:active={detailTab}
-		/>
-		<div class="detailbody">
-			{#if detailTab === 'info'}
-				<InfoGrid
-					cells={detailCells}
-					columns={panelLocation === 'right' ? [2, 2, 1] : [4, 3, 2]}
-				>
-					{#snippet custom(cell)}
-						{#if cell.id === 'source'}
-							{one.source}{#if one.modrinth}&nbsp;·&nbsp;<a
-									href="https://modrinth.com/plugin/{one.modrinth.slug}"
-									target="_blank"
-									rel="noreferrer"
-								>
-									<span class="lt">modrinth</span>
-									<Icon name="externalLink" size="0.625rem" />
-								</a>{/if}
-						{/if}
-					{/snippet}
-				</InfoGrid>
-				{#if updatesFor(one.name)?.holdbacks?.length}
-					<div class="holdbacks">
-						<Flash kind="warning">
-							{#each updatesFor(one.name).holdbacks as holdback}
-								{holdback.targets.join(', ')}: stays on {holdback.current ?? '?'} —
-								{holdback.reason}<br />
-							{/each}
-						</Flash>
-					</div>
-				{/if}
-			{:else if detailTab === 'versions'}
-				<DataTable
-					columns={versionCols}
-					rows={[
-						{
-							kind: 'primary',
-							version: one.version ?? '?',
-							mc: one.gameVersions?.join(', ') ?? 'unknown'
-						},
-						...one.variants.map((variant: any) => ({
-							kind: 'variant',
-							version: variant.versionNumber,
-							mc: variant.gameVersions?.join(', ') ?? 'unknown'
-						}))
-					]}
-					getId={(row) => row.version}
-				>
-					{#snippet cell(row, col)}
-						{#if col === 'kind'}
-							<span
-								style="color:{row.kind === 'primary' ? 'var(--success)' : 'var(--warning)'}"
-							>
-								{row.kind}
-							</span>
-						{:else if col === 'version'}
-							<span class="mono">{row.version}</span>
-						{:else}
-							<span class="dim">{row.mc}</span>
-						{/if}
-					{/snippet}
-				</DataTable>
-			{:else}
-				<DataTable
-					columns={assignCols}
-					rows={one.expandedTargets.map((target: string) => ({
-						instance: target,
-						version: one.pins[target] ?? one.assign[target] ?? one.version ?? '?',
-						why: one.pins[target]
-							? 'pinned'
-							: one.assign[target]
-								? 'auto (older MC)'
-								: 'primary'
-					}))}
-					getId={(row) => row.instance}
-				>
-					{#snippet cell(row, col)}
-						{#if col === 'instance'}
-							<a href="/instances/{row.instance}">{row.instance}</a>
-						{:else if col === 'version'}
-							<span class="mono">{row.version}</span>
-						{:else if row.why === 'pinned'}
-							<span class="pin"><Icon name="tag" size="0.75rem" /> pinned</span>
-						{:else}
-							{row.why}
-						{/if}
-					{/snippet}
-				</DataTable>
-			{/if}
-		</div>
-	</DetailPanel>
-{/if}
 
 <!-- install modal -->
 <Modal title="Install plugin from Modrinth" bind:open={addOpen}>
@@ -719,64 +581,21 @@
 	{/snippet}
 </Modal>
 
-<!-- pin modal -->
-<Modal title="Pin {one?.name} to a version" bind:open={pinOpen}>
-	{#if !pinVersions.length}
-		<span class="dim">Loading versions…</span>
-	{:else}
-		<div class="field">
-			<span class="lbl">Version</span>
-			<Select
-				bind:value={pinVersion}
-				width="100%"
-				options={pinVersions.map((version) => ({
-					value: version.versionNumber,
-					label: `${version.versionNumber} (${version.channel}) — MC ${version.gameVersions
-						.slice(0, MC_LABEL_LIMIT)
-						.join(', ')}${version.gameVersions.length > MC_LABEL_LIMIT ? '…' : ''}`
-				}))}
-			/>
-		</div>
-		<div class="tgtlbl">On instances</div>
-		<div class="targets">
-			{#each one?.expandedTargets ?? [] as target}
-				<label class="tchk">
-					<Checkbox
-						checked={pinTargets.includes(target)}
-						label="Pin on {target}"
-						onchange={() => (pinTargets = toggleTarget(pinTargets, target))}
-					/>
-					{target}
-				</label>
-			{/each}
-		</div>
-	{/if}
-	{#snippet footer()}
-		<Btn onclick={() => (pinOpen = false)}>Cancel</Btn>
-		<Btn
-			variant="primary"
-			disabled={!pinVersion || !pinTargets.length}
-			loading={busy === 'pin'}
-			onclick={doPin}
-		>
-			Pin & deploy
-		</Btn>
-	{/snippet}
-</Modal>
-
 <!-- remove modal -->
-<Modal title="Remove {one?.name}" bind:open={removeOpen}>
+<Modal title="Remove {removeTarget?.plugin}" bind:open={removeOpen}>
 	<p>
-		Removes the jar from all target instances and deletes it from the managed pool. Running
-		instances keep it loaded until restart.
+		Removes every family build ({removeTarget?.families
+			.map((family) => family.family)
+			.join(', ')}) from all target instances and deletes them from the managed pool. Running
+		instances keep them loaded until restart.
 	</p>
 	{#snippet footer()}
 		<Btn onclick={() => (removeOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" onclick={doRemove}>Remove everywhere</Btn>
+		<Btn variant="danger" loading={busy === 'remove'} onclick={doRemove}>Remove everywhere</Btn>
 	{/snippet}
 </Modal>
 
-<ContextMenu bind:this={rowMenu} items={menuItems} header={menuRow?.name} minWidth="15rem" />
+<ContextMenu bind:this={rowMenu} items={menuItems} header={menuRow?.plugin} minWidth="15rem" />
 
 <style lang="scss">
 	// source is stored lowercase and capitalised here, tinted per origin
@@ -796,6 +615,19 @@
 		}
 	}
 
+	.fams {
+		display: inline-flex;
+		gap: 0.375rem;
+	}
+
+	.fam {
+		padding: 0.125rem 0.5rem;
+		border: 0.1rem solid var(--border-divider);
+		border-radius: 0.625rem;
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+
 	.variant {
 		color: var(--warning);
 		font-size: 0.75rem;
@@ -806,29 +638,6 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.375rem;
-	}
-
-	.pin {
-		color: #bf7edb;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-	}
-
-	.detacts {
-		display: flex;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		border-bottom: 0.1rem solid var(--border-divider);
-		flex-wrap: wrap;
-	}
-
-	.detailbody {
-		padding: 1rem 1.25rem;
-	}
-
-	.holdbacks {
-		margin-top: 0.875rem;
 	}
 
 	.addrow {

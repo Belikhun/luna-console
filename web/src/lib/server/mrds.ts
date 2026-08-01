@@ -244,8 +244,11 @@ async function sampleOnce(): Promise<void> {
 	}
 }
 
-/** Start the metrics sampler once per server process. */
+/** Start the metrics sampler (and the schedule runner) once per server process. */
 export function ensureSampler(): void {
+	// the scheduler rides along so any page load arms both long-lived loops
+	void import('./scheduler').then((module) => module.ensureScheduler());
+
 	if (g.sampler) {
 		return;
 	}

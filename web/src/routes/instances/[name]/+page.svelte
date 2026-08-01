@@ -24,6 +24,12 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import SettingsForm from '$lib/components/SettingsForm.svelte';
+	import ProgressTree from '$lib/components/ProgressTree.svelte';
+	import GroupsField from '$lib/components/GroupsField.svelte';
+	import Alerts from '$lib/components/Alerts.svelte';
+	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
+	import { followJob, type JobView } from '$lib/jobs';
 
 	/** how often the header's status and metrics are re-read */
 	const POLL_MS = 4000;
@@ -42,14 +48,20 @@
 	let cfgMemory = $state('');
 	let cfgProfile = $state('');
 	let cfgVersion = $state('');
+	let cfgJavaArgs = $state('');
+	let cfgSettings: Record<string, string> = $state({});
+	let cfgPluginGroups: string[] = $state([]);
 	let paperVersions: string[] = $state([]);
 	let saving = $state(false);
+	let versionJob: JobView | null = $state(null);
 	let deleteOpen = $state(false);
+	let scheduleOpen = $state(false);
 	let deleteText = $state('');
 	let purge = $state(false);
 	let versionConflict: any[] = $state([]);
 
 	let instPlugins: any[] = $state([]);
+	let pluginTotals = $state({ warnings: 0, errors: 0, sessionComplete: true });
 	let metrics: { history: any[]; events: any[] } = $state({ history: [], events: [] });
 	let logData: { content: string; archives: any[] } = $state({ content: '', archives: [] });
 	let logLines = $state(200);
@@ -79,7 +91,14 @@
 	/** Each tab loads its own data the first time it is shown, and on refresh. */
 	async function loadTab(which: string): Promise<void> {
 		if (which === 'plugins') {
-			instPlugins = (await api(`/instances/${name}/plugins`)).plugins;
+			const data = await api(`/instances/${name}/plugins`);
+
+			instPlugins = data.plugins;
+			pluginTotals = {
+				warnings: data.warnings,
+				errors: data.errors,
+				sessionComplete: data.sessionComplete
+			};
 		}
 
 		if (which === 'monitoring' || which === 'checks') {
@@ -95,6 +114,9 @@
 			cfgMemory = cfgData.memory;
 			cfgProfile = cfgData.profile;
 			cfgVersion = cfgData.mcVersion ?? '';
+			cfgJavaArgs = (cfgData.javaArgs ?? []).join(' ');
+			cfgSettings = { ...cfgData.settings };
+			cfgPluginGroups = [...(cfgData.pluginGroups ?? [])];
 
 			if (!paperVersions.length) {
 				paperVersions = (await api('/paper')).versions;
@@ -143,14 +165,82 @@
 		}
 	}
 
+	/** Only settings the user actually moved are sent, so a save says what it changed. */
+	const settingEdits = $derived.by(() => {
+		const out: Record<string, string> = {};
+
+		for (const spec of (cfgData?.schema ?? []) as any[]) {
+			const value = cfgSettings[spec.key];
+
+			if (!spec.managed && value !== undefined && value !== cfgData.settings[spec.key]) {
+				out[spec.key] = value;
+			}
+		}
+
+		return out;
+	});
+
+	const settingEditCount = $derived(Object.keys(settingEdits).length);
+
+	const javaArgsDirty = $derived(cfgData !== null && cfgJavaArgs.trim() !== (cfgData.javaArgs ?? []).join(' '));
+
+	const groupsDirty = $derived.by(() => {
+		if (!cfgData) {
+			return false;
+		}
+
+		const before: string[] = cfgData.pluginGroups ?? [];
+
+		return (
+			before.length !== cfgPluginGroups.length ||
+			cfgPluginGroups.some((group) => !before.includes(group))
+		);
+	});
+
+	/** Follow a version-change job to its end, keeping its tree on screen. */
+	async function trackVersionJob(job: JobView, note: ReturnType<typeof Notify.loading>): Promise<void> {
+		versionJob = job;
+
+		const done = await followJob(job.id, (view) => {
+			versionJob = view;
+			note.set({ progress: Math.round(view.progress.progress * 100) });
+		});
+
+		const result = done.result as { from: string | null; to: string; build: number };
+
+		note.set({
+			level: 'success',
+			message: `${name}: ${result.from ?? '?'} → ${result.to}`,
+			detail: `Paper build ${result.build}. Restart the instance to run it.`,
+			progress: null,
+			closeable: true
+		});
+
+		await refresh();
+		await loadTab('config');
+	}
+
 	async function saveConfig(): Promise<void> {
 		saving = true;
 		versionConflict = [];
+		versionJob = null;
 
 		const note = Notify.loading(`Saving configuration for ${name}…`);
 
 		try {
-			const body: any = { memory: cfgMemory, profile: cfgProfile };
+			const body: any = {
+				memory: cfgMemory,
+				profile: cfgProfile,
+				settings: settingEdits
+			};
+
+			if (javaArgsDirty) {
+				body.javaArgs = cfgJavaArgs;
+			}
+
+			if (groupsDirty) {
+				body.pluginGroups = cfgPluginGroups;
+			}
 
 			if (cfgVersion && cfgVersion !== cfgData.mcVersion) {
 				body.mcVersion = cfgVersion;
@@ -168,14 +258,23 @@
 					detail: 'Review the conflict below before forcing the version change.',
 					closeable: true
 				});
-			} else {
-				note.set({
-					level: 'success',
-					message: `Saved: ${res.changed.join(', ') || 'no changes'}`,
-					detail: res.changed.length ? 'Applies on the next restart.' : '',
-					closeable: true
-				});
 
+				saving = false;
+
+				return;
+			}
+
+			note.set({
+				level: 'success',
+				message: `Saved: ${res.changed.join(', ') || 'no changes'}`,
+				detail: res.changed.length ? 'Applies on the next restart.' : '',
+				closeable: true
+			});
+
+			// a version change downloads a jar, so the route handed back a job to watch
+			if (res.job) {
+				await trackVersionJob(res.job, Notify.loading(`Downloading paper ${cfgVersion}…`));
+			} else {
 				await refresh();
 				await loadTab('config');
 			}
@@ -184,6 +283,7 @@
 				level: 'error',
 				message: `Could not save ${name}`,
 				detail: (err as Error).message,
+				progress: null,
 				closeable: true
 			});
 		}
@@ -202,20 +302,21 @@
 				forceVersion: true
 			});
 
-			note.set({
-				level: 'success',
-				message: `Saved: ${res.changed.join(', ')}`,
-				closeable: true
-			});
-
 			versionConflict = [];
 
-			await refresh();
+			if (res.job) {
+				await trackVersionJob(res.job, note);
+			} else {
+				note.set({ level: 'success', message: `Saved: ${res.changed.join(', ')}`, closeable: true });
+
+				await refresh();
+			}
 		} catch (err) {
 			note.set({
 				level: 'error',
 				message: `Could not change the version of ${name}`,
 				detail: (err as Error).message,
+				progress: null,
 				closeable: true
 			});
 		}
@@ -379,11 +480,24 @@
 
 	const pluginCols: Column[] = [
 		{ id: 'name', label: 'Plugin', sortable: true },
+		{ id: 'state', label: 'State', sortable: true, width: 130 },
 		{ id: 'version', label: 'Version' },
+		{ id: 'alerts', label: 'Alerts', sortable: true, width: 230 },
+		{ id: 'origin', label: 'From', sortable: true },
 		{ id: 'source', label: 'Source', sortable: true },
-		{ id: 'auto', label: 'Auto-update' },
-		{ id: 'assign', label: 'Assignment' }
+		{ id: 'auto', label: 'Auto-update', hidden: true },
+		{ id: 'assign', label: 'Assignment', hidden: true }
 	];
+
+	/** Badge look of each plugin runtime state. */
+	const PLUGIN_STATE_BADGE: Record<string, { state: string; label: string }> = {
+		running: { state: 'running', label: 'Running' },
+		errored: { state: 'failed', label: 'Errored' },
+		'not-loaded': { state: 'warning', label: 'Not loaded' },
+		disabled: { state: 'stopped', label: 'Disabled' },
+		stopped: { state: 'stopped', label: 'Stopped' },
+		unknown: { state: 'unknown', label: 'Unknown' }
+	};
 	const eventCols: Column[] = [
 		{ id: 'time', label: 'Time', width: 190 },
 		{ id: 'kind', label: 'Type', width: 120 },
@@ -423,6 +537,14 @@
 						icon: 'rotate',
 						disabled: !isUp,
 						action: () => stateAction('restart')
+					},
+					{ divider: true, label: '' },
+					{
+						label: 'Schedule an action…',
+						icon: 'clock',
+						action: () => {
+							scheduleOpen = true;
+						}
 					}
 				]}
 			/>
@@ -624,21 +746,48 @@
 		{:else if tab === 'plugins'}
 			<Panel title="Plugins on {name}" count={instPlugins.length} flush>
 				{#snippet actions()}
+					<Alerts warnings={pluginTotals.warnings} errors={pluginTotals.errors} />
 					<Btn icon="upload" onclick={deployPlugins}>Deploy to this instance</Btn>
 				{/snippet}
 				<DataTable
 					columns={pluginCols}
 					rows={instPlugins}
-					getId={(plugin) => plugin.name}
+					getId={(plugin) => plugin.plugin}
+					rowDim={(plugin) => plugin.disabled}
 					sortValue={(plugin, col) =>
-						(plugin as any)[col === 'auto' ? 'autoUpdate' : col] ?? ''}
-					onRowClick={(plugin) => goto(`/plugins?sel=${plugin.name}`)}
+						col === 'alerts'
+							? plugin.errors * 1000 + plugin.warnings
+							: ((plugin as any)[
+									col === 'auto' ? 'autoUpdate' : col === 'name' ? 'plugin' : col
+								] ?? '')}
+					onRowClick={(plugin) => goto(`/instances/${name}/plugins/${plugin.plugin}`)}
 				>
 					{#snippet cell(plugin, col)}
 						{#if col === 'name'}
-							<a href="/plugins?sel={plugin.name}">{plugin.name}</a>
+							<a
+								href="/instances/{name}/plugins/{plugin.plugin}"
+								onclick={(event) => event.stopPropagation()}
+							>
+								{plugin.plugin}
+							</a>
+							{#if plugin.displayName && plugin.displayName !== plugin.plugin}
+								<span class="dim">({plugin.displayName})</span>
+							{/if}
+						{:else if col === 'state'}
+							{@const badge = PLUGIN_STATE_BADGE[plugin.state] ?? PLUGIN_STATE_BADGE.unknown}
+							<StatusBadge state={badge.state} label={badge.label} />
 						{:else if col === 'version'}
 							<span class="mono">{plugin.version ?? '?'}</span>
+						{:else if col === 'alerts'}
+							<Alerts warnings={plugin.warnings} errors={plugin.errors} />
+						{:else if col === 'origin'}
+							{#if plugin.origin === 'group'}
+								<span class="dim">{plugin.groups.join(', ')}</span>
+							{:else if plugin.origin === 'manual'}
+								<span class="manual">manual</span>
+							{:else}
+								<span class="dim">explicit</span>
+							{/if}
 						{:else if col === 'source'}
 							{plugin.source}
 						{:else if col === 'auto'}
@@ -652,6 +801,12 @@
 					{/snippet}
 				</DataTable>
 			</Panel>
+			{#if !pluginTotals.sessionComplete}
+				<p class="dim note">
+					The boot lines of this session have rotated out of the log window, so plugins with no
+					later log activity read as Unknown.
+				</p>
+			{/if}
 		{:else if tab === 'network'}
 			<Panel title="Ports">
 				<InfoGrid cells={portCells} />
@@ -695,7 +850,7 @@
 			{#if cfgData}
 				<Panel
 					title="Instance configuration"
-					description="Memory and profile apply on the next restart"
+					description="Memory, profile and JVM flags apply on the next restart"
 				>
 					<div class="cfg">
 						<label class="field">
@@ -715,6 +870,14 @@
 								}))}
 							/>
 						</div>
+						<label class="field">
+							<span class="lbl">Extra JVM arguments</span>
+							<span class="hint">
+								Appended after the profile's flags — see the resolved command on the Details
+								tab. Space separated, flags only; -Xmx/-Xms come from the memory field above.
+							</span>
+							<input class="input mono" bind:value={cfgJavaArgs} placeholder="(none)" />
+						</label>
 						{#if inst.software === 'paper'}
 							<div class="field">
 								<span class="lbl">Minecraft version</span>
@@ -749,8 +912,43 @@
 						<Btn variant="primary" loading={saving} onclick={saveConfig}>Save changes</Btn>
 					</div>
 				</Panel>
+				{#if versionJob}
+					<div class="gap"></div>
+					<Panel title="Version change" description="Live from the same reporter the CLI renders">
+						<ProgressTree root={versionJob.progress} state={versionJob.state} />
+					</Panel>
+				{/if}
 				<div class="gap"></div>
-				<Panel title="server.properties" flush>
+				<Panel
+					title="Plugin groups"
+					count={groupsDirty ? 'unsaved' : undefined}
+					description="Groups applied to this instance (default always is) — saving redeploys its plugins immediately; a running server loads them on restart"
+				>
+					<GroupsField
+						software={cfgData.software}
+						mcVersion={cfgData.mcVersion ?? undefined}
+						instance={name}
+						bind:selected={cfgPluginGroups}
+					/>
+				</Panel>
+				<div class="gap"></div>
+				<Panel
+					title="Server settings"
+					count={settingEditCount ? `${settingEditCount} unsaved` : undefined}
+					description="server.properties, applied on the next restart — Save changes above writes them"
+				>
+					<SettingsForm
+						schema={cfgData.schema}
+						groups={cfgData.groups}
+						bind:values={cfgSettings}
+					/>
+				</Panel>
+				<div class="gap"></div>
+				<Panel
+					title="server.properties"
+					description="Every key on disk, including the ones with no field above"
+					flush
+				>
 					<DataTable
 						columns={propCols}
 						rows={Object.entries(cfgData.serverProperties).map(([key, value]) => ({
@@ -773,6 +971,8 @@
 		{/if}
 	</div>
 {/if}
+
+<ScheduleQuickModal bind:open={scheduleOpen} instances={name ? [name] : []} />
 
 <Modal title="Delete instance {name}" bind:open={deleteOpen}>
 	<p>This deregisters <b>{name}</b> from the cluster and the proxy.</p>
@@ -822,6 +1022,11 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
 		gap: 1rem;
+	}
+
+	.manual {
+		color: var(--link);
+		font-size: 0.8125rem;
 	}
 
 	.note {

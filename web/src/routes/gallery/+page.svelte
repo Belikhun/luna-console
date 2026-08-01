@@ -22,6 +22,9 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import ProgressTree from '$lib/components/ProgressTree.svelte';
+	import Slider from '$lib/components/Slider.svelte';
+	import type { ProgressSnapshot } from '$core/progress';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -44,6 +47,8 @@
 	let modalOpen = $state(false);
 	let wideModalOpen = $state(false);
 	let progressDemo = $state(35);
+	let sliderStep = $state(10);
+	let sliderCoarse = $state(100);
 	let refreshStamp: number | null = $state(Date.now());
 	let refreshing = $state(false);
 
@@ -151,6 +156,53 @@
 		t: point.t,
 		v: SPARK_HOLES.some(([from, to]) => i >= from && i <= to) ? undefined : point.v
 	}));
+
+	/** Build one node of a fake progress tree, so the states below stay readable. */
+	function node(
+		id: string,
+		name: string,
+		progress: number,
+		status: ProgressSnapshot['status'],
+		message: string,
+		children: ProgressSnapshot[] = []
+	): ProgressSnapshot {
+		return {
+			id,
+			name,
+			level: id.split('.').length,
+			status,
+			message,
+			progress,
+			done: progress >= 1,
+			children
+		};
+	}
+
+	// a create-instance tree part-way through its download, the shape the console
+	// actually renders while a job runs
+	const JOB_RUNNING: ProgressSnapshot = node('0', 'Create bedwars', 0.44, 'info', '', [
+		node('0.0', 'Server files', 0.62, 'info', '', [
+			node('0.0.0', 'Validate request', 1, 'okay', 'request looks good'),
+			node('0.0.1', 'Download paper server', 0.58, 'info', 'build 87 — 31.4 / 54.0 MB'),
+			node('0.0.2', 'Write instance files', 0, 'info', '')
+		]),
+		node('0.1', 'Plugins', 0, 'info', ''),
+		node('0.2', 'Port allocations', 0, 'info', ''),
+		node('0.3', 'Proxy registration', 0, 'info', '')
+	]);
+
+	// the same tree after a failure: the step that broke, a step that finished with a
+	// warning, and the steps that never got their turn
+	const JOB_FAILED: ProgressSnapshot = node('0', 'Create bedwars', 0.31, 'error', '', [
+		node('0.0', 'Server files', 0.44, 'error', '', [
+			node('0.0.0', 'Validate request', 1, 'okay', 'request looks good'),
+			node('0.0.1', 'Download paper server', 0.4, 'error', 'could not download paper 26.2'),
+			node('0.0.2', 'Write instance files', 0, 'info', '')
+		]),
+		node('0.1', 'Plugins', 1, 'warn', 'none target this instance'),
+		node('0.2', 'Port allocations', 0, 'info', ''),
+		node('0.3', 'Proxy registration', 0, 'info', '')
+	]);
 
 	/** Raise a loading notification that walks itself to completion. */
 	function raiseLoading(withProgress: boolean): void {
@@ -273,6 +325,39 @@
 			<label class="demo-check"><input type="radio" name="g-radio" checked /> Radio</label>
 			<label class="demo-check"><input type="radio" name="g-radio" /> Radio</label>
 		</div>
+		<div class="cols2">
+			<div class="field">
+				<span class="lbl">Stepped slider</span>
+				<span class="hint">A tick per step, and the range's ends labelled</span>
+				<Slider
+					value={sliderStep}
+					min={3}
+					max={32}
+					step={1}
+					unit=" chunks"
+					label="Stepped slider"
+					onchange={(value) => (sliderStep = value)}
+				/>
+			</div>
+			<div class="field">
+				<span class="lbl">Coarse slider</span>
+				<span class="hint">49 steps — the tick scale thins out when the field narrows</span>
+				<Slider
+					value={sliderCoarse}
+					min={10}
+					max={500}
+					step={10}
+					unit="%"
+					label="Coarse slider"
+					onchange={(value) => (sliderCoarse = value)}
+				/>
+			</div>
+			<div class="field">
+				<span class="lbl">Disabled</span>
+				<span class="hint">Managed values render read-only</span>
+				<Slider value={12} min={0} max={64} step={4} disabled label="Disabled slider" />
+			</div>
+		</div>
 	</Panel>
 
 	<Panel title="Status badges">
@@ -327,6 +412,16 @@
 			<Spinner size="1.5rem" color="var(--primary)" />
 			<Icon name="rotate" spin size="1rem" />
 		</div>
+	</Panel>
+
+	<Panel
+		title="Progress tree"
+		description="What a long-running task reports back: one row per step of a ProgressReporter tree"
+	>
+		<h4>Mid-flight</h4>
+		<ProgressTree root={JOB_RUNNING} state="running" />
+		<h4>Failed, with the steps that never ran</h4>
+		<ProgressTree root={JOB_FAILED} state="failed" />
 	</Panel>
 
 	<Panel title="Icons & glyphs">
@@ -566,6 +661,19 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 1rem;
 	}
+	// caption above a variant inside a panel that shows several of them
+	h4 {
+		margin: 0 0 0.625rem;
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-secondary);
+
+		& + :global(.tree) {
+			margin-bottom: 1.25rem;
+		}
+	}
+
 	.demo-check {
 		display: inline-flex;
 		align-items: center;

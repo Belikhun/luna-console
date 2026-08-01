@@ -1,5 +1,7 @@
 import pc from "picocolors";
 
+import type { ProgressReporter, ProgressSnapshot, ProgressStatus } from "../core/progress";
+
 export { pc };
 
 export const Sym = {
@@ -173,4 +175,147 @@ export class Spinner {
 			console.log(final);
 		}
 	}
+}
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/** Cells in a node's progress bar. */
+const BAR_CELLS = 12;
+
+/** Repaint interval — a burst of reports must not cost a redraw each. */
+const REPAINT_MS = 80;
+
+/** Colour a status's own text, matching the info/ok/warn/fail lines above. */
+function statusColor(status: ProgressStatus, text: string): string {
+	switch (status) {
+		case "okay":
+			return pc.green(text);
+
+		case "warn":
+			return pc.yellow(text);
+
+		case "error":
+			return pc.red(text);
+
+		case "info":
+			return pc.cyan(text);
+	}
+}
+
+/**
+ * Live renderer for a ProgressReporter tree: one line per node, redrawn in
+ * place, so a long operation reports every step it is waiting on rather than a
+ * single opaque spinner. Falls back to one appended line per report when stdout
+ * is not a TTY, which is what the console's terminal drawer and CI logs get.
+ */
+export class ProgressView {
+	private root: ProgressReporter;
+	private frame = 0;
+	private painted = 0;
+	private timer?: Timer;
+	private live = false;
+
+	constructor(root: ProgressReporter) {
+		this.root = root;
+	}
+
+	/** Attach to the tree and start drawing. */
+	start(): this {
+		this.live = true;
+
+		this.root.onUpdate((update) => {
+			if (process.stdout.isTTY) {
+				return;
+			}
+
+			// no cursor to move: report each step as its own line instead
+			if (update.message) {
+				const pct = `${Math.round(update.progress * 100)}%`.padStart(4);
+
+				console.log(`${pc.dim(pct)} ${"  ".repeat(update.level - 1)}${update.message}`);
+			}
+		});
+
+		if (process.stdout.isTTY) {
+			this.timer = setInterval(() => this.paint(), REPAINT_MS);
+			this.paint();
+		}
+
+		return this;
+	}
+
+	/** Final repaint, then release the lines and optionally print a closing message. */
+	stop(final?: string): void {
+		if (this.timer) {
+			clearInterval(this.timer);
+			this.timer = undefined;
+		}
+
+		if (this.live && process.stdout.isTTY) {
+			this.paint();
+		}
+
+		this.live = false;
+		this.painted = 0;
+
+		if (final) {
+			console.log(final);
+		}
+	}
+
+	private paint(): void {
+		const lines = this.render(this.root.snapshot());
+
+		// back up over the previous frame; every line is cleared before it is rewritten
+		// so a shorter line cannot leave the tail of the old one behind
+		const up = this.painted ? `\x1b[${this.painted}A` : "";
+
+		process.stdout.write(`${up}${lines.map((line) => `\x1b[2K${line}`).join("\n")}\n`);
+
+		this.painted = lines.length;
+		this.frame += 1;
+	}
+
+	/** One line per node, depth-first, parents before their children. */
+	private render(node: ProgressSnapshot, out: string[] = []): string[] {
+		const indent = "  ".repeat(node.level - 1);
+		const pct = `${Math.round(node.progress * 100)}%`.padStart(4);
+
+		// a node that reached 100% having warned or failed is not a success: its own
+		// status outranks being finished, or a failed step would render as a tick
+		const glyph =
+			node.status === "error"
+				? Sym.cross
+				: node.status === "warn"
+					? Sym.warn
+					: node.done
+						? Sym.check
+						: pc.cyan(SPINNER_FRAMES[this.frame % SPINNER_FRAMES.length]!);
+
+		const tone = node.done && node.status === "info" ? "okay" : node.status;
+		const filled = Math.round(node.progress * BAR_CELLS);
+
+		const bar =
+			statusColor(tone, "█".repeat(filled)) + pc.dim("░".repeat(BAR_CELLS - filled));
+
+		const head = `  ${indent}${glyph} ${bar} ${pc.dim(pct)} ${node.name}`;
+
+		// a pty with no size reports 0 columns, which would suppress every message
+		const columns = process.stdout.columns || 80;
+		const room = columns - width(head) - 4;
+		const tail = node.message && room > 8 ? pc.dim(` — ${trim(node.message, room)}`) : "";
+
+		out.push(head + tail);
+
+		for (const child of node.children) {
+			this.render(child, out);
+		}
+
+		return out;
+	}
+}
+
+/** Shorten to a visible width, with an ellipsis when it does not fit. */
+function trim(text: string, room: number): string {
+	return text.length <= room ? text : `${text.slice(0, Math.max(1, room - 1))}…`;
 }

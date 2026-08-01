@@ -104,9 +104,14 @@
 				})),
 				...plugins.map((plugin) => ({
 					group: 'Plugins',
-					label: plugin.name as string,
-					detail: `${plugin.source ?? 'plugin'} · ${plugin.loader ?? ''}`.trim(),
-					href: `/plugins?sel=${encodeURIComponent(plugin.name)}`,
+					label: plugin.plugin as string,
+					detail: [
+						plugin.sources?.join(', ') ?? 'plugin',
+						plugin.families?.map((family: any) => family.family).join(', ') ?? ''
+					]
+						.filter(Boolean)
+						.join(' · '),
+					href: `/plugins/${encodeURIComponent(plugin.plugin)}`,
 					icon: 'plug'
 				}))
 			];

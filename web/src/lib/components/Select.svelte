@@ -83,8 +83,11 @@
 	}
 
 	function onKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape') {
+		if (event.key === 'Escape' && open) {
 			open = false;
+
+			// an open list swallows the Escape — a surrounding modal must not close too
+			event.preventDefault();
 		}
 	}
 
@@ -97,7 +100,7 @@
 
 <svelte:window
 	onpointerdown={onWindowDown}
-	onkeydown={onKeydown}
+	onkeydowncapture={onKeydown}
 	onresize={reposition}
 	onscroll={reposition}
 />

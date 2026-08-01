@@ -182,7 +182,19 @@ export interface InstanceConfig {}
   update the registry — change state, then re-deploy/sync from it.
 - Config files owned by other software (`velocity.toml`, `server.properties`, plugin YAML)
   are edited **surgically and line-preservingly** (`core/confedit.ts`, `proxy.ts` section
-  replacement) — never regenerated wholesale, never reformatted.
+  replacement) — never regenerated wholesale, never reformatted. Properties values are
+  Java-escaped on disk (`level-type=minecraft\:flat`); `confedit` unescapes on read and escapes
+  on write, so nothing above that layer ever sees a backslash.
+- The **editable server settings are a schema**, `SERVER_SETTINGS` in `core/settings.ts`: key,
+  type, range, choices and default in one place, which the CLI table, the launch wizard and the
+  configuration tab all render from. A new setting means a schema entry, never a new form field.
+  Values are validated against the schema before anything is written, and the keys that wire
+  velocity forwarding (`online-mode`, `server-ip`, `enforce-secure-profile`,
+  `prevent-proxy-connections`) are marked `managed` — shown, never writable, because editing one
+  silently breaks logins for that backend.
+- Custom JVM flags (`javaArgs` on an instance) are appended after the profile's flags and land
+  **unquoted** in the generated `run.sh`, so they are validated as flags: no shell
+  metacharacters, no restating `-Xmx`/`-Xms`, which come from the instance's memory field.
 - Plugin versions resolve **per instance**: newest compatible jar is the pool primary, older
   compatible builds are variants in `plugins/versions/<name>@<ver>.jar`, and explicit pins
   win. Updates are channel-gated (release/beta/alpha) with a date-based downgrade guard —
@@ -197,6 +209,40 @@ export interface InstanceConfig {}
   compatibility and rolls back on failure.
 - Stopping is graceful: `.mrds-norestart` sentinel → console `stop`/`end` → escalation. The
   generated per-instance `run.sh` has a crash-loop guard; keep it that way.
+
+### Long-running tasks report live progress
+Anything that can outlast a keypress or an HTTP request — downloading a server jar, deploying
+plugins, building luna modules, a cluster-wide sweep — **reports its progress as it goes**, to
+both the CLI and the web console. A spinner that says nothing for forty seconds is not
+acceptable; the user must be able to see which step is running and how far along it is.
+
+The mechanism is `core/progress.ts`'s **`ProgressReporter` tree**, ported from the vloom
+framework's `Vloom\ProgressReporter` and keeping its semantics:
+
+- The root node is the whole operation; `child(name, weight)` creates a node for each step the
+  parent relies on. Weight each child by how long it really takes (the jar download is worth
+  ~6× writing the config files), or call `expect(n)` when the children appear as the work runs.
+- A node reports its own `[0, 1]` progress with `report/info/okay/warn/error/complete`, or wraps
+  a step in `task({ start, done, failed }, fn)`. A parent's roll-up is its own progress worth
+  `progressWeight` (default 0.1) plus the weighted average of its children — a node that only
+  delegates calls `weighOwn(0)`. Roll-ups are monotonic: progress never rewinds.
+- Every report bubbles to the root, so **one listener at the root sees the whole tree**.
+  `snapshot()` returns the tree as plain data for a client or a log.
+
+Wiring rules:
+- **Core functions take an optional `reporter`** and substitute a detached one when the caller
+  does not pass it (`const progress = opts.reporter ?? new ProgressReporter(name)`), so the
+  reporting calls need no branches and `core/` still never prints.
+- **The CLI** renders with `ProgressView` from `cli/ui.ts` — one line per node, redrawn in
+  place, with a per-report fallback line when stdout is not a TTY. Never hand-roll ANSI in a
+  command file.
+- **The console** does not block a request on the work: the route calls `startJob()`
+  (`web/src/lib/server/jobs.ts`), answers with the job, and the page follows
+  `/api/jobs/<id>?stream=1` with `followJob()` and renders `ProgressTree.svelte`. Progress
+  frames are throttled server-side — a chunked download reports hundreds of times and none of
+  those deserve their own SSE message.
+- A failure is part of the report: the failing node's message is what tells the user *where* it
+  broke, so report it before letting the error propagate.
 
 ### Web console
 - **The existing console is the design reference**: match the dark token set and the metrics

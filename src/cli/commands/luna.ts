@@ -273,9 +273,9 @@ command({
 		const affected = new Set<string>();
 
 		for (const entry of changed) {
-			const { expandTargets } = await import("../../core/config");
+			const { effectiveTargets } = await import("../../core/families");
 
-			for (const target of expandTargets(cfg, lock.plugins[entry.name]?.targets ?? [])) {
+			for (const target of effectiveTargets(cfg, lock, entry.name)) {
 				affected.add(target);
 			}
 		}

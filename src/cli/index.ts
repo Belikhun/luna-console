@@ -8,6 +8,8 @@ import "./commands/luna";
 import "./commands/net";
 import "./commands/misc";
 import "./commands/web";
+import "./commands/env";
+import "./commands/schedule";
 
 import { command, dispatch } from "./framework";
 import { complete, BASH_HOOK, ZSH_HOOK, FISH_HOOK } from "./complete";

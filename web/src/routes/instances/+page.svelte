@@ -20,6 +20,7 @@
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 
 	type Row = InstanceRow & { externalOnly?: boolean };
@@ -44,6 +45,18 @@
 	let panelLocation: 'bottom' | 'right' = $state('bottom');
 	let panelSize = $state(42);
 	let lastUpdated: number | null = $state(null);
+	let scheduleOpen = $state(false);
+	let scheduleTargets: string[] = $state([]);
+
+	/** Open the quick one-shot scheduler for the given instances. */
+	function openScheduler(targets: string[]): void {
+		if (!targets.length) {
+			return;
+		}
+
+		scheduleTargets = targets;
+		scheduleOpen = true;
+	}
 
 	// external servers have a name and an address and nothing else — they are
 	// listed for completeness and rendered dimmed
@@ -329,6 +342,11 @@
 				disabled: !up,
 				action: () => stateAction('restart')
 			},
+			{
+				label: 'Schedule an action…',
+				icon: 'clock',
+				action: () => openScheduler([row.name])
+			},
 			{ separator: true },
 			{
 				label: 'Manage',
@@ -460,6 +478,12 @@
 							icon: 'rotate',
 							disabled: !anyUp,
 							action: () => stateAction('restart')
+						},
+						{ divider: true, label: '' },
+						{
+							label: 'Schedule an action…',
+							icon: 'clock',
+							action: () => openScheduler(selRows.map((row) => row.name))
 						}
 					]}
 				/>
@@ -765,6 +789,8 @@
 </div>
 
 <ContextMenu bind:this={rowMenu} items={menuItems} header={menuRow?.name} minWidth="14rem" />
+
+<ScheduleQuickModal bind:open={scheduleOpen} instances={scheduleTargets} />
 
 <style lang="scss">
 	.meters {

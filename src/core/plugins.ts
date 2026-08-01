@@ -4,7 +4,9 @@ import { join, basename } from "node:path";
 
 import type { ClusterConfig, PluginEntry, PluginsLock } from "./types";
 import { expandTargets, instanceDir, managedInstances, poolDir } from "./config";
+import { effectiveTargets, familyMatches, familyOf } from "./families";
 import * as mr from "./services/modrinth";
+import type { ProgressReporter } from "./progress";
 
 /** Modrinth loader facets a side accepts — a paper server also loads bukkit/spigot jars. */
 export function loadersFor(loader: "paper" | "velocity"): string[] {
@@ -122,6 +124,10 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 
 		if (hashChanged && !isNew) {
 			report.updatedHash.push(name);
+
+			// jar content moved — the cached descriptor and log names are stale
+			delete entry.aliases;
+			delete entry.meta;
 		}
 
 		// Identify on Modrinth (skip luna, skip when hash unchanged and already identified with a channel)
@@ -292,12 +298,14 @@ export interface EntryResolution {
  * Per-target version resolution: each target independently gets the newest
  * acceptable version compatible with ITS MC version (older backends may
  * resolve to an older plugin version than newer ones). Pinned targets are
- * left alone.
+ * left alone. `targets` overrides the entry's own resolution — callers with a
+ * lockfile pass `effectiveTargets` so group coverage resolves too.
  */
 export function resolveEntry(
 	cfg: ClusterConfig,
 	entry: PluginEntry,
 	versions: mr.MrVersion[],
+	targets?: string[],
 ): EntryResolution {
 	const insts = managedInstances(cfg);
 	const channel = entry.channel ?? "release";
@@ -306,7 +314,7 @@ export function resolveEntry(
 	const holdbacks: Holdback[] = [];
 	const pinned: Array<{ target: string; version: string }> = [];
 
-	for (const target of expandTargets(cfg, entry.targets)) {
+	for (const target of targets ?? expandTargets(cfg, entry.targets)) {
 		const inst = insts[target];
 
 		if (!inst) {
@@ -321,10 +329,11 @@ export function resolveEntry(
 			continue;
 		}
 
-		// Only paper plugins on a paper backend carry an MC-version requirement;
-		// velocity builds are version-independent.
+		// Only paper-side builds on a paper backend carry an MC-version requirement;
+		// velocity builds are version-independent. Universal jars count when they
+		// land on a paper backend.
 		const required =
-			entry.loader === "paper" && inst.software === "paper" && inst.mcVersion
+			familyMatches(familyOf(entry), "paper") && inst.software === "paper" && inst.mcVersion
 				? [inst.mcVersion]
 				: [];
 
@@ -440,7 +449,7 @@ export async function checkUpdates(
 			entry.installed.gameVersions = installed.game_versions;
 		}
 
-		const resolution = resolveEntry(cfg, entry, versions);
+		const resolution = resolveEntry(cfg, entry, versions, effectiveTargets(cfg, lock, name));
 
 		const pendingGroups = resolution.groups.filter((group) => {
 			if (group.changedTargets.length > 0) {
@@ -579,7 +588,7 @@ export async function pinVersion(
 	}
 
 	const insts = managedInstances(cfg);
-	const entryTargets = expandTargets(cfg, entry.targets);
+	const entryTargets = effectiveTargets(cfg, lock, name);
 	const expanded = expandTargets(cfg, targets).filter((target) => entryTargets.includes(target));
 
 	if (!expanded.length) {
@@ -638,6 +647,64 @@ export async function pinVersion(
 	return { version, incompatible };
 }
 
+/**
+ * Make sure the pool holds a build of `name` that supports `mcVersion`,
+ * downloading one from Modrinth when it does not — the "download compatible
+ * version" action behind a group-validation warning. Returns the version that
+ * now covers the MC version.
+ */
+export async function ensureVariantForMc(
+	lock: PluginsLock,
+	name: string,
+	mcVersion: string,
+): Promise<{ version: string; downloaded: boolean }> {
+	const entry = lock.plugins[name];
+
+	if (!entry) {
+		throw new Error(`unknown plugin: ${name}`);
+	}
+
+	if (entry.installed?.gameVersions?.includes(mcVersion)) {
+		return { version: entry.installed.versionNumber ?? "?", downloaded: false };
+	}
+
+	const pooled = Object.values(entry.variants ?? {}).find((variant) =>
+		variant.gameVersions?.includes(mcVersion),
+	);
+
+	if (pooled) {
+		return { version: pooled.versionNumber, downloaded: false };
+	}
+
+	if (!entry.modrinth) {
+		throw new Error(`${name} has no Modrinth metadata — pool a compatible build manually`);
+	}
+
+	const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(entry.loader));
+	const { best } = mr.pickCompatible(versions, [mcVersion], { channel: entry.channel ?? "release" });
+
+	if (!best) {
+		throw new Error(`no ${entry.channel ?? "release"}-channel build of ${name} supports MC ${mcVersion}`);
+	}
+
+	const file = mr.primaryFile(best);
+	const variantFile = variantFileName(name, best.version_number);
+
+	await mkdir(variantsDir(), { recursive: true });
+	await mr.download(file.url, join(variantsDir(), variantFile), file.hashes.sha512);
+
+	entry.variants ??= {};
+	entry.variants[best.version_number] = {
+		versionId: best.id,
+		versionNumber: best.version_number,
+		sha512: file.hashes.sha512,
+		file: variantFile,
+		gameVersions: best.game_versions,
+	};
+
+	return { version: best.version_number, downloaded: true };
+}
+
 /** Release version pins, for the given targets or for all of them. */
 export function unpinVersion(
 	cfg: ClusterConfig,
@@ -688,11 +755,13 @@ export function compatReport(
 	const rows: CompatRow[] = [];
 
 	for (const [name, entry] of Object.entries(lock.plugins)) {
-		if (entry.loader !== "paper") {
+		// velocity-side builds carry no MC requirement; universal jars do when
+		// they run on a paper backend
+		if (!familyMatches(familyOf(entry), "paper")) {
 			continue;
 		}
 
-		if (!expandTargets(cfg, entry.targets).includes(instance)) {
+		if (!effectiveTargets(cfg, lock, name).includes(instance)) {
 			continue;
 		}
 
@@ -723,7 +792,7 @@ export function compatReport(
 export interface DeployAction {
 	instance: string;
 	file: string;
-	action: "updated" | "installed" | "unchanged" | "renamed" | "missing-variant";
+	action: "updated" | "installed" | "unchanged" | "renamed" | "missing-variant" | "config";
 	detail?: string;
 }
 
@@ -736,12 +805,22 @@ type DeploySource = { src: string; version?: string } | { missing: string };
 export async function deploy(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
-	opts: { instances?: string[]; plugin?: string } = {},
+	opts: { instances?: string[]; plugin?: string; reporter?: ProgressReporter } = {},
 ): Promise<DeployAction[]> {
 	const actions: DeployAction[] = [];
 	const insts = managedInstances(cfg);
 
-	for (const [name, entry] of Object.entries(lock.plugins)) {
+	const entries = Object.entries(lock.plugins).filter(
+		([name]) => !opts.plugin || opts.plugin === name,
+	);
+
+	const progress = opts.reporter;
+	let seen = 0;
+
+	for (const [name, entry] of entries) {
+		seen += 1;
+		progress?.info(seen / Math.max(1, entries.length), name);
+
 		if (opts.plugin && opts.plugin !== name) {
 			continue;
 		}
@@ -755,7 +834,33 @@ export async function deploy(
 		const hashCache = new Map<string, string>();
 
 		const srcFor = (target: string): DeploySource => {
-			const version = assignedVersion(entry, target);
+			let version = assignedVersion(entry, target);
+
+			// The assigned build may not fit this backend's MC version (a fresh
+			// instance on an old MC, before `plugins update` has resolved it). When a
+			// pooled variant fits, deploy that and record the assignment so the choice
+			// is stable — and so pruneVariants keeps the jar.
+			const inst = insts[target];
+			const mc = inst?.software === "paper" ? inst.mcVersion : undefined;
+
+			if (mc && familyMatches(familyOf(entry), "paper")) {
+				const assigned =
+					version === entry.installed?.versionNumber
+						? entry.installed?.gameVersions
+						: entry.variants?.[version ?? ""]?.gameVersions;
+
+				if (assigned?.length && !assigned.includes(mc)) {
+					const fit = Object.values(entry.variants ?? {}).find((variant) =>
+						variant.gameVersions?.includes(mc),
+					);
+
+					if (fit) {
+						version = fit.versionNumber;
+						entry.assign ??= {};
+						entry.assign[target] = version;
+					}
+				}
+			}
 
 			if (!version || version === entry.installed?.versionNumber) {
 				return { src: primarySrc, version: entry.installed?.versionNumber };
@@ -772,7 +877,7 @@ export async function deploy(
 			return existsSync(path) ? { src: path, version } : { missing: version };
 		};
 
-		for (const target of expandTargets(cfg, entry.targets)) {
+		for (const target of effectiveTargets(cfg, lock, name)) {
 			if (opts.instances && !opts.instances.includes(target)) {
 				continue;
 			}
@@ -859,6 +964,27 @@ export async function deploy(
 		}
 	}
 
+	// converge config templates on every instance this pass touched, so a jar
+	// never lands without the wiring it needs (DESIGN.md §3.3)
+	const touched = [...new Set(actions.map((action) => action.instance))];
+
+	const { applyTemplates, notableTemplateResults } = await import("./templates");
+
+	for (const instance of touched) {
+		const results = notableTemplateResults(await applyTemplates(cfg, lock, instance));
+
+		for (const result of results) {
+			actions.push({
+				instance,
+				file: result.file,
+				action: "config",
+				detail:
+					`${result.plugin}: ${result.key ?? "file"} ${result.outcome}` +
+					(result.detail ? ` (${result.detail})` : ""),
+			});
+		}
+	}
+
 	return actions;
 }
 
@@ -871,14 +997,18 @@ export async function installFromModrinth(
 	loader: "paper" | "velocity",
 	targets: string[],
 ): Promise<{ name: string; entry: PluginEntry; resolution: EntryResolution }> {
-	const name = `${project.slug}${loader === "velocity" ? "-velocity" : ""}`.toLowerCase();
-	const file = `${project.slug}-${loader}.jar`.toLowerCase();
+	// standardized scheme: key <plugin>@<family>, pool file <plugin>@<family>.jar
+	const plugin = project.slug.toLowerCase();
+	const name = `${plugin}@${loader}`;
+	const file = `${name}.jar`;
 	const versions = await mr.getVersions(project.id, loadersFor(loader));
 
 	const entry: PluginEntry = {
 		file,
 		source: "modrinth",
 		loader,
+		plugin,
+		family: loader,
 		modrinth: { projectId: project.id, slug: project.slug },
 		autoUpdate: true,
 		targets,
@@ -966,7 +1096,8 @@ export async function removePlugin(
 	}
 
 	const insts = managedInstances(cfg);
-	const current = expandTargets(cfg, entry.targets);
+	// removal must reach group-covered copies too, or the jars would linger
+	const current = effectiveTargets(cfg, lock, name);
 	const remove = fromTargets ? expandTargets(cfg, fromTargets) : current;
 	const deletedFrom: string[] = [];
 

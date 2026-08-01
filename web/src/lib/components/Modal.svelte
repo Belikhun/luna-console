@@ -17,7 +17,8 @@
 	} = $props();
 
 	function onKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape') {
+		// a child control (an open Select list) may have claimed this Escape
+		if (event.key === 'Escape' && !event.defaultPrevented) {
 			open = false;
 		}
 	}

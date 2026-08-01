@@ -28,8 +28,16 @@ export interface InstanceConfig {
 	profile: string;
 	/** Override java binary for this instance */
 	java?: string;
+	/** Extra JVM flags for this instance, appended after the profile's own flags */
+	javaArgs?: string[];
 	/** Plugin port allocations, key = "<plugin>/<portId>" */
 	ports?: Record<string, number>;
+	/** Plugin groups applied to this instance ("default" is always applied, never listed) */
+	pluginGroups?: string[];
+	/** Per-instance plugin overrides, plugin name → enabled. `true` force-adds the
+	 *  plugin regardless of groups; `false` disables it even when a group (or an
+	 *  explicit lockfile target) provides it. Overrides win over groups. */
+	pluginOverrides?: Record<string, boolean>;
 	/** External server (proxy-registered but not managed on this machine) */
 	external?: string; // "host:port"
 	proxy?: ProxyRegistration;
@@ -57,6 +65,48 @@ export interface ClusterConfig {
 }
 
 export type PluginSource = "modrinth" | "luna" | "manual";
+
+/** Platform a plugin build runs on. "universal" jars load on paper and velocity alike. */
+export type PluginFamily = "paper" | "velocity" | "universal" | "neoforge";
+
+/** What the jar says about itself, read from its own descriptor. */
+export interface PluginMeta {
+	/** Display name (plugin.yml `name`, velocity `name`, neoforge `displayName`) */
+	name?: string;
+	/** Machine id (velocity `id`, neoforge `modId`) */
+	id?: string;
+	/** Version the descriptor declares (may differ from the resolved pool version) */
+	version?: string;
+	description?: string;
+	authors?: string[];
+	website?: string;
+	/** Bukkit `api-version` — the oldest MC API the plugin targets */
+	apiVersion?: string;
+}
+
+/**
+ * One config-template operation, applied whenever its plugin deploys to an
+ * instance. Values may reference `${VARS}` from the environment manager.
+ */
+export interface ConfigOp {
+	/** Path relative to the instance directory, e.g. "plugins/LuckPerms/config.yml" */
+	file: string;
+	/** Config syntax for `set` ops; inferred from the file extension when omitted */
+	format?: "properties" | "hocon" | "yaml" | "toml";
+	/** Surgical key edits (line-preserving; the first occurrence of a key wins) */
+	set?: Record<string, string>;
+	/** Full file body, written only when the file does not exist yet (bootstrap) */
+	write?: string;
+}
+
+/** A named set of plugin names, applied to instances as a unit. */
+export interface PluginGroup {
+	description?: string;
+	/** Plugin names (`PluginEntry.plugin`), not entry keys */
+	plugins: string[];
+	/** The "default" group: applied to every instance, hardcoded members locked */
+	builtin?: boolean;
+}
 
 export interface PortBindingSpec {
 	id: string;
@@ -101,6 +151,18 @@ export interface PluginEntry {
 	file: string;
 	source: PluginSource;
 	loader: "paper" | "velocity";
+	/** Plugin name this build belongs to (several entries share one); defaults to the entry key */
+	plugin?: string;
+	/** Platform this build runs on; defaults to `loader` */
+	family?: PluginFamily;
+	/** Names this build goes by in server logs (plugin.yml `name`, velocity id/name).
+	 *  First entry is the display name. Extracted from the pool jar on demand. */
+	aliases?: string[];
+	/** Descriptor read from the jar (plugin.yml / paper-plugin.yml /
+	 *  velocity-plugin.json / neoforge.mods.toml), extracted on demand. */
+	meta?: PluginMeta;
+	/** Config-template ops applied on deploy */
+	config?: ConfigOp[];
 	modrinth?: { projectId: string; slug: string };
 	installed?: {
 		versionId?: string;
@@ -128,5 +190,9 @@ export interface PluginEntry {
 }
 
 export interface PluginsLock {
+	/** Lockfile schema revision; 2 = plugin identity + groups. Absent = v1. */
+	version?: number;
 	plugins: Record<string, PluginEntry>;
+	/** Plugin groups, keyed by group name ("default" always exists after migration) */
+	groups?: Record<string, PluginGroup>;
 }

@@ -2,12 +2,17 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
+	import { followJob, type JobView } from '$lib/jobs';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import FormGrid from '$lib/components/FormGrid.svelte';
+	import SettingsForm from '$lib/components/SettingsForm.svelte';
+	import ProgressTree from '$lib/components/ProgressTree.svelte';
+	import GroupsField from '$lib/components/GroupsField.svelte';
+	import Flash from '$lib/components/Flash.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/** how many recent Minecraft versions the picker offers */
@@ -15,8 +20,8 @@
 
 	const MEMORY_CHOICES = ['1G', '2G', '4G', '6G', '8G'];
 
-	/** how long the success flash stays up before the new instance page opens */
-	const REDIRECT_DELAY_MS = 1200;
+	/** how long the finished progress tree stays up before the new instance page opens */
+	const REDIRECT_DELAY_MS = 1800;
 
 	let name = $state('');
 	let versions: string[] = $state([]);
@@ -25,8 +30,17 @@
 	let profile = $state('aikar');
 	let profiles: string[] = $state(['aikar']);
 	let register = $state(true);
+	let javaArgs = $state('');
 	let creating = $state(false);
 	let existing: string[] = $state([]);
+
+	let schema: any[] = $state([]);
+	let groups: any[] = $state([]);
+	let settings: Record<string, string> = $state({});
+	let pluginGroups: string[] = $state([]);
+	let pluginOverrides: Record<string, boolean> = $state({});
+
+	let job: JobView | null = $state(null);
 
 	onMount(async () => {
 		const [paper, insts] = await Promise.all([api('/paper'), api('/instances')]);
@@ -35,11 +49,22 @@
 		mcVersion = versions[0] ?? '';
 		existing = insts.instances.map((inst: any) => inst.name);
 
-		// the java profile list lives in the registry, so read it off any backend
+		// the java profiles and the settings schema both come off any existing
+		// backend's config route — there is no instance yet to read them from
 		const other = existing.find((entry: string) => entry !== 'proxy');
 
 		if (other) {
-			profiles = (await api(`/instances/${other}/config`)).profiles;
+			const cfg = await api(`/instances/${other}/config`);
+
+			profiles = cfg.profiles;
+			schema = cfg.schema;
+			groups = cfg.groups;
+
+			// a new instance starts from the schema's own defaults, never from the
+			// instance the schema happened to be read through
+			settings = Object.fromEntries(
+				cfg.schema.map((spec: any) => [spec.key, spec.fallback])
+			);
 		}
 	});
 
@@ -55,37 +80,74 @@
 		return existing.includes(name) ? 'an instance with this name already exists' : '';
 	});
 
+	/** Only the settings that differ from the schema default are worth sending. */
+	const changedSettings = $derived.by(() => {
+		const out: Record<string, string> = {};
+
+		for (const spec of schema) {
+			const value = settings[spec.key];
+
+			if (!spec.managed && value !== undefined && value !== spec.fallback) {
+				out[spec.key] = value;
+			}
+		}
+
+		return out;
+	});
+
+	const changedCount = $derived(Object.keys(changedSettings).length);
+
 	async function launch(): Promise<void> {
 		creating = true;
+		job = null;
 
-		const note = Notify.loading(
-			`Creating ${name} — downloading Paper ${mcVersion} and deploying plugins…`
-		);
+		const note = Notify.loading(`Creating ${name}…`);
 
 		try {
-			const res = await post('/instances/create', {
+			const started = await post('/instances/create', {
 				name,
 				mcVersion,
 				memory,
 				profile,
-				register
+				register,
+				settings: changedSettings,
+				javaArgs,
+				pluginGroups,
+				pluginOverrides
 			});
 
-			const proxied = res.velocityUpdated ? ', proxy registered' : '';
+			job = started.job;
+
+			const done = await followJob(started.job.id, (view) => {
+				job = view;
+				note.set({ progress: Math.round(view.progress.progress * 100) });
+			});
+
+			const result = done.result as {
+				name: string;
+				port: number;
+				build: number;
+				pluginsDeployed: number;
+				velocityUpdated: boolean;
+			};
+
+			const proxied = result.velocityUpdated ? ', proxy registered' : '';
 
 			note.set({
 				level: 'success',
-				message: `Created ${res.name} on port ${res.port}`,
-				detail: `Paper build ${res.build}, ${res.pluginsDeployed} plugins deployed${proxied}.`,
+				message: `Created ${result.name} on port ${result.port}`,
+				detail: `Paper build ${result.build}, ${result.pluginsDeployed} plugin(s) deployed${proxied}.`,
+				progress: null,
 				closeable: true
 			});
 
-			setTimeout(() => goto(`/instances/${res.name}`), REDIRECT_DELAY_MS);
+			setTimeout(() => goto(`/instances/${result.name}`), REDIRECT_DELAY_MS);
 		} catch (err) {
 			note.set({
 				level: 'error',
 				message: `Could not create ${name}`,
 				detail: (err as Error).message,
+				progress: null,
 				closeable: true
 			});
 
@@ -106,7 +168,7 @@
 		<label class="field">
 			<span class="lbl">Instance name</span>
 			<span class="hint">Also used as the directory name and velocity server id</span>
-			<input class="input" bind:value={name} placeholder="e.g. bedwars" />
+			<input class="input" bind:value={name} placeholder="e.g. bedwars" disabled={creating} />
 			{#if nameError}<span class="err">{nameError}</span>{/if}
 		</label>
 	</Panel>
@@ -149,6 +211,20 @@
 				/>
 			</div>
 		</FormGrid>
+		<label class="field">
+			<span class="lbl">Extra JVM arguments</span>
+			<span class="hint">
+				Appended after the profile's own flags, so they win where the JVM takes the last
+				value — don't restate something the profile already sets (a second garbage
+				collector will refuse to start). Space separated, flags only.
+			</span>
+			<input
+				class="input mono"
+				bind:value={javaArgs}
+				placeholder="-XX:+UseStringDeduplication -Dfile.encoding=UTF-8"
+				disabled={creating}
+			/>
+		</label>
 		<label class="reg">
 			<Checkbox
 				checked={register}
@@ -160,10 +236,50 @@
 		</label>
 	</Panel>
 
+	<Panel
+		title="Plugins"
+		count={pluginGroups.length ? `default + ${pluginGroups.length}` : 'default'}
+		description="Plugin groups applied to the new instance — the default group always is. The table shows how each plugin lands on this platform and Minecraft version."
+	>
+		<GroupsField
+			software="paper"
+			{mcVersion}
+			bind:selected={pluginGroups}
+			bind:overrides={pluginOverrides}
+			disabled={creating}
+		/>
+	</Panel>
+
+	<Panel
+		title="Server settings"
+		count={changedCount ? `${changedCount} changed` : undefined}
+		description="Written into the new instance's server.properties — every one of these can be changed later"
+	>
+		{#if schema.length}
+			<SettingsForm {schema} {groups} bind:values={settings} showManaged={false} />
+		{:else}
+			<span class="dim">Loading the settings schema…</span>
+		{/if}
+	</Panel>
+
+	{#if job}
+		<Panel title="Progress" description="Live from the same reporter the CLI renders">
+			<ProgressTree root={job.progress} state={job.state} />
+			{#if job.state === 'failed'}
+				<div class="failed">
+					<Flash kind="error">
+						<b>Creation failed:</b> {job.error}
+					</Flash>
+				</div>
+			{/if}
+		</Panel>
+	{/if}
+
 	<div class="summary">
 		<span class="dim">
 			{name || '(name)'} · paper {mcVersion} · {memory} · profile {profile} ·
 			{register ? 'proxied' : 'standalone'}
+			{#if changedCount}· {changedCount} setting(s) changed{/if}
 		</span>
 		<Btn
 			variant="primary"
@@ -194,6 +310,10 @@
 		gap: 0.5rem;
 		align-items: center;
 		margin-top: 0.25rem;
+	}
+
+	.failed {
+		margin-top: 0.875rem;
 	}
 
 	// the summary bar stays reachable while the form scrolls

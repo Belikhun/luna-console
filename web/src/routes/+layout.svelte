@@ -63,14 +63,28 @@
 			]
 		},
 		{
+			section: 'Players',
+			items: [{ label: 'Players', href: '/players', icon: 'users' }]
+		},
+		{
 			section: 'Plugins',
-			items: [{ label: 'Plugins', href: '/plugins', icon: 'plug' }]
+			items: [
+				{ label: 'Plugins', href: '/plugins', icon: 'plug' },
+				{ label: 'Plugin groups', href: '/plugins/groups', icon: 'layerGroup' }
+			]
 		},
 		{
 			section: 'Network & Proxy',
 			items: [
 				{ label: 'Ports', href: '/network', icon: 'sitemap' },
 				{ label: 'Proxy routing', href: '/proxy', icon: 'route' }
+			]
+		},
+		{
+			section: 'Automation',
+			items: [
+				{ label: 'Schedules', href: '/schedules', icon: 'clock' },
+				{ label: 'Environment', href: '/environment', icon: 'key' }
 			]
 		},
 		{
@@ -100,6 +114,11 @@
 		// "Launch instance" is its own nav entry, so /instances must not claim it
 		if (href === '/instances') {
 			return /^\/instances(?!\/launch)/.test(page.url.pathname);
+		}
+
+		// same split: "Plugin groups" is its own entry under /plugins
+		if (href === '/plugins') {
+			return /^\/plugins(?!\/groups)/.test(page.url.pathname);
 		}
 
 		return page.url.pathname === href || page.url.pathname.startsWith(href + '/');

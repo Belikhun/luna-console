@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { loadCluster, loadLock, saveCluster } from '$core/config';
+import { loadCluster, loadLock, saveCluster, saveLock } from '$core/config';
 import { deploy } from '$core/plugins';
 import { ensurePortAllocations } from '$core/ports';
 import { getAllStatuses } from '$core/instances';
@@ -15,6 +15,9 @@ export async function POST({ request }) {
 
 	await ensurePortAllocations(cfg, lock);
 	await saveCluster(cfg);
+
+	// deploy may auto-assign an MC-fit variant to an instance — persist it
+	await saveLock(lock);
 
 	const changed = actions.filter(
 		(action) => action.action !== 'unchanged' && action.action !== 'missing-variant'

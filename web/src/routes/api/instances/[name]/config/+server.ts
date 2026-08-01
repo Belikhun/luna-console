@@ -1,34 +1,22 @@
 import { json, error } from '@sveltejs/kit';
-import { join } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
 
-import { loadCluster, saveCluster, loadLock, managedInstances, instanceDir } from '$core/config';
-import { setPort, setServerProperty, setVersion } from '$core/admin';
+import { loadCluster, saveCluster, loadLock, saveLock, managedInstances } from '$core/config';
+import { setJavaArgs, setPort, setServerProperty, setVersion } from '$core/admin';
+import {
+	SERVER_SETTINGS,
+	SETTING_GROUPS,
+	applySettings,
+	parseJavaArgs,
+	readServerProperties,
+	validateSettings
+} from '$core/settings';
 import { syncVelocityToml } from '$core/proxy';
 import { getStatus } from '$core/instances';
-import { compatReport } from '$core/plugins';
+import { compatReport, deploy } from '$core/plugins';
 import { pushEvent } from '$lib/server/mrds';
+import { startJob } from '$lib/server/jobs';
 
-/** Read server.properties into a flat map, skipping comments and blank lines. */
-function readServerProperties(path: string): Record<string, string> {
-	const props: Record<string, string> = {};
-
-	if (!existsSync(path)) {
-		return props;
-	}
-
-	for (const line of readFileSync(path, 'utf8').split('\n')) {
-		const pair = line.match(/^([a-zA-Z0-9.-]+)=(.*)$/);
-
-		if (pair) {
-			props[pair[1]!] = pair[2]!;
-		}
-	}
-
-	return props;
-}
-
-/** GET → the instance's editable settings plus its full server.properties. */
+/** GET → the instance's editable settings, the settings schema, and its raw server.properties. */
 export async function GET({ params }) {
 	const cfg = await loadCluster();
 	const inst = managedInstances(cfg)[params.name];
@@ -37,18 +25,39 @@ export async function GET({ params }) {
 		throw error(404, 'unknown instance');
 	}
 
+	const properties = await readServerProperties(cfg, params.name);
+
+	// the form renders from the schema, so a key Paper has not written yet still
+	// gets a field — showing the default it will boot with
+	const settings = Object.fromEntries(
+		SERVER_SETTINGS.map((spec) => [spec.key, properties[spec.key] ?? spec.fallback])
+	);
+
 	return json({
 		memory: inst.memory,
 		profile: inst.profile,
 		java: inst.java ?? null,
+		javaArgs: inst.javaArgs ?? [],
 		port: inst.port,
 		mcVersion: inst.mcVersion ?? null,
 		profiles: Object.keys(cfg.javaProfiles),
-		serverProperties: readServerProperties(join(instanceDir(inst), 'server.properties'))
+		schema: SERVER_SETTINGS,
+		groups: SETTING_GROUPS,
+		settings,
+		serverProperties: properties,
+		pluginGroups: inst.pluginGroups ?? [],
+		software: inst.software
 	});
 }
 
-/** PATCH { memory?, profile?, java?, port?, mcVersion?, forceVersion?, properties?: {k:v} } */
+/**
+ * PATCH { memory?, profile?, java?, javaArgs?, port?, settings?, properties?,
+ *         mcVersion?, forceVersion? }
+ *
+ * Everything except a version change applies immediately and answers with what it
+ * touched. A version change downloads a server jar, so it answers with a job the
+ * client watches instead — see /api/jobs/[id].
+ */
 export async function PATCH({ params, request }) {
 	const body = await request.json();
 	const cfg = await loadCluster();
@@ -61,6 +70,7 @@ export async function PATCH({ params, request }) {
 	}
 
 	const changed: string[] = [];
+	const rejected: Array<{ key: string; error: string }> = [];
 
 	if (body.memory) {
 		inst.memory = body.memory;
@@ -81,12 +91,78 @@ export async function PATCH({ params, request }) {
 		changed.push('java');
 	}
 
+	if (body.javaArgs !== undefined) {
+		const args = Array.isArray(body.javaArgs)
+			? body.javaArgs.map(String)
+			: parseJavaArgs(String(body.javaArgs));
+
+		try {
+			setJavaArgs(cfg, name, args);
+		} catch (err) {
+			throw error(400, (err as Error).message);
+		}
+
+		changed.push(args.length ? `javaArgs (${args.length} flag(s))` : 'javaArgs (cleared)');
+	}
+
 	if (body.port) {
 		await setPort(cfg, name, Number(body.port));
 		await syncVelocityToml(cfg);
 		changed.push('port');
 	}
 
+	if (Array.isArray(body.pluginGroups)) {
+		const groups = body.pluginGroups.map(String).filter((group: string) => group !== 'default');
+		const unknown = groups.filter((group: string) => !lock.groups?.[group]);
+
+		if (unknown.length) {
+			throw error(400, `unknown plugin group(s): ${unknown.join(', ')}`);
+		}
+
+		const before = inst.pluginGroups ?? [];
+		const different =
+			before.length !== groups.length || groups.some((group: string) => !before.includes(group));
+
+		if (different) {
+			if (groups.length) {
+				inst.pluginGroups = groups;
+			} else {
+				delete inst.pluginGroups;
+			}
+
+			// membership changed — push the union of old and new coverage right away
+			await saveCluster(cfg);
+
+			const actions = await deploy(cfg, lock, { instances: [name] });
+
+			await saveLock(lock);
+
+			const jars = actions.filter(
+				(action) => action.action !== 'unchanged' && action.action !== 'config'
+			).length;
+
+			changed.push(`pluginGroups (${groups.join(', ') || 'default only'}; ${jars} jar(s) touched)`);
+		}
+	}
+
+	// the schema-backed settings form, validated as a batch before anything is written
+	if (body.settings) {
+		const problems = validateSettings(body.settings as Record<string, string>);
+
+		if (problems.length) {
+			throw error(400, problems.map((problem) => problem.error).join('; '));
+		}
+
+		const res = await applySettings(cfg, name, body.settings as Record<string, string>);
+
+		for (const change of res.changed) {
+			changed.push(`${change.key}=${change.to || '(blank)'}`);
+		}
+
+		rejected.push(...res.rejected);
+	}
+
+	// raw escape hatch: any server.properties key, spec'd or not
 	if (body.properties) {
 		for (const [key, value] of Object.entries(body.properties as Record<string, string>)) {
 			if (await setServerProperty(cfg, name, key, String(value))) {
@@ -111,9 +187,27 @@ export async function PATCH({ params, request }) {
 			return json({ ok: false, incompatible }, { status: 409 });
 		}
 
-		const res = await setVersion(cfg, name, body.mcVersion);
+		// persist the edits made above before the job reloads the registry from disk
+		await saveCluster(cfg);
 
-		changed.push(`version ${res.from ?? '?'} → ${res.to} (build ${res.build.build})`);
+		const version = String(body.mcVersion);
+
+		const job = startJob('instance-version', name, `${name} → ${version}`, async (reporter) => {
+			const fresh = await loadCluster();
+			const res = await setVersion(fresh, name, version, reporter);
+
+			await saveCluster(fresh);
+
+			pushEvent(
+				name,
+				'action',
+				`version ${res.from ?? '?'} → ${res.to} (build ${res.build.build})`
+			);
+
+			return { from: res.from ?? null, to: res.to, build: res.build.build };
+		});
+
+		return json({ ok: true, changed, rejected, job });
 	}
 
 	await saveCluster(cfg);
@@ -122,5 +216,5 @@ export async function PATCH({ params, request }) {
 		pushEvent(name, 'action', `config changed: ${changed.join(', ')}`);
 	}
 
-	return json({ ok: true, changed });
+	return json({ ok: true, changed, rejected });
 }

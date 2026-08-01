@@ -10,6 +10,23 @@ import {
 	managedInstances,
 } from "../../core/config";
 import * as plugins from "../../core/plugins";
+import {
+	allPluginNames,
+	deleteGroup,
+	effectiveTargets,
+	entriesOf,
+	familyOf,
+	groupInstances,
+	setGroup,
+	setPluginOverride,
+	validateGroups,
+} from "../../core/families";
+import {
+	ensureAliases,
+	instancePluginReport,
+	removeInstanceJars,
+} from "../../core/pluginstate";
+import { standardizeNaming } from "../../core/standardize";
 import * as mr from "../../core/services/modrinth";
 import { getAllStatuses } from "../../core/instances";
 import { ensurePortAllocations } from "../../core/ports";
@@ -317,6 +334,8 @@ export async function runDeploy(instances: string[] | undefined, plugin?: string
 	const ports = await ensurePortAllocations(cfg, lock);
 
 	await saveCluster(cfg);
+	// deploy may auto-assign an MC-fit variant to an instance — persist it
+	await saveLock(lock);
 	spin.stop();
 
 	for (const action of actions.filter((action) => action.action === "missing-variant")) {
@@ -454,7 +473,13 @@ command({
 	path: ["plugins", "apply"],
 	desc: "Add instances to a plugin's targets and deploy",
 	args: [{ name: "plugin", required: true, complete: pluginNames }],
-	opts: [{ flag: "--to", desc: "targets to add", value: true, complete: targetSelectors }],
+	opts: [
+		{ flag: "--to", desc: "targets to add", value: true, complete: targetSelectors },
+		{
+			flag: "--replace",
+			desc: "set the target list to exactly --to (e.g. collapse names into *paper)",
+		},
+	],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
@@ -467,10 +492,24 @@ command({
 		}
 
 		const add = await parseTargets(opts.to as string | undefined);
+		const before = expandTargets(cfg, entry.targets);
 
 		expandTargets(cfg, add); // validate
 
-		entry.targets = [...new Set([...entry.targets, ...add])].sort();
+		entry.targets = opts.replace
+			? [...new Set(add)].sort()
+			: [...new Set([...entry.targets, ...add])].sort();
+
+		// replacing can narrow the list, which would leave the dropped instances
+		// running a jar nothing manages any more — deploy never deletes
+		const dropped = before.filter((target) => !expandTargets(cfg, entry.targets).includes(target));
+
+		if (dropped.length) {
+			warn(
+				`no longer targeted: ${dropped.join(", ")} — their copies stay on disk, ` +
+					`remove them with "plugins remove ${name} --from ${dropped.join(",")}"`,
+			);
+		}
 
 		await saveLock(lock);
 		ok(`${pc.bold(name)} targets: ${entry.targets.join(",")}`);
@@ -813,3 +852,507 @@ for (const [verb, value] of [
 		},
 	});
 }
+
+/** Restart choice shared by group edits: now, a one-shot schedule, or nothing. */
+async function applyGroupRestart(
+	cfg: Awaited<ReturnType<typeof loadCluster>>,
+	group: string,
+	restart: string | undefined,
+): Promise<void> {
+	if (!restart || restart === "none") {
+		info(`instances using ${pc.bold(group)} pick the change up on their next restart`);
+
+		return;
+	}
+
+	const affected = groupInstances(cfg, group);
+
+	if (restart === "now") {
+		const inst = await import("../../core/instances");
+		const statuses = await getAllStatuses(cfg);
+
+		for (const name of affected) {
+			if (statuses.find((status) => status.name === name)?.state === "stopped") {
+				info(`${name} is stopped — leaving it down`);
+
+				continue;
+			}
+
+			const spin = new Spinner().start(`restarting ${name}...`);
+
+			await inst.stopInstance(cfg, name);
+			await inst.startInstance(cfg, name);
+			spin.stop();
+			ok(`${pc.bold(name)} restarted`);
+		}
+
+		return;
+	}
+
+	// anything else is a time for a one-shot restart schedule
+	const { loadSchedules, saveSchedules, createSchedule } = await import("../../core/schedule");
+	const store = await loadSchedules();
+
+	const schedule = createSchedule(cfg, store, {
+		name: `group ${group} update reboot`,
+		action: "restart",
+		instances: affected,
+		trigger: { kind: "at", at: new Date(restart).toISOString() },
+	});
+
+	await saveSchedules(store);
+	ok(`restart scheduled ${pc.cyan(schedule.nextRun ?? "?")} for ${affected.join(", ")}`);
+}
+
+command({
+	path: ["plugins", "groups"],
+	desc: "List plugin groups and the instances using them",
+
+	handler: async () => {
+		const cfg = await loadCluster();
+		const lock = await loadLock();
+
+		const rows = Object.entries(lock.groups ?? {}).map(([name, group]) => [
+			pc.bold(name) + (group.builtin ? pc.dim(" (builtin)") : ""),
+			String(group.plugins.length),
+			groupInstances(cfg, name).join(",") || pc.dim("—"),
+			pc.dim(group.description ?? ""),
+		]);
+
+		console.log();
+		printTable(rows, { head: ["group", "plugins", "used by", ""] });
+		console.log();
+	},
+});
+
+command({
+	path: ["plugins", "group"],
+	desc: "Show, create or edit a plugin group (then redeploy + optional restart)",
+	args: [
+		{ name: "name", required: true, complete: async () => Object.keys((await loadLock()).groups ?? {}) },
+	],
+	opts: [
+		{ flag: "--plugins", desc: "set membership to this comma-separated plugin list", value: true },
+		{ flag: "--add", desc: "add plugin(s), comma-separated", value: true },
+		{ flag: "--remove", desc: "remove plugin(s), comma-separated", value: true },
+		{ flag: "--description", desc: "set the description", value: true },
+		{ flag: "--delete", desc: "delete the group" },
+		{ flag: "--restart", desc: 'after a change: "now", "none" (default), or a time', value: true },
+	],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadLock();
+		const name = args[0]!;
+		const existing = lock.groups?.[name];
+
+		if (opts.delete) {
+			deleteGroup(lock, name);
+			await saveLock(lock);
+			ok(`group ${pc.bold(name)} deleted ${pc.dim("(deployed jars stay on disk)")}`);
+
+			return;
+		}
+
+		const editing =
+			opts.plugins !== undefined ||
+			opts.add !== undefined ||
+			opts.remove !== undefined ||
+			opts.description !== undefined;
+
+		if (!editing) {
+			if (!existing) {
+				throw new UsageError(`unknown group: ${name} — pass --plugins to create it`);
+			}
+
+			console.log();
+			info(`${pc.bold(name)}${existing.builtin ? pc.dim(" (builtin)") : ""} — ${existing.description ?? pc.dim("no description")}`);
+
+			printTable(existing.plugins.map((plugin) => {
+				const keys = entriesOf(lock, plugin);
+				const families = keys.map((key) => familyOf(lock.plugins[key]!)).join(", ");
+
+				return [plugin, families || pc.red("not installed")];
+			}), { head: ["plugin", "families"] });
+
+			info(`used by: ${groupInstances(cfg, name).join(", ") || pc.dim("nobody yet")}`);
+			console.log();
+
+			return;
+		}
+
+		const known = new Set(allPluginNames(lock));
+		const parse = (raw: unknown): string[] =>
+			String(raw).split(",").map((entry) => entry.trim()).filter(Boolean);
+
+		let members = opts.plugins !== undefined ? parse(opts.plugins) : [...(existing?.plugins ?? [])];
+
+		if (opts.add !== undefined) {
+			members = [...members, ...parse(opts.add)];
+		}
+
+		if (opts.remove !== undefined) {
+			const drop = new Set(parse(opts.remove));
+
+			members = members.filter((plugin) => !drop.has(plugin));
+		}
+
+		for (const plugin of members) {
+			if (!known.has(plugin)) {
+				warn(`"${plugin}" is not a pooled plugin — it validates as missing until installed`);
+			}
+		}
+
+		const before = existing ? [...existing.plugins] : [];
+
+		setGroup(lock, name, {
+			plugins: members,
+			...(opts.description !== undefined ? { description: String(opts.description) } : {}),
+		});
+
+		await saveLock(lock);
+
+		const after = lock.groups![name]!.plugins;
+		const added = after.filter((plugin) => !before.includes(plugin));
+		const removed = before.filter((plugin) => !after.includes(plugin));
+
+		ok(
+			`group ${pc.bold(name)} saved — ${after.length} plugin(s)` +
+				(added.length ? pc.green(` +${added.join(",")}`) : "") +
+				(removed.length ? pc.red(` -${removed.join(",")}`) : ""),
+		);
+
+		if (removed.length) {
+			info(`removed plugins stay deployed — clean them with ${pc.cyan("plugins remove <name> --from <inst>")}`);
+		}
+
+		// membership changed → push jars to everyone the group covers
+		const affected = groupInstances(cfg, name);
+
+		if (affected.length && (added.length || removed.length)) {
+			await runDeploy(affected, undefined);
+			await applyGroupRestart(cfg, name, opts.restart as string | undefined);
+		}
+	},
+});
+
+command({
+	path: ["plugins", "validate"],
+	desc: "How a group selection lands on an instance (OK / no version / skipped)",
+	args: [{ name: "instance", required: true, complete: instanceNames }],
+	opts: [{ flag: "--groups", desc: "extra groups beside default, comma-separated", value: true }],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadLock();
+		const name = args[0]!;
+		const inst = managedInstances(cfg)[name];
+
+		if (!inst) {
+			throw new UsageError(`unknown instance: ${name}`);
+		}
+
+		const groups = opts.groups
+			? String(opts.groups).split(",").map((entry) => entry.trim()).filter(Boolean)
+			: (inst.pluginGroups ?? []);
+
+		const rows = validateGroups(cfg, lock, {
+			software: inst.software,
+			mcVersion: inst.mcVersion,
+			groups,
+			instance: name,
+		});
+
+		const glyph = (status: string): string =>
+			status === "ok"
+				? Sym.ok
+				: status === "unverified"
+					? Sym.dot
+					: status === "skipped"
+						? Sym.off
+						: Sym.warn;
+
+		console.log();
+
+		printTable(
+			rows.map((row) => [
+				glyph(row.status),
+				row.plugin,
+				row.family ?? pc.dim("—"),
+				row.status + (row.downloadable ? pc.cyan(" (downloadable)") : ""),
+				row.version ?? pc.dim("—"),
+				pc.dim(row.groups.join(",")),
+			]),
+			{ head: ["", "plugin", "family", "status", "version", "groups"] },
+		);
+
+		console.log();
+
+		const fetchable = rows.filter((row) => row.downloadable);
+
+		if (fetchable.length) {
+			info(`fetch compatible builds with: ${pc.cyan(`mrds plugins fetch <plugin> --mc ${inst.mcVersion}`)}`);
+		}
+	},
+});
+
+command({
+	path: ["plugins", "fetch"],
+	desc: "Download a build compatible with an MC version into the pool",
+	args: [{ name: "plugin", required: true, complete: pluginNames }],
+	opts: [{ flag: "--mc", desc: "MC version the build must support", value: true }],
+
+	handler: async (args, opts) => {
+		const lock = await loadLock();
+		const name = args[0]!;
+		const mc = opts.mc as string | undefined;
+
+		if (!mc) {
+			throw new UsageError("--mc <version> is required");
+		}
+
+		const spin = new Spinner().start(`resolving ${name} for MC ${mc}...`);
+		const result = await plugins.ensureVariantForMc(lock, name, mc);
+
+		await saveLock(lock);
+		spin.stop();
+
+		if (result.downloaded) {
+			ok(`${pc.bold(name)} ${pc.cyan(result.version)} pooled for MC ${mc}`);
+		} else {
+			info(`${pc.bold(name)} ${result.version} already covers MC ${mc}`);
+		}
+	},
+});
+
+command({
+	path: ["plugins", "config"],
+	desc: "Show a plugin's config template, or apply all templates to an instance",
+	args: [
+		{ name: "what", required: true, complete: async () => ["show", "apply"] },
+		{ name: "target", required: true },
+	],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const lock = await loadLock();
+		const [what, target] = args as [string, string];
+
+		if (what === "show") {
+			const entry = lock.plugins[target];
+
+			if (!entry) {
+				throw new UsageError(`unknown plugin entry: ${target}`);
+			}
+
+			if (!entry.config?.length) {
+				info(`${target} has no config template`);
+
+				return;
+			}
+
+			console.log(JSON.stringify(entry.config, null, 2));
+
+			return;
+		}
+
+		if (what !== "apply") {
+			throw new UsageError('expected "show <entry>" or "apply <instance>"');
+		}
+
+		const { applyTemplates, notableTemplateResults } = await import("../../core/templates");
+		const results = await applyTemplates(cfg, lock, target);
+		const notable = notableTemplateResults(results);
+
+		if (!notable.length) {
+			ok(`${target}: every templated value already in place (${results.length} checked)`);
+
+			return;
+		}
+
+		for (const result of notable) {
+			const line = `${result.plugin} ${pc.dim(result.file)} ${result.key ?? ""} ${result.outcome}` +
+				(result.detail ? pc.dim(` ${result.detail}`) : "");
+
+			if (result.outcome === "set" || result.outcome === "wrote") {
+				ok(line);
+			} else {
+				warn(line);
+			}
+		}
+	},
+});
+
+command({
+	path: ["plugins", "override"],
+	desc: "Force-add, disable or clear a plugin on one instance (wins over its groups)",
+	args: [
+		{ name: "instance", required: true, complete: instanceNames },
+		{
+			name: "plugin",
+			required: true,
+			complete: async () => allPluginNames(await loadLock()),
+		},
+	],
+	opts: [
+		{ flag: "--enable", desc: "force-add the plugin, regardless of groups" },
+		{ flag: "--disable", desc: "disable the plugin, even when a group provides it" },
+		{ flag: "--clear", desc: "drop the override — groups decide again" },
+	],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadLock();
+		const [instance, plugin] = args as [string, string];
+
+		const picked = [opts.enable, opts.disable, opts.clear].filter(Boolean).length;
+
+		if (picked !== 1) {
+			throw new UsageError("pass exactly one of --enable, --disable or --clear");
+		}
+
+		const state = opts.enable ? true : opts.disable ? false : null;
+
+		setPluginOverride(cfg, lock, instance, plugin, state);
+		await saveCluster(cfg);
+
+		// "wanted" must include explicit lockfile targets, not just groups/overrides —
+		// clearing an override on an explicitly targeted plugin re-deploys it
+		const wanted = entriesOf(lock, plugin).some((key) =>
+			effectiveTargets(cfg, lock, key).includes(instance),
+		);
+
+		if (wanted) {
+			ok(`${pc.bold(plugin)} ${state === null ? "override cleared" : "force-added"} on ${instance} — deploying`);
+			await runDeploy([instance], undefined);
+
+			return;
+		}
+
+		const removed = await removeInstanceJars(cfg, lock, instance, plugin);
+
+		await saveLock(lock);
+
+		if (state === null) {
+			ok(`${pc.bold(plugin)} override cleared on ${instance}`);
+		} else {
+			ok(`${pc.bold(plugin)} disabled on ${instance}`);
+		}
+
+		if (removed.length) {
+			info(`removed from ${instance}/plugins: ${removed.join(", ")} ${pc.dim("(a running server keeps it loaded until restart)")}`);
+		}
+	},
+});
+
+command({
+	path: ["plugins", "state"],
+	desc: "Runtime state of every plugin on an instance, with log warn/error counts",
+	args: [{ name: "instance", required: true, complete: instanceNames }],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const lock = await loadLock();
+		const instance = args[0]!;
+
+		const spin = new Spinner().start(`reading ${instance}'s boot session...`);
+
+		if (await ensureAliases(lock)) {
+			await saveLock(lock);
+		}
+
+		const { rows, session } = await instancePluginReport(cfg, lock, instance);
+
+		spin.stop();
+
+		const stateGlyph = (state: string): string =>
+			state === "running"
+				? pc.green(state)
+				: state === "errored"
+					? pc.red(state)
+					: state === "disabled" || state === "stopped"
+						? pc.dim(state)
+						: pc.yellow(state);
+
+		console.log();
+
+		printTable(
+			rows.map((row) => [
+				row.plugin,
+				pc.dim(row.displayName),
+				stateGlyph(row.state),
+				row.version ?? pc.dim("—"),
+				row.warnings ? pc.yellow(String(row.warnings)) : pc.dim("0"),
+				row.errors ? pc.red(String(row.errors)) : pc.dim("0"),
+				row.origin === "manual" ? pc.cyan(row.origin) : pc.dim(row.groups.join(",") || row.origin),
+			]),
+			{ head: ["plugin", "log name", "state", "version", "warn", "err", "from"] },
+		);
+
+		console.log();
+
+		if (!session.complete) {
+			warn("boot marker not found within the log-rotation window — load states past the window read as unknown");
+		}
+
+		const troubled = rows.filter((row) => row.state === "errored" || row.errors > 0);
+
+		if (troubled.length) {
+			warn(`${troubled.length} plugin(s) reported errors — inspect with: mrds logs ${instance}`);
+		}
+	},
+});
+
+command({
+	path: ["plugins", "standardize"],
+	desc: "Migrate every entry to the <plugin>@<family> naming scheme (pool, lockfile, ports, instances)",
+	opts: [{ flag: "--yes", desc: "skip the confirmation" }],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadLock();
+
+		if (!opts.yes) {
+			const { confirm, isCancel } = await import("@clack/prompts");
+
+			const sure = await confirm({
+				message:
+					"Rename pool jars + lockfile keys + port allocations, redeploy everywhere and " +
+					"remove the old-name jars?",
+			});
+
+			if (isCancel(sure) || !sure) {
+				throw new Bail("aborted");
+			}
+		}
+
+		const spin = new Spinner().start("standardizing plugin naming...");
+		const report = await standardizeNaming(cfg, lock);
+
+		await saveCluster(cfg);
+		await saveLock(lock);
+		spin.stop();
+
+		for (const step of report.renamed) {
+			ok(`${step.oldKey} ${Sym.arrow} ${pc.bold(step.newKey)}`);
+		}
+
+		for (const port of report.portKeys) {
+			info(`port allocation ${port}`);
+		}
+
+		for (const member of report.groupMembers) {
+			info(`group member ${member}`);
+		}
+
+		info(`${report.deployed} deploy change(s), ${report.removed.length} old jar(s) removed`);
+
+		if (report.mismatches.length) {
+			for (const mismatch of report.mismatches) {
+				warn(`PARITY MISMATCH — ${mismatch}`);
+			}
+		} else {
+			ok("parity verified: every instance runs the same plugin set as before");
+		}
+	},
+});

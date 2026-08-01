@@ -96,6 +96,7 @@ declare module '$env/static/private' {
 	export const VSCODE_HANDLES_UNCAUGHT_ERRORS: string;
 	export const OLDPWD: string;
 	export const VSCODE_IPC_HOOK_CLI: string;
+	export const _: string;
 	export const npm_config_local_prefix: string;
 	export const npm_config_user_agent: string;
 	export const npm_execpath: string;
@@ -252,6 +253,7 @@ declare module '$env/dynamic/private' {
 		VSCODE_HANDLES_UNCAUGHT_ERRORS: string;
 		OLDPWD: string;
 		VSCODE_IPC_HOOK_CLI: string;
+		_: string;
 		npm_config_local_prefix: string;
 		npm_config_user_agent: string;
 		npm_execpath: string;

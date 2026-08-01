@@ -126,24 +126,49 @@ export async function listVersions(project: PaperProject): Promise<string[]> {
 	return data.versions ?? [];
 }
 
-/** Download a build to `dest`, verifying its sha256 when the API published one. */
-export async function downloadBuild(info: BuildInfo, dest: string): Promise<void> {
+/** Bytes received so far, and the total when the server sent a content-length. */
+export type DownloadProgress = (received: number, total?: number) => void;
+
+/**
+ * Download a build to `dest`, verifying its sha256 when the API published one.
+ * The body is consumed chunk by chunk so `onProgress` can report a server jar
+ * arriving — it is the slowest step of creating an instance by far.
+ */
+export async function downloadBuild(
+	info: BuildInfo,
+	dest: string,
+	onProgress?: DownloadProgress,
+): Promise<void> {
 	const res = await fetch(info.url, { headers: { "User-Agent": UA } });
 
 	if (!res.ok) {
 		throw new Error(`download failed: HTTP ${res.status} for ${info.url}`);
 	}
 
-	const buf = new Uint8Array(await res.arrayBuffer());
+	const length = Number(res.headers.get("content-length") ?? 0);
+	const total = length > 0 ? length : undefined;
+	const hasher = info.sha256 ? new Bun.CryptoHasher("sha256") : undefined;
+	const chunks: Uint8Array[] = [];
+	let received = 0;
 
-	if (info.sha256) {
-		const hasher = new Bun.CryptoHasher("sha256");
+	for await (const chunk of res.body as ReadableStream<Uint8Array>) {
+		chunks.push(chunk);
+		hasher?.update(chunk);
+		received += chunk.byteLength;
 
-		hasher.update(buf);
+		onProgress?.(received, total);
+	}
 
-		if (hasher.digest("hex") !== info.sha256) {
-			throw new Error("sha256 mismatch on downloaded server jar");
-		}
+	if (hasher && hasher.digest("hex") !== info.sha256) {
+		throw new Error("sha256 mismatch on downloaded server jar");
+	}
+
+	const buf = new Uint8Array(received);
+	let offset = 0;
+
+	for (const chunk of chunks) {
+		buf.set(chunk, offset);
+		offset += chunk.byteLength;
 	}
 
 	await Bun.write(dest, buf);

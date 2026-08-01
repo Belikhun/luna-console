@@ -41,6 +41,9 @@ export function buildJavaCommand(cfg: ClusterConfig, inst: InstanceConfig): stri
 		`-Xms${inst.memory}`,
 		`-Xmx${inst.memory}`,
 		...profile.flags,
+		// per-instance flags last, so they win over the profile's defaults for any
+		// option the JVM resolves by last-one-wins
+		...(inst.javaArgs ?? []),
 		"-jar",
 		jarName(inst),
 	];

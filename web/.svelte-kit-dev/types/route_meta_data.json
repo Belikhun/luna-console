@@ -5,6 +5,9 @@
 	"/api/cleanup": [
 		"src/routes/api/cleanup/+server.ts"
 	],
+	"/api/env": [
+		"src/routes/api/env/+server.ts"
+	],
 	"/api/events": [
 		"src/routes/api/events/+server.ts"
 	],
@@ -35,8 +38,14 @@
 	"/api/instances/[name]/plugins": [
 		"src/routes/api/instances/[name]/plugins/+server.ts"
 	],
+	"/api/instances/[name]/plugins/[plugin]": [
+		"src/routes/api/instances/[name]/plugins/[plugin]/+server.ts"
+	],
 	"/api/instances/[name]/state": [
 		"src/routes/api/instances/[name]/state/+server.ts"
+	],
+	"/api/jobs/[id]": [
+		"src/routes/api/jobs/[id]/+server.ts"
 	],
 	"/api/luna/admin": [
 		"src/routes/api/luna/admin/+server.ts"
@@ -65,6 +74,15 @@
 	"/api/plugins/deploy": [
 		"src/routes/api/plugins/deploy/+server.ts"
 	],
+	"/api/plugins/fetch": [
+		"src/routes/api/plugins/fetch/+server.ts"
+	],
+	"/api/plugins/groups": [
+		"src/routes/api/plugins/groups/+server.ts"
+	],
+	"/api/plugins/groups/[name]": [
+		"src/routes/api/plugins/groups/[name]/+server.ts"
+	],
 	"/api/plugins/pin": [
 		"src/routes/api/plugins/pin/+server.ts"
 	],
@@ -80,6 +98,9 @@
 	"/api/plugins/update": [
 		"src/routes/api/plugins/update/+server.ts"
 	],
+	"/api/plugins/validate": [
+		"src/routes/api/plugins/validate/+server.ts"
+	],
 	"/api/plugins/[name]": [
 		"src/routes/api/plugins/[name]/+server.ts"
 	],
@@ -89,6 +110,12 @@
 	"/api/proxy": [
 		"src/routes/api/proxy/+server.ts"
 	],
+	"/api/schedules": [
+		"src/routes/api/schedules/+server.ts"
+	],
+	"/api/schedules/[id]": [
+		"src/routes/api/schedules/[id]/+server.ts"
+	],
 	"/api/shell/complete": [
 		"src/routes/api/shell/complete/+server.ts"
 	],
@@ -96,12 +123,21 @@
 		"src/routes/api/shell/exec/+server.ts"
 	],
 	"/cleanup": [],
+	"/environment": [],
 	"/gallery": [],
 	"/instances": [],
 	"/instances/launch": [],
 	"/instances/[name]": [],
 	"/instances/[name]/console": [],
+	"/instances/[name]/plugins/[plugin]": [],
 	"/network": [],
+	"/players": [],
 	"/plugins": [],
-	"/proxy": []
+	"/plugins/groups": [],
+	"/plugins/groups/new": [],
+	"/plugins/groups/[name]": [],
+	"/plugins/[name]": [],
+	"/proxy": [],
+	"/schedules": [],
+	"/schedules/new": []
 }

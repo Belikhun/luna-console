@@ -13,8 +13,9 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import type { ClusterConfig, LunaSourceConfig, PluginsLock } from "./types";
-import { expandTargets, instanceDir, managedInstances, poolDir } from "./config";
+import type { ClusterConfig, LunaSourceConfig, PluginEntry, PluginsLock } from "./types";
+import { instanceDir, managedInstances, poolDir } from "./config";
+import { effectiveTargets } from "./families";
 import { entryNameFor } from "./plugins";
 import * as mr from "./services/modrinth";
 
@@ -54,8 +55,22 @@ export interface LunaModule {
 	name: string;
 	/** paper | velocity | neoforge | api */
 	platform: string;
-	/** Shadow jar file name, or undefined for api-only modules */
+	/** Shadow jar file name in output/<platform>/, or undefined for api-only modules */
 	file?: string;
+	/** Standardized name the jar is pooled under, `<plugin>@<family>.jar` */
+	poolFile?: string;
+}
+
+/**
+ * The pool name of a module's artifact under the standardized scheme:
+ * `<plugin>@<family>.jar`. The plugin identity drops the platform suffix and
+ * the `-backend` marker (luna-auth-backend is luna-auth's paper module).
+ */
+export function poolFileFor(base: string, platform: string): string {
+	const plugin = base.endsWith("-backend") ? base.slice(0, -8) : base;
+	const family = platform === "velocity" || platform === "neoforge" ? platform : "paper";
+
+	return `${plugin}@${family}.jar`;
 }
 
 /**
@@ -93,7 +108,12 @@ export async function listModules(source: Required<LunaSourceConfig>): Promise<L
 
 		const base = name.endsWith(`-${platform}`) ? name.slice(0, -platform.length - 1) : name;
 
-		return { name, platform, file: `${base}-${platform}-all.jar` };
+		return {
+			name,
+			platform,
+			file: `${base}-${platform}-all.jar`,
+			poolFile: poolFileFor(base, platform),
+		};
 	});
 }
 
@@ -230,7 +250,10 @@ export async function build(
 export interface LunaArtifact {
 	module: string;
 	platform: string;
+	/** Jar name as gradle wrote it (…-all.jar) */
 	file: string;
+	/** Standardized name it is pooled under (`<plugin>@<family>.jar`) */
+	poolFile: string;
 	path: string;
 	sha512: string;
 	sizeBytes: number;
@@ -263,6 +286,7 @@ export async function artifacts(source: Required<LunaSourceConfig>): Promise<Lun
 			module: module.name,
 			platform: module.platform,
 			file: module.file,
+			poolFile: module.poolFile!,
 			path,
 			sha512: await mr.sha512File(path),
 			sizeBytes: info.size,
@@ -329,18 +353,22 @@ export async function sync(
 	await mkdir(pool, { recursive: true });
 
 	for (const artifact of built) {
-		const name = entryNameFor(artifact.file);
-		const target = join(pool, artifact.file);
+		const name = entryNameFor(artifact.poolFile);
+		const target = join(pool, artifact.poolFile);
 		const pooled = existsSync(target) ? await mr.sha512File(target) : undefined;
 
 		let entry = lock.plugins[name];
 		let action: SyncAction = pooled === artifact.sha512 ? "unchanged" : pooled ? "updated" : "pooled";
 
 		if (!entry) {
+			const identity = name.match(/^(.+)@(paper|velocity|universal|neoforge)$/);
+
 			entry = {
-				file: artifact.file,
+				file: artifact.poolFile,
 				source: "luna",
 				loader: artifact.platform === "velocity" ? "velocity" : "paper",
+				plugin: identity?.[1],
+				family: identity?.[2] as PluginEntry["family"],
 				autoUpdate: false,
 				targets: [],
 			};
@@ -351,6 +379,10 @@ export async function sync(
 
 		if (pooled !== artifact.sha512) {
 			await copyFile(artifact.path, target);
+
+			// content changed — the cached descriptor and log names are stale
+			delete entry.aliases;
+			delete entry.meta;
 		}
 
 		entry.source = "luna";
@@ -369,7 +401,7 @@ export async function sync(
 		results.push({
 			name,
 			module: artifact.module,
-			file: artifact.file,
+			file: artifact.poolFile,
 			action,
 			version,
 			unassigned: entry.targets.length === 0,
@@ -421,7 +453,7 @@ export async function status(
 		}
 
 		const artifact = built.get(module.name);
-		const name = entryNameFor(module.file);
+		const name = entryNameFor(module.poolFile!);
 		const entry = lock.plugins[name];
 
 		if (!entry) {
@@ -438,7 +470,7 @@ export async function status(
 			continue;
 		}
 
-		const targets = expandTargets(cfg, entry.targets);
+		const targets = effectiveTargets(cfg, lock, name);
 		const pooledHash = entry.installed?.sha512;
 		const drifted: string[] = [];
 

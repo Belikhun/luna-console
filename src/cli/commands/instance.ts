@@ -1,5 +1,5 @@
 import { command, UsageError, Bail } from "../framework";
-import { pc, Sym, ok, warn, info, printTable, fmtDuration, Spinner } from "../ui";
+import { pc, Sym, ok, warn, info, printTable, fmtDuration, Spinner, ProgressView } from "../ui";
 import { instanceNames } from "../completers";
 import { loadCluster, saveCluster, managedInstances, loadLock, saveLock } from "../../core/config";
 import type { ClusterConfig } from "../../core/types";
@@ -10,6 +10,16 @@ import { syncVelocityToml } from "../../core/proxy";
 import { ensurePortAllocations } from "../../core/ports";
 import { deploy, compatReport } from "../../core/plugins";
 import { listVersions } from "../../core/services/papermc";
+import { ProgressReporter } from "../../core/progress";
+import {
+	SERVER_SETTINGS,
+	SETTING_GROUPS,
+	applySettings,
+	editableSettingKeys,
+	parseJavaArgs,
+	readServerProperties,
+	settingSpec,
+} from "../../core/settings";
 
 /** Coloured state glyph + label for a status table row. */
 function stateCell(status: inst.InstanceStatus): string {
@@ -229,6 +239,27 @@ command({
 	},
 });
 
+/** Parse `--set key=value,key2=value2` into a settings map. */
+function parseSettingPairs(text: string | undefined): Record<string, string> {
+	const out: Record<string, string> = {};
+
+	if (!text) {
+		return out;
+	}
+
+	for (const pair of text.split(",")) {
+		const eq = pair.indexOf("=");
+
+		if (eq === -1) {
+			throw new UsageError(`--set expects key=value pairs, got "${pair}"`);
+		}
+
+		out[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
+	}
+
+	return out;
+}
+
 command({
 	path: ["instance", "create"],
 	desc: "Create a new paper instance and register it with the proxy",
@@ -238,6 +269,12 @@ command({
 		{ flag: "--port", desc: "game port (default: auto from range)", value: true },
 		{ flag: "--memory", desc: "heap size, e.g. 2G (default 2G)", value: true },
 		{ flag: "--profile", desc: "java profile (default aikar)", value: true },
+		{
+			flag: "--set",
+			desc: "server settings, e.g. difficulty=hard,max-players=100 (see instance settings)",
+			value: true,
+		},
+		{ flag: "--java-args", desc: 'extra JVM flags, e.g. "-XX:+UseZGC"', value: true },
 		{ flag: "--no-register", desc: "don't register in velocity.toml" },
 	],
 
@@ -245,14 +282,14 @@ command({
 		const cfg = await loadCluster();
 		const lock = await loadLock();
 		const name = args[0]!;
+		const settings = parseSettingPairs(opts.set as string | undefined);
+		const javaArgs = parseJavaArgs((opts["java-args"] as string) ?? "");
 
 		let version = opts.version as string | undefined;
 
-		const spin = new Spinner().start(
-			version ? `fetching paper ${version}...` : "resolving latest paper version...",
-		);
-
 		if (!version) {
+			const spin = new Spinner().start("resolving latest paper version...");
+
 			// plain x.y / x.y.z only — the list also carries snapshots and pre-releases
 			const versions = await listVersions("paper");
 
@@ -260,45 +297,83 @@ command({
 				.filter((candidate) => /^\d+\.\d+(\.\d+)?$/.test(candidate))
 				.sort()
 				.at(-1)!;
+
+			spin.stop();
 		}
 
-		spin.update(`downloading paper ${version}...`);
+		// one node per phase, weighted by how long each actually takes, so the
+		// roll-up moves at a believable rate (the jar download dominates)
+		const progress = new ProgressReporter(`create ${name}`).weighOwn(0);
+		const files = progress.child("Server files", 6);
+		const plugins = progress.child("Plugins", 2);
+		const ports = progress.child("Port allocations", 1);
+		const proxy = progress.child("Proxy registration", 1);
 
-		const res = await admin.createInstance(cfg, name, {
-			mcVersion: version,
-			port: opts.port ? parseInt(opts.port as string) : undefined,
-			memory: opts.memory as string | undefined,
-			profile: opts.profile as string | undefined,
-			register: !opts["no-register"],
-		});
+		const view = new ProgressView(progress).start();
 
-		await saveCluster(cfg);
-		spin.stop();
+		try {
+			const res = await admin.createInstance(cfg, name, {
+				mcVersion: version,
+				port: opts.port ? parseInt(opts.port as string) : undefined,
+				memory: opts.memory as string | undefined,
+				profile: opts.profile as string | undefined,
+				register: !opts["no-register"],
+				settings,
+				javaArgs,
+				reporter: files,
+			});
 
-		ok(
-			`created ${pc.bold(name)} — paper ${version} build ${res.build.build}, ` +
-				`port ${pc.cyan(String(res.port))}`,
-		);
+			await saveCluster(cfg);
 
-		const deployed = await deploy(cfg, lock, { instances: [name] });
+			const deployed = await plugins.task(
+				{ start: "deploying wildcard-targeted plugins", done: "plugins deployed" },
+				(step) => deploy(cfg, lock, { instances: [name], reporter: step }),
+			);
 
-		if (deployed.length) {
-			ok(`deployed ${deployed.length} wildcard-targeted plugin(s)`);
-		}
+			plugins.complete(`${deployed.length} plugin(s) deployed`);
 
-		await ensurePortAllocations(cfg, lock);
-		await saveCluster(cfg);
-		await saveLock(lock);
+			await ports.task({ start: "allocating plugin ports", done: "plugin ports allocated" }, async () => {
+				await ensurePortAllocations(cfg, lock);
+				await saveCluster(cfg);
+				await saveLock(lock);
+			});
 
-		if (!opts["no-register"]) {
-			const sync = await syncVelocityToml(cfg);
+			if (opts["no-register"]) {
+				proxy.complete("skipped — --no-register");
+			} else {
+				await proxy.task(
+					{ start: "registering in velocity.toml" },
+					async (step) => {
+						const sync = await syncVelocityToml(cfg);
 
-			if (sync.changed) {
-				ok(`registered in velocity.toml ${pc.dim("(reload proxy to apply)")}`);
+						step.report(
+							1,
+							"okay",
+							sync.changed
+								? "velocity.toml updated (reload the proxy to apply)"
+								: "velocity.toml already up to date",
+						);
+					},
+				);
 			}
-		}
 
-		info(`start it with: ${pc.cyan(`mrds start ${name}`)}`);
+			view.stop();
+
+			ok(
+				`created ${pc.bold(name)} — paper ${version} build ${res.build.build}, ` +
+					`port ${pc.cyan(String(res.port))}`,
+			);
+
+			if (javaArgs.length) {
+				info(`extra JVM flags: ${pc.cyan(javaArgs.join(" "))}`);
+			}
+
+			info(`start it with: ${pc.cyan(`mrds start ${name}`)}`);
+		} catch (err) {
+			view.stop();
+
+			throw err;
+		}
 	},
 });
 
@@ -365,21 +440,101 @@ command({
 	},
 });
 
-/** Settings stored in the registry rather than in server.properties. */
-const REGISTRY_KEYS = ["memory", "profile", "java", "port"];
-
 command({
-	path: ["instance", "config"],
-	desc: "Get/set instance settings (memory, profile, port, or any server.properties key)",
+	path: ["instance", "settings"],
+	desc: "Show or change an instance's server settings (difficulty, max-players, pvp, …)",
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
-		{ name: "key", complete: async () => ["memory", "profile", "port", "java"] },
-		{ name: "value" },
+		{ name: "key", complete: async () => editableSettingKeys() },
+		{ name: "value", variadic: true },
 	],
 
 	handler: async (args) => {
 		const cfg = await loadCluster();
-		const [name, key, value] = args as [string, string?, string?];
+		const [name, key, ...rest] = args as [string, string?, ...string[]];
+
+		if (!managedInstances(cfg)[name]) {
+			throw new UsageError(`unknown instance: ${name}`);
+		}
+
+		const current = await readServerProperties(cfg, name);
+
+		if (!key) {
+			for (const group of SETTING_GROUPS) {
+				const specs = SERVER_SETTINGS.filter((spec) => spec.group === group.id);
+
+				console.log(`\n  ${pc.bold(pc.cyan(group.label))} ${pc.dim(group.hint)}`);
+
+				printTable(
+					specs.map((spec) => [
+						spec.managed ? pc.dim(spec.key) : spec.key,
+						current[spec.key] === undefined
+							? pc.dim(`${spec.fallback} (default)`)
+							: pc.bold(current[spec.key] || pc.dim("(blank)")),
+						spec.managed ? pc.dim("managed by mrds") : pc.dim(spec.hint ?? ""),
+					]),
+					{ indent: "    " },
+				);
+			}
+
+			console.log();
+
+			return;
+		}
+
+		const spec = settingSpec(key);
+
+		if (!spec) {
+			throw new UsageError(
+				`"${key}" is not a known server setting — run "mrds instance settings ${name}" for the list`,
+			);
+		}
+
+		// a value may legitimately contain spaces (motd), so the rest of argv is it
+		if (rest.length === 0) {
+			console.log(current[key] ?? spec.fallback);
+
+			return;
+		}
+
+		const value = rest.join(" ");
+		const res = await applySettings(cfg, name, { [key]: value });
+
+		for (const problem of res.rejected) {
+			throw new Bail(problem.error);
+		}
+
+		if (res.unchanged.length) {
+			info(`${name}.${key} already ${pc.cyan(value)}`);
+
+			return;
+		}
+
+		const change = res.changed[0]!;
+		const note = change.appended ? pc.dim(" (key added)") : "";
+
+		ok(
+			`${name}.${key}: ${pc.dim(change.from ?? "unset")} ${Sym.arrow} ${pc.cyan(change.to)}` +
+				`${note} ${pc.dim("— applies on next restart")}`,
+		);
+	},
+});
+
+/** Settings stored in the registry rather than in server.properties. */
+const REGISTRY_KEYS = ["memory", "profile", "java", "javaArgs", "port"];
+
+command({
+	path: ["instance", "config"],
+	desc: "Get/set instance settings (memory, profile, port, javaArgs, or any server.properties key)",
+	args: [
+		{ name: "instance", required: true, complete: instanceNames },
+		{ name: "key", complete: async () => [...REGISTRY_KEYS, ...editableSettingKeys()] },
+		{ name: "value", variadic: true },
+	],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const [name, key, ...rest] = args as [string, string?, ...string[]];
 		const instance = managedInstances(cfg)[name];
 
 		if (!instance) {
@@ -392,6 +547,7 @@ command({
 				["profile", instance.profile],
 				["port", String(instance.port)],
 				["java", instance.java ?? pc.dim("(profile default)")],
+				["javaArgs", instance.javaArgs?.join(" ") ?? pc.dim("(none)")],
 				["mcVersion", instance.mcVersion ?? pc.dim("—")],
 				...Object.entries(instance.ports ?? {}).map(([id, port]) => [
 					`port:${id}`,
@@ -399,15 +555,21 @@ command({
 				]),
 			]);
 
+			info(`server settings live in server.properties: ${pc.cyan(`mrds instance settings ${name}`)}`);
+
 			return;
 		}
 
-		if (value === undefined) {
+		// a value can contain spaces (javaArgs, motd), so the rest of argv is the value
+		const value = rest.join(" ");
+
+		if (rest.length === 0) {
 			const builtin: Record<string, string | undefined> = {
 				memory: instance.memory,
 				profile: instance.profile,
 				port: String(instance.port),
 				java: instance.java,
+				javaArgs: instance.javaArgs?.join(" "),
 			};
 
 			if (key in builtin) {
@@ -438,6 +600,10 @@ command({
 				instance.java = value;
 				break;
 
+			case "javaArgs":
+				admin.setJavaArgs(cfg, name, parseJavaArgs(value));
+				break;
+
 			case "port": {
 				await admin.setPort(cfg, name, parseInt(value));
 
@@ -451,6 +617,18 @@ command({
 			}
 
 			default: {
+				// known settings go through the schema (validated, and added to the file
+				// when Paper has not written the key yet); anything else is set verbatim
+				if (settingSpec(key)) {
+					const res = await applySettings(cfg, name, { [key]: value });
+
+					for (const problem of res.rejected) {
+						throw new Bail(problem.error);
+					}
+
+					break;
+				}
+
 				if (!(await admin.setServerProperty(cfg, name, key, value))) {
 					throw new Bail(`key "${key}" not found in server.properties`);
 				}

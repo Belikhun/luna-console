@@ -79,18 +79,49 @@ export async function saveCluster(cfg: ClusterConfig): Promise<void> {
 /** Read the plugin lockfile, treating a missing file as an empty lock. */
 export async function loadLock(): Promise<PluginsLock> {
 	if (!existsSync(lockPath())) {
-		return { plugins: {} };
+		const empty: PluginsLock = { plugins: {} };
+
+		// migrate in memory so groups/identity exist even before the first save
+		const { migrateLock } = await import("./families");
+
+		migrateLock(empty);
+
+		return empty;
 	}
 
-	return await Bun.file(lockPath()).json();
+	const lock: PluginsLock = await Bun.file(lockPath()).json();
+
+	// dynamic import: families.ts statically imports this module, so a static
+	// import here would be a cycle
+	const { migrateLock } = await import("./families");
+
+	if (migrateLock(lock)) {
+		const backup = join(root(), "plugins.lock.v1.backup.json");
+
+		if (!existsSync(backup)) {
+			await Bun.write(backup, await Bun.file(lockPath()).text());
+		}
+
+		await saveLock(lock);
+	}
+
+	return lock;
 }
 
-/** Write the plugin lockfile with its plugins key-sorted, to keep diffs small. */
+/** Write the plugin lockfile with its plugins and groups key-sorted, to keep diffs small. */
 export async function saveLock(lock: PluginsLock): Promise<void> {
-	const sorted: PluginsLock = { plugins: {} };
+	const sorted: PluginsLock = { version: lock.version, plugins: {} };
 
 	for (const key of Object.keys(lock.plugins).sort()) {
 		sorted.plugins[key] = lock.plugins[key]!;
+	}
+
+	if (lock.groups) {
+		sorted.groups = {};
+
+		for (const key of Object.keys(lock.groups).sort()) {
+			sorted.groups[key] = lock.groups[key]!;
+		}
 	}
 
 	await Bun.write(lockPath(), JSON.stringify(sorted, null, "\t") + "\n");
