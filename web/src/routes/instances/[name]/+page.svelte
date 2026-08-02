@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, post, patch, del } from '$lib/api';
+	import { api, post, patch } from '$lib/api';
 	import { fmtDuration, fmtBytes, fmtDateTime } from '$lib/format';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -31,6 +31,7 @@
 	import Alerts from '$lib/components/Alerts.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
 	import { followJob, type JobView } from '$lib/jobs';
+	import { instanceStateJob, deleteInstanceJob, type StateAction } from '$lib/instancejobs';
 
 	/** how often the header's status and metrics are re-read */
 	const POLL_MS = 4000;
@@ -69,6 +70,8 @@
 
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
+	/** name of the primary daemon — the machine an ownerless instance runs on */
+	let hostName = $state('');
 
 	async function refresh(): Promise<void> {
 		// the poll can outlive the route by a tick during a client-side navigation,
@@ -139,6 +142,10 @@
 
 		void refresh();
 
+		void api('/host')
+			.then((host) => (hostName = host.name ?? ''))
+			.catch(() => {});
+
 		const poll = setInterval(refresh, POLL_MS);
 
 		return () => clearInterval(poll);
@@ -149,21 +156,15 @@
 		void loadTab(tab);
 	});
 
-	async function stateAction(action: string): Promise<void> {
-		const note = Notify.loading(`Sending ${action} to ${name}…`);
-
-		try {
-			await post(`/instances/${name}/state`, { action });
-			note.set({ level: 'success', message: `${name}: ${action} accepted`, closeable: true });
-			await refresh();
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: `Could not ${action} ${name}`,
-				detail: (err as Error).message,
-				closeable: true
-			});
+	async function stateAction(action: StateAction): Promise<void> {
+		if (!name) {
+			return;
 		}
+
+		// the flash card follows the job's log-derived progress on its own; the
+		// page just re-reads its header once the transition settles
+		await instanceStateJob(name, action);
+		await refresh();
 	}
 
 	/** Only settings the user actually moved are sent, so a save says what it changed. */
@@ -351,29 +352,17 @@
 	}
 
 	async function doDelete(): Promise<void> {
-		const note = Notify.loading(`Deleting ${name}…`);
-
-		try {
-			await del(`/instances/${name}?purge=${purge}`);
-
-			note.set({
-				level: 'success',
-				message: `Deleted ${name}`,
-				detail: purge ? 'Directory purged.' : '',
-				closeable: true
-			});
-
-			await goto('/instances');
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: `Could not delete ${name}`,
-				detail: (err as Error).message,
-				closeable: true
-			});
-
-			deleteOpen = false;
+		if (!name) {
+			return;
 		}
+
+		deleteOpen = false;
+
+		// hand off to the flash card and go back to the list, where the row reads
+		// "deleting" until the job (and a purge's directory walk) finishes
+		void deleteInstanceJob(name, purge);
+
+		await goto('/instances');
 	}
 
 	const isUp = $derived(inst && (inst.state === 'running' || inst.state === 'starting'));
@@ -416,7 +405,14 @@
 			{ label: 'Game address', value: `127.0.0.1:${inst.port}`, copyable: true, style: 'mono' },
 			{ label: 'Memory (heap)', value: inst.memory },
 			{ label: 'Java profile', value: inst.profile },
-			{ label: 'Daemon', value: inst.daemon ?? 'primary' },
+			{
+				label: 'Machine',
+				value: inst.daemon ?? (hostName || 'primary'),
+				href:
+					(inst.daemon ?? hostName)
+						? `/machines/${inst.daemon ?? hostName}`
+						: undefined
+			},
 			{ label: 'Java PID', value: inst.javaPid },
 			{ id: 'cpu', label: 'CPU utilization' },
 			{ id: 'rss', label: 'Resident memory' },

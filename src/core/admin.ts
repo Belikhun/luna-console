@@ -1,4 +1,4 @@
-import { mkdir, rename, rm } from "node:fs/promises";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -393,23 +393,47 @@ export async function setServerProperty(
 /**
  * Drop an instance from the registry, optionally deleting its directory too.
  * External instances are never purged — their files live on another machine.
+ * A purge deletes the directory entry by entry so the reporter can say which
+ * part of a multi-gigabyte world is currently going.
  */
 export async function deleteInstance(
 	cfg: ClusterConfig,
 	name: string,
 	purge: boolean,
+	reporter?: ProgressReporter,
 ): Promise<{ purged: boolean }> {
+	const progress = reporter ?? new ProgressReporter(`delete ${name}`);
 	const inst = cfg.instances[name];
 
 	if (!inst) {
 		throw new Error(`unknown instance: ${name}`);
 	}
 
+	progress.info(0.05, "deregistering from the cluster");
 	delete cfg.instances[name];
 
 	if (purge && !inst.external) {
-		await rm(instanceDir(inst), { recursive: true, force: true });
+		const dir = instanceDir(inst);
+		let entries: string[] = [];
+
+		try {
+			entries = await readdir(dir);
+		} catch {
+			// the directory is already gone — nothing left to purge
+		}
+
+		for (let i = 0; i < entries.length; i++) {
+			progress.info(0.1 + (i / Math.max(1, entries.length)) * 0.85, `deleting ${entries[i]}`);
+
+			await rm(join(dir, entries[i]!), { recursive: true, force: true });
+		}
+
+		await rm(dir, { recursive: true, force: true });
 	}
+
+	progress.complete(
+		purge && !inst.external ? "directory deleted" : "deregistered — directory kept",
+	);
 
 	return { purged: purge };
 }

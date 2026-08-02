@@ -51,10 +51,19 @@ export function del<T = any>(path: string): Promise<T> {
 
 export interface InstanceRow {
 	name: string;
-	state: 'running' | 'starting' | 'stopping' | 'stopped' | 'restarting';
+	state:
+		| 'running'
+		| 'starting'
+		| 'stopping'
+		| 'stopped'
+		| 'restarting'
+		| 'provisioning'
+		| 'deleting'
+		| 'unknown';
 	software: string;
 	mcVersion: string | null;
-	port: number;
+	/** null on a placeholder row for a mid-provision instance */
+	port: number | null;
 	memory: string;
 	profile: string;
 	javaPid: number | null;

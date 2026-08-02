@@ -10,6 +10,8 @@ import {
 	readHostMemMb,
 	pushEvent
 } from '$lib/server/luna';
+import { startJob } from '$lib/server/jobs';
+import { errorMessage } from '$lib/server/http';
 
 /** GET → full detail for one instance, including its resolved java command line. */
 export async function GET({ params }) {
@@ -28,35 +30,63 @@ export async function GET({ params }) {
 	});
 }
 
-/** DELETE ?purge=true → deregister, optionally deleting the instance directory. */
+/**
+ * DELETE ?purge=true → deregister, optionally deleting the instance directory.
+ * A purge walks a whole world directory, so this answers with a job whose
+ * progress names what is currently being removed.
+ */
 export async function DELETE({ params, url }) {
 	const cfg = await loadCluster();
+	const name = params.name;
 
-	if (params.name === 'proxy') {
+	if (name === 'proxy') {
 		throw error(400, 'cannot delete the proxy');
 	}
 
-	if (!cfg.instances[params.name]) {
-		throw error(404, `unknown instance: ${params.name}`);
+	if (!cfg.instances[name]) {
+		throw error(404, `unknown instance: ${name}`);
 	}
 
 	// external instances run elsewhere, so there is no local state to probe
-	const status = cfg.instances[params.name]!.external
-		? undefined
-		: await getStatus(cfg, params.name);
+	const status = cfg.instances[name]!.external ? undefined : await getStatus(cfg, name);
 
 	if (status && status.state !== 'stopped') {
-		throw error(409, `${params.name} is running — stop it first`);
+		throw error(409, `${name} is running — stop it first`);
 	}
 
 	const purge = url.searchParams.get('purge') === 'true';
 
-	await deleteInstance(cfg, params.name, purge);
-	await saveCluster(cfg);
+	const job = startJob('instance-delete', name, `Delete ${name}`, async (reporter) => {
+		reporter.weighOwn(0);
 
-	const sync = await syncVelocityToml(cfg);
+		const removal = reporter.child('Instance', 4);
+		const proxy = reporter.child('Proxy registration', 1);
 
-	pushEvent(params.name, 'action', `instance deleted${purge ? ' (directory purged)' : ''}`);
+		try {
+			await deleteInstance(cfg, name, purge, removal);
+			await saveCluster(cfg);
 
-	return json({ ok: true, purged: purge, velocityUpdated: sync.changed });
+			const sync = await proxy.task({ start: 'updating velocity.toml' }, async (step) => {
+				const out = await syncVelocityToml(cfg);
+
+				step.report(
+					1,
+					'okay',
+					out.changed ? 'velocity.toml updated' : 'velocity.toml already up to date'
+				);
+
+				return out;
+			});
+
+			pushEvent(name, 'action', `instance deleted${purge ? ' (directory purged)' : ''}`);
+
+			return { purged: purge, velocityUpdated: sync.changed };
+		} catch (err) {
+			pushEvent(name, 'error', `delete failed: ${errorMessage(err)}`);
+
+			throw err;
+		}
+	});
+
+	return json({ ok: true, job });
 }

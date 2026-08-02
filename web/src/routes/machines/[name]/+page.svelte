@@ -121,7 +121,7 @@
 
 			Notify.success(`Removed daemon registration "${row.name}"`);
 
-			await goto('/daemons');
+			await goto('/machines');
 		} catch (err) {
 			Notify.error('Could not remove the daemon', { detail: (err as Error).message });
 		}
@@ -296,7 +296,7 @@
 	];
 </script>
 
-<svelte:head><title>{name} | Daemons | Luna Console</title></svelte:head>
+<svelte:head><title>{name} | Machines | Luna Console</title></svelte:head>
 
 {#if missing && !row}
 	<PageHeader title={name ?? ''} />
@@ -330,7 +330,7 @@
 		{/snippet}
 	</PageHeader>
 
-	<OverviewBar title="Daemon overview">
+	<OverviewBar title="Machine overview">
 		<OverviewCell label="Status">
 			<StatusBadge
 				state={row.online ? (failed ? 'warning' : 'ok') : 'stopped'}
@@ -383,7 +383,7 @@
 				</Flash>
 				<div class="gap"></div>
 			{/if}
-			<Panel title="Daemon summary">
+			<Panel title="Machine summary">
 				<InfoGrid cells={summaryCells}>
 					{#snippet custom(cell)}
 						{#if cell.id === 'state'}

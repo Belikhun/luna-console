@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { api, post, type InstanceRow } from '$lib/api';
+	import { api, type InstanceRow } from '$lib/api';
 	import { fmtDuration } from '$lib/format';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -22,6 +22,7 @@
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { instanceStateJob, type StateAction } from '$lib/instancejobs';
 
 	type Row = InstanceRow & { externalOnly?: boolean };
 
@@ -46,6 +47,8 @@
 	let lastUpdated: number | null = $state(null);
 	let scheduleOpen = $state(false);
 	let scheduleTargets: string[] = $state([]);
+	/** name of the primary daemon — what "no owner" means in the registry */
+	let hostName = $state('');
 
 	/** Open the quick one-shot scheduler for the given instances. */
 	function openScheduler(targets: string[]): void {
@@ -100,7 +103,11 @@
 					value: 'transitioning',
 					label: 'Starting or stopping',
 					match: (row) =>
-						row.state === 'starting' || row.state === 'stopping' || row.state === 'restarting'
+						row.state === 'starting' ||
+						row.state === 'stopping' ||
+						row.state === 'restarting' ||
+						row.state === 'provisioning' ||
+						row.state === 'deleting'
 				},
 				{
 					value: 'unhealthy',
@@ -129,6 +136,7 @@
 		{ id: 'name', label: 'Name', sortable: true, minWidth: 100 },
 		{ id: 'state', label: 'Instance state', sortable: true },
 		{ id: 'checks', label: 'Status check' },
+		{ id: 'machine', label: 'Machine', sortable: true },
 		{ id: 'software', label: 'Software', sortable: true },
 		{ id: 'version', label: 'Version', sortable: true },
 		{ id: 'port', label: 'Port', sortable: true },
@@ -153,6 +161,9 @@
 			// externals have no state, and sort last
 			case 'state':
 				return row.state ?? 'zz';
+
+			case 'machine':
+				return row.externalOnly ? 'zz' : (row.daemon ?? hostName);
 
 			case 'software':
 				return row.software;
@@ -204,11 +215,14 @@
 
 	onMount(() => {
 		void refresh();
+
+		// the primary daemon's name is what a row with no owner belongs to
+		void api('/host')
+			.then((host) => (hostName = host.name ?? ''))
+			.catch(() => {});
 	});
 
-	const PAST_TENSE = { start: 'started', stop: 'stopped', restart: 'restarted' };
-
-	async function stateAction(action: 'start' | 'stop' | 'restart'): Promise<void> {
+	async function stateAction(action: StateAction): Promise<void> {
 		// only act on rows the action can actually apply to
 		const targets = selRows.filter((row) =>
 			action === 'start'
@@ -220,32 +234,8 @@
 			return;
 		}
 
-		const names = targets.map((target) => target.name).join(', ');
-		const note = Notify.loading(`Sending ${action} to ${names}…`);
-		const failures: string[] = [];
-
-		await Promise.all(
-			targets.map((target) =>
-				post(`/instances/${target.name}/state`, { action }).catch((err) =>
-					failures.push(`${target.name}: ${err.message}`)
-				)
-			)
-		);
-
-		if (failures.length) {
-			note.set({
-				level: 'error',
-				message: `Could not ${action} ${failures.length} instance(s)`,
-				detail: failures.join(' · '),
-				closeable: true
-			});
-		} else {
-			note.set({
-				level: 'success',
-				message: `${names} ${PAST_TENSE[action]}`,
-				closeable: true
-			});
-		}
+		// one flash card per instance, each following its own job live
+		await Promise.all(targets.map((target) => instanceStateJob(target.name, action)));
 
 		await refresh();
 	}
@@ -291,15 +281,23 @@
 	function rowActions(row: Row): ContextMenuItem[] {
 		const up = row.state === 'running' || row.state === 'starting';
 
+		// a mid-provision instance has no directory or registry entry to act on yet
+		const busy = row.state === 'provisioning' || row.state === 'deleting';
+		const busyHint = busy ? `${row.name} is still ${row.state}` : undefined;
+
 		return [
 			{
 				label: 'Connect to console',
 				icon: 'code',
+				disabled: busy,
+				hint: busyHint,
 				action: () => goto(`/instances/${row.name}/console`)
 			},
 			{
 				label: 'View details',
 				icon: 'circleInfo',
+				disabled: busy,
+				hint: busyHint,
 				action: () => goto(`/instances/${row.name}`)
 			},
 			{ separator: true },
@@ -327,12 +325,16 @@
 			{
 				label: 'Schedule an action…',
 				icon: 'clock',
+				disabled: busy,
+				hint: busyHint,
 				action: () => openScheduler([row.name])
 			},
 			{ separator: true },
 			{
 				label: 'Manage',
 				icon: 'sliders',
+				disabled: busy,
+				hint: busyHint,
 				submenu: [
 					{
 						label: 'Plugins',
@@ -386,6 +388,11 @@
 		return [
 			{ id: 'state', label: 'Instance state' },
 			{ label: 'Software', value: `${one.software} ${one.mcVersion ?? ''}` },
+			{
+				label: 'Machine',
+				value: one.daemon ?? hostName,
+				href: (one.daemon ?? hostName) ? `/machines/${one.daemon ?? hostName}` : undefined
+			},
 			{ label: 'Game address', value: `127.0.0.1:${one.port}`, copyable: true, style: 'mono' },
 			{ label: 'Memory (heap)', value: one.memory },
 			{ label: 'Java profile', value: one.profile },
@@ -494,7 +501,7 @@
 				rows={allRows}
 				getId={(row) => row.name}
 				searchValue={(row) =>
-					`${row.name} ${row.state ?? 'external'} ${row.software ?? ''} ${row.mcVersion ?? ''} ${row.port ?? row.external ?? ''} ${row.daemon ?? 'primary'}`}
+					`${row.name} ${row.state ?? 'external'} ${row.software ?? ''} ${row.mcVersion ?? ''} ${row.port ?? row.external ?? ''} ${row.daemon ?? hostName}`}
 				searchPlaceholder="Find instance by name, state or version"
 				selectable="multi"
 				bind:selected
@@ -593,12 +600,25 @@
 								}))}
 							/>
 						{/if}
+					{:else if col === 'machine'}
+						{@const machine = row.daemon ?? hostName}
+						{#if machine}
+							<a href="/machines/{machine}" onclick={(event) => event.stopPropagation()}>
+								{machine}
+							</a>
+						{:else}
+							<span class="dim">–</span>
+						{/if}
 					{:else if col === 'software'}
 						{row.software}
 					{:else if col === 'version'}
 						{row.mcVersion ?? '–'}
 					{:else if col === 'port'}
-						<span class="mono">:{row.port}</span>
+						{#if row.port == null}
+							<span class="dim">–</span>
+						{:else}
+							<span class="mono">:{row.port}</span>
+						{/if}
 					{:else if col === 'memory'}
 						{row.memory}
 					{:else if col === 'cpu'}

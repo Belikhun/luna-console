@@ -14,7 +14,13 @@ export const detectMcVersion = call("admin.detectMcVersion") as typeof core.dete
 export const setPort = call("admin.setPort", { cfg: 0 }) as typeof core.setPort;
 export const getServerProperty = call("admin.getServerProperty", { cfg: 0 }) as typeof core.getServerProperty;
 export const setServerProperty = call("admin.setServerProperty", { cfg: 0 }) as typeof core.setServerProperty;
-export const deleteInstance = call("admin.deleteInstance", { cfg: 0 }) as typeof core.deleteInstance;
+
+export const deleteInstance = jobCall("admin.deleteInstance", {
+	cfg: 0,
+	reporter: { arg: 3 },
+	kind: "delete",
+	targetArg: 1,
+}) as typeof core.deleteInstance;
 
 export const createInstance = jobCall("admin.createInstance", {
 	cfg: 0,

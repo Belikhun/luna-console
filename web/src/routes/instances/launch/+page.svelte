@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
-	import { followJob, type JobView } from '$lib/jobs';
+	import { jobFlash } from '$lib/jobflash';
+	import { instanceStateJob } from '$lib/instancejobs';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -10,18 +11,12 @@
 	import Btn from '$lib/components/Btn.svelte';
 	import FormGrid from '$lib/components/FormGrid.svelte';
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
-	import ProgressTree from '$lib/components/ProgressTree.svelte';
 	import GroupsField from '$lib/components/GroupsField.svelte';
-	import Flash from '$lib/components/Flash.svelte';
-	import { Notify } from '$lib/notifications.svelte';
 
 	/** how many recent Minecraft versions the picker offers */
 	const VERSION_CHOICES = 25;
 
 	const MEMORY_CHOICES = ['1G', '2G', '4G', '6G', '8G'];
-
-	/** how long the finished progress tree stays up before the new instance page opens */
-	const REDIRECT_DELAY_MS = 1800;
 
 	let name = $state('');
 	let versions: string[] = $state([]);
@@ -43,8 +38,6 @@
 	let settings: Record<string, string> = $state({});
 	let pluginGroups: string[] = $state([]);
 	let pluginOverrides: Record<string, boolean> = $state({});
-
-	let job: JobView | null = $state(null);
 
 	onMount(async () => {
 		const [paper, insts, cluster] = await Promise.all([
@@ -129,61 +122,59 @@
 
 	async function launch(): Promise<void> {
 		creating = true;
-		job = null;
 
-		const note = Notify.loading(`Creating ${name}…`);
+		// the page navigates away as soon as the job is accepted, so everything
+		// the flow needs afterwards is captured here rather than read from state
+		const target = name;
 
-		try {
-			const started = await post('/instances/create', {
-				name,
-				mcVersion,
-				memory,
-				profile,
-				register,
-				settings: changedSettings,
-				javaArgs,
-				pluginGroups,
-				pluginOverrides,
-				// the registry records an owner only for follower-held instances, so
-				// the primary is sent as "no daemon" rather than by name
-				daemon: daemon === primaryName ? '' : daemon
-			});
+		const done = await jobFlash({
+			title: `Creating ${target}…`,
 
-			job = started.job;
+			start: () =>
+				post('/instances/create', {
+					name: target,
+					mcVersion,
+					memory,
+					profile,
+					register,
+					settings: changedSettings,
+					javaArgs,
+					pluginGroups,
+					pluginOverrides,
+					// the registry records an owner only for follower-held instances, so
+					// the primary is sent as "no daemon" rather than by name
+					daemon: daemon === primaryName ? '' : daemon
+				}),
 
-			const done = await followJob(started.job.id, (view) => {
-				job = view;
-				note.set({ progress: Math.round(view.progress.progress * 100) });
-			});
+			// back to the list, where the new row shows up as "provisioning"
+			started: () => void goto('/instances'),
 
-			const result = done.result as {
-				name: string;
-				port: number;
-				build: number;
-				pluginsDeployed: number;
-				velocityUpdated: boolean;
-			};
+			success: (result) => {
+				const res = result as {
+					name: string;
+					port: number;
+					build: number;
+					pluginsDeployed: number;
+					velocityUpdated: boolean;
+				};
 
-			const proxied = result.velocityUpdated ? ', proxy registered' : '';
+				const proxied = res.velocityUpdated ? ', proxy registered' : '';
 
-			note.set({
-				level: 'success',
-				message: `Created ${result.name} on port ${result.port}`,
-				detail: `Paper build ${result.build}, ${result.pluginsDeployed} plugin(s) deployed${proxied}.`,
-				progress: null,
-				closeable: true
-			});
+				return {
+					message: `Created ${res.name} on port ${res.port}`,
+					detail: `Paper build ${res.build}, ${res.pluginsDeployed} plugin(s) deployed${proxied}.`,
+					actions: [
+						{ label: 'Start now', run: () => void instanceStateJob(res.name, 'start') },
+						{ label: 'View instance', run: () => void goto(`/instances/${res.name}`) }
+					]
+				};
+			},
 
-			setTimeout(() => goto(`/instances/${result.name}`), REDIRECT_DELAY_MS);
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: `Could not create ${name}`,
-				detail: (err as Error).message,
-				progress: null,
-				closeable: true
-			});
+			failure: () => ({ message: `Could not create ${target}` })
+		});
 
+		// a failed start (validation, name clash) leaves the user on the form
+		if (!done) {
 			creating = false;
 		}
 	}
@@ -306,19 +297,6 @@
 		{/if}
 	</Panel>
 
-	{#if job}
-		<Panel title="Progress" description="Live from the same reporter the CLI renders">
-			<ProgressTree root={job.progress} state={job.state} />
-			{#if job.state === 'failed'}
-				<div class="failed">
-					<Flash kind="error">
-						<b>Creation failed:</b> {job.error}
-					</Flash>
-				</div>
-			{/if}
-		</Panel>
-	{/if}
-
 	<div class="summary">
 		<span class="dim">
 			{name || '(name)'} · paper {mcVersion} · {memory} · profile {profile} ·
@@ -354,10 +332,6 @@
 		gap: 0.5rem;
 		align-items: center;
 		margin-top: 0.25rem;
-	}
-
-	.failed {
-		margin-top: 0.875rem;
 	}
 
 	// the summary bar stays reachable while the form scrolls

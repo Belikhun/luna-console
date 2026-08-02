@@ -54,6 +54,8 @@
 		starting: { color: 'var(--text-secondary)', icon: 'rotate', spin: true },
 		stopping: { color: 'var(--warning)', icon: 'rotate', spin: true },
 		restarting: { color: 'var(--text-secondary)', icon: 'rotate', spin: true },
+		provisioning: { color: 'var(--link)', icon: 'rotate', spin: true },
+		deleting: { color: 'var(--warning)', icon: 'rotate', spin: true },
 		pending: { color: 'var(--text-secondary)', icon: 'rotate', spin: true },
 		warning: { color: 'var(--warning)', icon: 'triangleExclamation' },
 		unknown: { color: 'var(--text-secondary)', icon: 'circleQuestion' },

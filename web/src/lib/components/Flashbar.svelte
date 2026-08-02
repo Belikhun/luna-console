@@ -63,6 +63,24 @@
 					<ProgressBar value={item.progress} right="{Math.round(item.progress)}%" />
 				</div>
 			{/if}
+			{#if item.actions.length}
+				<div class="acts">
+					{#each item.actions as act}
+						<button
+							class="act"
+							onclick={() => {
+								act.run();
+
+								if (!act.keep) {
+									Notifications.close(item.id);
+								}
+							}}
+						>
+							{act.label}
+						</button>
+					{/each}
+				</div>
+			{/if}
 		</div>
 		{#if item.closeable}
 			<button class="x" title="Dismiss" onclick={() => Notifications.close(item.id)}>
@@ -213,6 +231,30 @@
 	.pw {
 		margin-top: 0.5rem;
 		max-width: 22rem;
+	}
+
+	// action buttons keep the card's fixed colouring: white outline on the fill
+	.acts {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 0.625rem;
+	}
+
+	.act {
+		@include bare-button;
+
+		padding: 0.25rem 1rem;
+		border: 0.125rem solid rgba(249, 249, 250, 0.7);
+		border-radius: 1rem;
+		color: #f9f9fa;
+		font-family: var(--font);
+		font-size: 0.8125rem;
+		font-weight: 700;
+
+		&:hover {
+			background: rgba(249, 249, 250, 0.16);
+			border-color: #f9f9fa;
+		}
 	}
 
 	.x {

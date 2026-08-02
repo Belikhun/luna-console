@@ -149,6 +149,18 @@ export function getJob(id: string): JobView | undefined {
 }
 
 /**
+ * Every job still in the registry, newest last, optionally filtered by kind —
+ * how the instances list knows a name is mid-provision or mid-delete.
+ */
+export function listJobs(kind?: string): JobView[] {
+	prune();
+
+	const views = [...g.jobs.values()].map((entry) => entry.view);
+
+	return kind === undefined ? views : views.filter((view) => view.kind === kind);
+}
+
+/**
  * Watch a job. The callback fires with the job's current state immediately, then
  * on every throttled progress flush, and a last time when it settles. Returns
  * the unsubscribe function; it is safe to call for an unknown job.

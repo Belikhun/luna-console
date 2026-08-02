@@ -8,4 +8,6 @@ export interface InfoCell {
 	style?: 'default' | 'heading' | 'code' | 'mono';
 	colSpan?: number | 'all';
 	help?: string;
+	/** renders the value as a navigating link */
+	href?: string;
 }

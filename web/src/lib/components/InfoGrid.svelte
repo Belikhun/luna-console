@@ -102,6 +102,8 @@
 						{@render custom(cellItem)}
 					{:else if cellItem.value === null || cellItem.value === undefined || cellItem.value === ''}
 						<span class="none">–</span>
+					{:else if cellItem.href}
+						<a href={cellItem.href}>{cellItem.value}</a>
 					{:else}
 						{cellItem.value}
 					{/if}

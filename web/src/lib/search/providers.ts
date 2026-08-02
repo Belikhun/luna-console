@@ -76,9 +76,9 @@ const PAGES: SearchHit[] = [
 	{ group: 'Pages', label: 'Cleanup', detail: 'Reclaim disk space', href: '/cleanup', icon: 'broom' },
 	{
 		group: 'Pages',
-		label: 'Daemons',
-		detail: 'Cluster daemons and followers',
-		href: '/daemons',
+		label: 'Machines',
+		detail: 'Cluster machines and their daemons',
+		href: '/machines',
 		icon: 'hardDrive'
 	}
 ];
@@ -166,16 +166,16 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Daemons',
+		group: 'Machines',
 		icon: 'hardDrive',
 		load: async () => {
 			const body = await fetchJson<{ daemons?: any[] }>('/api/daemons');
 
 			return (body?.daemons ?? []).map((daemon) => ({
-				group: 'Daemons',
+				group: 'Machines',
 				label: String(daemon.name),
 				detail: `${daemon.mode} · ${daemon.online ? 'online' : 'offline'}${daemon.host ? ` · ${daemon.host}` : ''}`,
-				href: `/daemons/${encodeURIComponent(daemon.name)}`,
+				href: `/machines/${encodeURIComponent(daemon.name)}`,
 				icon: 'hardDrive'
 			}));
 		}

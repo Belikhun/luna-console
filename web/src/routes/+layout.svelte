@@ -95,7 +95,7 @@
 		},
 		{
 			section: 'Cluster',
-			items: [{ label: 'Daemons', href: '/daemons', icon: 'hardDrive' }]
+			items: [{ label: 'Machines', href: '/machines', icon: 'hardDrive' }]
 		},
 		{
 			section: 'Development',

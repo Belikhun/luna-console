@@ -57,17 +57,17 @@
 			{
 				label: 'Open daemon',
 				icon: 'circleInfo',
-				action: () => goto(`/daemons/${row.name}`)
+				action: () => goto(`/machines/${row.name}`)
 			},
 			{
 				label: 'Monitoring',
 				icon: 'chartLine',
-				action: () => goto(`/daemons/${row.name}?tab=monitoring`)
+				action: () => goto(`/machines/${row.name}?tab=monitoring`)
 			},
 			{
 				label: 'Events',
 				icon: 'clockRotateLeft',
-				action: () => goto(`/daemons/${row.name}?tab=events`)
+				action: () => goto(`/machines/${row.name}?tab=events`)
 			},
 			{
 				label: row.outdated ? 'Upgrade daemon' : 'Reinstall binary',
@@ -79,7 +79,7 @@
 						: !row.online
 							? 'the daemon is not connected'
 							: undefined,
-				action: () => goto(`/daemons/${row.name}`)
+				action: () => goto(`/machines/${row.name}`)
 			},
 			{ separator: true },
 			{
@@ -140,7 +140,7 @@
 			lastUpdated = Date.now();
 			loaded = true;
 		} catch (err) {
-			Notify.error('Could not load the daemons', { detail: (err as Error).message });
+			Notify.error('Could not load the machines', { detail: (err as Error).message });
 		} finally {
 			loading = false;
 		}
@@ -339,12 +339,12 @@
 	}
 </script>
 
-<svelte:head><title>Daemons | Luna Console</title></svelte:head>
+<svelte:head><title>Machines | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Daemons"
+	title="Machines"
 	count="{selected.size ? `${selected.size}/` : ''}{daemons.length}"
-	description="Machines running an luna daemon — the primary owns the registry, plugins and schedules; followers manage the instances assigned to them and mirror everything else from the primary. Health streams in on each daemon's heartbeat."
+	description="Machines running a luna daemon — the primary owns the registry, plugins and schedules; followers manage the instances assigned to them and mirror everything else from the primary. Health streams in on each daemon's heartbeat."
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="daemons" />
@@ -358,7 +358,7 @@
 					disabled: selUpgradable.length === 0,
 					hint:
 						selected.size === 0
-							? 'select one or more daemons first'
+							? 'select one or more machines first'
 							: 'the primary is the source of the binary, and an offline follower cannot be reached',
 					action: () => askUpgrade(selUpgradable)
 				},
@@ -390,10 +390,10 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.name}
-		noun="daemon"
+		noun="machine"
 		{sortValue}
-		onRowClick={(row) => goto(`/daemons/${row.name}`)}
-		emptyTitle="No daemons registered"
+		onRowClick={(row) => goto(`/machines/${row.name}`)}
+		emptyTitle="No machines registered"
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'state'}
@@ -403,7 +403,7 @@
 					label={row.online ? (failed ? 'Degraded' : 'Online') : 'Offline'}
 				/>
 			{:else if col === 'name'}
-				<a href="/daemons/{row.name}" onclick={(event) => event.stopPropagation()}>
+				<a href="/machines/{row.name}" onclick={(event) => event.stopPropagation()}>
 					<b>{row.name}</b>
 				</a>
 			{:else if col === 'checks'}

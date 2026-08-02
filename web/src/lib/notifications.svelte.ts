@@ -9,6 +9,14 @@
 
 export type NotificationLevel = 'info' | 'success' | 'warning' | 'error' | 'loading';
 
+/** A button on a notification card, e.g. "Start now" on a finished creation. */
+export interface NotificationAction {
+	label: string;
+	run: () => void;
+	/** whether clicking also dismisses the notification (default: yes) */
+	keep?: boolean;
+}
+
 export interface NotificationInit {
 	level?: NotificationLevel;
 	message?: string;
@@ -17,11 +25,14 @@ export interface NotificationInit {
 	closeable?: boolean;
 	/** 0-100 turns the loading spinner row into a determinate bar */
 	progress?: number | null;
+	/** action buttons rendered on the card */
+	actions?: NotificationAction[];
 }
 
-export interface NotificationItem extends Required<Omit<NotificationInit, 'progress'>> {
+export interface NotificationItem extends Required<Omit<NotificationInit, 'progress' | 'actions'>> {
 	id: number;
 	progress: number | null;
+	actions: NotificationAction[];
 	/** epoch ms at which the item auto-dismisses, null when it stays */
 	expiresAt: number | null;
 	autocloseMs: number | null;
@@ -88,6 +99,7 @@ class NotificationStore {
 			detail: init.detail ?? '',
 			closeable: init.closeable ?? true,
 			progress: init.progress ?? null,
+			actions: init.actions ?? [],
 			expiresAt: null,
 			autocloseMs: null
 		};
@@ -205,6 +217,10 @@ class NotificationStore {
 
 				if (values.progress !== undefined) {
 					item.progress = values.progress;
+				}
+
+				if (values.actions !== undefined) {
+					item.actions = values.actions;
 				}
 
 				// content changed — restart the countdown with the new level's policy

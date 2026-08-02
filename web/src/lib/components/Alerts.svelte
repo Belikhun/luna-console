@@ -53,6 +53,6 @@
 	}
 
 	.sep {
-		color: var(--border-divider);
+		color: var(--border);
 	}
 </style>

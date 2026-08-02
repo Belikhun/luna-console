@@ -4,6 +4,7 @@ import { instanceNames } from "../completers";
 import { loadCluster, saveCluster, managedInstances, loadLock, saveLock } from "../../client/core/config";
 import type { ClusterConfig } from "../../client/core/types";
 import * as inst from "../../client/core/instances";
+import * as lifecycle from "../../client/core/lifecycle";
 import * as admin from "../../client/core/admin";
 import * as screen from "../../client/core/screen";
 import { syncVelocityToml } from "../../client/core/proxy";
@@ -136,12 +137,26 @@ command({
 		const { cfg, names } = await resolveNames(args, !!opts.all, "start");
 
 		for (const name of names) {
-			const outcome = await inst.startInstance(cfg, name);
+			const progress = new ProgressReporter(`start ${name}`);
+			const view = new ProgressView(progress).start();
 
-			if (outcome === "started") {
-				ok(`${pc.bold(name)} started in screen ${pc.cyan(inst.sessionName(cfg, name))}`);
-			} else {
-				info(`${pc.bold(name)} already running`);
+			try {
+				const res = await lifecycle.startInstanceTracked(cfg, name, progress);
+
+				view.stop();
+
+				if (res.outcome === "started") {
+					ok(
+						`${pc.bold(name)} started in screen ${pc.cyan(inst.sessionName(cfg, name))} ` +
+							pc.dim(`(${fmtDuration(res.tookMs)})`),
+					);
+				} else {
+					info(`${pc.bold(name)} already running`);
+				}
+			} catch (err) {
+				view.stop();
+
+				throw err;
 			}
 		}
 	},
@@ -157,17 +172,25 @@ command({
 		const { cfg, names } = await resolveNames(args, !!opts.all, "stop");
 
 		for (const name of names) {
-			const spin = new Spinner().start(`stopping ${name}...`);
-			const res = await inst.stopInstance(cfg, name);
+			const progress = new ProgressReporter(`stop ${name}`);
+			const view = new ProgressView(progress).start();
 
-			spin.stop();
+			try {
+				const res = await lifecycle.stopInstanceTracked(cfg, name, progress);
 
-			if (res.outcome === "stopped") {
-				ok(`${pc.bold(name)} stopped ${pc.dim(`(${fmtDuration(res.tookMs)})`)}`);
-			} else if (res.outcome === "forced") {
-				warn(`${name}: graceful stop timed out, sent SIGTERM`);
-			} else {
-				info(`${pc.bold(name)} not running`);
+				view.stop();
+
+				if (res.outcome === "stopped") {
+					ok(`${pc.bold(name)} stopped ${pc.dim(`(${fmtDuration(res.tookMs)})`)}`);
+				} else if (res.outcome === "forced") {
+					warn(`${name}: graceful stop timed out, sent SIGTERM`);
+				} else {
+					info(`${pc.bold(name)} not running`);
+				}
+			} catch (err) {
+				view.stop();
+
+				throw err;
 			}
 		}
 	},
@@ -183,17 +206,19 @@ command({
 		const { cfg, names } = await resolveNames(args, !!opts.all, "stop");
 
 		for (const name of names) {
-			const spin = new Spinner().start(`stopping ${name}...`);
-			const res = await inst.stopInstance(cfg, name);
+			const progress = new ProgressReporter(`restart ${name}`);
+			const view = new ProgressView(progress).start();
 
-			spin.stop();
+			try {
+				await lifecycle.restartInstanceTracked(cfg, name, progress);
 
-			if (res.outcome === "forced") {
-				warn(`${name}: graceful stop timed out, forced`);
+				view.stop();
+				ok(`${pc.bold(name)} restarted`);
+			} catch (err) {
+				view.stop();
+
+				throw err;
 			}
-
-			await inst.startInstance(cfg, name);
-			ok(`${pc.bold(name)} restarted`);
 		}
 	},
 });
@@ -687,7 +712,15 @@ command({
 			}
 		}
 
-		await admin.deleteInstance(cfg, name, !!opts.purge);
+		const progress = new ProgressReporter(`delete ${name}`);
+		const view = new ProgressView(progress).start();
+
+		try {
+			await admin.deleteInstance(cfg, name, !!opts.purge, progress);
+		} finally {
+			view.stop();
+		}
+
 		await saveCluster(cfg);
 
 		const sync = await syncVelocityToml(cfg);

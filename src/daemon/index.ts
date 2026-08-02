@@ -77,6 +77,13 @@ export async function runDaemon(): Promise<void> {
 		unix: dcfg.socket,
 		fetch: buildHandler(dcfg, true, startedAt),
 		websocket: noWebsocket,
+		// SSE consumers (job streams, console tails) legitimately go quiet for
+		// long stretches — a first server boot spends a minute in "Loading
+		// libraries" with nothing to report — and Bun's default 10s idle timeout
+		// would cut them off mid-job. 0 disables it. Bun's types claim unix
+		// listeners take no idleTimeout, but the runtime both applies the 10s
+		// default and honours the override (its own timeout error says to pass it).
+		idleTimeout: 0 as never,
 	});
 
 	log(`luna daemon "${dcfg.name}" (${dcfg.mode}) — root ${dcfg.root}`);
@@ -104,6 +111,9 @@ export async function runDaemon(): Promise<void> {
 				port: dcfg.listen.port,
 				fetch: buildHandler(dcfg, false, startedAt),
 				websocket: hubWebSocket,
+				// same SSE-idle reasoning as the local listener — a forwarded job's
+				// stream crosses this one
+				idleTimeout: 0,
 			});
 
 			installHub(dcfg, startedAt);

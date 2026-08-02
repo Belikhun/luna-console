@@ -18,6 +18,7 @@ import * as cleanupCore from "../core/cleanup";
 import * as configCore from "../core/config";
 import * as environmentCore from "../core/environment";
 import * as instancesCore from "../core/instances";
+import * as lifecycleCore from "../core/lifecycle";
 import * as lunaCore from "../core/luna";
 import * as pluginstateCore from "../core/pluginstate";
 import * as pluginsCore from "../core/plugins";
@@ -365,7 +366,12 @@ export const OPS: Record<string, OpSpec> = {
 	"admin.setPort": { fn: adminCore.setPort, cfg: 0 },
 	"admin.getServerProperty": { fn: adminCore.getServerProperty, cfg: 0, instance: 1 },
 	"admin.setServerProperty": { fn: adminCore.setServerProperty, cfg: 0, instance: 1 },
-	"admin.deleteInstance": { fn: adminCore.deleteInstance, cfg: 0, instance: 1 },
+	"admin.deleteInstance": {
+		fn: adminCore.deleteInstance,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 3 },
+	},
 
 	// -- instance lifecycle ---------------------------------------------------
 	"instances.writeRunScript": { fn: instancesCore.writeRunScript, cfg: 0, instance: 1 },
@@ -374,6 +380,26 @@ export const OPS: Record<string, OpSpec> = {
 	"instances.startInstance": { fn: instancesCore.startInstance, cfg: 0, instance: 1 },
 	"instances.stopInstance": { fn: instancesCore.stopInstance, cfg: 0, instance: 1 },
 	"instances.sendCommand": { fn: instancesCore.sendCommand, cfg: 0, instance: 1 },
+
+	// -- tracked lifecycle (log-derived live progress; run as jobs) -------------
+	"lifecycle.startTracked": {
+		fn: lifecycleCore.startInstanceTracked,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 2 },
+	},
+	"lifecycle.stopTracked": {
+		fn: lifecycleCore.stopInstanceTracked,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 2 },
+	},
+	"lifecycle.restartTracked": {
+		fn: lifecycleCore.restartInstanceTracked,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 2 },
+	},
 
 	// -- plugins ---------------------------------------------------------------
 	"plugins.scan": { fn: pluginsCore.scan, cfg: 0, lock: 1 },
