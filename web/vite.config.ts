@@ -34,6 +34,14 @@ export default defineConfig(({ command }) => ({
 		})
 	],
 
+	build: {
+		// Vite leaves SSR output unminified by default, which is wrong for us: the
+		// server bundle is what ships inside the container image, and unminified it
+		// carries every JSDoc block, every `//` comment and a `//#region src/…`
+		// marker per module — the source tree's layout and intent, published.
+		minify: true
+	},
+
 	css: {
 		preprocessorOptions: {
 			scss: {

@@ -1,10 +1,18 @@
-node_modules
+# Allowlist, not a deny list: the build context is exactly the inputs the two
+# builds read, so nothing new — a doc, a scratch file, a private key — can reach
+# a layer by being added to the repo. The runtime stage copies three artifacts
+# out of the builder, so none of this ships either way.
+*
+
+!package.json
+!bun.lock
+!tsconfig.json
+!scripts
+!src
+!web
+
+# ...minus everything under web/ that is generated or installed
 web/node_modules
 web/.svelte-kit
+web/.svelte-kit-dev
 web/build
-dist
-.git
-.github
-deploy
-docs
-*.log

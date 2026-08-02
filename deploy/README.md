@@ -37,6 +37,13 @@ the `luna` binary, the web console, a JRE and the tools the daemon shells out to
 (`screen`, `df`, `ss`, `pgrep`, `unzip`) — a Minecraft backend runs *inside* the
 container, in a screen session the daemon starts.
 
+That is all it carries. The runtime stage starts from the JRE and copies in
+three artifacts — `/usr/local/bin/luna`, `/opt/mrds/web` (the adapter-node
+bundle, source maps stripped) and `bun` to run the console. No source, no
+lockfiles, no build tooling, no docs: everything the build reads stays in the
+builder stage, and the build context itself is an allowlist (`.dockerignore`),
+so a file nobody named cannot reach a layer.
+
 ```
 cp .env.example .env                             # MRDS_TOKEN at minimum
 docker compose -f docker-compose.primary.yml up -d
