@@ -16,9 +16,14 @@ import { getEvents } from "./events";
 import { ownsInstance } from "./identity";
 import { getJob, startJob, watchJob, type JobView } from "./jobs";
 import { runOp } from "./rpc";
+import { localBinaryMeta, localBinaryPath } from "./upgrade";
+import { BUILD_AT, COMMIT, VERSION, buildPlatform, buildVersion } from "../version";
 
 /** Local API protocol revision — clients refuse to talk across a mismatch. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
+
+/** How often the fleet health stream emits. Matches the heartbeat cadence. */
+const DAEMON_STREAM_MS = 5_000;
 
 /** Per-connection data attached at the cluster WebSocket upgrade. */
 export interface WsData {
@@ -141,6 +146,49 @@ function jobStream(id: string): Response {
 	return new Response(stream, { headers: SSE_HEADERS });
 }
 
+/**
+ * SSE stream of the whole fleet's health: every daemon's row, including the
+ * heartbeat-sourced samples the hub collects from followers. Everything it
+ * serves is already in memory, so the stream is a timer over a snapshot rather
+ * than a fan-out of change events.
+ */
+function daemonsStream(): Response {
+	let timer: ReturnType<typeof setInterval> | undefined;
+
+	const stream = new ReadableStream({
+		start(controller) {
+			const encoder = new TextEncoder();
+
+			const push = async (): Promise<void> => {
+				let payload: unknown;
+
+				try {
+					payload = (await runOp("daemon.listDaemons", [])).result;
+				} catch (err) {
+					payload = { error: err instanceof Error ? err.message : String(err) };
+				}
+
+				try {
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ daemons: payload })}\n\n`));
+				} catch {
+					// the client went away between ticks
+					clearInterval(timer);
+				}
+			};
+
+			void push();
+
+			timer = setInterval(() => void push(), DAEMON_STREAM_MS);
+		},
+
+		cancel() {
+			clearInterval(timer);
+		},
+	});
+
+	return new Response(stream, { headers: SSE_HEADERS });
+}
+
 async function handleRpc(op: string, request: Request): Promise<Response> {
 	let args: unknown[];
 
@@ -187,6 +235,34 @@ async function handleJobStart(request: Request): Promise<Response> {
 	);
 
 	return jsonResponse({ ok: true, job });
+}
+
+/**
+ * GET /files/binary[/meta] — the binary this daemon is running, for follower
+ * self-upgrade. Deliberately gated on the token alone and never on the protocol
+ * version: a follower whose protocol no longer matches is exactly the one that
+ * needs a new build (DESIGN.md §4.7).
+ */
+async function handleBinary(metaOnly: boolean): Promise<Response> {
+	let meta;
+
+	try {
+		meta = await localBinaryMeta();
+	} catch (err) {
+		return errorResponse(err instanceof Error ? err.message : String(err), 409);
+	}
+
+	if (metaOnly) {
+		return jsonResponse({ ok: true, ...meta });
+	}
+
+	return new Response(Bun.file(localBinaryPath()), {
+		headers: {
+			"content-type": "application/octet-stream",
+			"x-mrds-version": meta.version,
+			"x-mrds-sha256": meta.sha256,
+		},
+	});
 }
 
 /** GET /files/pool/<file> — jar streaming for follower pool mirroring. */
@@ -246,10 +322,21 @@ export function buildHandler(
 				mode: dcfg.mode,
 				root: dcfg.root,
 				protocol: PROTOCOL_VERSION,
+				// the build version is what an upgrade changes; the protocol above
+				// is what refuses a mismatched client
+				version: buildVersion(),
+				commit: COMMIT,
+				release: VERSION,
+				buildAt: BUILD_AT,
+				platform: buildPlatform(),
 				pid: process.pid,
 				startedAt,
 				listen: dcfg.listen ?? null,
 			});
+		}
+
+		if (path === "/files/binary" || path === "/files/binary/meta") {
+			return await handleBinary(path.endsWith("/meta"));
 		}
 
 		if (path.startsWith("/rpc/") && request.method === "POST") {
@@ -273,6 +360,10 @@ export function buildHandler(
 			}
 
 			return jsonResponse({ ok: true, job });
+		}
+
+		if (path === "/daemons/stream") {
+			return daemonsStream();
 		}
 
 		if (path === "/events") {

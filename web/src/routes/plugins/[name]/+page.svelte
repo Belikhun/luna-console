@@ -14,6 +14,7 @@
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
 	import Icon from '$lib/components/Icon.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
@@ -425,10 +426,16 @@
 						Add to instances
 					</Btn>
 				{/snippet}
-				<DataTable
+				<ResourceTable
+					tableId="plugin-usage"
 					columns={usageCols}
 					rows={data.usage}
 					getId={(row) => row.instance}
+					searchValue={(row) => `${row.instance} ${row.origin ?? ''} ${row.version ?? ''}`}
+					searchPlaceholder="Find an instance"
+					searchWidth="18rem"
+					noun="instance"
+					pageSize={15}
 					rowDim={(row) => row.disabled}
 					emptyTitle="Not used anywhere"
 					emptyText="Add it to an instance with the control above, or put it in a plugin group."
@@ -492,7 +499,7 @@
 							{/if}
 						{/if}
 					{/snippet}
-				</DataTable>
+				</ResourceTable>
 			</Panel>
 		{:else}
 			<Panel title="Families" count={data.families.length} flush>

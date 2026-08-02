@@ -1,15 +1,18 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post, patch, del } from '$lib/api';
 	import { fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import DataTable from '$lib/components/DataTable.svelte';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 
@@ -141,9 +144,45 @@
 		{ id: 'trigger', label: 'Trigger' },
 		{ id: 'next', label: 'Next run', sortable: true },
 		{ id: 'last', label: 'Last outcome' },
-		{ id: 'runs', label: 'Runs', width: 90, align: 'right' },
-		{ id: 'controls', label: '', width: 210 }
+		{ id: 'runs', label: 'Runs', width: 90, align: 'right' }
 	];
+
+	/** A schedule's verbs — the row menu and the toolbar's Actions button. */
+	function rowActions(schedule: Schedule): ContextMenuItem[] {
+		return [
+			{ label: 'Run now', icon: 'play', action: () => runNow(schedule) },
+			{
+				label: historyFor === schedule.id ? 'Show all executions' : 'Show its executions',
+				icon: 'clockRotateLeft',
+				action: () => {
+					historyFor = historyFor === schedule.id ? null : schedule.id;
+				}
+			},
+			{
+				label: schedule.enabled ? 'Disable schedule' : 'Enable schedule',
+				icon: schedule.enabled ? 'pause' : 'play',
+				action: () => toggleEnabled(schedule, !schedule.enabled)
+			},
+			{ separator: true },
+			{
+				label: 'Delete schedule',
+				icon: 'trash',
+				color: 'danger',
+				action: () => remove(schedule)
+			}
+		];
+	}
+
+	const scheduleText = (schedule: Schedule): string =>
+		[
+			schedule.name,
+			schedule.description ?? '',
+			schedule.action,
+			schedule.instances.join(' '),
+			triggerText(schedule),
+			schedule.enabled ? 'enabled' : 'disabled',
+			schedule.lastOutcome ?? ''
+		].join(' ');
 
 	const eventCols: Column[] = [
 		{ id: 'time', label: 'Time', width: 180, sortable: true },
@@ -155,6 +194,11 @@
 	const shownEvents = $derived(
 		historyFor ? events.filter((event) => event.id === historyFor) : events
 	);
+
+	let selected: Set<string> = $state(new Set());
+
+	/** The row the header's Actions dropdown acts on. */
+	const one = $derived(schedules.find((row: any) => selected.has(row.id)));
 </script>
 
 <svelte:head><title>Schedules | MRDS Console</title></svelte:head>
@@ -167,15 +211,25 @@
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="schedules" />
+		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
 		<Btn variant="primary" icon="clock" onclick={() => goto('/schedules/new')}>Create schedule</Btn>
 	{/snippet}
 </PageHeader>
 
 <Panel flush>
-	<DataTable
+	<ResourceTable
+		tableId="schedules"
+		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
 		rows={schedules}
 		getId={(schedule) => schedule.id}
+		searchValue={scheduleText}
+		searchPlaceholder="Find a schedule by name, action or instance"
+		selectable="single"
+		bind:selected
+		{rowActions}
+		rowLabel={(schedule) => schedule.name}
+		noun="schedule"
 		emptyTitle="No schedules"
 		emptyText="Create one — e.g. a nightly survival restart at 04:30."
 	>
@@ -211,17 +265,9 @@
 				{/if}
 			{:else if col === 'runs'}
 				{schedule.runs}{schedule.maxRuns ? ` / ${schedule.maxRuns}` : ''}
-			{:else if col === 'controls'}
-				<span class="controls">
-					<Btn onclick={() => runNow(schedule)}>Run now</Btn>
-					<Btn onclick={() => (historyFor = historyFor === schedule.id ? null : schedule.id)}>
-						History
-					</Btn>
-					<Btn variant="icon" icon="trash" title="Delete" onclick={() => remove(schedule)} />
-				</span>
 			{/if}
 		{/snippet}
-	</DataTable>
+	</ResourceTable>
 </Panel>
 
 <div class="gap"></div>
@@ -234,11 +280,15 @@
 		: 'Every execution, newest first (kept across restarts)'}
 	flush
 >
-	<DataTable
+	<ResourceTable
+		tableId="schedule-events"
 		columns={eventCols}
 		rows={shownEvents}
 		getId={(event) => String(event.seq)}
-		maxHeight="30rem"
+		searchPlaceholder="Find an execution"
+		searchWidth="20rem"
+		pageSize={10}
+		noun="execution"
 		emptyTitle="No executions yet"
 		emptyText="Runs land here as schedules fire."
 	>
@@ -256,16 +306,11 @@
 				<span class="dim">{event.detail}</span>
 			{/if}
 		{/snippet}
-	</DataTable>
+	</ResourceTable>
 </Panel>
 
 <style lang="scss">
 	.gap {
 		height: 1rem;
-	}
-
-	.controls {
-		display: inline-flex;
-		gap: 0.375rem;
 	}
 </style>

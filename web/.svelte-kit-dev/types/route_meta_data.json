@@ -8,6 +8,9 @@
 	"/api/daemons": [
 		"src/routes/api/daemons/+server.ts"
 	],
+	"/api/daemons/stream": [
+		"src/routes/api/daemons/stream/+server.ts"
+	],
 	"/api/daemons/[name]": [
 		"src/routes/api/daemons/[name]/+server.ts"
 	],
@@ -130,6 +133,7 @@
 	],
 	"/cleanup": [],
 	"/daemons": [],
+	"/daemons/[name]": [],
 	"/environment": [],
 	"/gallery": [],
 	"/instances": [],

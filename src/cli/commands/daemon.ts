@@ -7,7 +7,13 @@ import { command, Bail } from "../framework";
 import { pc, info, ok, warn, fail, printTable, Sym } from "../ui";
 import { ensureConnected, daemonInfo, DaemonUnavailable } from "../../client/socket";
 import { loadCluster, saveCluster } from "../../client/core/config";
-import { listDaemons } from "../../client/daemon";
+import {
+	daemonDetail,
+	daemonHealth,
+	listDaemons,
+	upgradeDaemon,
+	type HealthSample,
+} from "../../client/daemon";
 
 /** Milliseconds → compact "3d 4h" / "2h 5m" / "3m 12s" uptime. */
 function uptimeText(sinceMs: number): string {
@@ -25,6 +31,42 @@ function uptimeText(sinceMs: number): string {
 	}
 
 	return `${minutes}m ${seconds % 60}s`;
+}
+
+/** "37%" with the tone the console uses for the same thresholds. */
+function pctCell(used: number, total: number): string {
+	if (total <= 0) {
+		return pc.dim("—");
+	}
+
+	const pct = Math.round((used / total) * 100);
+	const text = `${pct}%`;
+
+	if (pct >= 90) {
+		return pc.red(text);
+	}
+
+	if (pct >= 75) {
+		return pc.yellow(text);
+	}
+
+	return text;
+}
+
+/** Bytes → "12.3 GB", for the disk column. */
+function gb(bytes: number): string {
+	return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+/** The health lines shared by `daemon status` and `daemon show`. */
+function printHealth(health: HealthSample): void {
+	const memPct = pctCell(health.memUsedMb, health.memTotalMb);
+	const diskPct = pctCell(health.diskUsedBytes, health.diskTotalBytes);
+
+	info(`cpu       ${health.cpuPct}% (load ${health.load1.toFixed(2)} ${health.load5.toFixed(2)} ${health.load15.toFixed(2)})`);
+	info(`memory    ${health.memUsedMb} / ${health.memTotalMb} MB (${memPct})`);
+	info(`disk      ${gb(health.diskUsedBytes)} / ${gb(health.diskTotalBytes)} (${diskPct})`);
+	info(`inst mem  ${health.instancesRssMb} MB resident across ${Object.keys(health.instanceRssMb).length} instance(s)`);
 }
 
 command({
@@ -60,12 +102,19 @@ command({
 		const d = daemonInfo();
 
 		ok(`daemon "${d.name}" — ${d.mode}`);
+		info(`version   ${d.version}${d.buildAt ? ` (built ${new Date(d.buildAt).toLocaleString()})` : ""}`);
 		info(`root      ${d.root}`);
 		info(`pid       ${d.pid} (up ${uptimeText(d.startedAt)})`);
-		info(`protocol  ${d.protocol}`);
+		info(`protocol  ${d.protocol} · ${d.platform}`);
 
 		if (d.listen) {
 			info(`cluster   ${d.listen.host}:${d.listen.port}`);
+		}
+
+		const health = await daemonHealth();
+
+		if (health) {
+			printHealth(health);
 		}
 	},
 });
@@ -80,7 +129,7 @@ command({
 		const table: string[][] = [];
 
 		for (const row of rows) {
-			const stats = row.stats;
+			const health = row.health;
 
 			table.push([
 				row.online ? pc.green(Sym.ok) : pc.red(Sym.bad),
@@ -88,8 +137,11 @@ command({
 				row.mode,
 				row.host ?? pc.dim("—"),
 				row.instances.length ? row.instances.join(", ") : pc.dim("none"),
-				stats ? stats.load1.toFixed(2) : pc.dim("—"),
-				stats ? `${stats.memUsedMb}/${stats.memTotalMb} MB` : pc.dim("—"),
+				health ? `${health.cpuPct}%` : pc.dim("—"),
+				health ? pctCell(health.memUsedMb, health.memTotalMb) : pc.dim("—"),
+				health ? pctCell(health.diskUsedBytes, health.diskTotalBytes) : pc.dim("—"),
+				row.latencyMs === null ? pc.dim("—") : `${row.latencyMs}ms`,
+				row.outdated ? pc.yellow(`${row.version} (old)`) : (row.version ?? pc.dim("—")),
 				row.online
 					? pc.green("online")
 					: row.lastSeen
@@ -99,8 +151,131 @@ command({
 		}
 
 		printTable(table, {
-			head: ["", "name", "mode", "host", "instances", "load", "memory", "last seen"],
+			head: [
+				"",
+				"name",
+				"mode",
+				"host",
+				"instances",
+				"cpu",
+				"mem",
+				"disk",
+				"latency",
+				"version",
+				"last seen",
+			],
 		});
+	},
+});
+
+command({
+	path: ["daemon", "show"],
+	desc: "Health, checks and instance memory of one daemon",
+	args: [
+		{
+			name: "name",
+			required: true,
+			complete: async () => (await listDaemons()).map((row) => row.name),
+		},
+	],
+
+	handler: async (args) => {
+		const name = args[0]!;
+		const detail = await daemonDetail(name);
+
+		if (!detail) {
+			throw new Bail(`unknown daemon: ${name}`);
+		}
+
+		const { row } = detail;
+
+		if (row.online) {
+			ok(`daemon "${row.name}" — ${row.mode}, online`);
+		} else {
+			fail(`daemon "${row.name}" — ${row.mode}, offline`);
+		}
+
+		info(`version   ${row.version ?? pc.dim("—")}${row.outdated ? pc.yellow(" — behind the primary") : ""}`);
+		info(`host      ${row.host ?? pc.dim("—")}${row.addresses.length ? ` (${row.addresses.join(", ")})` : ""}`);
+		info(`root      ${row.root ?? pc.dim("—")}`);
+		info(`instances ${row.instances.length ? row.instances.join(", ") : pc.dim("none")}`);
+
+		if (row.latencyMs !== null) {
+			info(`latency   ${row.latencyMs}ms`);
+		}
+
+		if (row.health) {
+			printHealth(row.health);
+		}
+
+		if (row.checks.length) {
+			console.log("");
+
+			printTable(
+				row.checks.map((check) => [
+					check.ok === undefined ? pc.dim(Sym.bad) : check.ok ? pc.green(Sym.ok) : pc.red(Sym.bad),
+					check.name,
+					pc.dim(check.detail),
+				]),
+				{ head: ["", "check", "detail"] },
+			);
+		}
+
+		const rss = Object.entries(row.health?.instanceRssMb ?? {});
+
+		if (rss.length) {
+			console.log("");
+
+			printTable(
+				rss.map(([instance, mb]) => [
+					instance,
+					row.health?.states[instance] ?? pc.dim("?"),
+					`${mb} MB`,
+				]),
+				{ head: ["instance", "state", "resident"] },
+			);
+		}
+	},
+});
+
+command({
+	path: ["daemon", "upgrade"],
+	desc: "Upgrade a follower daemon to the binary this primary is running",
+	args: [
+		{
+			name: "name",
+			required: true,
+			complete: async () =>
+				(await listDaemons()).filter((row) => row.mode === "follower").map((row) => row.name),
+		},
+	],
+	opts: [{ flag: "--force", desc: "upgrade even when the build matches or jobs are running" }],
+
+	handler: async (args, opts) => {
+		const name = args[0]!;
+		const rows = await listDaemons();
+		const row = rows.find((entry) => entry.name === name);
+
+		if (!row) {
+			throw new Bail(`unknown daemon: ${name}`);
+		}
+
+		if (row.mode === "primary") {
+			throw new Bail(
+				"the primary is the source of the binary — build a new one and restart its service",
+			);
+		}
+
+		if (!row.online) {
+			throw new Bail(`daemon "${name}" is not connected`);
+		}
+
+		info(`upgrading ${name} (${row.version ?? "unknown build"})…`);
+
+		const result = await upgradeDaemon(name, !!opts.force);
+
+		ok(`${name}: ${result.from} → ${result.to}`);
+		info("it exits now; the service manager restarts it on the new build");
 	},
 });
 

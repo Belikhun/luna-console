@@ -33,7 +33,11 @@ import * as modrinth from "../core/services/modrinth";
 import * as papermc from "../core/services/papermc";
 
 import * as events from "./events";
+import * as health from "./health";
+import * as upgrade from "./upgrade";
+import type { DaemonRow } from "./hub";
 import { daemonName } from "./identity";
+import { buildVersion } from "../version";
 import * as sampler from "./sampler";
 
 export interface OpSpec {
@@ -217,29 +221,106 @@ async function createInstanceRouted(
 	return await adminCore.createInstance(cfg, name, opts);
 }
 
-/** Provider behind `daemon.listDaemons` — replaced by the hub on a primary. */
+/**
+ * Provider behind `daemon.listDaemons` — replaced by the hub on a primary.
+ * Without a hub there are no live links to report, so this daemon describes
+ * itself from its own health and everything else from the registry alone.
+ */
 let daemonsProvider: () => Promise<unknown> = async () => {
 	const cfg = await configCore.loadCluster();
-	const daemons = cfg.daemons ?? {};
+	const self = daemonName();
+	const own = health.currentHealth() ?? null;
 
-	return Object.entries(daemons).map(([name, reg]) => ({
-		name,
+	const selfRow: DaemonRow = {
+		name: self,
 		mode: "follower",
-		host: reg.host,
-		online: false,
-		version: reg.version ?? null,
+		host: null,
+		addresses: health.hostAddresses(),
+		online: true,
+		version: buildVersion(),
+		protocol: null,
+		outdated: false,
+		root: configCore.root(),
 		connectedAt: null,
-		lastSeen: reg.lastSeen ?? null,
-		stats: null,
+		lastSeen: new Date().toISOString(),
+		lastBeatMs: null,
+		latencyMs: null,
+		uptimeMs: null,
+		health: own,
+		checks: [],
+		reach: null,
 		instances: Object.entries(cfg.instances)
-			.filter(([, inst]) => inst.daemon === name)
+			.filter(([, inst]) => inst.daemon === self)
 			.map(([instName]) => instName),
-	}));
+	};
+
+	const others: DaemonRow[] = Object.entries(cfg.daemons ?? {})
+		.filter(([name]) => name !== self)
+		.map(([name, reg]) => ({
+			name,
+			mode: "follower",
+			host: reg.host,
+			addresses: reg.addresses ?? [],
+			online: false,
+			version: reg.version ?? null,
+			protocol: null,
+			outdated: false,
+			root: reg.root ?? null,
+			connectedAt: null,
+			lastSeen: reg.lastSeen ?? null,
+			lastBeatMs: null,
+			latencyMs: null,
+			uptimeMs: null,
+			health: null,
+			checks: [],
+			reach: null,
+			instances: Object.entries(cfg.instances)
+				.filter(([, inst]) => inst.daemon === name)
+				.map(([instName]) => instName),
+		}));
+
+	return [selfRow, ...others];
 };
+
+/** Provider behind `daemon.daemonDetail` — replaced by the hub on a primary. */
+let daemonDetailProvider: (name: string) => Promise<unknown> = async (name: string) => {
+	const rows = (await daemonsProvider()) as DaemonRow[];
+	const row = rows.find((entry) => entry.name === name);
+
+	if (!row) {
+		return null;
+	}
+
+	return {
+		row,
+		history: row.name === daemonName() ? health.healthHistory() : [],
+		events: events.getEvents(events.daemonEventKey(name)),
+	};
+};
+
+/**
+ * Provider behind `daemon.upgradeDaemon` — replaced by the hub on a primary,
+ * which is the only role that can reach another daemon.
+ */
+let upgradeSender: (name: string, force: boolean) => Promise<unknown> = async () => {
+	throw new Error("only the primary daemon can upgrade another daemon");
+};
+
+/** Swap in the hub's follower upgrade sender. */
+export function setUpgradeSender(
+	sender: (name: string, force: boolean) => Promise<unknown>,
+): void {
+	upgradeSender = sender;
+}
 
 /** Swap in the hub's live daemons listing. */
 export function setDaemonsProvider(provider: () => Promise<unknown>): void {
 	daemonsProvider = provider;
+}
+
+/** Swap in the hub's per-daemon detail view. */
+export function setDaemonDetailProvider(provider: (name: string) => Promise<unknown>): void {
+	daemonDetailProvider = provider;
 }
 
 /** Every operation the daemon serves, `<module>.<function>`. */
@@ -378,6 +459,15 @@ export const OPS: Record<string, OpSpec> = {
 	"daemon.pushEvent": { fn: events.pushEvent },
 	"daemon.getEvents": { fn: events.getEvents },
 	"daemon.listDaemons": { fn: () => daemonsProvider() },
+	"daemon.daemonDetail": { fn: (name: string) => daemonDetailProvider(name) },
+	"daemon.health": { fn: health.currentHealth },
+	"daemon.binaryMeta": { fn: upgrade.localBinaryMeta },
+	// runs on the daemon being upgraded; the primary forwards it there
+	"daemon.selfUpgrade": { fn: upgrade.selfUpgrade },
+	"daemon.upgradeDaemon": {
+		fn: (name: string, force?: boolean) => upgradeSender(name, force ?? false),
+	},
+	"daemon.healthHistory": { fn: health.healthHistory },
 };
 
 /**

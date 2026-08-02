@@ -224,6 +224,31 @@ export interface InstanceConfig {}
 - `luna-*` jars are in-house plugins (`source: "luna"` in the lockfile): excluded from
   Modrinth checks; their deployment mechanism is still to be provided.
 
+### Daemon health
+- **Every daemon samples its own machine** (`daemon/health.ts`, 5 s, one hour kept):
+  CPU, memory, cluster-root disk, load, host uptime, IP addresses and each owned
+  instance's resident memory. A follower's samples reach the primary on the
+  heartbeat **pong**, never by a separate poll — the primary's `ping` carries a
+  sequence number and its clock, so the same round trip measures link latency; three
+  unanswered pings close the link. New health facts belong in `HealthSample`, so the
+  CLI, the fleet stream and the detail view all get them at once.
+- **Reachability is judged from the primary**, by TCP-probing a follower's advertised
+  host on each running instance's port — a healthy WebSocket link says nothing about
+  whether velocity can reach the backends. Follower-owned instances are therefore
+  created with `server-ip=0.0.0.0`; only the primary's own backends bind loopback.
+- Daemon events go into the shared cluster log under the pseudo-instance
+  `daemon:<name>` (`daemonEventKey`), never a second log.
+- **Build version ≠ protocol version.** The build version (generated `src/version.ts`:
+  package version + git SHA + build time) is what an upgrade changes; the protocol version is
+  what closes a mismatched link. Report both everywhere a daemon is described. The primary
+  serves the binary it is itself running (`process.execPath`) at `/files/binary`, and a
+  follower self-upgrades by verified download → atomic rename over its own path → exit, so
+  systemd restarts it — never mid-job, never for the primary. `/info` and `/files/binary*`
+  are gated on the token only, never on the protocol check: a follower rejected for protocol
+  skew is exactly the one that needs a new binary (DESIGN.md §4.7). Self-upgrade refuses
+  outright from a source run — `process.execPath` is the bun interpreter there, and
+  overwriting it would take the toolchain with it (`isCompiledBinary()`).
+
 ### Operations
 - Destructive or cluster-wide actions (stop, delete, set-version, cleanup) must be
   idempotent, report exactly what they touched, and confirm before acting unless the user
@@ -275,6 +300,26 @@ Wiring rules:
 - **Everything goes through the component library** in `web/src/lib/components/` — no
   hand-rolled buttons, tables, grids or panels inside pages. Extend the component when a page
   needs something new.
+- **Tables on a main screen go through `ResourceTable`** (DESIGN.md §5.1) — the wrapper that
+  bundles search, optional filter groups, pagination, the preferences dialog and a per-row
+  context menu into one component, with `tableId` mandatory so preferences persist. Row verbs
+  are declared once, as `rowActions(row)`, and feed both the row's context menu and the
+  screen's **Actions** dropdown — which lives in the `PageHeader`, never in the table's
+  toolbar. The table bar is search + filters on the left, range/paging/preferences on the
+  right. A page never wires `DataTable`, `SearchInput`, `PagingBar` and `ContextMenu`
+  together by hand, and never re-implements search or paging — extend `ResourceTable`.
+- **Every screen has a real action bar** in its `PageHeader`, modelled on the instances
+  screen (DESIGN.md §5.2), in this order: `RefreshControl`, Actions dropdown for the
+  selection, screen-wide operations, then the creating action last as `primary`. Actions apply to the table selection, an
+  unavailable action is **disabled with the reason** rather than hidden, destructive ones
+  confirm, and a bulk action reports per-target outcomes.
+- **Global search indexes every object** (DESIGN.md §5.3). The index is a provider registry —
+  adding a new kind of object to mrds means adding a provider, never a branch inside
+  `GlobalSearch.svelte` (`web/src/lib/search/providers.ts`). Objects with no detail route
+  link to `?q=<term>`, which `ResourceTable`'s `initialSearch` picks up. Keyboard contract:
+  `Alt+S` focuses, `↑`/`↓` move the highlighted hit (scrolled into view), `Enter` opens it,
+  `Escape` closes and restores focus. Ranking comes from `$lib/search/match`, which the
+  tables share — never write a second matcher.
 - Font is **Albula Pro**; icons are **Font Awesome v7** through the `<icon data-icon="name">`
   integration (both in `web/static/`, loaded from `app.html`). Never use unicode-glyph icons
   or an external icon package.
@@ -302,6 +347,8 @@ Wiring rules:
 ```
 mrds daemon run                   # the daemon itself — everything else needs it running
 mrds daemon status|list|remove    # local handshake · cluster fleet · drop a registration
+mrds daemon show <name>           # one daemon: health, checks, per-instance memory
+mrds daemon upgrade <name>        # swap a follower onto this primary's binary
 mrds daemon token                 # generate the shared cluster token
 mrds daemon service install       # systemd unit for 24/7 operation
 bun run src/cli/index.ts <cmd…>   # run the CLI from source (this dir)
@@ -316,8 +363,10 @@ cd web && bun run dev             # same thing directly: Vite + HMR on 8330
 Daemon config: JSON file (`$MRDS_DAEMON_CONFIG` → `/etc/mrds/daemon.json` →
 `~/.config/mrds/daemon.json`) with env overrides (`MRDS_MODE`, `MRDS_ROOT`,
 `MRDS_DAEMON_NAME`, `MRDS_SOCKET`, `MRDS_LISTEN`, `MRDS_TOKEN`,
-`MRDS_PRIMARY_ADDRESS`, `MRDS_HOST`). No config + a discoverable cluster root =
-primary with defaults. For dev, start one with
+`MRDS_PRIMARY_ADDRESS`, `MRDS_HOST`). A daemon's name defaults to the machine's
+hostname (short form, lowercased) — it keys `cluster.json` and decides instance
+ownership, so it must be unique across the cluster. No config + a discoverable
+cluster root = primary with defaults. For dev, start one with
 `MRDS_ROOT=/mnt/shulker/mrds bun run src/cli/index.ts daemon run` before using
 the CLI or console; a second daemon on the same host isolates itself with
 `MRDS_SOCKET` (that is how the follower simulation runs on loopback).

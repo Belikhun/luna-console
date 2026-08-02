@@ -13,14 +13,21 @@ export interface DaemonInfo {
 	name: string;
 	mode: "primary" | "follower";
 	root: string;
+	/** local API revision — a mismatch is refused */
 	protocol: number;
+	/** build identity, e.g. "1.0.0+6ee20ac" */
+	version: string;
+	commit: string;
+	release: string;
+	buildAt: string;
+	platform: string;
 	pid: number;
 	startedAt: number;
 	listen: { host: string; port: number } | null;
 }
 
 /** Local API protocol revision this client speaks (matches daemon/server.ts). */
-export const CLIENT_PROTOCOL = 1;
+export const CLIENT_PROTOCOL = 2;
 
 let connection: { socket: string; info: DaemonInfo } | undefined;
 

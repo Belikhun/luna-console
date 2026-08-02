@@ -5,12 +5,27 @@
  */
 
 import type { ClusterEvent } from "../daemon/events";
-import type { DaemonRow, FollowerStats } from "../daemon/hub";
+import type { HealthSample } from "../daemon/health";
+import type { DaemonCheck, DaemonDetail, DaemonRow, ReachResult } from "../daemon/hub";
+import type { BinaryMeta, UpgradeResult } from "../daemon/upgrade";
 import type { MetricSample, StatusCheck, UiState } from "../daemon/sampler";
 
 import { call } from "./rpc";
+import { followSse } from "./socket";
 
-export type { ClusterEvent, DaemonRow, FollowerStats, MetricSample, StatusCheck, UiState };
+export type {
+	BinaryMeta,
+	ClusterEvent,
+	DaemonCheck,
+	DaemonDetail,
+	DaemonRow,
+	HealthSample,
+	MetricSample,
+	ReachResult,
+	StatusCheck,
+	UiState,
+	UpgradeResult,
+};
 
 export const listStatuses = call("daemon.listStatuses") as () => Promise<{
 	instances: Array<Record<string, unknown>>;
@@ -47,3 +62,43 @@ export const getEvents = call("daemon.getEvents") as (
 ) => Promise<ClusterEvent[]>;
 
 export const listDaemons = call("daemon.listDaemons") as () => Promise<DaemonRow[]>;
+
+export const daemonDetail = call("daemon.daemonDetail") as (
+	name: string,
+) => Promise<DaemonDetail | null>;
+
+export const daemonHealth = call("daemon.health") as () => Promise<HealthSample | undefined>;
+
+export const daemonHealthHistory = call("daemon.healthHistory") as () => Promise<HealthSample[]>;
+
+export const binaryMeta = call("daemon.binaryMeta") as () => Promise<BinaryMeta>;
+
+/**
+ * Upgrade one follower to the primary's build. The daemon exits as it answers,
+ * so a successful call means "the swap happened and systemd is restarting it".
+ */
+export const upgradeDaemon = call("daemon.upgradeDaemon") as (
+	name: string,
+	force?: boolean,
+) => Promise<UpgradeResult>;
+
+/**
+ * Follow the daemon's fleet health stream: one frame per heartbeat cadence with
+ * every daemon's row, live health included. Resolves when the stream ends.
+ */
+export async function followDaemons(
+	onFrame: (daemons: DaemonRow[]) => void,
+	signal?: AbortSignal,
+): Promise<void> {
+	await followSse(
+		"/daemons/stream",
+		(data) => {
+			const frame = data as { daemons?: DaemonRow[] };
+
+			if (Array.isArray(frame.daemons)) {
+				onFrame(frame.daemons);
+			}
+		},
+		signal,
+	);
+}

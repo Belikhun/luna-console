@@ -1,14 +1,19 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { api, post } from '$lib/api';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import { Notify } from '$lib/notifications.svelte';
-	import DataTable from '$lib/components/DataTable.svelte';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
+	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import type { Column } from '$lib/components/table';
+	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { goto } from '$app/navigation';
 
 	/** One row of the sync preview: what velocity.toml has vs what it should have. */
 	interface RouteRow {
@@ -21,6 +26,8 @@
 	let data: any = $state(null);
 	let reload = $state(true);
 	let busy = $state(false);
+	let loading = $state(false);
+	let lastUpdated: number | null = $state(null);
 
 	const columns: Column[] = [
 		{ id: 'server', label: 'Server', width: 180 },
@@ -65,10 +72,48 @@
 	});
 
 	async function refresh(): Promise<void> {
-		data = await api('/proxy');
+		loading = true;
+
+		try {
+			data = await api('/proxy');
+			lastUpdated = Date.now();
+		} catch (err) {
+			Notify.error('Could not load the proxy routing', { detail: (err as Error).message });
+		} finally {
+			loading = false;
+		}
 	}
 
 	onMount(refresh);
+
+	/** A route's verbs. A row named in velocity.toml but not in the registry has
+	 *  no instance page to open, so its menu is only the copy actions. */
+	function rowActions(row: RouteRow): ContextMenuItem[] {
+		const target = row.to ?? row.address;
+		const known = row.state !== 'remove';
+
+		return [
+			{
+				label: `Open ${row.server}`,
+				icon: 'server',
+				disabled: !known,
+				action: () => goto(`/instances/${row.server}`)
+			},
+			{
+				label: 'Edit its proxy registration',
+				icon: 'route',
+				disabled: !known,
+				action: () => goto(`/instances/${row.server}?tab=network`)
+			},
+			{ separator: true },
+			{
+				label: 'Copy address',
+				icon: 'copy',
+				disabled: !target,
+				action: () => navigator.clipboard?.writeText(target)
+			}
+		];
+	}
 
 	async function apply(): Promise<void> {
 		busy = true;
@@ -97,6 +142,11 @@
 
 		busy = false;
 	}
+
+	let selected: Set<string> = $state(new Set());
+
+	/** The row the header's Actions dropdown acts on. */
+	const one = $derived(rows.find((row: any) => selected.has(row.server)));
 </script>
 
 <svelte:head><title>Proxy routing | MRDS Console</title></svelte:head>
@@ -106,6 +156,8 @@
 	description="velocity.toml [servers] and [forced-hosts] are generated from cluster.json — review and apply"
 >
 	{#snippet actions()}
+		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="proxy" />
+		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
 		<label class="reload">
 			<Checkbox
 				checked={reload}
@@ -129,7 +181,23 @@
 
 	<div class="cols">
 		<Panel title="Registered servers" flush>
-			<DataTable {columns} {rows} getId={(row) => row.server}>
+			<ResourceTable
+				tableId="proxy-routes"
+				initialSearch={page.url.searchParams.get('q') ?? ''}
+				{columns}
+				{rows}
+				getId={(row) => row.server}
+				searchValue={(row) => `${row.server} ${row.address} ${row.to ?? ''} ${row.state}`}
+				searchPlaceholder="Find a server"
+				searchWidth="18rem"
+				selectable="single"
+				bind:selected
+				{rowActions}
+				rowLabel={(row) => row.server}
+				noun="route"
+				pageSize={15}
+				emptyTitle="No servers registered"
+			>
 				{#snippet cell(row, col)}
 					{#if col === 'server'}
 						{row.server}
@@ -145,7 +213,7 @@
 						<span class="err">not in registry (will be removed)</span>
 					{/if}
 				{/snippet}
-			</DataTable>
+			</ResourceTable>
 			<div class="meta dim">
 				try order: {data.tryList.join(' → ') || '(empty)'}<br />
 				forced hosts: {forcedHostsLabel}

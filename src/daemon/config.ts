@@ -38,6 +38,19 @@ export interface DaemonConfig {
 /** Default TCP port a primary daemon listens on for followers. */
 export const DEFAULT_CLUSTER_PORT = 8331;
 
+/**
+ * Default daemon name: this machine's hostname. A name is a key in cluster.json
+ * and decides instance ownership, so the DNS domain is dropped (two machines in
+ * one cluster do not share a short hostname) and the rest is lowercased into the
+ * safe character set. `name` in the config file or `MRDS_DAEMON_NAME` overrides it.
+ */
+export function defaultDaemonName(): string {
+	const short = hostname().split(".")[0] ?? "";
+	const clean = short.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+
+	return clean || "mrds";
+}
+
 /** Config file locations, in probe order. */
 function configFileCandidates(): string[] {
 	const candidates: string[] = [];
@@ -145,7 +158,7 @@ export async function resolveDaemonConfig(): Promise<DaemonConfig> {
 
 	const config: DaemonConfig = {
 		mode,
-		name: process.env.MRDS_DAEMON_NAME ?? file.name ?? hostname(),
+		name: process.env.MRDS_DAEMON_NAME ?? file.name ?? defaultDaemonName(),
 		root: resolve(root),
 		socket: process.env.MRDS_SOCKET ?? file.socket ?? (await pickSocketPath()),
 		listen,

@@ -10,7 +10,7 @@
 	import MultiAddModal from '$lib/components/MultiAddModal.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import DataTable from '$lib/components/DataTable.svelte';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -223,9 +223,15 @@
 			>
 				Update instances
 			</Btn>
-			{#if !data.builtin}
-				<Btn variant="danger" icon="trash" onclick={() => (deleteOpen = true)}>Delete group</Btn>
-			{/if}
+			<Btn
+				variant="danger"
+				icon="trash"
+				disabled={data.builtin}
+				title={data.builtin ? 'the default group is built in and cannot be deleted' : undefined}
+				onclick={() => (deleteOpen = true)}
+			>
+				Delete group
+			</Btn>
 		{/snippet}
 	</PageHeader>
 
@@ -262,10 +268,16 @@
 		{#snippet actions()}
 			<Btn icon="plus" disabled={!!busy} onclick={() => (addOpen = true)}>Add a plugin</Btn>
 		{/snippet}
-		<DataTable
+		<ResourceTable
+			tableId="group-members"
 			columns={pluginCols}
 			rows={data.plugins}
 			getId={(row) => row.plugin}
+			searchValue={(row) => `${row.plugin} ${row.displayName ?? ''} ${row.source ?? ''}`}
+			searchPlaceholder="Find a member"
+			searchWidth="20rem"
+			noun="member"
+			pageSize={25}
 			emptyTitle="No plugins yet"
 			emptyText="Add members with the control above."
 		>
@@ -296,7 +308,7 @@
 					/>
 				{/if}
 			{/snippet}
-		</DataTable>
+		</ResourceTable>
 	</Panel>
 
 	<div class="gap"></div>
@@ -309,10 +321,16 @@
 			: 'Instances that list this group in their configuration'}
 		flush
 	>
-		<DataTable
+		<ResourceTable
+			tableId="group-instances"
 			columns={instCols}
 			rows={data.instances}
 			getId={(row) => row.name}
+			searchValue={(row) => row.name}
+			searchPlaceholder="Find an instance"
+			searchWidth="18rem"
+			noun="instance"
+			pageSize={15}
 			emptyTitle="Not used by any instance"
 			emptyText="Attach it from an instance's configuration tab, or in the launch wizard."
 		>
@@ -325,7 +343,7 @@
 					{row.software}{row.mcVersion ? ` ${row.mcVersion}` : ''}
 				{/if}
 			{/snippet}
-		</DataTable>
+		</ResourceTable>
 	</Panel>
 {/if}
 

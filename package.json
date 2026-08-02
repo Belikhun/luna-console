@@ -1,11 +1,12 @@
 {
   "name": "mrds-control",
+  "version": "1.0.0",
   "module": "src/cli/index.ts",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "bun run src/cli/index.ts",
-    "build": "bun build --compile --minify src/cli/index.ts --outfile dist/mrds",
+    "build": "bun run scripts/genversion.ts && bun build --compile --minify src/cli/index.ts --outfile dist/mrds",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {

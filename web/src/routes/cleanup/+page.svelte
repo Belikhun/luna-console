@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
 	import { fmtBytes } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Modal from '$lib/components/Modal.svelte';
-	import DataTable from '$lib/components/DataTable.svelte';
-	import type { Column } from '$lib/components/table';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
+	import type { Column, TableFilterGroup } from '$lib/components/table';
+	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -24,6 +27,40 @@
 		{ id: 'path', label: 'Path' },
 		{ id: 'size', label: 'Size', sortable: true, width: 180 }
 	];
+
+	/** The junk kinds actually present, so the filter never offers an empty one. */
+	const junkFilters: TableFilterGroup<any>[] = $derived([
+		{
+			id: 'kind',
+			label: 'Filter kind',
+			options: [
+				{ value: 'any', label: 'Any kind' },
+				...[...new Set(((plan?.junk ?? []) as any[]).map((item) => item.kind as string))]
+					.sort()
+					.map((kind) => ({
+						value: kind,
+						label: kind,
+						match: (item: any) => item.kind === kind
+					}))
+			]
+		}
+	]);
+
+	function junkActions(item: any): ContextMenuItem[] {
+		return [
+			{
+				label: 'Copy path',
+				icon: 'copy',
+				action: () => navigator.clipboard?.writeText(item.path)
+			},
+			{
+				label: `Open ${item.instance}`,
+				icon: 'server',
+				disabled: !item.instance || item.instance === '—',
+				action: () => goto(`/instances/${item.instance}`)
+			}
+		];
+	}
 
 	async function refresh(): Promise<void> {
 		loading = true;
@@ -95,6 +132,11 @@
 
 		busy = false;
 	}
+
+	let selected: Set<string> = $state(new Set());
+
+	/** The row the header's Actions dropdown acts on. */
+	const one = $derived((plan?.junk ?? []).find((row: any) => selected.has(row.path)));
 </script>
 
 <svelte:head><title>Cleanup | MRDS Console</title></svelte:head>
@@ -105,6 +147,7 @@
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="cleanup" />
+		<Dropdown label="Actions" disabled={!one} menu={one ? junkActions(one) : []} />
 		<Btn
 			variant="primary"
 			icon="broom"
@@ -142,10 +185,19 @@
 	{/each}
 
 	<Panel title="Planned deletions" count={plan.junk.length} flush>
-		<DataTable
+		<ResourceTable
+			tableId="cleanup-junk"
 			{columns}
 			rows={plan.junk}
 			getId={(item) => item.path}
+			searchValue={(item) => `${item.instance} ${item.kind} ${item.path}`}
+			searchPlaceholder="Find a path"
+			filters={junkFilters}
+			selectable="single"
+			bind:selected
+			rowActions={junkActions}
+			rowLabel={(item) => item.path}
+			noun="entry"
 			sortValue={(item, col) => (col === 'size' ? item.bytes : (item as any)[col])}
 			maxHeight="46vh"
 			emptyTitle="Nothing to delete"
@@ -166,7 +218,7 @@
 					/>
 				{/if}
 			{/snippet}
-		</DataTable>
+		</ResourceTable>
 	</Panel>
 {/if}
 

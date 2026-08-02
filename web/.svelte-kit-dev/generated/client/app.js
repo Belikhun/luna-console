@@ -30,7 +30,8 @@ export const nodes = [
 	() => import('./nodes/18'),
 	() => import('./nodes/19'),
 	() => import('./nodes/20'),
-	() => import('./nodes/21')
+	() => import('./nodes/21'),
+	() => import('./nodes/22')
 ];
 
 export const server_loads = [];
@@ -39,6 +40,7 @@ export const dictionary = {
 		"/": [2],
 		"/cleanup": [20],
 		"/daemons": [21],
+		"/daemons/[name]": [22],
 		"/environment": [10],
 		"/gallery": [18],
 		"/instances": [11],

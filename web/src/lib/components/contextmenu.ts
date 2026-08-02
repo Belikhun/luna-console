@@ -7,6 +7,9 @@ export interface ContextMenuItem {
 	/** tints the icon and label; "default" keeps the muted body colour */
 	color?: 'default' | 'accent' | 'success' | 'warning' | 'danger';
 	disabled?: boolean;
+	/** why the item is unavailable — shown as the row's tooltip. A disabled
+	 *  action must say what would make it available (DESIGN.md §5.2). */
+	hint?: string;
 	/** renders a divider line instead of a row */
 	separator?: boolean;
 	/** renders a non-interactive section title */

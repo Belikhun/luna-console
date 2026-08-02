@@ -84,6 +84,12 @@ export async function runDaemon(): Promise<void> {
 
 	let cluster: Bun.Server<WsData> | undefined;
 
+	const { ensureHealthSampler } = await import("./health");
+
+	// both roles report their own machine's health; a follower's rides the
+	// heartbeat up to the primary, which is where the console reads the fleet
+	ensureHealthSampler();
+
 	if (dcfg.mode === "primary") {
 		if (dcfg.listen) {
 			const { hubWebSocket, installHub } = await import("./hub");
@@ -95,7 +101,7 @@ export async function runDaemon(): Promise<void> {
 				websocket: hubWebSocket,
 			});
 
-			installHub(dcfg);
+			installHub(dcfg, startedAt);
 
 			if (!dcfg.token) {
 				log("warning: no cluster token configured — followers cannot authenticate");
@@ -114,7 +120,7 @@ export async function runDaemon(): Promise<void> {
 		const { startFollower } = await import("./follower");
 		const { ensureSampler } = await import("./sampler");
 
-		startFollower(dcfg);
+		startFollower(dcfg, startedAt);
 
 		// the follower samples its own instances; the scheduler stays primary-only
 		ensureSampler();

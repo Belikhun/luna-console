@@ -246,6 +246,35 @@ export function getHistory(name: string): MetricSample[] {
 	return rt(name).history;
 }
 
+/**
+ * Latest resident size of every instance this daemon has sampled, in MB. The
+ * health sampler reads it from here rather than walking /proc a second time.
+ */
+export function instanceRssMb(): Record<string, number> {
+	const out: Record<string, number> = {};
+
+	for (const [name, rec] of runtime) {
+		const rssMb = rec.history.at(-1)?.rssMb;
+
+		if (rssMb !== undefined) {
+			out[name] = rssMb;
+		}
+	}
+
+	return out;
+}
+
+/** Latest UI state of every instance this daemon owns. */
+export function instanceStates(): Record<string, UiState> {
+	const out: Record<string, UiState> = {};
+
+	for (const [name, status] of lastStatuses) {
+		out[name] = effectiveState(name, status.state);
+	}
+
+	return out;
+}
+
 /** Mark an instance as mid-transition, so the UI can show it before core catches up. */
 export function markTransition(name: string, state: "stopping" | "restarting"): void {
 	transitions.set(name, { state, since: Date.now() });

@@ -35,14 +35,24 @@ export async function detectMcVersion(dir: string): Promise<string | undefined> 
  * outside that list on first boot. The keys marked `managed` in the schema keep
  * their default whatever was requested — they are what makes velocity forwarding
  * work.
+ *
+ * `bindAddress` is the one managed key that is not a constant: a backend on the
+ * primary's own machine is reached over loopback, but one on a follower has to
+ * accept the proxy's connection across the LAN, so binding it to 127.0.0.1
+ * would make it unreachable no matter what velocity.toml says.
  */
-function serverPropertiesTemplate(port: number, settings: Record<string, string>): string {
+function serverPropertiesTemplate(
+	port: number,
+	settings: Record<string, string>,
+	bindAddress: string,
+): string {
 	const values: Record<string, string> = {};
 
 	for (const spec of SERVER_SETTINGS) {
 		values[spec.key] = spec.managed ? spec.fallback : (settings[spec.key] ?? spec.fallback);
 	}
 
+	values["server-ip"] = bindAddress;
 	values["server-port"] = String(port);
 	values["enable-query"] = "false";
 
@@ -188,7 +198,7 @@ export async function createInstance(
 
 			await Bun.write(
 				join(dir, "server.properties"),
-				serverPropertiesTemplate(port, opts.settings ?? {}),
+				serverPropertiesTemplate(port, opts.settings ?? {}, opts.daemon ? "0.0.0.0" : "127.0.0.1"),
 			);
 			step.info(0.6, `server.properties on port ${port}`);
 

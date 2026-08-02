@@ -74,6 +74,8 @@ export interface InstanceRow {
 	ports: Record<string, number>;
 	proxy: { register: boolean; forcedHosts?: string[]; priority?: number } | null;
 	external: string | null;
+	/** owning daemon — null on the primary's own instances */
+	daemon: string | null;
 	dir: string;
 	checks: Array<{ name: string; ok: boolean | undefined; detail: string }>;
 }

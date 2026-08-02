@@ -44,7 +44,9 @@
 		pageSize = 25,
 		maxHeight,
 		emptyTitle = 'No resources to display',
-		emptyText = ''
+		emptyText = '',
+		emptyExtra,
+		filtersActive = $bindable(false)
 	}: {
 		/** persistence key for column prefs */
 		tableId?: string;
@@ -69,6 +71,10 @@
 		maxHeight?: string;
 		emptyTitle?: string;
 		emptyText?: string;
+		/** rendered under the empty state — e.g. "clear the search" */
+		emptyExtra?: Snippet;
+		/** true while any filter group is on something other than "any value" */
+		filtersActive?: boolean;
 	} = $props();
 
 	const initial = loadPrefs(tableId);
@@ -129,6 +135,21 @@
 	const filtered = $derived(
 		matchers.length ? rows.filter((row) => matchers.every((match) => match(row))) : rows
 	);
+
+	// the wrapper needs to know whether a filter is narrowing the table, so an
+	// empty result can say "nothing matches" rather than "nothing exists"
+	$effect(() => {
+		filtersActive = matchers.length > 0;
+	});
+
+	/** Reset every filter group to its "any value" entry. */
+	export function clearFilters(): void {
+		for (const group of filters ?? []) {
+			filterValues[group.id] = group.options[0]?.value ?? '';
+		}
+
+		page = 1;
+	}
 
 	// a restored sort holds only while its column is still there and still sortable
 	const activeSort = $derived(
@@ -742,6 +763,7 @@
 			<div class="empty">
 				<div class="et">{emptyTitle}</div>
 				{#if emptyText}<div class="ec">{emptyText}</div>{/if}
+				{#if emptyExtra}<div class="ea">{@render emptyExtra()}</div>{/if}
 			</div>
 		{/if}
 	</div>
@@ -1286,6 +1308,12 @@
 		color: var(--text-secondary);
 		font-size: 0.875rem;
 		margin-top: 0.25rem;
+	}
+
+	.ea {
+		display: flex;
+		justify-content: center;
+		margin-top: 0.875rem;
 	}
 
 	// ---- preferences dialog ----

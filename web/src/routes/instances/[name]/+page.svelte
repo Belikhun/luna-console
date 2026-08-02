@@ -22,8 +22,9 @@
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
-	import DataTable from '$lib/components/DataTable.svelte';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
 	import ProgressTree from '$lib/components/ProgressTree.svelte';
 	import GroupsField from '$lib/components/GroupsField.svelte';
@@ -499,6 +500,29 @@
 		stopped: { state: 'stopped', label: 'Stopped' },
 		unknown: { state: 'unknown', label: 'Unknown' }
 	};
+	/** A plugin row's verbs on this instance. */
+	function pluginActions(plugin: any): ContextMenuItem[] {
+		return [
+			{
+				label: 'Open on this instance',
+				icon: 'circleInfo',
+				action: () => goto(`/instances/${name}/plugins/${plugin.plugin}`)
+			},
+			{
+				label: 'Open the plugin',
+				icon: 'plug',
+				action: () => goto(`/plugins/${encodeURIComponent(plugin.plugin)}`)
+			},
+			{ separator: true },
+			{
+				label: 'Copy version',
+				icon: 'copy',
+				disabled: !plugin.version,
+				action: () => navigator.clipboard?.writeText(plugin.version ?? '')
+			}
+		];
+	}
+
 	const eventCols: Column[] = [
 		{ id: 'time', label: 'Time', width: 190 },
 		{ id: 'kind', label: 'Type', width: 120 },
@@ -698,10 +722,16 @@
 				description="State transitions and actions recorded this console session"
 				flush
 			>
-				<DataTable
+				<ResourceTable
+					tableId="instance-events"
 					columns={eventCols}
 					rows={metrics.events}
 					getId={(event) => String(event.t) + event.message}
+					searchValue={(event) => `${event.kind} ${event.message}`}
+					searchPlaceholder="Find an event"
+					searchWidth="20rem"
+					noun="event"
+					pageSize={20}
 					emptyTitle="No recorded events this session"
 					maxHeight="40vh"
 				>
@@ -721,7 +751,7 @@
 							{event.message}
 						{/if}
 					{/snippet}
-				</DataTable>
+				</ResourceTable>
 			</Panel>
 		{:else if tab === 'monitoring'}
 			<div class="charts">
@@ -750,10 +780,18 @@
 					<Alerts warnings={pluginTotals.warnings} errors={pluginTotals.errors} />
 					<Btn icon="upload" onclick={deployPlugins}>Deploy to this instance</Btn>
 				{/snippet}
-				<DataTable
+				<ResourceTable
+					tableId="instance-plugins"
 					columns={pluginCols}
 					rows={instPlugins}
 					getId={(plugin) => plugin.plugin}
+					searchValue={(plugin) =>
+						`${plugin.plugin} ${plugin.displayName ?? ''} ${plugin.state} ${plugin.version ?? ''} ${plugin.source} ${(plugin.groups ?? []).join(' ')}`}
+					searchPlaceholder="Find a plugin on this instance"
+					rowActions={pluginActions}
+					rowLabel={(plugin) => plugin.plugin}
+					noun="plugin"
+					pageSize={25}
 					rowDim={(plugin) => plugin.disabled}
 					sortValue={(plugin, col) =>
 						col === 'alerts'
@@ -800,7 +838,7 @@
 							{plugin.pinned ? 'pinned' : plugin.variant ? 'variant (auto)' : 'primary'}
 						{/if}
 					{/snippet}
-				</DataTable>
+				</ResourceTable>
 			</Panel>
 			{#if !pluginTotals.sessionComplete}
 				<p class="dim note">
@@ -950,13 +988,19 @@
 					description="Every key on disk, including the ones with no field above"
 					flush
 				>
-					<DataTable
+					<ResourceTable
+						tableId="instance-properties"
 						columns={propCols}
 						rows={Object.entries(cfgData.serverProperties).map(([key, value]) => ({
 							key,
 							value: String(value)
 						}))}
 						getId={(row) => row.key}
+						searchValue={(row) => `${row.key} ${row.value}`}
+						searchPlaceholder="Find a property"
+						searchWidth="20rem"
+						noun="property"
+						paging={false}
 						maxHeight="20rem"
 					>
 						{#snippet cell(row, col)}
@@ -966,7 +1010,7 @@
 								<span class="mono dim">{row.value}</span>
 							{/if}
 						{/snippet}
-					</DataTable>
+					</ResourceTable>
 				</Panel>
 			{/if}
 		{/if}

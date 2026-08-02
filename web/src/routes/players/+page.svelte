@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
@@ -8,16 +9,14 @@
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Select from '$lib/components/Select.svelte';
-	import SearchInput from '$lib/components/SearchInput.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import DataTable from '$lib/components/DataTable.svelte';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
-	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
@@ -67,7 +66,6 @@
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
 
-	let filter = $state('');
 	let selected: Set<string> = $state(new Set());
 
 	let kickOpen = $state(false);
@@ -124,21 +122,6 @@
 		stream.onmessage = () => void refresh();
 
 		return () => stream.close();
-	});
-
-	const filtered = $derived.by(() => {
-		if (!filter) {
-			return players;
-		}
-
-		const needle = filter.toLowerCase();
-
-		return players.filter(
-			(player) =>
-				player.username.toLowerCase().includes(needle) ||
-				player.server.toLowerCase().includes(needle) ||
-				player.uuid.includes(needle)
-		);
 	});
 
 	const columns: Column[] = [
@@ -334,16 +317,8 @@
 		broadcastText = '';
 	}
 
-	let rowMenu: ContextMenu | undefined = $state();
-	let menuRow: Player | undefined = $state();
-
-	const menuItems: ContextMenuItem[] = $derived.by(() => {
-		const player = menuRow;
-
-		if (!player) {
-			return [];
-		}
-
+	/** A player's verbs — the row menu and the toolbar's Actions button. */
+	function rowActions(player: Player): ContextMenuItem[] {
 		return [
 			{
 				label: `Open ${player.server}`,
@@ -383,12 +358,6 @@
 				}
 			}
 		];
-	});
-
-	async function openRowMenu(player: Player, event: MouseEvent): Promise<void> {
-		menuRow = player;
-
-		await rowMenu?.openAt(event.clientX, event.clientY);
 	}
 
 	/** The console runs on plain HTTP, where navigator.clipboard does not exist. */
@@ -412,44 +381,7 @@
 <PageHeader title="Players" count="{selected.size ? `${selected.size}/` : ''}{players.length}" info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players" />
-		<Dropdown
-			label="Player actions"
-			disabled={!one}
-			items={[
-				{
-					label: 'Send a message',
-					icon: 'paperPlane',
-					action: () => {
-						messageOpen = true;
-					}
-				},
-				{
-					label: 'Move to another backend',
-					icon: 'rightLeft',
-					action: () => {
-						transferOpen = true;
-					}
-				},
-				{
-					label: 'Copy UUID',
-					icon: 'copy',
-					action: () => {
-						if (one) {
-							void copy(one.uuid);
-						}
-					}
-				},
-				{ divider: true, label: '' },
-				{
-					label: 'Disconnect player',
-					icon: 'userSlash',
-					danger: true,
-					action: () => {
-						kickOpen = true;
-					}
-				}
-			]}
-		/>
+		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
 		<Btn icon="bullhorn" onclick={() => (broadcastOpen = true)}>Broadcast</Btn>
 	{/snippet}
 </PageHeader>
@@ -481,30 +413,26 @@
 
 <div class="body">
 	<Panel flush>
-		<DataTable
+		<ResourceTable
 			tableId="players"
+			initialSearch={page.url.searchParams.get('q') ?? ''}
 			{columns}
-			rows={filtered}
+			rows={players}
 			getId={(player) => player.uuid}
+			searchValue={(player) =>
+				`${player.username} ${player.server} ${player.uuid} ${player.clientVersion} ${player.remoteAddress} ${player.virtualHost}`}
+			searchPlaceholder="Find player by name, backend or UUID"
 			selectable="single"
 			bind:selected
+			{rowActions}
+			rowLabel={(player) => player.username}
+			noun="player"
 			{sortValue}
 			{filters}
-			onRowContextMenu={openRowMenu}
-			paging
 			pageSize={25}
-			emptyTitle={players.length ? 'No players match the filter' : 'Nobody is online'}
-			emptyText={players.length
-				? 'Adjust the filter above.'
-				: 'Joins appear here as they happen — the page listens to LunaCore rather than waiting for the next poll.'}
+			emptyTitle="Nobody is online"
+			emptyText="Joins appear here as they happen — the page listens to LunaCore rather than waiting for the next poll."
 		>
-			{#snippet toolbar()}
-				<SearchInput
-					bind:value={filter}
-					placeholder="Find player by name, backend or UUID"
-					width="26rem"
-				/>
-			{/snippet}
 			{#snippet cell(player, col)}
 				{#if col === 'username'}
 					<b>{player.username}</b>
@@ -531,7 +459,7 @@
 					<span class="mono dim">{player.uuid}</span>
 				{/if}
 			{/snippet}
-		</DataTable>
+		</ResourceTable>
 	</Panel>
 
 	<Panel
@@ -540,11 +468,16 @@
 		description="Joins, leaves and backend switches as the proxy saw them, newest first"
 		flush
 	>
-		<DataTable
+		<ResourceTable
 			tableId="player-activity"
 			columns={activityCols}
 			rows={activity}
 			getId={(event) => `${event.atEpochMillis}-${event.uuid}-${event.type}`}
+			searchValue={(event) => `${event.username} ${event.server ?? ''} ${event.type}`}
+			searchPlaceholder="Find activity"
+			searchWidth="20rem"
+			noun="event"
+			pageSize={20}
 			sortValue={(event, col) =>
 				col === 'time' ? event.atEpochMillis : col === 'username' ? event.username : null}
 			maxHeight="32rem"
@@ -576,11 +509,9 @@
 					{event.sessionMillis ? fmtDuration(event.sessionMillis) : '–'}
 				{/if}
 			{/snippet}
-		</DataTable>
+		</ResourceTable>
 	</Panel>
 </div>
-
-<ContextMenu bind:this={rowMenu} items={menuItems} />
 
 <Modal title="Disconnect {one?.username ?? 'player'}" bind:open={kickOpen}>
 	<p>They are removed from the network immediately and can reconnect straight away.</p>

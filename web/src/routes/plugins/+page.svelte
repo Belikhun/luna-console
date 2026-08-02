@@ -7,15 +7,15 @@
 	import Btn from '$lib/components/Btn.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import SearchInput from '$lib/components/SearchInput.svelte';
-	import DataTable from '$lib/components/DataTable.svelte';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import Modal from '$lib/components/Modal.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
-	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 
@@ -48,7 +48,6 @@
 	}
 
 	let plugins: PluginRow[] = $state([]);
-	let filter = $state('');
 	let busy = $state('');
 	let updates: any[] = $state([]);
 	let checked = $state(false);
@@ -61,21 +60,6 @@
 	let addTargets: string[] = $state([]);
 	let removeTarget: PluginRow | null = $state(null);
 	let removeOpen = $state(false);
-
-	const filtered = $derived.by(() => {
-		if (!filter) {
-			return plugins;
-		}
-
-		const needle = filter.toLowerCase();
-
-		return plugins.filter(
-			(row) =>
-				row.plugin.includes(needle) ||
-				row.displayName.toLowerCase().includes(needle) ||
-				row.sources.some((source) => source.includes(needle))
-		);
-	});
 
 	const instanceNames = $derived(
 		[...new Set(plugins.flatMap((row) => row.effective))].sort()
@@ -365,16 +349,8 @@
 		addTargets = [];
 	}
 
-	let rowMenu: ContextMenu | undefined = $state();
-	let menuRow: PluginRow | undefined = $state();
-
-	const menuItems: ContextMenuItem[] = $derived.by(() => {
-		const row = menuRow;
-
-		if (!row) {
-			return [];
-		}
-
+	/** A plugin's verbs — the row menu and the toolbar's Actions button. */
+	function rowActions(row: PluginRow): ContextMenuItem[] {
 		const modrinth = row.families.find((family) => family.modrinth);
 
 		return [
@@ -416,13 +392,12 @@
 				}
 			}
 		];
-	});
-
-	async function openRowMenu(row: PluginRow, event: MouseEvent): Promise<void> {
-		menuRow = row;
-
-		await rowMenu?.openAt(event.clientX, event.clientY);
 	}
+
+	let selected: Set<string> = $state(new Set());
+
+	/** The row the header's Actions dropdown acts on. */
+	const one = $derived(plugins.find((row: any) => selected.has(row.plugin)));
 </script>
 
 <svelte:head><title>Plugins | MRDS Console</title></svelte:head>
@@ -430,6 +405,7 @@
 <PageHeader title="Plugins" count={plugins.length} info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="plugins" />
+		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
 		<Btn icon="search" loading={busy === 'scan'} disabled={!!busy} onclick={scan}>Scan</Btn>
 		<Btn icon="sync" loading={busy === 'check'} disabled={!!busy} onclick={checkUpdates}>
 			Check updates
@@ -450,11 +426,21 @@
 </PageHeader>
 
 <Panel flush>
-	<DataTable
+	<ResourceTable
 		tableId="plugins-grouped"
 		{columns}
-		rows={filtered}
+		rows={plugins}
 		getId={(row) => row.plugin}
+		searchValue={(row) =>
+			`${row.plugin} ${row.displayName} ${row.sources.join(' ')} ${row.families
+				.map((family) => `${family.family} ${family.version ?? ''}`)
+				.join(' ')} ${row.effective.join(' ')} ${row.description ?? ''}`}
+		searchPlaceholder="Find plugin by name, source or target"
+		selectable="single"
+		bind:selected
+		{rowActions}
+		rowLabel={(row) => row.plugin}
+		noun="plugin"
 		sortValue={(row, col) =>
 			col === 'name'
 				? row.plugin
@@ -464,16 +450,11 @@
 						? String(row.autoUpdate)
 						: ''}
 		onRowClick={(row) => goto(`/plugins/${row.plugin}`)}
-		onRowContextMenu={openRowMenu}
 		{filters}
-		paging
 		pageSize={25}
-		emptyTitle="No plugins match the filter"
-		emptyText="Adjust the filter above, or install a plugin from Modrinth."
+		emptyTitle="No plugins in the pool"
+		emptyText="Install one from Modrinth, or run a scan to adopt the jars already on disk."
 	>
-		{#snippet toolbar()}
-			<SearchInput bind:value={filter} placeholder="Find plugin by name or source" width="26rem" />
-		{/snippet}
 		{#snippet cell(row, col)}
 			{@const pending = updatesFor(row)}
 			{#if col === 'name'}
@@ -526,7 +507,7 @@
 				<span class="dim">{row.effective.join(', ') || '–'}</span>
 			{/if}
 		{/snippet}
-	</DataTable>
+	</ResourceTable>
 </Panel>
 
 <!-- install modal -->
@@ -595,7 +576,6 @@
 	{/snippet}
 </Modal>
 
-<ContextMenu bind:this={rowMenu} items={menuItems} header={menuRow?.plugin} minWidth="15rem" />
 
 <style lang="scss">
 	// source is stored lowercase and capitalised here, tinted per origin

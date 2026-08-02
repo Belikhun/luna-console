@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+
 	import Icon from './Icon.svelte';
 
 	/**
@@ -65,15 +67,34 @@
 	const POP_WIDTH = 320;
 	const GAP = 8;
 
-	/** above this much room overhead, the card opens upwards */
+	/** above this much room overhead, the card opens upwards on the first paint */
 	const FLIP_ABOVE = 160;
+
+	/** px — a card squeezed below this scrolls instead of shrinking further */
+	const MIN_POP_H = 120;
 
 	let open = $state(false);
 	let root: HTMLSpanElement | undefined = $state();
 	let trigger: HTMLButtonElement | undefined = $state();
+	let card: HTMLSpanElement | undefined = $state();
 	let pos = $state({ left: 0, top: 0, below: false });
 
-	/** Table cells clip their overflow, so the card is placed in viewport space. */
+	/** px — measured, so it goes into the style as px (CLAUDE.md's one exception) */
+	let maxHeight = $state(0);
+
+	/**
+	 * Table cells clip their overflow, so the card is placed in viewport space.
+	 *
+	 * Called twice per opening: once on the click, when the card is not in the
+	 * DOM yet and the side can only be guessed from the trigger's position, and
+	 * once from the effect below with the real height in hand. A tall card — six
+	 * daemon checks, opening upwards from halfway down the screen — would
+	 * otherwise run off the top of the viewport.
+	 *
+	 * Never reads `pos` or `maxHeight`: the effect that calls it would then
+	 * depend on its own writes and loop until Svelte kills it with
+	 * `effect_update_depth_exceeded`, which is exactly what froze the page.
+	 */
 	function place(): void {
 		if (!trigger) {
 			return;
@@ -81,10 +102,31 @@
 
 		const box = trigger.getBoundingClientRect();
 		const left = Math.max(GAP, Math.min(box.left, window.innerWidth - POP_WIDTH - GAP));
-		const below = box.top < FLIP_ABOVE;
+		const roomAbove = box.top - GAP * 2;
+		const roomBelow = window.innerHeight - box.bottom - GAP * 2;
+		const height = card?.offsetHeight ?? 0;
 
-		pos = { left, top: below ? box.bottom + GAP : box.top - GAP, below };
+		const below = height > 0
+			? height > roomAbove && roomBelow > roomAbove
+			: box.top < FLIP_ABOVE;
+
+		const top = below ? box.bottom + GAP : box.top - GAP;
+
+		maxHeight = Math.max(MIN_POP_H, below ? roomBelow : roomAbove);
+
+		if (pos.left !== left || pos.top !== top || pos.below !== below) {
+			pos = { left, top, below };
+		}
 	}
+
+	// re-place once the card is mounted and its height is measurable. The body is
+	// untracked so this effect depends on `open`/`card` alone and can never be
+	// woken by its own writes.
+	$effect(() => {
+		if (open && card) {
+			untrack(place);
+		}
+	});
 
 	function toggle(event: MouseEvent): void {
 		event.stopPropagation();
@@ -119,10 +161,12 @@
 		</button>
 		{#if open}
 			<span
+				bind:this={card}
 				class="pop"
 				class:below={pos.below}
 				role="tooltip"
 				style="left: {pos.left}px; top: {pos.top}px"
+				style:max-height={maxHeight ? `${maxHeight}px` : undefined}
 			>
 				<span class="ptext">
 					{#each detailLines as line}
@@ -186,6 +230,7 @@
 		box-shadow: var(--shadow-dropdown);
 		color: var(--text);
 		white-space: normal;
+		overflow-y: auto;
 		z-index: var(--z-popover);
 		animation: fadein 0.1s ease-out;
 	}

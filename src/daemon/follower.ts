@@ -7,26 +7,26 @@
 
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { freemem, loadavg, totalmem } from "node:os";
 import { dirname, join } from "node:path";
 
 import { installSaveHook, loadCluster, managedInstances, poolDir, root } from "../core/config";
 import { effectiveTargets } from "../core/families";
-import * as instances from "../core/instances";
 import { ProgressReporter } from "../core/progress";
 import { sha512File } from "../core/services/modrinth";
 import type { ClusterConfig, PluginsLock } from "../core/types";
 
 import type { DaemonConfig } from "./config";
 import { installEventForwarder } from "./events";
+import { currentHealth, hostAddresses } from "./health";
 import { ownsInstance } from "./identity";
 import { log } from "./index";
 import { runOp } from "./rpc";
 import { PROTOCOL_VERSION } from "./server";
+import { selfUpgrade, setUpgradeSource } from "./upgrade";
+import { buildVersion } from "../version";
 
 const RECONNECT_MIN_MS = 2_000;
 const RECONNECT_MAX_MS = 30_000;
-const STATS_INTERVAL_MS = 10_000;
 
 /** Progress frames are throttled like the job SSE stream is. */
 const PROGRESS_FLUSH_MS = 150;
@@ -34,7 +34,7 @@ const PROGRESS_FLUSH_MS = 150;
 let dcfg: DaemonConfig | undefined;
 let ws: WebSocket | undefined;
 let backoffMs = RECONNECT_MIN_MS;
-let statsTimer: ReturnType<typeof setInterval> | undefined;
+let startedAt = Date.now();
 
 function send(frame: Record<string, unknown>): void {
 	if (ws && ws.readyState === WebSocket.OPEN) {
@@ -105,6 +105,8 @@ interface PrimaryFrame {
 	withProgress?: boolean;
 	files?: Record<string, string>;
 	name?: string;
+	seq?: number;
+	at?: number;
 }
 
 /** Execute one forwarded operation and stream its outcome (and progress) back. */
@@ -168,34 +170,24 @@ async function applySync(files: Record<string, string>): Promise<void> {
 	}
 }
 
-/** One stats heartbeat: host load/memory plus this daemon's instance states. */
-async function sendStats(): Promise<void> {
+/** Once per version: pull the primary's binary after a protocol rejection. */
+let recoveryAttempted = "";
+
+async function recoverFromProtocolMismatch(): Promise<void> {
+	if (recoveryAttempted === buildVersion()) {
+		return;
+	}
+
+	recoveryAttempted = buildVersion();
+
+	log("protocol mismatch — attempting a self-upgrade from the primary");
+
 	try {
-		const cfg = await loadCluster();
-		const insts = managedInstances(cfg);
-		const owned = Object.keys(insts).filter((name) => ownsInstance(insts[name]!));
+		const result = await selfUpgrade(true);
 
-		const states: Record<string, string> = {};
-
-		await Promise.all(
-			owned.map(async (name) => {
-				const status = await instances.getStatus(cfg, name);
-
-				states[name] = status.state;
-			}),
-		);
-
-		send({
-			t: "stats",
-			stats: {
-				load1: loadavg()[0],
-				memUsedMb: Math.round((totalmem() - freemem()) / 1024 / 1024),
-				memTotalMb: Math.round(totalmem() / 1024 / 1024),
-				states,
-			},
-		});
-	} catch {
-		// no cluster.json yet — the first sync has not arrived
+		log(`upgrading ${result.from} → ${result.to}`);
+	} catch (err) {
+		log(`self-upgrade failed: ${err instanceof Error ? err.message : String(err)}`);
 	}
 }
 
@@ -214,9 +206,13 @@ function connect(): void {
 			t: "register",
 			name: dcfg!.name,
 			root: root(),
+			// with no advertised host the primary falls back to the address it sees
+			// on the socket, which is by definition a route that works
 			host: dcfg!.host,
+			addresses: hostAddresses(),
+			startedAt,
 			protocol: PROTOCOL_VERSION,
-			version: String(PROTOCOL_VERSION),
+			version: buildVersion(),
 		});
 	};
 
@@ -243,6 +239,15 @@ function connect(): void {
 			return;
 		}
 
+		if (frame.t === "ping") {
+			// the pong echoes the primary's sequence and carries this machine's
+			// latest health sample — one round trip measures latency and reports
+			// CPU/memory/disk/instance memory at the same time
+			send({ t: "pong", seq: frame.seq, at: frame.at, health: currentHealth() });
+
+			return;
+		}
+
 		if (frame.t === "rpc") {
 			void handleForwardedOp(frame);
 		}
@@ -250,6 +255,12 @@ function connect(): void {
 
 	ws.onclose = (event) => {
 		log(`primary link lost (${event.code}${event.reason ? ` ${event.reason}` : ""}) — retrying in ${Math.round(backoffMs / 1000)}s`);
+
+		// the one automatic upgrade: a protocol mismatch means this build can no
+		// longer talk to the primary at all, and reconnecting cannot fix that
+		if (event.reason?.includes("protocol mismatch")) {
+			void recoverFromProtocolMismatch();
+		}
 
 		ws = undefined;
 
@@ -262,9 +273,10 @@ function connect(): void {
 	};
 }
 
-/** Start the follower runtime: save-through, event forwarding, link, stats. */
-export function startFollower(config: DaemonConfig): void {
+/** Start the follower runtime: save-through, event forwarding, link, heartbeats. */
+export function startFollower(config: DaemonConfig, processStartedAt: number): void {
 	dcfg = config;
+	startedAt = processStartedAt;
 
 	// a follower never writes state files on its own authority — every save
 	// goes up to the primary, which persists it and broadcasts the new sync
@@ -276,7 +288,8 @@ export function startFollower(config: DaemonConfig): void {
 		send({ t: "event", instance: event.instance, kind: event.kind, message: event.message });
 	});
 
-	connect();
+	// where a self-upgrade fetches its new binary from
+	setUpgradeSource(config.primary!.address, config.token ?? "");
 
-	statsTimer ??= setInterval(() => void sendStats(), STATS_INTERVAL_MS);
+	connect();
 }

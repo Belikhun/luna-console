@@ -49,6 +49,10 @@ export interface InstanceConfig {
 export interface DaemonRegistration {
 	/** LAN host the follower's instances are reachable on (from its connection) */
 	host: string;
+	/** Every non-loopback IPv4 address the follower reported for itself */
+	addresses?: string[];
+	/** Cluster root on the follower's own disk */
+	root?: string;
 	/** Daemon binary version last seen */
 	version?: string;
 	/** ISO 8601 — first registration */

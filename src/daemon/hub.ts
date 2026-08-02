@@ -1,6 +1,7 @@
 /**
  * The primary daemon's cluster hub: accepts follower WebSocket connections,
- * keeps the live follower registry, forwards instance-scoped operations to
+ * keeps the live follower registry, heartbeats them (which is also how latency
+ * and their host health are measured), forwards instance-scoped operations to
  * their owners, and pushes state-file syncs whenever cluster.json /
  * plugins.lock.json / environment.json change (DESIGN.md §4.4).
  */
@@ -10,15 +11,25 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { loadCluster, saveCluster, saveLock, root } from "../core/config";
+import { portOpen } from "../core/ping";
 import { ProgressReporter } from "../core/progress";
 import type { ClusterConfig, DaemonRegistration } from "../core/types";
 import { applySnapshot } from "../shared/progressMirror";
 
 import type { DaemonConfig } from "./config";
-import { pushEvent, type ClusterEvent } from "./events";
+import { daemonEventKey, getEvents, pushEvent, type ClusterEvent } from "./events";
+import { currentHealth, healthHistory, hostAddresses, type HealthSample } from "./health";
 import { log } from "./index";
-import { installRouting, setDaemonsProvider, type OpResult, type OpSpec } from "./rpc";
+import {
+	installRouting,
+	setDaemonDetailProvider,
+	setDaemonsProvider,
+	setUpgradeSender,
+	type OpResult,
+	type OpSpec,
+} from "./rpc";
 import { PROTOCOL_VERSION } from "./server";
+import { buildVersion } from "../version";
 
 /** State files a follower mirrors from the primary. The forwarding secret rides
  *  along so a follower can key paper-global.yml when materializing instances. */
@@ -29,37 +40,95 @@ const SYNC_FILES = [
 	"proxy/forwarding.secret",
 ] as const;
 
-export interface FollowerStats {
-	load1: number;
-	memUsedMb: number;
-	memTotalMb: number;
-	/** instance name → UI state, for the daemons view */
-	states: Record<string, string>;
+/** Heartbeat cadence. Every ping carries a sequence number the pong echoes,
+ *  which is what makes the round-trip time a real measurement. */
+const PING_INTERVAL_MS = 5_000;
+
+/** Unanswered pings before the link is considered dead and closed. A wedged
+ *  follower keeps its TCP socket open, so silence is the only symptom. */
+const MISSED_PINGS_BEFORE_DROP = 3;
+
+/** How often the primary TCP-probes a follower's advertised address. */
+const REACH_INTERVAL_MS = 30_000;
+
+/** One hour of fleet health at the heartbeat cadence. */
+const MAX_HEALTH_SAMPLES = 720;
+
+/** Utilization above this reads as "no headroom left" in the health checks. */
+const PRESSURE_PCT = 90;
+
+/** One TCP probe of a follower-owned instance from the primary's machine. */
+export interface ReachResult {
+	instance: string;
+	address: string;
+	ok: boolean;
+}
+
+/** A single health verdict about a daemon, rendered like the instance checks. */
+export interface DaemonCheck {
+	name: string;
+	/** undefined = not applicable rather than failing */
+	ok: boolean | undefined;
+	detail: string;
 }
 
 interface FollowerLink {
 	ws: Bun.ServerWebSocket<{ kind: string }>;
 	name: string;
 	host: string;
+	addresses: string[];
 	root: string;
 	version?: string;
+	protocol?: number;
 	connectedAt: number;
+	/** Daemon process start on the follower's own clock */
+	startedAt?: number;
+	/** Last frame of any kind from this follower */
 	lastSeen: number;
-	stats?: FollowerStats;
+	health?: HealthSample;
+	latencyMs?: number;
+	pingSeq: number;
+	pending?: { seq: number; at: number };
+	missed: number;
+	reach?: { at: number; results: ReachResult[] };
 }
 
 /** One row of the daemons management view. */
 export interface DaemonRow {
 	name: string;
 	mode: "primary" | "follower";
+	/** Address the primary reaches this daemon's instances on */
 	host: string | null;
+	/** Every non-loopback IPv4 the daemon reported for itself */
+	addresses: string[];
 	online: boolean;
+	/** Build identity, e.g. "1.0.0+6ee20ac" — what an upgrade changes */
 	version: string | null;
+	/** Local API revision — what refuses a mismatched client or follower */
+	protocol: number | null;
+	/** True when this daemon's build is behind the primary's */
+	outdated: boolean;
+	root: string | null;
 	connectedAt: number | null;
 	lastSeen: string | null;
-	stats: FollowerStats | null;
+	/** Age of the last heartbeat, ms — null when the daemon is not connected */
+	lastBeatMs: number | null;
+	/** Heartbeat round-trip, ms */
+	latencyMs: number | null;
+	/** Daemon process uptime, ms */
+	uptimeMs: number | null;
+	health: HealthSample | null;
+	checks: DaemonCheck[];
+	reach: ReachResult[] | null;
 	/** Instance names owned by this daemon */
 	instances: string[];
+}
+
+/** A daemon's row plus everything its detail view charts. */
+export interface DaemonDetail {
+	row: DaemonRow;
+	history: HealthSample[];
+	events: ClusterEvent[];
 }
 
 interface Pending {
@@ -72,10 +141,17 @@ interface Pending {
 const followers = new Map<string, FollowerLink>();
 const pending = new Map<string, Pending>();
 
+/** Health history per daemon, kept across reconnects so a chart is not reset
+ *  by a follower restart. Keyed by daemon name, the primary's included. */
+const histories = new Map<string, HealthSample[]>();
+
 let hubConfig: DaemonConfig | undefined;
+let hubStartedAt = Date.now();
 let requestCounter = 0;
 let watcher: FSWatcher | undefined;
 let syncTimer: ReturnType<typeof setTimeout> | undefined;
+let pingTimer: ReturnType<typeof setInterval> | undefined;
+let reachTimer: ReturnType<typeof setInterval> | undefined;
 
 /** Read the current sync payload: raw file texts, missing files skipped. */
 async function syncPayload(): Promise<Record<string, string>> {
@@ -127,12 +203,49 @@ async function persistRegistration(link: FollowerLink): Promise<void> {
 
 	cfg.daemons[link.name] = {
 		host: link.host,
+		addresses: link.addresses,
+		root: link.root,
 		version: link.version,
 		addedAt: existing?.addedAt ?? new Date().toISOString(),
 		lastSeen: new Date().toISOString(),
 	};
 
 	await saveCluster(cfg);
+}
+
+/**
+ * Stamp a follower's last-seen time into the registry as it goes away —
+ * otherwise an offline daemon reports the moment it *registered* as the last
+ * time anyone heard from it, which is the one number that view exists for.
+ */
+async function persistLastSeen(name: string, at: number): Promise<void> {
+	const cfg = await loadCluster();
+	const entry = cfg.daemons?.[name];
+
+	if (!entry) {
+		return;
+	}
+
+	entry.lastSeen = new Date(at).toISOString();
+
+	await saveCluster(cfg);
+}
+
+/** Append a health sample to a daemon's history, ignoring a repeated sample. */
+function recordHealth(name: string, sample: HealthSample): void {
+	const list = histories.get(name) ?? [];
+
+	if (list.at(-1)?.t === sample.t) {
+		return;
+	}
+
+	list.push(sample);
+
+	if (list.length > MAX_HEALTH_SAMPLES) {
+		list.splice(0, list.length - MAX_HEALTH_SAMPLES);
+	}
+
+	histories.set(name, list);
 }
 
 /** Instance names owned by a daemon, per the registry. */
@@ -154,48 +267,174 @@ function ownedInstances(cfg: ClusterConfig, daemon: string | undefined): string[
 	return names;
 }
 
-/** The daemons management view: the primary itself plus every known follower. */
-async function listDaemons(): Promise<DaemonRow[]> {
-	const cfg = await loadCluster();
-	const rows: DaemonRow[] = [];
+/** Coarse "12s" / "3m 4s" age of a timestamp. */
+function agoText(epochMs: number): string {
+	const seconds = Math.max(0, Math.round((Date.now() - epochMs) / 1000));
 
-	rows.push({
-		name: hubConfig?.name ?? "primary",
-		mode: "primary",
-		host: hubConfig?.listen ? `${hubConfig.listen.host}:${hubConfig.listen.port}` : null,
-		online: true,
-		version: String(PROTOCOL_VERSION),
-		connectedAt: null,
-		lastSeen: new Date().toISOString(),
-		stats: null,
-		instances: ownedInstances(cfg, undefined),
-	});
-
-	const known = new Set([...Object.keys(cfg.daemons ?? {}), ...followers.keys()]);
-
-	for (const name of [...known].sort()) {
-		const link = followers.get(name);
-		const registered = cfg.daemons?.[name];
-
-		rows.push({
-			name,
-			mode: "follower",
-			host: link?.host ?? registered?.host ?? null,
-			online: !!link,
-			version: link?.version ?? registered?.version ?? null,
-			connectedAt: link?.connectedAt ?? null,
-			lastSeen: link ? new Date().toISOString() : (registered?.lastSeen ?? null),
-			stats: link?.stats ?? null,
-			instances: ownedInstances(cfg, name),
-		});
+	if (seconds < 60) {
+		return `${seconds}s`;
 	}
 
-	return rows;
+	return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
-/** The live link for a follower, if connected. */
-export function followerLink(name: string): FollowerLink | undefined {
-	return followers.get(name);
+/** Percentage of a total, guarded against a missing denominator. */
+function pctOf(used: number, total: number): number {
+	if (total <= 0) {
+		return 0;
+	}
+
+	return Math.round((used / total) * 100);
+}
+
+/**
+ * Whether the machine still has room to run instances. CPU, memory and the
+ * cluster-root filesystem are judged together — any one of them at the pressure
+ * threshold is what will actually break a start, so the check names the one
+ * that is full instead of averaging them into a meaningless number.
+ */
+function resourceCheck(health: HealthSample | undefined): DaemonCheck {
+	const name = "Resource headroom";
+
+	if (!health) {
+		return { name, ok: undefined, detail: "no health sample yet" };
+	}
+
+	const memPct = pctOf(health.memUsedMb, health.memTotalMb);
+	const diskPct = pctOf(health.diskUsedBytes, health.diskTotalBytes);
+	const problems: string[] = [];
+
+	if (health.cpuPct >= PRESSURE_PCT) {
+		problems.push(`CPU at ${health.cpuPct}%`);
+	}
+
+	if (memPct >= PRESSURE_PCT) {
+		problems.push(`memory at ${memPct}%`);
+	}
+
+	if (diskPct >= PRESSURE_PCT) {
+		problems.push(`disk at ${diskPct}%`);
+	}
+
+	if (problems.length > 0) {
+		return { name, ok: false, detail: problems.join(" · ") };
+	}
+
+	return {
+		name,
+		ok: true,
+		detail: `CPU ${health.cpuPct}% · memory ${memPct}% · disk ${diskPct}% · load ${health.load1.toFixed(2)}`,
+	};
+}
+
+/** The health checks for a connected (or missing) follower. */
+function followerChecks(link: FollowerLink | undefined, registered: DaemonRegistration | undefined): DaemonCheck[] {
+	if (!link) {
+		return [
+			{
+				name: "Daemon link",
+				ok: false,
+				detail: registered?.lastSeen
+					? `not connected — last seen ${new Date(registered.lastSeen).toLocaleString()}`
+					: "never connected",
+			},
+			{ name: "Heartbeat", ok: undefined, detail: "no link" },
+			{ name: "Instance reachability", ok: undefined, detail: "no link" },
+			{ name: "Resource headroom", ok: undefined, detail: "no link" },
+		];
+	}
+
+	const beats: DaemonCheck = {
+		name: "Heartbeat",
+		ok: link.missed === 0,
+		detail:
+			link.missed === 0
+				? `${link.latencyMs ?? "?"}ms round-trip · last beat ${agoText(link.lastSeen)} ago`
+				: `${link.missed} missed ping(s) — last beat ${agoText(link.lastSeen)} ago`,
+	};
+
+	const reach: DaemonCheck = (() => {
+		const name = "Instance reachability";
+
+		if (!link.reach || link.reach.results.length === 0) {
+			return { name, ok: undefined, detail: `no running instance to probe on ${link.host}` };
+		}
+
+		const failed = link.reach.results.filter((result) => !result.ok);
+
+		if (failed.length > 0) {
+			return {
+				name,
+				ok: false,
+				detail: `unreachable from the primary: ${failed.map((result) => `${result.instance} (${result.address})`).join(", ")}`,
+			};
+		}
+
+		return {
+			name,
+			ok: true,
+			detail: `${link.reach.results.length} port(s) answering on ${link.host}`,
+		};
+	})();
+
+	return [
+		{
+			name: "Daemon link",
+			ok: true,
+			detail: `WebSocket from ${link.host} · connected ${agoText(link.connectedAt)} ago`,
+		},
+		beats,
+		reach,
+		resourceCheck(link.health),
+	];
+}
+
+/** Connected followers whose build differs from this primary's. */
+function outdatedFollowers(): string[] {
+	return [...followers.values()]
+		.filter((link) => link.version && link.version !== buildVersion())
+		.map((link) => link.name);
+}
+
+/** The health checks for this primary daemon itself. */
+function primaryChecks(cfg: ClusterConfig): DaemonCheck[] {
+	const listener = hubConfig?.listen;
+
+	return [
+		{
+			name: "Daemon link",
+			ok: true,
+			detail: `this daemon — local socket ${hubConfig?.socket ?? "?"}`,
+		},
+		{
+			name: "Cluster listener",
+			ok: listener ? true : undefined,
+			detail: listener
+				? `accepting followers on ${listener.host}:${listener.port} — ${followers.size} connected`
+				: "no TCP listener configured — this host cannot accept followers",
+		},
+		{
+			name: "Cluster token",
+			ok: hubConfig?.token ? true : false,
+			detail: hubConfig?.token
+				? "configured — followers must present it"
+				: "not configured — followers cannot authenticate",
+		},
+		{
+			name: "Instance reachability",
+			ok: undefined,
+			detail: `${ownedInstances(cfg, undefined).length} instance(s) on this host, reached on loopback`,
+		},
+		{
+			name: "Fleet build",
+			ok: outdatedFollowers().length === 0,
+			detail:
+				outdatedFollowers().length === 0
+					? `every connected daemon runs ${buildVersion()}`
+					: `behind this primary: ${outdatedFollowers().join(", ")} — upgrade them`,
+		},
+		resourceCheck(currentHealth()),
+	];
 }
 
 /** Cached cluster config for sync routing decisions (refreshed on file change). */
@@ -207,6 +446,108 @@ async function refreshClusterCache(): Promise<void> {
 	} catch {
 		cachedCluster = undefined;
 	}
+}
+
+/** The registry, from the cache when it is warm — the fleet view polls often. */
+async function clusterView(): Promise<ClusterConfig> {
+	return cachedCluster ?? (await loadCluster());
+}
+
+/** This primary's own row. */
+function primaryRow(cfg: ClusterConfig): DaemonRow {
+	const health = currentHealth();
+
+	if (health) {
+		recordHealth(hubConfig?.name ?? "primary", health);
+	}
+
+	return {
+		name: hubConfig?.name ?? "primary",
+		mode: "primary",
+		host: hubConfig?.listen ? `${hubConfig.listen.host}:${hubConfig.listen.port}` : null,
+		addresses: hostAddresses(),
+		online: true,
+		version: buildVersion(),
+		protocol: PROTOCOL_VERSION,
+		outdated: false,
+		root: hubConfig?.root ?? root(),
+		connectedAt: hubStartedAt,
+		lastSeen: new Date().toISOString(),
+		// there is no link to itself to measure — a zero here would read as a
+		// suspiciously perfect round-trip rather than "not applicable"
+		lastBeatMs: null,
+		latencyMs: null,
+		uptimeMs: Date.now() - hubStartedAt,
+		health: health ?? null,
+		checks: primaryChecks(cfg),
+		reach: null,
+		instances: ownedInstances(cfg, undefined),
+	};
+}
+
+/** The daemons management view: the primary itself plus every known follower. */
+async function listDaemons(): Promise<DaemonRow[]> {
+	const cfg = await clusterView();
+	const rows: DaemonRow[] = [primaryRow(cfg)];
+
+	const known = new Set([...Object.keys(cfg.daemons ?? {}), ...followers.keys()]);
+
+	for (const name of [...known].sort()) {
+		const link = followers.get(name);
+		const registered = cfg.daemons?.[name];
+
+		rows.push({
+			name,
+			mode: "follower",
+			host: link?.host ?? registered?.host ?? null,
+			addresses: link?.addresses ?? registered?.addresses ?? [],
+			online: !!link,
+			version: link?.version ?? registered?.version ?? null,
+			protocol: link?.protocol ?? null,
+			// a follower one build behind still works — the console flags it so
+			// somebody decides, rather than upgrading on its own
+			outdated: !!link?.version && link.version !== buildVersion(),
+			root: link?.root ?? registered?.root ?? null,
+			connectedAt: link?.connectedAt ?? null,
+			lastSeen: link
+				? new Date(link.lastSeen).toISOString()
+				: (registered?.lastSeen ?? null),
+			lastBeatMs: link ? Date.now() - link.lastSeen : null,
+			latencyMs: link?.latencyMs ?? null,
+			uptimeMs: link?.startedAt ? Date.now() - link.startedAt : null,
+			health: link?.health ?? null,
+			checks: followerChecks(link, registered),
+			reach: link?.reach?.results ?? null,
+			instances: ownedInstances(cfg, name),
+		});
+	}
+
+	return rows;
+}
+
+/** One daemon's row with the history and events its detail view renders. */
+async function daemonDetail(name: string): Promise<DaemonDetail | null> {
+	const rows = await listDaemons();
+	const row = rows.find((entry) => entry.name === name);
+
+	if (!row) {
+		return null;
+	}
+
+	// the primary's own history lives in its health module; a follower's is what
+	// the hub accumulated from its heartbeats
+	const history = row.mode === "primary" ? healthHistory() : (histories.get(name) ?? []);
+
+	return {
+		row,
+		history: history.slice(),
+		events: getEvents(daemonEventKey(name)),
+	};
+}
+
+/** The live link for a follower, if connected. */
+export function followerLink(name: string): FollowerLink | undefined {
+	return followers.get(name);
 }
 
 /**
@@ -261,6 +602,29 @@ function forwardOp(
 	});
 }
 
+/**
+ * Tell a follower to replace its binary with this primary's. The primary is the
+ * source of the build, so it never upgrades itself through this path — that is
+ * an operator action (build, restart the service).
+ */
+async function upgradeFollower(name: string, force: boolean): Promise<unknown> {
+	if (name === hubConfig?.name) {
+		throw new Error(
+			"the primary is the source of the binary — build a new one and restart its service",
+		);
+	}
+
+	if (!followers.has(name)) {
+		throw new Error(`follower "${name}" is not connected`);
+	}
+
+	pushEvent(daemonEventKey(name), "action", "upgrade requested by the primary");
+
+	const outcome = await forwardOp(name, "daemon.selfUpgrade", [force]);
+
+	return outcome.result;
+}
+
 /** Settle every pending request that was waiting on a lost follower. */
 function rejectPendingFor(name: string, reason: string): void {
 	for (const [id, entry] of pending) {
@@ -271,21 +635,106 @@ function rejectPendingFor(name: string, reason: string): void {
 	}
 }
 
+/**
+ * One heartbeat round. A follower that has not answered the previous ping is
+ * counted as missing one; after MISSED_PINGS_BEFORE_DROP the socket is closed
+ * so the follower's own reconnect loop starts a fresh link.
+ */
+function pingRound(): void {
+	for (const link of followers.values()) {
+		if (link.pending) {
+			link.missed += 1;
+
+			if (link.missed >= MISSED_PINGS_BEFORE_DROP) {
+				log(`follower "${link.name}" missed ${link.missed} heartbeats — dropping the link`);
+				pushEvent(
+					daemonEventKey(link.name),
+					"error",
+					`heartbeat timeout after ${link.missed} missed pings`,
+				);
+
+				link.ws.close(1001, "heartbeat timeout");
+
+				continue;
+			}
+		}
+
+		const at = Date.now();
+
+		link.pending = { seq: ++link.pingSeq, at };
+		link.ws.send(JSON.stringify({ t: "ping", seq: link.pingSeq, at }));
+	}
+}
+
+/**
+ * TCP-probe a follower's running instances from the primary's machine. This is
+ * the check nothing else makes: the WebSocket link can be perfectly healthy
+ * while the velocity proxy cannot reach the backends behind it (a firewall, a
+ * server bound to loopback, a stale advertised address).
+ */
+async function probeReach(link: FollowerLink): Promise<void> {
+	const cfg = await clusterView();
+	const states = link.health?.states ?? {};
+
+	const targets = Object.entries(cfg.instances)
+		.filter(([name, inst]) => inst.daemon === link.name && !inst.external && states[name] === "running")
+		.map(([name, inst]) => ({ name, port: inst.port }));
+
+	const results = await Promise.all(
+		targets.map(async (target): Promise<ReachResult> => ({
+			instance: target.name,
+			address: `${link.host}:${target.port}`,
+			ok: await portOpen(link.host, target.port),
+		})),
+	);
+
+	const wasBad = link.reach?.results.some((result) => !result.ok) ?? false;
+	const isBad = results.some((result) => !result.ok);
+
+	if (isBad && !wasBad) {
+		pushEvent(
+			daemonEventKey(link.name),
+			"error",
+			`instances unreachable at ${link.host}: ${results
+				.filter((result) => !result.ok)
+				.map((result) => result.instance)
+				.join(", ")}`,
+		);
+	}
+
+	if (!isBad && wasBad) {
+		pushEvent(daemonEventKey(link.name), "state", `instances reachable again at ${link.host}`);
+	}
+
+	link.reach = { at: Date.now(), results };
+}
+
+/** Probe every connected follower. */
+function reachRound(): void {
+	for (const link of followers.values()) {
+		void probeReach(link);
+	}
+}
+
 interface FollowerFrame {
 	t: string;
 	id?: string;
 	name?: string;
 	host?: string;
+	addresses?: string[];
 	root?: string;
 	version?: string;
 	protocol?: number;
+	startedAt?: number;
+	seq?: number;
+	at?: number;
+	health?: HealthSample;
 	ok?: boolean;
 	result?: unknown;
 	cfg?: unknown;
 	lock?: unknown;
 	error?: string;
 	snapshot?: Parameters<typeof applySnapshot>[1];
-	stats?: FollowerStats;
 	instance?: string;
 	kind?: ClusterEvent["kind"];
 	message?: string;
@@ -319,10 +768,15 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 			ws,
 			name: frame.name,
 			host: frame.host || ws.remoteAddress,
+			addresses: frame.addresses ?? [],
 			root: frame.root,
 			version: frame.version,
+			protocol: frame.protocol,
+			startedAt: frame.startedAt,
 			connectedAt: Date.now(),
 			lastSeen: Date.now(),
+			pingSeq: 0,
+			missed: 0,
 		};
 
 		// a reconnect replaces the old link; its pending calls can never settle
@@ -339,7 +793,7 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 		await sendSync(link);
 
 		log(`follower "${link.name}" connected from ${link.host} (root ${link.root})`);
-		pushEvent("daemon", "state", `follower ${link.name} connected`);
+		pushEvent(daemonEventKey(link.name), "state", `connected from ${link.host}`);
 
 		return;
 	}
@@ -354,8 +808,21 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 
 	link.lastSeen = Date.now();
 
-	if (frame.t === "stats" && frame.stats) {
-		link.stats = frame.stats;
+	if (frame.t === "pong") {
+		// only the outstanding ping's echo measures anything — a late pong from a
+		// previous round would time a round-trip that already ended
+		if (link.pending && frame.seq === link.pending.seq) {
+			link.latencyMs = Date.now() - link.pending.at;
+			link.pending = undefined;
+			link.missed = 0;
+		}
+
+		if (frame.health) {
+			const sample: HealthSample = { ...frame.health, latencyMs: link.latencyMs };
+
+			link.health = sample;
+			recordHealth(link.name, sample);
+		}
 
 		return;
 	}
@@ -426,20 +893,27 @@ export const hubWebSocket: Bun.WebSocketHandler<{ kind: string; name?: string }>
 		if (link && link.ws === ws) {
 			followers.delete(name);
 			rejectPendingFor(name, `follower "${name}" disconnected`);
+			void persistLastSeen(name, link.lastSeen);
 			log(`follower "${name}" disconnected`);
-			pushEvent("daemon", "state", `follower ${name} disconnected`);
+			pushEvent(daemonEventKey(name), "state", "disconnected");
 		}
 	},
 };
 
 /** Wire the hub into the daemon: routing hooks, sync watcher, management ops. */
-export function installHub(dcfg: DaemonConfig): void {
+export function installHub(dcfg: DaemonConfig, startedAt: number): void {
 	hubConfig = dcfg;
+	hubStartedAt = startedAt;
 
 	installRouting(resolveRemote, forwardOp);
 	setDaemonsProvider(listDaemons);
+	setDaemonDetailProvider(daemonDetail);
+	setUpgradeSender(upgradeFollower);
 
 	void refreshClusterCache();
+
+	pingTimer ??= setInterval(pingRound, PING_INTERVAL_MS);
+	reachTimer ??= setInterval(reachRound, REACH_INTERVAL_MS);
 
 	// Bun.write replaces files, so watch the directory and filter by name
 	watcher = watch(root(), (_kind, filename) => {
@@ -455,8 +929,18 @@ export function installHub(dcfg: DaemonConfig): void {
 	});
 }
 
-/** Stop the sync watcher (shutdown). */
+/** Stop the sync watcher and the heartbeat timers (shutdown). */
 export function stopHub(): void {
 	watcher?.close();
 	watcher = undefined;
+
+	if (pingTimer) {
+		clearInterval(pingTimer);
+		pingTimer = undefined;
+	}
+
+	if (reachTimer) {
+		clearInterval(reachTimer);
+		reachTimer = undefined;
+	}
 }

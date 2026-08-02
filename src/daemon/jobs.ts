@@ -154,6 +154,19 @@ export function startJob(
 }
 
 /** Current state of one job, or undefined once it has been pruned. */
+/** How many jobs are still running — what an upgrade waits for. */
+export function runningJobs(): number {
+	let count = 0;
+
+	for (const entry of jobs.values()) {
+		if (entry.view.state === "running") {
+			count += 1;
+		}
+	}
+
+	return count;
+}
+
 export function getJob(id: string): JobView | undefined {
 	return jobs.get(id)?.view;
 }

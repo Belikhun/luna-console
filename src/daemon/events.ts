@@ -13,6 +13,15 @@ export interface ClusterEvent {
 
 const MAX_EVENTS = 200;
 
+/**
+ * Event-log key for a daemon. Daemon events share the log with instance events,
+ * so they are filed under a namespaced pseudo-instance rather than a name that
+ * could collide with a real one.
+ */
+export function daemonEventKey(name: string): string {
+	return `daemon:${name}`;
+}
+
 const events: ClusterEvent[] = [];
 
 /** A follower daemon forwards its events up to the primary through this. */

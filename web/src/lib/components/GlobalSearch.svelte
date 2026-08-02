@@ -2,74 +2,23 @@
 	import { goto } from '$app/navigation';
 	import Icon from './Icon.svelte';
 	import Spinner from './Spinner.svelte';
+	import { score } from '$lib/search/match';
+	import { SEARCH_PROVIDERS, loadSearchIndex, type SearchHit } from '$lib/search/providers';
 
 	/**
-	 * Top-navigation search: the console's unified jump box. Pages are matched
-	 * from a static map; instances and plugins are pulled once on first focus and
-	 * cached, so opening the box costs nothing until it is actually used.
-	 * Alt+S focuses it from anywhere.
+	 * Top-navigation search: the console's unified jump box. Everything in the
+	 * cluster is indexed through the provider registry (DESIGN.md §5.3), pulled
+	 * once on first focus and cached, so opening the box costs nothing until it
+	 * is actually used.
+	 *
+	 * Keyboard: Alt+S focuses it from anywhere, up/down move the highlighted hit
+	 * and keep it in view, Enter opens it, Escape closes and hands focus back to
+	 * wherever it came from.
 	 */
-	interface Hit {
-		group: string;
-		label: string;
-		detail: string;
-		href: string;
-		icon: string;
-	}
+	type Hit = SearchHit;
 
-	const PAGES: Hit[] = [
-		{
-			group: 'Pages',
-			label: 'Instances',
-			detail: 'Cluster instances',
-			href: '/instances',
-			icon: 'server'
-		},
-		{
-			group: 'Pages',
-			label: 'Launch instance',
-			detail: 'Create a new backend',
-			href: '/instances/launch',
-			icon: 'rocket'
-		},
-		{
-			group: 'Pages',
-			label: 'Plugins',
-			detail: 'Plugin pool and updates',
-			href: '/plugins',
-			icon: 'plug'
-		},
-		{
-			group: 'Pages',
-			label: 'Ports',
-			detail: 'Port allocations',
-			href: '/network',
-			icon: 'sitemap'
-		},
-		{
-			group: 'Pages',
-			label: 'Proxy routing',
-			detail: 'Velocity routes',
-			href: '/proxy',
-			icon: 'route'
-		},
-		{
-			group: 'Pages',
-			label: 'Cleanup',
-			detail: 'Reclaim disk space',
-			href: '/cleanup',
-			icon: 'broom'
-		},
-		{
-			group: 'Pages',
-			label: 'Daemons',
-			detail: 'Cluster daemons and followers',
-			href: '/daemons',
-			icon: 'hardDrive'
-		}
-	];
-
-	const GROUPS = ['Pages', 'Instances', 'Plugins'];
+	/** Groups render in registry order, so the index defines the ranking. */
+	const GROUPS = SEARCH_PROVIDERS.map((provider) => provider.group);
 
 	const MAX_PER_GROUP = 5;
 
@@ -81,8 +30,12 @@
 	let resources: Hit[] = $state([]);
 	let root: HTMLDivElement | undefined = $state();
 	let input: HTMLInputElement | undefined = $state();
+	let listEl: HTMLDivElement | undefined = $state();
 
-	/** Pull instances and plugins once, on first focus. A failure clears the flag
+	/** Where focus was before Alt+S took it, so Escape can give it back. */
+	let returnFocus: HTMLElement | null = null;
+
+	/** Pull every provider once, on first focus. A failure clears the flag
 	 *  so the next focus retries. */
 	async function load(): Promise<void> {
 		if (loaded) {
@@ -93,35 +46,7 @@
 		loading = true;
 
 		try {
-			const [instanceBody, pluginBody] = (await Promise.all([
-				fetch('/api/instances').then((res) => (res.ok ? res.json() : {})),
-				fetch('/api/plugins').then((res) => (res.ok ? res.json() : {}))
-			])) as [{ instances?: any[] }, { plugins?: any[] }];
-
-			const instances: any[] = instanceBody?.instances ?? [];
-			const plugins: any[] = pluginBody?.plugins ?? [];
-
-			resources = [
-				...instances.map((inst) => ({
-					group: 'Instances',
-					label: inst.name as string,
-					detail: `${inst.software ?? 'instance'} · ${inst.state ?? 'unknown'}`,
-					href: `/instances/${inst.name}`,
-					icon: 'server'
-				})),
-				...plugins.map((plugin) => ({
-					group: 'Plugins',
-					label: plugin.plugin as string,
-					detail: [
-						plugin.sources?.join(', ') ?? 'plugin',
-						plugin.families?.map((family: any) => family.family).join(', ') ?? ''
-					]
-						.filter(Boolean)
-						.join(' · '),
-					href: `/plugins/${encodeURIComponent(plugin.plugin)}`,
-					icon: 'plug'
-				}))
-			];
+			resources = await loadSearchIndex();
 		} catch {
 			loaded = false;
 		}
@@ -130,7 +55,7 @@
 	}
 
 	const hits = $derived.by(() => {
-		const needle = query.trim().toLowerCase();
+		const needle = query.trim();
 
 		if (!needle) {
 			return [];
@@ -138,21 +63,25 @@
 
 		const out: Hit[] = [];
 
+		// grouped in registry order, each group ranked on its own so a strong
+		// match in a later group is not buried by weak ones in an earlier one
 		for (const group of GROUPS) {
-			const pool = group === 'Pages' ? PAGES : resources;
+			const scored: Array<{ hit: Hit; rank: number }> = [];
 
-			const matches = pool.filter((hit) => {
+			for (const hit of resources) {
 				if (hit.group !== group) {
-					return false;
+					continue;
 				}
 
-				return (
-					hit.label.toLowerCase().includes(needle) ||
-					hit.detail.toLowerCase().includes(needle)
-				);
-			});
+				const rank = Math.max(score(hit.label, needle), score(`${hit.label} ${hit.detail}`, needle) - 0.5);
 
-			out.push(...matches.slice(0, MAX_PER_GROUP));
+				if (rank > 0) {
+					scored.push({ hit, rank });
+				}
+			}
+
+			scored.sort((a, b) => b.rank - a.rank);
+			out.push(...scored.slice(0, MAX_PER_GROUP).map((entry) => entry.hit));
 		}
 
 		return out;
@@ -163,11 +92,29 @@
 		cursor = 0;
 	});
 
+	// the highlighted hit has to stay visible while the arrows walk past the
+	// bottom of the scrolling panel
+	$effect(() => {
+		void cursor;
+
+		listEl?.querySelector<HTMLElement>('.hit.on')?.scrollIntoView({ block: 'nearest' });
+	});
+
 	function pick(hit: Hit): void {
 		open = false;
 		query = '';
+		returnFocus = null;
 		input?.blur();
 		goto(hit.href);
+	}
+
+	/** Close the box and hand focus back to whatever had it before Alt+S. */
+	function dismiss(): void {
+		open = false;
+		input?.blur();
+
+		returnFocus?.focus();
+		returnFocus = null;
 	}
 
 	function onKeydown(event: KeyboardEvent): void {
@@ -200,14 +147,18 @@
 		}
 
 		if (event.key === 'Escape') {
-			open = false;
-			input?.blur();
+			dismiss();
 		}
 	}
 
 	function onWindowKeydown(event: KeyboardEvent): void {
 		if (event.altKey && (event.key === 's' || event.key === 'S')) {
 			event.preventDefault();
+
+			const from = document.activeElement;
+
+			returnFocus = from instanceof HTMLElement && from !== input ? from : null;
+
 			input?.focus();
 		}
 	}
@@ -241,13 +192,18 @@
 	<span class="hint">[Alt+S]</span>
 
 	{#if open && query.trim()}
-		<div class="results" role="listbox">
+		<div class="results" role="listbox" bind:this={listEl}>
 			{#if loading}
 				<div class="note"><Spinner size="0.875rem" /> Loading resources…</div>
 			{:else if hits.length === 0}
 				<div class="note">No matches for “{query.trim()}”</div>
 			{:else}
-				{#each hits as hit, i (hit.group + hit.href)}
+				<!-- keyed by position, deliberately: providers are an open registry, and
+				     two distinct objects legitimately share group + label + href (the
+				     proxy's 25565/tcp and the external sandbox's both land on
+				     /network?q=25565). Any key built from hit fields is a duplicate-key
+				     crash waiting for whoever adds the next provider. -->
+				{#each hits as hit, i (i)}
 					{#if i === 0 || hits[i - 1]?.group !== hit.group}
 						<div class="ghead">{hit.group}</div>
 					{/if}

@@ -1,15 +1,19 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { api, post, del } from '$lib/api';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import DataTable from '$lib/components/DataTable.svelte';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
+	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import type { Column } from '$lib/components/table';
+	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
@@ -30,6 +34,9 @@
 	let overrides: Record<string, string[]> = $state({});
 	let instanceNames: string[] = $state([]);
 
+	let loading = $state(false);
+	let lastUpdated: number | null = $state(null);
+
 	let editOpen = $state(false);
 	let editing: EnvRow | null = $state(null);
 	let formName = $state('');
@@ -40,10 +47,19 @@
 	let saving = $state(false);
 
 	async function refresh(): Promise<void> {
-		const data = await api('/env');
+		loading = true;
 
-		variables = data.variables;
-		overrides = data.instances;
+		try {
+			const data = await api('/env');
+
+			variables = data.variables;
+			overrides = data.instances;
+			lastUpdated = Date.now();
+		} catch (err) {
+			Notify.error('Could not load the environment', { detail: (err as Error).message });
+		} finally {
+			loading = false;
+		}
 	}
 
 	onMount(() => {
@@ -103,14 +119,43 @@
 		{ id: 'name', label: 'Name', sortable: true, width: 240 },
 		{ id: 'value', label: 'Value' },
 		{ id: 'description', label: 'Description' },
-		{ id: 'controls', label: '', width: 120 }
 	];
+
+	function rowActions(row: EnvRow): ContextMenuItem[] {
+		return [
+			{ label: 'Edit variable', icon: 'pen', action: () => openEditor(row) },
+			{
+				label: 'Copy name',
+				icon: 'copy',
+				action: () => navigator.clipboard?.writeText(row.name)
+			},
+			{
+				label: 'Copy value',
+				icon: 'copy',
+				// a secret's value never reaches the browser, so there is nothing to copy
+				disabled: row.secret,
+				action: () => navigator.clipboard?.writeText(row.value)
+			},
+			{ separator: true },
+			{
+				label: 'Remove variable',
+				icon: 'trash',
+				color: 'danger',
+				action: () => remove(row)
+			}
+		];
+	}
 
 	const overrideRows = $derived(
 		Object.entries(overrides).flatMap(([instance, names]) =>
 			names.map((name) => ({ instance, name }))
 		)
 	);
+
+	let selected: Set<string> = $state(new Set());
+
+	/** The row the header's Actions dropdown acts on. */
+	const one = $derived(variables.find((row: any) => selected.has(row.name)));
 </script>
 
 <svelte:head><title>Environment | MRDS Console</title></svelte:head>
@@ -122,15 +167,26 @@
 	info
 >
 	{#snippet actions()}
+		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="environment" />
+		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
 		<Btn variant="primary" icon="key" onclick={() => openEditor(null)}>Add variable</Btn>
 	{/snippet}
 </PageHeader>
 
 <Panel flush>
-	<DataTable
+	<ResourceTable
+		tableId="environment"
+		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
 		rows={variables}
 		getId={(row) => row.name}
+		searchValue={(row) => `${row.name} ${row.secret ? 'secret' : row.value} ${row.description}`}
+		searchPlaceholder="Find a variable"
+		selectable="single"
+		bind:selected
+		{rowActions}
+		rowLabel={(row) => row.name}
+		noun="variable"
 		onRowClick={(row) => openEditor(row)}
 		emptyTitle="No variables defined"
 		emptyText="Add DB_HOST, LUNA_HTTP_PORT and friends — templates reference them as ${'${NAME}'}."
@@ -147,16 +203,9 @@
 				{/if}
 			{:else if col === 'description'}
 				<span class="dim">{row.description || '–'}</span>
-			{:else if col === 'controls'}
-				<Btn
-					variant="icon"
-					icon="trash"
-					title="Remove variable"
-					onclick={() => remove(row)}
-				/>
 			{/if}
 		{/snippet}
-	</DataTable>
+	</ResourceTable>
 </Panel>
 
 {#if overrideRows.length}

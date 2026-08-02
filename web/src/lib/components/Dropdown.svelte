@@ -2,15 +2,27 @@
 	import Icon from './Icon.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import { toMenuItems, type Item } from './menu';
+	import type { ContextMenuItem } from './contextmenu';
 
 	/** Button dropdown — the trigger is a pill button, the panel is the shared
 	 *  ContextMenu so button menus and right-click menus match. */
 	let {
 		label,
-		items,
+		items = [],
+		menu: menuItems,
 		primary = false,
 		disabled = false
-	}: { label: string; items: Item[]; primary?: boolean; disabled?: boolean } = $props();
+	}: {
+		label: string;
+		items?: Item[];
+		/** full ContextMenu model, for callers that need submenus or headers —
+		 *  takes precedence over the flat `items` list */
+		menu?: ContextMenuItem[];
+		primary?: boolean;
+		disabled?: boolean;
+	} = $props();
+
+	const resolved = $derived(menuItems ?? toMenuItems(items));
 
 	let open = $state(false);
 	let trigger: HTMLButtonElement | undefined = $state();
@@ -45,7 +57,7 @@
 		{label}
 		<span class="caret" class:flip={open}><Icon name="caretDown" size="0.75rem" /></span>
 	</button>
-	<ContextMenu bind:this={menu} items={toMenuItems(items)} onclose={() => (open = false)} />
+	<ContextMenu bind:this={menu} items={resolved} onclose={() => (open = false)} />
 </div>
 
 <style lang="scss">

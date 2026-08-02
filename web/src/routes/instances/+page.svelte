@@ -10,7 +10,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import SearchInput from '$lib/components/SearchInput.svelte';
-	import DataTable from '$lib/components/DataTable.svelte';
+	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import SplitButton from '$lib/components/SplitButton.svelte';
@@ -39,7 +39,6 @@
 	}> = $state([]);
 	let hostMemMb = $state(0);
 	let selected: Set<string> = $state(new Set());
-	let filter = $state('');
 	let loading = $state(true);
 	let detailTab = $state('details');
 	let panelLocation: 'bottom' | 'right' = $state('bottom');
@@ -78,18 +77,6 @@
 				}) as unknown as Row
 		)
 	]);
-
-	const filtered = $derived.by(() => {
-		if (!filter) {
-			return allRows;
-		}
-
-		const needle = filter.toLowerCase();
-
-		return allRows.filter(
-			(row) => row.name.includes(needle) || (row.state ?? 'external').includes(needle)
-		);
-	});
 
 	const one = $derived(
 		selected.size === 1 ? rows.find((row) => selected.has(row.name)) : undefined
@@ -263,9 +250,6 @@
 		await refresh();
 	}
 
-	let rowMenu: ContextMenu | undefined = $state();
-	let menuRow: Row | undefined = $state();
-
 	/** Heap ceiling in MB, parsed from the configured "4G"/"512M" memory string. */
 	function heapMb(memory: string | undefined): number {
 		if (!memory) {
@@ -303,13 +287,8 @@
 		return tps >= 15 ? 'warning' : 'danger';
 	}
 
-	const menuItems: ContextMenuItem[] = $derived.by(() => {
-		const row = menuRow;
-
-		if (!row) {
-			return [];
-		}
-
+	/** An instance's verbs — the row menu and the toolbar's Actions button. */
+	function rowActions(row: Row): ContextMenuItem[] {
 		const up = row.state === 'running' || row.state === 'starting';
 
 		return [
@@ -328,18 +307,21 @@
 				label: 'Start instance',
 				icon: 'play',
 				disabled: row.state !== 'stopped',
+				hint: row.state !== 'stopped' ? `${row.name} is already ${row.state}` : undefined,
 				action: () => stateAction('start')
 			},
 			{
 				label: 'Stop instance',
 				icon: 'stop',
 				disabled: !up,
+				hint: !up ? `${row.name} is not running` : undefined,
 				action: () => stateAction('stop')
 			},
 			{
 				label: 'Restart instance',
 				icon: 'rotate',
 				disabled: !up,
+				hint: !up ? `${row.name} is not running` : undefined,
 				action: () => stateAction('restart')
 			},
 			{
@@ -385,15 +367,15 @@
 				icon: 'trash',
 				color: 'danger',
 				disabled: row.state !== 'stopped' || row.name === 'proxy',
+				hint:
+					row.name === 'proxy'
+						? 'the proxy is the cluster entrypoint and cannot be deleted'
+						: row.state !== 'stopped'
+							? 'stop the instance first'
+							: undefined,
 				action: () => goto(`/instances/${row.name}?tab=config&delete=1`)
 			}
 		];
-	});
-
-	async function openRowMenu(row: Row, event: MouseEvent): Promise<void> {
-		menuRow = row;
-
-		await rowMenu?.openAt(event.clientX, event.clientY);
 	}
 
 	const detailCells: InfoCell[] = $derived.by(() => {
@@ -487,40 +469,9 @@
 						}
 					]}
 				/>
-				<Dropdown
-					label="Actions"
-					disabled={!one}
-					items={[
-						{
-							label: 'View details',
-							icon: 'circleInfo',
-							action: () => one && goto(`/instances/${one.name}`)
-						},
-						{
-							label: 'Manage plugins',
-							icon: 'plug',
-							action: () => one && goto(`/instances/${one.name}?tab=plugins`)
-						},
-						{
-							label: 'Edit configuration',
-							icon: 'sliders',
-							action: () => one && goto(`/instances/${one.name}?tab=config`)
-						},
-						{
-							label: 'Serial console',
-							icon: 'code',
-							action: () => one && goto(`/instances/${one.name}/console`)
-						},
-						{ divider: true, label: '' },
-						{
-							label: 'Delete instance',
-							icon: 'trash',
-							danger: true,
-							disabled: !one || one.state !== 'stopped' || one.name === 'proxy',
-							action: () => one && goto(`/instances/${one.name}?tab=config&delete=1`)
-						}
-					]}
-				/>
+				<!-- the selection's verbs are the row's verbs — one declaration, two
+				     places to reach it (here and the row's context menu) -->
+				<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
 				<SplitButton
 					label="Launch instance"
 					onclick={() => goto('/instances/launch')}
@@ -537,29 +488,26 @@
 		</PageHeader>
 
 		<Panel flush>
-			<DataTable
+			<ResourceTable
 				tableId="instances"
 				{columns}
-				rows={filtered}
+				rows={allRows}
 				getId={(row) => row.name}
+				searchValue={(row) =>
+					`${row.name} ${row.state ?? 'external'} ${row.software ?? ''} ${row.mcVersion ?? ''} ${row.port ?? row.external ?? ''} ${row.daemon ?? 'primary'}`}
+				searchPlaceholder="Find instance by name, state or version"
 				selectable="multi"
 				bind:selected
+				{rowActions}
+				rowLabel={(row) => row.name}
+				noun="instance"
 				{sortValue}
 				rowDim={(row) => !!row.externalOnly}
-				onRowContextMenu={openRowMenu}
 				{filters}
-				paging
 				pageSize={25}
-				emptyTitle="No instances match the filter"
-				emptyText="Adjust the filter above, or launch a new instance."
+				emptyTitle="No instances registered"
+				emptyText="Launch one to get started."
 			>
-				{#snippet toolbar()}
-					<SearchInput
-						bind:value={filter}
-						placeholder="Find instance by name or state"
-						width="26rem"
-					/>
-				{/snippet}
 				{#snippet cell(row, col)}
 					{#if row.externalOnly}
 						{#if col === 'name'}
@@ -699,7 +647,7 @@
 						{row.javaPid ?? '–'}
 					{/if}
 				{/snippet}
-			</DataTable>
+			</ResourceTable>
 		</Panel>
 
 		{#if !one}
@@ -788,7 +736,6 @@
 	{/if}
 </div>
 
-<ContextMenu bind:this={rowMenu} items={menuItems} header={menuRow?.name} minWidth="14rem" />
 
 <ScheduleQuickModal bind:open={scheduleOpen} instances={scheduleTargets} />
 

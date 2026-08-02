@@ -281,6 +281,7 @@
 			class:processing={busy === key}
 			data-color={item.color ?? 'default'}
 			disabled={item.disabled || busy !== null}
+			title={item.hint ?? null}
 			onmouseenter={(event) => (inSub ? cancelSubClose() : void enter(item, index, event))}
 			onclick={(event) => run(item, key, index, event)}
 		>

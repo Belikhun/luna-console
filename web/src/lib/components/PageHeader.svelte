@@ -41,8 +41,14 @@
 		justify-content: space-between;
 		gap: 1rem;
 		margin-bottom: 1rem;
-		flex-wrap: wrap;
 	}
+
+	// the title column is the one that gives: a long description wraps rather
+	// than squeezing the action bar until its buttons drop onto a second line
+	.left {
+		min-width: 0;
+	}
+
 	h1 {
 		display: flex;
 		align-items: center;
@@ -66,7 +72,13 @@
 	.actions {
 		display: flex;
 		align-items: center;
+		justify-content: flex-end;
 		gap: 0.5rem;
-		flex-wrap: wrap;
+		flex: none;
+
+		// only a genuinely narrow viewport may stack them
+		@include below($bp-medium) {
+			flex-wrap: wrap;
+		}
 	}
 </style>

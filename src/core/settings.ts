@@ -304,7 +304,9 @@ export const SERVER_SETTINGS: SettingSpec[] = [
 		label: "Bind address",
 		group: "network",
 		type: "text",
-		managed: "backends bind to loopback only; the proxy is the public entrypoint",
+		managed:
+			"the proxy is the public entrypoint — backends on this host bind to loopback, " +
+			"backends on a follower daemon bind to 0.0.0.0 so the proxy can reach them",
 		fallback: "127.0.0.1"
 	},
 	{
