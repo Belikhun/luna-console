@@ -5,7 +5,7 @@ import * as luna from '$core/services/luna';
  * GET → LunaCore's network telemetry for every backend the proxy knows, external
  * servers included. An unreachable proxy is reported in the body rather than as an
  * HTTP error: the page shows a "telemetry unavailable" state and keeps working on
- * the data mrds collects itself.
+ * the data luna collects itself.
  */
 export async function GET() {
 	const result = await luna.dashboard();

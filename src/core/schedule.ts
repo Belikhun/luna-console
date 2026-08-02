@@ -1,5 +1,5 @@
 /**
- * Instance schedules (DESIGN.md §3.4) — EventBridge Scheduler's model at mrds
+ * Instance schedules (DESIGN.md §3.4) — EventBridge Scheduler's model at luna
  * scale: one-time `at`, recurring `cron` (standard 5-field) or `rate` (every N
  * minutes) triggers firing a start/stop/restart across instance targets, with
  * an optional run cap and a persisted event log.

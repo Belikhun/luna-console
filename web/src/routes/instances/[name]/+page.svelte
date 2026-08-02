@@ -534,7 +534,7 @@
 	];
 </script>
 
-<svelte:head><title>{name} | MRDS Console</title></svelte:head>
+<svelte:head><title>{name} | Luna Console</title></svelte:head>
 
 {#if inst}
 	<PageHeader title={name ?? ''} info>
@@ -769,7 +769,7 @@
 				{/if}
 			</div>
 			<p class="dim note">
-				Sampled every 5s by the mrds daemon (last hour kept in memory).
+				Sampled every 5s by the luna daemon (last hour kept in memory).
 				{#if hasHeartbeatSeries}
 					Tick rate and heap come from LunaCore's heartbeat.
 				{/if}

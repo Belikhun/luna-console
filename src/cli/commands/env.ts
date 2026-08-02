@@ -25,7 +25,7 @@ command({
 			}
 
 			for (const [name, value] of Object.entries(await builtinVars(cfg, instance))) {
-				const masked = name === "MRDS_FORWARDING_SECRET" && !opts.reveal ? pc.dim("••••••••") : value;
+				const masked = name === "LUNA_FORWARDING_SECRET" && !opts.reveal ? pc.dim("••••••••") : value;
 
 				rows.push([pc.dim(name), masked, pc.dim("builtin")]);
 			}

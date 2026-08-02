@@ -30,14 +30,14 @@ export const LUNA_BUILD_TASK = "shadowJar";
 const DEFAULT_LUNA_DIR = join(homedir(), "luna-plugins");
 
 /**
- * Resolve the luna source configuration, filling in the defaults. `MRDS_LUNA_DIR`
+ * Resolve the luna source configuration, filling in the defaults. `LUNA_PLUGINS_DIR`
  * overrides the registry so a checkout elsewhere can be built without editing
  * `cluster.json`.
  */
 export function lunaSource(cfg: ClusterConfig): Required<LunaSourceConfig> {
 	const configured = cfg.luna;
 
-	const dir = process.env.MRDS_LUNA_DIR ?? configured?.dir ?? DEFAULT_LUNA_DIR;
+	const dir = process.env.LUNA_PLUGINS_DIR ?? configured?.dir ?? DEFAULT_LUNA_DIR;
 
 	return {
 		dir: resolve(dir),

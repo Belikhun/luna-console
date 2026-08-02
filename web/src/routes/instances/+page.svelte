@@ -427,7 +427,7 @@
 	});
 </script>
 
-<svelte:head><title>Instances | MRDS Console</title></svelte:head>
+<svelte:head><title>Instances | Luna Console</title></svelte:head>
 
 <div class="split-view">
 	<div class="main-col">

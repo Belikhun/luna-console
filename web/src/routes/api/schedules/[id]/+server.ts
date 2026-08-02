@@ -3,7 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { loadCluster, expandTargets } from '$core/config';
 import { startInstance, stopInstance } from '$core/instances';
 import { loadSchedules, recordEvent, saveSchedules, setEnabled } from '$core/schedule';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 
 /** PATCH { enabled } → pause or resume a schedule. */
 export async function PATCH({ params, request }) {

@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { getHistory, getEvents } from '$lib/server/mrds';
+import { getHistory, getEvents } from '$lib/server/luna';
 
 /** How many recent events the detail page's activity list shows. */
 const EVENT_LIMIT = 50;

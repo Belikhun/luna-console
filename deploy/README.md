@@ -1,4 +1,4 @@
-# Deploying mrds
+# Deploying luna
 
 Two ways to run a daemon: the binary under systemd (what the cluster on
 `/mnt/shulker/mrds` does), or the container image. Both run the same build.
@@ -13,15 +13,19 @@ sudo ./luna-linux-x64 setup
 
 `setup` is the whole install: it creates the service account, puts the binary at
 `/usr/local/bin/luna`, prepares the cluster root (seeding an empty registry on a
-primary), writes `/etc/mrds/daemon.json` and the systemd unit, installs shell
+primary), writes `/etc/luna/daemon.json` and the systemd unit, installs shell
 completion, then enables, starts and waits for the daemon to answer. It prompts
 for what you do not pass; `--yes` takes the defaults and `--dry-run` prints every
 change without making one:
 
 ```
-sudo luna setup --yes --mode primary  --name shulker --root /srv/mrds
-sudo luna setup --yes --mode follower --name mc2 --primary 10.0.0.10:8331 --token <token>
+sudo luna setup --yes --mode primary  --root /srv/luna
+sudo luna setup --yes --mode follower --primary 10.0.0.10:8331 --token <token>
 ```
+
+A daemon's name defaults to the machine's hostname, which is what you want unless
+two machines share one — it keys `cluster.json` and decides instance ownership, so
+pass `--name` only to break such a tie.
 
 Re-running it reconfigures rather than resets — the existing config supplies the
 defaults, so the cluster token survives and the service restarts onto the new
@@ -38,14 +42,14 @@ the `luna` binary, the web console, a JRE and the tools the daemon shells out to
 container, in a screen session the daemon starts.
 
 That is all it carries. The runtime stage starts from the JRE and copies in
-three artifacts — `/usr/local/bin/luna`, `/opt/mrds/web` (the adapter-node
+three artifacts — `/usr/local/bin/luna`, `/opt/luna/web` (the adapter-node
 bundle, source maps stripped) and `bun` to run the console. No source, no
 lockfiles, no build tooling, no docs: everything the build reads stays in the
 builder stage, and the build context itself is an allowlist (`.dockerignore`),
 so a file nobody named cannot reach a layer.
 
 ```
-cp .env.example .env                             # MRDS_TOKEN at minimum
+cp .env.example .env                             # LUNA_TOKEN at minimum
 docker compose -f docker-compose.primary.yml up -d
 docker compose -f docker-compose.follower.yml up -d   # on the other machines
 ```
@@ -53,8 +57,8 @@ docker compose -f docker-compose.follower.yml up -d   # on the other machines
 - `docker-compose.primary.yml` — the primary daemon plus the console as a second
   container. They meet on the daemon's unix socket in the shared volume, so
   restarting the console never touches the daemon.
-- `docker-compose.follower.yml` — one follower. Set `MRDS_DAEMON_NAME` (unique,
-  stable), `MRDS_PRIMARY_ADDRESS` and the same `MRDS_TOKEN`.
+- `docker-compose.follower.yml` — one follower. Set `LUNA_DAEMON_NAME` (unique,
+  stable), `LUNA_PRIMARY_ADDRESS` and the same `LUNA_TOKEN`.
 
 Two things a container changes about the daemon's assumptions:
 

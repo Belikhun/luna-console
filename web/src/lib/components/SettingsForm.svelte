@@ -17,7 +17,7 @@
 		schema,
 		groups,
 		values = $bindable({}),
-		/** the keys mrds owns are shown read-only unless a caller hides them */
+		/** the keys luna owns are shown read-only unless a caller hides them */
 		showManaged = true
 	}: {
 		schema: SettingSpec[];

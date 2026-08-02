@@ -56,7 +56,7 @@ export async function ensureConnected(): Promise<DaemonInfo> {
 		}
 
 		try {
-			const response = await fetch("http://mrds/info", {
+			const response = await fetch("http://luna/info", {
 				unix: socket,
 				signal: AbortSignal.timeout(1500),
 			});
@@ -92,7 +92,7 @@ export async function ensureConnected(): Promise<DaemonInfo> {
 /** The cached handshake. Only valid after ensureConnected resolved once. */
 export function daemonInfo(): DaemonInfo {
 	if (!connection) {
-		throw new Error("not connected to the mrds daemon yet");
+		throw new Error("not connected to the luna daemon yet");
 	}
 
 	return connection.info;
@@ -112,7 +112,7 @@ export function clientRoot(): string {
 export async function dfetch(path: string, init?: RequestInit): Promise<Response> {
 	await ensureConnected();
 
-	return await fetch(`http://mrds${path}`, { ...init, unix: connection!.socket });
+	return await fetch(`http://luna${path}`, { ...init, unix: connection!.socket });
 }
 
 /**

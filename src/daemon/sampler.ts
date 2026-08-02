@@ -480,7 +480,7 @@ export async function listStatuses(): Promise<Record<string, unknown>> {
 	// ownership-aware: follower-owned instances are probed on their own daemon
 	const statuses = await getAllStatusesRouted(cfg);
 
-	// External servers run on another machine, so mrds can only TCP-probe them —
+	// External servers run on another machine, so luna can only TCP-probe them —
 	// LunaCore's heartbeat is the only real telemetry the console has for these.
 	const externals = Object.entries(cfg.instances)
 		.filter(([, inst]) => inst.external)

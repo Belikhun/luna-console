@@ -19,6 +19,8 @@
 	const HOST_POLL_MS = 60_000;
 
 	interface HostInfo {
+		/** the local daemon's name — the machine this console is attached to */
+		name: string;
 		root: string;
 		disk: { totalBytes: number; usedBytes: number; freeBytes: number; mount: string } | null;
 	}
@@ -103,7 +105,7 @@
 
 	const crumbs = $derived.by(() => {
 		const parts = page.url.pathname.split('/').filter(Boolean);
-		const out: Array<{ label: string; href: string }> = [{ label: 'MRDS', href: '/' }];
+		const out: Array<{ label: string; href: string }> = [{ label: 'Luna', href: '/' }];
 		let acc = '';
 
 		for (const part of parts) {
@@ -131,14 +133,14 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<title>MRDS Console</title>
+	<title>Luna Console</title>
 </svelte:head>
 
 <div class="app" style:--shell-h="{shellOpen && browser ? shellHeight : 0}px">
 	<header class="topnav">
 		<a class="brand" href="/instances">
 			<span class="logo"><Icon name="cube" size="1.125rem" style="solid" /></span>
-			<b>mrds</b><span class="dim-sep">|</span><span class="sub">Luna Cluster Console</span>
+			<b>luna</b><span class="dim-sep">|</span><span class="sub">Luna Cluster Console</span>
 		</a>
 		<GlobalSearch />
 		<div class="region">
@@ -164,7 +166,8 @@
 				<span class="regdiv"></span>
 			{/if}
 			<span class="where">
-				<Icon name="hardDrive" size="0.875rem" style="solid" /> shulker · {host?.root ?? '/mnt/shulker/mrds'}
+				<Icon name="hardDrive" size="0.875rem" style="solid" />
+				{host?.name ?? '—'} · {host?.root ?? '—'}
 			</span>
 		</div>
 	</header>

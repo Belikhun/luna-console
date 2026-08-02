@@ -1,13 +1,16 @@
-# mrds — Project Instructions
+# luna — Project Instructions
 
 This directory (`control/`) is the source tree of the centralized control center for the
 **Luna Minecraft cluster**, which lives one level up at `/mnt/shulker/mrds`: one Velocity
 proxy + seven Paper backends (`lobby`, `survival`, `event`, `event2`, `infdun`, `iceboat`,
 `manhunt`) running in GNU screen sessions `luna.<name>`, plus external servers (`create`,
-`sandbox`) routed through the proxy. Everything is driven by the **mrds daemon** —
+`sandbox`) routed through the proxy. Everything is driven by the **luna daemon** —
 the long-lived process that owns the cluster — with the `luna` CLI and the web
-console as its clients (DESIGN.md §4). *mrds* is the project; **`luna` is the
-binary** every command, completion hook and release asset is named after.
+console as its clients (DESIGN.md §4). **`luna` is the one name** the project, the
+binary, the daemon, the system user, the config directory and every release asset
+share — there is no second name anywhere, and the historical `mrds`/`MRDS_` prefix
+survives only in the cluster root path `/mnt/shulker/mrds`, which is a location and
+not an identity.
 The daemon runs as primary here; follower daemons on other machines manage the
 instances assigned to them and mirror state + plugins from the primary.
 
@@ -39,7 +42,7 @@ control/                # this repo — the only source tree
   web/                  # SvelteKit console ($core alias → src/client/core)
     src/app.scss        #   design tokens + element/utility base
     src/lib/styles/     #   _shared.scss — mixins/variables, auto-injected everywhere
-    src/lib/server/     #   server-only helpers (mrds.ts bridge, http.ts)
+    src/lib/server/     #   server-only helpers (luna.ts bridge, http.ts)
   docs/                 # progress notes and working documents
   deploy/               # container topologies: compose files for primary + follower
   .github/workflows/    # ci (typecheck · svelte-check · build) and release (tags)
@@ -261,7 +264,7 @@ export interface InstanceConfig {}
   idempotent, report exactly what they touched, and confirm before acting unless the user
   passed an explicit `--yes`-style flag. `set-version` gates on plugin MC-version
   compatibility and rolls back on failure.
-- Stopping is graceful: `.mrds-norestart` sentinel → console `stop`/`end` → escalation. The
+- Stopping is graceful: `.luna-norestart` sentinel → console `stop`/`end` → escalation. The
   generated per-instance `run.sh` has a crash-loop guard; keep it that way.
 
 ### Long-running tasks report live progress
@@ -321,7 +324,7 @@ Wiring rules:
   unavailable action is **disabled with the reason** rather than hidden, destructive ones
   confirm, and a bulk action reports per-target outcomes.
 - **Global search indexes every object** (DESIGN.md §5.3). The index is a provider registry —
-  adding a new kind of object to mrds means adding a provider, never a branch inside
+  adding a new kind of object to luna means adding a provider, never a branch inside
   `GlobalSearch.svelte` (`web/src/lib/search/providers.ts`). Objects with no detail route
   link to `?q=<term>`, which `ResourceTable`'s `initialSearch` picks up. Keyboard contract:
   `Alt+S` focuses, `↑`/`↓` move the highlighted hit (scrolled into view), `Enter` opens it,
@@ -369,21 +372,21 @@ cd web && bun run build           # production console bundle
 cd web && bun run check           # svelte-check
 luna web [--dev] [--host 0.0.0.0] # serve the console (default 127.0.0.1:8330; primary only)
 cd web && bun run dev             # same thing directly: Vite + HMR on 8330
-docker build -t mrds .            # the published image (binary + console + JRE + screen)
+docker build -t luna .            # the published image (binary + console + JRE + screen)
 ```
 
-Daemon config: JSON file (`$MRDS_DAEMON_CONFIG` → `/etc/mrds/daemon.json` →
-`~/.config/mrds/daemon.json`) with env overrides (`MRDS_MODE`, `MRDS_ROOT`,
-`MRDS_DAEMON_NAME`, `MRDS_SOCKET`, `MRDS_LISTEN`, `MRDS_TOKEN`,
-`MRDS_PRIMARY_ADDRESS`, `MRDS_HOST`, plus `MRDS_WEB_DIR` for a console outside the
-source tree and `MRDS_RELEASE_REPO`/`MRDS_GITHUB_API`/`MRDS_GITHUB_TOKEN` for the
+Daemon config: JSON file (`$LUNA_DAEMON_CONFIG` → `/etc/luna/daemon.json` →
+`~/.config/luna/daemon.json`) with env overrides (`LUNA_MODE`, `LUNA_ROOT`,
+`LUNA_DAEMON_NAME`, `LUNA_SOCKET`, `LUNA_LISTEN`, `LUNA_TOKEN`,
+`LUNA_PRIMARY_ADDRESS`, `LUNA_HOST`, plus `LUNA_WEB_DIR` for a console outside the
+source tree and `LUNA_RELEASE_REPO`/`LUNA_GITHUB_API`/`LUNA_GITHUB_TOKEN` for the
 upgrade fallback). A daemon's name defaults to the machine's
 hostname (short form, lowercased) — it keys `cluster.json` and decides instance
 ownership, so it must be unique across the cluster. No config + a discoverable
 cluster root = primary with defaults. For dev, start one with
-`MRDS_ROOT=/mnt/shulker/mrds bun run src/cli/index.ts daemon run` before using
+`LUNA_ROOT=/mnt/shulker/mrds bun run src/cli/index.ts daemon run` before using
 the CLI or console; a second daemon on the same host isolates itself with
-`MRDS_SOCKET` (that is how the follower simulation runs on loopback).
+`LUNA_SOCKET` (that is how the follower simulation runs on loopback).
 
 Iterate on the console with `--dev`: Vite hot-reloads Svelte and CSS edits and restarts
 API routes in place, so there is no rebuild/restart cycle. `--strictPort` is always passed

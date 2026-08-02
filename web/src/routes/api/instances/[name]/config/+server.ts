@@ -13,7 +13,7 @@ import {
 import { syncVelocityToml } from '$core/proxy';
 import { getStatus } from '$core/instances';
 import { compatReport, deploy } from '$core/plugins';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { startJob } from '$lib/server/jobs';
 
 /** GET → the instance's editable settings, the settings schema, and its raw server.properties. */

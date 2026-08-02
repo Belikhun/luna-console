@@ -43,7 +43,7 @@ export function loadInterval(storageKey: string | undefined): number {
 		return DEFAULT_REFRESH_MS;
 	}
 
-	const raw = localStorage.getItem(`mrds.refresh.${storageKey}`);
+	const raw = localStorage.getItem(`luna.refresh.${storageKey}`);
 	const ms = raw === null ? NaN : Number(raw);
 
 	return REFRESH_INTERVALS.some((interval) => interval.ms === ms) ? ms : DEFAULT_REFRESH_MS;
@@ -55,5 +55,5 @@ export function saveInterval(storageKey: string | undefined, ms: number): void {
 		return;
 	}
 
-	localStorage.setItem(`mrds.refresh.${storageKey}`, String(ms));
+	localStorage.setItem(`luna.refresh.${storageKey}`, String(ms));
 }

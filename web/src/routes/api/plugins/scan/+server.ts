@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock } from '$core/config';
 import { scan } from '$core/plugins';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 
 /** POST → rescan the pool and instance folders, rebuilding the lockfile. */
 export async function POST() {

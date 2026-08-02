@@ -97,11 +97,11 @@
 	}
 </script>
 
-<svelte:head><title>Create schedule | MRDS Console</title></svelte:head>
+<svelte:head><title>Create schedule | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Create a schedule"
-	description="Start, stop or restart instances on a fixed time, a cron expression or a rate — runs fire from the mrds daemon, 24/7"
+	description="Start, stop or restart instances on a fixed time, a cron expression or a rate — runs fire from the luna daemon, 24/7"
 />
 
 <div class="wizard">

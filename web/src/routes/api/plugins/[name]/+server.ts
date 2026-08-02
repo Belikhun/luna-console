@@ -4,7 +4,7 @@ import { removePlugin } from '$core/plugins';
 import { effectiveTargets, entriesOf, familyOf, pluginNameOf } from '$core/families';
 import { aliasesOf, displayNameOf, ensureAliases, pluginUsageReport } from '$core/pluginstate';
 import { getAllStatuses } from '$core/instances';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 
 /**
  * GET → everything about one plugin *identity*: its families (one lock entry

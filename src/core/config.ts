@@ -9,8 +9,8 @@ import type { ClusterConfig, InstanceConfig, PluginsLock } from "./types";
  * the process when neither exists — nothing else in `core/` can run without it.
  */
 function findRoot(): string {
-	if (process.env.MRDS_ROOT) {
-		return resolve(process.env.MRDS_ROOT);
+	if (process.env.LUNA_ROOT) {
+		return resolve(process.env.LUNA_ROOT);
 	}
 
 	let dir = process.cwd();
@@ -35,7 +35,7 @@ function findRoot(): string {
 		return toolRoot;
 	}
 
-	console.error("error: cluster.json not found (set MRDS_ROOT or run inside the cluster directory)");
+	console.error("error: cluster.json not found (set LUNA_ROOT or run inside the cluster directory)");
 	process.exit(1);
 }
 

@@ -476,7 +476,7 @@ command({
 						current[spec.key] === undefined
 							? pc.dim(`${spec.fallback} (default)`)
 							: pc.bold(current[spec.key] || pc.dim("(blank)")),
-						spec.managed ? pc.dim("managed by mrds") : pc.dim(spec.hint ?? ""),
+						spec.managed ? pc.dim("managed by luna") : pc.dim(spec.hint ?? ""),
 					]),
 					{ indent: "    " },
 				);

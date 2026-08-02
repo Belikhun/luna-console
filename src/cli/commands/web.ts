@@ -28,7 +28,7 @@ command({
 
 		// the console normally lives in the source tree beside the cluster root;
 		// a container image ships it somewhere else entirely, hence the override
-		const webDir = process.env.MRDS_WEB_DIR ?? join(root(), "control", "web");
+		const webDir = process.env.LUNA_WEB_DIR ?? join(root(), "control", "web");
 		const port = (opts.port as string) ?? "8330";
 		const host = (opts.host as string) ?? "127.0.0.1";
 
@@ -52,7 +52,7 @@ command({
 				["bun", "run", "dev", "--", "--port", port, "--host", host, "--strictPort"],
 				{
 					cwd: webDir,
-					env: { ...process.env, MRDS_ROOT: root() },
+					env: { ...process.env, LUNA_ROOT: root() },
 					...stdio,
 				},
 			);
@@ -67,7 +67,7 @@ command({
 
 			proc = Bun.spawn(["bun", build], {
 				cwd: webDir,
-				env: { ...process.env, MRDS_ROOT: root(), PORT: port, HOST: host },
+				env: { ...process.env, LUNA_ROOT: root(), PORT: port, HOST: host },
 				...stdio,
 			});
 		}

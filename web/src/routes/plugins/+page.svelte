@@ -400,7 +400,7 @@
 	const one = $derived(plugins.find((row: any) => selected.has(row.plugin)));
 </script>
 
-<svelte:head><title>Plugins | MRDS Console</title></svelte:head>
+<svelte:head><title>Plugins | Luna Console</title></svelte:head>
 
 <PageHeader title="Plugins" count={plugins.length} info>
 	{#snippet actions()}

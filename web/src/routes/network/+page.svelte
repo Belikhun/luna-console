@@ -141,7 +141,7 @@
 	const one = $derived(ports.find((row: any) => selected.has(`${row.protocol}:${row.port}:${row.owner}`)));
 </script>
 
-<svelte:head><title>Ports | MRDS Console</title></svelte:head>
+<svelte:head><title>Ports | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Ports"

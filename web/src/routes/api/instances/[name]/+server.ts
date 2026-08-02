@@ -9,7 +9,7 @@ import {
 	instanceStatus,
 	readHostMemMb,
 	pushEvent
-} from '$lib/server/mrds';
+} from '$lib/server/luna';
 
 /** GET → full detail for one instance, including its resolved java command line. */
 export async function GET({ params }) {

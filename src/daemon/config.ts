@@ -42,27 +42,27 @@ export const DEFAULT_CLUSTER_PORT = 8331;
  * Default daemon name: this machine's hostname. A name is a key in cluster.json
  * and decides instance ownership, so the DNS domain is dropped (two machines in
  * one cluster do not share a short hostname) and the rest is lowercased into the
- * safe character set. `name` in the config file or `MRDS_DAEMON_NAME` overrides it.
+ * safe character set. `name` in the config file or `LUNA_DAEMON_NAME` overrides it.
  */
 export function defaultDaemonName(): string {
 	const short = hostname().split(".")[0] ?? "";
 	const clean = short.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
 
-	return clean || "mrds";
+	return clean || "luna";
 }
 
 /** Config file locations, in probe order. */
 function configFileCandidates(): string[] {
 	const candidates: string[] = [];
 
-	if (process.env.MRDS_DAEMON_CONFIG) {
-		candidates.push(process.env.MRDS_DAEMON_CONFIG);
+	if (process.env.LUNA_DAEMON_CONFIG) {
+		candidates.push(process.env.LUNA_DAEMON_CONFIG);
 	}
 
-	candidates.push("/etc/mrds/daemon.json");
+	candidates.push("/etc/luna/daemon.json");
 
 	if (process.env.HOME) {
-		candidates.push(join(process.env.HOME, ".config", "mrds", "daemon.json"));
+		candidates.push(join(process.env.HOME, ".config", "luna", "daemon.json"));
 	}
 
 	return candidates;
@@ -108,8 +108,8 @@ function parseListen(value: string): DaemonListen {
 
 /**
  * Resolve the daemon's configuration: JSON config file first, then environment
- * overrides (`MRDS_MODE`, `MRDS_DAEMON_NAME`, `MRDS_ROOT`, `MRDS_SOCKET`,
- * `MRDS_LISTEN`, `MRDS_TOKEN`, `MRDS_PRIMARY_ADDRESS`), then defaults. A
+ * overrides (`LUNA_MODE`, `LUNA_DAEMON_NAME`, `LUNA_ROOT`, `LUNA_SOCKET`,
+ * `LUNA_LISTEN`, `LUNA_TOKEN`, `LUNA_PRIMARY_ADDRESS`), then defaults. A
  * missing file plus a discoverable cluster root means "primary with defaults",
  * so a single-host setup needs no configuration at all.
  */
@@ -126,30 +126,30 @@ export async function resolveDaemonConfig(): Promise<DaemonConfig> {
 		}
 	}
 
-	const mode = (process.env.MRDS_MODE ?? file.mode ?? "primary") as DaemonMode;
+	const mode = (process.env.LUNA_MODE ?? file.mode ?? "primary") as DaemonMode;
 
 	if (mode !== "primary" && mode !== "follower") {
 		throw new Error(`invalid daemon mode: ${mode} (expected primary or follower)`);
 	}
 
-	const root = process.env.MRDS_ROOT ?? file.root ?? discoverRoot();
+	const root = process.env.LUNA_ROOT ?? file.root ?? discoverRoot();
 
 	if (!root) {
 		throw new Error(
-			"cluster root not found — set root in the daemon config, MRDS_ROOT, or run inside the cluster directory",
+			"cluster root not found — set root in the daemon config, LUNA_ROOT, or run inside the cluster directory",
 		);
 	}
 
-	const primaryAddress = process.env.MRDS_PRIMARY_ADDRESS ?? file.primary?.address;
+	const primaryAddress = process.env.LUNA_PRIMARY_ADDRESS ?? file.primary?.address;
 
 	if (mode === "follower" && !primaryAddress) {
-		throw new Error("follower mode requires primary.address (or MRDS_PRIMARY_ADDRESS)");
+		throw new Error("follower mode requires primary.address (or LUNA_PRIMARY_ADDRESS)");
 	}
 
 	let listen = file.listen;
 
-	if (process.env.MRDS_LISTEN) {
-		listen = parseListen(process.env.MRDS_LISTEN);
+	if (process.env.LUNA_LISTEN) {
+		listen = parseListen(process.env.LUNA_LISTEN);
 	}
 
 	if (mode === "primary" && !listen) {
@@ -158,13 +158,13 @@ export async function resolveDaemonConfig(): Promise<DaemonConfig> {
 
 	const config: DaemonConfig = {
 		mode,
-		name: process.env.MRDS_DAEMON_NAME ?? file.name ?? defaultDaemonName(),
+		name: process.env.LUNA_DAEMON_NAME ?? file.name ?? defaultDaemonName(),
 		root: resolve(root),
-		socket: process.env.MRDS_SOCKET ?? file.socket ?? (await pickSocketPath()),
+		socket: process.env.LUNA_SOCKET ?? file.socket ?? (await pickSocketPath()),
 		listen,
-		token: process.env.MRDS_TOKEN ?? file.token,
+		token: process.env.LUNA_TOKEN ?? file.token,
 		primary: primaryAddress ? { address: primaryAddress } : undefined,
-		host: process.env.MRDS_HOST ?? file.host,
+		host: process.env.LUNA_HOST ?? file.host,
 		configFile,
 	};
 

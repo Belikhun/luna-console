@@ -13,7 +13,7 @@
 	const PROMPT = '\x1b[38;5;135mluna\x1b[0m \x1b[90m»\x1b[0m ';
 
 	const GHOST_DEBOUNCE_MS = 60;
-	const HISTORY_KEY = 'mrds.shell.history';
+	const HISTORY_KEY = 'luna.shell.history';
 	const HISTORY_MAX = 200;
 
 	/** Tab-completion listing: column width and the spacing between columns. */

@@ -94,7 +94,7 @@ let cached: { meta: BinaryMeta; mtimeMs: number } | undefined;
 /**
  * Describe the binary this daemon is running. Throws when the daemon is a
  * from-source run, where `process.execPath` is the bun interpreter rather than
- * an mrds build — serving *that* as an upgrade would replace the toolchain.
+ * an luna build — serving *that* as an upgrade would replace the toolchain.
  */
 export async function localBinaryMeta(): Promise<BinaryMeta> {
 	if (!isCompiledBinary()) {
@@ -135,7 +135,7 @@ export function localBinaryPath(): string {
 /** Ask the primary what it is running. */
 async function remoteMeta(): Promise<BinaryMeta> {
 	const response = await fetch(`http://${source!.address}/files/binary/meta`, {
-		headers: { "x-mrds-token": source!.token },
+		headers: { "x-luna-token": source!.token },
 		signal: AbortSignal.timeout(10_000),
 	});
 
@@ -202,7 +202,7 @@ async function githubRelease(refresh: boolean): Promise<{ release: ReleaseInfo |
 
 	try {
 		const release = await latestRelease(buildPlatform(), {
-			prerelease: process.env.MRDS_RELEASE_PRERELEASE === "1",
+			prerelease: process.env.LUNA_RELEASE_PRERELEASE === "1",
 			signal: AbortSignal.timeout(15_000),
 		});
 
@@ -349,9 +349,9 @@ async function download(offer: UpgradeOffer): Promise<ArrayBuffer> {
 	const headers: Record<string, string> = {};
 
 	if (offer.channel === "primary") {
-		headers["x-mrds-token"] = source!.token;
-	} else if (process.env.MRDS_GITHUB_TOKEN) {
-		headers.authorization = `Bearer ${process.env.MRDS_GITHUB_TOKEN}`;
+		headers["x-luna-token"] = source!.token;
+	} else if (process.env.LUNA_GITHUB_TOKEN) {
+		headers.authorization = `Bearer ${process.env.LUNA_GITHUB_TOKEN}`;
 	}
 
 	const response = await fetch(offer.url, { headers });

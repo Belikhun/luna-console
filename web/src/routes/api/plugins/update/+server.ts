@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock, saveCluster } from '$core/config';
 import { checkUpdates, applyUpdate, deploy } from '$core/plugins';
 import { ensurePortAllocations } from '$core/ports';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { jsonBody } from '$lib/server/http';
 
 /** POST { names?, deploy? } — download updates (and optionally deploy). */

@@ -149,7 +149,7 @@
 	const one = $derived(rows.find((row: any) => selected.has(row.server)));
 </script>
 
-<svelte:head><title>Proxy routing | MRDS Console</title></svelte:head>
+<svelte:head><title>Proxy routing | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Proxy routing"

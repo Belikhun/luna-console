@@ -5,7 +5,7 @@ import { deploy } from '$core/plugins';
 import { ensurePortAllocations } from '$core/ports';
 import { syncVelocityToml } from '$core/proxy';
 import { parseJavaArgs, validateJavaArgs, validateSettings } from '$core/settings';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { startJob } from '$lib/server/jobs';
 import { errorMessage } from '$lib/server/http';
 

@@ -11,11 +11,11 @@ const ROOT = join(import.meta.dir, "..");
 /**
  * Short SHA of the tree being built, or "dev" outside a git checkout — which is
  * what a container build is, since the image context excludes .git. CI passes
- * `MRDS_COMMIT` there so the image still reports what it was built from.
+ * `LUNA_COMMIT` there so the image still reports what it was built from.
  */
 async function gitCommit(): Promise<string> {
-	if (process.env.MRDS_COMMIT) {
-		return process.env.MRDS_COMMIT.slice(0, 7);
+	if (process.env.LUNA_COMMIT) {
+		return process.env.LUNA_COMMIT.slice(0, 7);
 	}
 
 	try {
@@ -38,7 +38,7 @@ const pkg = (await Bun.file(join(ROOT, "package.json")).json()) as { version?: s
 
 // the release workflow builds from a tag, which is the authority on the version
 // there — package.json is what a local build uses
-const version = process.env.MRDS_VERSION?.replace(/^v/, "") || (pkg.version ?? "0.0.0");
+const version = process.env.LUNA_VERSION?.replace(/^v/, "") || (pkg.version ?? "0.0.0");
 const commit = await gitCommit();
 const buildAt = new Date().toISOString();
 

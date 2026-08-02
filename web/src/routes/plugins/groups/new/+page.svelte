@@ -93,7 +93,7 @@
 	}
 </script>
 
-<svelte:head><title>Create plugin group | MRDS Console</title></svelte:head>
+<svelte:head><title>Create plugin group | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Create a plugin group"

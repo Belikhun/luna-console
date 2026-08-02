@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 
 import { loadLock, saveLock } from '$core/config';
 import { ensureVariantForMc } from '$core/plugins';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
 /**

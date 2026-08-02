@@ -58,7 +58,7 @@ async function ensurePoolFile(rel: string, sha512: string | undefined): Promise<
 
 	const url = `http://${dcfg!.primary!.address}/files/pool/${encodeURIComponent(rel)}`;
 	const response = await fetch(url, {
-		headers: { "x-mrds-token": dcfg!.token ?? "" },
+		headers: { "x-luna-token": dcfg!.token ?? "" },
 	});
 
 	if (!response.ok) {

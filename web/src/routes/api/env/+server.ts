@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 
 import { loadEnv, saveEnv, setVariable, unsetVariable } from '$core/environment';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
 /**

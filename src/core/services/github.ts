@@ -9,11 +9,11 @@
  */
 
 /** API base. Overridable for GitHub Enterprise, and for testing the fallback. */
-const API = process.env.MRDS_GITHUB_API ?? "https://api.github.com";
-const UA = "belikhun/mrds-control";
+const API = process.env.LUNA_GITHUB_API ?? "https://api.github.com";
+const UA = "belikhun/luna-control";
 
 /** Repository the releases come from. */
-export const RELEASE_REPO = process.env.MRDS_RELEASE_REPO ?? "Belikhun/luna-control";
+export const RELEASE_REPO = process.env.LUNA_RELEASE_REPO ?? "Belikhun/luna-control";
 
 /** Asset naming the release workflow produces, one per platform triple. */
 export function assetName(platform: string): string {
@@ -60,7 +60,7 @@ interface GhRelease {
 
 /**
  * Request headers. An unauthenticated caller gets 60 requests an hour per IP,
- * which is plenty for a cached check — `MRDS_GITHUB_TOKEN` is for private repos
+ * which is plenty for a cached check — `LUNA_GITHUB_TOKEN` is for private repos
  * and for CI, not for the rate limit.
  */
 function headers(accept: string): Record<string, string> {
@@ -70,8 +70,8 @@ function headers(accept: string): Record<string, string> {
 		"x-github-api-version": "2022-11-28",
 	};
 
-	if (process.env.MRDS_GITHUB_TOKEN) {
-		result.authorization = `Bearer ${process.env.MRDS_GITHUB_TOKEN}`;
+	if (process.env.LUNA_GITHUB_TOKEN) {
+		result.authorization = `Bearer ${process.env.LUNA_GITHUB_TOKEN}`;
 	}
 
 	return result;

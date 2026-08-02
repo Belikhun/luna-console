@@ -328,7 +328,7 @@
 	};
 </script>
 
-<svelte:head><title>{name} | Plugins | MRDS Console</title></svelte:head>
+<svelte:head><title>{name} | Plugins | Luna Console</title></svelte:head>
 
 {#if data}
 	<PageHeader title={data.plugin} info>

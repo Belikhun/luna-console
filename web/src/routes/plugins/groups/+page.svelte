@@ -78,7 +78,7 @@
 	const one = $derived(groups.find((row: any) => selected.has(row.name)));
 </script>
 
-<svelte:head><title>Plugin groups | MRDS Console</title></svelte:head>
+<svelte:head><title>Plugin groups | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Plugin groups"

@@ -3,7 +3,7 @@ import { loadCluster, loadLock, saveCluster, saveLock } from '$core/config';
 import { deploy } from '$core/plugins';
 import { ensurePortAllocations } from '$core/ports';
 import { getAllStatuses } from '$core/instances';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { jsonBody } from '$lib/server/http';
 
 /** POST { instances?, plugin? } */

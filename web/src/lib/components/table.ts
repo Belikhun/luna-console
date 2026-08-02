@@ -75,7 +75,7 @@ export function loadPrefs(tableId: string | undefined): TablePrefs {
 	}
 
 	try {
-		const raw = localStorage.getItem(`mrds.table.${tableId}`);
+		const raw = localStorage.getItem(`luna.table.${tableId}`);
 		const parsed = raw ? JSON.parse(raw) : null;
 
 		if (parsed && typeof parsed === 'object') {
@@ -112,7 +112,7 @@ export function savePrefs(tableId: string | undefined, prefs: TablePrefs): void 
 		return;
 	}
 
-	localStorage.setItem(`mrds.table.${tableId}`, JSON.stringify(prefs));
+	localStorage.setItem(`luna.table.${tableId}`, JSON.stringify(prefs));
 }
 
 /** Apply a stored column order, keeping columns the order doesn't mention. */

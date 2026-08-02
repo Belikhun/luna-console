@@ -85,8 +85,8 @@ export function setVariable(
 		throw new Error("variable names are ALL_UPPERCASE_WITH_UNDERSCORES");
 	}
 
-	if (name.startsWith("MRDS_")) {
-		throw new Error("MRDS_* names are builtin — they are computed, not stored");
+	if (name.startsWith("LUNA_")) {
+		throw new Error("LUNA_* names are builtin — they are computed, not stored");
 	}
 
 	if (opts.instance) {
@@ -147,16 +147,16 @@ export async function builtinVars(
 	}
 
 	return {
-		MRDS_INSTANCE: instance,
-		MRDS_PORT: String(inst.port),
-		MRDS_MEMORY: inst.memory,
-		MRDS_MC_VERSION: inst.mcVersion ?? "",
-		MRDS_SOFTWARE: inst.software,
-		MRDS_DIR: inst.dir,
-		MRDS_ROOT: root(),
-		MRDS_PROXY_HOST: "127.0.0.1",
-		MRDS_PROXY_PORT: String(cfg.proxy.port),
-		MRDS_FORWARDING_SECRET: await readForwardingSecret(cfg),
+		LUNA_INSTANCE: instance,
+		LUNA_PORT: String(inst.port),
+		LUNA_MEMORY: inst.memory,
+		LUNA_MC_VERSION: inst.mcVersion ?? "",
+		LUNA_SOFTWARE: inst.software,
+		LUNA_DIR: inst.dir,
+		LUNA_ROOT: root(),
+		LUNA_PROXY_HOST: "127.0.0.1",
+		LUNA_PROXY_PORT: String(cfg.proxy.port),
+		LUNA_FORWARDING_SECRET: await readForwardingSecret(cfg),
 	};
 }
 

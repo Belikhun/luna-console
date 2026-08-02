@@ -376,7 +376,7 @@
 	];
 </script>
 
-<svelte:head><title>Players | MRDS Console</title></svelte:head>
+<svelte:head><title>Players | Luna Console</title></svelte:head>
 
 <PageHeader title="Players" count="{selected.size ? `${selected.size}/` : ''}{players.length}" info>
 	{#snippet actions()}

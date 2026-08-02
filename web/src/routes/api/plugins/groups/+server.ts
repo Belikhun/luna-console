@@ -10,7 +10,7 @@ import {
 	setGroup
 } from '$core/families';
 import { deploy } from '$core/plugins';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 import { applyRestartChoice } from '$lib/server/restart';
 

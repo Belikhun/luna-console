@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { loadCluster } from '$core/config';
 import { syncVelocityToml, readVelocityServers } from '$core/proxy';
 import { sendCommand, getStatus } from '$core/instances';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { jsonBody } from '$lib/server/http';
 
 /** GET → the routing tables the registry wants, next to what is on disk. */

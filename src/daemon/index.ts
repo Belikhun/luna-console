@@ -24,7 +24,7 @@ export function log(message: string): void {
 /** Whether a daemon is already answering on this socket. */
 async function socketAlive(socket: string): Promise<boolean> {
 	try {
-		const response = await fetch("http://mrds/info", {
+		const response = await fetch("http://luna/info", {
 			unix: socket,
 			signal: AbortSignal.timeout(800),
 		});
@@ -40,7 +40,7 @@ export async function runDaemon(): Promise<void> {
 	const dcfg = await resolveDaemonConfig();
 
 	// core resolves the cluster root through this — set before any core call
-	process.env.MRDS_ROOT = dcfg.root;
+	process.env.LUNA_ROOT = dcfg.root;
 
 	setDaemonIdentity(dcfg);
 

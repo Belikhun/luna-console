@@ -141,7 +141,7 @@
 	}
 </script>
 
-<svelte:head><title>{plugin} on {instance} | MRDS Console</title></svelte:head>
+<svelte:head><title>{plugin} on {instance} | Luna Console</title></svelte:head>
 
 {#if data}
 	<PageHeader title={plugin ?? ''} info>

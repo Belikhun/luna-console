@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import * as luna from '$core/services/luna';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 
 /**
  * POST { action, ... } → an administrative action on the live network.

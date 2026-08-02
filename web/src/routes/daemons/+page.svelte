@@ -210,7 +210,7 @@
 		return JSON.stringify(
 			{
 				mode: 'follower',
-				root: '/srv/mrds',
+				root: '/srv/luna',
 				primary: { address },
 				token: '<the cluster token>'
 			},
@@ -259,12 +259,12 @@
 	const one = $derived(daemons.find((row: any) => selected.has(row.name)));
 </script>
 
-<svelte:head><title>Daemons | MRDS Console</title></svelte:head>
+<svelte:head><title>Daemons | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Daemons"
 	count={daemons.length}
-	description="Machines running an mrds daemon — the primary owns the registry, plugins and schedules; followers manage the instances assigned to them and mirror everything else from the primary. Health streams in on each daemon's heartbeat."
+	description="Machines running an luna daemon — the primary owns the registry, plugins and schedules; followers manage the instances assigned to them and mirror everything else from the primary. Health streams in on each daemon's heartbeat."
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="daemons" />
@@ -411,9 +411,9 @@
 
 <Modal title="Add a follower daemon" bind:open={joinOpen} wide>
 	<p>
-		Install the same <code class="inline">mrds</code> binary on the other machine, drop this
-		config at <code class="inline">/etc/mrds/daemon.json</code> (or
-		<code class="inline">~/.config/mrds/daemon.json</code>), then run
+		Install the same <code class="inline">luna</code> binary on the other machine, drop this
+		config at <code class="inline">/etc/luna/daemon.json</code> (or
+		<code class="inline">~/.config/luna/daemon.json</code>), then run
 		<code class="inline">luna daemon service install</code> there.
 	</p>
 	<pre class="code mono">{joinConfig}</pre>

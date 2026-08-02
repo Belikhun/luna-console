@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit';
 import type { ClusterConfig } from '$core/types';
 import { getAllStatuses, startInstance, stopInstance } from '$core/instances';
 import { createSchedule, loadSchedules, saveSchedules } from '$core/schedule';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 
 export interface RestartChoice {
 	mode?: string;

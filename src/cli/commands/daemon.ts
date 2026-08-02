@@ -73,7 +73,7 @@ function printHealth(health: HealthSample): void {
 
 command({
 	path: ["daemon", "run"],
-	desc: "Run the mrds daemon in the foreground (primary or follower, per its config)",
+	desc: "Run the luna daemon in the foreground (primary or follower, per its config)",
 
 	handler: async () => {
 		const { runDaemon } = await import("../../daemon/index");
@@ -414,7 +414,7 @@ command({
 });
 
 /** systemd unit name, without the .service suffix systemctl accepts either way. */
-export const UNIT_NAME = "mrds-daemon";
+export const UNIT_NAME = "luna-daemon";
 
 /** Where the system-scope unit lives (`luna setup` writes this one). */
 export const UNIT_PATH = `/etc/systemd/system/${UNIT_NAME}.service`;
@@ -429,12 +429,12 @@ export function unitFile(
 	configFile: string | undefined,
 ): string {
 	const environment = configFile
-		? `Environment=MRDS_DAEMON_CONFIG=${configFile}`
-		: `Environment=MRDS_ROOT=${process.env.MRDS_ROOT ?? ""}`;
+		? `Environment=LUNA_DAEMON_CONFIG=${configFile}`
+		: `Environment=LUNA_ROOT=${process.env.LUNA_ROOT ?? ""}`;
 
 	const lines = [
 		"[Unit]",
-		"Description=mrds cluster daemon",
+		"Description=luna cluster daemon",
 		"After=network-online.target",
 		"Wants=network-online.target",
 		"",
@@ -444,10 +444,10 @@ export function unitFile(
 		"Restart=always",
 		"RestartSec=5",
 		environment,
-		// /run/mrds is the first socket candidate; letting systemd own it means
+		// /run/luna is the first socket candidate; letting systemd own it means
 		// the daemon never falls back to XDG_RUNTIME_DIR or /tmp, so every client
 		// on the machine finds it at the same path
-		"RuntimeDirectory=mrds",
+		"RuntimeDirectory=luna",
 		"RuntimeDirectoryMode=0755",
 		// a server can outlive a stop signal for a while; killing its screens with
 		// the daemon would take the cluster down with a restart
@@ -476,7 +476,7 @@ command({
 		// prefer the cluster symlink over a transient build path
 		const symlink = "/mnt/shulker/mrds/luna";
 		const binary = existsSync(symlink) ? symlink : process.execPath;
-		const configFile = (opts.config as string) ?? process.env.MRDS_DAEMON_CONFIG;
+		const configFile = (opts.config as string) ?? process.env.LUNA_DAEMON_CONFIG;
 
 		const userScope = !!opts.user;
 		const path = userScope
@@ -500,6 +500,6 @@ command({
 
 		const ctl = userScope ? "systemctl --user" : "sudo systemctl";
 
-		info(`enable + start it with: ${pc.cyan(`${ctl} daemon-reload && ${ctl} enable --now mrds-daemon`)}`);
+		info(`enable + start it with: ${pc.cyan(`${ctl} daemon-reload && ${ctl} enable --now luna-daemon`)}`);
 	},
 });

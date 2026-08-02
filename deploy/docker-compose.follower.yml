@@ -5,34 +5,34 @@
 # from the primary over the cluster link. It never writes cluster state on its
 # own authority, so its volume holds worlds and logs, not the registry.
 #
-#   cp .env.example .env && edit it   (MRDS_TOKEN must match the primary's)
+#   cp .env.example .env && edit it   (LUNA_TOKEN must match the primary's)
 #   docker compose -f docker-compose.follower.yml up -d
 #
 # The primary reaches this machine's backends directly, not through the link, so
 # the instance ports have to be published. Backends created for a follower are
 # bound to 0.0.0.0 for exactly this reason.
 
-name: mrds-follower
+name: luna-follower
 
 services:
-  mrds:
+  luna:
     image: ghcr.io/belikhun/luna-control:latest
-    container_name: mrds-follower
+    container_name: luna-follower
     restart: unless-stopped
     command: ["daemon", "run"]
 
     environment:
-      MRDS_MODE: follower
+      LUNA_MODE: follower
       # unique across the cluster: this is the name the primary assigns
       # instances to, and it survives restarts
-      MRDS_DAEMON_NAME: ${MRDS_DAEMON_NAME:?set MRDS_DAEMON_NAME in .env}
-      MRDS_ROOT: /data
-      MRDS_PRIMARY_ADDRESS: ${MRDS_PRIMARY_ADDRESS:?set MRDS_PRIMARY_ADDRESS in .env}
-      MRDS_TOKEN: ${MRDS_TOKEN:?set MRDS_TOKEN in .env}
+      LUNA_DAEMON_NAME: ${LUNA_DAEMON_NAME:?set LUNA_DAEMON_NAME in .env}
+      LUNA_ROOT: /data
+      LUNA_PRIMARY_ADDRESS: ${LUNA_PRIMARY_ADDRESS:?set LUNA_PRIMARY_ADDRESS in .env}
+      LUNA_TOKEN: ${LUNA_TOKEN:?set LUNA_TOKEN in .env}
       # the LAN address the primary should route this machine's backends to;
       # without it the primary falls back to the address it sees on the socket
-      MRDS_HOST: ${MRDS_HOST:-}
-      MRDS_SOCKET: /data/run/daemon.sock
+      LUNA_HOST: ${LUNA_HOST:-}
+      LUNA_SOCKET: /data/run/daemon.sock
 
     volumes:
       - cluster:/data

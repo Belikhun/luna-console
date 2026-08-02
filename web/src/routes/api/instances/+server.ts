@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { listStatuses } from '$lib/server/mrds';
+import { listStatuses } from '$lib/server/luna';
 
 /** GET → live status of every instance, for the instances table. */
 export async function GET() {

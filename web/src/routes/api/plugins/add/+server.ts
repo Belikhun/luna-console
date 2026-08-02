@@ -3,7 +3,7 @@ import { loadCluster, loadLock, saveLock, saveCluster } from '$core/config';
 import { installFromModrinth, deploy } from '$core/plugins';
 import { getProject } from '$core/services/modrinth';
 import { ensurePortAllocations } from '$core/ports';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
 /** POST { slug, loader, targets } */

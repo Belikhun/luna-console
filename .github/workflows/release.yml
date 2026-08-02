@@ -52,7 +52,7 @@ jobs:
 
       - name: Build luna-${{ matrix.platform }}
         env:
-          MRDS_VERSION: ${{ steps.version.outputs.version }}
+          LUNA_VERSION: ${{ steps.version.outputs.version }}
         run: |
           bun run scripts/genversion.ts
           bun build --compile --minify --target=${{ matrix.target }} \
@@ -164,8 +164,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            MRDS_VERSION=${{ steps.version.outputs.version }}
-            MRDS_COMMIT=${{ github.sha }}
+            LUNA_VERSION=${{ steps.version.outputs.version }}
+            LUNA_COMMIT=${{ github.sha }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

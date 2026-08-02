@@ -206,7 +206,7 @@
 	];
 </script>
 
-<svelte:head><title>{name} | Plugin groups | MRDS Console</title></svelte:head>
+<svelte:head><title>{name} | Plugin groups | Luna Console</title></svelte:head>
 
 {#if data}
 	<PageHeader title={name ?? ''} info>

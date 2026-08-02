@@ -139,7 +139,7 @@
 	const one = $derived((plan?.junk ?? []).find((row: any) => selected.has(row.path)));
 </script>
 
-<svelte:head><title>Cleanup | MRDS Console</title></svelte:head>
+<svelte:head><title>Cleanup | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Cleanup"

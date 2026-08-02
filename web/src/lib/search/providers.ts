@@ -2,7 +2,7 @@
  * The global search index (DESIGN.md §5.3).
  *
  * One provider per kind of object in the cluster. Adding a new kind of object
- * to mrds means adding a provider here — `GlobalSearch.svelte` never grows
+ * to luna means adding a provider here — `GlobalSearch.svelte` never grows
  * another branch, and nothing in the system stays unfindable because someone
  * forgot to teach the search box about it.
  *

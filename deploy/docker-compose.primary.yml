@@ -9,30 +9,30 @@
 #   docker compose -f docker-compose.primary.yml up -d
 #
 # First run on an empty volume: create the cluster registry before the daemon
-# starts, or point MRDS_ROOT at an existing cluster directory.
+# starts, or point LUNA_ROOT at an existing cluster directory.
 #
-#   docker compose -f docker-compose.primary.yml run --rm --entrypoint sh mrds \
+#   docker compose -f docker-compose.primary.yml run --rm --entrypoint sh luna \
 #     -c 'echo "{\"instances\":{},\"daemons\":{}}" > /data/cluster.json'
 
-name: mrds-primary
+name: luna-primary
 
 services:
-  mrds:
+  luna:
     image: ghcr.io/belikhun/luna-control:latest
-    container_name: mrds-primary
+    container_name: luna-primary
     restart: unless-stopped
     command: ["daemon", "run"]
 
     environment:
-      MRDS_MODE: primary
+      LUNA_MODE: primary
       # keys cluster.json and decides instance ownership — unique per machine,
       # and stable, or the cluster forgets which daemon owns what
-      MRDS_DAEMON_NAME: ${MRDS_DAEMON_NAME:-primary}
-      MRDS_ROOT: /data
-      MRDS_LISTEN: 0.0.0.0:8331
+      LUNA_DAEMON_NAME: ${LUNA_DAEMON_NAME:-primary}
+      LUNA_ROOT: /data
+      LUNA_LISTEN: 0.0.0.0:8331
       # `luna daemon token` generates one; every daemon in the cluster shares it
-      MRDS_TOKEN: ${MRDS_TOKEN:?set MRDS_TOKEN in .env}
-      MRDS_SOCKET: /data/run/daemon.sock
+      LUNA_TOKEN: ${LUNA_TOKEN:?set LUNA_TOKEN in .env}
+      LUNA_SOCKET: /data/run/daemon.sock
 
     volumes:
       - cluster:/data
@@ -56,16 +56,16 @@ services:
 
   console:
     image: ghcr.io/belikhun/luna-control:latest
-    container_name: mrds-console
+    container_name: luna-console
     restart: unless-stopped
     depends_on:
-      - mrds
+      - luna
     command: ["web", "--host", "0.0.0.0", "--port", "8330"]
 
     environment:
-      MRDS_ROOT: /data
+      LUNA_ROOT: /data
       # the console is a daemon client: it finds the primary on this socket
-      MRDS_SOCKET: /data/run/daemon.sock
+      LUNA_SOCKET: /data/run/daemon.sock
 
     volumes:
       - cluster:/data
@@ -79,4 +79,4 @@ volumes:
     # driver_opts:
     #   type: none
     #   o: bind
-    #   device: /srv/mrds
+    #   device: /srv/luna

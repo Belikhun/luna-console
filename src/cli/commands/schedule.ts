@@ -70,7 +70,7 @@ command({
 		console.log();
 		printTable(rows, { head: ["", "name", "id", "action", "instances", "trigger", "next run", "last", "runs"] });
 		console.log();
-		info(`runs fire from the daemon ${pc.dim("(mrds daemon run)")}`);
+		info(`runs fire from the daemon ${pc.dim("(luna daemon run)")}`);
 	},
 });
 

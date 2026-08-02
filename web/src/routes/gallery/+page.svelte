@@ -231,7 +231,7 @@
 	}
 </script>
 
-<svelte:head><title>Component gallery | MRDS Console</title></svelte:head>
+<svelte:head><title>Component gallery | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Component gallery"

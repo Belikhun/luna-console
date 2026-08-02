@@ -1,6 +1,6 @@
 /** PaperMC download API client (Fill v3, falling back to legacy v2). */
 
-const UA = "belikhun/mrds-control";
+const UA = "belikhun/luna-control";
 
 export type PaperProject = "paper" | "velocity";
 

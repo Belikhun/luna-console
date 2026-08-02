@@ -1,5 +1,5 @@
 {
-  "name": "mrds-control",
+  "name": "luna-control",
   "version": "1.0.0",
   "module": "src/cli/index.ts",
   "type": "module",

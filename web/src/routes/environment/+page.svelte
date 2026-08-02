@@ -158,12 +158,12 @@
 	const one = $derived(variables.find((row: any) => selected.has(row.name)));
 </script>
 
-<svelte:head><title>Environment | MRDS Console</title></svelte:head>
+<svelte:head><title>Environment | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Environment"
 	count={variables.length}
-	description="Variables that config templates substitute as $&lbrace;NAME&rbrace; when plugins deploy — builtins like MRDS_INSTANCE and MRDS_FORWARDING_SECRET are computed per instance"
+	description="Variables that config templates substitute as $&lbrace;NAME&rbrace; when plugins deploy — builtins like LUNA_INSTANCE and LUNA_FORWARDING_SECRET are computed per instance"
 	info
 >
 	{#snippet actions()}
@@ -238,7 +238,7 @@
 	{#if !editing}
 		<label class="field">
 			<span class="lbl">Name</span>
-			<span class="hint">ALL_UPPERCASE_WITH_UNDERSCORES; MRDS_* is reserved for builtins</span>
+			<span class="hint">ALL_UPPERCASE_WITH_UNDERSCORES; LUNA_* is reserved for builtins</span>
 			<input class="input mono" bind:value={formName} placeholder="DB_HOST" />
 		</label>
 	{/if}

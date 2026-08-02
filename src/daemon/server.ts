@@ -259,8 +259,8 @@ async function handleBinary(metaOnly: boolean): Promise<Response> {
 	return new Response(Bun.file(localBinaryPath()), {
 		headers: {
 			"content-type": "application/octet-stream",
-			"x-mrds-version": meta.version,
-			"x-mrds-sha256": meta.sha256,
+			"x-luna-version": meta.version,
+			"x-luna-sha256": meta.sha256,
 		},
 	});
 }
@@ -297,7 +297,7 @@ export function buildHandler(
 		const path = url.pathname;
 
 		if (!trusted) {
-			const token = request.headers.get("x-mrds-token") ?? url.searchParams.get("token");
+			const token = request.headers.get("x-luna-token") ?? url.searchParams.get("token");
 
 			if (!dcfg.token || token !== dcfg.token) {
 				return errorResponse("unauthorized", 401);

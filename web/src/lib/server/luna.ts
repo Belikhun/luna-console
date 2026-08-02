@@ -1,5 +1,5 @@
 /**
- * Server-side bridge between the SvelteKit console and the mrds daemon.
+ * Server-side bridge between the SvelteKit console and the luna daemon.
  *
  * Everything stateful moved into the daemon (DESIGN.md §4): the metrics
  * sampler, the transient starting/stopping states, the event log and the

@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { loadCluster } from '$core/config';
 import { buildPlan, execute } from '$core/cleanup';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 
 const BYTES_PER_MB = 1048576;
 

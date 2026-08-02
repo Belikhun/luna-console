@@ -32,10 +32,10 @@ COPY web ./web
 
 # the release workflow passes the tag and the commit; a local build falls back
 # to package.json and "dev" (the image context has no .git to read)
-ARG MRDS_VERSION
-ARG MRDS_COMMIT
-ENV MRDS_VERSION=${MRDS_VERSION} \
-	MRDS_COMMIT=${MRDS_COMMIT}
+ARG LUNA_VERSION
+ARG LUNA_COMMIT
+ENV LUNA_VERSION=${LUNA_VERSION} \
+	LUNA_COMMIT=${LUNA_COMMIT}
 
 RUN bun run build && cd web && bun run build
 
@@ -50,7 +50,7 @@ RUN mkdir -p /out/web \
 	&& cp -r web/build /out/web/build \
 	&& find /out/web -name '*.map' -delete \
 	&& find /out/web -name '*.js' -exec sed -i '/^\/\/# sourceMappingURL=/d' {} + \
-	&& printf '{\n\t"name": "mrds-console",\n\t"private": true,\n\t"type": "module"\n}\n' > /out/web/package.json
+	&& printf '{\n\t"name": "luna-console",\n\t"private": true,\n\t"type": "module"\n}\n' > /out/web/package.json
 
 # --- runtime ----------------------------------------------------------------
 FROM eclipse-temurin:21-jre-noble AS runtime
@@ -72,12 +72,12 @@ RUN apt-get update \
 COPY --from=oven/bun:1-debian /usr/local/bin/bun /usr/local/bin/bun
 
 COPY --from=builder /src/dist/luna /usr/local/bin/luna
-COPY --from=builder /out/web /opt/mrds/web
+COPY --from=builder /out/web /opt/luna/web
 
-# MRDS_WEB_DIR keeps the console outside the cluster root, which is a volume
-ENV MRDS_ROOT=/data \
-	MRDS_WEB_DIR=/opt/mrds/web \
-	MRDS_SOCKET=/data/run/daemon.sock
+# LUNA_WEB_DIR keeps the console outside the cluster root, which is a volume
+ENV LUNA_ROOT=/data \
+	LUNA_WEB_DIR=/opt/luna/web \
+	LUNA_SOCKET=/data/run/daemon.sock
 
 WORKDIR /data
 VOLUME ["/data"]

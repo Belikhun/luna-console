@@ -1,7 +1,7 @@
 /** Modrinth v2 API client. */
 
 const API = "https://api.modrinth.com/v2";
-const UA = "belikhun/mrds-control";
+const UA = "belikhun/luna-control";
 
 // Loader families accepted per side. A paper server loads bukkit/spigot/paper plugins.
 export const PAPER_LOADERS = ["paper", "spigot", "bukkit", "folia"];

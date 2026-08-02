@@ -3,7 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { loadCluster, managedInstances } from '$core/config';
 import { sendCommand } from '$core/instances';
 import { dfetch } from '$client/socket';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { SSE_HEADERS } from '$lib/server/http';
 
 /**

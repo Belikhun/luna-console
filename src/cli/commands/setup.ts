@@ -39,13 +39,13 @@ import { isCompiledBinary } from "../../version";
 const BIN_PATH = "/usr/local/bin/luna";
 
 /** The daemon config the unit points at — first candidate in the probe order. */
-const CONFIG_PATH = "/etc/mrds/daemon.json";
+const CONFIG_PATH = "/etc/luna/daemon.json";
 
 /** Default service account, when the invoking user is root itself. */
-const DEFAULT_USER = "mrds";
+const DEFAULT_USER = "luna";
 
 /** Default cluster root on a machine that has none yet. */
-const DEFAULT_ROOT = "/srv/mrds";
+const DEFAULT_ROOT = "/srv/luna";
 
 /** How long `--start` waits for the daemon to answer on its socket. */
 const VERIFY_TIMEOUT_MS = 20_000;
@@ -99,7 +99,7 @@ async function createUser(name: string, home: string): Promise<void> {
 		"--shell",
 		"/usr/sbin/nologin",
 		"--comment",
-		"mrds cluster daemon",
+		"luna cluster daemon",
 		name,
 	]);
 
@@ -450,7 +450,7 @@ async function buildPlan(opts: Record<string, string | boolean>): Promise<Plan> 
 		throw new Bail(`invalid mode: ${mode} (expected primary or follower)`);
 	}
 
-	const shortHost = hostname().split(".")[0]?.toLowerCase().replace(/[^a-z0-9_-]/g, "-") || "mrds";
+	const shortHost = hostname().split(".")[0]?.toLowerCase().replace(/[^a-z0-9_-]/g, "-") || "luna";
 
 	const name =
 		(opts.name as string) ??

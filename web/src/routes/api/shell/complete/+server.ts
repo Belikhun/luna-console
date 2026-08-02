@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { cliBinary, root } from '$lib/server/mrds';
+import { cliBinary, root } from '$lib/server/luna';
 
 /** POST { words: string[] } → { completions: string[] }
  *  Uses the CLI's own completion engine so the web shell and terminal never drift. */
@@ -11,7 +11,7 @@ export async function POST({ request }) {
 	}
 
 	const proc = Bun.spawn([cliBinary(), '__complete', '--', ...words.map(String)], {
-		env: { ...process.env, MRDS_ROOT: root() },
+		env: { ...process.env, LUNA_ROOT: root() },
 		stdout: 'pipe',
 		stderr: 'ignore'
 	});

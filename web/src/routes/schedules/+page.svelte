@@ -201,12 +201,12 @@
 	const one = $derived(schedules.find((row: any) => selected.has(row.id)));
 </script>
 
-<svelte:head><title>Schedules | MRDS Console</title></svelte:head>
+<svelte:head><title>Schedules | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Schedules"
 	count={schedules.length}
-	description="Start, stop or restart instances on a fixed time, a cron expression or a rate — runs fire from the mrds daemon, 24/7"
+	description="Start, stop or restart instances on a fixed time, a cron expression or a rate — runs fire from the luna daemon, 24/7"
 	info
 >
 	{#snippet actions()}

@@ -7,7 +7,7 @@ import {
 	saveSchedules,
 	type ScheduleTrigger
 } from '$core/schedule';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
 /** GET → every schedule plus the execution log, newest first. */

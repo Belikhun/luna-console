@@ -296,7 +296,7 @@
 	];
 </script>
 
-<svelte:head><title>{name} | Daemons | MRDS Console</title></svelte:head>
+<svelte:head><title>{name} | Daemons | Luna Console</title></svelte:head>
 
 {#if missing && !row}
 	<PageHeader title={name ?? ''} />

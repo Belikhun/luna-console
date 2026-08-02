@@ -3,7 +3,7 @@ import { loadCluster, loadLock, saveCluster, saveLock, managedInstances } from '
 import { effectiveTargets, entriesOf, setPluginOverride } from '$core/families';
 import { deploy } from '$core/plugins';
 import { ensureAliases, instancePluginReport, removeInstanceJars } from '$core/pluginstate';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
 /**

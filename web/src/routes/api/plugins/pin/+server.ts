@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock } from '$core/config';
 import { pinVersion, getVersionsForEntry } from '$core/plugins';
-import { pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
 /** How many versions the pin dialog offers — the list is newest-first. */

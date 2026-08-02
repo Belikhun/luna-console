@@ -38,7 +38,7 @@ interface JobGlobals {
 }
 
 // survive vite HMR, like the sampler does
-const g: JobGlobals = ((globalThis as any).__mrdsJobs ??= { jobs: new Map(), counter: 0 });
+const g: JobGlobals = ((globalThis as any).__lunaJobs ??= { jobs: new Map(), counter: 0 });
 
 /** Drop finished jobs nobody came back for. */
 function prune(): void {

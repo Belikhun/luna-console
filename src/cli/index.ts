@@ -78,7 +78,7 @@ async function main(): Promise<void> {
 main().catch((err) => {
 	fail(err?.message ?? String(err));
 
-	if (process.env.MRDS_DEBUG) {
+	if (process.env.LUNA_DEBUG) {
 		console.error(err);
 	}
 

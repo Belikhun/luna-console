@@ -548,8 +548,8 @@ const LUNA_CORE_TEMPLATE: PluginEntry["config"] = [
 	{
 		file: "plugins/LunaCore/config.yml",
 		set: {
-			endpoint: "http://${MRDS_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat",
-			serverName: "${MRDS_INSTANCE}",
+			endpoint: "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat",
+			serverName: "${LUNA_INSTANCE}",
 		},
 	},
 ];
@@ -558,7 +558,7 @@ const LUCKPERMS_TEMPLATE: PluginEntry["config"] = [
 	{
 		file: "plugins/LuckPerms/config.yml",
 		set: {
-			server: "${MRDS_INSTANCE}",
+			server: "${LUNA_INSTANCE}",
 		},
 	},
 ];

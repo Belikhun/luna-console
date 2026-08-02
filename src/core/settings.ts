@@ -44,7 +44,7 @@ export interface SettingSpec {
 	unit?: string;
 	/** what a fresh instance gets when the caller does not say */
 	fallback: string;
-	/** why mrds owns this key — set means "render read-only" */
+	/** why luna owns this key — set means "render read-only" */
 	managed?: string;
 }
 
@@ -58,7 +58,7 @@ export const SETTING_GROUPS: Array<{ id: SettingGroup; label: string; hint: stri
 		label: "Performance",
 		hint: "Cost per player and per chunk — raise these carefully"
 	},
-	{ id: "network", label: "Network", hint: "Owned by mrds so velocity forwarding keeps working" }
+	{ id: "network", label: "Network", hint: "Owned by luna so velocity forwarding keeps working" }
 ];
 
 const DIFFICULTIES = ["peaceful", "easy", "normal", "hard"];
@@ -325,7 +325,7 @@ export const SERVER_SETTINGS: SettingSpec[] = [
 		// Not a hard requirement of modern forwarding — lobby runs with it on and
 		// players log in fine — but a new instance ships with it off, which is what
 		// works for every client the proxy accepts.
-		managed: "off on instances mrds creates; existing servers keep their own setting",
+		managed: "off on instances luna creates; existing servers keep their own setting",
 		fallback: "false"
 	},
 	{
@@ -343,7 +343,7 @@ export function settingSpec(key: string): SettingSpec | undefined {
 	return SERVER_SETTINGS.find((spec) => spec.key === key);
 }
 
-/** Keys a caller is allowed to write, i.e. everything not managed by mrds. */
+/** Keys a caller is allowed to write, i.e. everything not managed by luna. */
 export function editableSettingKeys(): string[] {
 	return SERVER_SETTINGS.filter((spec) => !spec.managed).map((spec) => spec.key);
 }
@@ -354,7 +354,7 @@ export function editableSettingKeys(): string[] {
  */
 export function validateSetting(spec: SettingSpec, value: string): string | undefined {
 	if (spec.managed) {
-		return `${spec.key} is managed by mrds (${spec.managed})`;
+		return `${spec.key} is managed by luna (${spec.managed})`;
 	}
 
 	switch (spec.type) {
@@ -539,7 +539,7 @@ export async function applySettings(
 	return result;
 }
 
-/** JVM flags mrds sets from the instance's own fields, so a custom arg cannot restate them. */
+/** JVM flags luna sets from the instance's own fields, so a custom arg cannot restate them. */
 const RESERVED_JAVA_FLAGS = ["-Xmx", "-Xms", "-jar"];
 
 /**
@@ -572,7 +572,7 @@ export function validateJavaArgs(args: string[]): string | undefined {
 		const reserved = RESERVED_JAVA_FLAGS.find((flag) => arg.startsWith(flag));
 
 		if (reserved) {
-			return `${reserved} is set by mrds from the instance's own memory setting`;
+			return `${reserved} is set by luna from the instance's own memory setting`;
 		}
 	}
 

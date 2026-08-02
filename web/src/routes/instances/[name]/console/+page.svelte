@@ -150,7 +150,7 @@
 	);
 </script>
 
-<svelte:head><title>{name} console | MRDS Console</title></svelte:head>
+<svelte:head><title>{name} console | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Serial console"

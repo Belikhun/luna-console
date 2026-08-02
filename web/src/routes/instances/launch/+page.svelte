@@ -166,7 +166,7 @@
 	}
 </script>
 
-<svelte:head><title>Launch instance | MRDS Console</title></svelte:head>
+<svelte:head><title>Launch instance | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Launch an instance"

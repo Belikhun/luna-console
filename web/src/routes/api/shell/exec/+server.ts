@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { cliBinary, root, INTERACTIVE_COMMANDS } from '$lib/server/mrds';
+import { cliBinary, root, INTERACTIVE_COMMANDS } from '$lib/server/luna';
 import { SSE_HEADERS, closeQuietly } from '$lib/server/http';
 
 /** Parse and validate the argv query parameter. */
@@ -49,7 +49,7 @@ export async function GET({ url }) {
 
 			// FORCE_COLOR so picocolors keeps its ANSI codes for xterm.js to render
 			proc = Bun.spawn([cliBinary(), ...argv], {
-				env: { ...process.env, MRDS_ROOT: root(), FORCE_COLOR: '3', MRDS_WEB: '1' },
+				env: { ...process.env, LUNA_ROOT: root(), FORCE_COLOR: '3', LUNA_WEB: '1' },
 				stdout: 'pipe',
 				stderr: 'pipe',
 				stdin: 'ignore'
