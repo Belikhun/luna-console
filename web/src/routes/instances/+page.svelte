@@ -21,6 +21,7 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
+	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { instanceStateJob, type StateAction } from '$lib/instancejobs';
 	import { onJobFlash } from '$lib/jobflash';
@@ -48,6 +49,8 @@
 	let lastUpdated: number | null = $state(null);
 	let scheduleOpen = $state(false);
 	let scheduleTargets: string[] = $state([]);
+	let deleteOpen = $state(false);
+	let deleteTarget = $state('');
 	/** name of the primary daemon — what "no owner" means in the registry */
 	let hostName = $state('');
 
@@ -59,6 +62,15 @@
 
 		scheduleTargets = targets;
 		scheduleOpen = true;
+	}
+
+	/**
+	 * Confirm a delete here rather than on the instance's own page — asking a
+	 * question must not navigate away from the table the user is working in.
+	 */
+	function askDelete(target: string): void {
+		deleteTarget = target;
+		deleteOpen = true;
 	}
 
 	// external servers have a name and an address and nothing else — they are
@@ -380,7 +392,7 @@
 						: row.state !== 'stopped'
 							? 'stop the instance first'
 							: undefined,
-				action: () => goto(`/instances/${row.name}?tab=config&delete=1`)
+				action: () => askDelete(row.name)
 			}
 		];
 	}
@@ -763,6 +775,18 @@
 
 
 <ScheduleQuickModal bind:open={scheduleOpen} instances={scheduleTargets} />
+
+<DeleteInstanceModal
+	bind:open={deleteOpen}
+	name={deleteTarget}
+	ondeleted={(target) => {
+		// the row reads "deleting" until the job finishes and then disappears —
+		// drop it from the selection so the detail panel is not left holding it
+		selected = new Set([...selected].filter((id) => id !== target));
+
+		void refresh();
+	}}
+/>
 
 <style lang="scss">
 	.meters {

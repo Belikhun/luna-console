@@ -54,7 +54,13 @@
 	}
 
 	onMount(() => {
-		void refresh();
+		// the groups table deep-links straight into the add dialog; the picker is
+		// built from this group's membership, so it opens once that has landed
+		void refresh().then(() => {
+			if (page.url.searchParams.get('add')) {
+				addOpen = true;
+			}
+		});
 	});
 
 	const memberNames = $derived((data?.plugins ?? []).map((entry: any) => entry.plugin));

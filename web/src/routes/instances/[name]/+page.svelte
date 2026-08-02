@@ -10,14 +10,13 @@
 	import Btn from '$lib/components/Btn.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
-	import Checkbox from '$lib/components/Checkbox.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
-	import Modal from '$lib/components/Modal.svelte';
+	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
@@ -31,12 +30,7 @@
 	import Alerts from '$lib/components/Alerts.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
 	import { followJob, type JobView } from '$lib/jobs';
-	import {
-		instanceStateJob,
-		deleteInstanceJob,
-		attachInstanceJobFlash,
-		type StateAction
-	} from '$lib/instancejobs';
+	import { instanceStateJob, attachInstanceJobFlash, type StateAction } from '$lib/instancejobs';
 
 	/** how often the header's status is re-read */
 	const POLL_MS = 4000;
@@ -74,8 +68,6 @@
 	let versionJob: JobView | null = $state(null);
 	let deleteOpen = $state(false);
 	let scheduleOpen = $state(false);
-	let deleteText = $state('');
-	let purge = $state(false);
 	let versionConflict: any[] = $state([]);
 
 	let instPlugins: any[] = $state([]);
@@ -168,15 +160,11 @@
 	}
 
 	onMount(() => {
-		// the instances table deep-links into a tab, and into the delete dialog
+		// the instances table deep-links into a tab
 		const urlTab = page.url.searchParams.get('tab');
 
 		if (urlTab) {
 			tab = urlTab;
-		}
-
-		if (page.url.searchParams.get('delete')) {
-			deleteOpen = true;
 		}
 
 		void refresh();
@@ -389,30 +377,6 @@
 			});
 		}
 	}
-
-	async function doDelete(): Promise<void> {
-		if (!name || !deleteConfirmed) {
-			return;
-		}
-
-		deleteOpen = false;
-
-		// hand off to the flash card and go back to the list, where the row reads
-		// "deleting" until the job (and a purge's directory walk) finishes
-		void deleteInstanceJob(name, purge);
-
-		await goto('/instances');
-	}
-
-	const deleteConfirmed = $derived(deleteText.trim().toLowerCase() === 'delete');
-
-	// a reopened dialog never inherits the previous attempt's confirmation
-	$effect(() => {
-		if (deleteOpen) {
-			deleteText = '';
-			purge = false;
-		}
-	});
 
 	const isUp = $derived(inst && (inst.state === 'running' || inst.state === 'starting'));
 	const checksPassed = $derived(inst ? inst.checks.filter((check: any) => check.ok).length : 0);
@@ -1070,34 +1034,13 @@
 
 <ScheduleQuickModal bind:open={scheduleOpen} instances={name ? [name] : []} />
 
-<Modal title="Delete {name}?" bind:open={deleteOpen}>
-	<p class="del-lead">
-		Delete <b>{name}</b> permanently? This action cannot be undone.
-	</p>
-	<p class="del-note">
-		The instance is deregistered from the cluster registry and removed from the velocity
-		proxy's routing.
-	</p>
-	<p class="del-note">
-		The instance directory — worlds included — stays on disk unless you also delete it below.
-	</p>
-	<label class="purgerow">
-		<Checkbox
-			checked={purge}
-			label="Delete the instance directory"
-			onchange={(value) => (purge = value)}
-		/>
-		Also permanently delete the instance directory (worlds included)
-	</label>
-	<div class="del-confirm">
-		<span class="del-ask">To confirm deletion, enter <i>delete</i> in the text input field.</span>
-		<input class="input" bind:value={deleteText} placeholder="delete" />
-	</div>
-	{#snippet footer()}
-		<Btn onclick={() => (deleteOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" disabled={!deleteConfirmed} onclick={doDelete}>Delete</Btn>
-	{/snippet}
-</Modal>
+<!-- deleting from here has nowhere to stay: the page it is on is about to stop
+     existing, so the list is where the job's card is followed from -->
+<DeleteInstanceModal
+	bind:open={deleteOpen}
+	name={name ?? ''}
+	ondeleted={() => void goto('/instances')}
+/>
 
 <style lang="scss">
 	.tabbody {
@@ -1166,39 +1109,5 @@
 		display: flex;
 		gap: 0.5rem;
 		margin-top: 0.625rem;
-	}
-
-	.purgerow {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-		margin: 0.75rem 0 1rem;
-	}
-
-	// delete dialog, modelled on the AWS confirm pattern: lead question,
-	// consequence notes, then a divided type-to-confirm section
-	.del-lead {
-		margin: 0 0 0.75rem;
-	}
-
-	.del-note {
-		margin: 0 0 0.75rem;
-		color: var(--text-secondary);
-		font-size: 0.875rem;
-	}
-
-	.del-confirm {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		border-top: 0.1rem solid var(--border-divider);
-		// stretch to the modal body's edges so the divider runs full width
-		margin: 1rem -1.25rem 0;
-		padding: 1rem 1.25rem 0.25rem;
-	}
-
-	.del-ask {
-		font-weight: 700;
-		color: var(--text-heading);
 	}
 </style>
