@@ -9,9 +9,18 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { installSaveHook, loadCluster, managedInstances, poolDir, root } from "../core/config";
+import {
+	installSaveHook,
+	instanceDir,
+	loadCluster,
+	managedInstances,
+	poolDir,
+	root,
+} from "../core/config";
+import { setProxyHost } from "../core/environment";
 import { effectiveTargets } from "../core/families";
 import { ProgressReporter } from "../core/progress";
+import type { BackendCard } from "../core/services/luna";
 import { sha512File } from "../core/services/modrinth";
 import type { ClusterConfig, PluginsLock } from "../core/types";
 
@@ -21,7 +30,9 @@ import { currentHealth, hostAddresses } from "./health";
 import { ownsInstance } from "./identity";
 import { log } from "./index";
 import { runOp } from "./rpc";
+import { setLunaTelemetry } from "./sampler";
 import { PROTOCOL_VERSION } from "./server";
+import { tailFollow, type TailHandle } from "./tail";
 import { selfUpgrade, setUpgradeSource } from "./upgrade";
 import { buildVersion } from "../version";
 
@@ -107,6 +118,57 @@ interface PrimaryFrame {
 	name?: string;
 	seq?: number;
 	at?: number;
+	instance?: string;
+	lines?: number;
+	/** LunaCore cards for this machine's instances, riding the ping */
+	luna?: BackendCard[];
+	lunaIssue?: string;
+}
+
+/** Live console tails feeding the primary's tunnel, keyed by stream id. */
+const tails = new Map<string, TailHandle>();
+
+/** Open one console tunnel: tail the owned instance's log, stream lines up. */
+async function openConsoleTail(frame: PrimaryFrame): Promise<void> {
+	const { id, instance } = frame;
+
+	if (!id || !instance) {
+		return;
+	}
+
+	const cfg = await loadCluster();
+	const inst = managedInstances(cfg)[instance];
+
+	if (!inst || !ownsInstance(inst)) {
+		send({ t: "stream-end", id, error: `this daemon does not own "${instance}"` });
+
+		return;
+	}
+
+	// the ack is what tells the primary this build understands the tunnel — an
+	// empty log legitimately produces no lines, so silence cannot mean support
+	send({ t: "stream-ready", id });
+
+	const handle = tailFollow(
+		join(instanceDir(inst), "logs", "latest.log"),
+		frame.lines ?? 100,
+		(line) => send({ t: "stream-data", id, line }),
+		() => {
+			tails.delete(id);
+			send({ t: "stream-end", id });
+		},
+	);
+
+	tails.set(id, handle);
+}
+
+/** Stop every live tail — the link died, nobody is listening anymore. */
+function stopAllTails(): void {
+	for (const handle of tails.values()) {
+		handle.stop();
+	}
+
+	tails.clear();
 }
 
 /** Execute one forwarded operation and stream its outcome (and progress) back. */
@@ -240,9 +302,13 @@ function connect(): void {
 		}
 
 		if (frame.t === "ping") {
-			// the pong echoes the primary's sequence and carries this machine's
-			// latest health sample — one round trip measures latency and reports
-			// CPU/memory/disk/instance memory at the same time
+			// the ping brings LunaCore's telemetry down (only the primary can ask
+			// the proxy for it) and the pong takes this machine's health back up —
+			// one round trip measures latency and moves both halves of the picture
+			if (frame.luna) {
+				setLunaTelemetry(frame.luna, frame.lunaIssue);
+			}
+
 			send({ t: "pong", seq: frame.seq, at: frame.at, health: currentHealth() });
 
 			return;
@@ -250,11 +316,26 @@ function connect(): void {
 
 		if (frame.t === "rpc") {
 			void handleForwardedOp(frame);
+
+			return;
+		}
+
+		if (frame.t === "stream-open") {
+			void openConsoleTail(frame);
+
+			return;
+		}
+
+		if (frame.t === "stream-close" && frame.id) {
+			tails.get(frame.id)?.stop();
+			tails.delete(frame.id);
 		}
 	};
 
 	ws.onclose = (event) => {
 		log(`primary link lost (${event.code}${event.reason ? ` ${event.reason}` : ""}) — retrying in ${Math.round(backoffMs / 1000)}s`);
+
+		stopAllTails();
 
 		// the one automatic upgrade: a protocol mismatch means this build can no
 		// longer talk to the primary at all, and reconnecting cannot fix that
@@ -290,6 +371,10 @@ export function startFollower(config: DaemonConfig, processStartedAt: number): v
 
 	// where a self-upgrade fetches its new binary from
 	setUpgradeSource(config.primary!.address, config.token ?? "");
+
+	// the proxy runs on the primary's host, so that is where THIS machine's
+	// instances must send their LunaCore heartbeats — not at loopback
+	setProxyHost(config.primary!.address.split(":")[0]!);
 
 	connect();
 }

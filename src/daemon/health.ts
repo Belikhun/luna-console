@@ -14,7 +14,7 @@ import { loadavg, networkInterfaces, uptime } from "node:os";
 import { diskUsage } from "../core/cleanup";
 import { root } from "../core/config";
 
-import { instanceRssMb, instanceStates } from "./sampler";
+import { instanceCpuPct, instanceRssMb, instanceStates } from "./sampler";
 
 export interface HealthSample {
 	t: number;
@@ -32,6 +32,8 @@ export interface HealthSample {
 	uptimeSec: number;
 	/** Resident size of each instance this daemon owns, MB */
 	instanceRssMb: Record<string, number>;
+	/** CPU utilization of each instance this daemon owns, percent of one core */
+	instanceCpu: Record<string, number>;
 	/** Their total, MB */
 	instancesRssMb: number;
 	/** Instance name → UI state, so the fleet view needs no extra round trip */
@@ -163,6 +165,7 @@ async function sampleOnce(): Promise<void> {
 		load15: load[2] ?? 0,
 		uptimeSec: Math.round(uptime()),
 		instanceRssMb: rss,
+		instanceCpu: instanceCpuPct(),
 		instancesRssMb: Object.values(rss).reduce((sum, value) => sum + value, 0),
 		states: instanceStates(),
 	};

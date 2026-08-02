@@ -43,6 +43,19 @@ function envPath(): string {
 	return join(root(), ENV_FILE);
 }
 
+/**
+ * Where THIS machine reaches the velocity proxy. The proxy always runs on the
+ * primary's host, so the default loopback is right there — a follower daemon
+ * injects the primary's address at startup, because a config template applied
+ * on a follower must point its instances across the LAN, not at themselves.
+ */
+let proxyHost = "127.0.0.1";
+
+/** Injected by the daemon runtime (follower.ts) — never called from core. */
+export function setProxyHost(host: string): void {
+	proxyHost = host;
+}
+
 /** Read the environment store, seeding the defaults on first use. */
 export async function loadEnv(): Promise<EnvironmentStore> {
 	if (!existsSync(envPath())) {
@@ -154,7 +167,7 @@ export async function builtinVars(
 		LUNA_SOFTWARE: inst.software,
 		LUNA_DIR: inst.dir,
 		LUNA_ROOT: root(),
-		LUNA_PROXY_HOST: "127.0.0.1",
+		LUNA_PROXY_HOST: proxyHost,
 		LUNA_PROXY_PORT: String(cfg.proxy.port),
 		LUNA_FORWARDING_SECRET: await readForwardingSecret(cfg),
 	};

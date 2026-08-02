@@ -547,6 +547,15 @@ function coveredByDefault(entry: PluginEntry, family: PluginFamily): boolean {
 const LUNA_CORE_TEMPLATE: PluginEntry["config"] = [
 	{
 		file: "plugins/LunaCore/config.yml",
+		// the bootstrap makes the very first boot heartbeat correctly: without
+		// it the file only exists after that boot, so `set` stays pending-file
+		// and the plugin reports to its bundled default endpoint (or nowhere)
+		write:
+			"# Written by luna before first boot — LunaCore merges its remaining defaults.\n" +
+			"heartbeat:\n" +
+			"  enabled: true\n" +
+			'  endpoint: "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat"\n' +
+			'  serverName: "${LUNA_INSTANCE}"\n',
 		set: {
 			endpoint: "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat",
 			serverName: "${LUNA_INSTANCE}",

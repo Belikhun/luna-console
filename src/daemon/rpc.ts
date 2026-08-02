@@ -19,6 +19,7 @@ import * as configCore from "../core/config";
 import * as environmentCore from "../core/environment";
 import * as instancesCore from "../core/instances";
 import * as lifecycleCore from "../core/lifecycle";
+import * as logsCore from "../core/logs";
 import * as lunaCore from "../core/luna";
 import * as pluginstateCore from "../core/pluginstate";
 import * as pluginsCore from "../core/plugins";
@@ -149,6 +150,40 @@ async function deployRouted(
 	}
 
 	return actions;
+}
+
+/**
+ * Ownership-aware status of one instance: probed on its owner, so a follower's
+ * screen and java process are seen by the daemon that has them. An unreachable
+ * owner reads as "unknown" rather than a false "stopped".
+ */
+export async function getStatusRouted(
+	cfg: ClusterConfig,
+	name: string,
+): Promise<instancesCore.InstanceStatus> {
+	const inst = configCore.managedInstances(cfg)[name];
+
+	if (!inst) {
+		throw new Error(`unknown instance: ${name}`);
+	}
+
+	const owner = name === "proxy" ? undefined : inst.daemon;
+
+	if (!owner || owner === daemonName()) {
+		return await instancesCore.getStatus(cfg, name);
+	}
+
+	try {
+		if (!forwardOp) {
+			throw new Error("no cluster link");
+		}
+
+		const outcome = await forwardOp(owner, "instances.getStatus", [cfg, name]);
+
+		return outcome.result as instancesCore.InstanceStatus;
+	} catch {
+		return { name, inst, state: "unknown" };
+	}
 }
 
 /**
@@ -401,6 +436,9 @@ export const OPS: Record<string, OpSpec> = {
 		reporter: { arg: 2 },
 	},
 
+	// -- logs (read on the machine that owns the instance) ---------------------
+	"logs.readInstanceLogs": { fn: logsCore.readInstanceLogs, cfg: 0, instance: 1 },
+
 	// -- plugins ---------------------------------------------------------------
 	"plugins.scan": { fn: pluginsCore.scan, cfg: 0, lock: 1 },
 	"plugins.getVersionsForEntry": { fn: pluginsCore.getVersionsForEntry },
@@ -464,8 +502,10 @@ export const OPS: Record<string, OpSpec> = {
 	"templates.applyTemplates": { fn: templatesCore.applyTemplates, cfg: 0, lock: 1, instance: 2 },
 	"environment.loadEnv": { fn: environmentCore.loadEnv },
 	"environment.saveEnv": { fn: environmentCore.saveEnv },
-	"environment.builtinVars": { fn: environmentCore.builtinVars, cfg: 0 },
-	"environment.resolveVars": { fn: environmentCore.resolveVars, cfg: 0 },
+	// instance-routed so machine-dependent builtins (LUNA_PROXY_HOST) resolve on
+	// the daemon whose instances will actually read the value
+	"environment.builtinVars": { fn: environmentCore.builtinVars, cfg: 0, instance: 1 },
+	"environment.resolveVars": { fn: environmentCore.resolveVars, cfg: 0, instance: 2 },
 
 	// -- schedules -------------------------------------------------------------------
 	"schedule.loadSchedules": { fn: scheduleCore.loadSchedules },
@@ -499,7 +539,11 @@ export const OPS: Record<string, OpSpec> = {
 
 	// -- daemon-native (sampler, events) ---------------------------------------------------
 	"daemon.listStatuses": { fn: sampler.listStatuses },
-	"daemon.instanceStatus": { fn: sampler.instanceStatus, instance: 0 },
+	// deliberately NOT instance-routed: the serialized status carries the proxy's
+	// LunaCore telemetry, and only the primary can see that. The core probe
+	// inside does route to the owner (getStatusRouted), so a follower instance's
+	// process state is still read where the process actually is.
+	"daemon.instanceStatus": { fn: sampler.instanceStatus },
 	"daemon.getHistory": { fn: sampler.getHistory, instance: 0 },
 	"daemon.markTransition": { fn: sampler.markTransition },
 	"daemon.clearTransition": { fn: sampler.clearTransition },

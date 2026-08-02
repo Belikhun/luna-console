@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
 	import { jobFlash } from '$lib/jobflash';
-	import { instanceStateJob } from '$lib/instancejobs';
+	import { createFlashConfig } from '$lib/instancejobs';
 	import Wizard from '$lib/components/Wizard.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -127,7 +127,9 @@
 		const target = name;
 
 		const done = await jobFlash({
-			title: `Creating ${target}…`,
+			// the shared card wording — the same config an instance page attaching
+			// to a discovered create job renders
+			...createFlashConfig(target),
 
 			start: () =>
 				post('/instances/create', {
@@ -146,30 +148,7 @@
 				}),
 
 			// back to the list, where the new row shows up as "provisioning"
-			started: () => void goto('/instances'),
-
-			success: (result) => {
-				const res = result as {
-					name: string;
-					port: number;
-					build: number;
-					pluginsDeployed: number;
-					velocityUpdated: boolean;
-				};
-
-				const proxied = res.velocityUpdated ? ', proxy registered' : '';
-
-				return {
-					message: `Created ${res.name} on port ${res.port}`,
-					detail: `Paper build ${res.build}, ${res.pluginsDeployed} plugin(s) deployed${proxied}.`,
-					actions: [
-						{ label: 'Start now', run: () => void instanceStateJob(res.name, 'start') },
-						{ label: 'View instance', run: () => void goto(`/instances/${res.name}`) }
-					]
-				};
-			},
-
-			failure: () => ({ message: `Could not create ${target}` })
+			started: () => void goto('/instances')
 		});
 
 		// a failed start (validation, name clash) leaves the user on the form

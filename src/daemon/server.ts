@@ -16,6 +16,7 @@ import { getEvents } from "./events";
 import { ownsInstance } from "./identity";
 import { getJob, startJob, watchJob, type JobView } from "./jobs";
 import { runOp } from "./rpc";
+import { tailFollow, type TailHandle } from "./tail";
 import { localBinaryMeta, localBinaryPath } from "./upgrade";
 import { BUILD_AT, COMMIT, VERSION, buildPlatform, buildVersion } from "../version";
 
@@ -61,53 +62,91 @@ function errorResponse(message: string, status: number): Response {
 const CONSOLE_TAIL_LINES = 100;
 
 /**
- * SSE stream of an instance's live console — `tail -F` on its latest.log. -F
- * rather than -f: the server rotates latest.log, and tail has to follow the new
- * file by name instead of holding the old descriptor open.
+ * The hub's console tunnel to a follower, injected by installHub — the server
+ * module cannot import the hub (the hub imports this module), and a follower
+ * daemon has no tunnel to offer at all.
  */
+export interface RemoteConsole {
+	connected(daemon: string): boolean;
+	open(
+		daemon: string,
+		instance: string,
+		lines: number,
+		onLine: (line: string) => void,
+		onEnd: (error?: string) => void,
+	): () => void;
+}
+
+let remoteConsole: RemoteConsole | undefined;
+
+/** Install the hub's follower console tunnel (primary only). */
+export function setRemoteConsole(tunnel: RemoteConsole): void {
+	remoteConsole = tunnel;
+}
+
+/** SSE stream of an instance's live console — a tail of its latest.log. */
 function consoleStream(logPath: string): Response {
-	let proc: ReturnType<typeof Bun.spawn> | undefined;
+	let tail: TailHandle | undefined;
 
 	const stream = new ReadableStream({
 		start(controller) {
 			const encoder = new TextEncoder();
 
-			proc = Bun.spawn(["tail", "-n", String(CONSOLE_TAIL_LINES), "-F", logPath], {
-				stdout: "pipe",
-				stderr: "ignore",
-			});
-
-			const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
-
-			void (async () => {
-				try {
-					while (true) {
-						const { done, value } = await reader.read();
-
-						if (done) {
-							break;
-						}
-
-						const text = new TextDecoder().decode(value);
-
-						for (const line of text.split("\n")) {
-							if (line.length === 0) {
-								continue;
-							}
-
-							controller.enqueue(encoder.encode(`data: ${JSON.stringify(line)}\n\n`));
-						}
+			tail = tailFollow(
+				logPath,
+				CONSOLE_TAIL_LINES,
+				(line) => {
+					try {
+						controller.enqueue(encoder.encode(`data: ${JSON.stringify(line)}\n\n`));
+					} catch {
+						// client disconnected mid-write
+						tail?.stop();
 					}
-				} catch {
-					// client disconnected mid-read
-				}
-
-				closeQuietly(controller);
-			})();
+				},
+				() => closeQuietly(controller),
+			);
 		},
 
 		cancel() {
-			proc?.kill();
+			tail?.stop();
+		},
+	});
+
+	return new Response(stream, { headers: SSE_HEADERS });
+}
+
+/**
+ * SSE stream of a follower-owned instance's console, piped through the hub's
+ * cluster-link tunnel — the log lives on the follower's disk, so its daemon
+ * tails it and the lines cross the WebSocket as stream frames.
+ */
+function remoteConsoleStream(daemon: string, instance: string): Response {
+	let close: (() => void) | undefined;
+
+	const stream = new ReadableStream({
+		start(controller) {
+			const encoder = new TextEncoder();
+
+			const push = (line: string): void => {
+				try {
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify(line)}\n\n`));
+				} catch {
+					// client disconnected mid-write
+					close?.();
+				}
+			};
+
+			close = remoteConsole!.open(daemon, instance, CONSOLE_TAIL_LINES, push, (error) => {
+				if (error) {
+					push(`[luna] console stream ended: ${error}`);
+				}
+
+				closeQuietly(controller);
+			});
+		},
+
+		cancel() {
+			close?.();
 		},
 	});
 
@@ -386,13 +425,19 @@ export function buildHandler(
 				return errorResponse("unknown instance", 404);
 			}
 
-			// tailing needs the log on this disk — a follower instance's console
-			// must fail loudly rather than stream silence from a missing file
+			// the log lives on the owner's disk — a follower instance streams
+			// through the hub's cluster-link tunnel instead of a local tail
 			if (!ownsInstance(inst)) {
-				return errorResponse(
-					`console streaming for instances on daemon "${inst.daemon}" is not available yet`,
-					501,
-				);
+				const owner = inst.daemon ?? "?";
+
+				if (!remoteConsole || !remoteConsole.connected(owner)) {
+					return errorResponse(
+						`daemon "${owner}" is not connected — its console is unreachable`,
+						502,
+					);
+				}
+
+				return remoteConsoleStream(owner, consoleMatch[1]!);
 			}
 
 			return consoleStream(join(instanceDir(inst), "logs", "latest.log"));

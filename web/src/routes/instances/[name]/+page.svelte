@@ -31,10 +31,26 @@
 	import Alerts from '$lib/components/Alerts.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
 	import { followJob, type JobView } from '$lib/jobs';
-	import { instanceStateJob, deleteInstanceJob, type StateAction } from '$lib/instancejobs';
+	import {
+		instanceStateJob,
+		deleteInstanceJob,
+		attachInstanceJobFlash,
+		type StateAction
+	} from '$lib/instancejobs';
 
-	/** how often the header's status and metrics are re-read */
+	/** how often the header's status is re-read */
 	const POLL_MS = 4000;
+
+	/**
+	 * Tabs whose data the refresh control re-reads along with the header.
+	 *
+	 * `config` is deliberately absent: it is a form, and reloading it under the
+	 * user would discard whatever they were typing. It is also why the tab data
+	 * rides the refresh control's cadence rather than the fast header poll —
+	 * a plugin report scans the instance's jars and its boot session, which is
+	 * not something to do every four seconds.
+	 */
+	const REFRESHED_TABS = ['plugins', 'monitoring', 'checks', 'logs'];
 
 	const LOG_LINE_CHOICES = [100, 200, 500, 1000];
 
@@ -73,7 +89,12 @@
 	/** name of the primary daemon — the machine an ownerless instance runs on */
 	let hostName = $state('');
 
-	async function refresh(): Promise<void> {
+	/**
+	 * Re-read the page. `tabData` also reloads whatever the open tab is showing —
+	 * what the refresh control asks for, so the plugins table and the charts are
+	 * as current as the header above them; the fast poll leaves them alone.
+	 */
+	async function refresh(opts: { tabData?: boolean } = {}): Promise<void> {
 		// the poll can outlive the route by a tick during a client-side navigation,
 		// at which point page.params.name is already gone
 		if (!name) {
@@ -84,11 +105,29 @@
 
 		try {
 			inst = await api(`/instances/${name}`);
+
+			if (opts.tabData && REFRESHED_TABS.includes(tab)) {
+				await loadTab(tab);
+			}
+
 			lastUpdated = Date.now();
 		} catch (err) {
 			Notify.error(`Could not load ${name}`, { detail: (err as Error).message });
 		} finally {
 			loading = false;
+		}
+
+		// an operation already in flight for this instance — started elsewhere, or
+		// before a reload — gets its flash card raised here; attached jobs dedupe,
+		// so re-checking on every poll is safe
+		try {
+			const running = await api(`/jobs?target=${encodeURIComponent(name)}&state=running`);
+
+			for (const job of running.jobs) {
+				attachInstanceJobFlash(job);
+			}
+		} catch {
+			// job discovery is best-effort — the page itself already refreshed
 		}
 	}
 
@@ -546,7 +585,12 @@
 	<PageHeader title={name ?? ''} info>
 		{#snippet extra()}<StatusBadge state={inst.state} />{/snippet}
 		{#snippet actions()}
-			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="instance" />
+			<RefreshControl
+				onrefresh={() => refresh({ tabData: true })}
+				{lastUpdated}
+				{loading}
+				storageKey="instance"
+			/>
 			<Btn onclick={() => goto(`/instances/${name}/console`)}>Connect</Btn>
 			<Dropdown
 				label="Instance state"
@@ -784,6 +828,7 @@
 			<Panel title="Plugins on {name}" count={instPlugins.length} flush>
 				{#snippet actions()}
 					<Alerts warnings={pluginTotals.warnings} errors={pluginTotals.errors} />
+					<Btn icon="sync" onclick={() => loadTab('plugins')}>Refresh</Btn>
 					<Btn icon="upload" onclick={deployPlugins}>Deploy to this instance</Btn>
 				{/snippet}
 				<ResourceTable

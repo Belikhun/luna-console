@@ -13,9 +13,17 @@ import type { ProgressSnapshot } from '$core/progress';
 import { followJob, type JobView } from '$lib/jobs';
 import {
 	Notify,
+	type NotificationHandle,
 	type NotificationInit,
 	type NotificationSegment
 } from '$lib/notifications.svelte';
+
+/**
+ * Job ids this browser has already raised a card for — what stops a page that
+ * discovers in-flight work (an instance detail opened mid-start) from raising
+ * a second card next to the one the initiating flow is still updating.
+ */
+const flashedJobs = new Set<string>();
 
 /** Fired when a flash-tracked job is accepted, and again when it settles. */
 export type JobFlashEvent = 'started' | 'settled';
@@ -57,6 +65,11 @@ export interface JobFlashConfig {
 	failure?: (error: string) => NotificationInit;
 }
 
+/** One step as the card's task line reads it: "Name — message". */
+function describeStep(node: ProgressSnapshot): string {
+	return node.message ? `${node.name} — ${node.message}` : node.name;
+}
+
 /**
  * The deepest step still in flight, as "Name — message". Work runs top to
  * bottom, so descending into the first unfinished child at every level lands
@@ -78,10 +91,19 @@ export function activeStep(root: ProgressSnapshot | null | undefined): string {
 		}
 
 		node = next;
-		label = node.message ? `${node.name} — ${node.message}` : node.name;
+		label = describeStep(next);
 	}
 
-	return label || root.message || '';
+	if (label) {
+		return label;
+	}
+
+	// every step is done but the job has not settled yet — a tracked start sits
+	// here while it confirms the server answers pings. The card must not go
+	// blank at 100%, so the last step stays on screen until success replaces it.
+	const last = root.children.at(-1);
+
+	return root.message || (last ? describeStep(last) : '');
 }
 
 /**
@@ -108,41 +130,12 @@ function taskSegments(root: ProgressSnapshot): NotificationSegment[] {
 	}));
 }
 
-/**
- * Run a job behind a live flash card. Resolves with the settled job, or
- * undefined when it failed — the failure is already on the card, so callers
- * only branch, never re-report.
- */
-export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefined> {
-	const note = Notify.loading(config.title);
-
-	const fail = (message: string): undefined => {
-		const patch = config.failure?.(message) ?? {};
-
-		note.set({
-			level: 'error',
-			message: patch.message ?? config.title,
-			detail: patch.detail ?? message,
-			progress: null,
-			segments: null,
-			actions: patch.actions ?? [],
-			closeable: true
-		});
-
-		return undefined;
-	};
-
-	let job: JobView;
-
-	try {
-		job = (await config.start()).job;
-	} catch (err) {
-		return fail(err instanceof Error ? err.message : String(err));
-	}
-
-	config.started?.(job);
-	emitJobFlash('started', job);
-
+/** Follow a running job into an already-raised card, settling it green or red. */
+async function followIntoCard(
+	job: JobView,
+	note: NotificationHandle,
+	config: Omit<JobFlashConfig, 'start' | 'started'>
+): Promise<JobView | undefined> {
 	let done: JobView;
 
 	try {
@@ -156,7 +149,20 @@ export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefi
 	} catch (err) {
 		emitJobFlash('settled', job);
 
-		return fail(err instanceof Error ? err.message : String(err));
+		const message = err instanceof Error ? err.message : String(err);
+		const patch = config.failure?.(message) ?? {};
+
+		note.set({
+			level: 'error',
+			message: patch.message ?? config.title,
+			detail: patch.detail ?? message,
+			progress: null,
+			segments: null,
+			actions: patch.actions ?? [],
+			closeable: true
+		});
+
+		return undefined;
 	}
 
 	emitJobFlash('settled', done);
@@ -179,4 +185,60 @@ export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefi
 	}
 
 	return done;
+}
+
+/**
+ * Run a job behind a live flash card. Resolves with the settled job, or
+ * undefined when it failed — the failure is already on the card, so callers
+ * only branch, never re-report.
+ */
+export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefined> {
+	const note = Notify.loading(config.title);
+
+	let job: JobView;
+
+	try {
+		job = (await config.start()).job;
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		const patch = config.failure?.(message) ?? {};
+
+		note.set({
+			level: 'error',
+			message: patch.message ?? config.title,
+			detail: patch.detail ?? message,
+			progress: null,
+			segments: null,
+			actions: patch.actions ?? [],
+			closeable: true
+		});
+
+		return undefined;
+	}
+
+	flashedJobs.add(job.id);
+	config.started?.(job);
+	emitJobFlash('started', job);
+
+	return await followIntoCard(job, note, config);
+}
+
+/**
+ * Raise a card for a job that is already running — how a page shows work it
+ * discovers rather than starts. A job this browser has flashed before is
+ * skipped, so revisiting a page never duplicates a live card.
+ */
+export async function attachJobFlash(
+	job: JobView,
+	config: Omit<JobFlashConfig, 'start' | 'started'>
+): Promise<JobView | undefined> {
+	if (flashedJobs.has(job.id)) {
+		return undefined;
+	}
+
+	flashedJobs.add(job.id);
+
+	const note = Notify.loading(config.title);
+
+	return await followIntoCard(job, note, config);
 }

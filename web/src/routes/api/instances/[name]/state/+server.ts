@@ -1,5 +1,8 @@
 import { json, error } from '@sveltejs/kit';
+import type { ProgressReporter } from '$core/progress';
+import type { ClusterConfig } from '$core/types';
 import { loadCluster, managedInstances } from '$core/config';
+import { startInstance, stopInstance } from '$core/instances';
 import {
 	startInstanceTracked,
 	stopInstanceTracked,
@@ -16,6 +19,47 @@ const RUNNERS = {
 } as const;
 
 type Action = keyof typeof RUNNERS;
+
+/**
+ * The tracked ops are new — a follower daemon on an older build answers them
+ * with "unknown operation". Rather than failing the user's start, the plain
+ * lifecycle ops (which every build has) run instead; only the log-derived
+ * phase reporting is lost. Drop this once the whole fleet is on a tracked
+ * build.
+ */
+async function untrackedFallback(
+	cfg: ClusterConfig,
+	name: string,
+	action: Action,
+	reporter: ProgressReporter
+): Promise<unknown> {
+	reporter.say(
+		'warn',
+		`the daemon owning ${name} predates transition tracking — running the plain ${action}`
+	);
+
+	if (action === 'start') {
+		const outcome = await startInstance(cfg, name);
+
+		reporter.complete(outcome === 'started' ? 'started' : 'already running');
+
+		return { outcome, tookMs: 0 };
+	}
+
+	const stopped = await stopInstance(cfg, name);
+
+	if (action === 'stop') {
+		reporter.complete(`stopped (${stopped.outcome})`);
+
+		return stopped;
+	}
+
+	const outcome = await startInstance(cfg, name);
+
+	reporter.complete('restarted');
+
+	return { outcome: outcome === 'started' ? 'started' : outcome, tookMs: stopped.tookMs };
+}
 
 /**
  * POST { action: "start" | "stop" | "restart" } — every action runs as a job
@@ -40,7 +84,9 @@ export async function POST({ params, request }) {
 
 	// the sampler's transient state is what every *other* console client sees
 	// while the job runs; a start needs none — the session itself reads "starting"
-	if (action !== 'start') {
+	if (action === 'start') {
+		clearTransition(name);
+	} else {
 		markTransition(name, action === 'stop' ? 'stopping' : 'restarting');
 	}
 
@@ -48,16 +94,31 @@ export async function POST({ params, request }) {
 
 	const job = startJob(`instance-${action}`, name, `${action} ${name}`, async (reporter) => {
 		try {
-			const result = await run(cfg, name, reporter);
+			let result: unknown;
+
+			try {
+				result = await run(cfg, name, reporter);
+			} catch (err) {
+				if (!errorMessage(err).includes('unknown operation')) {
+					throw err;
+				}
+
+				result = await untrackedFallback(cfg, name, action, reporter);
+			}
 
 			pushEvent(name, 'action', `${action} finished`);
 
 			return result;
 		} catch (err) {
-			clearTransition(name);
 			pushEvent(name, 'error', `${action} failed: ${errorMessage(err)}`);
 
 			throw err;
+		} finally {
+			// the job outlives nothing: the tracked ops only return once the real
+			// end state is confirmed, so the transient state has no business
+			// surviving them either — and the sampler cannot settle it for an
+			// instance owned by another machine
+			clearTransition(name);
 		}
 	});
 

@@ -2,11 +2,14 @@
  * The instance lifecycle flows, as flash-card jobs. Every page that starts,
  * stops, restarts or deletes an instance calls these — the card wording, the
  * live log-derived progress and the failure shape stay identical wherever the
- * flow is triggered from.
+ * flow is triggered from, and a page that *discovers* a running job (an
+ * instance detail opened mid-start) attaches the same card via
+ * `attachInstanceJobFlash`.
  */
 
+import { goto } from '$app/navigation';
 import { del, post } from '$lib/api';
-import { jobFlash } from '$lib/jobflash';
+import { attachJobFlash, jobFlash, type JobFlashConfig } from '$lib/jobflash';
 import type { JobView } from '$lib/jobs';
 
 export type StateAction = 'start' | 'stop' | 'restart';
@@ -23,15 +26,12 @@ const PAST_TENSE: Record<StateAction, string> = {
 	restart: 'restarted'
 };
 
-/**
- * Start/stop/restart one instance behind a live flash card. Resolves with the
- * settled job, or undefined when it failed (already reported on the card).
- */
-export function instanceStateJob(name: string, action: StateAction): Promise<JobView | undefined> {
-	return jobFlash({
-		title: `${RUNNING_TITLES[action]} ${name}…`,
+type FlashConfig = Omit<JobFlashConfig, 'start' | 'started'>;
 
-		start: () => post(`/instances/${name}/state`, { action }),
+/** The card wording for one start/stop/restart, shared by run and attach. */
+function stateFlashConfig(name: string, action: StateAction): FlashConfig {
+	return {
+		title: `${RUNNING_TITLES[action]} ${name}…`,
 
 		success: (result) => {
 			const res = result as { outcome?: string; tookMs?: number } | null;
@@ -57,6 +57,67 @@ export function instanceStateJob(name: string, action: StateAction): Promise<Job
 		},
 
 		failure: () => ({ message: `Could not ${action} ${name}` })
+	};
+}
+
+/** The card wording for one deletion, shared by run and attach. */
+function deleteFlashConfig(name: string): FlashConfig {
+	return {
+		title: `Deleting ${name}…`,
+
+		success: (result) => {
+			const res = result as { purged?: boolean } | null;
+
+			return {
+				message: `Deleted ${name}`,
+				detail: res?.purged
+					? 'The instance directory was purged.'
+					: 'The instance directory was kept.'
+			};
+		},
+
+		failure: () => ({ message: `Could not delete ${name}` })
+	};
+}
+
+/** The card wording for one creation, shared by the launch wizard and attach. */
+export function createFlashConfig(name: string): FlashConfig {
+	return {
+		title: `Creating ${name}…`,
+
+		success: (result) => {
+			const res = result as {
+				name: string;
+				port: number;
+				build: number;
+				pluginsDeployed: number;
+				velocityUpdated: boolean;
+			};
+
+			const proxied = res.velocityUpdated ? ', proxy registered' : '';
+
+			return {
+				message: `Created ${res.name} on port ${res.port}`,
+				detail: `Paper build ${res.build}, ${res.pluginsDeployed} plugin(s) deployed${proxied}.`,
+				actions: [
+					{ label: 'Start now', run: () => void instanceStateJob(res.name, 'start') },
+					{ label: 'View instance', run: () => void goto(`/instances/${res.name}`) }
+				]
+			};
+		},
+
+		failure: () => ({ message: `Could not create ${name}` })
+	};
+}
+
+/**
+ * Start/stop/restart one instance behind a live flash card. Resolves with the
+ * settled job, or undefined when it failed (already reported on the card).
+ */
+export function instanceStateJob(name: string, action: StateAction): Promise<JobView | undefined> {
+	return jobFlash({
+		...stateFlashConfig(name, action),
+		start: () => post(`/instances/${name}/state`, { action })
 	});
 }
 
@@ -66,15 +127,30 @@ export function instanceStateJob(name: string, action: StateAction): Promise<Job
  */
 export function deleteInstanceJob(name: string, purge: boolean): Promise<JobView | undefined> {
 	return jobFlash({
-		title: `Deleting ${name}…`,
-
-		start: () => del(`/instances/${name}?purge=${purge}`),
-
-		success: () => ({
-			message: `Deleted ${name}`,
-			detail: purge ? 'The instance directory was purged.' : 'The instance directory was kept.'
-		}),
-
-		failure: () => ({ message: `Could not delete ${name}` })
+		...deleteFlashConfig(name),
+		start: () => del(`/instances/${name}?purge=${purge}`)
 	});
+}
+
+/**
+ * Raise the matching flash card for an instance job already in flight — same
+ * wording as if this browser had started it. Unknown kinds and jobs already
+ * carded here are ignored, so calling this on every poll is safe.
+ */
+export function attachInstanceJobFlash(job: JobView): void {
+	const configs: Record<string, () => FlashConfig> = {
+		'instance-start': () => stateFlashConfig(job.target, 'start'),
+		'instance-stop': () => stateFlashConfig(job.target, 'stop'),
+		'instance-restart': () => stateFlashConfig(job.target, 'restart'),
+		'instance-delete': () => deleteFlashConfig(job.target),
+		'instance-create': () => createFlashConfig(job.target)
+	};
+
+	const config = configs[job.kind];
+
+	if (!config) {
+		return;
+	}
+
+	void attachJobFlash(job, config());
 }

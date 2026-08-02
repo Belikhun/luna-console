@@ -14,8 +14,8 @@ import type { BackendCard } from "../core/services/luna";
 import type { ClusterConfig } from "../core/types";
 
 import { pushEvent } from "./events";
-import { ownsInstance } from "./identity";
-import { getAllStatusesRouted } from "./rpc";
+import { isPrimary, ownsInstance } from "./identity";
+import { getAllStatusesRouted, getStatusRouted } from "./rpc";
 
 export type UiState = "running" | "starting" | "stopping" | "stopped" | "restarting" | "unknown";
 
@@ -46,9 +46,37 @@ const SAMPLE_INTERVAL_MS = 5000;
 /** How long a transient state may linger before the sampler gives up on it. */
 const TRANSITION_TIMEOUT_MS = 180_000;
 
+interface Transition {
+	state: "stopping" | "restarting";
+	since: number;
+	/** set once the process has actually gone down, so a restart is not settled by the state it started from */
+	sawDown: boolean;
+}
+
 const runtime = new Map<string, InstanceRuntime>();
-const transitions = new Map<string, { state: "stopping" | "restarting"; since: number }>();
+const transitions = new Map<string, Transition>();
 const lastStatuses = new Map<string, CoreStatus>();
+
+/** What the owner's heartbeat knows about one of its instances. */
+export interface RemoteSample {
+	cpu?: number;
+	rssMb?: number;
+}
+
+/**
+ * Process metrics of an instance owned by another daemon, from that daemon's
+ * latest heartbeat — installed by the hub, because only it holds the links.
+ * Without this a follower instance's CPU and memory columns are permanently
+ * blank: this daemon never walks /proc for a process on another machine.
+ */
+let remoteSample: (daemon: string, instance: string) => RemoteSample | undefined = () => undefined;
+
+/** Install the hub's per-instance process-metrics lookup (primary only). */
+export function setRemoteSampleProvider(
+	provider: (daemon: string, instance: string) => RemoteSample | undefined,
+): void {
+	remoteSample = provider;
+}
 
 /** Latest LunaCore telemetry per backend, empty when the plugin is unreachable */
 let lunaCards = new Map<string, BackendCard>();
@@ -94,8 +122,15 @@ function settleTransition(name: string, coreState: CoreStatus["state"]): void {
 		return;
 	}
 
+	if (coreState !== "running") {
+		transition.sawDown = true;
+	}
+
 	const stopped = transition.state === "stopping" && coreState === "stopped";
-	const restarted = transition.state === "restarting" && coreState === "running";
+
+	// a restart is marked while the server is still up, so "running" only means
+	// it is over once the process has been seen down in between
+	const restarted = transition.state === "restarting" && coreState === "running" && transition.sawDown;
 	const staleFor = Date.now() - transition.since;
 
 	if (stopped || restarted || staleFor > TRANSITION_TIMEOUT_MS) {
@@ -122,9 +157,44 @@ async function fetchLunaBackends(): Promise<Map<string, BackendCard>> {
 	return new Map(result.data.backends.map((backend) => [backend.id, backend]));
 }
 
+/** Adopt a freshly fetched set of cards as the current telemetry. */
+function installCards(cards: Map<string, BackendCard>): void {
+	lunaCards = cards;
+}
+
 /** Why Luna telemetry is missing, for the UI to surface. */
 export function lunaProblem(): string | undefined {
 	return lunaIssue;
+}
+
+/** LunaCore's cards for a set of instances, for the hub to push to their owner. */
+export function lunaCardsFor(names: string[]): BackendCard[] {
+	const cards: BackendCard[] = [];
+
+	for (const name of names) {
+		const card = lunaCards.get(name);
+
+		if (card) {
+			cards.push(card);
+		}
+	}
+
+	return cards;
+}
+
+/**
+ * Install LunaCore telemetry pushed down by the primary (follower side).
+ *
+ * Only the primary can ask LunaCore anything — the plugin runs on the proxy, on
+ * the primary's host, and answers on a secret this machine has no copy of. A
+ * follower left to `fetchLunaBackends` therefore samples TPS and heap as
+ * permanently absent, which is exactly the two series its instances' monitoring
+ * charts are drawn from. The primary sends them on the heartbeat ping instead,
+ * which already runs at the sampling cadence.
+ */
+export function setLunaTelemetry(cards: BackendCard[], issue?: string): void {
+	lunaCards = new Map(cards.map((card) => [card.id, card]));
+	lunaIssue = issue;
 }
 
 /** Record one metrics sample per instance and emit state-change events. */
@@ -137,12 +207,16 @@ async function sampleOnce(): Promise<void> {
 		const insts = managedInstances(cfg);
 		const ownedNames = Object.keys(insts).filter((name) => ownsInstance(insts[name]!));
 
-		const [statuses, backends] = await Promise.all([
+		const [statuses] = await Promise.all([
 			Promise.all(ownedNames.map((name) => instances.getStatus(cfg, name))),
-			fetchLunaBackends(),
+			// a follower has no proxy to ask; its cards arrive on the ping instead,
+			// and must be read *after* this await rather than snapshotted before
+			// it — a ping landing mid-sample would otherwise have its telemetry
+			// written straight back out, permanently once the two 5 s timers phase-lock
+			isPrimary() ? fetchLunaBackends().then(installCards) : Promise.resolve(),
 		]);
 
-		lunaCards = backends;
+		const backends = lunaCards;
 
 		for (const status of statuses) {
 			const rec = rt(status.name);
@@ -156,7 +230,6 @@ async function sampleOnce(): Promise<void> {
 			}
 
 			rec.lastState = uiState;
-			settleTransition(status.name, status.state);
 
 			const sample: MetricSample = { t: Date.now() };
 
@@ -228,6 +301,11 @@ export function ensureSampler(): void {
  * console requested reads as in-progress until the process actually settles.
  */
 export function effectiveState(name: string, coreState: CoreStatus["state"]): UiState {
+	// settle here, not only in the sampler: the sampler walks this daemon's *own*
+	// instances, so a transition marked for a follower-owned one would otherwise
+	// never meet a fresh core state and would pin the row to "stopping" forever
+	settleTransition(name, coreState);
+
 	const transition = transitions.get(name);
 
 	if (transition?.state === "stopping") {
@@ -264,6 +342,26 @@ export function instanceRssMb(): Record<string, number> {
 	return out;
 }
 
+/**
+ * Latest CPU utilization of every instance this daemon has sampled, percent of
+ * one core. Rides the heartbeat for the same reason the resident sizes do: the
+ * primary cannot read /proc on another machine, and the instances table has a
+ * CPU column for every row regardless of where it runs.
+ */
+export function instanceCpuPct(): Record<string, number> {
+	const out: Record<string, number> = {};
+
+	for (const [name, rec] of runtime) {
+		const cpu = rec.history.at(-1)?.cpu;
+
+		if (cpu !== undefined) {
+			out[name] = cpu;
+		}
+	}
+
+	return out;
+}
+
 /** Latest UI state of every instance this daemon owns. */
 export function instanceStates(): Record<string, UiState> {
 	const out: Record<string, UiState> = {};
@@ -277,7 +375,7 @@ export function instanceStates(): Record<string, UiState> {
 
 /** Mark an instance as mid-transition, so the UI can show it before core catches up. */
 export function markTransition(name: string, state: "stopping" | "restarting"): void {
-	transitions.set(name, { state, since: Date.now() });
+	transitions.set(name, { state, since: Date.now(), sawDown: false });
 }
 
 /** Drop an instance's transient state immediately. */
@@ -416,6 +514,14 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 	const latest = rt(st.name).history.at(-1);
 	const backend = lunaCards.get(st.name);
 
+	// an instance on another machine has no local /proc sample; its owner's
+	// heartbeat is where its CPU and resident size come from
+	const own = ownsInstance(st.inst);
+	const remote = own ? undefined : remoteSample(st.inst.daemon ?? "", st.name);
+
+	const cpu = own ? (latest?.cpu ?? null) : (remote?.cpu ?? null);
+	const rssMb = own ? (latest?.rssMb ?? null) : (remote?.rssMb ?? null);
+
 	return {
 		tps: backend?.online ? backend.metrics.tps : null,
 		heapUsedMb: backend?.online ? Math.round(backend.metrics.ramUsedBytes / 1024 / 1024) : null,
@@ -434,8 +540,8 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 		uptimeMs: st.uptimeMs ?? null,
 		players: st.players ?? null,
 		pingVersion: st.pingVersion ?? null,
-		cpu: latest?.cpu ?? null,
-		rssMb: latest?.rssMb ?? null,
+		cpu,
+		rssMb,
 		ports: st.inst.ports ?? {},
 		proxy: st.inst.proxy ?? null,
 		external: st.inst.external ?? null,
@@ -465,10 +571,14 @@ export async function readHostMemMb(): Promise<number> {
 	return hostMemMb;
 }
 
-/** Serialized status of one instance, sampler-enriched. */
+/**
+ * Serialized status of one instance, sampler-enriched. The probe is routed to
+ * the instance's owner; the serialization runs here, on the daemon that holds
+ * the proxy's LunaCore telemetry.
+ */
 export async function instanceStatus(name: string): Promise<Record<string, unknown>> {
 	const cfg = await loadCluster();
-	const status = await instances.getStatus(cfg, name);
+	const status = await getStatusRouted(cfg, name);
 
 	return statusJson(cfg, status);
 }

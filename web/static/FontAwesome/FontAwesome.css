@@ -1342,3 +1342,7 @@ icon[data-icon="plug"]::after {
 icon[data-icon="layerGroup"]::after {
 	content: "\f5fd";
 }
+
+icon[data-icon="bullhorn"]::after {
+	content: "\f0a1";
+}

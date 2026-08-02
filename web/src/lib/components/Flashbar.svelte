@@ -66,7 +66,9 @@
 				<!-- one line: current task · (done+1 of total) · overall percent -->
 				<div class="taskline">
 					<span class="task">
-						{item.detail || item.segments.find((seg) => seg.tone !== 'done')?.label || ''}
+						{item.detail ||
+							(item.segments.find((seg) => seg.tone !== 'done') ?? item.segments.at(-1))?.label ||
+							''}
 					</span>
 					<span class="count">({current}/{total})</span>
 					{#if item.progress !== null}

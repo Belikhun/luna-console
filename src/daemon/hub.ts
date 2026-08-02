@@ -35,7 +35,8 @@ import {
 	type OpResult,
 	type OpSpec,
 } from "./rpc";
-import { PROTOCOL_VERSION } from "./server";
+import { lunaCardsFor, lunaProblem, setRemoteSampleProvider } from "./sampler";
+import { PROTOCOL_VERSION, setRemoteConsole } from "./server";
 import { checkUpgrade, selfUpgrade } from "./upgrade";
 import { buildVersion } from "../version";
 
@@ -157,8 +158,22 @@ interface Pending {
 	follower: string;
 }
 
+/** One live console tunnel to a follower, keyed by stream id. */
+interface HubStream {
+	follower: string;
+	onLine: (line: string) => void;
+	onEnd: (error?: string) => void;
+	/** fires if the follower never answers — a build that predates tunnelling
+	 *  silently ignores the frame, and silence must not read as an empty log */
+	readyTimer?: ReturnType<typeof setTimeout>;
+}
+
+/** How long the follower gets to acknowledge a console request. */
+const STREAM_READY_TIMEOUT_MS = 5_000;
+
 const followers = new Map<string, FollowerLink>();
 const pending = new Map<string, Pending>();
+const streams = new Map<string, HubStream>();
 
 /** Health history per daemon, kept across reconnects so a chart is not reset
  *  by a follower restart. Keyed by daemon name, the primary's included. */
@@ -681,14 +696,76 @@ function rejectPendingFor(name: string, reason: string): void {
 			entry.reject(new Error(reason));
 		}
 	}
+
+	for (const [id, stream] of streams) {
+		if (stream.follower === name) {
+			clearTimeout(stream.readyTimer);
+			streams.delete(id);
+			stream.onEnd(reason);
+		}
+	}
+}
+
+/**
+ * Open a live console tunnel to a follower-owned instance: the follower tails
+ * the instance's log and streams the lines back over the cluster link. Returns
+ * the closer; `onEnd` fires exactly once when the tunnel dies for any reason
+ * other than that closer.
+ */
+function openConsoleStream(
+	daemon: string,
+	instance: string,
+	lines: number,
+	onLine: (line: string) => void,
+	onEnd: (error?: string) => void,
+): () => void {
+	const link = followers.get(daemon);
+
+	if (!link) {
+		queueMicrotask(() => onEnd(`daemon "${daemon}" is not connected`));
+
+		return () => {};
+	}
+
+	const id = `${daemon}:s${++requestCounter}`;
+	const stream: HubStream = { follower: daemon, onLine, onEnd };
+
+	stream.readyTimer = setTimeout(() => {
+		streams.delete(id);
+		onEnd(
+			`daemon "${daemon}" did not answer the console request — its build may predate console tunnelling`,
+		);
+	}, STREAM_READY_TIMEOUT_MS);
+
+	streams.set(id, stream);
+	link.ws.send(JSON.stringify({ t: "stream-open", id, kind: "console", instance, lines }));
+
+	return () => {
+		const open = streams.get(id);
+
+		if (!open) {
+			return;
+		}
+
+		clearTimeout(open.readyTimer);
+		streams.delete(id);
+		followers.get(daemon)?.ws.send(JSON.stringify({ t: "stream-close", id }));
+	};
 }
 
 /**
  * One heartbeat round. A follower that has not answered the previous ping is
  * counted as missing one; after MISSED_PINGS_BEFORE_DROP the socket is closed
  * so the follower's own reconnect loop starts a fresh link.
+ *
+ * The ping also carries LunaCore's cards for the instances that follower owns:
+ * the plugin only talks to the primary, and its sampler needs them at exactly
+ * this cadence. The cluster view is best-effort — a failed read costs the round
+ * its telemetry, never its heartbeat.
  */
-function pingRound(): void {
+async function pingRound(): Promise<void> {
+	const cfg = await clusterView().catch(() => undefined);
+
 	for (const link of followers.values()) {
 		if (link.pending) {
 			link.missed += 1;
@@ -708,9 +785,18 @@ function pingRound(): void {
 		}
 
 		const at = Date.now();
+		const luna = cfg ? lunaCardsFor(ownedInstances(cfg, link.name)) : [];
 
 		link.pending = { seq: ++link.pingSeq, at };
-		link.ws.send(JSON.stringify({ t: "ping", seq: link.pingSeq, at }));
+		link.ws.send(
+			JSON.stringify({
+				t: "ping",
+				seq: link.pingSeq,
+				at,
+				luna,
+				lunaIssue: lunaProblem(),
+			}),
+		);
 	}
 }
 
@@ -861,6 +947,7 @@ interface FollowerFrame {
 	message?: string;
 	file?: "cluster" | "lock";
 	data?: unknown;
+	line?: string;
 }
 
 async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>, raw: string): Promise<void> {
@@ -980,6 +1067,35 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 		return;
 	}
 
+	if (frame.t === "stream-ready" && frame.id) {
+		const stream = streams.get(frame.id);
+
+		if (stream) {
+			clearTimeout(stream.readyTimer);
+			stream.readyTimer = undefined;
+		}
+
+		return;
+	}
+
+	if (frame.t === "stream-data" && frame.id && typeof frame.line === "string") {
+		streams.get(frame.id)?.onLine(frame.line);
+
+		return;
+	}
+
+	if (frame.t === "stream-end" && frame.id) {
+		const stream = streams.get(frame.id);
+
+		if (stream) {
+			clearTimeout(stream.readyTimer);
+			streams.delete(frame.id);
+			stream.onEnd(frame.error);
+		}
+
+		return;
+	}
+
 	if (frame.t === "event" && frame.instance && frame.kind && frame.message) {
 		pushEvent(frame.instance, frame.kind, frame.message);
 
@@ -1035,10 +1151,23 @@ export function installHub(dcfg: DaemonConfig, startedAt: number): void {
 	setDaemonDetailProvider(daemonDetail);
 	setUpgradeSender(upgradeDaemon);
 	setCheckSender(checkDaemonUpgrade);
+	setRemoteConsole({
+		connected: (daemon) => followers.has(daemon),
+		open: openConsoleStream,
+	});
+	setRemoteSampleProvider((daemon, instance) => {
+		const health = followers.get(daemon)?.health;
+
+		if (!health) {
+			return undefined;
+		}
+
+		return { cpu: health.instanceCpu?.[instance], rssMb: health.instanceRssMb?.[instance] };
+	});
 
 	void refreshClusterCache();
 
-	pingTimer ??= setInterval(pingRound, PING_INTERVAL_MS);
+	pingTimer ??= setInterval(() => void pingRound(), PING_INTERVAL_MS);
 	reachTimer ??= setInterval(reachRound, REACH_INTERVAL_MS);
 
 	// setInterval only fires after the first interval, which would leave the
