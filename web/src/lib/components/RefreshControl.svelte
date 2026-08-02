@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+
 	import Icon from './Icon.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import { REFRESH_INTERVALS, formatLastUpdated, loadInterval, saveInterval } from './refresh';
@@ -26,7 +28,9 @@
 	/** how often the "Last updated" stamp is re-rendered on its own */
 	const STAMP_TICK_MS = 30_000;
 
-	let intervalMs = $state(loadInterval(storageKey));
+	// the remembered interval is read once: the key identifies the screen, and
+	// re-reading it would undo an interval the user just picked
+	let intervalMs = $state(untrack(() => loadInterval(storageKey)));
 	let menuOpen = $state(false);
 	let caretEl: HTMLButtonElement | undefined = $state();
 	let menu: ContextMenu | undefined = $state();

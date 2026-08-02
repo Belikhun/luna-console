@@ -1,5 +1,5 @@
 <script lang="ts" generics="T = any">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
 	import Checkbox from './Checkbox.svelte';
 	import Toggle from './Toggle.svelte';
@@ -77,7 +77,9 @@
 		filtersActive?: boolean;
 	} = $props();
 
-	const initial = loadPrefs(tableId);
+	// untracked on purpose: preferences are read once per mount, and a table's
+	// id never changes under it — re-reading them would fight the user's edits
+	const initial = untrack(() => loadPrefs(tableId));
 
 	/** px — fallbacks for a column that has never been measured or resized */
 	const DEFAULT_COL_W = 120;
@@ -99,12 +101,14 @@
 	/** px per rem, for turning measured geometry back into the rem scale */
 	const REM = 16;
 
-	const defaultHidden = columns.filter((col) => col.hidden).map((col) => col.id);
+	// the column set is a static declaration of the screen, captured once so the
+	// stored order and hidden set below stay the user's, not the author's
+	const defaultHidden = untrack(() => columns.filter((col) => col.hidden).map((col) => col.id));
 
 	let widths: Record<string, number> = $state(initial.widths);
 	let hidden: Set<string> = $state(new Set([...initial.hidden, ...defaultHidden]));
-	let order: string[] = $state(initial.order ?? columns.map((col) => col.id));
-	let effPageSize = $state(initial.pageSize ?? pageSize);
+	let order: string[] = $state(initial.order ?? untrack(() => columns.map((col) => col.id)));
+	let effPageSize = $state(initial.pageSize ?? untrack(() => pageSize));
 	let wrapLines = $state(initial.wrapLines ?? false);
 	let striped = $state(initial.striped ?? false);
 	let compact = $state(initial.compact ?? false);
@@ -118,7 +122,11 @@
 
 	// each group starts on its first option, which is the "any value" entry
 	const filterValues: Record<string, string> = $state(
-		Object.fromEntries((filters ?? []).map((group) => [group.id, group.options[0]?.value ?? '']))
+		untrack(() =>
+			Object.fromEntries(
+				(filters ?? []).map((group) => [group.id, group.options[0]?.value ?? ''])
+			)
+		)
 	);
 
 	const orderedColumns = $derived(applyOrder(columns, order));
