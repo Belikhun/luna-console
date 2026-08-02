@@ -6,6 +6,8 @@ node_modules
 .netlify
 .wrangler
 /.svelte-kit
+# the dev server's own outDir — see vite.config.ts
+/.svelte-kit-dev
 /build
 
 # OS
@@ -21,4 +23,3 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-/.svelte-kit-dev
