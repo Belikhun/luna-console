@@ -57,11 +57,39 @@
 		</span>
 		<div class="body">
 			<div class="msg">{item.message}</div>
-			{#if item.detail}<div class="detail">{item.detail}</div>{/if}
-			{#if item.level === 'loading' && item.progress !== null}
-				<div class="pw">
-					<ProgressBar value={item.progress} right="{Math.round(item.progress)}%" />
+			{#if item.level === 'loading' && item.segments?.length}
+				{@const total = item.segments.length}
+				{@const current = Math.min(
+					item.segments.filter((seg) => seg.tone === 'done').length + 1,
+					total
+				)}
+				<!-- one line: current task · (done+1 of total) · overall percent -->
+				<div class="taskline">
+					<span class="task">
+						{item.detail || item.segments.find((seg) => seg.tone !== 'done')?.label || ''}
+					</span>
+					<span class="count">({current}/{total})</span>
+					{#if item.progress !== null}
+						<span class="pct">{Math.round(item.progress)}%</span>
+					{/if}
 				</div>
+				<div class="segbar">
+					{#each item.segments as seg}
+						<span class="seg" data-tone={seg.tone} title={seg.label}>
+							<span
+								class="fill"
+								style:width="{seg.tone === 'done' ? 100 : Math.round(seg.progress * 100)}%"
+							></span>
+						</span>
+					{/each}
+				</div>
+			{:else}
+				{#if item.detail}<div class="detail">{item.detail}</div>{/if}
+				{#if item.level === 'loading' && item.progress !== null}
+					<div class="pw">
+						<ProgressBar value={item.progress} right="{Math.round(item.progress)}%" />
+					</div>
+				{/if}
 			{/if}
 			{#if item.actions.length}
 				<div class="acts">
@@ -152,8 +180,10 @@
 		--flash-bg: #0972d3;
 	}
 
+	// in-progress reads as informational blue, like the info level — the spinner
+	// is what tells them apart (matches the AWS flashbar convention)
 	[data-level='loading'] {
-		--flash-bg: #414d5c;
+		--flash-bg: #0972d3;
 	}
 
 	.flashbar {
@@ -231,6 +261,75 @@
 	.pw {
 		margin-top: 0.5rem;
 		max-width: 22rem;
+	}
+
+	// current task · (i/n) · percent, one line above the segmented bar
+	.taskline {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		max-width: 30rem;
+		margin-top: 0.125rem;
+		font-size: 0.8125rem;
+		color: rgba(249, 249, 250, 0.85);
+	}
+
+	.task {
+		@include ellipsis;
+
+		min-width: 0;
+	}
+
+	.count {
+		flex: none;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.pct {
+		flex: none;
+		margin-left: auto;
+		font-variant-numeric: tabular-nums;
+		font-weight: 700;
+		color: #f9f9fa;
+	}
+
+	// the job's tasks, one segment each, filled by that task's own progress
+	.segbar {
+		display: flex;
+		gap: 0.25rem;
+		max-width: 30rem;
+		margin-top: 0.375rem;
+	}
+
+	.seg {
+		flex: 1;
+		height: 0.375rem;
+		border-radius: 0.25rem;
+		background: rgba(4, 9, 16, 0.35);
+		overflow: hidden;
+
+		&[data-tone='done'] .fill {
+			background: #7ee2a8;
+		}
+
+		&[data-tone='running'] .fill {
+			background: #f9f9fa;
+		}
+
+		&[data-tone='warn'] .fill {
+			background: #ffd166;
+		}
+
+		&[data-tone='error'] .fill {
+			background: #ff8a80;
+		}
+	}
+
+	.fill {
+		display: block;
+		height: 100%;
+		border-radius: inherit;
+		transition: width 0.15s ease-out;
 	}
 
 	// action buttons keep the card's fixed colouring: white outline on the fill

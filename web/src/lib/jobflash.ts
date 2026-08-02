@@ -11,7 +11,38 @@
 
 import type { ProgressSnapshot } from '$core/progress';
 import { followJob, type JobView } from '$lib/jobs';
-import { Notify, type NotificationInit } from '$lib/notifications.svelte';
+import {
+	Notify,
+	type NotificationInit,
+	type NotificationSegment
+} from '$lib/notifications.svelte';
+
+/** Fired when a flash-tracked job is accepted, and again when it settles. */
+export type JobFlashEvent = 'started' | 'settled';
+
+type JobFlashListener = (event: JobFlashEvent, job: JobView) => void;
+
+const flashListeners = new Set<JobFlashListener>();
+
+/**
+ * Subscribe to every flash-tracked job's lifecycle. This is how a screen stays
+ * current for work it did not start itself — a create finishing after the
+ * launch page navigated away, a "Start now" clicked on a card. Returns the
+ * unsubscribe function.
+ */
+export function onJobFlash(listener: JobFlashListener): () => void {
+	flashListeners.add(listener);
+
+	return () => {
+		flashListeners.delete(listener);
+	};
+}
+
+function emitJobFlash(event: JobFlashEvent, job: JobView): void {
+	for (const listener of flashListeners) {
+		listener(event, job);
+	}
+}
 
 export interface JobFlashConfig {
 	/** headline while the job runs, e.g. "Starting lobby…" */
@@ -54,6 +85,30 @@ export function activeStep(root: ProgressSnapshot | null | undefined): string {
 }
 
 /**
+ * A job's tasks are the root's direct children (a create's "Server files",
+ * "Plugins", …); each becomes one coloured segment of the card's bar. A tree
+ * with no children — a single-step job — is its own lone segment.
+ */
+function taskSegments(root: ProgressSnapshot): NotificationSegment[] {
+	const tasks = root.children.length > 0 ? root.children : [root];
+
+	return tasks.map((task) => ({
+		label: task.name,
+		progress: task.progress,
+		tone:
+			task.status === 'error'
+				? 'error'
+				: task.status === 'warn'
+					? 'warn'
+					: task.done
+						? 'done'
+						: task.progress > 0
+							? 'running'
+							: 'idle'
+	}));
+}
+
+/**
  * Run a job behind a live flash card. Resolves with the settled job, or
  * undefined when it failed — the failure is already on the card, so callers
  * only branch, never re-report.
@@ -69,6 +124,7 @@ export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefi
 			message: patch.message ?? config.title,
 			detail: patch.detail ?? message,
 			progress: null,
+			segments: null,
 			actions: patch.actions ?? [],
 			closeable: true
 		});
@@ -85,6 +141,7 @@ export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefi
 	}
 
 	config.started?.(job);
+	emitJobFlash('started', job);
 
 	let done: JobView;
 
@@ -92,12 +149,17 @@ export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefi
 		done = await followJob(job.id, (view) => {
 			note.set({
 				progress: Math.round(view.progress.progress * 100),
-				detail: activeStep(view.progress)
+				detail: activeStep(view.progress),
+				segments: taskSegments(view.progress)
 			});
 		});
 	} catch (err) {
+		emitJobFlash('settled', job);
+
 		return fail(err instanceof Error ? err.message : String(err));
 	}
+
+	emitJobFlash('settled', done);
 
 	const patch = config.success?.(done.result) ?? {};
 
@@ -106,6 +168,7 @@ export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefi
 		message: patch.message ?? config.title,
 		detail: patch.detail ?? '',
 		progress: null,
+		segments: null,
 		actions: patch.actions ?? [],
 		closeable: true
 	});

@@ -56,6 +56,10 @@ export async function DELETE({ params, url }) {
 
 	const purge = url.searchParams.get('purge') === 'true';
 
+	// captured before deregistration wipes it — the deleting row still says
+	// which machine the purge is running on
+	const owner = cfg.instances[name]!.daemon ?? null;
+
 	const job = startJob('instance-delete', name, `Delete ${name}`, async (reporter) => {
 		reporter.weighOwn(0);
 
@@ -86,7 +90,7 @@ export async function DELETE({ params, url }) {
 
 			throw err;
 		}
-	});
+	}, { daemon: owner });
 
 	return json({ ok: true, job });
 }

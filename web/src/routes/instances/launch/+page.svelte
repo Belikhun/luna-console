@@ -4,11 +4,10 @@
 	import { api, post } from '$lib/api';
 	import { jobFlash } from '$lib/jobflash';
 	import { instanceStateJob } from '$lib/instancejobs';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import Wizard from '$lib/components/Wizard.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
-	import Btn from '$lib/components/Btn.svelte';
 	import FormGrid from '$lib/components/FormGrid.svelte';
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
 	import GroupsField from '$lib/components/GroupsField.svelte';
@@ -180,14 +179,21 @@
 	}
 </script>
 
-<svelte:head><title>Launch instance | Luna Console</title></svelte:head>
-
-<PageHeader
+<Wizard
 	title="Launch an instance"
+	windowTitle="Launch instance"
 	description="Creates a Paper server, wires velocity forwarding, allocates a port and deploys wildcard-targeted plugins"
-/>
+	submitLabel="Launch instance"
+	disabled={!name || !!nameError || !mcVersion}
+	loading={creating}
+	onsubmit={launch}
+>
+	{#snippet summary()}
+		{name || '(name)'} · paper {mcVersion} · {memory} · profile {profile} ·
+		{register ? 'proxied' : 'standalone'}
+		{#if changedCount}· {changedCount} setting(s) changed{/if}
+	{/snippet}
 
-<div class="wizard">
 	<Panel title="Name">
 		<label class="field">
 			<span class="lbl">Instance name</span>
@@ -297,54 +303,13 @@
 		{/if}
 	</Panel>
 
-	<div class="summary">
-		<span class="dim">
-			{name || '(name)'} · paper {mcVersion} · {memory} · profile {profile} ·
-			{register ? 'proxied' : 'standalone'}
-			{#if changedCount}· {changedCount} setting(s) changed{/if}
-		</span>
-		<Btn
-			variant="primary"
-			disabled={!name || !!nameError || !mcVersion}
-			loading={creating}
-			onclick={launch}
-		>
-			Launch instance
-		</Btn>
-	</div>
-</div>
+</Wizard>
 
 <style lang="scss">
-	.wizard {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		max-width: 47.5rem;
-	}
-
-	.err {
-		color: var(--error);
-		font-size: 0.75rem;
-	}
-
 	.reg {
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
 		margin-top: 0.25rem;
-	}
-
-	// the summary bar stays reachable while the form scrolls
-	.summary {
-		position: sticky;
-		bottom: 0;
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 1rem;
-		background: var(--bg-panel);
-		border: 0.1rem solid var(--border-divider);
-		border-radius: var(--radius-container);
-		padding: 0.75rem 1.25rem;
 	}
 </style>

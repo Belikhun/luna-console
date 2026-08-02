@@ -70,7 +70,8 @@ export function startJob(
 	kind: string,
 	target: string,
 	label: string,
-	run: (reporter: ProgressReporter) => Promise<unknown>
+	run: (reporter: ProgressReporter) => Promise<unknown>,
+	meta?: Record<string, unknown>
 ): JobView {
 	prune();
 
@@ -90,7 +91,8 @@ export function startJob(
 			finishedAt: null,
 			progress: reporter.snapshot(),
 			result: null,
-			error: null
+			error: null,
+			...(meta ? { meta } : {})
 		}
 	};
 

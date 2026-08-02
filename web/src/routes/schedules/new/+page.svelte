@@ -2,12 +2,12 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import Wizard from '$lib/components/Wizard.svelte';
 	import Panel from '$lib/components/Panel.svelte';
-	import Btn from '$lib/components/Btn.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import FormGrid from '$lib/components/FormGrid.svelte';
+	import PickGrid from '$lib/components/PickGrid.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/** Create a schedule — same form shape as the instance launch wizard. */
@@ -97,14 +97,20 @@
 	}
 </script>
 
-<svelte:head><title>Create schedule | Luna Console</title></svelte:head>
-
-<PageHeader
+<Wizard
 	title="Create a schedule"
+	windowTitle="Create schedule"
 	description="Start, stop or restart instances on a fixed time, a cron expression or a rate — runs fire from the luna daemon, 24/7"
-/>
+	submitLabel="Create schedule"
+	disabled={!name || !instances.size || (kind === 'at' && !at)}
+	loading={creating}
+	onsubmit={create}
+>
+	{#snippet summary()}
+		{name || '(name)'} · {action} · {triggerText} · {instances.size} instance(s)
+		{#if maxRuns}· stops after {maxRuns} run(s){/if}
+	{/snippet}
 
-<div class="wizard">
 	<Panel title="Name & action">
 		<label class="field">
 			<span class="lbl">Schedule name</span>
@@ -195,80 +201,20 @@
 		count={instances.size}
 		description="The action runs against every selected instance, in one pass"
 	>
-		<div class="inst-grid">
-			{#each instanceNames as instance (instance)}
-				<label class="pick">
-					<Checkbox
-						checked={instances.has(instance)}
-						disabled={creating}
-						label={instance}
-						onchange={(on) => toggleInstance(instance, on)}
-					/>
-					<span>{instance}</span>
-				</label>
-			{/each}
-		</div>
+		<PickGrid
+			items={instanceNames}
+			selected={instances}
+			disabled={creating}
+			ontoggle={toggleInstance}
+		/>
 	</Panel>
-
-	<div class="summary">
-		<span class="dim">
-			{name || '(name)'} · {action} · {triggerText} · {instances.size} instance(s)
-			{#if maxRuns}· stops after {maxRuns} run(s){/if}
-		</span>
-		<Btn
-			variant="primary"
-			disabled={!name || !instances.size || (kind === 'at' && !at)}
-			loading={creating}
-			onclick={create}
-		>
-			Create schedule
-		</Btn>
-	</div>
-</div>
+</Wizard>
 
 <style lang="scss">
-	.wizard {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		max-width: 47.5rem;
-	}
-
 	.reg {
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
 		margin-top: 0.25rem;
-	}
-
-	.inst-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
-		gap: 0.375rem 1rem;
-		padding: 0.5rem 0.25rem;
-		border: 0.1rem solid var(--border-divider);
-		border-radius: 0.5rem;
-	}
-
-	.pick {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.8125rem;
-		cursor: pointer;
-	}
-
-	// the summary bar stays reachable while the form scrolls
-	.summary {
-		position: sticky;
-		bottom: 0;
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 1rem;
-		background: var(--bg-panel);
-		border: 0.1rem solid var(--border-divider);
-		border-radius: var(--radius-container);
-		padding: 0.75rem 1.25rem;
 	}
 </style>

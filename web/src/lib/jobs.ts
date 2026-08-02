@@ -23,6 +23,10 @@ export interface JobView {
 	progress: ProgressSnapshot;
 	result: unknown;
 	error: string | null;
+	/** extra facts about the operation, set at start — e.g. the create job's
+	 *  target machine, which the provisioning row shows before the instance
+	 *  exists anywhere else */
+	meta?: Record<string, unknown>;
 }
 
 /** Depth-first list of a progress tree, parents before their children. */

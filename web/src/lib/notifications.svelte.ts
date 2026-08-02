@@ -17,6 +17,17 @@ export interface NotificationAction {
 	keep?: boolean;
 }
 
+/** How one task segment on a loading card's bar reads. */
+export type SegmentTone = 'done' | 'running' | 'warn' | 'error' | 'idle';
+
+/** One task of a job, rendered as a segment of the loading card's bar. */
+export interface NotificationSegment {
+	label: string;
+	/** the task's own progress, [0, 1] */
+	progress: number;
+	tone: SegmentTone;
+}
+
 export interface NotificationInit {
 	level?: NotificationLevel;
 	message?: string;
@@ -25,13 +36,17 @@ export interface NotificationInit {
 	closeable?: boolean;
 	/** 0-100 turns the loading spinner row into a determinate bar */
 	progress?: number | null;
+	/** a job's tasks, one bar segment each — null renders the plain bar */
+	segments?: NotificationSegment[] | null;
 	/** action buttons rendered on the card */
 	actions?: NotificationAction[];
 }
 
-export interface NotificationItem extends Required<Omit<NotificationInit, 'progress' | 'actions'>> {
+export interface NotificationItem
+	extends Required<Omit<NotificationInit, 'progress' | 'actions' | 'segments'>> {
 	id: number;
 	progress: number | null;
+	segments: NotificationSegment[] | null;
 	actions: NotificationAction[];
 	/** epoch ms at which the item auto-dismisses, null when it stays */
 	expiresAt: number | null;
@@ -99,6 +114,7 @@ class NotificationStore {
 			detail: init.detail ?? '',
 			closeable: init.closeable ?? true,
 			progress: init.progress ?? null,
+			segments: init.segments ?? null,
 			actions: init.actions ?? [],
 			expiresAt: null,
 			autocloseMs: null
@@ -217,6 +233,10 @@ class NotificationStore {
 
 				if (values.progress !== undefined) {
 					item.progress = values.progress;
+				}
+
+				if (values.segments !== undefined) {
+					item.segments = values.segments;
 				}
 
 				if (values.actions !== undefined) {

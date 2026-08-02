@@ -23,6 +23,7 @@
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { instanceStateJob, type StateAction } from '$lib/instancejobs';
+	import { onJobFlash } from '$lib/jobflash';
 
 	type Row = InstanceRow & { externalOnly?: boolean };
 
@@ -220,6 +221,10 @@
 		void api('/host')
 			.then((host) => (hostName = host.name ?? ''))
 			.catch(() => {});
+
+		// jobs this page did not start — a create finishing after the launch page
+		// navigated here, a card's "Start now" — still change the table
+		return onJobFlash(() => void refresh());
 	});
 
 	async function stateAction(action: StateAction): Promise<void> {

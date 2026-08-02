@@ -113,6 +113,14 @@
 			border-color: var(--error);
 			color: var(--error);
 		}
+
+		// this rule follows .btn:disabled in source order, so without a nested
+		// override a *disabled* danger button would still paint active red
+		&:disabled {
+			border-color: var(--text-disabled);
+			color: var(--text-disabled);
+			background: transparent;
+		}
 	}
 
 	.btn.link {

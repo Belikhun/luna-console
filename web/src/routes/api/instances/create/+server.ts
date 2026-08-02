@@ -56,6 +56,10 @@ export async function POST({ request }) {
 
 	const register = body.register !== false;
 
+	// the target machine rides on the job, so the provisioning row can say where
+	// the instance is going before it exists in any registry
+	const targetDaemon = typeof body.daemon === 'string' && body.daemon ? body.daemon : null;
+
 	const job = startJob('instance-create', body.name, `Create ${body.name}`, async (reporter) => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
@@ -84,7 +88,7 @@ export async function POST({ request }) {
 								Object.entries(body.pluginOverrides).map(([key, value]) => [key, !!value])
 							)
 						: undefined,
-				daemon: typeof body.daemon === 'string' && body.daemon ? body.daemon : undefined,
+				daemon: targetDaemon ?? undefined,
 				reporter: files
 			});
 
@@ -140,7 +144,7 @@ export async function POST({ request }) {
 
 			throw err;
 		}
-	});
+	}, { daemon: targetDaemon });
 
 	return json({ ok: true, job });
 }

@@ -6,7 +6,11 @@ import { listJobs } from '$lib/server/jobs';
  * A placeholder row for an instance that only exists as a running job — a
  * create that has not registered yet, or a purge outliving the registry entry.
  */
-function ghostRow(name: string, state: 'provisioning' | 'deleting'): Record<string, unknown> {
+function ghostRow(
+	name: string,
+	state: 'provisioning' | 'deleting',
+	daemon: string | null
+): Record<string, unknown> {
 	return {
 		name,
 		state,
@@ -30,7 +34,7 @@ function ghostRow(name: string, state: 'provisioning' | 'deleting'): Record<stri
 		ports: {},
 		proxy: null,
 		external: null,
-		daemon: null,
+		daemon,
 		dir: '',
 		checks: []
 	};
@@ -44,31 +48,33 @@ function ghostRow(name: string, state: 'provisioning' | 'deleting'): Record<stri
 export async function GET() {
 	const data = (await listStatuses()) as { instances: Array<Record<string, unknown>> };
 
-	const running = (kind: string) =>
-		listJobs(kind)
-			.filter((job) => job.state === 'running')
-			.map((job) => job.target);
+	const running = (kind: string) => listJobs(kind).filter((job) => job.state === 'running');
 
 	const creating = running('instance-create');
 	const deleting = running('instance-delete');
 
 	for (const row of data.instances) {
-		if (deleting.includes(row.name as string)) {
+		if (deleting.some((job) => job.target === row.name)) {
 			row.state = 'deleting';
-		} else if (creating.includes(row.name as string)) {
+		} else if (creating.some((job) => job.target === row.name)) {
 			row.state = 'provisioning';
 		}
 	}
 
-	for (const name of creating) {
-		if (name && !data.instances.some((row) => row.name === name)) {
-			data.instances.push(ghostRow(name, 'provisioning'));
+	for (const job of creating) {
+		if (job.target && !data.instances.some((row) => row.name === job.target)) {
+			// the job's meta names the target machine — nothing else knows it yet
+			const daemon = (job.meta?.daemon as string | null) ?? null;
+
+			data.instances.push(ghostRow(job.target, 'provisioning', daemon));
 		}
 	}
 
-	for (const name of deleting) {
-		if (name && !data.instances.some((row) => row.name === name)) {
-			data.instances.push(ghostRow(name, 'deleting'));
+	for (const job of deleting) {
+		if (job.target && !data.instances.some((row) => row.name === job.target)) {
+			const daemon = (job.meta?.daemon as string | null) ?? null;
+
+			data.instances.push(ghostRow(job.target, 'deleting', daemon));
 		}
 	}
 

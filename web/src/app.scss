@@ -257,6 +257,14 @@ select.input option {
 		color: var(--text-secondary);
 		margin-bottom: 0.25rem;
 	}
+
+	// validation feedback under the control, e.g. "name already exists"
+	.err {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--error);
+		margin-top: 0.25rem;
+	}
 }
 
 input[type='radio'] {
