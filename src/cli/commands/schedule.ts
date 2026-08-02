@@ -50,7 +50,7 @@ command({
 		const store = await sched.loadSchedules();
 
 		if (!store.schedules.length) {
-			info("no schedules — create one with: mrds schedule create");
+			info("no schedules — create one with: luna schedule create");
 
 			return;
 		}

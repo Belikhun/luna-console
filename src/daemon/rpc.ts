@@ -313,6 +313,29 @@ export function setUpgradeSender(
 	upgradeSender = sender;
 }
 
+/**
+ * Provider behind `daemon.checkDaemonUpgrade`. Without a hub the only daemon
+ * this process can ask is itself, which is the honest answer for a follower
+ * queried through its own socket.
+ */
+let checkSender: (name: string, refresh: boolean) => Promise<unknown> = async (
+	name: string,
+	refresh: boolean,
+) => {
+	if (name !== daemonName()) {
+		throw new Error("only the primary daemon can check another daemon for upgrades");
+	}
+
+	return await upgrade.checkUpgrade(refresh);
+};
+
+/** Swap in the hub's fleet-wide upgrade check. */
+export function setCheckSender(
+	sender: (name: string, refresh: boolean) => Promise<unknown>,
+): void {
+	checkSender = sender;
+}
+
 /** Swap in the hub's live daemons listing. */
 export function setDaemonsProvider(provider: () => Promise<unknown>): void {
 	daemonsProvider = provider;
@@ -462,10 +485,14 @@ export const OPS: Record<string, OpSpec> = {
 	"daemon.daemonDetail": { fn: (name: string) => daemonDetailProvider(name) },
 	"daemon.health": { fn: health.currentHealth },
 	"daemon.binaryMeta": { fn: upgrade.localBinaryMeta },
-	// runs on the daemon being upgraded; the primary forwards it there
+	// both run on the daemon they describe; the primary forwards them there
 	"daemon.selfUpgrade": { fn: upgrade.selfUpgrade },
+	"daemon.checkUpgrade": { fn: upgrade.checkUpgrade },
 	"daemon.upgradeDaemon": {
 		fn: (name: string, force?: boolean) => upgradeSender(name, force ?? false),
+	},
+	"daemon.checkDaemonUpgrade": {
+		fn: (name: string, refresh?: boolean) => checkSender(name, refresh ?? false),
 	},
 	"daemon.healthHistory": { fn: health.healthHistory },
 };

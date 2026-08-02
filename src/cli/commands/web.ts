@@ -26,7 +26,9 @@ command({
 			);
 		}
 
-		const webDir = join(root(), "control", "web");
+		// the console normally lives in the source tree beside the cluster root;
+		// a container image ships it somewhere else entirely, hence the override
+		const webDir = process.env.MRDS_WEB_DIR ?? join(root(), "control", "web");
 		const port = (opts.port as string) ?? "8330";
 		const host = (opts.host as string) ?? "127.0.0.1";
 

@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 
 import { loadCluster, saveCluster } from '$core/config';
-import { daemonDetail, listDaemons, upgradeDaemon } from '$client/daemon';
+import { checkDaemonUpgrade, daemonDetail, listDaemons, upgradeDaemon } from '$client/daemon';
 import { pushEvent } from '$lib/server/mrds';
 
 /** GET → one daemon's row, health history and its own event log. */
@@ -16,12 +16,27 @@ export async function GET({ params }) {
 }
 
 /**
- * POST { action: 'upgrade', force? } → replace a follower's binary with the
- * primary's. The follower exits as it answers, so a 200 here means the swap
+ * POST { action } → the two build actions on one daemon.
+ *
+ * `check-upgrade` reports what each channel offers (the primary's binary first,
+ * the GitHub release as the fallback) and applies nothing. `upgrade` applies
+ * the preferred one: the daemon exits as it answers, so a 200 means the swap
  * happened and its service manager is bringing the new build up.
  */
 export async function POST({ params, request }) {
-	const body = (await request.json().catch(() => ({}))) as { action?: string; force?: boolean };
+	const body = (await request.json().catch(() => ({}))) as {
+		action?: string;
+		force?: boolean;
+		refresh?: boolean;
+	};
+
+	if (body.action === 'check-upgrade') {
+		try {
+			return json({ ok: true, check: await checkDaemonUpgrade(params.name, !!body.refresh) });
+		} catch (err) {
+			throw error(409, (err as Error).message);
+		}
+	}
 
 	if (body.action !== 'upgrade') {
 		throw error(400, `unknown action: ${body.action ?? '(none)'}`);

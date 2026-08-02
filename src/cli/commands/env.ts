@@ -44,7 +44,7 @@ command({
 		}
 
 		if (!rows.length) {
-			info("no variables defined — set one with: mrds env set NAME value");
+			info("no variables defined — set one with: luna env set NAME value");
 
 			return;
 		}

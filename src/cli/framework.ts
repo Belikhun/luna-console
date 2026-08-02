@@ -154,7 +154,7 @@ export function usageLine(cmd: Command): string {
 
 /** Print grouped help for every visible command, or just one command group. */
 export function printHelp(filter?: string): void {
-	console.log(pc.bold(pc.magenta("\nmrds")) + pc.dim(" — minecraft cluster control center\n"));
+	console.log(pc.bold(pc.magenta("\nluna")) + pc.dim(" — minecraft cluster control center\n"));
 
 	const groups = new Map<string, Command[]>();
 
@@ -204,7 +204,7 @@ export async function dispatch(argv: string[]): Promise<void> {
 
 	if (!match) {
 		console.error(pc.red(`unknown command: ${argv.join(" ")}`));
-		console.error(pc.dim(`run "mrds help" for usage`));
+		console.error(pc.dim(`run "luna help" for usage`));
 		process.exit(1);
 	}
 

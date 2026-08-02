@@ -1,0 +1,10 @@
+node_modules
+web/node_modules
+web/.svelte-kit
+web/build
+dist
+.git
+.github
+deploy
+docs
+*.log

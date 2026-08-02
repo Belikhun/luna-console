@@ -1,0 +1,82 @@
+# Primary daemon + web console.
+#
+# The primary owns cluster.json, plugins.lock.json and the plugin pool, runs the
+# scheduler, accepts followers on 8331 and serves its own binary to them. The
+# console is a second container so that restarting it never restarts the daemon
+# — they meet on the daemon's unix socket, which lives in the shared volume.
+#
+#   cp .env.example .env && edit it
+#   docker compose -f docker-compose.primary.yml up -d
+#
+# First run on an empty volume: create the cluster registry before the daemon
+# starts, or point MRDS_ROOT at an existing cluster directory.
+#
+#   docker compose -f docker-compose.primary.yml run --rm --entrypoint sh mrds \
+#     -c 'echo "{\"instances\":{},\"daemons\":{}}" > /data/cluster.json'
+
+name: mrds-primary
+
+services:
+  mrds:
+    image: ghcr.io/belikhun/luna-control:latest
+    container_name: mrds-primary
+    restart: unless-stopped
+    command: ["daemon", "run"]
+
+    environment:
+      MRDS_MODE: primary
+      # keys cluster.json and decides instance ownership — unique per machine,
+      # and stable, or the cluster forgets which daemon owns what
+      MRDS_DAEMON_NAME: ${MRDS_DAEMON_NAME:-primary}
+      MRDS_ROOT: /data
+      MRDS_LISTEN: 0.0.0.0:8331
+      # `luna daemon token` generates one; every daemon in the cluster shares it
+      MRDS_TOKEN: ${MRDS_TOKEN:?set MRDS_TOKEN in .env}
+      MRDS_SOCKET: /data/run/daemon.sock
+
+    volumes:
+      - cluster:/data
+
+    ports:
+      # followers
+      - "8331:8331"
+      # velocity proxy — the only port players connect to
+      - "25565:25565"
+
+    # the backends are started by the daemon inside this container, so their
+    # ports are only reachable from here and from followers over the LAN
+    stop_grace_period: 2m
+
+    healthcheck:
+      test: ["CMD", "luna", "daemon", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  console:
+    image: ghcr.io/belikhun/luna-control:latest
+    container_name: mrds-console
+    restart: unless-stopped
+    depends_on:
+      - mrds
+    command: ["web", "--host", "0.0.0.0", "--port", "8330"]
+
+    environment:
+      MRDS_ROOT: /data
+      # the console is a daemon client: it finds the primary on this socket
+      MRDS_SOCKET: /data/run/daemon.sock
+
+    volumes:
+      - cluster:/data
+
+    ports:
+      - "${CONSOLE_BIND:-127.0.0.1}:8330:8330"
+
+volumes:
+  cluster:
+    # a bind mount is the usual choice for a real cluster — the worlds live here
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: /srv/mrds

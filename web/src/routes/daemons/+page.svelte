@@ -403,7 +403,7 @@
 
 	{#if loaded && daemons.length === 1}
 		<div class="hint">
-			No followers yet — run <code>mrds daemon run</code> on another machine with
+			No followers yet — run <code>luna daemon run</code> on another machine with
 			<code>mode: "follower"</code> and this primary's address + token in its daemon config.
 		</div>
 	{/if}
@@ -414,12 +414,12 @@
 		Install the same <code class="inline">mrds</code> binary on the other machine, drop this
 		config at <code class="inline">/etc/mrds/daemon.json</code> (or
 		<code class="inline">~/.config/mrds/daemon.json</code>), then run
-		<code class="inline">mrds daemon service install</code> there.
+		<code class="inline">luna daemon service install</code> there.
 	</p>
 	<pre class="code mono">{joinConfig}</pre>
 	<p class="dim">
 		The token is the cluster secret this primary already uses — generate one with
-		<code class="inline">mrds daemon token</code> if you have not yet, and set the same value on
+		<code class="inline">luna daemon token</code> if you have not yet, and set the same value on
 		both machines. The follower registers itself on first connection and appears in this table;
 		nothing needs to be created here.
 	</p>

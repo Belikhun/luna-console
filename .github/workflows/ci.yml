@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: |
+          bun install --frozen-lockfile
+          cd web && bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: svelte-check
+        run: cd web && bun run check
+
+      - name: Build binary
+        run: bun run build
+
+      - name: Build console
+        run: cd web && bun run build
+
+      - name: Smoke test
+        # both work with no daemon running, which is the state on a runner
+        run: |
+          ./dist/luna help
+          ./dist/luna version

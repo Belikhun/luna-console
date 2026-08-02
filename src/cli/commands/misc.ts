@@ -5,6 +5,8 @@ import { syncVelocityToml, readVelocityServers } from "../../client/core/proxy";
 import { collectPortRows, auditPorts, ensurePortAllocations } from "../../client/core/ports";
 import * as cleanup from "../../client/core/cleanup";
 import { sendCommand, getStatus } from "../../client/core/instances";
+import { ensureConnected } from "../../client/socket";
+import { BUILD_AT, buildPlatform, buildVersion } from "../../version";
 
 command({
 	path: ["proxy", "sync"],
@@ -116,7 +118,7 @@ command({
 
 		if (!opts.fix) {
 			info(
-				`fix drift with: ${pc.cyan("mrds ports check --fix")} and ${pc.cyan("mrds proxy sync")}`,
+				`fix drift with: ${pc.cyan("luna ports check --fix")} and ${pc.cyan("luna proxy sync")}`,
 			);
 		}
 
@@ -206,6 +208,29 @@ command({
 			ok(
 				`archived ${res.archivedLogs} log files into ${res.archives.length} monthly archive(s)`,
 			);
+		}
+	},
+});
+
+command({
+	path: ["version"],
+	desc: "Build identity of this binary (and the daemon, when one answers)",
+
+	handler: async () => {
+		console.log(`luna ${buildVersion()} (${buildPlatform()})`);
+
+		if (BUILD_AT) {
+			info(`built     ${new Date(BUILD_AT).toLocaleString()}`);
+		}
+
+		// the binary and the running daemon are two different builds whenever an
+		// upgrade has happened but the service has not restarted yet
+		try {
+			const d = await ensureConnected();
+
+			info(`daemon    ${d.name} — ${d.version}, protocol ${d.protocol}`);
+		} catch {
+			info(pc.dim("daemon    not running on this host"));
 		}
 	},
 });

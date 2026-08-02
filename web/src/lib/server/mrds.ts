@@ -57,9 +57,9 @@ export function clearTransition(name: string): void {
 
 /** Path to the compiled CLI binary (for the terminal's exec route). */
 export function cliBinary(): string {
-	const bin = join(root(), 'control', 'dist', 'mrds');
+	const bin = join(root(), 'control', 'dist', 'luna');
 
-	return existsSync(bin) ? bin : 'mrds';
+	return existsSync(bin) ? bin : 'luna';
 }
 
 export const INTERACTIVE_COMMANDS = new Set(['console']);

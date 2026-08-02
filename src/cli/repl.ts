@@ -49,7 +49,7 @@ function printHint(line: string): void {
 
 /** Interactive prompt over the same command registry the CLI dispatches from. */
 export async function repl(): Promise<void> {
-	console.log(pc.bold(pc.magenta("\n  mrds")) + pc.dim(" interactive console"));
+	console.log(pc.bold(pc.magenta("\n  luna")) + pc.dim(" interactive console"));
 	console.log(
 		pc.dim(
 			"  Tab to complete · 'help' for commands · '?' after a command for hints · 'exit' to leave\n",
@@ -59,7 +59,7 @@ export async function repl(): Promise<void> {
 	const rl = createInterface({
 		input: process.stdin,
 		output: process.stdout,
-		prompt: `${pc.magenta("mrds")} ${pc.dim("»")} `,
+		prompt: `${pc.magenta("luna")} ${pc.dim("»")} `,
 		historySize: 500,
 
 		completer: (line: string, cb: (err: null, result: [string[], string]) => void) => {

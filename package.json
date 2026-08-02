@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "dev": "bun run src/cli/index.ts",
-    "build": "bun run scripts/genversion.ts && bun build --compile --minify src/cli/index.ts --outfile dist/mrds",
+    "build": "bun run scripts/genversion.ts && bun build --compile --minify src/cli/index.ts --outfile dist/luna",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {

@@ -224,7 +224,7 @@
 		</button>
 		<span class="statusdiv"></span>
 		<span class="spacer"></span>
-		<span class="dim">mrds console — part of luna network by <a href="https://github.com/belikhun" target="_blank">belikhun</a></span>
+		<span class="dim">luna console — part of luna network by <a href="https://github.com/belikhun" target="_blank">belikhun</a></span>
 	</footer>
 
 	<TooltipHost />

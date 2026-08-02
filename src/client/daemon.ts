@@ -7,7 +7,13 @@
 import type { ClusterEvent } from "../daemon/events";
 import type { HealthSample } from "../daemon/health";
 import type { DaemonCheck, DaemonDetail, DaemonRow, ReachResult } from "../daemon/hub";
-import type { BinaryMeta, UpgradeResult } from "../daemon/upgrade";
+import type {
+	BinaryMeta,
+	UpgradeCheck,
+	UpgradeChannel,
+	UpgradeOffer,
+	UpgradeResult,
+} from "../daemon/upgrade";
 import type { MetricSample, StatusCheck, UiState } from "../daemon/sampler";
 
 import { call } from "./rpc";
@@ -24,6 +30,9 @@ export type {
 	ReachResult,
 	StatusCheck,
 	UiState,
+	UpgradeCheck,
+	UpgradeChannel,
+	UpgradeOffer,
 	UpgradeResult,
 };
 
@@ -74,13 +83,24 @@ export const daemonHealthHistory = call("daemon.healthHistory") as () => Promise
 export const binaryMeta = call("daemon.binaryMeta") as () => Promise<BinaryMeta>;
 
 /**
- * Upgrade one follower to the primary's build. The daemon exits as it answers,
- * so a successful call means "the swap happened and systemd is restarting it".
+ * Upgrade one daemon: a follower pulls the primary's binary, the primary pulls
+ * the GitHub release. The daemon exits as it answers, so a successful call
+ * means "the swap happened and its service manager is restarting it".
  */
 export const upgradeDaemon = call("daemon.upgradeDaemon") as (
 	name: string,
 	force?: boolean,
 ) => Promise<UpgradeResult>;
+
+/**
+ * What one daemon could upgrade to, primary channel first and the GitHub
+ * release as the fallback. Applies nothing. `refresh` bypasses the daemon's
+ * cached GitHub answer.
+ */
+export const checkDaemonUpgrade = call("daemon.checkDaemonUpgrade") as (
+	name: string,
+	refresh?: boolean,
+) => Promise<UpgradeCheck>;
 
 /**
  * Follow the daemon's fleet health stream: one frame per heartbeat cadence with

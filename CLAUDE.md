@@ -5,10 +5,11 @@ This directory (`control/`) is the source tree of the centralized control center
 proxy + seven Paper backends (`lobby`, `survival`, `event`, `event2`, `infdun`, `iceboat`,
 `manhunt`) running in GNU screen sessions `luna.<name>`, plus external servers (`create`,
 `sandbox`) routed through the proxy. Everything is driven by the **mrds daemon** —
-the long-lived process that owns the cluster — with the `mrds` CLI and the web
-console as its clients (DESIGN.md §4). The daemon runs as primary here; follower
-daemons on other machines manage the instances assigned to them and mirror
-state + plugins from the primary.
+the long-lived process that owns the cluster — with the `luna` CLI and the web
+console as its clients (DESIGN.md §4). *mrds* is the project; **`luna` is the
+binary** every command, completion hook and release asset is named after.
+The daemon runs as primary here; follower daemons on other machines manage the
+instances assigned to them and mirror state + plugins from the primary.
 
 Authoritative docs — read before making architectural decisions:
 - `docs/DESIGN.md` — infra assessment + full design (plugin model with per-instance version
@@ -16,7 +17,7 @@ Authoritative docs — read before making architectural decisions:
 - `docs/PROGRESS.md` — what is built so far, decisions made along the way, what's left
 
 Stack (locked): Bun + TypeScript · single compiled binary (`bun build --compile` →
-`dist/mrds`, symlinked as `/mnt/shulker/mrds/mrds`) · picocolors + @clack/prompts
+`dist/luna`, symlinked as `/mnt/shulker/mrds/luna`) · picocolors + @clack/prompts
 for the terminal · SvelteKit (Svelte 5 runes) + adapter-node running **under Bun** for the
 web console (no Elysia, no separate backend) · **SCSS** (`sass-embedded` through
 `vitePreprocess`) for every stylesheet · xterm.js for the terminal drawer · SSE for all
@@ -40,6 +41,9 @@ control/                # this repo — the only source tree
     src/lib/styles/     #   _shared.scss — mixins/variables, auto-injected everywhere
     src/lib/server/     #   server-only helpers (mrds.ts bridge, http.ts)
   docs/                 # progress notes and working documents
+  deploy/               # container topologies: compose files for primary + follower
+  .github/workflows/    # ci (typecheck · svelte-check · build) and release (tags)
+  Dockerfile            # binary + console + JRE + screen — the published image
 
 /mnt/shulker/mrds/      # cluster root (parent dir) — managed data, not source
   cluster.json          # instance registry — source of truth
@@ -56,6 +60,9 @@ control/                # this repo — the only source tree
 - **Line endings: CRLF, never LF.** Enforced by `.editorconfig` and `.gitattributes` in this
   directory; configure any formatter (Prettier, Biome, `svelte-check` fixers, editors) to
   `lineEnding: crlf` + `indentStyle: tab` — never let a tool "fix" these to LF/spaces.
+  The one exception, pinned in `.gitattributes`: `.github/workflows/*.yml`, the `Dockerfile`
+  and `deploy/**` stay **LF**, because a GitHub Actions `run:` block becomes a shell script
+  and CRLF there fails as `command not found: bun\r`.
 - **CSS lengths: rem/em only, never px, and stay on the scale.** Quarter-rem steps for 1rem
   and up (1, 1.25, 1.5, 1.75, 2, 2.25, …); below 1rem, eighth-steps are also allowed (0.125,
   0.25, 0.375, 0.5, 0.625, 0.75, 0.875), plus 0.1rem for hairline borders. Never invent
@@ -345,25 +352,32 @@ Wiring rules:
 ## Commands
 
 ```
-mrds daemon run                   # the daemon itself — everything else needs it running
-mrds daemon status|list|remove    # local handshake · cluster fleet · drop a registration
-mrds daemon show <name>           # one daemon: health, checks, per-instance memory
-mrds daemon upgrade <name>        # swap a follower onto this primary's binary
-mrds daemon token                 # generate the shared cluster token
-mrds daemon service install       # systemd unit for 24/7 operation
+sudo luna setup                   # install this machine: user, root, config, unit, start
+luna setup --dry-run              # every change it would make, making none
+luna daemon run                   # the daemon itself — everything else needs it running
+luna daemon status|list|remove    # local handshake · cluster fleet · drop a registration
+luna daemon show <name>           # one daemon: health, checks, per-instance memory
+luna daemon upgrade [name]        # apply an upgrade: the primary's binary, else the release
+luna daemon upgrade --check       # what each channel offers, applying nothing
+luna daemon token                 # generate the shared cluster token
+luna daemon service install       # just the unit file, for an already-configured host
+luna version                      # build identity of the binary and of the daemon
 bun run src/cli/index.ts <cmd…>   # run the CLI from source (this dir)
-bun run build                     # compile the single binary → dist/mrds
+bun run build                     # compile the single binary → dist/luna
 bun run typecheck                 # tsc --noEmit (web/ is excluded)
 cd web && bun run build           # production console bundle
 cd web && bun run check           # svelte-check
-mrds web [--dev] [--host 0.0.0.0] # serve the console (default 127.0.0.1:8330; primary only)
+luna web [--dev] [--host 0.0.0.0] # serve the console (default 127.0.0.1:8330; primary only)
 cd web && bun run dev             # same thing directly: Vite + HMR on 8330
+docker build -t mrds .            # the published image (binary + console + JRE + screen)
 ```
 
 Daemon config: JSON file (`$MRDS_DAEMON_CONFIG` → `/etc/mrds/daemon.json` →
 `~/.config/mrds/daemon.json`) with env overrides (`MRDS_MODE`, `MRDS_ROOT`,
 `MRDS_DAEMON_NAME`, `MRDS_SOCKET`, `MRDS_LISTEN`, `MRDS_TOKEN`,
-`MRDS_PRIMARY_ADDRESS`, `MRDS_HOST`). A daemon's name defaults to the machine's
+`MRDS_PRIMARY_ADDRESS`, `MRDS_HOST`, plus `MRDS_WEB_DIR` for a console outside the
+source tree and `MRDS_RELEASE_REPO`/`MRDS_GITHUB_API`/`MRDS_GITHUB_TOKEN` for the
+upgrade fallback). A daemon's name defaults to the machine's
 hostname (short form, lowercased) — it keys `cluster.json` and decides instance
 ownership, so it must be unique across the cluster. No config + a discoverable
 cluster root = primary with defaults. For dev, start one with

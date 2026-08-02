@@ -1,5 +1,5 @@
 /**
- * Daemon runtime entry. `mrds daemon run` lands here: resolve the daemon
+ * Daemon runtime entry. `luna daemon run` lands here: resolve the daemon
  * config, bind the local API socket (plus the cluster TCP listener on a
  * primary), and start the long-lived loops — sampler, scheduler, and the
  * follower link when this daemon is not the primary.
@@ -79,16 +79,21 @@ export async function runDaemon(): Promise<void> {
 		websocket: noWebsocket,
 	});
 
-	log(`mrds daemon "${dcfg.name}" (${dcfg.mode}) — root ${dcfg.root}`);
+	log(`luna daemon "${dcfg.name}" (${dcfg.mode}) — root ${dcfg.root}`);
 	log(`local API on ${dcfg.socket}`);
 
 	let cluster: Bun.Server<WsData> | undefined;
 
 	const { ensureHealthSampler } = await import("./health");
+	const { ensureUpgradeWatcher } = await import("./upgrade");
 
 	// both roles report their own machine's health; a follower's rides the
 	// heartbeat up to the primary, which is where the console reads the fleet
 	ensureHealthSampler();
+
+	// keeps "what could this daemon upgrade to" answered from memory — the
+	// check itself never applies anything
+	ensureUpgradeWatcher();
 
 	if (dcfg.mode === "primary") {
 		if (dcfg.listen) {

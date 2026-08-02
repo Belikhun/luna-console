@@ -1,5 +1,14 @@
 * text=auto eol=crlf
 
+# Consumed by linux tooling that hands the bytes straight to bash: a GitHub
+# Actions `run:` block becomes a script file, and CRLF there fails as
+# "command not found: bun\r". These stay LF, everything else stays CRLF.
+.github/**/*.yml text eol=lf
+.github/**/*.yaml text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+deploy/** text eol=lf
+
 *.jar binary
 *.png binary
 *.jpg binary

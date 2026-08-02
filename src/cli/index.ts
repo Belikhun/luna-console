@@ -1,4 +1,4 @@
-// mrds CLI entry point.
+// luna CLI entry point.
 // Layers: core/ = pure domain logic (no console I/O) · cli/ = terminal presentation ·
 // web/ = SvelteKit console reusing core through the $core alias.
 
@@ -11,6 +11,7 @@ import "./commands/web";
 import "./commands/env";
 import "./commands/schedule";
 import "./commands/daemon";
+import "./commands/setup";
 
 import { command, dispatch } from "./framework";
 import { complete, BASH_HOOK, ZSH_HOOK, FISH_HOOK } from "./complete";
@@ -36,16 +37,16 @@ command({
 		console.log(hook);
 
 		const target =
-			shell === "fish" ? "config/fish/completions/mrds.fish" : `${shell}rc`;
+			shell === "fish" ? "config/fish/completions/luna.fish" : `${shell}rc`;
 
-		console.error(pc.dim(`# install: mrds completions ${shell} >> ~/.${target}`));
+		console.error(pc.dim(`# install: luna completions ${shell} >> ~/.${target}`));
 	},
 });
 
 async function main(): Promise<void> {
 	const argv = process.argv.slice(2);
 
-	// completion protocol: mrds __complete -- <words...> — bypasses normal parsing
+	// completion protocol: luna __complete -- <words...> — bypasses normal parsing
 	// so partial flags like "--a" don't trip the option validator.
 	if (argv[0] === "__complete") {
 		const words = argv.slice(1).filter((word) => word !== "--");

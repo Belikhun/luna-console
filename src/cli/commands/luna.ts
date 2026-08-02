@@ -160,7 +160,7 @@ async function runSync(
 	spin.stop();
 
 	if (built.length === 0) {
-		warn("no built artifacts found — run mrds luna build first");
+		warn("no built artifacts found — run luna luna build first");
 
 		return results;
 	}
@@ -168,7 +168,7 @@ async function runSync(
 	for (const entry of results.filter((entry) => entry.action === "registered")) {
 		info(
 			`registered ${pc.bold(entry.name)} in the lockfile — ` +
-				`assign targets with ${pc.cyan(`mrds plugins apply ${entry.name} --to <targets>`)}`,
+				`assign targets with ${pc.cyan(`luna plugins apply ${entry.name} --to <targets>`)}`,
 		);
 	}
 
@@ -216,7 +216,7 @@ command({
 		if (opts.sync) {
 			await runSync(source, result.stamp, args);
 		} else {
-			info(`pool the result with: ${pc.cyan("mrds luna deploy")}`);
+			info(`pool the result with: ${pc.cyan("luna luna deploy")}`);
 		}
 	},
 });
@@ -232,7 +232,7 @@ command({
 
 		await runSync(source, await luna.buildStamp(source), args);
 
-		info(`push to instances with: ${pc.cyan("mrds plugins deploy")}`);
+		info(`push to instances with: ${pc.cyan("luna plugins deploy")}`);
 	},
 });
 

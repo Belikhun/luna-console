@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * Drawer terminal running the mrds CLI.
+	 * Drawer terminal running the luna CLI.
 	 * Line editing + history + Tab completion + inline ghost suggestion,
 	 * backed by /api/shell/complete (the CLI's own completion engine) and
 	 * /api/shell/exec (SSE-streamed CLI output with ANSI colors).
@@ -10,7 +10,7 @@
 	import type { FitAddon } from '@xterm/addon-fit';
 	import { post } from '$lib/api';
 
-	const PROMPT = '\x1b[38;5;135mmrds\x1b[0m \x1b[90m»\x1b[0m ';
+	const PROMPT = '\x1b[38;5;135mluna\x1b[0m \x1b[90m»\x1b[0m ';
 
 	const GHOST_DEBOUNCE_MS = 60;
 	const HISTORY_KEY = 'mrds.shell.history';
@@ -525,7 +525,7 @@
 
 		observer.observe(host);
 
-		term.writeln('\x1b[1m\x1b[38;5;135mmrds\x1b[0m cluster shell — the CLI, in your browser.');
+		term.writeln('\x1b[1m\x1b[38;5;135mluna\x1b[0m cluster shell — the CLI, in your browser.');
 		term.writeln(
 			'\x1b[90mTab to complete · ghost text = suggestion (→ to accept) · ↑↓ history · ' +
 				'Ctrl+C cancel · try "help"\x1b[0m'

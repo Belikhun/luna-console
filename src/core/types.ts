@@ -78,7 +78,7 @@ export interface ClusterConfig {
 	javaProfiles: Record<string, JavaProfile>;
 	proxy: InstanceConfig;
 	instances: Record<string, InstanceConfig>;
-	/** In-house plugin build source, for `mrds luna …` */
+	/** In-house plugin build source, for `luna luna …` */
 	luna?: LunaSourceConfig;
 	/** Known follower daemons, keyed by daemon name */
 	daemons?: Record<string, DaemonRegistration>;

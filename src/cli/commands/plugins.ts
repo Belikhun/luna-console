@@ -169,7 +169,7 @@ command({
 			console.log();
 			info(
 				`${report.unmanaged.length} instance-only jars not in the pool ` +
-					"(adopt with: mrds plugins adopt <instance> <jar>)",
+					"(adopt with: luna plugins adopt <instance> <jar>)",
 			);
 
 			for (const jar of report.unmanaged) {
@@ -255,7 +255,7 @@ command({
 			console.log();
 			printTable(rows, { head: ["plugin", "update", "targets"] });
 			console.log();
-			info(`apply with: ${pc.cyan("mrds plugins update")}`);
+			info(`apply with: ${pc.cyan("luna plugins update")}`);
 		}
 
 		for (const note of notes) {
@@ -317,7 +317,7 @@ command({
 		if (opts.deploy) {
 			await runDeploy(undefined);
 		} else {
-			info(`pool updated — push to instances with: ${pc.cyan("mrds plugins deploy")}`);
+			info(`pool updated — push to instances with: ${pc.cyan("luna plugins deploy")}`);
 		}
 	},
 });
@@ -588,7 +588,7 @@ command({
 				pc.dim(`(source: ${entry.source}, targets: ${entry.targets.join(",")})`),
 		);
 
-		info(`identify it on modrinth with: ${pc.cyan("mrds plugins scan")}`);
+		info(`identify it on modrinth with: ${pc.cyan("luna plugins scan")}`);
 	},
 });
 
@@ -737,7 +737,7 @@ command({
 		}
 
 		ok(`unpinned ${pc.bold(name)} on: ${removed.join(", ")}`);
-		info(`run ${pc.cyan(`mrds plugins update ${name}`)} to re-resolve, then deploy`);
+		info(`run ${pc.cyan(`luna plugins update ${name}`)} to re-resolve, then deploy`);
 	},
 });
 
@@ -808,7 +808,7 @@ command({
 		if (bad.length) {
 			warn(
 				`${bad.length} plugin(s) need a different version — run ` +
-					`${pc.cyan("mrds plugins update")} after switching`,
+					`${pc.cyan("luna plugins update")} after switching`,
 			);
 
 			return;
@@ -1091,7 +1091,7 @@ command({
 		const fetchable = rows.filter((row) => row.downloadable);
 
 		if (fetchable.length) {
-			info(`fetch compatible builds with: ${pc.cyan(`mrds plugins fetch <plugin> --mc ${inst.mcVersion}`)}`);
+			info(`fetch compatible builds with: ${pc.cyan(`luna plugins fetch <plugin> --mc ${inst.mcVersion}`)}`);
 		}
 	},
 });
@@ -1298,7 +1298,7 @@ command({
 		const troubled = rows.filter((row) => row.state === "errored" || row.errors > 0);
 
 		if (troubled.length) {
-			warn(`${troubled.length} plugin(s) reported errors — inspect with: mrds logs ${instance}`);
+			warn(`${troubled.length} plugin(s) reported errors — inspect with: luna logs ${instance}`);
 		}
 	},
 });

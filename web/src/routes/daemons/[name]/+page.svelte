@@ -24,7 +24,7 @@
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
-	import type { DaemonDetail, DaemonRow, HealthSample } from '$client/daemon';
+	import type { DaemonDetail, DaemonRow, HealthSample, UpgradeCheck } from '$client/daemon';
 
 	/** History and events are re-read on this cadence; the row itself streams. */
 	const POLL_MS = 15_000;
@@ -45,6 +45,8 @@
 	let removing = $state(false);
 	let upgradeOpen = $state(false);
 	let upgrading = $state(false);
+	let checking = $state(false);
+	let upgradeCheck = $state<UpgradeCheck | null>(null);
 
 	async function refresh(): Promise<void> {
 		if (!name) {
@@ -78,6 +80,10 @@
 		}
 
 		void refresh();
+
+		// the daemon keeps this answer warm in the background, so the first look
+		// at the page costs a socket round trip and nothing more
+		void checkUpgrade(false);
 
 		const poll = setInterval(refresh, POLL_MS);
 
@@ -124,7 +130,39 @@
 	}
 
 	/**
-	 * Replace this follower's binary with the primary's. It exits as it answers,
+	 * Ask the daemon what it could upgrade to. The primary's binary is preferred
+	 * and the GitHub release is the fallback, but both are reported so the panel
+	 * can say where an upgrade would come from before anyone commits to it.
+	 */
+	async function checkUpgrade(refresh: boolean): Promise<void> {
+		// the route parameter, not `row` — this runs on mount, before the first
+		// detail fetch has resolved
+		if (!name) {
+			return;
+		}
+
+		checking = true;
+
+		try {
+			const res = await post(`/daemons/${encodeURIComponent(name)}`, {
+				action: 'check-upgrade',
+				refresh
+			});
+
+			upgradeCheck = res.check;
+		} catch (err) {
+			// a manual check reports its failure; the one on mount stays quiet,
+			// since the panel already says "not checked yet"
+			if (refresh) {
+				Notify.error('Could not check for updates', { detail: (err as Error).message });
+			}
+		}
+
+		checking = false;
+	}
+
+	/**
+	 * Replace this daemon's binary with the best offer. It exits as it answers,
 	 * so the row goes offline for a moment and comes back on the new build.
 	 */
 	async function upgrade(): Promise<void> {
@@ -137,12 +175,15 @@
 		const note = Notify.loading(`Upgrading ${row.name}…`);
 
 		try {
-			const res = await post(`/daemons/${encodeURIComponent(row.name)}`, { action: 'upgrade' });
+			const res = await post(`/daemons/${encodeURIComponent(row.name)}`, {
+				action: 'upgrade',
+				force: !upgradeCheck?.offer
+			});
 
 			note.set({
 				level: 'success',
 				message: `${row.name}: ${res.result.from} → ${res.result.to}`,
-				detail: 'It is restarting on the new build and will reconnect shortly.',
+				detail: `From the ${res.result.origin}. It is restarting on the new build and will reconnect shortly.`,
 				closeable: true
 			});
 
@@ -270,16 +311,17 @@
 		{/snippet}
 		{#snippet actions()}
 			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="daemon-detail" />
-			{#if row!.mode === 'follower'}
-				<Btn
-					icon="download"
-					disabled={!row!.online}
-					title={!row!.online ? 'the daemon is not connected' : undefined}
-					onclick={() => (upgradeOpen = true)}
-				>
-					{row!.outdated ? 'Upgrade daemon' : 'Reinstall binary'}
-				</Btn>
-			{/if}
+			<Btn icon="rotate" loading={checking} onclick={() => checkUpgrade(true)}>
+				Check for updates
+			</Btn>
+			<Btn
+				icon="download"
+				disabled={!row!.online}
+				title={!row!.online ? 'the daemon is not connected' : undefined}
+				onclick={() => (upgradeOpen = true)}
+			>
+				{upgradeCheck?.offer ? 'Upgrade daemon' : 'Reinstall binary'}
+			</Btn>
 			{#if row!.mode === 'follower' && !row!.online}
 				<Btn variant="danger" icon="trash" onclick={() => (removeOpen = true)}>
 					Remove registration
@@ -378,6 +420,49 @@
 						{/if}
 					{/snippet}
 				</InfoGrid>
+			</Panel>
+			<div class="gap"></div>
+			<Panel
+				title="Build and upgrades"
+				description="The primary's own binary is preferred; the GitHub release is the fallback"
+			>
+				<div class="buildrow">
+					<span class="blabel">Running</span>
+					<span class="mono">{row.version ?? '–'}</span>
+					{#if upgradeCheck}
+						<span class="dim">{upgradeCheck.platform} · checked {fmtDateTime(upgradeCheck.checkedAt)}</span>
+					{/if}
+				</div>
+				{#if upgradeCheck}
+					{#each upgradeCheck.offers as offer}
+						<div class="buildrow">
+							<span class="blabel">{offer.channel === 'primary' ? 'Primary' : 'GitHub'}</span>
+							<StatusBadge
+								state={offer.newer ? 'warning' : 'passed'}
+								label={offer.newer ? `${offer.version} available` : `${offer.version} — same build`}
+							/>
+							<span class="dim">
+								{offer.origin} · {(offer.size / 1024 / 1024).toFixed(1)} MB
+								{#if offer.pageUrl}
+									· <a href={offer.pageUrl} target="_blank" rel="noreferrer">release notes</a>
+								{/if}
+							</span>
+						</div>
+					{/each}
+					{#each upgradeCheck.notes as note}
+						<div class="buildrow">
+							<span class="blabel"></span>
+							<span class="dim">{note}</span>
+						</div>
+					{/each}
+					{#if upgradeCheck.offers.length === 0 && upgradeCheck.notes.length === 0}
+						<p class="dim">No upgrade source answered.</p>
+					{/if}
+				{:else if checking}
+					<p class="dim">Checking…</p>
+				{:else}
+					<p class="dim">Not checked yet.</p>
+				{/if}
 			</Panel>
 			<div class="gap"></div>
 			<Panel title="Health checks" count={row.checks.length}>
@@ -549,11 +634,15 @@
 
 	<Modal title="Upgrade {row.name}" bind:open={upgradeOpen}>
 		<p>
-			Replace this daemon's binary with the one the primary is running
-			{#if row.outdated}
-				— it is on <b>{row.version}</b>, the primary is not.
+			{#if upgradeCheck?.offer}
+				Replace this daemon's binary — it runs <b>{row.version}</b>, and the
+				{upgradeCheck.offer.origin} has <b>{upgradeCheck.offer.version}</b>.
+			{:else if upgradeCheck?.offers.length}
+				Nothing newer is on offer: this daemon and the {upgradeCheck.offers[0]!.origin} both report
+				<b>{row.version}</b>, so this only reinstalls the binary.
 			{:else}
-				. Both report <b>{row.version}</b>, so this only reinstalls it.
+				No upgrade source has answered yet. Check for updates first, or upgrade anyway to make the
+				daemon resolve a source itself.
 			{/if}
 		</p>
 		<p class="dim">
@@ -613,6 +702,25 @@
 		&:last-child {
 			border-bottom: none;
 		}
+	}
+
+	.buildrow {
+		display: flex;
+		gap: 0.875rem;
+		align-items: baseline;
+		padding: 0.5rem 0;
+		border-bottom: 0.1rem solid var(--border-divider);
+
+		&:last-child {
+			border-bottom: none;
+		}
+	}
+
+	// wide enough for "Primary"/"GitHub" so the values line up under each other
+	.blabel {
+		flex: none;
+		width: 5rem;
+		color: var(--text-secondary);
 	}
 
 	.note {

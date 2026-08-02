@@ -94,23 +94,23 @@ export async function complete(words: string[]): Promise<string[]> {
 	return [...cands].filter((cand) => cand.startsWith(cur) && cand !== cur).sort();
 }
 
-export const BASH_HOOK = `# mrds bash completion
-_mrds_complete() {
+export const BASH_HOOK = `# luna bash completion
+_luna_complete() {
     local IFS=$'\\n'
-    COMPREPLY=($(mrds __complete -- "\${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null))
+    COMPREPLY=($(luna __complete -- "\${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null))
 }
-complete -o default -F _mrds_complete mrds
+complete -o default -F _luna_complete luna
 `;
 
-export const ZSH_HOOK = `# mrds zsh completion
-_mrds() {
+export const ZSH_HOOK = `# luna zsh completion
+_luna() {
     local -a completions
-    completions=("\${(@f)$(mrds __complete -- "\${(@)words[2,CURRENT]}" 2>/dev/null)}")
+    completions=("\${(@f)$(luna __complete -- "\${(@)words[2,CURRENT]}" 2>/dev/null)}")
     [[ -n "$completions" ]] && compadd -a completions
 }
-compdef _mrds mrds
+compdef _luna luna
 `;
 
-export const FISH_HOOK = `# mrds fish completion
-complete -c mrds -f -a "(mrds __complete -- (commandline -opc)[2..] (commandline -ct) 2>/dev/null)"
+export const FISH_HOOK = `# luna fish completion
+complete -c luna -f -a "(luna __complete -- (commandline -opc)[2..] (commandline -ct) 2>/dev/null)"
 `;

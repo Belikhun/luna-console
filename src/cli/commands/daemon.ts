@@ -8,11 +8,13 @@ import { pc, info, ok, warn, fail, printTable, Sym } from "../ui";
 import { ensureConnected, daemonInfo, DaemonUnavailable } from "../../client/socket";
 import { loadCluster, saveCluster } from "../../client/core/config";
 import {
+	checkDaemonUpgrade,
 	daemonDetail,
 	daemonHealth,
 	listDaemons,
 	upgradeDaemon,
 	type HealthSample,
+	type UpgradeCheck,
 } from "../../client/daemon";
 
 /** Milliseconds → compact "3d 4h" / "2h 5m" / "3m 12s" uptime. */
@@ -90,7 +92,7 @@ command({
 		} catch (err) {
 			if (err instanceof DaemonUnavailable) {
 				fail("no daemon is running on this host");
-				info(`start one with ${pc.cyan("mrds daemon run")} or install the service: ${pc.cyan("mrds daemon service install")}`);
+				info(`start one with ${pc.cyan("luna daemon run")} or install the service: ${pc.cyan("luna daemon service install")}`);
 				process.exitCode = 1;
 
 				return;
@@ -115,6 +117,16 @@ command({
 
 		if (health) {
 			printHealth(health);
+		}
+
+		// answered from the daemon's cached check, so this costs nothing here
+		const check = await checkDaemonUpgrade(d.name, false).catch(() => undefined);
+
+		if (check?.offer) {
+			warn(
+				`update    ${check.offer.version} available from the ${check.offer.origin} — ` +
+					`${pc.cyan("luna daemon upgrade")}`,
+			);
 		}
 	},
 });
@@ -238,21 +250,50 @@ command({
 	},
 });
 
+/** Bytes → "90.5 MB", the size an upgrade would transfer. */
+function mb(bytes: number): string {
+	return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** The offers table both `--check` and a refused upgrade print. */
+function printOffers(check: UpgradeCheck): void {
+	if (check.offers.length > 0) {
+		printTable(
+			check.offers.map((offer) => [
+				offer.newer ? pc.green(Sym.ok) : pc.dim(Sym.bad),
+				offer.channel,
+				offer.version,
+				mb(offer.size),
+				pc.dim(offer.origin),
+			]),
+			{ head: ["", "channel", "version", "size", "source"] },
+		);
+	}
+
+	for (const note of check.notes) {
+		info(pc.dim(note));
+	}
+}
+
 command({
 	path: ["daemon", "upgrade"],
-	desc: "Upgrade a follower daemon to the binary this primary is running",
+	desc: "Upgrade a daemon — from this primary's binary, or the GitHub release",
 	args: [
 		{
 			name: "name",
-			required: true,
-			complete: async () =>
-				(await listDaemons()).filter((row) => row.mode === "follower").map((row) => row.name),
+			required: false,
+			complete: async () => (await listDaemons()).map((row) => row.name),
 		},
 	],
-	opts: [{ flag: "--force", desc: "upgrade even when the build matches or jobs are running" }],
+	opts: [
+		{ flag: "--check", desc: "report what each channel offers without upgrading" },
+		{ flag: "--force", desc: "upgrade even when the build matches or jobs are running" },
+	],
 
 	handler: async (args, opts) => {
-		const name = args[0]!;
+		// no name means "this host's daemon", which is the common case for the
+		// primary — a follower is always addressed by name from the primary
+		const name = args[0] ?? (await ensureConnected()).name;
 		const rows = await listDaemons();
 		const row = rows.find((entry) => entry.name === name);
 
@@ -260,21 +301,47 @@ command({
 			throw new Bail(`unknown daemon: ${name}`);
 		}
 
-		if (row.mode === "primary") {
-			throw new Bail(
-				"the primary is the source of the binary — build a new one and restart its service",
-			);
-		}
-
 		if (!row.online) {
 			throw new Bail(`daemon "${name}" is not connected`);
 		}
 
+		if (opts.check) {
+			const check = await checkDaemonUpgrade(name, true);
+
+			info(`${name} runs ${check.current} (${check.platform})`);
+			printOffers(check);
+
+			if (check.offer) {
+				ok(`${check.offer.version} available from the ${check.offer.origin}`);
+			} else if (check.offers.length > 0) {
+				ok("up to date");
+			} else {
+				// "up to date" would be a lie when nothing answered at all
+				warn("no upgrade source could be reached");
+			}
+
+			return;
+		}
+
 		info(`upgrading ${name} (${row.version ?? "unknown build"})…`);
 
-		const result = await upgradeDaemon(name, !!opts.force);
+		let result;
 
-		ok(`${name}: ${result.from} → ${result.to}`);
+		try {
+			result = await upgradeDaemon(name, !!opts.force);
+		} catch (err) {
+			// the daemon's refusal names every channel it tried; show the table
+			// underneath it so the reason is obvious rather than quoted
+			const check = await checkDaemonUpgrade(name, false).catch(() => undefined);
+
+			if (check) {
+				printOffers(check);
+			}
+
+			throw new Bail(err instanceof Error ? err.message : String(err));
+		}
+
+		ok(`${name}: ${result.from} → ${result.to} ${pc.dim(`(from the ${result.origin})`)}`);
 		info("it exits now; the service manager restarts it on the new build");
 	},
 });
@@ -346,8 +413,21 @@ command({
 	},
 });
 
-/** The systemd unit for a 24/7 daemon. */
-function unitFile(binary: string, user: string | undefined, configFile: string | undefined): string {
+/** systemd unit name, without the .service suffix systemctl accepts either way. */
+export const UNIT_NAME = "mrds-daemon";
+
+/** Where the system-scope unit lives (`luna setup` writes this one). */
+export const UNIT_PATH = `/etc/systemd/system/${UNIT_NAME}.service`;
+
+/**
+ * The systemd unit for a 24/7 daemon. Shared with `luna setup`, which writes
+ * the same file for a machine it has just configured.
+ */
+export function unitFile(
+	binary: string,
+	user: string | undefined,
+	configFile: string | undefined,
+): string {
 	const environment = configFile
 		? `Environment=MRDS_DAEMON_CONFIG=${configFile}`
 		: `Environment=MRDS_ROOT=${process.env.MRDS_ROOT ?? ""}`;
@@ -364,6 +444,15 @@ function unitFile(binary: string, user: string | undefined, configFile: string |
 		"Restart=always",
 		"RestartSec=5",
 		environment,
+		// /run/mrds is the first socket candidate; letting systemd own it means
+		// the daemon never falls back to XDG_RUNTIME_DIR or /tmp, so every client
+		// on the machine finds it at the same path
+		"RuntimeDirectory=mrds",
+		"RuntimeDirectoryMode=0755",
+		// a server can outlive a stop signal for a while; killing its screens with
+		// the daemon would take the cluster down with a restart
+		"KillMode=process",
+		"TimeoutStopSec=30",
 	];
 
 	if (user) {
@@ -385,14 +474,14 @@ command({
 
 	handler: async (_args, opts) => {
 		// prefer the cluster symlink over a transient build path
-		const symlink = "/mnt/shulker/mrds/mrds";
+		const symlink = "/mnt/shulker/mrds/luna";
 		const binary = existsSync(symlink) ? symlink : process.execPath;
 		const configFile = (opts.config as string) ?? process.env.MRDS_DAEMON_CONFIG;
 
 		const userScope = !!opts.user;
 		const path = userScope
-			? join(homedir(), ".config", "systemd", "user", "mrds-daemon.service")
-			: "/etc/systemd/system/mrds-daemon.service";
+			? join(homedir(), ".config", "systemd", "user", `${UNIT_NAME}.service`)
+			: UNIT_PATH;
 
 		const unit = unitFile(binary, userScope ? undefined : userInfo().username, configFile);
 

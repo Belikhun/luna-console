@@ -35,8 +35,8 @@ let connection: { socket: string; info: DaemonInfo } | undefined;
 export class DaemonUnavailable extends Error {
 	constructor() {
 		super(
-			"mrds daemon is not running on this host — start it with `mrds daemon run`, " +
-				"or install the service: `mrds daemon service install`",
+			"luna daemon is not running on this host — start it with `luna daemon run`, " +
+				"or install the service: `luna daemon service install`",
 		);
 	}
 }

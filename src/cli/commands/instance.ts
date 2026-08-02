@@ -373,7 +373,7 @@ command({
 				info(`extra JVM flags: ${pc.cyan(javaArgs.join(" "))}`);
 			}
 
-			info(`start it with: ${pc.cyan(`mrds start ${name}`)}`);
+			info(`start it with: ${pc.cyan(`luna start ${name}`)}`);
 		} catch (err) {
 			view.stop();
 
@@ -441,7 +441,7 @@ command({
 		);
 
 		info(`old jar kept at ${pc.dim(res.backedUpJar)}`);
-		info(`re-resolve plugin versions for the new MC: ${pc.cyan("mrds plugins update --deploy")}`);
+		info(`re-resolve plugin versions for the new MC: ${pc.cyan("luna plugins update --deploy")}`);
 	},
 });
 
@@ -491,7 +491,7 @@ command({
 
 		if (!spec) {
 			throw new UsageError(
-				`"${key}" is not a known server setting — run "mrds instance settings ${name}" for the list`,
+				`"${key}" is not a known server setting — run "luna instance settings ${name}" for the list`,
 			);
 		}
 
@@ -560,7 +560,7 @@ command({
 				]),
 			]);
 
-			info(`server settings live in server.properties: ${pc.cyan(`mrds instance settings ${name}`)}`);
+			info(`server settings live in server.properties: ${pc.cyan(`luna instance settings ${name}`)}`);
 
 			return;
 		}

@@ -22,6 +22,7 @@ import { currentHealth, healthHistory, hostAddresses, type HealthSample } from "
 import { log } from "./index";
 import {
 	installRouting,
+	setCheckSender,
 	setDaemonDetailProvider,
 	setDaemonsProvider,
 	setUpgradeSender,
@@ -29,6 +30,7 @@ import {
 	type OpSpec,
 } from "./rpc";
 import { PROTOCOL_VERSION } from "./server";
+import { checkUpgrade, selfUpgrade } from "./upgrade";
 import { buildVersion } from "../version";
 
 /** State files a follower mirrors from the primary. The forwarding secret rides
@@ -603,15 +605,18 @@ function forwardOp(
 }
 
 /**
- * Tell a follower to replace its binary with this primary's. The primary is the
- * source of the build, so it never upgrades itself through this path — that is
- * an operator action (build, restart the service).
+ * Upgrade one daemon in the fleet.
+ *
+ * A follower is told to pull the binary this primary is running — the fast path
+ * for a development cluster. The primary has no such source, so it upgrades
+ * itself from the GitHub release; either way the daemon resolves its own source
+ * (DESIGN.md §4.7) and this only decides *where the request runs*.
  */
-async function upgradeFollower(name: string, force: boolean): Promise<unknown> {
+async function upgradeDaemon(name: string, force: boolean): Promise<unknown> {
 	if (name === hubConfig?.name) {
-		throw new Error(
-			"the primary is the source of the binary — build a new one and restart its service",
-		);
+		pushEvent(daemonEventKey(name), "action", "self-upgrade requested from the console");
+
+		return await selfUpgrade(force);
 	}
 
 	if (!followers.has(name)) {
@@ -621,6 +626,21 @@ async function upgradeFollower(name: string, force: boolean): Promise<unknown> {
 	pushEvent(daemonEventKey(name), "action", "upgrade requested by the primary");
 
 	const outcome = await forwardOp(name, "daemon.selfUpgrade", [force]);
+
+	return outcome.result;
+}
+
+/** Ask one daemon what it could upgrade to, without applying anything. */
+async function checkDaemonUpgrade(name: string, refresh: boolean): Promise<unknown> {
+	if (name === hubConfig?.name) {
+		return await checkUpgrade(refresh);
+	}
+
+	if (!followers.has(name)) {
+		throw new Error(`follower "${name}" is not connected`);
+	}
+
+	const outcome = await forwardOp(name, "daemon.checkUpgrade", [refresh]);
 
 	return outcome.result;
 }
@@ -908,7 +928,8 @@ export function installHub(dcfg: DaemonConfig, startedAt: number): void {
 	installRouting(resolveRemote, forwardOp);
 	setDaemonsProvider(listDaemons);
 	setDaemonDetailProvider(daemonDetail);
-	setUpgradeSender(upgradeFollower);
+	setUpgradeSender(upgradeDaemon);
+	setCheckSender(checkDaemonUpgrade);
 
 	void refreshClusterCache();
 

@@ -1,0 +1,55 @@
+# Follower daemon.
+#
+# A follower runs the instances the primary assigned to it and mirrors
+# everything else — cluster.json, plugins.lock.json and the jars it needs — down
+# from the primary over the cluster link. It never writes cluster state on its
+# own authority, so its volume holds worlds and logs, not the registry.
+#
+#   cp .env.example .env && edit it   (MRDS_TOKEN must match the primary's)
+#   docker compose -f docker-compose.follower.yml up -d
+#
+# The primary reaches this machine's backends directly, not through the link, so
+# the instance ports have to be published. Backends created for a follower are
+# bound to 0.0.0.0 for exactly this reason.
+
+name: mrds-follower
+
+services:
+  mrds:
+    image: ghcr.io/belikhun/luna-control:latest
+    container_name: mrds-follower
+    restart: unless-stopped
+    command: ["daemon", "run"]
+
+    environment:
+      MRDS_MODE: follower
+      # unique across the cluster: this is the name the primary assigns
+      # instances to, and it survives restarts
+      MRDS_DAEMON_NAME: ${MRDS_DAEMON_NAME:?set MRDS_DAEMON_NAME in .env}
+      MRDS_ROOT: /data
+      MRDS_PRIMARY_ADDRESS: ${MRDS_PRIMARY_ADDRESS:?set MRDS_PRIMARY_ADDRESS in .env}
+      MRDS_TOKEN: ${MRDS_TOKEN:?set MRDS_TOKEN in .env}
+      # the LAN address the primary should route this machine's backends to;
+      # without it the primary falls back to the address it sees on the socket
+      MRDS_HOST: ${MRDS_HOST:-}
+      MRDS_SOCKET: /data/run/daemon.sock
+
+    volumes:
+      - cluster:/data
+
+    ports:
+      # the backend port range this machine's instances are allocated from —
+      # narrow it to what this follower actually owns
+      - "32560-32599:32560-32599"
+
+    stop_grace_period: 2m
+
+    healthcheck:
+      test: ["CMD", "luna", "daemon", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  cluster:
