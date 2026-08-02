@@ -47,7 +47,7 @@
 
 	.bar {
 		height: 0.5rem;
-		background: var(--bg-input);
+		background: var(--bg-bar);
 		border-radius: 0.25rem;
 		overflow: hidden;
 		margin: 0.375rem 0;
