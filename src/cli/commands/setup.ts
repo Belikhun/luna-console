@@ -1,11 +1,11 @@
 /**
  * `sudo luna setup` — the machine installer.
  *
- * Everything a host needs to run a daemon 24/7, in one root-owned pass: the
- * binary on a stable system path, a service account, the cluster root, the
- * daemon config, the systemd unit, shell completion, then enable + start +
- * verify. It is the only command that writes outside the cluster root, and the
- * only one that requires root.
+ * Everything a host needs to run a daemon 24/7, in one root-owned pass: a
+ * service account, the cluster root, the single binary inside it, PATH wiring
+ * so that binary is reachable, the daemon config, the systemd unit, shell
+ * completion, then enable + start + verify. It is the only command that writes
+ * outside the cluster root, and the only one that requires root.
  *
  * Deliberately not a wrapper around `daemon service install`: that command
  * writes a unit for an already-configured host, this one *configures* the host.
@@ -35,8 +35,31 @@ import { DEFAULT_CLUSTER_PORT } from "../../daemon/config";
 import { starterCluster } from "../../shared/bootstrap";
 import { isCompiledBinary } from "../../version";
 
-/** Where the binary is installed, and what the unit's ExecStart points at. */
-const BIN_PATH = "/usr/local/bin/luna";
+/**
+ * The one binary, under the service account's home — which `createUser` sets to
+ * the cluster root.
+ *
+ * A self-upgrade stages `<path>.new` beside the binary and renames it into
+ * place, so it needs write permission on the **containing directory**, not just
+ * the file. A binary in `/usr/local/bin` can therefore never replace itself,
+ * however it is owned, and that directory must stay root's. Keeping the single
+ * copy in a directory the service account already owns is what makes an
+ * unattended upgrade possible at all; humans reach it through PATH instead.
+ */
+const BIN_DIR = ".bin";
+
+/** Pre-1.0 installs put a second, root-owned copy here. It is removed on sight. */
+const LEGACY_BIN = "/usr/local/bin/luna";
+
+/** System-wide PATH entry, for login shells of every account. */
+const PROFILE_PATH = "/etc/profile.d/luna.sh";
+
+/** Marker around the block setup owns in a shell rc file, so a re-run replaces it. */
+const RC_OPEN = "# >>> luna >>>";
+const RC_CLOSE = "# <<< luna <<<";
+
+/** Interactive non-login shells never read /etc/profile.d, so rc files matter too. */
+const RC_FILES = [".bashrc", ".zshrc"];
 
 /** The daemon config the unit points at — first candidate in the probe order. */
 const CONFIG_PATH = "/etc/luna/daemon.json";
@@ -155,43 +178,185 @@ async function place(
 }
 
 /**
- * Install the running binary at the system path, unless it is already there.
+ * Install the running binary at one path, unless it is already there.
  *
  * Copied to a staging file and renamed into place rather than written over:
  * on a re-run the destination is a *running* daemon's executable, and writing
  * into that is ETXTBSY. The rename is atomic and the running process keeps the
  * inode it started from — the same swap a self-upgrade does.
  */
-async function installBinary(plan: Plan): Promise<void> {
+async function installBinary(
+	plan: Plan,
+	target: string,
+	owner?: { uid: number; gid: number },
+): Promise<void> {
 	const source = process.execPath;
 
-	if (resolve(source) === resolve(plan.bin)) {
-		info(`binary already at ${plan.bin}`);
+	if (resolve(source) === resolve(target)) {
+		info(`binary already at ${target}`);
 
 		return;
 	}
 
 	if (plan.dryRun) {
-		info(`would install ${pc.cyan(source)} → ${pc.cyan(plan.bin)}`);
+		info(
+			`would install ${pc.cyan(source)} → ${pc.cyan(target)}${owner ? pc.dim(` (owned by ${plan.user})`) : ""}`,
+		);
 
 		return;
 	}
 
-	const staging = `${plan.bin}.new`;
+	const staging = `${target}.new`;
 
-	await mkdir(dirname(plan.bin), { recursive: true });
+	await mkdir(dirname(target), { recursive: true });
 
 	try {
 		await copyFile(source, staging);
 		await chmod(staging, 0o755);
-		await rename(staging, plan.bin);
+
+		if (owner) {
+			await chown(staging, owner.uid, owner.gid);
+		}
+
+		await rename(staging, target);
 	} catch (err) {
 		await unlink(staging).catch(() => {});
 
 		throw err;
 	}
 
-	ok(`installed ${plan.bin} ${pc.dim(`(${((await stat(plan.bin)).size / 1024 / 1024).toFixed(1)} MB)`)}`);
+	const size = ((await stat(target)).size / 1024 / 1024).toFixed(1);
+
+	ok(`installed ${target} ${pc.dim(`(${size} MB${owner ? `, owned by ${plan.user}` : ""})`)}`);
+}
+
+/**
+ * Install the binary into a directory the service account owns.
+ *
+ * The directory has to belong to it, not just the file: an upgrade writes
+ * `luna.new` next to the target before renaming it over, which is a write
+ * against the *directory*. Owning it is the whole point.
+ */
+async function installDaemonBinary(plan: Plan, owner: { uid: number; gid: number }): Promise<void> {
+	if (!plan.dryRun) {
+		const dir = dirname(plan.bin);
+
+		await mkdir(dir, { recursive: true });
+		await chown(dir, owner.uid, owner.gid);
+		await chmod(dir, 0o755);
+	}
+
+	await installBinary(plan, plan.bin, plan.dryRun ? undefined : owner);
+
+	if (plan.dryRun) {
+		return;
+	}
+
+	// A cluster root on a `noexec` mount would take the unit down with a bare
+	// systemd 203/EXEC, which says nothing about why. Ask now, while there is
+	// still somewhere useful to point the user.
+	const probe = await run([plan.bin, "version"]).catch(() => ({ code: -1, out: "" }));
+
+	if (probe.code !== 0) {
+		throw new Bail(
+			`${plan.bin} will not execute (${probe.out || "spawn failed"}) — if ${plan.root} ` +
+				`is mounted noexec the daemon cannot run its own binary from there`,
+		);
+	}
+}
+
+/** Drop the root-owned copy an older install left on PATH. */
+async function removeLegacyBinary(plan: Plan): Promise<void> {
+	if (resolve(plan.bin) === resolve(LEGACY_BIN) || !existsSync(LEGACY_BIN)) {
+		return;
+	}
+
+	if (plan.dryRun) {
+		info(`would remove ${pc.cyan(LEGACY_BIN)} ${pc.dim("(superseded by the one on PATH)")}`);
+
+		return;
+	}
+
+	await unlink(LEGACY_BIN);
+
+	ok(`removed ${LEGACY_BIN} ${pc.dim("(superseded)")}`);
+}
+
+/**
+ * Replace the block this installer owns in a shell rc file, leaving everything
+ * else byte-for-byte. Returns whether the file changed.
+ */
+async function rewriteBlock(path: string, block: string): Promise<boolean> {
+	const before = existsSync(path) ? await readFile(path, "utf8") : "";
+	const open = before.indexOf(RC_OPEN);
+	const close = before.indexOf(RC_CLOSE);
+
+	let after: string;
+
+	if (open !== -1 && close > open) {
+		after = before.slice(0, open) + block + before.slice(close + RC_CLOSE.length);
+	} else {
+		after = before.endsWith("\n") || before === "" ? `${before}${block}\n` : `${before}\n${block}\n`;
+	}
+
+	if (after === before) {
+		return false;
+	}
+
+	await writeFile(path, after);
+
+	return true;
+}
+
+/**
+ * Put the binary's directory on PATH, since there is no longer a copy in a
+ * directory that is already there.
+ *
+ * Two places, because they cover different shells: `/etc/profile.d` is read by
+ * *login* shells of every account, and the rc files by *interactive non-login*
+ * ones — which is what a terminal emulator or a tmux pane usually starts, and
+ * which would otherwise never see the change. Only the human who invoked sudo
+ * gets rc edits; the service account has no login shell to read them.
+ */
+async function wirePath(plan: Plan): Promise<void> {
+	const dir = dirname(plan.bin);
+	const block = `${RC_OPEN}\nexport PATH="${dir}:$PATH"\n${RC_CLOSE}`;
+
+	await place(plan, PROFILE_PATH, `${block}\n`, 0o644);
+
+	const human = process.env.SUDO_USER;
+
+	if (!human || human === "root") {
+		return;
+	}
+
+	const home = await run(["getent", "passwd", human]);
+	const fields = home.out.split(":");
+	const homeDir = fields[5];
+
+	if (!homeDir || !existsSync(homeDir)) {
+		return;
+	}
+
+	for (const name of RC_FILES) {
+		const path = join(homeDir, name);
+
+		// only files the user already keeps — creating a .zshrc for someone who
+		// does not run zsh is litter, and /etc/profile.d already covers login
+		if (!existsSync(path)) {
+			continue;
+		}
+
+		if (plan.dryRun) {
+			info(`would put ${pc.cyan(dir)} on PATH in ${pc.cyan(path)}`);
+
+			continue;
+		}
+
+		if (await rewriteBlock(path, block)) {
+			ok(`PATH set in ${path}`);
+		}
+	}
 }
 
 /**
@@ -518,7 +683,7 @@ async function buildPlan(opts: Record<string, string | boolean>): Promise<Plan> 
 		listen,
 		primary,
 		host: host || undefined,
-		bin: (opts.bin as string) ?? BIN_PATH,
+		bin: (opts.bin as string) ?? join(resolve(root), BIN_DIR, "luna"),
 		dryRun: !!opts["dry-run"],
 		start: !opts["no-start"],
 	};
@@ -536,7 +701,7 @@ command({
 		{ flag: "--listen", desc: `primary: follower listener (default 0.0.0.0:${DEFAULT_CLUSTER_PORT})`, value: true },
 		{ flag: "--primary", desc: "follower: primary daemon address, host:port", value: true },
 		{ flag: "--host", desc: "follower: LAN address the primary routes to", value: true },
-		{ flag: "--bin", desc: `where to install the binary (default ${BIN_PATH})`, value: true },
+		{ flag: "--bin", desc: `where to install the binary (default <root>/${BIN_DIR}/luna)`, value: true },
 		{ flag: "--no-start", desc: "write everything but leave the service stopped" },
 		{ flag: "--dry-run", desc: "print every change without making one" },
 		{ flag: "--yes", desc: "take the defaults instead of prompting" },
@@ -573,7 +738,7 @@ command({
 		info(`${pc.bold(plan.mode)} daemon ${pc.bold(plan.name)}`);
 		info(`root      ${plan.root}`);
 		info(`user      ${plan.user}`);
-		info(`binary    ${plan.bin}`);
+		info(`binary    ${plan.bin} ${pc.dim(`(owned by ${plan.user}, self-upgradable)`)}`);
 		info(`config    ${CONFIG_PATH}`);
 		info(`unit      ${UNIT_PATH}`);
 
@@ -606,8 +771,10 @@ command({
 		}
 
 		// -- binary, root, config, unit, completion --------------------------------
-		await installBinary(plan);
 		await prepareRoot(plan, owner);
+		await installDaemonBinary(plan, owner);
+		await removeLegacyBinary(plan);
+		await wirePath(plan);
 
 		// the token is in here, so nobody but the service account may read it
 		await place(plan, CONFIG_PATH, configFile(plan), 0o640, plan.dryRun ? undefined : owner);
@@ -650,5 +817,12 @@ command({
 			ok("follower ready");
 			info(`the primary should now list it: ${pc.cyan("luna daemon list")}`);
 		}
+
+		console.log("");
+		info(`open a new shell for ${pc.cyan("luna")} to be on your PATH, or ${pc.cyan(`source ${PROFILE_PATH}`)}`);
+
+		// sudo resets PATH to its own secure_path, which will not contain the
+		// cluster root — so the next privileged run needs the absolute path
+		warn(`sudo ignores your PATH — re-run this installer as ${pc.cyan(`sudo ${plan.bin} setup`)}`);
 	},
 });

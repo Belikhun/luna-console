@@ -16,7 +16,8 @@
  * run in, and they outlive it.
  */
 
-import { chmod, rename, stat, unlink } from "node:fs/promises";
+import { access, chmod, constants, rename, stat, unlink } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import {
 	assetName,
@@ -409,6 +410,21 @@ export async function selfUpgrade(force = false): Promise<UpgradeResult> {
 
 	if (jobs > 0 && !force) {
 		throw new Error(`${jobs} job(s) still running — wait for them to settle, or force the upgrade`);
+	}
+
+	// Checked before spending a 90 MB download on a swap that cannot land. The
+	// staged file is written *beside* the binary and renamed over it, so what has
+	// to be writable is the directory — a daemon whose binary sits in
+	// /usr/local/bin cannot upgrade itself however the file itself is owned.
+	const binDir = dirname(process.execPath);
+
+	try {
+		await access(binDir, constants.W_OK);
+	} catch {
+		throw new Error(
+			`cannot replace ${process.execPath}: ${binDir} is not writable by this daemon — ` +
+				`re-run "sudo luna setup" here to move it onto a binary the service account owns`,
+		);
 	}
 
 	const check = await checkUpgrade(true);

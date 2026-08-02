@@ -11,12 +11,13 @@ chmod +x luna-linux-x64
 sudo ./luna-linux-x64 setup
 ```
 
-`setup` is the whole install: it creates the service account, puts the binary at
-`/usr/local/bin/luna`, prepares the cluster root (seeding an empty registry on a
-primary), writes `/etc/luna/daemon.json` and the systemd unit, installs shell
-completion, then enables, starts and waits for the daemon to answer. It prompts
-for what you do not pass; `--yes` takes the defaults and `--dry-run` prints every
-change without making one:
+`setup` is the whole install: it creates the service account, prepares the
+cluster root (seeding an empty registry on a primary), puts the one binary at
+`<root>/.bin/luna` owned by that account, adds its directory to PATH, writes
+`/etc/luna/daemon.json` and the systemd unit, installs shell completion, then
+enables, starts and waits for the daemon to answer. It prompts for what you do
+not pass; `--yes` takes the defaults and `--dry-run` prints every change without
+making one:
 
 ```
 sudo luna setup --yes --mode primary  --root /srv/luna
@@ -31,8 +32,18 @@ Re-running it reconfigures rather than resets — the existing config supplies t
 defaults, so the cluster token survives and the service restarts onto the new
 binary.
 
+Two things follow from there being one binary rather than a system-wide copy:
+
+- **Open a new shell** before `luna` resolves, or `source /etc/profile.d/luna.sh`.
+- **`sudo` will not find it.** sudo replaces your PATH with its own `secure_path`,
+  which does not include the cluster root, so privileged runs need the full path:
+  `sudo <root>/.bin/luna setup`. The installer prints it when it finishes.
+
 From then on the daemon upgrades itself: `luna daemon upgrade <name>` takes the
-primary's binary when there is one and the GitHub release otherwise.
+primary's binary when there is one and the GitHub release otherwise, replacing
+`<root>/.bin/luna` in place — the same file you invoke, so nothing drifts. A
+daemon started by hand from a directory its account cannot write (`/usr/local/bin`,
+say) cannot upgrade itself at all, and says so instead of failing on an errno.
 
 ## Container
 

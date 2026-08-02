@@ -258,6 +258,18 @@ export interface InstanceConfig {}
   skew is exactly the one that needs a new binary (DESIGN.md §4.7). Self-upgrade refuses
   outright from a source run — `process.execPath` is the bun interpreter there, and
   overwriting it would take the toolchain with it (`isCompiledBinary()`).
+- **One binary, and it lives in the cluster root.** `luna setup` installs exactly
+  `<root>/.bin/luna`, owned by the service account, and puts that directory on PATH
+  (`/etc/profile.d/luna.sh` for login shells, a marked block in the invoking user's
+  `.bashrc`/`.zshrc` for interactive ones). Nothing is installed under `/usr`; a copy left
+  there by an older install is removed. The reason is upgrades: a swap stages `luna.new`
+  beside the target and renames it, so it needs the **directory** writable, and `/usr/local/bin`
+  is root's — chowning the file there would not have helped. Never point `ExecStart` anywhere
+  else, and never reintroduce a second copy: two would drift the moment one self-upgrades.
+  Consequence to keep in mind: `sudo` uses its own `secure_path`, so privileged runs need the
+  absolute path (`sudo <root>/.bin/luna setup`). The container image is the exception — it
+  keeps the binary at `/usr/local/bin/luna` and runs as root, because images are replaced,
+  not upgraded in place.
 
 ### Operations
 - Destructive or cluster-wide actions (stop, delete, set-version, cleanup) must be
