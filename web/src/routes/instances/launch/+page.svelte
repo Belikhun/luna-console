@@ -33,8 +33,10 @@
 	let javaArgs = $state('');
 	let creating = $state(false);
 	let existing: string[] = $state([]);
+	/** the machine the instance will be created on — a daemon name, always set */
 	let daemon = $state('');
-	let followers: string[] = $state([]);
+	let daemons: Array<{ name: string; mode: string; online: boolean }> = $state([]);
+	let primaryName = $state('');
 
 	let schema: any[] = $state([]);
 	let groups: any[] = $state([]);
@@ -54,9 +56,17 @@
 		versions = paper.versions;
 		mcVersion = versions[0] ?? '';
 		existing = insts.instances.map((inst: any) => inst.name);
-		followers = cluster.daemons
-			.filter((row: any) => row.mode === 'follower')
-			.map((row: any) => row.name);
+
+		daemons = cluster.daemons.map((row: any) => ({
+			name: row.name,
+			mode: row.mode,
+			online: !!row.online
+		}));
+
+		// the primary is the default target and the only machine guaranteed to be
+		// there — creation on a follower is forwarded over its link
+		primaryName = daemons.find((row) => row.mode === 'primary')?.name ?? '';
+		daemon = primaryName;
 
 		// the java profiles and the settings schema both come off any existing
 		// backend's config route — there is no instance yet to read them from
@@ -106,6 +116,17 @@
 
 	const changedCount = $derived(Object.keys(changedSettings).length);
 
+	/** Every daemon, primary first, with offline ones listed but unpickable. */
+	const daemonOptions = $derived(
+		[...daemons]
+			.sort((a, b) => (a.mode === 'primary' ? -1 : b.mode === 'primary' ? 1 : 0))
+			.map((row) => ({
+				value: row.name,
+				label: `${row.name} (${row.mode}${row.online ? '' : ', offline'})`,
+				disabled: !row.online
+			}))
+	);
+
 	async function launch(): Promise<void> {
 		creating = true;
 		job = null;
@@ -123,7 +144,9 @@
 				javaArgs,
 				pluginGroups,
 				pluginOverrides,
-				daemon
+				// the registry records an owner only for follower-held instances, so
+				// the primary is sent as "no daemon" rather than by name
+				daemon: daemon === primaryName ? '' : daemon
 			});
 
 			job = started.job;
@@ -221,25 +244,17 @@
 				/>
 			</div>
 		</FormGrid>
-		{#if followers.length}
-			<FormGrid cols={2}>
-				<div class="field">
-					<span class="lbl">Daemon</span>
-					<span class="hint">
-						Machine the instance will run on — followers mirror the plugin pool from
-						the primary and the proxy routes to them over the LAN.
-					</span>
-					<Select
-						bind:value={daemon}
-						width="100%"
-						options={[
-							{ value: '', label: 'primary (this machine)' },
-							...followers.map((entry) => ({ value: entry, label: entry }))
-						]}
-					/>
-				</div>
-			</FormGrid>
-		{/if}
+		<FormGrid cols={2}>
+			<div class="field">
+				<span class="lbl">Machine</span>
+				<span class="hint">
+					Daemon the instance is created on and runs under — followers mirror the plugin
+					pool from the primary and the proxy routes to them over the LAN. An offline
+					daemon cannot be given work, so it is listed but not selectable.
+				</span>
+				<Select bind:value={daemon} width="100%" options={daemonOptions} />
+			</div>
+		</FormGrid>
 		<label class="field">
 			<span class="lbl">Extra JVM arguments</span>
 			<span class="hint">

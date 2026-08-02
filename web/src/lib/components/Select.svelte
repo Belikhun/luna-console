@@ -17,7 +17,9 @@
 		/** caption notched into the field's top border */
 		label?: string;
 		value?: string;
-		options: Array<{ value: string; label: string }>;
+		/** a disabled entry stays listed, greyed and unpickable — an option the
+		 *  caller wants seen but not chosen (an offline machine, say) */
+		options: Array<{ value: string; label: string; disabled?: boolean }>;
 		width?: string;
 		onchange?: (value: string) => void;
 	} = $props();
@@ -67,10 +69,14 @@
 		}
 	}
 
-	function pick(next: string): void {
-		value = next;
+	function pick(option: { value: string; disabled?: boolean }): void {
+		if (option.disabled) {
+			return;
+		}
+
+		value = option.value;
 		open = false;
-		onchange?.(next);
+		onchange?.(option.value);
 	}
 
 	/** The listbox is fixed-positioned outside the root, so test it separately. */
@@ -135,7 +141,8 @@
 					class:current
 					role="option"
 					aria-selected={current}
-					onclick={() => pick(option.value)}
+					disabled={option.disabled}
+					onclick={() => pick(option)}
 				>
 					<span class="otext">{option.label}</span>
 					{#if current}<Icon name="check" size="0.875rem" style="solid" />{/if}
@@ -258,6 +265,14 @@
 			:global(icon) {
 				color: var(--link);
 			}
+		}
+
+		// last, so it wins over both :hover and .current — a listed-but-unpickable
+		// entry must never look interactive
+		&:disabled {
+			background: none;
+			color: var(--text-disabled);
+			cursor: not-allowed;
 		}
 	}
 

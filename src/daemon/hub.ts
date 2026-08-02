@@ -33,8 +33,16 @@ import { PROTOCOL_VERSION } from "./server";
 import { checkUpgrade, selfUpgrade } from "./upgrade";
 import { buildVersion } from "../version";
 
-/** State files a follower mirrors from the primary. The forwarding secret rides
- *  along so a follower can key paper-global.yml when materializing instances. */
+/**
+ * State files a follower mirrors from the primary.
+ *
+ * The forwarding secret rides along so a follower can key paper-global.yml when
+ * materializing the instances it owns. It keeps the `proxy/` prefix because
+ * `readForwardingSecret` resolves one root-relative path on every machine, so a
+ * follower ends up with a `proxy/` directory holding nothing but that file —
+ * which is not a proxy instance. The cluster has exactly one Velocity and it
+ * runs on the primary.
+ */
 const SYNC_FILES = [
 	"cluster.json",
 	"plugins.lock.json",

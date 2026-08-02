@@ -68,6 +68,42 @@ function configFileCandidates(): string[] {
 	return candidates;
 }
 
+/** Where this machine's cluster token comes from, and what it is. */
+export interface TokenSource {
+	/** The configured token, or undefined when this machine has none. */
+	token?: string;
+	/** The config file or environment variable it was read from. */
+	from?: string;
+}
+
+/**
+ * Read the cluster token this machine is configured with, without resolving
+ * anything else.
+ *
+ * Deliberately not built on `resolveDaemonConfig`: that one creates the socket
+ * directory and refuses a machine with no cluster root, and neither should be a
+ * precondition for answering "what is my token". The first *existing* config
+ * file is the answer even when it carries no token — that is the file the daemon
+ * would load, so its silence is the honest result.
+ */
+export async function configuredToken(): Promise<TokenSource> {
+	if (process.env.LUNA_TOKEN) {
+		return { token: process.env.LUNA_TOKEN, from: "LUNA_TOKEN" };
+	}
+
+	for (const candidate of configFileCandidates()) {
+		if (!existsSync(candidate)) {
+			continue;
+		}
+
+		const file = (await Bun.file(candidate).json()) as Partial<DaemonConfig>;
+
+		return { token: file.token, from: candidate };
+	}
+
+	return {};
+}
+
 /** Walk from cwd looking for a cluster.json, mirroring core's root discovery. */
 function discoverRoot(): string | undefined {
 	let dir = process.cwd();

@@ -4,6 +4,7 @@ import { homedir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 
 import { command, Bail } from "../framework";
+import { configuredToken } from "../../daemon/config";
 import { pc, info, ok, warn, fail, printTable, Sym } from "../ui";
 import { ensureConnected, daemonInfo, DaemonUnavailable } from "../../client/socket";
 import { loadCluster, saveCluster } from "../../client/core/config";
@@ -399,17 +400,37 @@ command({
 
 command({
 	path: ["daemon", "token"],
-	desc: "Generate a cluster token for daemon configs",
+	desc: "Show this machine's cluster token",
+	opts: [{ flag: "--new", desc: "generate a fresh token instead of showing the current one" }],
 
-	handler: async () => {
-		const bytes = new Uint8Array(32);
+	handler: async (_args, opts) => {
+		if (opts.new) {
+			const bytes = new Uint8Array(32);
 
-		crypto.getRandomValues(bytes);
+			crypto.getRandomValues(bytes);
 
-		const token = Buffer.from(bytes).toString("base64url");
+			// printed, never written: adopting a new token is a cluster-wide edit,
+			// and doing it silently here would cut off every follower mid-sentence
+			console.log(Buffer.from(bytes).toString("base64url"));
+
+			info(`set as ${pc.cyan("token")} in every daemon's config (primary and followers)`);
+			warn("nothing adopts this until you write it — followers stay on the old token meanwhile");
+
+			return;
+		}
+
+		const { token, from } = await configuredToken();
+
+		if (!token) {
+			throw new Bail(
+				from
+					? `no token configured in ${from} — generate one with "luna daemon token --new"`
+					: 'no daemon config on this machine — generate a token with "luna daemon token --new"',
+			);
+		}
 
 		console.log(token);
-		info(`set as ${pc.cyan("token")} in every daemon's config (primary and followers)`);
+		info(`from ${pc.dim(from!)} — every follower needs this same value`);
 	},
 });
 
