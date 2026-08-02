@@ -42,7 +42,7 @@ export interface HealthSample {
 
 /** One hour of history at the sampling interval below. */
 const MAX_SAMPLES = 720;
-const SAMPLE_INTERVAL_MS = 5_000;
+export const SAMPLE_INTERVAL_MS = 5_000;
 
 /** `df` is a process spawn, and a filesystem does not fill up in five seconds. */
 const DISK_INTERVAL_MS = 60_000;

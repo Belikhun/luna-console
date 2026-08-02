@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { api, del } from '$lib/api';
+	import { api, del, post } from '$lib/api';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Panel from '$lib/components/Panel.svelte';
@@ -254,20 +254,123 @@
 	}
 
 	let selected: Set<string> = $state(new Set());
+	let upgradeOpen = $state(false);
+	let upgrading = $state(false);
+	let upgradeTargets: DaemonRow[] = $state([]);
 
-	/** The row the header's Actions dropdown acts on. */
-	const one = $derived(daemons.find((row: any) => selected.has(row.name)));
+	/** The row the header's Actions dropdown acts on — only ever a single row. */
+	const one = $derived(
+		selected.size === 1 ? daemons.find((row) => selected.has(row.name)) : undefined
+	);
+
+	const selRows = $derived(daemons.filter((row) => selected.has(row.name)));
+
+	/**
+	 * A daemon can be handed an upgrade when it is a connected follower: the
+	 * primary is the source of the binary, and an offline follower has no link to
+	 * forward the request down.
+	 */
+	function upgradable(row: DaemonRow): boolean {
+		return row.mode === 'follower' && row.online;
+	}
+
+	const selUpgradable = $derived(selRows.filter(upgradable));
+	const outdatedRows = $derived(daemons.filter((row) => row.outdated && upgradable(row)));
+
+	/** Open the confirmation for a set of targets, ignoring an empty one. */
+	function askUpgrade(targets: DaemonRow[]): void {
+		if (targets.length === 0) {
+			return;
+		}
+
+		upgradeTargets = targets;
+		upgradeOpen = true;
+	}
+
+	/**
+	 * Upgrade each target in turn, reporting per-target outcomes.
+	 *
+	 * Sequential on purpose: every one of these exits as it answers and comes
+	 * back on the new build, and taking the whole fleet down at once would leave
+	 * nothing serving while they restart.
+	 */
+	async function runUpgrade(): Promise<void> {
+		const targets = upgradeTargets;
+
+		upgrading = true;
+		upgradeOpen = false;
+
+		const note = Notify.loading(`Upgrading ${targets.length} daemon(s)…`, { progress: 0 });
+		const done: string[] = [];
+		const failed: string[] = [];
+
+		for (const [index, row] of targets.entries()) {
+			note.set({
+				message: `Upgrading ${row.name}… (${index + 1}/${targets.length})`,
+				progress: Math.round((index / targets.length) * 100)
+			});
+
+			try {
+				const res = await post(`/daemons/${encodeURIComponent(row.name)}`, {
+					action: 'upgrade',
+					force: !row.outdated
+				});
+
+				done.push(`${row.name}: ${res.result.from} → ${res.result.to}`);
+			} catch (err) {
+				failed.push(`${row.name}: ${(err as Error).message}`);
+			}
+		}
+
+		note.set({
+			level: failed.length ? (done.length ? 'warning' : 'error') : 'success',
+			message: failed.length
+				? `${done.length} upgraded, ${failed.length} failed`
+				: `${done.length} daemon(s) upgraded`,
+			detail: [...done, ...failed].join('\n'),
+			progress: 100,
+			closeable: true
+		});
+
+		upgrading = false;
+		selected = new Set();
+
+		await refresh();
+	}
 </script>
 
 <svelte:head><title>Daemons | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Daemons"
-	count={daemons.length}
+	count="{selected.size ? `${selected.size}/` : ''}{daemons.length}"
 	description="Machines running an luna daemon — the primary owns the registry, plugins and schedules; followers manage the instances assigned to them and mirror everything else from the primary. Health streams in on each daemon's heartbeat."
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="daemons" />
+		<Dropdown
+			label="Upgrade"
+			disabled={upgrading || (selUpgradable.length === 0 && outdatedRows.length === 0)}
+			items={[
+				{
+					label: `Upgrade selected (${selUpgradable.length})`,
+					icon: 'download',
+					disabled: selUpgradable.length === 0,
+					hint:
+						selected.size === 0
+							? 'select one or more daemons first'
+							: 'the primary is the source of the binary, and an offline follower cannot be reached',
+					action: () => askUpgrade(selUpgradable)
+				},
+				{
+					label: `Upgrade all outdated (${outdatedRows.length})`,
+					icon: 'circleUp',
+					disabled: outdatedRows.length === 0,
+					hint: 'every connected follower already runs this primary’s build',
+					action: () => askUpgrade(outdatedRows)
+				}
+			]}
+		/>
 		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
 		<Btn variant="primary" icon="plus" onclick={() => (joinOpen = true)}>Add a follower</Btn>
 	{/snippet}
@@ -283,7 +386,7 @@
 			`${row.name} ${row.mode} ${row.host ?? ''} ${row.addresses.join(' ')} ${row.instances.join(' ')}`}
 		searchPlaceholder="Find a daemon by name, address or instance"
 		{filters}
-		selectable="single"
+		selectable="multi"
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.name}
@@ -447,7 +550,43 @@
 	{/snippet}
 </Modal>
 
+<Modal title="Upgrade {upgradeTargets.length} daemon(s)" bind:open={upgradeOpen}>
+	<p>
+		Each of these takes the primary's binary when there is one and the GitHub release
+		otherwise, then exits so its service restarts it on the new build. They go offline for a
+		moment and reconnect on their own.
+	</p>
+	<ul class="targets">
+		{#each upgradeTargets as target (target.name)}
+			<li>
+				<b>{target.name}</b>
+				<span class="dim">{target.version ?? 'unknown build'}</span>
+				{#if !target.outdated}
+					<span class="dim">— already on this build, it will be reinstalled</span>
+				{/if}
+			</li>
+		{/each}
+	</ul>
+
+	{#snippet footer()}
+		<Btn onclick={() => (upgradeOpen = false)}>Cancel</Btn>
+		<Btn variant="primary" icon="download" loading={upgrading} onclick={runUpgrade}>
+			Upgrade
+		</Btn>
+	{/snippet}
+</Modal>
+
 <style lang="scss">
+	.targets {
+		margin: 0.75rem 0 0;
+		padding: 0 0 0 1.25rem;
+		font-size: 0.875rem;
+
+		li {
+			padding: 0.125rem 0;
+		}
+	}
+
 	.hint {
 		padding: 0.75rem 1rem;
 		color: var(--text-secondary);

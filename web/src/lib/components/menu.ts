@@ -5,6 +5,9 @@ export interface Item {
 	label: string;
 	icon?: string;
 	disabled?: boolean;
+	/** why the item is unavailable — a disabled action states its reason rather
+	 *  than leaving the user to guess (DESIGN.md §5.2) */
+	hint?: string;
 	danger?: boolean;
 	divider?: boolean;
 	action?: () => void | Promise<void>;
@@ -18,6 +21,7 @@ export function toMenuItems(items: Item[]): ContextMenuItem[] {
 		icon: item.icon,
 		color: item.danger ? 'danger' : 'default',
 		disabled: item.disabled,
+		hint: item.hint,
 		separator: item.divider,
 		action: item.action
 	}));

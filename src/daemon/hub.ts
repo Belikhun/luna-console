@@ -18,7 +18,13 @@ import { applySnapshot } from "../shared/progressMirror";
 
 import type { DaemonConfig } from "./config";
 import { daemonEventKey, getEvents, pushEvent, type ClusterEvent } from "./events";
-import { currentHealth, healthHistory, hostAddresses, type HealthSample } from "./health";
+import {
+	currentHealth,
+	healthHistory,
+	hostAddresses,
+	SAMPLE_INTERVAL_MS,
+	type HealthSample,
+} from "./health";
 import { log } from "./index";
 import {
 	installRouting,
@@ -60,6 +66,9 @@ const MISSED_PINGS_BEFORE_DROP = 3;
 
 /** How often the primary TCP-probes a follower's advertised address. */
 const REACH_INTERVAL_MS = 30_000;
+
+/** The primary's own backends bind loopback, so that is where it probes itself. */
+const LOOPBACK = "127.0.0.1";
 
 /** One hour of fleet health at the heartbeat cadence. */
 const MAX_HEALTH_SAMPLES = 720;
@@ -162,6 +171,9 @@ let watcher: FSWatcher | undefined;
 let syncTimer: ReturnType<typeof setTimeout> | undefined;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let reachTimer: ReturnType<typeof setInterval> | undefined;
+
+/** Last reachability round against this machine's own instances. */
+let selfReach: { at: number; results: ReachResult[] } | undefined;
 
 /** Read the current sync payload: raw file texts, missing files skipped. */
 async function syncPayload(): Promise<Record<string, string>> {
@@ -337,6 +349,42 @@ function resourceCheck(health: HealthSample | undefined): DaemonCheck {
 	};
 }
 
+/**
+ * Turn a reachability round into a check. Every probe runs from the primary, so
+ * the address in a failure is the one the proxy would dial.
+ *
+ * A round that found nothing to probe is a **pass**, not an unknown: no instance
+ * is unreachable, and a verdict that never resolves reads as a broken check
+ * rather than an idle one. Unknown is reserved for a round that genuinely has
+ * not happened — no link, or a primary still inside its first probe interval.
+ */
+function reachCheck(
+	round: { at: number; results: ReachResult[] } | undefined,
+	host: string,
+): DaemonCheck {
+	const name = "Instance reachability";
+
+	if (!round) {
+		return { name, ok: undefined, detail: "not probed yet" };
+	}
+
+	if (round.results.length === 0) {
+		return { name, ok: true, detail: `no running instance to probe on ${host}` };
+	}
+
+	const failed = round.results.filter((result) => !result.ok);
+
+	if (failed.length > 0) {
+		return {
+			name,
+			ok: false,
+			detail: `unreachable: ${failed.map((result) => `${result.instance} (${result.address})`).join(", ")}`,
+		};
+	}
+
+	return { name, ok: true, detail: `${round.results.length} port(s) answering on ${host}` };
+}
+
 /** The health checks for a connected (or missing) follower. */
 function followerChecks(link: FollowerLink | undefined, registered: DaemonRegistration | undefined): DaemonCheck[] {
 	if (!link) {
@@ -363,30 +411,6 @@ function followerChecks(link: FollowerLink | undefined, registered: DaemonRegist
 				: `${link.missed} missed ping(s) — last beat ${agoText(link.lastSeen)} ago`,
 	};
 
-	const reach: DaemonCheck = (() => {
-		const name = "Instance reachability";
-
-		if (!link.reach || link.reach.results.length === 0) {
-			return { name, ok: undefined, detail: `no running instance to probe on ${link.host}` };
-		}
-
-		const failed = link.reach.results.filter((result) => !result.ok);
-
-		if (failed.length > 0) {
-			return {
-				name,
-				ok: false,
-				detail: `unreachable from the primary: ${failed.map((result) => `${result.instance} (${result.address})`).join(", ")}`,
-			};
-		}
-
-		return {
-			name,
-			ok: true,
-			detail: `${link.reach.results.length} port(s) answering on ${link.host}`,
-		};
-	})();
-
 	return [
 		{
 			name: "Daemon link",
@@ -394,7 +418,7 @@ function followerChecks(link: FollowerLink | undefined, registered: DaemonRegist
 			detail: `WebSocket from ${link.host} · connected ${agoText(link.connectedAt)} ago`,
 		},
 		beats,
-		reach,
+		reachCheck(link.reach, link.host),
 		resourceCheck(link.health),
 	];
 }
@@ -407,7 +431,7 @@ function outdatedFollowers(): string[] {
 }
 
 /** The health checks for this primary daemon itself. */
-function primaryChecks(cfg: ClusterConfig): DaemonCheck[] {
+function primaryChecks(): DaemonCheck[] {
 	const listener = hubConfig?.listen;
 
 	return [
@@ -430,11 +454,7 @@ function primaryChecks(cfg: ClusterConfig): DaemonCheck[] {
 				? "configured — followers must present it"
 				: "not configured — followers cannot authenticate",
 		},
-		{
-			name: "Instance reachability",
-			ok: undefined,
-			detail: `${ownedInstances(cfg, undefined).length} instance(s) on this host, reached on loopback`,
-		},
+		reachCheck(selfReach, LOOPBACK),
 		{
 			name: "Fleet build",
 			ok: outdatedFollowers().length === 0,
@@ -489,7 +509,7 @@ function primaryRow(cfg: ClusterConfig): DaemonRow {
 		latencyMs: null,
 		uptimeMs: Date.now() - hubStartedAt,
 		health: health ?? null,
-		checks: primaryChecks(cfg),
+		checks: primaryChecks(),
 		reach: null,
 		instances: ownedInstances(cfg, undefined),
 	};
@@ -695,6 +715,83 @@ function pingRound(): void {
 }
 
 /**
+ * Running, non-external instances a daemon owns, paired with the port each one
+ * listens on. Built from `ownedInstances` rather than `cfg.instances` directly
+ * so the proxy — which lives outside that map — is included for the primary.
+ */
+function reachTargets(
+	cfg: ClusterConfig,
+	daemon: string | undefined,
+	states: Record<string, string>,
+): Array<{ name: string; port: number }> {
+	const ports: Record<string, number> = { proxy: cfg.proxy.port };
+
+	for (const [name, inst] of Object.entries(cfg.instances)) {
+		ports[name] = inst.port;
+	}
+
+	return ownedInstances(cfg, daemon)
+		.filter((name) => states[name] === "running" && ports[name] !== undefined)
+		.map((name) => ({ name, port: ports[name]! }));
+}
+
+/**
+ * Whether a daemon's instance states have arrived yet.
+ *
+ * The status sampler fills them a beat after a daemon comes up, and a
+ * follower's ride in on its first heartbeat pong. Probing before then finds no
+ * running instance and would report "nothing to probe" about a host that is in
+ * fact running servers — a confident pass that is simply wrong. A daemon that
+ * owns nothing has no states to wait for, so it is ready immediately.
+ */
+function statesReady(
+	cfg: ClusterConfig,
+	daemon: string | undefined,
+	states: Record<string, string>,
+): boolean {
+	return Object.keys(states).length > 0 || ownedInstances(cfg, daemon).length === 0;
+}
+
+/** TCP-probe every target at one host, concurrently. */
+async function probeInstances(
+	host: string,
+	targets: Array<{ name: string; port: number }>,
+): Promise<ReachResult[]> {
+	return await Promise.all(
+		targets.map(async (target): Promise<ReachResult> => ({
+			instance: target.name,
+			address: `${host}:${target.port}`,
+			ok: await portOpen(host, target.port),
+		})),
+	);
+}
+
+/**
+ * Probe the primary's own running instances over loopback.
+ *
+ * This confirms more than it discovers, and deliberately so: core already
+ * grades an instance "running" only once it answers a status ping on loopback
+ * (`getStatus`), so a target here has essentially already proven the point —
+ * what it catches is the gap between that sample and now. The reason to run it
+ * anyway is that the primary is a daemon like any other, and a check that can
+ * only ever report "unknown" about the busiest machine in the cluster is worse
+ * than a cheap one that reports the truth. The probe that genuinely discovers
+ * something is the follower's, where a LAN sits in the way.
+ */
+async function probeSelf(): Promise<void> {
+	const cfg = await clusterView();
+	const states = currentHealth()?.states ?? {};
+
+	if (!statesReady(cfg, undefined, states)) {
+		return;
+	}
+
+	const results = await probeInstances(LOOPBACK, reachTargets(cfg, undefined, states));
+
+	selfReach = { at: Date.now(), results };
+}
+
+/**
  * TCP-probe a follower's running instances from the primary's machine. This is
  * the check nothing else makes: the WebSocket link can be perfectly healthy
  * while the velocity proxy cannot reach the backends behind it (a firewall, a
@@ -704,17 +801,11 @@ async function probeReach(link: FollowerLink): Promise<void> {
 	const cfg = await clusterView();
 	const states = link.health?.states ?? {};
 
-	const targets = Object.entries(cfg.instances)
-		.filter(([name, inst]) => inst.daemon === link.name && !inst.external && states[name] === "running")
-		.map(([name, inst]) => ({ name, port: inst.port }));
+	if (!statesReady(cfg, link.name, states)) {
+		return;
+	}
 
-	const results = await Promise.all(
-		targets.map(async (target): Promise<ReachResult> => ({
-			instance: target.name,
-			address: `${link.host}:${target.port}`,
-			ok: await portOpen(link.host, target.port),
-		})),
-	);
+	const results = await probeInstances(link.host, reachTargets(cfg, link.name, states));
 
 	const wasBad = link.reach?.results.some((result) => !result.ok) ?? false;
 	const isBad = results.some((result) => !result.ok);
@@ -737,8 +828,10 @@ async function probeReach(link: FollowerLink): Promise<void> {
 	link.reach = { at: Date.now(), results };
 }
 
-/** Probe every connected follower. */
+/** Probe this machine and every connected follower. */
 function reachRound(): void {
+	void probeSelf();
+
 	for (const link of followers.values()) {
 		void probeReach(link);
 	}
@@ -822,6 +915,10 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 
 		log(`follower "${link.name}" connected from ${link.host} (root ${link.root})`);
 		pushEvent(daemonEventKey(link.name), "state", `connected from ${link.host}`);
+
+		// same reason as the primary's own probe at startup: without this the
+		// check reads "not probed yet" until the next 30s round comes around
+		void probeReach(link);
 
 		return;
 	}
@@ -943,6 +1040,22 @@ export function installHub(dcfg: DaemonConfig, startedAt: number): void {
 
 	pingTimer ??= setInterval(pingRound, PING_INTERVAL_MS);
 	reachTimer ??= setInterval(reachRound, REACH_INTERVAL_MS);
+
+	// setInterval only fires after the first interval, which would leave the
+	// primary's own reachability unknown for 30s after every restart. The status
+	// sampler needs a beat to fill in, so keep trying on its cadence until a
+	// round actually lands, then leave it to the regular timer.
+	const firstProbe = setInterval(() => {
+		if (selfReach) {
+			clearInterval(firstProbe);
+
+			return;
+		}
+
+		void probeSelf();
+	}, SAMPLE_INTERVAL_MS);
+
+	void probeSelf();
 
 	// Bun.write replaces files, so watch the directory and filter by name
 	watcher = watch(root(), (_kind, filename) => {

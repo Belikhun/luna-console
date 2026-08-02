@@ -297,7 +297,10 @@ export function buildHandler(
 		const path = url.pathname;
 
 		if (!trusted) {
-			const token = request.headers.get("x-luna-token") ?? url.searchParams.get("token");
+			const token =
+				request.headers.get("x-luna-token") ??
+				request.headers.get("x-mrds-token") ??
+				url.searchParams.get("token");
 
 			if (!dcfg.token || token !== dcfg.token) {
 				return errorResponse("unauthorized", 401);
