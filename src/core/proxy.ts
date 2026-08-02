@@ -34,7 +34,12 @@ function buildSections(cfg: ClusterConfig): ProxySections {
 			continue;
 		}
 
-		servers[name] = inst.external ?? `127.0.0.1:${inst.port}`;
+		// a follower-owned instance is reached over the LAN at its daemon's host;
+		// everything on the primary's own machine stays on loopback
+		const daemonHost = inst.daemon ? cfg.daemons?.[inst.daemon]?.host : undefined;
+		const local = daemonHost ? `${daemonHost}:${inst.port}` : `127.0.0.1:${inst.port}`;
+
+		servers[name] = inst.external ?? local;
 
 		if (reg.priority !== undefined) {
 			tryEntries.push({ name, priority: reg.priority });

@@ -26,7 +26,10 @@ export default defineConfig(({ command }) => ({
 			adapter: adapter(),
 			preprocess: vitePreprocess(),
 			alias: {
-				$core: resolve(import.meta.dirname, '../src/core')
+				// routes talk to the daemon: $core is the client bridge mirroring
+				// the core modules over the daemon socket (DESIGN.md §4.3)
+				$core: resolve(import.meta.dirname, '../src/client/core'),
+				$client: resolve(import.meta.dirname, '../src/client')
 			}
 		})
 	],

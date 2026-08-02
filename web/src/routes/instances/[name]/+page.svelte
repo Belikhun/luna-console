@@ -415,6 +415,7 @@
 			{ label: 'Game address', value: `127.0.0.1:${inst.port}`, copyable: true, style: 'mono' },
 			{ label: 'Memory (heap)', value: inst.memory },
 			{ label: 'Java profile', value: inst.profile },
+			{ label: 'Daemon', value: inst.daemon ?? 'primary' },
 			{ label: 'Java PID', value: inst.javaPid },
 			{ id: 'cpu', label: 'CPU utilization' },
 			{ id: 'rss', label: 'Resident memory' },
@@ -738,7 +739,7 @@
 				{/if}
 			</div>
 			<p class="dim note">
-				Sampled every 5s while the console server runs (last hour kept in memory).
+				Sampled every 5s by the mrds daemon (last hour kept in memory).
 				{#if hasHeartbeatSeries}
 					Tick rate and heap come from LunaCore's heartbeat.
 				{/if}

@@ -1,7 +1,7 @@
 import { command, Bail } from "../framework";
 import { pc, Sym, ok, warn, info, printTable, fmtBytes, fmtDuration } from "../ui";
 import { instanceNames } from "../completers";
-import * as luna from "../../core/services/luna";
+import * as luna from "../../client/core/services/luna";
 
 /** Coloured label for a backend's Luna-reported status. */
 function statusBadge(status: string): string {

@@ -113,8 +113,9 @@ done
 export interface InstanceStatus {
 	name: string;
 	inst: InstanceConfig;
-	/** stopped = no session; starting = session+process but no ping; running = answers pings */
-	state: "stopped" | "starting" | "running";
+	/** stopped = no session; starting = session+process but no ping; running =
+	 *  answers pings; unknown = owned by an unreachable follower daemon */
+	state: "stopped" | "starting" | "running" | "unknown";
 	javaPid?: number;
 	uptimeMs?: number;
 	players?: { online: number; max: number };

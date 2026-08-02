@@ -4,8 +4,11 @@ This directory (`control/`) is the source tree of the centralized control center
 **Luna Minecraft cluster**, which lives one level up at `/mnt/shulker/mrds`: one Velocity
 proxy + seven Paper backends (`lobby`, `survival`, `event`, `event2`, `infdun`, `iceboat`,
 `manhunt`) running in GNU screen sessions `luna.<name>`, plus external servers (`create`,
-`sandbox`) routed through the proxy. Everything is driven by the `mrds` CLI and its
-web console.
+`sandbox`) routed through the proxy. Everything is driven by the **mrds daemon** —
+the long-lived process that owns the cluster — with the `mrds` CLI and the web
+console as its clients (DESIGN.md §4). The daemon runs as primary here; follower
+daemons on other machines manage the instances assigned to them and mirror
+state + plugins from the primary.
 
 Authoritative docs — read before making architectural decisions:
 - `docs/DESIGN.md` — infra assessment + full design (plugin model with per-instance version
@@ -17,15 +20,22 @@ Stack (locked): Bun + TypeScript · single compiled binary (`bun build --compile
 for the terminal · SvelteKit (Svelte 5 runes) + adapter-node running **under Bun** for the
 web console (no Elysia, no separate backend) · **SCSS** (`sass-embedded` through
 `vitePreprocess`) for every stylesheet · xterm.js for the terminal drawer · SSE for all
-streaming (never WebSockets) · Modrinth + PaperMC Fill v3 as the only external APIs.
+client streaming (never WebSockets to a browser; daemons talk to each other over
+WebSocket + HTTP file streaming) · HTTP over a unix socket between clients and the
+local daemon · Modrinth + PaperMC Fill v3 as the only external APIs.
 
 ## Layout
 
 ```
 control/                # this repo — the only source tree
-  src/core/             # domain logic — no console I/O
-  src/cli/              # terminal presentation
-  web/                  # SvelteKit console (routes/api/** imports core via $core)
+  src/core/             # domain logic — no console I/O; executes inside the daemon
+  src/daemon/           # daemon runtime: config, RPC ops, jobs, sampler, scheduler,
+                        #   hub (primary) + follower link, unix-socket/TCP server
+  src/client/           # daemon client: socket discovery, RPC/jobs, and core/ —
+                        #   bridge modules mirroring src/core name-for-name
+  src/shared/           # bits both sides need (socket paths, progress mirroring)
+  src/cli/              # terminal presentation (a daemon client)
+  web/                  # SvelteKit console ($core alias → src/client/core)
     src/app.scss        #   design tokens + element/utility base
     src/lib/styles/     #   _shared.scss — mixins/variables, auto-injected everywhere
     src/lib/server/     #   server-only helpers (mrds.ts bridge, http.ts)
@@ -168,10 +178,22 @@ export interface InstanceConfig {}
 ## Non-negotiable design invariants
 
 ### Layering
-- `core/` is pure domain logic: it never imports from `cli/` or `web/`, and never prints.
-- **A new feature is a core function first**, then a thin CLI command in `cli/commands/` and
-  a thin API route in `web/src/routes/api/`. Logic is never duplicated between the CLI and
-  the console — the web routes import the same functions via the `$core` alias.
+- `core/` is pure domain logic: it never imports from `cli/`, `web/`, `daemon/` or
+  `client/`, and never prints. It executes **only inside the daemon process**.
+- **Clients never touch the cluster directly.** The CLI and the web routes import the
+  bridge (`src/client/core/*`, the web's `$core` alias), which runs pure helpers locally
+  and RPCs everything that touches disk/processes/network to the daemon over the unix
+  socket. Never import `src/core` from `cli/` or `web/` — a client-side core call would
+  bypass the daemon and, on a follower topology, the owner routing.
+- **A new feature is a core function first**, then an op entry in `daemon/rpc.ts`
+  (with cfg/lock echo + instance-routing metadata), a mirrored export in
+  `src/client/core/<module>.ts`, and only then a thin CLI command in `cli/commands/`
+  and a thin API route in `web/src/routes/api/`. Logic is never duplicated between the
+  CLI and the console. Reporter-taking core functions run as daemon jobs — use
+  `jobCall`, and the caller's ProgressReporter keeps working through the snapshot
+  mirror.
+- Ops that act on one instance declare their `instance` argument index in the registry,
+  which is what routes them to a follower daemon when the instance lives elsewhere.
 - `cli/framework.ts` is the single source of truth for command parsing: the typed registry
   drives argument parsing, help text, `__complete` shell completion, and the REPL. Adding a
   command means adding a registry entry, never a bespoke `process.argv` branch.
@@ -278,14 +300,27 @@ Wiring rules:
 ## Commands
 
 ```
+mrds daemon run                   # the daemon itself — everything else needs it running
+mrds daemon status|list|remove    # local handshake · cluster fleet · drop a registration
+mrds daemon token                 # generate the shared cluster token
+mrds daemon service install       # systemd unit for 24/7 operation
 bun run src/cli/index.ts <cmd…>   # run the CLI from source (this dir)
 bun run build                     # compile the single binary → dist/mrds
 bun run typecheck                 # tsc --noEmit (web/ is excluded)
 cd web && bun run build           # production console bundle
 cd web && bun run check           # svelte-check
-mrds web [--dev] [--host 0.0.0.0] # serve the console (default 127.0.0.1:8330)
+mrds web [--dev] [--host 0.0.0.0] # serve the console (default 127.0.0.1:8330; primary only)
 cd web && bun run dev             # same thing directly: Vite + HMR on 8330
 ```
+
+Daemon config: JSON file (`$MRDS_DAEMON_CONFIG` → `/etc/mrds/daemon.json` →
+`~/.config/mrds/daemon.json`) with env overrides (`MRDS_MODE`, `MRDS_ROOT`,
+`MRDS_DAEMON_NAME`, `MRDS_SOCKET`, `MRDS_LISTEN`, `MRDS_TOKEN`,
+`MRDS_PRIMARY_ADDRESS`, `MRDS_HOST`). No config + a discoverable cluster root =
+primary with defaults. For dev, start one with
+`MRDS_ROOT=/mnt/shulker/mrds bun run src/cli/index.ts daemon run` before using
+the CLI or console; a second daemon on the same host isolates itself with
+`MRDS_SOCKET` (that is how the follower simulation runs on loopback).
 
 Iterate on the console with `--dev`: Vite hot-reloads Svelte and CSS edits and restarts
 API routes in place, so there is no rebuild/restart cycle. `--strictPort` is always passed

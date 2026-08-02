@@ -7,14 +7,12 @@ import {
 	saveSchedules,
 	type ScheduleTrigger
 } from '$core/schedule';
-import { ensureSampler, pushEvent } from '$lib/server/mrds';
+import { pushEvent } from '$lib/server/mrds';
 import { errorMessage } from '$lib/server/http';
 
 /** GET → every schedule plus the execution log, newest first. */
 export async function GET() {
-	// listing the schedules page must arm the runner, or nothing ever fires
-	ensureSampler();
-
+	// the runner lives in the daemon now — nothing to arm here
 	const store = await loadSchedules();
 
 	return json({

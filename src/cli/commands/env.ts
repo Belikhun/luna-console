@@ -1,8 +1,8 @@
 import { command, UsageError, Bail } from "../framework";
 import { pc, ok, info, warn, printTable } from "../ui";
 import { instanceNames } from "../completers";
-import { loadCluster, managedInstances } from "../../core/config";
-import { builtinVars, loadEnv, saveEnv, setVariable, unsetVariable } from "../../core/environment";
+import { loadCluster, managedInstances } from "../../client/core/config";
+import { builtinVars, loadEnv, saveEnv, setVariable, unsetVariable } from "../../client/core/environment";
 
 command({
 	path: ["env"],
@@ -115,8 +115,8 @@ command({
 
 	handler: async (args) => {
 		const cfg = await loadCluster();
-		const { loadLock } = await import("../../core/config");
-		const { applyTemplates, notableTemplateResults } = await import("../../core/templates");
+		const { loadLock } = await import("../../client/core/config");
+		const { applyTemplates, notableTemplateResults } = await import("../../client/core/templates");
 
 		const results = await applyTemplates(cfg, await loadLock(), args[0]!);
 		const notable = notableTemplateResults(results);

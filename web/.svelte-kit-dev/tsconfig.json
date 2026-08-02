@@ -2,10 +2,16 @@
 	"compilerOptions": {
 		"paths": {
 			"$core": [
-				"../../src/core"
+				"../../src/client/core"
 			],
 			"$core/*": [
-				"../../src/core/*"
+				"../../src/client/core/*"
+			],
+			"$client": [
+				"../../src/client"
+			],
+			"$client/*": [
+				"../../src/client/*"
 			],
 			"$lib": [
 				"../src/lib"

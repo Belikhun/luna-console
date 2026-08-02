@@ -40,7 +40,21 @@ export interface InstanceConfig {
 	pluginOverrides?: Record<string, boolean>;
 	/** External server (proxy-registered but not managed on this machine) */
 	external?: string; // "host:port"
+	/** Daemon that owns this instance; absent = the primary daemon's host */
+	daemon?: string;
 	proxy?: ProxyRegistration;
+}
+
+/** Persisted registration of a follower daemon (live state comes from the hub). */
+export interface DaemonRegistration {
+	/** LAN host the follower's instances are reachable on (from its connection) */
+	host: string;
+	/** Daemon binary version last seen */
+	version?: string;
+	/** ISO 8601 — first registration */
+	addedAt?: string;
+	/** ISO 8601 — last time the follower was connected */
+	lastSeen?: string;
 }
 
 /** Where the in-house `luna-*` plugin sources live and how they are built. */
@@ -62,6 +76,8 @@ export interface ClusterConfig {
 	instances: Record<string, InstanceConfig>;
 	/** In-house plugin build source, for `mrds luna …` */
 	luna?: LunaSourceConfig;
+	/** Known follower daemons, keyed by daemon name */
+	daemons?: Record<string, DaemonRegistration>;
 }
 
 export type PluginSource = "modrinth" | "luna" | "manual";

@@ -6,16 +6,13 @@ import { syncVelocityToml } from '$core/proxy';
 import {
 	loadCluster,
 	managedInstances,
-	statusJson,
-	ensureSampler,
+	instanceStatus,
 	readHostMemMb,
 	pushEvent
 } from '$lib/server/mrds';
 
 /** GET → full detail for one instance, including its resolved java command line. */
 export async function GET({ params }) {
-	ensureSampler();
-
 	const cfg = await loadCluster();
 	const inst = managedInstances(cfg)[params.name];
 
@@ -23,10 +20,8 @@ export async function GET({ params }) {
 		throw error(404, `unknown instance: ${params.name}`);
 	}
 
-	const status = await getStatus(cfg, params.name);
-
 	return json({
-		...statusJson(cfg, status),
+		...(await instanceStatus(params.name)),
 		javaCommand: buildJavaCommand(cfg, inst),
 		java: inst.java ?? null,
 		hostMemMb: await readHostMemMb()

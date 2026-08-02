@@ -66,6 +66,21 @@ export function centralLogsDir(): string {
 	return join(root(), "logs");
 }
 
+/**
+ * Save-through hook for follower daemons: the state files' single writer is the
+ * primary, so a follower installs a hook that forwards every save up the
+ * cluster link after updating its local copy. Unset (the default) everywhere
+ * else — saves are then purely local.
+ */
+export type SaveHook = (file: "cluster" | "lock", data: unknown) => Promise<void>;
+
+let saveHook: SaveHook | undefined;
+
+/** Install (or clear) the save-through hook. */
+export function installSaveHook(hook: SaveHook | undefined): void {
+	saveHook = hook;
+}
+
 /** Read the instance registry. */
 export async function loadCluster(): Promise<ClusterConfig> {
 	return await Bun.file(clusterPath()).json();
@@ -74,6 +89,8 @@ export async function loadCluster(): Promise<ClusterConfig> {
 /** Write the instance registry back, tab-indented like the checked-in file. */
 export async function saveCluster(cfg: ClusterConfig): Promise<void> {
 	await Bun.write(clusterPath(), JSON.stringify(cfg, null, "\t") + "\n");
+
+	await saveHook?.("cluster", cfg);
 }
 
 /** Read the plugin lockfile, treating a missing file as an empty lock. */
@@ -125,6 +142,8 @@ export async function saveLock(lock: PluginsLock): Promise<void> {
 	}
 
 	await Bun.write(lockPath(), JSON.stringify(sorted, null, "\t") + "\n");
+
+	await saveHook?.("lock", sorted);
 }
 
 /** All instances including the proxy, keyed by name ("proxy" for the proxy). */

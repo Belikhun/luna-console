@@ -1,16 +1,16 @@
 import { command, UsageError, Bail } from "../framework";
 import { pc, Sym, ok, warn, info, printTable, fmtDuration, Spinner, ProgressView } from "../ui";
 import { instanceNames } from "../completers";
-import { loadCluster, saveCluster, managedInstances, loadLock, saveLock } from "../../core/config";
-import type { ClusterConfig } from "../../core/types";
-import * as inst from "../../core/instances";
-import * as admin from "../../core/admin";
-import * as screen from "../../core/screen";
-import { syncVelocityToml } from "../../core/proxy";
-import { ensurePortAllocations } from "../../core/ports";
-import { deploy, compatReport } from "../../core/plugins";
-import { listVersions } from "../../core/services/papermc";
-import { ProgressReporter } from "../../core/progress";
+import { loadCluster, saveCluster, managedInstances, loadLock, saveLock } from "../../client/core/config";
+import type { ClusterConfig } from "../../client/core/types";
+import * as inst from "../../client/core/instances";
+import * as admin from "../../client/core/admin";
+import * as screen from "../../client/core/screen";
+import { syncVelocityToml } from "../../client/core/proxy";
+import { ensurePortAllocations } from "../../client/core/ports";
+import { deploy, compatReport } from "../../client/core/plugins";
+import { listVersions } from "../../client/core/services/papermc";
+import { ProgressReporter } from "../../client/core/progress";
 import {
 	SERVER_SETTINGS,
 	SETTING_GROUPS,
@@ -19,7 +19,7 @@ import {
 	parseJavaArgs,
 	readServerProperties,
 	settingSpec,
-} from "../../core/settings";
+} from "../../client/core/settings";
 
 /** Coloured state glyph + label for a status table row. */
 function stateCell(status: inst.InstanceStatus): string {
@@ -32,6 +32,9 @@ function stateCell(status: inst.InstanceStatus): string {
 
 		case "stopped":
 			return `${Sym.off} ${pc.dim("stopped")}`;
+
+		case "unknown":
+			return `${Sym.warn} ${pc.yellow("unknown")}`;
 	}
 }
 
@@ -276,6 +279,7 @@ command({
 		},
 		{ flag: "--java-args", desc: 'extra JVM flags, e.g. "-XX:+UseZGC"', value: true },
 		{ flag: "--no-register", desc: "don't register in velocity.toml" },
+		{ flag: "--daemon", desc: "follower daemon that will own the instance", value: true },
 	],
 
 	handler: async (args, opts) => {
@@ -320,6 +324,7 @@ command({
 				register: !opts["no-register"],
 				settings,
 				javaArgs,
+				daemon: opts.daemon as string | undefined,
 				reporter: files,
 			});
 

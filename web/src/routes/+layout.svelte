@@ -92,6 +92,10 @@
 			items: [{ label: 'Cleanup', href: '/cleanup', icon: 'broom' }]
 		},
 		{
+			section: 'Cluster',
+			items: [{ label: 'Daemons', href: '/daemons', icon: 'hardDrive' }]
+		},
+		{
 			section: 'Development',
 			items: [{ label: 'Components', href: '/gallery', icon: 'shapes' }]
 		}

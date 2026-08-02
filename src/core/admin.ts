@@ -76,6 +76,8 @@ export interface CreateOptions {
 	pluginGroups?: string[];
 	/** per-instance plugin overrides (plugin name → force-add/disable) */
 	pluginOverrides?: Record<string, boolean>;
+	/** daemon that will own the instance (absent = the primary's host) */
+	daemon?: string;
 	/** live progress for the caller's renderer */
 	reporter?: ProgressReporter;
 }
@@ -217,6 +219,10 @@ export async function createInstance(
 
 	if (opts.pluginOverrides && Object.keys(opts.pluginOverrides).length) {
 		inst.pluginOverrides = opts.pluginOverrides;
+	}
+
+	if (opts.daemon) {
+		inst.daemon = opts.daemon;
 	}
 
 	cfg.instances[name] = inst;

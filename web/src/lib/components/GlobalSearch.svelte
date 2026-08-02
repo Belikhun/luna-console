@@ -59,6 +59,13 @@
 			detail: 'Reclaim disk space',
 			href: '/cleanup',
 			icon: 'broom'
+		},
+		{
+			group: 'Pages',
+			label: 'Daemons',
+			detail: 'Cluster daemons and followers',
+			href: '/daemons',
+			icon: 'hardDrive'
 		}
 	];
 

@@ -1,16 +1,18 @@
 import { json, error } from '@sveltejs/kit';
-import { join } from 'node:path';
 
-import { loadCluster, managedInstances, instanceDir } from '$core/config';
+import { loadCluster, managedInstances } from '$core/config';
 import { sendCommand } from '$core/instances';
+import { dfetch } from '$client/socket';
 import { pushEvent } from '$lib/server/mrds';
-import { SSE_HEADERS, closeQuietly } from '$lib/server/http';
+import { SSE_HEADERS } from '$lib/server/http';
 
-/** How much backlog a freshly opened console shows. */
-const TAIL_LINES = 100;
-
-/** GET → SSE stream of the instance's live console (tail -F latest.log). */
-export async function GET({ params }) {
+/**
+ * GET → SSE stream of the instance's live console, piped through from the
+ * daemon (which tails latest.log on the instance's own host). The body is
+ * forwarded untouched — re-framing the events would only add a place to drop
+ * one.
+ */
+export async function GET({ params, request }) {
 	const cfg = await loadCluster();
 	const inst = managedInstances(cfg)[params.name];
 
@@ -18,56 +20,13 @@ export async function GET({ params }) {
 		throw error(404, 'unknown instance');
 	}
 
-	const logPath = join(instanceDir(inst), 'logs', 'latest.log');
+	const upstream = await dfetch(`/instances/${params.name}/console`, { signal: request.signal });
 
-	// -F rather than -f: the server rotates latest.log, and tail has to follow the
-	// new file by name instead of holding the old descriptor open
-	let proc: ReturnType<typeof Bun.spawn> | undefined;
+	if (!upstream.ok || !upstream.body) {
+		throw error(502, `daemon refused the console stream (${upstream.status})`);
+	}
 
-	const stream = new ReadableStream({
-		start(controller) {
-			const encoder = new TextEncoder();
-
-			proc = Bun.spawn(['tail', '-n', String(TAIL_LINES), '-F', logPath], {
-				stdout: 'pipe',
-				stderr: 'ignore'
-			});
-
-			const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
-
-			void (async () => {
-				try {
-					while (true) {
-						const { done, value } = await reader.read();
-
-						if (done) {
-							break;
-						}
-
-						const text = new TextDecoder().decode(value);
-
-						for (const line of text.split('\n')) {
-							if (line.length === 0) {
-								continue;
-							}
-
-							controller.enqueue(encoder.encode(`data: ${JSON.stringify(line)}\n\n`));
-						}
-					}
-				} catch {
-					// client disconnected mid-read
-				}
-
-				closeQuietly(controller);
-			})();
-		},
-
-		cancel() {
-			proc?.kill();
-		}
-	});
-
-	return new Response(stream, { headers: SSE_HEADERS });
+	return new Response(upstream.body, { headers: SSE_HEADERS });
 }
 
 /** POST { command } → send to the instance's console via screen. */

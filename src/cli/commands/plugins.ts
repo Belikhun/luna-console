@@ -8,8 +8,8 @@ import {
 	saveCluster,
 	expandTargets,
 	managedInstances,
-} from "../../core/config";
-import * as plugins from "../../core/plugins";
+} from "../../client/core/config";
+import * as plugins from "../../client/core/plugins";
 import {
 	allPluginNames,
 	deleteGroup,
@@ -20,16 +20,16 @@ import {
 	setGroup,
 	setPluginOverride,
 	validateGroups,
-} from "../../core/families";
+} from "../../client/core/families";
 import {
 	ensureAliases,
 	instancePluginReport,
 	removeInstanceJars,
-} from "../../core/pluginstate";
-import { standardizeNaming } from "../../core/standardize";
-import * as mr from "../../core/services/modrinth";
-import { getAllStatuses } from "../../core/instances";
-import { ensurePortAllocations } from "../../core/ports";
+} from "../../client/core/pluginstate";
+import { standardizeNaming } from "../../client/core/standardize";
+import * as mr from "../../client/core/services/modrinth";
+import { getAllStatuses } from "../../client/core/instances";
+import { ensurePortAllocations } from "../../client/core/ports";
 
 /** Coloured label for a lock entry's source. */
 function sourceBadge(source: string): string {
@@ -868,7 +868,7 @@ async function applyGroupRestart(
 	const affected = groupInstances(cfg, group);
 
 	if (restart === "now") {
-		const inst = await import("../../core/instances");
+		const inst = await import("../../client/core/instances");
 		const statuses = await getAllStatuses(cfg);
 
 		for (const name of affected) {
@@ -890,7 +890,7 @@ async function applyGroupRestart(
 	}
 
 	// anything else is a time for a one-shot restart schedule
-	const { loadSchedules, saveSchedules, createSchedule } = await import("../../core/schedule");
+	const { loadSchedules, saveSchedules, createSchedule } = await import("../../client/core/schedule");
 	const store = await loadSchedules();
 
 	const schedule = createSchedule(cfg, store, {
@@ -1160,7 +1160,7 @@ command({
 			throw new UsageError('expected "show <entry>" or "apply <instance>"');
 		}
 
-		const { applyTemplates, notableTemplateResults } = await import("../../core/templates");
+		const { applyTemplates, notableTemplateResults } = await import("../../client/core/templates");
 		const results = await applyTemplates(cfg, lock, target);
 		const notable = notableTemplateResults(results);
 

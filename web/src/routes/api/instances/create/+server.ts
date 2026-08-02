@@ -84,6 +84,7 @@ export async function POST({ request }) {
 								Object.entries(body.pluginOverrides).map(([key, value]) => [key, !!value])
 							)
 						: undefined,
+				daemon: typeof body.daemon === 'string' && body.daemon ? body.daemon : undefined,
 				reporter: files
 			});
 

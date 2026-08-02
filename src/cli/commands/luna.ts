@@ -1,10 +1,11 @@
 import { command, Bail } from "../framework";
 import { pc, Sym, ok, warn, info, fail, printTable, Spinner, fmtDuration, fmtBytes } from "../ui";
 import { lunaModules } from "../completers";
-import { loadCluster, loadLock, saveLock } from "../../core/config";
-import * as luna from "../../core/luna";
-import type { LunaState, LunaStatusRow } from "../../core/luna";
-import type { LunaSourceConfig } from "../../core/types";
+import { loadCluster, loadLock, saveLock } from "../../client/core/config";
+import * as luna from "../../client/core/luna";
+import { ProgressReporter } from "../../client/core/progress";
+import type { LunaState, LunaStatusRow } from "../../client/core/luna";
+import type { LunaSourceConfig } from "../../client/core/types";
 import { runDeploy } from "./plugins";
 
 /** Coloured label for how far a module has travelled from source to instances. */
@@ -28,12 +29,13 @@ function stateBadge(state: LunaState): string {
 }
 
 /** Relative age of a build, or a dim placeholder when the jar is missing. */
-function age(builtAt: Date | undefined): string {
+function age(builtAt: Date | string | undefined): string {
 	if (!builtAt) {
 		return pc.dim("—");
 	}
 
-	return pc.dim(`${fmtDuration(Date.now() - builtAt.getTime())} ago`);
+	// dates cross the daemon socket as ISO strings — normalize before math
+	return pc.dim(`${fmtDuration(Date.now() - new Date(builtAt).getTime())} ago`);
 }
 
 /** Render the status table plus its one-line summary. */
@@ -109,17 +111,19 @@ async function runBuild(
 	const label = modules?.length ? modules.join(", ") : "all modules";
 	const spin = new Spinner().start(`building ${label}...`);
 
-	const result = await luna.build(source, {
-		modules,
+	// the build runs in the daemon; gradle's output lines arrive as progress
+	// messages, and only `> Task :x:y` lines advance the spinner label
+	const reporter = new ProgressReporter(`build ${label}`);
 
-		onLine: (line) => {
-			const task = /^> Task (\S+)/.exec(line);
+	reporter.onUpdate((update) => {
+		const task = /^> Task (\S+)/.exec(update.message ?? "");
 
-			if (task) {
-				spin.update(`building ${label} ${pc.dim(task[1]!)}`);
-			}
-		},
+		if (task) {
+			spin.update(`building ${label} ${pc.dim(task[1]!)}`);
+		}
 	});
+
+	const result = await luna.build(source, { modules, reporter });
 
 	spin.stop();
 
@@ -273,14 +277,14 @@ command({
 		const affected = new Set<string>();
 
 		for (const entry of changed) {
-			const { effectiveTargets } = await import("../../core/families");
+			const { effectiveTargets } = await import("../../client/core/families");
 
 			for (const target of effectiveTargets(cfg, lock, entry.name)) {
 				affected.add(target);
 			}
 		}
 
-		const instances = await import("../../core/instances");
+		const instances = await import("../../client/core/instances");
 		const statuses = await instances.getAllStatuses(cfg);
 
 		// Restart backends before the proxy so players are never routed at a dead backend.

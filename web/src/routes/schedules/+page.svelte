@@ -162,7 +162,7 @@
 <PageHeader
 	title="Schedules"
 	count={schedules.length}
-	description="Start, stop or restart instances on a fixed time, a cron expression or a rate — runs fire while the console server is up"
+	description="Start, stop or restart instances on a fixed time, a cron expression or a rate — runs fire from the mrds daemon, 24/7"
 	info
 >
 	{#snippet actions()}

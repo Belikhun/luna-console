@@ -792,7 +792,7 @@ export function compatReport(
 export interface DeployAction {
 	instance: string;
 	file: string;
-	action: "updated" | "installed" | "unchanged" | "renamed" | "missing-variant" | "config";
+	action: "updated" | "installed" | "unchanged" | "renamed" | "missing-variant" | "config" | "error";
 	detail?: string;
 }
 

@@ -15,6 +15,7 @@ import { join, resolve } from "node:path";
 
 import type { ClusterConfig, LunaSourceConfig, PluginEntry, PluginsLock } from "./types";
 import { instanceDir, managedInstances, poolDir } from "./config";
+import type { ProgressReporter } from "./progress";
 import { effectiveTargets } from "./families";
 import { entryNameFor } from "./plugins";
 import * as mr from "./services/modrinth";
@@ -171,6 +172,10 @@ export interface BuildOptions {
 	modules?: string[];
 	/** Called with each line of gradle output, for spinners and log streaming */
 	onLine?: (line: string) => void;
+	/** Live progress: gradle's output lines ride the report messages, so a
+	 *  daemon job streams them to remote renderers the same way onLine feeds
+	 *  a local spinner */
+	reporter?: ProgressReporter;
 }
 
 export interface BuildResult {
@@ -225,12 +230,14 @@ export async function build(
 			for (const line of lines) {
 				log.push(line);
 				opts.onLine?.(line);
+				opts.reporter?.say("info", line);
 			}
 		}
 
 		if (pending.length > 0) {
 			log.push(pending);
 			opts.onLine?.(pending);
+			opts.reporter?.say("info", pending);
 		}
 	};
 

@@ -1,9 +1,7 @@
 import { json } from '@sveltejs/kit';
-import { getEvents, ensureSampler } from '$lib/server/mrds';
+import { getEvents } from '$lib/server/mrds';
 
-/** GET ?instance= → the cluster event log, newest first. */
+/** GET ?instance= → the cluster event log, newest first (from the daemon). */
 export async function GET({ url }) {
-	ensureSampler();
-
-	return json({ events: getEvents(url.searchParams.get('instance') ?? undefined) });
+	return json({ events: await getEvents(url.searchParams.get('instance') ?? undefined) });
 }

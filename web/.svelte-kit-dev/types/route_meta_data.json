@@ -5,6 +5,12 @@
 	"/api/cleanup": [
 		"src/routes/api/cleanup/+server.ts"
 	],
+	"/api/daemons": [
+		"src/routes/api/daemons/+server.ts"
+	],
+	"/api/daemons/[name]": [
+		"src/routes/api/daemons/[name]/+server.ts"
+	],
 	"/api/env": [
 		"src/routes/api/env/+server.ts"
 	],
@@ -123,6 +129,7 @@
 		"src/routes/api/shell/exec/+server.ts"
 	],
 	"/cleanup": [],
+	"/daemons": [],
 	"/environment": [],
 	"/gallery": [],
 	"/instances": [],

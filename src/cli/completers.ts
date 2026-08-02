@@ -1,4 +1,4 @@
-import { loadCluster, loadLock, managedInstances } from "../core/config";
+import { loadCluster, loadLock, managedInstances } from "../client/core/config";
 
 /**
  * Completion sources are called while the user is mid-keystroke, so every one of
@@ -32,7 +32,7 @@ export async function targetSelectors(): Promise<string[]> {
 /** Gradle module names in the luna-plugins workspace that produce a deployable jar. */
 export async function lunaModules(): Promise<string[]> {
 	try {
-		const { lunaSource, listModules } = await import("../core/luna");
+		const { lunaSource, listModules } = await import("../client/core/luna");
 		const source = lunaSource(await loadCluster());
 		const modules = await listModules(source);
 

@@ -1,10 +1,10 @@
 import { command } from "../framework";
 import { pc, Sym, ok, warn, info, printTable, fmtBytes, Spinner } from "../ui";
-import { loadCluster, saveCluster, loadLock } from "../../core/config";
-import { syncVelocityToml, readVelocityServers } from "../../core/proxy";
-import { collectPortRows, auditPorts, ensurePortAllocations } from "../../core/ports";
-import * as cleanup from "../../core/cleanup";
-import { sendCommand, getStatus } from "../../core/instances";
+import { loadCluster, saveCluster, loadLock } from "../../client/core/config";
+import { syncVelocityToml, readVelocityServers } from "../../client/core/proxy";
+import { collectPortRows, auditPorts, ensurePortAllocations } from "../../client/core/ports";
+import * as cleanup from "../../client/core/cleanup";
+import { sendCommand, getStatus } from "../../client/core/instances";
 
 command({
 	path: ["proxy", "sync"],

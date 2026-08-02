@@ -1,6 +1,6 @@
 import pc from "picocolors";
 
-import type { ProgressReporter, ProgressSnapshot, ProgressStatus } from "../core/progress";
+import type { ProgressReporter, ProgressSnapshot, ProgressStatus } from "../client/core/progress";
 
 export { pc };
 

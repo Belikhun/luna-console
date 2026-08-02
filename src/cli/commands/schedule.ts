@@ -1,8 +1,8 @@
 import { command, UsageError, Bail } from "../framework";
 import { pc, Sym, ok, info, warn, printTable, fmtDuration } from "../ui";
 import { instanceNames } from "../completers";
-import { loadCluster } from "../../core/config";
-import * as sched from "../../core/schedule";
+import { loadCluster } from "../../client/core/config";
+import * as sched from "../../client/core/schedule";
 
 /** Human line for a trigger. */
 function triggerText(trigger: sched.ScheduleTrigger): string {
@@ -70,7 +70,7 @@ command({
 		console.log();
 		printTable(rows, { head: ["", "name", "id", "action", "instances", "trigger", "next run", "last", "runs"] });
 		console.log();
-		info(`runs fire while the web console is up ${pc.dim("(mrds web)")}`);
+		info(`runs fire from the daemon ${pc.dim("(mrds daemon run)")}`);
 	},
 });
 
@@ -203,8 +203,8 @@ command({
 			throw new Bail(`unknown schedule: ${args[0]}`);
 		}
 
-		const inst = await import("../../core/instances");
-		const { expandTargets } = await import("../../core/config");
+		const inst = await import("../../client/core/instances");
+		const { expandTargets } = await import("../../client/core/config");
 		const outcomes: string[] = [];
 
 		for (const name of expandTargets(cfg, schedule.instances)) {

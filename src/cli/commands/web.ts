@@ -3,7 +3,8 @@ import { join } from "node:path";
 
 import { command, Bail } from "../framework";
 import { pc, info, ok } from "../ui";
-import { root } from "../../core/config";
+import { root } from "../../client/core/config";
+import { ensureConnected } from "../../client/socket";
 
 command({
 	path: ["web"],
@@ -15,6 +16,16 @@ command({
 	],
 
 	handler: async (_args, opts) => {
+		// the console only runs beside the primary daemon — its backend talks to
+		// the daemon over the same socket the CLI uses
+		const daemon = await ensureConnected();
+
+		if (daemon.mode !== "primary") {
+			throw new Bail(
+				`this host runs the "${daemon.name}" follower daemon — the web console only runs on the primary`,
+			);
+		}
+
 		const webDir = join(root(), "control", "web");
 		const port = (opts.port as string) ?? "8330";
 		const host = (opts.host as string) ?? "127.0.0.1";

@@ -10,6 +10,7 @@ import "./commands/misc";
 import "./commands/web";
 import "./commands/env";
 import "./commands/schedule";
+import "./commands/daemon";
 
 import { command, dispatch } from "./framework";
 import { complete, BASH_HOOK, ZSH_HOOK, FISH_HOOK } from "./complete";
@@ -49,8 +50,14 @@ async function main(): Promise<void> {
 	if (argv[0] === "__complete") {
 		const words = argv.slice(1).filter((word) => word !== "--");
 
-		for (const hit of await complete(words)) {
-			console.log(hit);
+		// fail soft: a Tab press with the daemon down completes to nothing
+		// rather than spraying an error into the user's command line
+		try {
+			for (const hit of await complete(words)) {
+				console.log(hit);
+			}
+		} catch {
+			return;
 		}
 
 		return;

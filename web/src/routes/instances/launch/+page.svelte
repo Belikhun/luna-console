@@ -33,6 +33,8 @@
 	let javaArgs = $state('');
 	let creating = $state(false);
 	let existing: string[] = $state([]);
+	let daemon = $state('');
+	let followers: string[] = $state([]);
 
 	let schema: any[] = $state([]);
 	let groups: any[] = $state([]);
@@ -43,11 +45,18 @@
 	let job: JobView | null = $state(null);
 
 	onMount(async () => {
-		const [paper, insts] = await Promise.all([api('/paper'), api('/instances')]);
+		const [paper, insts, cluster] = await Promise.all([
+			api('/paper'),
+			api('/instances'),
+			api('/daemons')
+		]);
 
 		versions = paper.versions;
 		mcVersion = versions[0] ?? '';
 		existing = insts.instances.map((inst: any) => inst.name);
+		followers = cluster.daemons
+			.filter((row: any) => row.mode === 'follower')
+			.map((row: any) => row.name);
 
 		// the java profiles and the settings schema both come off any existing
 		// backend's config route — there is no instance yet to read them from
@@ -113,7 +122,8 @@
 				settings: changedSettings,
 				javaArgs,
 				pluginGroups,
-				pluginOverrides
+				pluginOverrides,
+				daemon
 			});
 
 			job = started.job;
@@ -211,6 +221,25 @@
 				/>
 			</div>
 		</FormGrid>
+		{#if followers.length}
+			<FormGrid cols={2}>
+				<div class="field">
+					<span class="lbl">Daemon</span>
+					<span class="hint">
+						Machine the instance will run on — followers mirror the plugin pool from
+						the primary and the proxy routes to them over the LAN.
+					</span>
+					<Select
+						bind:value={daemon}
+						width="100%"
+						options={[
+							{ value: '', label: 'primary (this machine)' },
+							...followers.map((entry) => ({ value: entry, label: entry }))
+						]}
+					/>
+				</div>
+			</FormGrid>
+		{/if}
 		<label class="field">
 			<span class="lbl">Extra JVM arguments</span>
 			<span class="hint">
