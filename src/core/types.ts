@@ -79,7 +79,7 @@ export interface LunaSourceConfig {
 	dir: string;
 	/** Gradle task that produces the shadow jars */
 	task?: string;
-	/** Platforms whose artifacts are pooled — neoforge is built but not deployed here */
+	/** Platforms whose artifacts are pooled (paper, velocity, neoforge) */
 	platforms?: string[];
 }
 

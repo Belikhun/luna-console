@@ -13,7 +13,7 @@ export const VERSION = "1.0.0";
 export const COMMIT = "20626cd";
 
 /** ISO 8601 build timestamp, empty from source. */
-export const BUILD_AT = "2026-08-03T03:04:00.457Z";
+export const BUILD_AT = "2026-08-03T03:07:15.568Z";
 
 /** The full build identity, e.g. "1.0.0+6ee20ac". */
 export function buildVersion(): string {

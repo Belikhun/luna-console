@@ -21,7 +21,7 @@ import { entryNameFor } from "./plugins";
 import * as mr from "./services/modrinth";
 
 /** Platforms whose artifacts are pooled for this cluster. */
-export const LUNA_PLATFORMS = ["paper", "velocity"] as const;
+export const LUNA_PLATFORMS = ["paper", "velocity", "neoforge"] as const;
 
 /** Gradle task that produces the shadow jars. */
 export const LUNA_BUILD_TASK = "shadowJar";
@@ -373,7 +373,10 @@ export async function sync(
 			entry = {
 				file: artifact.poolFile,
 				source: "luna",
-				loader: artifact.platform === "velocity" ? "velocity" : "paper",
+				loader:
+					artifact.platform === "velocity" || artifact.platform === "neoforge"
+						? artifact.platform
+						: "paper",
 				plugin: identity?.[1],
 				family: identity?.[2] as PluginEntry["family"],
 				autoUpdate: false,
