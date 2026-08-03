@@ -27,7 +27,7 @@ export interface DaemonInfo {
 }
 
 /** Local API protocol revision this client speaks (matches daemon/server.ts). */
-export const CLIENT_PROTOCOL = 2;
+export const CLIENT_PROTOCOL = 3;
 
 let connection: { socket: string; info: DaemonInfo } | undefined;
 

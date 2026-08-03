@@ -81,29 +81,9 @@ export function installSaveHook(hook: SaveHook | undefined): void {
 	saveHook = hook;
 }
 
-/**
- * Rename the pre-addon-group `pluginGroups` field on every instance, in place.
- * Purely in memory: the next `saveCluster` persists the new spelling, so a
- * read-only run never rewrites the registry.
- */
-function migrateCluster(cfg: ClusterConfig): void {
-	for (const inst of Object.values(allInstances(cfg))) {
-		if (!inst.pluginGroups) {
-			continue;
-		}
-
-		inst.addonGroups ??= inst.pluginGroups;
-		delete inst.pluginGroups;
-	}
-}
-
 /** Read the instance registry. */
 export async function loadCluster(): Promise<ClusterConfig> {
-	const cfg: ClusterConfig = await Bun.file(clusterPath()).json();
-
-	migrateCluster(cfg);
-
-	return cfg;
+	return await Bun.file(clusterPath()).json();
 }
 
 /** Write the instance registry back, tab-indented like the checked-in file. */
@@ -115,30 +95,15 @@ export async function saveCluster(cfg: ClusterConfig): Promise<void> {
 
 /** Read the plugin lockfile, treating a missing file as an empty lock. */
 export async function loadLock(): Promise<PluginsLock> {
-	if (!existsSync(lockPath())) {
-		const empty: PluginsLock = { plugins: {} };
-
-		// migrate in memory so groups/identity exist even before the first save
-		const { migrateLock } = await import("./families");
-
-		migrateLock(empty);
-
-		return empty;
-	}
-
-	const lock: PluginsLock = await Bun.file(lockPath()).json();
+	const lock: PluginsLock = existsSync(lockPath())
+		? await Bun.file(lockPath()).json()
+		: { plugins: {} };
 
 	// dynamic import: families.ts statically imports this module, so a static
 	// import here would be a cycle
-	const { migrateLock } = await import("./families");
+	const { ensureLockDefaults } = await import("./families");
 
-	if (migrateLock(lock)) {
-		const backup = join(root(), "plugins.lock.v1.backup.json");
-
-		if (!existsSync(backup)) {
-			await Bun.write(backup, await Bun.file(lockPath()).text());
-		}
-
+	if (ensureLockDefaults(lock) && existsSync(lockPath())) {
 		await saveLock(lock);
 	}
 
