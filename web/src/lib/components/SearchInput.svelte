@@ -5,13 +5,40 @@
 	let {
 		value = $bindable(''),
 		placeholder = 'Find resources',
-		width = '30rem'
-	}: { value: string; placeholder?: string; width?: string } = $props();
+		width = '30rem',
+		focus = false,
+		onenter
+	}: {
+		value: string;
+		placeholder?: string;
+		width?: string;
+		/** Take the caret as soon as the box is mounted (a dialog's own field) */
+		focus?: boolean;
+		/** Enter pressed in the field — for boxes that submit rather than filter */
+		onenter?: () => void;
+	} = $props();
+
+	let field: HTMLInputElement | undefined = $state();
+
+	$effect(() => {
+		if (focus) {
+			field?.focus();
+		}
+	});
 </script>
 
 <div class="search" style:max-width={width}>
 	<span class="mg"><Icon name="search" size="0.75rem" /></span>
-	<input {placeholder} bind:value />
+	<input
+		bind:this={field}
+		{placeholder}
+		bind:value
+		onkeydown={(event) => {
+			if (event.key === 'Enter') {
+				onenter?.();
+			}
+		}}
+	/>
 	{#if value}
 		<button class="clear" onclick={() => (value = '')} title="Clear">
 			<Icon name="close" size="0.75rem" />
@@ -35,15 +62,18 @@
 	}
 	input {
 		background: var(--bg-input);
-		border: 0.125rem solid var(--border-input);
+		border: var(--border-control) solid var(--border-input);
 		border-radius: var(--radius-input);
 		color: var(--text);
 		font-family: var(--font);
 		font-size: 0.875rem;
 		line-height: 1.25rem;
 
+		// one control height, so a search box and the button beside it line up
+		height: var(--control-h);
+
 		// symmetric 2rem insets leave room for the magnifier and the clear button
-		padding: 0.25rem 2rem;
+		padding: 0.125rem 2rem;
 		outline: none;
 		width: 100%;
 

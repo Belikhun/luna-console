@@ -8,26 +8,35 @@ import { existsSync } from "node:fs";
 export type ConfFormat = "properties" | "hocon" | "yaml" | "toml";
 
 /**
+ * Horizontal whitespace only. Plain `\s` matches newlines, so padding written
+ * as `\s*` around a separator happily runs off the end of an empty assignment
+ * (`server-ip=`) and swallows the line below it — which a get would then report
+ * as the value and a set would overwrite, merging two lines into one.
+ */
+const HSPACE = "[^\\S\\r\\n]*";
+
+/**
  * Build the match for a single scalar assignment. Capture 1 is everything up to
  * and including the separator, so a replace can keep the original spelling and
- * indentation of the line; capture 2 is the bare value.
+ * indentation of the line; capture 2 is the bare value, empty when the key is
+ * assigned nothing.
  */
 function keyRegex(format: ConfFormat, key: string): RegExp {
 	const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 	switch (format) {
 		case "properties":
-			return new RegExp(`^(\\s*${escaped}\\s*=\\s*)(.*)$`, "m");
+			return new RegExp(`^(${HSPACE}${escaped}${HSPACE}=${HSPACE})(.*)$`, "m");
 
 		case "hocon":
 			// hocon accepts both `key: value` and `key = value`
-			return new RegExp(`^(\\s*${escaped}\\s*[:=]\\s*)([^\\n#]*)`, "m");
+			return new RegExp(`^(${HSPACE}${escaped}${HSPACE}[:=]${HSPACE})([^\\n#]*)`, "m");
 
 		case "yaml":
-			return new RegExp(`^(\\s*${escaped}\\s*:\\s*)([^\\n#]*)`, "m");
+			return new RegExp(`^(${HSPACE}${escaped}${HSPACE}:${HSPACE})([^\\n#]*)`, "m");
 
 		case "toml":
-			return new RegExp(`^(\\s*${escaped}\\s*=\\s*)([^\\n#]*)`, "m");
+			return new RegExp(`^(${HSPACE}${escaped}${HSPACE}=${HSPACE})([^\\n#]*)`, "m");
 	}
 }
 

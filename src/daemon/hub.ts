@@ -53,6 +53,7 @@ import { buildVersion } from "../version";
 const SYNC_FILES = [
 	"cluster.json",
 	"plugins.lock.json",
+	"packs.lock.json",
 	"environment.json",
 	"proxy/forwarding.secret",
 ] as const;

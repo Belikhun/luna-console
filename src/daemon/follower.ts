@@ -17,8 +17,10 @@ import {
 	poolDir,
 	root,
 } from "../core/config";
+import { datapacksDir, datapackTargets, type AddonGroups } from "../core/datapacks";
 import { setProxyHost } from "../core/environment";
 import { effectiveTargets } from "../core/families";
+import type { PacksLock } from "../core/packslock";
 import { ProgressReporter } from "../core/progress";
 import type { BackendCard } from "../core/services/luna";
 import { sha512File } from "../core/services/modrinth";
@@ -53,9 +55,14 @@ function send(frame: Record<string, unknown>): void {
 	}
 }
 
-/** Fetch one pool file from the primary when missing or hash-mismatched. */
-async function ensurePoolFile(rel: string, sha512: string | undefined): Promise<void> {
-	const path = join(poolDir(), rel);
+/** Fetch one primary-hosted file when missing or hash-mismatched. */
+async function ensureMirroredFile(
+	endpoint: "pool" | "datapacks",
+	dir: string,
+	rel: string,
+	sha512: string | undefined,
+): Promise<void> {
+	const path = join(dir, rel);
 
 	if (existsSync(path)) {
 		if (!sha512) {
@@ -67,19 +74,24 @@ async function ensurePoolFile(rel: string, sha512: string | undefined): Promise<
 		}
 	}
 
-	const url = `http://${dcfg!.primary!.address}/files/pool/${encodeURIComponent(rel)}`;
+	const url = `http://${dcfg!.primary!.address}/files/${endpoint}/${encodeURIComponent(rel)}`;
 	const response = await fetch(url, {
 		headers: { "x-luna-token": dcfg!.token ?? "" },
 	});
 
 	if (!response.ok) {
-		throw new Error(`pool fetch failed for ${rel}: HTTP ${response.status}`);
+		throw new Error(`${endpoint} fetch failed for ${rel}: HTTP ${response.status}`);
 	}
 
 	await mkdir(dirname(path), { recursive: true });
 	await Bun.write(path, response);
 
-	log(`pool mirror: fetched ${rel}`);
+	log(`${endpoint} mirror: fetched ${rel}`);
+}
+
+/** Fetch one pool file from the primary when missing or hash-mismatched. */
+async function ensurePoolFile(rel: string, sha512: string | undefined): Promise<void> {
+	await ensureMirroredFile("pool", poolDir(), rel, sha512);
 }
 
 /**
@@ -105,6 +117,30 @@ async function ensurePoolMirror(cfg: ClusterConfig, lock: PluginsLock): Promise<
 		for (const variant of Object.values(entry.variants ?? {})) {
 			await ensurePoolFile(join("versions", variant.file), variant.sha512);
 		}
+	}
+}
+
+/**
+ * Bring the local data pack pool up to the lock before a forwarded deploy —
+ * the primary's pool is the source, this daemon caches only the zips its own
+ * instances are targeted with.
+ */
+async function ensureDatapackMirror(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	groups?: AddonGroups,
+): Promise<void> {
+	const insts = managedInstances(cfg);
+	const owned = new Set(Object.keys(insts).filter((name) => ownsInstance(insts[name]!)));
+
+	for (const [pack, entry] of Object.entries(lock.datapacks)) {
+		const wanted = datapackTargets(cfg, pack, entry, groups).some((name) => owned.has(name));
+
+		if (!wanted) {
+			continue;
+		}
+
+		await ensureMirroredFile("datapacks", datapacksDir(), entry.file, entry.installed?.sha512);
 	}
 }
 
@@ -204,6 +240,18 @@ async function handleForwardedOp(frame: PrimaryFrame): Promise<void> {
 		// against the cfg travelling with the call (the local sync may lag it)
 		if (op === "plugins.deploy" && Array.isArray(frame.args)) {
 			await ensurePoolMirror(frame.args[0] as ClusterConfig, frame.args[1] as PluginsLock);
+		}
+
+		if (op === "datapacks.deploy" && Array.isArray(frame.args)) {
+			// the deploy options carry the addon groups, so a pack a group grants
+			// (with no target of its own) is mirrored as well
+			const opts = frame.args[2] as { groups?: AddonGroups } | undefined;
+
+			await ensureDatapackMirror(
+				frame.args[0] as ClusterConfig,
+				frame.args[1] as PacksLock,
+				opts?.groups,
+			);
 		}
 
 		const outcome = await runOp(op, frame.args ?? [], reporter);

@@ -133,6 +133,7 @@ export async function startInstanceTracked(
 	const isProxy = inst.software === "velocity";
 	const boot = progress.child("Java runtime", 1);
 	const server = progress.child(isProxy ? "Proxy boot" : "Server boot", 2);
+	const datapacks = isProxy ? undefined : progress.child("Data packs", 1);
 	const plugins = isProxy ? undefined : progress.child("Plugins", 2);
 	const world = isProxy ? undefined : progress.child("World", 3);
 
@@ -195,6 +196,33 @@ export async function startInstanceTracked(
 			// the quietest stretch of a first boot — nothing else prints for a while
 			if (line.includes("Loading libraries")) {
 				server.info(0.3, "loading libraries — a first boot takes a while");
+
+				continue;
+			}
+
+			// the data pack registry loads during bootstrap: new world packs are
+			// announced first, then recipes, then advancements — the trio covers
+			// vanilla data and world datapacks alike
+			const newPack = /Found new data pack ([^,]+), loading it automatically/.exec(line);
+
+			if (newPack && datapacks) {
+				datapacks.info(0.3, `loading ${newPack[1]}`);
+
+				continue;
+			}
+
+			const recipes = /Loaded (\d+) recipes/.exec(line);
+
+			if (recipes && datapacks) {
+				datapacks.info(0.6, `${recipes[1]} recipes loaded`);
+
+				continue;
+			}
+
+			const advancements = /Loaded (\d+) advancements/.exec(line);
+
+			if (advancements && datapacks) {
+				datapacks.complete(`${advancements[1]} advancements loaded`);
 
 				continue;
 			}
@@ -269,6 +297,13 @@ export async function startInstanceTracked(
 	}
 
 	server.complete(isProxy ? `proxy up in ${doneIn}s` : "server core up");
+
+	// report() overwrites the message even with undefined, so a node that
+	// already told its story must not be completed a second time
+	if (datapacks && datapacks.calculated < 1) {
+		datapacks.complete("data packs loaded");
+	}
+
 	plugins?.complete(pluginCount ? `${pluginCount} plugin step(s) done` : "no plugins logged");
 	world?.complete("world ready");
 

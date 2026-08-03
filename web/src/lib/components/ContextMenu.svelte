@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import Icon from './Icon.svelte';
+	import BrandIcon from './BrandIcon.svelte';
 	import Spinner from './Spinner.svelte';
 	import { clampMenu, type ContextMenuItem, type MenuAnchor } from './contextmenu';
 
@@ -287,6 +288,8 @@
 		>
 			{#if busy === key}
 				<span class="ico"><Spinner size="0.875rem" /></span>
+			{:else if item.brand}
+				<span class="ico"><BrandIcon name={item.brand} size="0.875rem" /></span>
 			{:else if item.icon}
 				<span class="ico"><Icon name={item.icon} size="0.875rem" /></span>
 			{/if}

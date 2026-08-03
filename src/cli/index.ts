@@ -4,11 +4,13 @@
 
 import "./commands/instance";
 import "./commands/plugins";
+import "./commands/addons";
 import "./commands/luna";
 import "./commands/net";
 import "./commands/misc";
 import "./commands/web";
 import "./commands/env";
+import "./commands/packs";
 import "./commands/schedule";
 import "./commands/daemon";
 import "./commands/setup";

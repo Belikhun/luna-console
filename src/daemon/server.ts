@@ -9,6 +9,7 @@ import { join, normalize } from "node:path";
 import { existsSync } from "node:fs";
 
 import { loadCluster, managedInstances, instanceDir, poolDir } from "../core/config";
+import { datapacksDir } from "../core/datapacks";
 import * as lunaApi from "../core/services/luna";
 
 import type { DaemonConfig } from "./config";
@@ -322,6 +323,24 @@ async function handlePoolFile(subpath: string): Promise<Response> {
 	return new Response(Bun.file(path));
 }
 
+/** GET /files/datapacks/<file> — zip streaming for follower datapack mirroring. */
+async function handleDatapackFile(subpath: string): Promise<Response> {
+	// the pool is one flat level of zips — refuse anything that escapes
+	const clean = normalize(subpath);
+
+	if (clean.startsWith("..") || clean.includes("/") || !clean.endsWith(".zip")) {
+		return errorResponse("invalid datapack path", 400);
+	}
+
+	const path = join(datapacksDir(), clean);
+
+	if (!existsSync(path)) {
+		return errorResponse("no such datapack file", 404);
+	}
+
+	return new Response(Bun.file(path));
+}
+
 /**
  * Build the daemon's fetch handler. `trusted` marks the unix socket listener;
  * TCP requests must present the shared token instead.
@@ -455,6 +474,10 @@ export function buildHandler(
 
 		if (path.startsWith("/files/pool/")) {
 			return await handlePoolFile(decodeURIComponent(path.slice("/files/pool/".length)));
+		}
+
+		if (path.startsWith("/files/datapacks/")) {
+			return await handleDatapackFile(decodeURIComponent(path.slice("/files/datapacks/".length)));
 		}
 
 		return errorResponse("not found", 404);

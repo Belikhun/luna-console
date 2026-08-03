@@ -1,9 +1,9 @@
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
-import type { ClusterConfig, InstanceConfig } from "./types";
-import { instanceDir, managedInstances, root } from "./config";
+import type { ClusterConfig, InstanceConfig, Software } from "./types";
+import { instanceDir, managedInstances, managesPlugins, root } from "./config";
 import * as papermc from "./services/papermc";
 import { readForwardingSecret } from "./proxy";
 import { nextFreePort } from "./ports";
@@ -27,6 +27,355 @@ export async function detectMcVersion(dir: string): Promise<string | undefined> 
 	} catch {
 		return undefined;
 	}
+}
+
+/** Directory the neoforge installer writes its per-build launch files into. */
+const NEOFORGE_LIBRARIES = join("libraries", "net", "neoforged", "neoforge");
+
+/** What an existing server directory says about itself. */
+export interface InstanceDetection {
+	software: Software;
+	mcVersion?: string;
+	/** neoforge only — the installed loader build */
+	loaderVersion?: string;
+	/** server.properties `server-port`, when the file has one */
+	port?: number;
+	/** `-Xmx` found in the launcher the directory already ships with */
+	memory?: string;
+	/** server.properties `server-ip`, when the file has one */
+	bindAddress?: string;
+}
+
+/** Newest neoforge build installed under `libraries/`, by directory name. */
+async function detectNeoForgeVersion(dir: string): Promise<string | undefined> {
+	const libraries = join(dir, NEOFORGE_LIBRARIES);
+
+	if (!existsSync(libraries)) {
+		return undefined;
+	}
+
+	const builds: string[] = [];
+
+	for (const entry of await readdir(libraries, { withFileTypes: true })) {
+		if (entry.isDirectory() && existsSync(join(libraries, entry.name, "unix_args.txt"))) {
+			builds.push(entry.name);
+		}
+	}
+
+	// numeric-aware so 21.1.9 sorts before 21.1.233
+	builds.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+	return builds.at(-1);
+}
+
+/**
+ * The MC version a neoforge pack targets. The launcher script records it in
+ * `.previousrun` after a successful boot; a pack that has never run only has
+ * the installer's `--fml.mcVersion` in its argument file.
+ */
+async function detectNeoForgeMcVersion(dir: string, loaderVersion: string): Promise<string | undefined> {
+	const previous = join(dir, ".previousrun");
+
+	if (existsSync(previous)) {
+		const text = await Bun.file(previous).text();
+		const match = text.match(/^PREVIOUS_MINECRAFT_VERSION=(.+)$/m);
+
+		if (match?.[1]) {
+			return match[1].trim();
+		}
+	}
+
+	const args = join(dir, NEOFORGE_LIBRARIES, loaderVersion, "unix_args.txt");
+
+	if (existsSync(args)) {
+		const text = await Bun.file(args).text();
+		const match = text.match(/--fml\.mcVersion\s+(\S+)/);
+
+		if (match?.[1]) {
+			return match[1];
+		}
+	}
+
+	return undefined;
+}
+
+/**
+ * The heap the directory's own launcher asks for. Read so an adopted instance
+ * keeps running with the memory it was tuned for instead of silently dropping
+ * to luna's default — neoforge keeps it in `user_jvm_args.txt`, everything else
+ * in whatever start script the operator wrote by hand.
+ */
+async function detectMemory(dir: string): Promise<string | undefined> {
+	for (const file of ["user_jvm_args.txt", "run.sh", "start", "start.sh"]) {
+		const path = join(dir, file);
+
+		if (!existsSync(path)) {
+			continue;
+		}
+
+		const text = await Bun.file(path).text();
+
+		// a commented-out example (# -Xmx4G) is documentation, not a setting
+		for (const line of text.split(/\r?\n/)) {
+			if (line.trimStart().startsWith("#")) {
+				continue;
+			}
+
+			const match = line.match(/-Xmx(\d+[KMG]?)\b/i);
+
+			if (match?.[1]) {
+				return match[1].toUpperCase();
+			}
+		}
+	}
+
+	return undefined;
+}
+
+/**
+ * Work out what an existing server directory is, without changing anything in
+ * it. NeoForge is recognised by the installer's `libraries/` tree, velocity by
+ * its jar, and everything else is assumed to be paper — which is what
+ * `version_history.json` then confirms with an MC version.
+ *
+ * A relative path is resolved against this daemon's cluster root, so callers
+ * can pass the plain directory name an instance would be registered under.
+ */
+export async function inspectInstanceDir(path: string): Promise<InstanceDetection> {
+	const dir = isAbsolute(path) ? path : join(root(), path);
+
+	if (!existsSync(dir)) {
+		throw new Error(`directory does not exist: ${dir}`);
+	}
+
+	const properties = join(dir, "server.properties");
+	const detection: InstanceDetection = { software: "paper" };
+
+	if (existsSync(properties)) {
+		const port = await getConfValue(properties, "properties", "server-port");
+		const bind = await getConfValue(properties, "properties", "server-ip");
+
+		if (port !== undefined && /^\d+$/.test(port)) {
+			detection.port = parseInt(port);
+		}
+
+		if (bind !== undefined) {
+			detection.bindAddress = bind;
+		}
+	}
+
+	const memory = await detectMemory(dir);
+
+	if (memory) {
+		detection.memory = memory;
+	}
+
+	const loaderVersion = await detectNeoForgeVersion(dir);
+
+	if (loaderVersion) {
+		detection.software = "neoforge";
+		detection.loaderVersion = loaderVersion;
+
+		const mcVersion = await detectNeoForgeMcVersion(dir, loaderVersion);
+
+		if (mcVersion) {
+			detection.mcVersion = mcVersion;
+		}
+
+		return detection;
+	}
+
+	if (existsSync(join(dir, "velocity.jar"))) {
+		detection.software = "velocity";
+
+		return detection;
+	}
+
+	const mcVersion = await detectMcVersion(dir);
+
+	if (mcVersion) {
+		detection.mcVersion = mcVersion;
+	}
+
+	return detection;
+}
+
+export interface AdoptOptions {
+	/** directory name under the cluster root (default: the instance name) */
+	dir?: string;
+	/** override the detected game port */
+	port?: number;
+	/** override the detected heap size */
+	memory?: string;
+	/** java profile whose flags the generated run script uses (default aikar) */
+	profile?: string;
+	/** pin a java binary — a modpack often needs an older JDK than the host default */
+	java?: string;
+	/** extra JVM flags for the generated run script */
+	javaArgs?: string[];
+	/** register in velocity.toml (default true) */
+	register?: boolean;
+	/** hostnames force-routed to this instance */
+	forcedHosts?: string[];
+	/** daemon that owns the instance (absent = the primary's host) */
+	daemon?: string;
+}
+
+export interface AdoptResult {
+	name: string;
+	dir: string;
+	detected: InstanceDetection;
+	inst: InstanceConfig;
+	/** things worth telling the operator that adopt deliberately did not change */
+	notes: string[];
+}
+
+/**
+ * Register a server directory that already exists as a managed instance.
+ *
+ * Adoption is **read-only against the directory**: it inspects the files to
+ * work out what the server is, then writes the registry entry. It never edits
+ * server.properties, never touches plugins or mods, and never adds anything to
+ * the lockfile — the directory is already configured and working, and rewriting
+ * it is exactly the way to break a server that was fine. Anything luna would
+ * have done differently comes back as a note instead.
+ *
+ * Mutates cfg with the new entry; the caller saves and runs the proxy sync.
+ */
+export async function adoptInstance(
+	cfg: ClusterConfig,
+	name: string,
+	opts: AdoptOptions = {},
+): Promise<AdoptResult> {
+	if (!/^[a-z0-9_-]+$/.test(name)) {
+		throw new Error("instance name must be lowercase alphanumeric/-/_");
+	}
+
+	if (name === "proxy") {
+		throw new Error("the proxy is registered by `luna setup`, not adopted");
+	}
+
+	const existing = cfg.instances[name];
+
+	// an external entry is a placeholder for exactly this server, so adopting it
+	// is an upgrade of that registration rather than a conflict
+	if (existing && !existing.external) {
+		throw new Error(`instance "${name}" is already managed`);
+	}
+
+	const dirName = opts.dir ?? existing?.dir ?? name;
+	const dir = join(root(), dirName);
+
+	if (!existsSync(dir)) {
+		throw new Error(
+			`${dir} does not exist — adopt runs on the daemon that owns the instance, ` +
+				"so the path is resolved against that machine's cluster root",
+		);
+	}
+
+	const badArgs = validateJavaArgs(opts.javaArgs ?? []);
+
+	if (badArgs) {
+		throw new Error(badArgs);
+	}
+
+	const detected = await inspectInstanceDir(dir);
+	const port = opts.port ?? detected.port ?? existing?.port;
+
+	if (!port) {
+		throw new Error(`could not determine a port for ${name} — pass one explicitly`);
+	}
+
+	// A port is only taken on the machine that binds it: the proxy holds 25565 on
+	// the primary, which says nothing about a follower's own 25565.
+	const clash = Object.entries(managedInstances(cfg)).find(
+		([other, inst]) => other !== name && inst.port === port && inst.daemon === opts.daemon,
+	);
+
+	if (clash) {
+		const where = opts.daemon ? ` on ${opts.daemon}` : "";
+
+		throw new Error(`port ${port} is already used by ${clash[0]}${where}`);
+	}
+
+	const notes: string[] = [];
+	const memory = opts.memory ?? detected.memory;
+
+	if (!memory) {
+		notes.push("no -Xmx found in the directory's launcher — defaulting to 2G");
+	}
+
+	const inst: InstanceConfig = {
+		dir: dirName,
+		software: detected.software,
+		port,
+		memory: memory ?? "2G",
+		profile: opts.profile ?? "aikar",
+		proxy: {
+			register: opts.register ?? existing?.proxy?.register ?? true,
+		},
+	};
+
+	if (detected.mcVersion) {
+		inst.mcVersion = detected.mcVersion;
+	}
+
+	if (detected.loaderVersion) {
+		inst.loaderVersion = detected.loaderVersion;
+	}
+
+	if (opts.java) {
+		inst.java = opts.java;
+	}
+
+	if (opts.javaArgs?.length) {
+		inst.javaArgs = opts.javaArgs;
+	}
+
+	const forcedHosts = opts.forcedHosts ?? existing?.proxy?.forcedHosts;
+
+	if (forcedHosts?.length) {
+		inst.proxy!.forcedHosts = forcedHosts;
+	}
+
+	if (existing?.proxy?.priority !== undefined) {
+		inst.proxy!.priority = existing.proxy.priority;
+	}
+
+	if (opts.daemon) {
+		inst.daemon = opts.daemon;
+	}
+
+	// A follower's backend is reached across the LAN, so a loopback bind makes it
+	// unreachable no matter what velocity.toml says. Reported, not corrected —
+	// server.properties belongs to the server, and adopt does not rewrite it.
+	if (inst.proxy!.register) {
+		const wanted = opts.daemon ? "0.0.0.0" : "127.0.0.1";
+		const bind = detected.bindAddress;
+
+		if (bind !== undefined && bind !== "" && bind !== wanted) {
+			notes.push(`server-ip is "${bind}" — a proxied backend here wants ${wanted}`);
+		}
+
+		if (opts.daemon && bind === "") {
+			notes.push('server-ip is empty (all interfaces) — luna would set 0.0.0.0');
+		}
+	}
+
+	if (detected.port !== undefined && detected.port !== port) {
+		notes.push(
+			`registered on port ${port} but server.properties says ${detected.port} — ` +
+				`run \`luna instance config ${name} port ${port}\` to align them`,
+		);
+	}
+
+	if (!managesPlugins(inst.software)) {
+		notes.push(`${inst.software} mods stay outside the plugin system — mods/ is left alone`);
+	}
+
+	cfg.instances[name] = inst;
+
+	return { name, dir, detected, inst, notes };
 }
 
 /**
@@ -82,8 +431,8 @@ export interface CreateOptions {
 	settings?: Record<string, string>;
 	/** extra JVM flags for the generated run script */
 	javaArgs?: string[];
-	/** plugin groups beside "default" (which always applies) */
-	pluginGroups?: string[];
+	/** addon groups beside "default" (which always applies) */
+	addonGroups?: string[];
 	/** per-instance plugin overrides (plugin name → force-add/disable) */
 	pluginOverrides?: Record<string, boolean>;
 	/** daemon that will own the instance (absent = the primary's host) */
@@ -223,8 +572,8 @@ export async function createInstance(
 		inst.javaArgs = opts.javaArgs;
 	}
 
-	if (opts.pluginGroups?.length) {
-		inst.pluginGroups = opts.pluginGroups.filter((group) => group !== "default");
+	if (opts.addonGroups?.length) {
+		inst.addonGroups = opts.addonGroups.filter((group) => group !== "default");
 	}
 
 	if (opts.pluginOverrides && Object.keys(opts.pluginOverrides).length) {
@@ -261,6 +610,15 @@ export async function setVersion(
 
 	if (!inst) {
 		throw new Error(`unknown instance: ${name}`);
+	}
+
+	// PaperMC's Fill API is the only jar source luna has; a mod loader's server
+	// is installed by its own installer against a pinned MC version, so moving it
+	// is a modpack operation and not something luna can do behind the operator.
+	if (inst.software === "neoforge") {
+		throw new Error(
+			`${name} runs neoforge — reinstall the pack against the target version instead`,
+		);
 	}
 
 	const progress = reporter ?? new ProgressReporter(`set-version ${name}`);
@@ -343,7 +701,9 @@ export async function setPort(cfg: ClusterConfig, name: string, port: number): P
 		throw new Error(`unknown instance: ${name}`);
 	}
 
-	if (inst.software === "paper") {
+	// velocity's port lives in velocity.toml, which proxy sync owns; every
+	// backend — paper or a mod loader — keeps it in server.properties
+	if (inst.software !== "velocity") {
 		const props = join(instanceDir(inst), "server.properties");
 
 		if (!(await setConfValue(props, "properties", "server-port", port))) {

@@ -58,10 +58,24 @@ const PAGES: SearchHit[] = [
 	{ group: 'Pages', label: 'Plugins', detail: 'Plugin pool and updates', href: '/plugins', icon: 'plug' },
 	{
 		group: 'Pages',
-		label: 'Plugin groups',
-		detail: 'Sets of plugins applied as a unit',
-		href: '/plugins/groups',
+		label: 'Addon groups',
+		detail: 'Sets of plugins and packs applied as a unit',
+		href: '/addons/groups',
 		icon: 'layerGroup'
+	},
+	{
+		group: 'Pages',
+		label: 'Resource packs',
+		detail: 'Proxy-served resource packs',
+		href: '/packs',
+		icon: 'image'
+	},
+	{
+		group: 'Pages',
+		label: 'Data packs',
+		detail: 'World data pack pool',
+		href: '/datapacks',
+		icon: 'box'
 	},
 	{ group: 'Pages', label: 'Ports', detail: 'Port allocations', href: '/network', icon: 'sitemap' },
 	{ group: 'Pages', label: 'Proxy routing', detail: 'Velocity routes', href: '/proxy', icon: 'route' },
@@ -150,17 +164,52 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Plugin groups',
+		group: 'Addon groups',
 		icon: 'layerGroup',
 		load: async () => {
-			const body = await fetchJson<{ groups?: any[] }>('/api/plugins/groups');
+			const body = await fetchJson<{ groups?: any[] }>('/api/addons/groups');
 
 			return (body?.groups ?? []).map((group) => ({
-				group: 'Plugin groups',
+				group: 'Addon groups',
 				label: String(group.name),
-				detail: `${group.plugins?.length ?? 0} plugin(s)${group.usedBy?.length ? ` · used by ${group.usedBy.join(', ')}` : ''}`,
-				href: `/plugins/groups/${encodeURIComponent(group.name)}`,
+				detail:
+					`${group.plugins?.length ?? 0} plugin(s), ${group.respacks?.length ?? 0} resource pack(s), ` +
+					`${group.datapacks?.length ?? 0} data pack(s)` +
+					(group.usedBy?.length ? ` · used by ${group.usedBy.join(', ')}` : ''),
+				href: `/addons/groups/${encodeURIComponent(group.name)}`,
 				icon: 'layerGroup'
+			}));
+		}
+	},
+
+	{
+		group: 'Resource packs',
+		icon: 'image',
+		load: async () => {
+			const body = await fetchJson<{ packs?: any[] }>('/api/respacks');
+
+			return (body?.packs ?? []).map((pack) => ({
+				group: 'Resource packs',
+				label: String(pack.key),
+				detail: `${pack.enabled ? 'enabled' : 'disabled'} · priority ${pack.priority} · ${pack.servers?.join(', ') || 'no servers'}`,
+				href: screenHref('/packs', pack.key),
+				icon: 'image'
+			}));
+		}
+	},
+
+	{
+		group: 'Data packs',
+		icon: 'box',
+		load: async () => {
+			const body = await fetchJson<{ packs?: any[] }>('/api/datapacks');
+
+			return (body?.packs ?? []).map((pack) => ({
+				group: 'Data packs',
+				label: String(pack.name),
+				detail: `${pack.entry?.source ?? 'pack'} ${pack.entry?.installed?.versionNumber ?? ''} · ${pack.effectiveTargets?.join(', ') || 'no targets'}`,
+				href: screenHref('/datapacks', pack.name),
+				icon: 'box'
 			}));
 		}
 	},

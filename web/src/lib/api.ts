@@ -49,6 +49,28 @@ export function del<T = any>(path: string): Promise<T> {
 	return api<T>(path, { method: 'DELETE' });
 }
 
+/**
+ * A picked file's bytes as base64, for JSON upload bodies — the console
+ * uploads as JSON rather than multipart because SvelteKit's CSRF check
+ * rejects form posts when the served origin is ambiguous.
+ */
+export function fileToBase64(file: File): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+
+		reader.onload = () => {
+			// readAsDataURL yields "data:<mime>;base64,<data>" — the payload
+			// starts after the comma
+			const text = String(reader.result);
+
+			resolve(text.slice(text.indexOf(',') + 1));
+		};
+
+		reader.onerror = () => reject(reader.error);
+		reader.readAsDataURL(file);
+	});
+}
+
 export interface InstanceRow {
 	name: string;
 	state:

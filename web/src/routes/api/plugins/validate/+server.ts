@@ -1,7 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 
-import { loadCluster, loadLock, managedInstances } from '$core/config';
+import { loadCluster, loadLock, managedInstances, managesPlugins } from '$core/config';
 import { validateGroups } from '$core/families';
+import type { Software } from '$core/types';
 
 /**
  * GET ?groups=a,b&software=paper&mcVersion=1.21.11[&instance=name]
@@ -14,7 +15,7 @@ export async function GET({ url }) {
 	const lock = await loadLock();
 
 	const instance = url.searchParams.get('instance') ?? undefined;
-	let software = url.searchParams.get('software') as 'paper' | 'velocity' | null;
+	let software = url.searchParams.get('software') as Software | null;
 	let mcVersion = url.searchParams.get('mcVersion') ?? undefined;
 
 	if (instance) {
@@ -28,8 +29,13 @@ export async function GET({ url }) {
 		mcVersion ??= inst.mcVersion;
 	}
 
-	if (software !== 'paper' && software !== 'velocity') {
-		throw error(400, 'software=paper|velocity (or instance=) is required');
+	if (software !== 'paper' && software !== 'velocity' && software !== 'neoforge') {
+		throw error(400, 'software=paper|velocity|neoforge (or instance=) is required');
+	}
+
+	// nothing to validate for a mod loader — its mods/ is outside the plugin system
+	if (!managesPlugins(software)) {
+		return json({ rows: [] });
 	}
 
 	const groups = (url.searchParams.get('groups') ?? '')

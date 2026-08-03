@@ -1,5 +1,5 @@
 /**
- * Plugin identity, families and groups (DESIGN.md §3.1–3.2).
+ * Plugin identity, families and addon groups (DESIGN.md §3.1–3.2).
  *
  * A lockfile entry is one *build* of a plugin: the pair (plugin name, family).
  * Entry keys already encode that pair ("spark-bukkit" / "spark-velocity"), so
@@ -7,21 +7,24 @@
  * `migrateLock` fills them once and the helpers here fall back to the old
  * meaning (key = name, loader = family) so unmigrated data still resolves.
  *
- * Groups are named sets of plugin *names*. An instance's effective plugin set
- * is the union of its groups (always including "default"); an entry deploys to
- * an instance when its plugin is in that set and its family matches the
- * instance's software.
+ * An **addon group** is a named set of addons — plugin names, resource pack
+ * keys and data pack names — applied to instances as a unit. An instance's
+ * effective plugin set is the union of its groups (always including
+ * "default"); an entry deploys to an instance when its plugin is in that set
+ * and its family matches the instance's software. The pack kinds resolve the
+ * same way, in respacks.ts and datapacks.ts, from `memberInstances` here.
  */
 
 import type {
+	AddonGroup,
 	ClusterConfig,
 	InstanceConfig,
 	PluginEntry,
 	PluginFamily,
-	PluginGroup,
 	PluginsLock,
+	Software,
 } from "./types";
-import { expandTargets, managedInstances } from "./config";
+import { expandTargets, managedInstances, managesPlugins } from "./config";
 
 export const DEFAULT_GROUP = "default";
 
@@ -53,8 +56,16 @@ export function familyOf(entry: PluginEntry): PluginFamily {
 	return entry.family ?? entry.loader;
 }
 
-/** Whether a build of this family loads on the given server software. */
-export function familyMatches(family: PluginFamily, software: "paper" | "velocity"): boolean {
+/**
+ * Whether a build of this family loads on the given server software. Software
+ * outside the plugin system (neoforge) matches nothing, so a group can never
+ * pull a pool jar into a modpack's `mods/`.
+ */
+export function familyMatches(family: PluginFamily, software: Software): boolean {
+	if (!managesPlugins(software)) {
+		return false;
+	}
+
 	if (family === "universal") {
 		return true;
 	}
@@ -64,7 +75,67 @@ export function familyMatches(family: PluginFamily, software: "paper" | "velocit
 
 /** Group names applied to an instance — "default" always, then its own list. */
 export function instanceGroupNames(inst: InstanceConfig): string[] {
-	return [DEFAULT_GROUP, ...(inst.pluginGroups ?? []).filter((name) => name !== DEFAULT_GROUP)];
+	// `pluginGroups` is the pre-addon-group spelling; cluster.json is migrated on
+	// load, but an in-flight config passed over RPC may still carry it
+	const own = inst.addonGroups ?? inst.pluginGroups ?? [];
+
+	return [DEFAULT_GROUP, ...own.filter((name) => name !== DEFAULT_GROUP)];
+}
+
+/** The kinds of addon a group can carry. */
+export type AddonKind = "plugins" | "respacks" | "datapacks";
+
+/** One kind's members of a group, always a list. */
+export function groupMembers(group: AddonGroup, kind: AddonKind): string[] {
+	if (kind === "respacks") {
+		return group.respacks ?? [];
+	}
+
+	if (kind === "datapacks") {
+		return group.datapacks ?? [];
+	}
+
+	return group.plugins;
+}
+
+/**
+ * Group names carrying one addon, sorted — "used by" for a pack or plugin.
+ * Takes the group map rather than the lockfile, because the pack modules
+ * resolve membership against `plugins.lock.json`'s groups while their own
+ * source of truth is `packs.lock.json`.
+ */
+export function groupsWith(
+	groups: Record<string, AddonGroup> | undefined,
+	kind: AddonKind,
+	member: string,
+): string[] {
+	return Object.entries(groups ?? {})
+		.filter(([, group]) => groupMembers(group, kind).includes(member))
+		.map(([name]) => name)
+		.sort();
+}
+
+/**
+ * Instances that get one addon through group membership: every managed
+ * instance whose groups carry it. The pack modules narrow this further (a
+ * resource pack rule never names the proxy; a data pack needs a world).
+ */
+export function memberInstances(
+	cfg: ClusterConfig,
+	groups: Record<string, AddonGroup> | undefined,
+	kind: AddonKind,
+	member: string,
+): string[] {
+	const carriers = new Set(groupsWith(groups, kind, member));
+
+	if (!carriers.size) {
+		return [];
+	}
+
+	return Object.entries(managedInstances(cfg))
+		.filter(([, inst]) => instanceGroupNames(inst).some((group) => carriers.has(group)))
+		.map(([name]) => name)
+		.sort();
 }
 
 /** Every distinct plugin name in the lockfile, sorted. */
@@ -134,7 +205,8 @@ export function groupCoverage(cfg: ClusterConfig, lock: PluginsLock, key: string
  * extras, wildcards included) united with group/override coverage, minus the
  * instances that disabled the plugin — a `false` override beats an explicit
  * lockfile target too. This is the single resolution deploy, drift detection
- * and compat checks all share.
+ * and compat checks all share, so it is also where instances outside the plugin
+ * system drop out: naming one explicitly must not deploy into its `mods/`.
  */
 export function effectiveTargets(cfg: ClusterConfig, lock: PluginsLock, key: string): string[] {
 	const entry = lock.plugins[key];
@@ -152,7 +224,15 @@ export function effectiveTargets(cfg: ClusterConfig, lock: PluginsLock, key: str
 	}
 
 	for (const name of [...out]) {
-		if (insts[name]?.pluginOverrides?.[plugin] === false) {
+		const inst = insts[name];
+
+		if (!inst || !managesPlugins(inst.software)) {
+			out.delete(name);
+
+			continue;
+		}
+
+		if (inst.pluginOverrides?.[plugin] === false) {
 			out.delete(name);
 		}
 	}
@@ -196,12 +276,22 @@ export function setPluginOverride(
 	inst.pluginOverrides[plugin] = state;
 }
 
-/** Create or update a group. The default group keeps its hardcoded members. */
+/**
+ * Create or update an addon group. Each member list is replaced when the patch
+ * carries it and left alone when it does not, so a caller editing only the
+ * resource packs cannot drop the plugins. The default group keeps its
+ * hardcoded plugins.
+ */
 export function setGroup(
 	lock: PluginsLock,
 	name: string,
-	patch: { plugins?: string[]; description?: string },
-): PluginGroup {
+	patch: {
+		plugins?: string[];
+		respacks?: string[];
+		datapacks?: string[];
+		description?: string;
+	},
+): AddonGroup {
 	if (!/^[a-z0-9_-]+$/.test(name)) {
 		throw new Error("group name must be lowercase alphanumeric/-/_");
 	}
@@ -209,10 +299,28 @@ export function setGroup(
 	lock.groups ??= {};
 
 	const existing = lock.groups[name];
-	const group: PluginGroup = existing ?? { plugins: [] };
+	const group: AddonGroup = existing ?? { plugins: [] };
 
 	if (patch.plugins) {
 		group.plugins = [...new Set(patch.plugins)].sort();
+	}
+
+	// an empty list is a real value here (the group carries no packs), so the
+	// key is dropped rather than kept as []
+	for (const kind of ["respacks", "datapacks"] as const) {
+		const members = patch[kind];
+
+		if (!members) {
+			continue;
+		}
+
+		const unique = [...new Set(members)].sort();
+
+		if (unique.length) {
+			group[kind] = unique;
+		} else {
+			delete group[kind];
+		}
 	}
 
 	if (patch.description !== undefined) {
@@ -233,6 +341,37 @@ export function setGroup(
 	lock.groups[name] = group;
 
 	return group;
+}
+
+/**
+ * Drop one addon from every group carrying it — what a pack's removal owes the
+ * groups, so a deleted pack does not linger as a phantom member. Returns
+ * whether anything changed, so the caller knows to persist.
+ */
+export function pruneAddon(lock: PluginsLock, kind: AddonKind, member: string): boolean {
+	let changed = false;
+
+	for (const group of Object.values(lock.groups ?? {})) {
+		const members = groupMembers(group, kind);
+
+		if (!members.includes(member)) {
+			continue;
+		}
+
+		const kept = members.filter((name) => name !== member);
+
+		if (kind === "plugins") {
+			group.plugins = kept;
+		} else if (kept.length) {
+			group[kind] = kept;
+		} else {
+			delete group[kind];
+		}
+
+		changed = true;
+	}
+
+	return changed;
 }
 
 /** Delete a group. The default group cannot be deleted. */
@@ -320,7 +459,7 @@ export function validateGroups(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
 	opts: {
-		software: "paper" | "velocity";
+		software: Software;
 		mcVersion?: string;
 		groups: string[];
 		instance?: string;

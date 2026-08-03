@@ -35,7 +35,7 @@
 	let schema: any[] = $state([]);
 	let groups: any[] = $state([]);
 	let settings: Record<string, string> = $state({});
-	let pluginGroups: string[] = $state([]);
+	let addonGroups: string[] = $state([]);
 	let pluginOverrides: Record<string, boolean> = $state({});
 
 	onMount(async () => {
@@ -132,7 +132,7 @@
 			...createFlashConfig(target),
 
 			start: () =>
-				post('/instances/create', {
+				post('/instances', {
 					name: target,
 					mcVersion,
 					memory,
@@ -140,7 +140,7 @@
 					register,
 					settings: changedSettings,
 					javaArgs,
-					pluginGroups,
+					addonGroups,
 					pluginOverrides,
 					// the registry records an owner only for follower-held instances, so
 					// the primary is sent as "no daemon" rather than by name
@@ -257,14 +257,14 @@
 	</Panel>
 
 	<Panel
-		title="Plugins"
-		count={pluginGroups.length ? `default + ${pluginGroups.length}` : 'default'}
-		description="Plugin groups applied to the new instance — the default group always is. The table shows how each plugin lands on this platform and Minecraft version."
+		title="Addons"
+		count={addonGroups.length ? `default + ${addonGroups.length}` : 'default'}
+		description="Addon groups applied to the new instance — the default group always is. The table shows how each plugin lands on this platform and Minecraft version; the packs a group carries are applied as the instance is created."
 	>
 		<GroupsField
 			software="paper"
 			{mcVersion}
-			bind:selected={pluginGroups}
+			bind:selected={addonGroups}
 			bind:overrides={pluginOverrides}
 			disabled={creating}
 		/>

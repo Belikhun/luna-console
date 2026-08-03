@@ -16,13 +16,15 @@
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
-	 * One plugin group in full: its members with per-family availability, the
-	 * instances using it (live state), membership management, and the update
-	 * tools — push the group's plugins to every user and restart them now, on a
-	 * schedule, or not at all.
+	 * One addon group in full: its three member lists (plugins with per-family
+	 * availability, resource packs with their server rules, data packs with the
+	 * worlds they reach), the instances using it, and the update tools — push
+	 * the group to every user and restart them now, on a schedule, or not at all.
 	 */
 
 	const name = $derived(page.params.name);
+
+	type Kind = 'plugins' | 'respacks' | 'datapacks';
 
 	let data: any = $state(null);
 	let loading = $state(true);
@@ -31,19 +33,20 @@
 
 	let description = $state('');
 	let addOpen = $state(false);
+	let addKind: Kind = $state('plugins');
 	let deleteOpen = $state(false);
 
 	let restartOpen = $state(false);
 	let restartMode = $state('now');
 	let restartAt = $state('');
-	/** what confirmed restart choice applies to: a pending save or a plain sync */
-	let pendingPlugins: string[] | null = $state(null);
+	/** what a confirmed restart choice applies to: a pending edit or a plain sync */
+	let pendingEdit: Partial<Record<Kind, string[]>> | null = $state(null);
 
 	async function refresh(): Promise<void> {
 		loading = true;
 
 		try {
-			data = await api(`/plugins/groups/${name}`);
+			data = await api(`/addons/groups/${name}`);
 			description = data.description;
 			lastUpdated = Date.now();
 		} catch (err) {
@@ -63,29 +66,86 @@
 		});
 	});
 
-	const memberNames = $derived((data?.plugins ?? []).map((entry: any) => entry.plugin));
+	const pluginMembers = $derived((data?.plugins ?? []).map((entry: any) => entry.plugin));
+	const respackMembers = $derived((data?.respacks ?? []).map((entry: any) => entry.key));
+	const datapackMembers = $derived((data?.datapacks ?? []).map((entry: any) => entry.name));
 
-	const addable = $derived(
-		(data?.pluginNames ?? []).filter((plugin: string) => !memberNames.includes(plugin))
-	);
+	/** Current membership of every kind — the base a single-kind edit patches. */
+	const membership = $derived<Record<Kind, string[]>>({
+		plugins: pluginMembers,
+		respacks: respackMembers,
+		datapacks: datapackMembers
+	});
+
+	const addable = $derived.by(() => {
+		if (!data) {
+			return [];
+		}
+
+		if (addKind === 'respacks') {
+			return data.respackKeys.filter((key: string) => !respackMembers.includes(key));
+		}
+
+		if (addKind === 'datapacks') {
+			return data.datapackNames.filter((pack: string) => !datapackMembers.includes(pack));
+		}
+
+		return data.pluginNames.filter((plugin: string) => !pluginMembers.includes(plugin));
+	});
+
+	const ADD_TITLES: Record<Kind, string> = {
+		plugins: 'Add plugins',
+		respacks: 'Add resource packs',
+		datapacks: 'Add data packs'
+	};
+
+	const ADD_LABELS: Record<Kind, string> = {
+		plugins: 'Plugins',
+		respacks: 'Resource packs',
+		datapacks: 'Data packs'
+	};
+
+	const ADD_HINTS: Record<Kind, string> = {
+		plugins:
+			'Every family of a picked plugin deploys where it fits on the instances using this group.',
+		respacks:
+			"Picked packs gain this group's backends in their server rules, and the proxy is reloaded.",
+		datapacks: 'Picked packs are deployed into the world of every instance using this group.'
+	};
+
+	function openAdd(kind: Kind): void {
+		addKind = kind;
+		addOpen = true;
+	}
 
 	/** Save a membership/description change, then apply the restart choice. */
-	async function save(plugins: string[], restart?: { mode: string; at?: string }): Promise<void> {
+	async function save(
+		members: Partial<Record<Kind, string[]>>,
+		restart?: { mode: string; at?: string }
+	): Promise<void> {
 		busy = 'save';
 
 		const note = Notify.loading(`Saving group ${name}…`);
 
 		try {
-			const result = await patch(`/plugins/groups/${name}`, {
-				plugins,
+			const result = await patch(`/addons/groups/${name}`, {
+				...members,
 				description,
 				restart
 			});
 
-			const bits = [`${result.group.plugins.length} plugin(s)`];
+			const group = result.group;
+			const bits = [
+				`${group.plugins.length} plugin(s), ${group.respacks?.length ?? 0} resource pack(s), ` +
+					`${group.datapacks?.length ?? 0} data pack(s)`
+			];
 
 			if (result.deployed) {
-				bits.push(`${result.deployed} deploy change(s)`);
+				bits.push(`${result.deployed} jar change(s)`);
+			}
+
+			if (result.packs) {
+				bits.push(`${result.packs} pack change(s)`);
 			}
 
 			if (result.restarted?.length) {
@@ -117,8 +177,8 @@
 	}
 
 	/** Membership edits go through the restart dialog so the operator chooses the fallout. */
-	function changeMembers(plugins: string[]): void {
-		pendingPlugins = plugins;
+	function changeMembers(members: Partial<Record<Kind, string[]>>): void {
+		pendingEdit = members;
 		restartMode = 'none';
 		restartAt = '';
 		restartOpen = true;
@@ -126,7 +186,7 @@
 
 	/** Push the group's current members to every instance using it. */
 	function syncInstances(): void {
-		pendingPlugins = null;
+		pendingEdit = null;
 		restartMode = 'now';
 		restartAt = '';
 		restartOpen = true;
@@ -134,14 +194,12 @@
 
 	async function confirmRestart(): Promise<void> {
 		const restart =
-			restartMode === 'none'
-				? undefined
-				: { mode: restartMode, at: restartAt || undefined };
+			restartMode === 'none' ? undefined : { mode: restartMode, at: restartAt || undefined };
 
 		restartOpen = false;
 
-		if (pendingPlugins) {
-			await save(pendingPlugins, restart);
+		if (pendingEdit) {
+			await save(pendingEdit, restart);
 
 			return;
 		}
@@ -151,9 +209,9 @@
 		const note = Notify.loading(`Updating the instances using ${name}…`);
 
 		try {
-			const result = await post(`/plugins/groups/${name}`, { action: 'sync', restart });
+			const result = await post(`/addons/groups/${name}`, { action: 'sync', restart });
 
-			const bits = [`${result.deployed} deploy change(s)`];
+			const bits = [`${result.deployed} jar change(s)`, `${result.packs} pack change(s)`];
 
 			if (result.restarted?.length) {
 				bits.push(`restarted ${result.restarted.join(', ')}`);
@@ -185,13 +243,13 @@
 
 	async function remove(): Promise<void> {
 		try {
-			await del(`/plugins/groups/${name}`);
+			await del(`/addons/groups/${name}`);
 
 			Notify.success(`Group ${name} deleted`, {
-				detail: 'Deployed jars stay on the instances until removed.'
+				detail: 'Deployed jars and packs stay on the instances until removed.'
 			});
 
-			await goto('/plugins/groups');
+			await goto('/addons/groups');
 		} catch (err) {
 			Notify.error(`Could not delete ${name}`, { detail: (err as Error).message });
 			deleteOpen = false;
@@ -205,6 +263,22 @@
 		{ id: 'actions', label: '', width: 110, align: 'right' }
 	];
 
+	const respackCols: Column[] = [
+		{ id: 'key', label: 'Resource pack', sortable: true },
+		{ id: 'state', label: 'State', width: 140 },
+		{ id: 'servers', label: 'Server rules' },
+		{ id: 'version', label: 'Version', width: 120 },
+		{ id: 'actions', label: '', width: 110, align: 'right' }
+	];
+
+	const datapackCols: Column[] = [
+		{ id: 'name', label: 'Data pack', sortable: true },
+		{ id: 'state', label: 'State', width: 140 },
+		{ id: 'targets', label: 'Deploys to' },
+		{ id: 'version', label: 'Version', width: 120 },
+		{ id: 'actions', label: '', width: 110, align: 'right' }
+	];
+
 	const instCols: Column[] = [
 		{ id: 'name', label: 'Instance', sortable: true },
 		{ id: 'state', label: 'State', width: 140 },
@@ -212,7 +286,7 @@
 	];
 </script>
 
-<svelte:head><title>{name} | Plugin groups | Luna Console</title></svelte:head>
+<svelte:head><title>{name} | Addon groups | Luna Console</title></svelte:head>
 
 {#if data}
 	<PageHeader title={name ?? ''} info>
@@ -220,7 +294,7 @@
 			{#if data.builtin}<StatusBadge state="ok" label="builtin" />{/if}
 		{/snippet}
 		{#snippet actions()}
-			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="plugin-group" />
+			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="addon-group" />
 			<Btn
 				icon="upload"
 				loading={busy === 'sync'}
@@ -250,15 +324,15 @@
 				placeholder="What this set is for"
 				onblur={() => {
 					if (description !== data.description) {
-						void save(memberNames);
+						void save({});
 					}
 				}}
 			/>
 		</label>
 		{#if data.builtin}
 			<p class="dim note">
-				The default group applies to every instance; its baseline members are locked and can
-				only be joined by extras.
+				The default group applies to every instance; its baseline plugins are locked and can only
+				be joined by extras.
 			</p>
 		{/if}
 	</Panel>
@@ -272,7 +346,7 @@
 		flush
 	>
 		{#snippet actions()}
-			<Btn icon="plus" disabled={!!busy} onclick={() => (addOpen = true)}>Add a plugin</Btn>
+			<Btn icon="plus" disabled={!!busy} onclick={() => openAdd('plugins')}>Add a plugin</Btn>
 		{/snippet}
 		<ResourceTable
 			tableId="group-members"
@@ -307,10 +381,135 @@
 					<Btn
 						variant="icon"
 						icon="trash"
-						title={row.locked ? 'Baseline members of the default group are locked' : 'Remove from the group'}
+						title={row.locked
+							? 'Baseline members of the default group are locked'
+							: 'Remove from the group'}
 						disabled={row.locked || !!busy}
 						onclick={() =>
-							changeMembers(memberNames.filter((plugin: string) => plugin !== row.plugin))}
+							changeMembers({
+								plugins: pluginMembers.filter((plugin: string) => plugin !== row.plugin)
+							})}
+					/>
+				{/if}
+			{/snippet}
+		</ResourceTable>
+	</Panel>
+
+	<div class="gap"></div>
+
+	<Panel
+		title="Resource packs in this group"
+		count={data.respacks.length}
+		description="The proxy serves these to players on the group's backends. Membership is written into each pack's server rules, so leaving the group takes exactly those names back out."
+		flush
+	>
+		{#snippet actions()}
+			<Btn icon="plus" disabled={!!busy} onclick={() => openAdd('respacks')}>Add a pack</Btn>
+		{/snippet}
+		<ResourceTable
+			tableId="group-respacks"
+			columns={respackCols}
+			rows={data.respacks}
+			getId={(row) => row.key}
+			searchValue={(row) => `${row.key} ${row.servers.join(' ')}`}
+			searchPlaceholder="Find a resource pack"
+			searchWidth="20rem"
+			noun="pack"
+			pageSize={25}
+			emptyTitle="No resource packs"
+			emptyText="Add one to serve it on every instance using this group."
+		>
+			{#snippet cell(row, col)}
+				{#if col === 'key'}
+					<a href="/packs?q={encodeURIComponent(row.key)}">{row.key}</a>
+				{:else if col === 'state'}
+					{#if !row.pooled}
+						<StatusBadge state="failed" label="Not pooled" detail="no zip under <root>/packs" />
+					{:else if row.enabled}
+						<StatusBadge state="ok" label="Enabled" />
+					{:else}
+						<StatusBadge
+							state="stopped"
+							label="Disabled"
+							detail="the pack is registered but switched off — players are not offered it"
+						/>
+					{/if}
+				{:else if col === 'servers'}
+					<span class="mono rules">{row.servers.join(', ') || '–'}</span>
+					{#if row.matched.length}
+						<span class="dim">→ {row.matched.join(', ')}</span>
+					{/if}
+				{:else if col === 'version'}
+					<span class="mono dim">{row.version ?? '–'}</span>
+				{:else if col === 'actions'}
+					<Btn
+						variant="icon"
+						icon="trash"
+						title="Remove from the group"
+						disabled={!!busy}
+						onclick={() =>
+							changeMembers({
+								respacks: respackMembers.filter((key: string) => key !== row.key)
+							})}
+					/>
+				{/if}
+			{/snippet}
+		</ResourceTable>
+	</Panel>
+
+	<div class="gap"></div>
+
+	<Panel
+		title="Data packs in this group"
+		count={data.datapacks.length}
+		description="Copied into the world of every instance using the group. Servers load them on their next restart (or /minecraft:reload)."
+		flush
+	>
+		{#snippet actions()}
+			<Btn icon="plus" disabled={!!busy} onclick={() => openAdd('datapacks')}>Add a pack</Btn>
+		{/snippet}
+		<ResourceTable
+			tableId="group-datapacks"
+			columns={datapackCols}
+			rows={data.datapacks}
+			getId={(row) => row.name}
+			searchValue={(row) => `${row.name} ${row.targets.join(' ')}`}
+			searchPlaceholder="Find a data pack"
+			searchWidth="20rem"
+			noun="pack"
+			pageSize={25}
+			emptyTitle="No data packs"
+			emptyText="Add one to deploy it into every world using this group."
+		>
+			{#snippet cell(row, col)}
+				{#if col === 'name'}
+					<a href="/datapacks?q={encodeURIComponent(row.name)}">{row.name}</a>
+				{:else if col === 'state'}
+					{#if !row.pooled}
+						<StatusBadge state="failed" label="Not pooled" detail="no entry in packs.lock.json" />
+					{:else if !row.present}
+						<StatusBadge
+							state="warning"
+							label="File missing"
+							detail="the pool zip is gone — reinstall or re-upload the pack"
+						/>
+					{:else}
+						<StatusBadge state="ok" label="Pooled" />
+					{/if}
+				{:else if col === 'targets'}
+					<span class="dim">{row.targets.join(', ') || 'nowhere'}</span>
+				{:else if col === 'version'}
+					<span class="mono dim">{row.version ?? '–'}</span>
+				{:else if col === 'actions'}
+					<Btn
+						variant="icon"
+						icon="trash"
+						title="Remove from the group"
+						disabled={!!busy}
+						onclick={() =>
+							changeMembers({
+								datapacks: datapackMembers.filter((pack: string) => pack !== row.name)
+							})}
 					/>
 				{/if}
 			{/snippet}
@@ -355,17 +554,17 @@
 
 <MultiAddModal
 	bind:open={addOpen}
-	title="Add plugins to {name}"
-	description="Every family of a picked plugin deploys where it fits on the instances using this group."
-	selectLabel="Plugins"
+	title="{ADD_TITLES[addKind]} to {name}"
+	description={ADD_HINTS[addKind]}
+	selectLabel={ADD_LABELS[addKind]}
 	options={addable}
-	onconfirm={(names) => changeMembers([...memberNames, ...names])}
+	onconfirm={(names) => changeMembers({ [addKind]: [...membership[addKind], ...names] })}
 />
 
 <!-- restart choice for member changes and syncs -->
 <Modal title="Apply to the instances using {name}" bind:open={restartOpen}>
 	<p class="dim intro">
-		The change deploys immediately; running servers load it on their next restart. Pick what
+		The change applies immediately; running servers load it on their next restart. Pick what
 		happens to <b>{(data?.instances ?? []).map((row: any) => row.name).join(', ') || 'nobody'}</b>:
 	</p>
 	<div class="field">
@@ -390,15 +589,15 @@
 			disabled={restartMode === 'schedule' && !restartAt}
 			onclick={confirmRestart}
 		>
-			{pendingPlugins ? 'Save & apply' : 'Update instances'}
+			{pendingEdit ? 'Save & apply' : 'Update instances'}
 		</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="Delete group {name}" bind:open={deleteOpen}>
 	<p>
-		Removes the group from the registry. Instances stop receiving its plugins on their next
-		deploy; jars already on disk stay until removed.
+		Removes the group from the registry. Instances stop receiving its addons on their next apply;
+		jars and packs already on disk stay until removed.
 	</p>
 	{#snippet footer()}
 		<Btn onclick={() => (deleteOpen = false)}>Cancel</Btn>
@@ -423,6 +622,10 @@
 	.intro {
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
+	}
+
+	.rules {
+		margin-right: 0.5rem;
 	}
 
 	.at {

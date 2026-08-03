@@ -67,7 +67,16 @@ command({
 
 			proc = Bun.spawn(["bun", build], {
 				cwd: webDir,
-				env: { ...process.env, LUNA_ROOT: root(), PORT: port, HOST: host },
+				// BODY_SIZE_LIMIT: adapter-node caps request bodies at 512K by
+				// default, which rejects pack uploads — a resource pack zip is
+				// easily tens of MB
+				env: {
+					...process.env,
+					LUNA_ROOT: root(),
+					PORT: port,
+					HOST: host,
+					BODY_SIZE_LIMIT: process.env.BODY_SIZE_LIMIT ?? "256M",
+				},
 				...stdio,
 			});
 		}

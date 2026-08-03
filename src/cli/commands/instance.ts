@@ -12,6 +12,8 @@ import { ensurePortAllocations } from "../../client/core/ports";
 import { deploy, compatReport } from "../../client/core/plugins";
 import { listVersions } from "../../client/core/services/papermc";
 import { ProgressReporter } from "../../client/core/progress";
+import { loadPacksLock, savePacksLock } from "../../client/core/packslock";
+import { applyAddonGroups } from "../../client/core/addons";
 import {
 	SERVER_SETTINGS,
 	SETTING_GROUPS,
@@ -303,6 +305,7 @@ command({
 			value: true,
 		},
 		{ flag: "--java-args", desc: 'extra JVM flags, e.g. "-XX:+UseZGC"', value: true },
+		{ flag: "--groups", desc: "addon groups beside default, comma-separated", value: true },
 		{ flag: "--no-register", desc: "don't register in velocity.toml" },
 		{ flag: "--daemon", desc: "follower daemon that will own the instance", value: true },
 	],
@@ -313,6 +316,19 @@ command({
 		const name = args[0]!;
 		const settings = parseSettingPairs(opts.set as string | undefined);
 		const javaArgs = parseJavaArgs((opts["java-args"] as string) ?? "");
+
+		const groups = opts.groups
+			? String(opts.groups)
+					.split(",")
+					.map((entry) => entry.trim())
+					.filter(Boolean)
+			: undefined;
+
+		for (const group of groups ?? []) {
+			if (!lock.groups?.[group]) {
+				throw new UsageError(`unknown addon group: ${group}`);
+			}
+		}
 
 		let version = opts.version as string | undefined;
 
@@ -335,6 +351,7 @@ command({
 		const progress = new ProgressReporter(`create ${name}`).weighOwn(0);
 		const files = progress.child("Server files", 6);
 		const plugins = progress.child("Plugins", 2);
+		const packs = progress.child("Packs", 1);
 		const ports = progress.child("Port allocations", 1);
 		const proxy = progress.child("Proxy registration", 1);
 
@@ -349,6 +366,7 @@ command({
 				register: !opts["no-register"],
 				settings,
 				javaArgs,
+				addonGroups: groups,
 				daemon: opts.daemon as string | undefined,
 				reporter: files,
 			});
@@ -361,6 +379,28 @@ command({
 			);
 
 			plugins.complete(`${deployed.length} plugin(s) deployed`);
+
+			// the group's other kinds: pack rules for the proxy, data packs for the world
+			await packs.task({ start: "applying addon group packs" }, async (step) => {
+				const packsLock = await loadPacksLock();
+				const applied = await applyAddonGroups(cfg, packsLock, lock.groups, {
+					instances: [name],
+				});
+
+				await savePacksLock(packsLock);
+
+				const installed = applied.datapacks.filter(
+					(action) => action.action !== "unchanged",
+				).length;
+
+				step.report(
+					1,
+					"okay",
+					applied.respacks.length || installed
+						? `${applied.respacks.length} pack rule(s), ${installed} data pack(s)`
+						: "no packs for this instance",
+				);
+			});
 
 			await ports.task({ start: "allocating plugin ports", done: "plugin ports allocated" }, async () => {
 				await ensurePortAllocations(cfg, lock);
@@ -404,6 +444,88 @@ command({
 
 			throw err;
 		}
+	},
+});
+
+command({
+	path: ["instance", "adopt"],
+	desc: "Register a server directory that already exists as a managed instance",
+	args: [{ name: "name", required: true }],
+	opts: [
+		{ flag: "--daemon", desc: "daemon whose disk holds the directory", value: true },
+		{ flag: "--dir", desc: "directory name under that daemon's root (default: the name)", value: true },
+		{ flag: "--port", desc: "override the detected game port", value: true },
+		{ flag: "--memory", desc: "override the detected heap size, e.g. 8G", value: true },
+		{ flag: "--profile", desc: "java profile (default aikar)", value: true },
+		{ flag: "--java", desc: "pin a java binary — modpacks often need an older JDK", value: true },
+		{ flag: "--java-args", desc: 'extra JVM flags, e.g. "-XX:+UseZGC"', value: true },
+		{ flag: "--no-register", desc: "don't register in velocity.toml" },
+		{ flag: "--dry-run", desc: "show what was detected, registering nothing" },
+	],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const name = args[0]!;
+		const daemon = opts.daemon as string | undefined;
+		const dir = (opts.dir as string | undefined) ?? cfg.instances[name]?.dir ?? name;
+
+		if (daemon && !cfg.daemons?.[daemon]) {
+			throw new UsageError(`unknown daemon: ${daemon} — see \`luna daemon list\``);
+		}
+
+		if (opts["dry-run"]) {
+			// a bare name resolves against the executing daemon's own cluster root
+			const detected = await admin.inspectInstanceDir(dir, daemon);
+
+			printTable(
+				[
+					["software", detected.software],
+					["mc version", detected.mcVersion ?? pc.dim("—")],
+					["loader", detected.loaderVersion ?? pc.dim("—")],
+					["port", detected.port !== undefined ? String(detected.port) : pc.dim("—")],
+					["memory", detected.memory ?? pc.dim("—")],
+					["bind address", detected.bindAddress || pc.dim("(empty)")],
+				],
+				{ head: ["", `${daemon ?? "local"}:${dir}`] },
+			);
+
+			return;
+		}
+
+		const javaArgs = parseJavaArgs((opts["java-args"] as string) ?? "");
+
+		const result = await admin.adoptInstance(cfg, name, {
+			dir,
+			port: opts.port ? parseInt(opts.port as string) : undefined,
+			memory: opts.memory as string | undefined,
+			profile: opts.profile as string | undefined,
+			java: opts.java as string | undefined,
+			javaArgs,
+			register: !opts["no-register"],
+			daemon,
+		});
+
+		await saveCluster(cfg);
+
+		const sync = await syncVelocityToml(cfg);
+		const version = result.inst.mcVersion ? ` ${result.inst.mcVersion}` : "";
+		const loader = result.inst.loaderVersion ? pc.dim(` (loader ${result.inst.loaderVersion})`) : "";
+
+		ok(
+			`adopted ${pc.bold(name)} — ${result.inst.software}${version}${loader}, ` +
+				`port ${pc.cyan(String(result.inst.port))}, ${result.inst.memory} heap` +
+				(daemon ? ` on ${pc.cyan(daemon)}` : ""),
+		);
+
+		for (const note of result.notes) {
+			warn(note);
+		}
+
+		if (sync.changed) {
+			info("velocity.toml updated — reload the proxy to apply");
+		}
+
+		info(`start it with: ${pc.cyan(`luna start ${name}`)}`);
 	},
 });
 

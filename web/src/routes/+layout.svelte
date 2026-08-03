@@ -69,10 +69,12 @@
 			items: [{ label: 'Players', href: '/players', icon: 'users' }]
 		},
 		{
-			section: 'Plugins',
+			section: 'Addons',
 			items: [
 				{ label: 'Plugins', href: '/plugins', icon: 'plug' },
-				{ label: 'Plugin groups', href: '/plugins/groups', icon: 'layerGroup' }
+				{ label: 'Resource packs', href: '/packs', icon: 'image' },
+				{ label: 'Data packs', href: '/datapacks', icon: 'box' },
+				{ label: 'Addon groups', href: '/addons/groups', icon: 'layerGroup' }
 			]
 		},
 		{
@@ -120,11 +122,6 @@
 		// "Launch instance" is its own nav entry, so /instances must not claim it
 		if (href === '/instances') {
 			return /^\/instances(?!\/launch)/.test(page.url.pathname);
-		}
-
-		// same split: "Plugin groups" is its own entry under /plugins
-		if (href === '/plugins') {
-			return /^\/plugins(?!\/groups)/.test(page.url.pathname);
 		}
 
 		return page.url.pathname === href || page.url.pathname.startsWith(href + '/');

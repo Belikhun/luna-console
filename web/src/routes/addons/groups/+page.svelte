@@ -11,6 +11,7 @@
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 
 	interface GroupInfo {
@@ -18,6 +19,8 @@
 		description: string;
 		builtin: boolean;
 		plugins: string[];
+		respacks: string[];
+		datapacks: string[];
 		usedBy: string[];
 	}
 
@@ -29,10 +32,10 @@
 		loading = true;
 
 		try {
-			groups = (await api('/plugins/groups')).groups;
+			groups = (await api('/addons/groups')).groups;
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error('Could not load plugin groups', { detail: (err as Error).message });
+			Notify.error('Could not load addon groups', { detail: (err as Error).message });
 		}
 
 		loading = false;
@@ -44,30 +47,35 @@
 
 	const columns: Column[] = [
 		{ id: 'name', label: 'Group', sortable: true, width: 200 },
-		{ id: 'count', label: 'Plugins', width: 90, align: 'right' },
+		{ id: 'count', label: 'Addons', width: 200 },
 		{ id: 'plugins', label: 'Members' },
-		{ id: 'usedBy', label: 'Used by', width: 260 },
+		{ id: 'usedBy', label: 'Used by', width: 240 },
 		{ id: 'description', label: 'Description' }
 	];
+
+	/** Every member of a group, in one flat list — search and the copy verb. */
+	function members(group: GroupInfo): string[] {
+		return [...group.plugins, ...group.respacks, ...group.datapacks];
+	}
 
 	function rowActions(group: GroupInfo): ContextMenuItem[] {
 		return [
 			{
 				label: 'Open group',
 				icon: 'layerGroup',
-				action: () => goto(`/plugins/groups/${group.name}`)
+				action: () => goto(`/addons/groups/${group.name}`)
 			},
 			{
-				label: 'Add plugins to it',
+				label: 'Add addons to it',
 				icon: 'plus',
-				action: () => goto(`/plugins/groups/${group.name}?add=1`)
+				action: () => goto(`/addons/groups/${group.name}?add=1`)
 			},
 			{ separator: true },
 			{
 				label: 'Copy member list',
 				icon: 'copy',
-				disabled: group.plugins.length === 0,
-				action: () => navigator.clipboard?.writeText(group.plugins.join(', '))
+				disabled: members(group).length === 0,
+				action: () => navigator.clipboard?.writeText(members(group).join(', '))
 			}
 		];
 	}
@@ -78,18 +86,18 @@
 	const one = $derived(groups.find((row: any) => selected.has(row.name)));
 </script>
 
-<svelte:head><title>Plugin groups | Luna Console</title></svelte:head>
+<svelte:head><title>Addon groups | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Plugin groups"
+	title="Addon groups"
 	count={groups.length}
-	description="Sets of plugins applied to instances as a unit. Every instance gets the default group; editing a group redeploys it everywhere it is used."
+	description="Sets of plugins, resource packs and data packs applied to instances as a unit. Every instance gets the default group; editing a group pushes it everywhere it is used."
 	info
 >
 	{#snippet actions()}
-		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="plugin-groups" />
+		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="addon-groups" />
 		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
-		<Btn variant="primary" icon="layerGroup" onclick={() => goto('/plugins/groups/new')}>
+		<Btn variant="primary" icon="layerGroup" onclick={() => goto('/addons/groups/new')}>
 			Create group
 		</Btn>
 	{/snippet}
@@ -102,27 +110,35 @@
 		rows={groups}
 		getId={(group) => group.name}
 		searchValue={(group) =>
-			`${group.name} ${group.description} ${group.plugins.join(' ')} ${group.usedBy.join(' ')}`}
-		searchPlaceholder="Find a group, or a plugin inside one"
+			`${group.name} ${group.description} ${members(group).join(' ')} ${group.usedBy.join(' ')}`}
+		searchPlaceholder="Find a group, or an addon inside one"
 		selectable="single"
 		bind:selected
 		{rowActions}
 		rowLabel={(group) => group.name}
 		noun="group"
-		onRowClick={(group) => goto(`/plugins/groups/${group.name}`)}
+		onRowClick={(group) => goto(`/addons/groups/${group.name}`)}
 		emptyTitle="No groups yet"
-		emptyText="Create one to apply a set of plugins to instances as a unit."
+		emptyText="Create one to apply a set of addons to instances as a unit."
 	>
 		{#snippet cell(group, col)}
 			{#if col === 'name'}
-				<a href="/plugins/groups/{group.name}" onclick={(event) => event.stopPropagation()}>
+				<a href="/addons/groups/{group.name}" onclick={(event) => event.stopPropagation()}>
 					<b>{group.name}</b>
 				</a>
 				{#if group.builtin}<StatusBadge state="ok" label="builtin" />{/if}
 			{:else if col === 'count'}
-				{group.plugins.length}
+				<span class="kinds">
+					<span class="kind"><Icon name="plug" size="0.75rem" />{group.plugins.length}</span>
+					<span class="kind" class:zero={!group.respacks.length}>
+						<Icon name="image" size="0.75rem" />{group.respacks.length}
+					</span>
+					<span class="kind" class:zero={!group.datapacks.length}>
+						<Icon name="box" size="0.75rem" />{group.datapacks.length}
+					</span>
+				</span>
 			{:else if col === 'plugins'}
-				<span class="dim">{group.plugins.join(', ')}</span>
+				<span class="dim">{members(group).join(', ')}</span>
 			{:else if col === 'usedBy'}
 				{group.usedBy.join(', ') || '–'}
 			{:else if col === 'description'}
@@ -131,3 +147,22 @@
 		{/snippet}
 	</ResourceTable>
 </Panel>
+
+<style lang="scss">
+	// three counts in one cell: plugins, resource packs, data packs
+	.kinds {
+		display: inline-flex;
+		gap: 0.75rem;
+	}
+
+	.kind {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		color: var(--text);
+
+		&.zero {
+			color: var(--text-disabled);
+		}
+	}
+</style>

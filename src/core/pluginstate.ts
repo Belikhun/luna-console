@@ -13,7 +13,14 @@ import { existsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { ClusterConfig, PluginEntry, PluginFamily, PluginMeta, PluginsLock } from "./types";
+import type {
+	ClusterConfig,
+	PluginEntry,
+	PluginFamily,
+	PluginMeta,
+	PluginsLock,
+	Software,
+} from "./types";
 import { instanceDir, managedInstances, poolDir } from "./config";
 import {
 	effectiveTargets,
@@ -405,7 +412,7 @@ export function pluginLogReport(session: BootSession, aliases: string[]): Plugin
 /** Load/enable evidence for one plugin in a session. */
 function loadEvidence(
 	session: BootSession,
-	software: "paper" | "velocity",
+	software: Software,
 	aliases: string[],
 ): "loaded" | "errored" | "none" {
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
@@ -558,7 +565,7 @@ export async function instancePluginReport(
 
 export interface PluginUsageRow {
 	instance: string;
-	software: "paper" | "velocity";
+	software: Software;
 	mcVersion?: string;
 	/** Lockfile key of the build the instance gets */
 	entry: string;

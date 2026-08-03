@@ -4,16 +4,21 @@
 	import StatusBadge from './StatusBadge.svelte';
 	import Btn from './Btn.svelte';
 	import MultiAddModal from './MultiAddModal.svelte';
+	import Icon from './Icon.svelte';
 	import DataTable from './DataTable.svelte';
 	import type { Column } from './table';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
-	 * Plugin-group selector + validation table, shared by the launch wizard and
+	 * Addon-group selector + validation table, shared by the launch wizard and
 	 * the instance configuration tab. The table re-validates on every selection
 	 * or MC-version change and says exactly how each wanted plugin lands on this
 	 * (prospective) instance: OK, no compatible version (with a download action
 	 * when Modrinth has one), skipped (no build for the platform), or missing.
+	 *
+	 * A group carries packs as well as plugins, and those need no validation —
+	 * they are listed under the picker so the selection's full effect is visible
+	 * before it is saved.
 	 *
 	 * Per-instance overrides ride along: plugins can be force-added beyond the
 	 * groups or disabled even when a group provides them. With `instance` set the
@@ -44,6 +49,8 @@
 		description: string;
 		builtin: boolean;
 		plugins: string[];
+		respacks: string[];
+		datapacks: string[];
 		usedBy: string[];
 	}
 
@@ -70,7 +77,7 @@
 	let addOpen = $state(false);
 
 	async function loadGroups(): Promise<void> {
-		const data = await api('/plugins/groups');
+		const data = await api('/addons/groups');
 
 		groups = data.groups;
 		pluginNames = data.pluginNames;
@@ -287,6 +294,15 @@
 	const addable = $derived(
 		pluginNames.filter((name) => !rows.some((row) => row.plugin === name))
 	);
+
+	/** The groups in force: every builtin one, plus what is ticked. */
+	const active = $derived(groups.filter((group) => group.builtin || selected.includes(group.name)));
+
+	/** Packs the selection brings, deduplicated across groups. */
+	const packs = $derived({
+		respacks: [...new Set(active.flatMap((group) => group.respacks ?? []))].sort(),
+		datapacks: [...new Set(active.flatMap((group) => group.datapacks ?? []))].sort()
+	});
 </script>
 
 <div class="picker">
@@ -302,13 +318,17 @@
 				/>
 				<a
 					class="gname"
-					href="/plugins/groups/{group.name}"
+					href="/addons/groups/{group.name}"
 					onclick={(event) => event.stopPropagation()}
 				>
 					{group.name}
 				</a>
 				<span class="gmeta">
-					{group.plugins.length} plugin(s){group.builtin ? ' · always applied' : ''}
+					{group.plugins.length} plugin(s){group.respacks?.length
+						? ` · ${group.respacks.length} resource pack(s)`
+						: ''}{group.datapacks?.length
+						? ` · ${group.datapacks.length} data pack(s)`
+						: ''}{group.builtin ? ' · always applied' : ''}
 				</span>
 			</span>
 			{#if group.description}
@@ -317,6 +337,29 @@
 		</label>
 	{/each}
 </div>
+
+{#if packs.respacks.length || packs.datapacks.length}
+	<div class="packs">
+		{#if packs.respacks.length}
+			<div class="prow">
+				<Icon name="image" size="0.875rem" style="solid" />
+				<b>Resource packs</b>
+				<span class="dim">{packs.respacks.join(', ')}</span>
+			</div>
+		{/if}
+		{#if packs.datapacks.length}
+			<div class="prow">
+				<Icon name="box" size="0.875rem" style="solid" />
+				<b>Data packs</b>
+				<span class="dim">
+					{packs.datapacks.join(', ')}{software === 'velocity'
+						? ' — the proxy has no world, so these are skipped'
+						: ''}
+				</span>
+			</div>
+		{/if}
+	</div>
+{/if}
 
 <div class="addrow">
 	<Btn icon="plus" disabled={disabled} onclick={() => (addOpen = true)}>Add a plugin</Btn>
@@ -468,6 +511,24 @@
 		margin-left: 1.625rem;
 		font-size: 0.75rem;
 		color: var(--text-secondary);
+	}
+
+	// what the selection brings besides plugins — no validation, just the facts
+	.packs {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+		margin-bottom: 1rem;
+		padding: 0.625rem 0.75rem;
+		border: 0.1rem solid var(--border-divider);
+		border-radius: 0.5rem;
+		font-size: 0.8125rem;
+	}
+
+	.prow {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
 	}
 
 	.addrow {

@@ -5,7 +5,7 @@
 
 	/**
 	 * The console's one wizard shell — every create flow (launch instance,
-	 * create schedule, create plugin group) renders through this: the page
+	 * create schedule, create addon group) renders through this: the page
 	 * header, a single column of panels, and a sticky summary bar whose dim
 	 * recap and primary submit stay reachable while the form scrolls.
 	 */

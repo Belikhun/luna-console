@@ -13,6 +13,9 @@ import {
 import { syncVelocityToml } from '$core/proxy';
 import { getStatus } from '$core/instances';
 import { compatReport, deploy } from '$core/plugins';
+import { instanceGroupNames } from '$core/families';
+import { loadPacksLock, savePacksLock } from '$core/packslock';
+import { applyAddonGroups } from '$core/addons';
 import { pushEvent } from '$lib/server/luna';
 import { startJob } from '$lib/server/jobs';
 
@@ -45,7 +48,7 @@ export async function GET({ params }) {
 		groups: SETTING_GROUPS,
 		settings,
 		serverProperties: properties,
-		pluginGroups: inst.pluginGroups ?? [],
+		addonGroups: instanceGroupNames(inst).filter((group) => group !== 'default'),
 		software: inst.software
 	});
 }
@@ -111,23 +114,23 @@ export async function PATCH({ params, request }) {
 		changed.push('port');
 	}
 
-	if (Array.isArray(body.pluginGroups)) {
-		const groups = body.pluginGroups.map(String).filter((group: string) => group !== 'default');
+	if (Array.isArray(body.addonGroups)) {
+		const groups = body.addonGroups.map(String).filter((group: string) => group !== 'default');
 		const unknown = groups.filter((group: string) => !lock.groups?.[group]);
 
 		if (unknown.length) {
-			throw error(400, `unknown plugin group(s): ${unknown.join(', ')}`);
+			throw error(400, `unknown addon group(s): ${unknown.join(', ')}`);
 		}
 
-		const before = inst.pluginGroups ?? [];
+		const before = instanceGroupNames(inst).filter((group) => group !== 'default');
 		const different =
 			before.length !== groups.length || groups.some((group: string) => !before.includes(group));
 
 		if (different) {
 			if (groups.length) {
-				inst.pluginGroups = groups;
+				inst.addonGroups = groups;
 			} else {
-				delete inst.pluginGroups;
+				delete inst.addonGroups;
 			}
 
 			// membership changed — push the union of old and new coverage right away
@@ -141,7 +144,20 @@ export async function PATCH({ params, request }) {
 				(action) => action.action !== 'unchanged' && action.action !== 'config'
 			).length;
 
-			changed.push(`pluginGroups (${groups.join(', ') || 'default only'}; ${jars} jar(s) touched)`);
+			// the pack half of the same change: rules the proxy reads, world zips
+			const packsLock = await loadPacksLock();
+			const applied = await applyAddonGroups(cfg, packsLock, lock.groups, { instances: [name] });
+
+			await savePacksLock(packsLock);
+
+			const packs =
+				applied.respacks.length +
+				applied.datapacks.filter((action) => action.action !== 'unchanged').length;
+
+			changed.push(
+				`addonGroups (${groups.join(', ') || 'default only'}; ` +
+					`${jars} jar(s), ${packs} pack change(s))`
+			);
 		}
 	}
 

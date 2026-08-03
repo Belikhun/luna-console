@@ -1,4 +1,9 @@
-export type Software = "paper" | "velocity";
+/**
+ * Server software luna can launch. `neoforge` instances are lifecycle-managed
+ * only — luna starts, stops, consoles and proxies them, but their `mods/`
+ * directory is outside the plugin system (see `managesPlugins`).
+ */
+export type Software = "paper" | "velocity" | "neoforge";
 
 export interface JavaProfile {
 	/** Path to java binary, default "java" */
@@ -21,8 +26,11 @@ export interface InstanceConfig {
 	/** Directory name under the root */
 	dir: string;
 	software: Software;
-	/** Minecraft version, e.g. "1.21.11" (paper only) */
+	/** Minecraft version, e.g. "1.21.11" (paper and neoforge) */
 	mcVersion?: string;
+	/** Mod-loader build for software that launches from its own argument file,
+	 *  e.g. neoforge "21.1.233" → libraries/net/neoforged/neoforge/21.1.233 */
+	loaderVersion?: string;
 	port: number;
 	memory: string; // "4G"
 	profile: string;
@@ -32,7 +40,11 @@ export interface InstanceConfig {
 	javaArgs?: string[];
 	/** Plugin port allocations, key = "<plugin>/<portId>" */
 	ports?: Record<string, number>;
-	/** Plugin groups applied to this instance ("default" is always applied, never listed) */
+	/** Addon groups applied to this instance ("default" is always applied, never
+	 *  listed). Read through `instanceGroupNames`, which also accepts the legacy
+	 *  `pluginGroups` key this field was migrated from. */
+	addonGroups?: string[];
+	/** @deprecated pre-addon-group name for `addonGroups`; migrated on load */
 	pluginGroups?: string[];
 	/** Per-instance plugin overrides, plugin name → enabled. `true` force-adds the
 	 *  plugin regardless of groups; `false` disables it even when a group (or an
@@ -119,11 +131,20 @@ export interface ConfigOp {
 	write?: string;
 }
 
-/** A named set of plugin names, applied to instances as a unit. */
-export interface PluginGroup {
+/**
+ * A named set of *addons* — plugins, resource packs and data packs — applied to
+ * instances as a unit. Membership is by name, never by file: a plugin name
+ * (`PluginEntry.plugin`) covers every family build of it, a resource pack key
+ * covers its zip + definition, a data pack name covers its pooled zip.
+ */
+export interface AddonGroup {
 	description?: string;
 	/** Plugin names (`PluginEntry.plugin`), not entry keys */
 	plugins: string[];
+	/** Resource pack keys (`packs.lock.json` → resourcepacks) served on the group's instances */
+	respacks?: string[];
+	/** Data pack names (`packs.lock.json` → datapacks) deployed into their worlds */
+	datapacks?: string[];
 	/** The "default" group: applied to every instance, hardcoded members locked */
 	builtin?: boolean;
 }
@@ -213,6 +234,6 @@ export interface PluginsLock {
 	/** Lockfile schema revision; 2 = plugin identity + groups. Absent = v1. */
 	version?: number;
 	plugins: Record<string, PluginEntry>;
-	/** Plugin groups, keyed by group name ("default" always exists after migration) */
-	groups?: Record<string, PluginGroup>;
+	/** Addon groups, keyed by group name ("default" always exists after migration) */
+	groups?: Record<string, AddonGroup>;
 }

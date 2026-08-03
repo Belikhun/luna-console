@@ -7,6 +7,11 @@ const UA = "belikhun/luna-control";
 export const PAPER_LOADERS = ["paper", "spigot", "bukkit", "folia"];
 export const VELOCITY_LOADERS = ["velocity"];
 
+// Pack "loaders": resource packs publish under the pseudo-loader "minecraft",
+// data packs under "datapack" (Modrinth stores them as mods with that loader).
+export const RESOURCEPACK_LOADERS = ["minecraft"];
+export const DATAPACK_LOADERS = ["datapack"];
+
 /** A 404 is a normal answer here ("unknown to Modrinth"), so it maps to undefined. */
 async function api<T>(path: string, init?: RequestInit): Promise<T | undefined> {
 	const res = await fetch(API + path, {
@@ -85,19 +90,54 @@ export interface MrSearchHit {
 	title: string;
 	description: string;
 	downloads: number;
+	/** Project owner's username — shown in the console's picker */
+	author?: string;
+	/** CDN URL of the project icon, when it has one */
+	icon_url?: string;
+	categories?: string[];
+	versions?: string[];
 }
 
-/** Top ten plugin hits for a free-text query, restricted to the given loaders. */
-export async function search(query: string, loaders: string[]): Promise<MrSearchHit[]> {
-	const facets = encodeURIComponent(
-		JSON.stringify([["project_type:plugin"], loaders.map((loader) => `categories:${loader}`)]),
-	);
+/** Kinds of Modrinth project luna installs from. */
+export type MrProjectType = "plugin" | "resourcepack" | "datapack";
+
+/**
+ * The search facets selecting one project type. Data packs are the odd one
+ * out: Modrinth stores them as *mods* carrying the "datapack" loader, and the
+ * search index answers `project_type:datapack` for exactly those — pairing it
+ * with `project_type:mod` (which is what the hits report themselves as) is an
+ * empty intersection, so the pseudo type has to stand alone.
+ */
+function typeFacets(type: MrProjectType, loaders: string[]): string[][] {
+	if (type === "datapack") {
+		return [["project_type:datapack"]];
+	}
+
+	if (type === "resourcepack") {
+		return [["project_type:resourcepack"]];
+	}
+
+	return [["project_type:plugin"], loaders.map((loader) => `categories:${loader}`)];
+}
+
+/** Top ten hits of one project type for a free-text query. */
+export async function searchProjects(
+	query: string,
+	type: MrProjectType,
+	loaders: string[] = [],
+): Promise<MrSearchHit[]> {
+	const facets = encodeURIComponent(JSON.stringify(typeFacets(type, loaders)));
 
 	const res = await api<{ hits: MrSearchHit[] }>(
 		`/search?query=${encodeURIComponent(query)}&facets=${facets}&limit=10`,
 	);
 
 	return res?.hits ?? [];
+}
+
+/** Top ten plugin hits for a free-text query, restricted to the given loaders. */
+export async function search(query: string, loaders: string[]): Promise<MrSearchHit[]> {
+	return await searchProjects(query, "plugin", loaders);
 }
 
 /** The jar to install for a version — the primary file, or the first one published. */

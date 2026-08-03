@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-import type { ClusterConfig, InstanceConfig, PluginsLock } from "./types";
+import type { ClusterConfig, InstanceConfig, PluginsLock, Software } from "./types";
 
 /**
  * Locate the cluster root: the nearest ancestor of the working directory that
@@ -81,9 +81,29 @@ export function installSaveHook(hook: SaveHook | undefined): void {
 	saveHook = hook;
 }
 
+/**
+ * Rename the pre-addon-group `pluginGroups` field on every instance, in place.
+ * Purely in memory: the next `saveCluster` persists the new spelling, so a
+ * read-only run never rewrites the registry.
+ */
+function migrateCluster(cfg: ClusterConfig): void {
+	for (const inst of Object.values(allInstances(cfg))) {
+		if (!inst.pluginGroups) {
+			continue;
+		}
+
+		inst.addonGroups ??= inst.pluginGroups;
+		delete inst.pluginGroups;
+	}
+}
+
 /** Read the instance registry. */
 export async function loadCluster(): Promise<ClusterConfig> {
-	return await Bun.file(clusterPath()).json();
+	const cfg: ClusterConfig = await Bun.file(clusterPath()).json();
+
+	migrateCluster(cfg);
+
+	return cfg;
 }
 
 /** Write the instance registry back, tab-indented like the checked-in file. */
@@ -164,9 +184,23 @@ export function instanceDir(inst: InstanceConfig): string {
 }
 
 /**
+ * Whether luna's plugin system owns this software's plugin directory. Mod
+ * loaders bring their own ecosystem — a neoforge server's `mods/` is curated by
+ * hand (or by a modpack), and pushing pool jars into it would break the pack —
+ * so they are lifecycle-managed only.
+ */
+export function managesPlugins(software: Software): boolean {
+	return software !== "neoforge";
+}
+
+/** Software names accepted as a `*<software>` wildcard target. */
+const SOFTWARE_WILDCARDS: Software[] = ["paper", "velocity", "neoforge"];
+
+/**
  * Expand target selectors to concrete instance names. Accepts plain names, the
- * `*` wildcard, and the per-software wildcards `*paper` / `*velocity`. Throws on
- * a name that is not a managed instance, so a typo can never silently match none.
+ * `*` wildcard, and the per-software wildcards `*paper` / `*velocity` /
+ * `*neoforge`. Throws on a name that is not a managed instance, so a typo can
+ * never silently match none.
  */
 export function expandTargets(cfg: ClusterConfig, targets: string[]): string[] {
 	const all = managedInstances(cfg);
@@ -181,9 +215,9 @@ export function expandTargets(cfg: ClusterConfig, targets: string[]): string[] {
 			continue;
 		}
 
-		if (target === "*paper" || target === "*velocity") {
-			const software = target.slice(1);
+		const software = SOFTWARE_WILDCARDS.find((candidate) => target === `*${candidate}`);
 
+		if (software) {
 			for (const [name, inst] of Object.entries(all)) {
 				if (inst.software === software) {
 					out.add(name);

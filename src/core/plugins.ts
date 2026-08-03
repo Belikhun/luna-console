@@ -2,7 +2,7 @@ import { readdir, rm, copyFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
 
-import type { ClusterConfig, PluginEntry, PluginsLock } from "./types";
+import type { ClusterConfig, PluginEntry, PluginFamily, PluginsLock } from "./types";
 import { expandTargets, instanceDir, managedInstances, poolDir } from "./config";
 import { effectiveTargets, familyMatches, familyOf } from "./families";
 import * as mr from "./services/modrinth";
@@ -990,6 +990,32 @@ export async function deploy(
 
 /** Install a new plugin from Modrinth into the pool.
  *  Per-target resolution: older backends may receive an older variant. */
+/**
+ * The resolution for an install with no targets: the plugin is being *pooled*,
+ * not deployed, so no instance constrains the choice — take the newest build on
+ * the channel as the pool primary. When the plugin later lands on an instance
+ * (an explicit target, or an addon group), the per-instance resolution fetches
+ * a fitting build for it exactly as it does for every other entry.
+ */
+function poolOnlyResolution(entry: PluginEntry, versions: mr.MrVersion[]): EntryResolution {
+	const channel = entry.channel ?? "release";
+	const { best } = mr.pickCompatible(versions, [], { channel });
+
+	if (!best) {
+		return {
+			groups: [],
+			holdbacks: [{ targets: [], reason: `no ${channel}-channel version published` }],
+			pinned: [],
+		};
+	}
+
+	return {
+		groups: [{ version: best, targets: [], isPrimary: true, changedTargets: [] }],
+		holdbacks: [],
+		pinned: [],
+	};
+}
+
 export async function installFromModrinth(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
@@ -1014,8 +1040,14 @@ export async function installFromModrinth(
 		targets,
 	};
 
+	// an install with no targets pools the jar and deploys nowhere
+	const resolve = (): EntryResolution =>
+		expandTargets(cfg, entry.targets).length
+			? resolveEntry(cfg, entry, versions)
+			: poolOnlyResolution(entry, versions);
+
 	// Prefer stable releases; fall back to beta, then alpha, for projects that never publish releases.
-	let resolution = resolveEntry(cfg, entry, versions);
+	let resolution = resolve();
 
 	for (const channel of ["beta", "alpha"] as const) {
 		if (resolution.groups.length) {
@@ -1023,12 +1055,15 @@ export async function installFromModrinth(
 		}
 
 		entry.channel = channel;
-		resolution = resolveEntry(cfg, entry, versions);
+		resolution = resolve();
 	}
 
 	if (!resolution.groups.length) {
+		// a pool-only holdback names no target, so it is its own whole reason
 		const reasons = resolution.holdbacks
-			.map((holdback) => `${holdback.targets.join(",")}: ${holdback.reason}`)
+			.map((holdback) =>
+				holdback.targets.length ? `${holdback.targets.join(",")}: ${holdback.reason}` : holdback.reason,
+			)
 			.join("; ");
 
 		throw new Error(
@@ -1045,6 +1080,91 @@ export async function installFromModrinth(
 	await applyUpdate(lock, { name, entry, resolution, pendingGroups: resolution.groups });
 
 	return { name, entry, resolution };
+}
+
+/** How an uploaded jar is identified and where it should land. */
+export interface JarUpload {
+	/** Plugin name — the identity half of the entry key */
+	plugin: string;
+	/** Platform the build runs on; decides the entry key's family suffix */
+	family: PluginFamily;
+	/** Instances (or wildcards) to deploy to; empty pools the jar only */
+	targets?: string[];
+	/** The jar itself, base64-encoded (the console cannot post multipart) */
+	dataBase64: string;
+}
+
+/**
+ * Decode an uploaded jar. A jar is a zip, so the magic check is the same one
+ * the pack uploads use — enough to reject a wrong file picked by mistake
+ * before it lands in the pool under a name something else will try to load.
+ */
+function decodeJar(dataBase64: string): Uint8Array {
+	const buf = Uint8Array.from(atob(dataBase64), (char) => char.charCodeAt(0));
+	const isZip = buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03;
+
+	if (!isZip) {
+		throw new Error("the uploaded file is not a jar");
+	}
+
+	return buf;
+}
+
+/**
+ * Pool a jar uploaded from the console, under the standardized
+ * `<plugin>@<family>` scheme with manual provenance — the same shape `scan`
+ * and `adopt` produce, so everything downstream (deploy, groups, drift) treats
+ * it like any other entry. Uploading over an existing entry replaces its file
+ * and drops the version identity it no longer has.
+ */
+export async function uploadJar(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	opts: JarUpload,
+): Promise<{ name: string; entry: PluginEntry }> {
+	const plugin = opts.plugin.trim().toLowerCase();
+
+	if (!/^[a-z0-9][a-z0-9_-]*$/.test(plugin)) {
+		throw new Error("plugin name must be lowercase alphanumeric with - or _");
+	}
+
+	const targets = opts.targets ?? [];
+
+	// reject a typo before anything is written
+	expandTargets(cfg, targets);
+
+	const buf = decodeJar(opts.dataBase64);
+	const name = `${plugin}@${opts.family}`;
+	const file = `${name}.jar`;
+
+	await mkdir(poolDir(), { recursive: true });
+	await Bun.write(join(poolDir(), file), buf);
+
+	const existing = lock.plugins[name];
+
+	const entry: PluginEntry = {
+		...existing,
+		file,
+		source: plugin.startsWith("luna-") ? "luna" : "manual",
+		loader: opts.family === "velocity" ? "velocity" : "paper",
+		plugin,
+		family: opts.family,
+		autoUpdate: false,
+		targets: targets.length ? targets : (existing?.targets ?? []),
+		installed: { sha512: await mr.sha512File(join(poolDir(), file)) },
+	};
+
+	// an uploaded jar is not the Modrinth build the entry used to track, so the
+	// provenance that would make an "update" compare against it has to go
+	delete entry.modrinth;
+	delete entry.variants;
+	delete entry.assign;
+	delete entry.meta;
+	delete entry.aliases;
+
+	lock.plugins[name] = entry;
+
+	return { name, entry };
 }
 
 /** Adopt an instance-only jar into the common pool. */

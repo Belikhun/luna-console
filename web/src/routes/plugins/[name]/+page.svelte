@@ -438,7 +438,7 @@
 					pageSize={15}
 					rowDim={(row) => row.disabled}
 					emptyTitle="Not used anywhere"
-					emptyText="Add it to an instance with the control above, or put it in a plugin group."
+					emptyText="Add it to an instance with the control above, or put it in an addon group."
 				>
 					{#snippet cell(row, col)}
 						{@const status = data.instances.find((inst: any) => inst.name === row.instance)}

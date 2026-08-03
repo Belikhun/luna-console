@@ -24,6 +24,7 @@ export type {
 	CompatRow,
 	ResolvedGroup,
 	Holdback,
+	JarUpload,
 } from "../../core/plugins";
 
 export const scan = call("plugins.scan", { cfg: 0, lock: 1 }) as typeof core.scan;
@@ -34,6 +35,8 @@ export const pinVersion = call("plugins.pinVersion", { cfg: 0, lock: 1 }) as typ
 export const ensureVariantForMc = call("plugins.ensureVariantForMc", { lock: 0 }) as typeof core.ensureVariantForMc;
 export const installFromModrinth = call("plugins.installFromModrinth", { cfg: 0, lock: 1 }) as typeof core.installFromModrinth;
 export const adopt = call("plugins.adopt", { cfg: 0, lock: 1 }) as typeof core.adopt;
+// an uploaded jar is written into the pool, so it crosses to the daemon whole
+export const uploadJar = call("plugins.uploadJar", { cfg: 0, lock: 1 }) as typeof core.uploadJar;
 export const removePlugin = call("plugins.removePlugin", { cfg: 0, lock: 1 }) as typeof core.removePlugin;
 
 export const deploy = jobCall("plugins.deploy", {

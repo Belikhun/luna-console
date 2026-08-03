@@ -13,16 +13,20 @@
 import type { ProgressReporter } from "../core/progress";
 import type { ClusterConfig, PluginsLock } from "../core/types";
 
+import * as addonsCore from "../core/addons";
 import * as adminCore from "../core/admin";
 import * as cleanupCore from "../core/cleanup";
 import * as configCore from "../core/config";
+import * as datapacksCore from "../core/datapacks";
 import * as environmentCore from "../core/environment";
 import * as instancesCore from "../core/instances";
 import * as lifecycleCore from "../core/lifecycle";
 import * as logsCore from "../core/logs";
 import * as lunaCore from "../core/luna";
+import * as packslockCore from "../core/packslock";
 import * as pluginstateCore from "../core/pluginstate";
 import * as pluginsCore from "../core/plugins";
+import * as respacksCore from "../core/respacks";
 import * as portsCore from "../core/ports";
 import * as proxyCore from "../core/proxy";
 import * as scheduleCore from "../core/schedule";
@@ -153,6 +157,159 @@ async function deployRouted(
 }
 
 /**
+ * Ownership-aware data pack deploy, shaped exactly like the plugin deploy
+ * above: the local slice runs here, each follower's slice is forwarded whole
+ * (the follower mirrors the pool zips it needs first — see follower.ts), and
+ * an offline follower fails only its own instances.
+ */
+async function deployDataPacksRouted(
+	cfg: ClusterConfig,
+	lock: packslockCore.PacksLock,
+	opts: {
+		instances?: string[];
+		pack?: string;
+		groups?: datapacksCore.AddonGroups;
+		reporter?: ProgressReporter;
+	} = {},
+): Promise<datapacksCore.DataPackDeployAction[]> {
+	const wanted = opts.instances ?? Object.keys(configCore.managedInstances(cfg));
+	const { local, remote } = splitByOwner(cfg, wanted);
+	const actions: datapacksCore.DataPackDeployAction[] = [];
+
+	if (local.length > 0) {
+		actions.push(...(await datapacksCore.deployDataPacks(cfg, lock, { ...opts, instances: local })));
+	}
+
+	for (const [daemon, names] of remote) {
+		const { reporter, ...plain } = opts;
+
+		try {
+			if (!forwardOp) {
+				throw new Error("no cluster link");
+			}
+
+			const outcome = await forwardOp(
+				daemon,
+				"datapacks.deploy",
+				[cfg, lock, { ...plain, instances: names }],
+				reporter,
+			);
+
+			actions.push(...(outcome.result as datapacksCore.DataPackDeployAction[]));
+		} catch (err) {
+			const detail = err instanceof Error ? err.message : String(err);
+
+			for (const name of names) {
+				actions.push({
+					instance: name,
+					file: "*",
+					action: "error",
+					detail: `daemon ${daemon}: ${detail}`,
+				});
+			}
+		}
+	}
+
+	return actions;
+}
+
+/**
+ * Ownership-aware data pack removal: each owner deletes the copies in its own
+ * instances' worlds, then the lock entry is settled once, here. Without the
+ * routing a follower-owned world would keep serving a pack the cluster
+ * believes is gone.
+ */
+async function removeDataPackRouted(
+	cfg: ClusterConfig,
+	lock: packslockCore.PacksLock,
+	name: string,
+	fromTargets?: string[],
+	groups?: datapacksCore.AddonGroups,
+): Promise<{ deletedFrom: string[]; entryRemoved: boolean }> {
+	const entry = lock.datapacks[name];
+
+	if (!entry) {
+		throw new Error(`unknown data pack: ${name}`);
+	}
+
+	const current = datapacksCore.datapackTargets(cfg, name, entry, groups);
+	const wanted = fromTargets
+		? configCore.expandTargets(cfg, fromTargets).filter((target) => current.includes(target))
+		: current;
+
+	const { local, remote } = splitByOwner(cfg, wanted);
+	const deletedFrom: string[] = [];
+
+	if (local.length > 0) {
+		deletedFrom.push(...(await datapacksCore.removeDataPackFiles(cfg, lock, name, local)));
+	}
+
+	for (const [daemon, names] of remote) {
+		try {
+			if (!forwardOp) {
+				throw new Error("no cluster link");
+			}
+
+			const outcome = await forwardOp(daemon, "datapacks.removeFiles", [cfg, lock, name, names]);
+
+			deletedFrom.push(...(outcome.result as string[]));
+		} catch (err) {
+			const detail = err instanceof Error ? err.message : String(err);
+
+			throw new Error(`daemon ${daemon} could not remove ${name}: ${detail}`);
+		}
+	}
+
+	const { entryRemoved } = await datapacksCore.finalizeDataPackRemoval(
+		cfg,
+		lock,
+		name,
+		wanted,
+		!!fromTargets,
+		groups,
+	);
+
+	return { deletedFrom, entryRemoved };
+}
+
+/**
+ * `addons.applyGroups` with the data pack deploy routed to each owner. The
+ * resource pack half runs here unconditionally: pack definitions live in the
+ * primary's `<root>/packs` and the proxy that reads them is the primary's.
+ */
+async function applyAddonGroupsRouted(
+	cfg: ClusterConfig,
+	packs: packslockCore.PacksLock,
+	groups: Parameters<typeof addonsCore.applyAddonGroups>[2],
+	opts: { instances?: string[]; reporter?: ProgressReporter } = {},
+): Promise<addonsCore.AddonGroupApply> {
+	const progress = opts.reporter;
+	const respackNode = progress?.child("Resource packs", 1);
+
+	const respacks = await respacksCore.syncResourcePackGroups(cfg, packs, groups);
+
+	let reloaded = false;
+
+	if (respacks.length) {
+		reloaded = await respacksCore.reloadResourcePacks(cfg);
+	}
+
+	respackNode?.complete(
+		respacks.length
+			? `${respacks.length} definition(s) rewritten${reloaded ? " — proxy reloaded" : ""}`
+			: "nothing to change",
+	);
+
+	const datapacks = await deployDataPacksRouted(cfg, packs, {
+		instances: opts.instances,
+		groups,
+		reporter: progress?.child("Data packs", 3),
+	});
+
+	return { respacks, reloaded, datapacks };
+}
+
+/**
  * Ownership-aware status of one instance: probed on its owner, so a follower's
  * screen and java process are seen by the daemon that has them. An unreachable
  * owner reads as "unknown" rather than a false "stopped".
@@ -255,6 +412,52 @@ async function createInstanceRouted(
 	}
 
 	return await adminCore.createInstance(cfg, name, opts);
+}
+
+/**
+ * Route adoption to the daemon named in the options. The instance is not in the
+ * registry yet, so the usual owner routing has nothing to key on — the target
+ * comes from the request, exactly as it does for creation. It has to run there:
+ * the directory being adopted only exists on that machine's disk.
+ */
+async function adoptInstanceRouted(
+	cfg: ClusterConfig,
+	name: string,
+	opts: adminCore.AdoptOptions = {},
+): Promise<adminCore.AdoptResult> {
+	if (opts.daemon && opts.daemon !== daemonName()) {
+		if (!forwardOp) {
+			throw new Error(`instance targets daemon "${opts.daemon}" but no follower link exists`);
+		}
+
+		const outcome = await forwardOp(opts.daemon, "admin.adoptInstance", [cfg, name, opts]);
+
+		// the follower mutated its copy of cfg — echo it into ours so the
+		// caller's registry entry (and its save) are correct
+		Object.assign(cfg, outcome.cfg as ClusterConfig);
+
+		return outcome.result as adminCore.AdoptResult;
+	}
+
+	return await adminCore.adoptInstance(cfg, name, opts);
+}
+
+/** Route a directory inspection to the daemon whose disk holds the directory. */
+async function inspectInstanceDirRouted(
+	dir: string,
+	daemon?: string,
+): Promise<adminCore.InstanceDetection> {
+	if (daemon && daemon !== daemonName()) {
+		if (!forwardOp) {
+			throw new Error(`inspection targets daemon "${daemon}" but no follower link exists`);
+		}
+
+		const outcome = await forwardOp(daemon, "admin.inspectInstanceDir", [dir]);
+
+		return outcome.result as adminCore.InstanceDetection;
+	}
+
+	return await adminCore.inspectInstanceDir(dir);
 }
 
 /**
@@ -397,6 +600,8 @@ export const OPS: Record<string, OpSpec> = {
 		cfg: 0,
 		reporter: { arg: 2, prop: "reporter" },
 	},
+	"admin.adoptInstance": { fn: adoptInstanceRouted, cfg: 0 },
+	"admin.inspectInstanceDir": { fn: inspectInstanceDirRouted },
 	"admin.setVersion": { fn: adminCore.setVersion, cfg: 0, instance: 1, reporter: { arg: 3 } },
 	"admin.setPort": { fn: adminCore.setPort, cfg: 0 },
 	"admin.getServerProperty": { fn: adminCore.getServerProperty, cfg: 0, instance: 1 },
@@ -449,6 +654,7 @@ export const OPS: Record<string, OpSpec> = {
 	"plugins.deploy": { fn: deployRouted, cfg: 0, lock: 1, reporter: { arg: 2, prop: "reporter" } },
 	"plugins.installFromModrinth": { fn: pluginsCore.installFromModrinth, cfg: 0, lock: 1 },
 	"plugins.adopt": { fn: pluginsCore.adopt, cfg: 0, lock: 1, instance: 2 },
+	"plugins.uploadJar": { fn: pluginsCore.uploadJar, cfg: 0, lock: 1 },
 	"plugins.removePlugin": { fn: pluginsCore.removePlugin, cfg: 0, lock: 1 },
 	"standardize.standardizeNaming": {
 		fn: standardizeCore.standardizeNaming,
@@ -456,6 +662,48 @@ export const OPS: Record<string, OpSpec> = {
 		lock: 1,
 		reporter: { arg: 2, prop: "reporter" },
 	},
+
+	// -- packs (resource packs + data packs) ------------------------------------
+	"packslock.loadPacksLock": { fn: packslockCore.loadPacksLock },
+	"packslock.savePacksLock": { fn: packslockCore.savePacksLock, lock: 0 },
+	"respacks.listResourcePacks": { fn: respacksCore.listResourcePacks, cfg: 0, lock: 1 },
+	"respacks.updateResourcePack": { fn: respacksCore.updateResourcePack, cfg: 0, lock: 1 },
+	"respacks.addResourcePackFile": { fn: respacksCore.addResourcePackFile, cfg: 0, lock: 1 },
+	"respacks.installFromModrinth": { fn: respacksCore.installResourcePackFromModrinth, cfg: 0, lock: 1 },
+	"respacks.checkUpdates": { fn: respacksCore.checkResourcePackUpdates, lock: 0 },
+	"respacks.applyUpdate": { fn: respacksCore.applyResourcePackUpdate, lock: 0 },
+	"respacks.removeResourcePack": { fn: respacksCore.removeResourcePack, cfg: 0, lock: 1 },
+	"respacks.reload": { fn: respacksCore.reloadResourcePacks, cfg: 0 },
+	"respacks.syncGroups": { fn: respacksCore.syncResourcePackGroups, cfg: 0, lock: 1 },
+	"datapacks.list": { fn: datapacksCore.listDataPacks, cfg: 0, lock: 1 },
+	"datapacks.instanceReport": {
+		fn: datapacksCore.instanceDataPackReport,
+		cfg: 0,
+		lock: 1,
+		instance: 2,
+	},
+	"datapacks.deploy": {
+		fn: deployDataPacksRouted,
+		cfg: 0,
+		lock: 1,
+		reporter: { arg: 2, prop: "reporter" },
+	},
+	"datapacks.installFromModrinth": { fn: datapacksCore.installDataPackFromModrinth, cfg: 0, lock: 1 },
+	"datapacks.checkUpdates": { fn: datapacksCore.checkDataPackUpdates, cfg: 0, lock: 1 },
+	"datapacks.applyUpdate": { fn: datapacksCore.applyDataPackUpdate, lock: 0 },
+	"datapacks.addFile": { fn: datapacksCore.addDataPackFile, cfg: 0, lock: 1 },
+	"datapacks.adopt": { fn: datapacksCore.adoptDataPack, cfg: 0, lock: 1, instance: 2 },
+	"datapacks.remove": { fn: removeDataPackRouted, cfg: 0, lock: 1 },
+	// the per-owner slice of a routed removal — the primary calls it on each
+	// follower, never a client
+	"datapacks.removeFiles": { fn: datapacksCore.removeDataPackFiles, cfg: 0, lock: 1 },
+	"addons.applyGroups": {
+		fn: applyAddonGroupsRouted,
+		cfg: 0,
+		lock: 1,
+		reporter: { arg: 3, prop: "reporter" },
+	},
+	"modrinth.searchProjects": { fn: modrinth.searchProjects },
 
 	// -- plugin runtime state ---------------------------------------------------
 	"pluginstate.ensureAliases": { fn: pluginstateCore.ensureAliases, lock: 0 },

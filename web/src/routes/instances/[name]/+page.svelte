@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, post, patch } from '$lib/api';
+	import { api, post, patch, del } from '$lib/api';
 	import { fmtDuration, fmtBytes, fmtDateTime } from '$lib/format';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -44,7 +44,7 @@
 	 * a plugin report scans the instance's jars and its boot session, which is
 	 * not something to do every four seconds.
 	 */
-	const REFRESHED_TABS = ['plugins', 'monitoring', 'checks', 'logs'];
+	const REFRESHED_TABS = ['plugins', 'datapacks', 'respacks', 'monitoring', 'checks', 'logs'];
 
 	const LOG_LINE_CHOICES = [100, 200, 500, 1000];
 
@@ -62,7 +62,7 @@
 	let cfgVersion = $state('');
 	let cfgJavaArgs = $state('');
 	let cfgSettings: Record<string, string> = $state({});
-	let cfgPluginGroups: string[] = $state([]);
+	let cfgAddonGroups: string[] = $state([]);
 	let paperVersions: string[] = $state([]);
 	let saving = $state(false);
 	let versionJob: JobView | null = $state(null);
@@ -72,6 +72,9 @@
 
 	let instPlugins: any[] = $state([]);
 	let pluginTotals = $state({ warnings: 0, errors: 0, sessionComplete: true });
+	let instDatapacks: any[] = $state([]);
+	let datapackWorld = $state('');
+	let instRespacks: any[] = $state([]);
 	let metrics: { history: any[]; events: any[] } = $state({ history: [], events: [] });
 	let logData: { content: string; archives: any[] } = $state({ content: '', archives: [] });
 	let logLines = $state(200);
@@ -136,6 +139,18 @@
 			};
 		}
 
+		if (which === 'datapacks') {
+			const data = await api(`/instances/${name}/datapacks`);
+
+			instDatapacks = data.rows;
+			datapackWorld = data.world;
+		}
+
+		if (which === 'respacks') {
+			// the catalog is proxy-global; this tab shows how it lands here
+			instRespacks = (await api('/respacks')).packs;
+		}
+
 		if (which === 'monitoring' || which === 'checks') {
 			metrics = await api(`/instances/${name}/metrics`);
 		}
@@ -151,7 +166,7 @@
 			cfgVersion = cfgData.mcVersion ?? '';
 			cfgJavaArgs = (cfgData.javaArgs ?? []).join(' ');
 			cfgSettings = { ...cfgData.settings };
-			cfgPluginGroups = [...(cfgData.pluginGroups ?? [])];
+			cfgAddonGroups = [...(cfgData.addonGroups ?? [])];
 
 			if (!paperVersions.length) {
 				paperVersions = (await api('/paper')).versions;
@@ -218,11 +233,11 @@
 			return false;
 		}
 
-		const before: string[] = cfgData.pluginGroups ?? [];
+		const before: string[] = cfgData.addonGroups ?? [];
 
 		return (
-			before.length !== cfgPluginGroups.length ||
-			cfgPluginGroups.some((group) => !before.includes(group))
+			before.length !== cfgAddonGroups.length ||
+			cfgAddonGroups.some((group) => !before.includes(group))
 		);
 	});
 
@@ -268,7 +283,7 @@
 			}
 
 			if (groupsDirty) {
-				body.pluginGroups = cfgPluginGroups;
+				body.addonGroups = cfgAddonGroups;
 			}
 
 			if (cfgVersion && cfgVersion !== cfgData.mcVersion) {
@@ -372,6 +387,110 @@
 			note.set({
 				level: 'error',
 				message: `Could not deploy plugins to ${name}`,
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+	}
+
+	/** Sync this instance's world from the data pack pool. */
+	async function deployDatapacks(): Promise<void> {
+		const note = Notify.loading(`Deploying data packs to ${name}…`);
+
+		try {
+			const res = await post(`/instances/${name}/datapacks`, { action: 'deploy' });
+			const changed = res.actions.filter((action: any) => action.action !== 'unchanged').length;
+
+			note.set({
+				level: 'success',
+				message: `Deployed data packs to ${name} — ${changed} change(s)`,
+				detail: changed ? 'The server loads them on its next restart (or /minecraft:reload).' : '',
+				closeable: true
+			});
+
+			await loadTab('datapacks');
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: `Could not deploy data packs to ${name}`,
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+	}
+
+	/** Pull a hand-dropped world zip into the shared pool. */
+	async function adoptDatapack(file: string): Promise<void> {
+		const note = Notify.loading(`Adopting ${file} into the pool…`);
+
+		try {
+			const res = await post(`/instances/${name}/datapacks`, { action: 'adopt', file });
+
+			note.set({
+				level: 'success',
+				message: `Adopted ${res.name} — it now deploys from the pool`,
+				closeable: true
+			});
+
+			await loadTab('datapacks');
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: `Could not adopt ${file}`,
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+	}
+
+	/** Remove a managed data pack from this instance's world only. */
+	async function removeDatapackHere(pack: string): Promise<void> {
+		const note = Notify.loading(`Removing ${pack} from ${name}…`);
+
+		try {
+			await del(`/datapacks/${encodeURIComponent(pack)}?from=${encodeURIComponent(name ?? '')}`);
+
+			note.set({
+				level: 'success',
+				message: `${pack} no longer targets ${name}`,
+				detail: 'The server unloads it on its next restart.',
+				closeable: true
+			});
+
+			await loadTab('datapacks');
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: `Could not remove ${pack}`,
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+	}
+
+	/** Flip a resource pack's enabled flag and reload the proxy's catalog. */
+	async function setRespackEnabled(key: string, enabled: boolean): Promise<void> {
+		const note = Notify.loading(`${enabled ? 'Enabling' : 'Disabling'} ${key}…`);
+
+		try {
+			await patch(`/respacks/${encodeURIComponent(key)}`, { enabled });
+
+			const reload = await post('/respacks/reload');
+
+			note.set({
+				level: 'success',
+				message: `${key} ${enabled ? 'enabled' : 'disabled'}`,
+				detail: reload.sent
+					? 'Reload sent to the proxy — the change is live.'
+					: 'The proxy is not running; the change applies on its next boot.',
+				closeable: true
+			});
+
+			await loadTab('respacks');
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: `Could not update ${key}`,
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -532,6 +651,72 @@
 		];
 	}
 
+	const datapackCols: Column[] = [
+		{ id: 'file', label: 'Data pack', sortable: true },
+		{ id: 'state', label: 'State', width: 150 },
+		{ id: 'version', label: 'Version' },
+		{ id: 'size', label: 'Size', width: 100, align: 'right' },
+		{ id: 'source', label: 'Source' }
+	];
+
+	/** A data pack row's verbs on this instance. */
+	function datapackActions(row: any): ContextMenuItem[] {
+		return [
+			{
+				label: 'Manage in the pool',
+				icon: 'box',
+				disabled: !row.managed,
+				hint: !row.managed ? 'not a pooled pack yet — adopt it first' : undefined,
+				action: () => goto(`/datapacks?q=${encodeURIComponent(row.name ?? '')}`)
+			},
+			{
+				label: 'Adopt into the pool',
+				icon: 'inboxIn',
+				disabled: row.managed,
+				hint: row.managed ? 'already pooled' : undefined,
+				action: () => adoptDatapack(row.file)
+			},
+			{ separator: true },
+			{
+				label: 'Remove from this instance',
+				icon: 'trash',
+				color: 'danger',
+				disabled: !row.managed || !row.targeted,
+				hint: !row.managed
+					? 'unmanaged file — delete it from the world by hand, or adopt it first'
+					: !row.targeted
+						? 'not targeted here — a deploy already removes it'
+						: undefined,
+				action: () => removeDatapackHere(row.name)
+			}
+		];
+	}
+
+	const respackCols: Column[] = [
+		{ id: 'name', label: 'Resource pack', sortable: true },
+		{ id: 'applies', label: 'On this server', width: 150 },
+		{ id: 'state', label: 'State', width: 130 },
+		{ id: 'priority', label: 'Priority', width: 90, align: 'right' },
+		{ id: 'servers', label: 'Server rules' },
+		{ id: 'version', label: 'Version' }
+	];
+
+	/** A resource pack row's verbs, seen from this instance. */
+	function respackActions(row: any): ContextMenuItem[] {
+		return [
+			{
+				label: row.enabled ? 'Disable pack' : 'Enable pack',
+				icon: row.enabled ? 'toggleOff' : 'toggleOn',
+				action: () => setRespackEnabled(row.key, !row.enabled)
+			},
+			{
+				label: 'Manage in Resource packs',
+				icon: 'image',
+				action: () => goto(`/packs?q=${encodeURIComponent(row.key)}`)
+			}
+		];
+	}
+
 	const eventCols: Column[] = [
 		{ id: 'time', label: 'Time', width: 190 },
 		{ id: 'kind', label: 'Type', width: 120 },
@@ -645,6 +830,14 @@
 			{ id: 'checks', label: 'Status and alarms' },
 			{ id: 'monitoring', label: 'Monitoring' },
 			{ id: 'plugins', label: 'Plugins' },
+			// the proxy has no world for data packs, and resource packs are ITS
+			// catalog — the per-backend view only makes sense on a backend
+			...(inst.software === 'velocity'
+				? []
+				: [
+						{ id: 'datapacks', label: 'Data packs' },
+						{ id: 'respacks', label: 'Resource packs' }
+					]),
 			{ id: 'network', label: 'Networking' },
 			{ id: 'logs', label: 'Logs' },
 			{ id: 'config', label: 'Configuration' }
@@ -861,6 +1054,138 @@
 					later log activity read as Unknown.
 				</p>
 			{/if}
+		{:else if tab === 'datapacks'}
+			<Panel
+				title="Data packs in {datapackWorld || 'the world'}"
+				count={instDatapacks.length}
+				flush
+			>
+				{#snippet actions()}
+					<Btn icon="sync" onclick={() => loadTab('datapacks')}>Refresh</Btn>
+					<Btn icon="box" onclick={() => goto('/datapacks')}>Manage pool</Btn>
+					<Btn icon="upload" onclick={deployDatapacks}>Deploy to this instance</Btn>
+				{/snippet}
+				<ResourceTable
+					tableId="instance-datapacks"
+					columns={datapackCols}
+					rows={instDatapacks}
+					getId={(row) => row.file}
+					searchValue={(row) => `${row.file} ${row.name ?? ''} ${row.source ?? ''}`}
+					searchPlaceholder="Find a data pack in this world"
+					rowActions={datapackActions}
+					rowLabel={(row) => row.file}
+					noun="data pack"
+					pageSize={25}
+					rowDim={(row) => row.managed && !row.targeted}
+					emptyTitle="No data packs"
+					emptyText="Deploy pooled packs here, or drop zips into the world's datapacks folder."
+				>
+					{#snippet cell(row, col)}
+						{#if col === 'file'}
+							<span class="mono">{row.file}</span>
+							{#if !row.managed}
+								<span class="manual">unmanaged</span>
+							{/if}
+						{:else if col === 'state'}
+							{#if !row.present}
+								<StatusBadge
+									state="warning"
+									label="Not deployed"
+									detail="targeted here but missing from the world — deploy to copy it in"
+								/>
+							{:else if row.stale}
+								<StatusBadge
+									state="warning"
+									label="Stale"
+									detail="the world's copy differs from the pool — deploy to update it"
+								/>
+							{:else if row.managed && !row.targeted}
+								<StatusBadge
+									state="stopped"
+									label="Untargeted"
+									detail="still in the world but no longer targeted — a deploy removes it"
+								/>
+							{:else}
+								<StatusBadge state="ok" label="In sync" />
+							{/if}
+						{:else if col === 'version'}
+							<span class="mono">{row.versionNumber ?? '–'}</span>
+						{:else if col === 'size'}
+							{row.present ? fmtBytes(row.sizeBytes) : '–'}
+						{:else if col === 'source'}
+							{row.source ?? '–'}
+						{/if}
+					{/snippet}
+				</ResourceTable>
+			</Panel>
+			<p class="dim note">
+				A running server loads data pack changes on its next restart (or /minecraft:reload).
+			</p>
+		{:else if tab === 'respacks'}
+			<Panel title="Resource packs" count={instRespacks.length} flush>
+				{#snippet actions()}
+					<Btn icon="sync" onclick={() => loadTab('respacks')}>Refresh</Btn>
+					<Btn icon="image" onclick={() => goto('/packs')}>Manage packs</Btn>
+				{/snippet}
+				<ResourceTable
+					tableId="instance-respacks"
+					columns={respackCols}
+					rows={instRespacks}
+					getId={(row) => row.key}
+					searchValue={(row) => `${row.key} ${row.name} ${row.servers.join(' ')}`}
+					searchPlaceholder="Find a resource pack"
+					rowActions={respackActions}
+					rowLabel={(row) => row.key}
+					noun="pack"
+					pageSize={25}
+					rowDim={(row) => !row.matched.includes(name ?? '')}
+					sortValue={(row, col) =>
+						col === 'applies'
+							? row.matched.includes(name ?? '')
+								? 0
+								: 1
+							: ((row as any)[col === 'name' ? 'key' : col] ?? '')}
+					emptyTitle="No resource packs"
+					emptyText="The proxy's pack catalog is empty — add packs on the Resource packs screen."
+				>
+					{#snippet cell(row, col)}
+						{#if col === 'name'}
+							{row.key}
+							{#if row.name && row.name.toLowerCase() !== row.key}
+								<span class="dim">({row.name})</span>
+							{/if}
+						{:else if col === 'applies'}
+							{#if row.matched.includes(name ?? '') && row.enabled}
+								<StatusBadge state="ok" label="Applies" />
+							{:else if row.matched.includes(name ?? '')}
+								<StatusBadge
+									state="stopped"
+									label="Would apply"
+									detail="the server rules match, but the pack is disabled"
+								/>
+							{:else}
+								<span class="dim">no</span>
+							{/if}
+						{:else if col === 'state'}
+							{#if row.enabled}
+								<StatusBadge state="ok" label="Enabled" />
+							{:else}
+								<StatusBadge state="stopped" label="Disabled" />
+							{/if}
+						{:else if col === 'priority'}
+							{row.priority}
+						{:else if col === 'servers'}
+							<span class="mono">{row.servers.join(', ') || '–'}</span>
+						{:else if col === 'version'}
+							<span class="mono">{row.versionNumber ?? '–'}</span>
+						{/if}
+					{/snippet}
+				</ResourceTable>
+			</Panel>
+			<p class="dim note">
+				Resource packs are served by the proxy: players get every enabled pack whose server rules
+				match <b>{name}</b>, stacked by priority.
+			</p>
 		{:else if tab === 'network'}
 			<Panel title="Ports">
 				<InfoGrid cells={portCells} />
@@ -974,15 +1299,15 @@
 				{/if}
 				<div class="gap"></div>
 				<Panel
-					title="Plugin groups"
+					title="Addon groups"
 					count={groupsDirty ? 'unsaved' : undefined}
-					description="Groups applied to this instance (default always is) — saving redeploys its plugins immediately; a running server loads them on restart"
+					description="Groups applied to this instance (default always is) — saving pushes their plugins, resource pack rules and data packs immediately; a running server loads them on restart"
 				>
 					<GroupsField
 						software={cfgData.software}
 						mcVersion={cfgData.mcVersion ?? undefined}
 						instance={name}
-						bind:selected={cfgPluginGroups}
+						bind:selected={cfgAddonGroups}
 					/>
 				</Panel>
 				<div class="gap"></div>

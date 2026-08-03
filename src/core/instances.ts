@@ -26,7 +26,29 @@ export function stopCommand(inst: InstanceConfig): string {
 	return inst.software === "velocity" ? "end" : "stop";
 }
 
-/** Assemble the full java invocation for an instance from its java profile. */
+/**
+ * NeoForge's generated argument file, relative to the instance directory. The
+ * installer writes the whole classpath and launch target in there, so it is the
+ * only supported way to boot the server — there is no runnable `-jar`.
+ */
+export function neoForgeArgsFile(inst: InstanceConfig): string {
+	if (!inst.loaderVersion) {
+		throw new Error("neoforge instance has no loaderVersion — cannot locate its argument file");
+	}
+
+	return `libraries/net/neoforged/neoforge/${inst.loaderVersion}/unix_args.txt`;
+}
+
+/**
+ * Assemble the full java invocation for an instance from its java profile.
+ *
+ * Paper and velocity launch from a jar. NeoForge instead launches from the
+ * installer's argument file, which already carries the classpath and the launch
+ * target — so luna contributes only the heap, the profile's flags and `nogui`
+ * (bare, not `--nogui`: modlauncher takes it as a program argument). The pack's
+ * own `user_jvm_args.txt` is deliberately not referenced, because memory and
+ * flags come from the registry.
+ */
 export function buildJavaCommand(cfg: ClusterConfig, inst: InstanceConfig): string {
 	const profile = cfg.javaProfiles[inst.profile];
 
@@ -44,12 +66,16 @@ export function buildJavaCommand(cfg: ClusterConfig, inst: InstanceConfig): stri
 		// per-instance flags last, so they win over the profile's defaults for any
 		// option the JVM resolves by last-one-wins
 		...(inst.javaArgs ?? []),
-		"-jar",
-		jarName(inst),
 	];
 
-	if (inst.software === "paper") {
-		parts.push("--nogui");
+	if (inst.software === "neoforge") {
+		parts.push(`@${neoForgeArgsFile(inst)}`, "nogui");
+	} else {
+		parts.push("-jar", jarName(inst));
+
+		if (inst.software === "paper") {
+			parts.push("--nogui");
+		}
 	}
 
 	if (profile.jarArgs) {

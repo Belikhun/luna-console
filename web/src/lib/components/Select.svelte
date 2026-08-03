@@ -186,8 +186,11 @@
 		justify-content: space-between;
 		gap: 0.75rem;
 		width: 100%;
-		min-height: 2rem;
-		padding: 0.25rem 0.75rem;
+
+		// the shared control height — a select, a text field and a button on the
+		// same row must agree, or the row reads as three different sizes
+		min-height: var(--control-h);
+		padding: 0.125rem 0.75rem;
 		background: var(--bg-panel);
 		border: 0.1rem solid var(--border-field);
 		border-radius: var(--radius-input);

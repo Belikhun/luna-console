@@ -8,9 +8,23 @@ import type * as core from "../../core/admin";
 import { call, jobCall } from "../rpc";
 
 export { setJavaArgs } from "../../core/admin";
-export type { CreateOptions, CreateResult, SetVersionResult } from "../../core/admin";
+export type {
+	AdoptOptions,
+	AdoptResult,
+	CreateOptions,
+	CreateResult,
+	InstanceDetection,
+	SetVersionResult,
+} from "../../core/admin";
 
 export const detectMcVersion = call("admin.detectMcVersion") as typeof core.detectMcVersion;
+export const adoptInstance = call("admin.adoptInstance", { cfg: 0 }) as typeof core.adoptInstance;
+
+/** Inspect a directory on `daemon`'s disk (its own root when omitted). */
+export const inspectInstanceDir = call("admin.inspectInstanceDir") as (
+	dir: string,
+	daemon?: string,
+) => Promise<core.InstanceDetection>;
 export const setPort = call("admin.setPort", { cfg: 0 }) as typeof core.setPort;
 export const getServerProperty = call("admin.getServerProperty", { cfg: 0 }) as typeof core.getServerProperty;
 export const setServerProperty = call("admin.setServerProperty", { cfg: 0 }) as typeof core.setServerProperty;

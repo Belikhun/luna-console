@@ -4,6 +4,8 @@ export interface ContextMenuItem {
 	id?: string;
 	label?: string;
 	icon?: string;
+	/** provider brand mark (see brands.ts) — drawn instead of a glyph icon */
+	brand?: string;
 	/** tints the icon and label; "default" keeps the muted body colour */
 	color?: 'default' | 'accent' | 'success' | 'warning' | 'danger';
 	disabled?: boolean;

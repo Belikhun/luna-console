@@ -12,12 +12,10 @@ import {
 import * as plugins from "../../client/core/plugins";
 import {
 	allPluginNames,
-	deleteGroup,
 	effectiveTargets,
 	entriesOf,
-	familyOf,
 	groupInstances,
-	setGroup,
+	instanceGroupNames,
 	setPluginOverride,
 	validateGroups,
 } from "../../client/core/families";
@@ -53,7 +51,11 @@ function splitTargets(raw: string): string[] {
 		.filter(Boolean);
 }
 
-/** Target list from the flag, or an interactive multiselect when it was omitted. */
+/**
+ * Target list from the flag, or an interactive multiselect when it was omitted.
+ * The selection may be empty: a plugin can be pooled without being deployed
+ * anywhere, and an addon group can place it later.
+ */
 async function parseTargets(raw: string | undefined): Promise<string[]> {
 	if (raw) {
 		return splitTargets(raw);
@@ -64,6 +66,7 @@ async function parseTargets(raw: string | undefined): Promise<string[]> {
 
 	const picked = await multiselect({
 		message: "Deploy to which instances?",
+		required: false,
 		options: [
 			{ value: "*paper", label: "*paper (all paper instances)" },
 			{ value: "*velocity", label: "*velocity (the proxy)" },
@@ -400,6 +403,7 @@ command({
 			value: true,
 			complete: targetSelectors,
 		},
+		{ flag: "--pool", desc: "pool the jar only — deploy it nowhere yet" },
 		{ flag: "--velocity", desc: "install the velocity variant" },
 	],
 
@@ -442,7 +446,7 @@ command({
 			project = (await mr.getProject(picked as string))!;
 		}
 
-		const targets = await parseTargets(opts.to as string | undefined);
+		const targets = opts.pool ? [] : await parseTargets(opts.to as string | undefined);
 
 		expandTargets(cfg, targets); // validate
 
@@ -454,10 +458,13 @@ command({
 
 		for (const group of res.resolution.groups) {
 			const variant = group.isPrimary ? "" : pc.dim(" (variant)");
+			const where = group.targets.length
+				? `${Sym.arrow} ${group.targets.join(",")}`
+				: pc.dim("(pooled — not deployed anywhere yet)");
 
 			ok(
 				`installed ${pc.bold(res.name)} ${pc.green(group.version.version_number)}${variant} ` +
-					`${Sym.arrow} ${group.targets.join(",")}`,
+					where,
 			);
 		}
 
@@ -589,6 +596,80 @@ command({
 		);
 
 		info(`identify it on modrinth with: ${pc.cyan("luna plugins scan")}`);
+	},
+});
+
+command({
+	path: ["plugins", "upload"],
+	desc: "Pool a jar from this machine (deploys to --to, or nowhere)",
+	args: [{ name: "jar-path", required: true }],
+	opts: [
+		{ flag: "--name", desc: "plugin name (default: the jar's basename)", value: true },
+		{
+			flag: "--family",
+			desc: "paper (default), velocity or universal",
+			value: true,
+			complete: async () => ["paper", "velocity", "universal"],
+		},
+		{
+			flag: "--to",
+			desc: "targets: *, *paper, *velocity, or names (default: none)",
+			value: true,
+			complete: targetSelectors,
+		},
+	],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadLock();
+		const path = args[0]!;
+		const file = Bun.file(path);
+
+		if (!(await file.exists())) {
+			throw new UsageError(`no such file: ${path}`);
+		}
+
+		const family = (opts.family as string | undefined) ?? "paper";
+
+		if (family !== "paper" && family !== "velocity" && family !== "universal") {
+			throw new UsageError("--family must be paper, velocity or universal");
+		}
+
+		const plugin =
+			(opts.name as string | undefined) ??
+			path
+				.split("/")
+				.at(-1)!
+				.replace(/\.jar$/i, "")
+				.replace(/[@_].*$/, "")
+				.toLowerCase();
+
+		const targets = opts.to ? splitTargets(String(opts.to)) : [];
+		const spin = new Spinner().start(`pooling ${plugin}...`);
+
+		const res = await plugins.uploadJar(cfg, lock, {
+			plugin,
+			family,
+			targets,
+			dataBase64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+		});
+
+		await ensureAliases(lock);
+		await saveLock(lock);
+		spin.stop();
+
+		ok(
+			`pooled ${pc.bold(res.name)} ` +
+				pc.dim(
+					targets.length
+						? `(targets: ${res.entry.targets.join(",")})`
+						: "(not deployed anywhere yet)",
+				),
+		);
+
+		if (targets.length) {
+			await runDeploy(undefined, res.name);
+		}
 	},
 });
 
@@ -853,8 +934,9 @@ for (const [verb, value] of [
 	});
 }
 
-/** Restart choice shared by group edits: now, a one-shot schedule, or nothing. */
-async function applyGroupRestart(
+/** Restart choice shared by group edits: now, a one-shot schedule, or nothing.
+ *  Lives here beside the deploy helper; the group commands are in addons.ts. */
+export async function applyGroupRestart(
 	cfg: Awaited<ReturnType<typeof loadCluster>>,
 	group: string,
 	restart: string | undefined,
@@ -905,138 +987,6 @@ async function applyGroupRestart(
 }
 
 command({
-	path: ["plugins", "groups"],
-	desc: "List plugin groups and the instances using them",
-
-	handler: async () => {
-		const cfg = await loadCluster();
-		const lock = await loadLock();
-
-		const rows = Object.entries(lock.groups ?? {}).map(([name, group]) => [
-			pc.bold(name) + (group.builtin ? pc.dim(" (builtin)") : ""),
-			String(group.plugins.length),
-			groupInstances(cfg, name).join(",") || pc.dim("—"),
-			pc.dim(group.description ?? ""),
-		]);
-
-		console.log();
-		printTable(rows, { head: ["group", "plugins", "used by", ""] });
-		console.log();
-	},
-});
-
-command({
-	path: ["plugins", "group"],
-	desc: "Show, create or edit a plugin group (then redeploy + optional restart)",
-	args: [
-		{ name: "name", required: true, complete: async () => Object.keys((await loadLock()).groups ?? {}) },
-	],
-	opts: [
-		{ flag: "--plugins", desc: "set membership to this comma-separated plugin list", value: true },
-		{ flag: "--add", desc: "add plugin(s), comma-separated", value: true },
-		{ flag: "--remove", desc: "remove plugin(s), comma-separated", value: true },
-		{ flag: "--description", desc: "set the description", value: true },
-		{ flag: "--delete", desc: "delete the group" },
-		{ flag: "--restart", desc: 'after a change: "now", "none" (default), or a time', value: true },
-	],
-
-	handler: async (args, opts) => {
-		const cfg = await loadCluster();
-		const lock = await loadLock();
-		const name = args[0]!;
-		const existing = lock.groups?.[name];
-
-		if (opts.delete) {
-			deleteGroup(lock, name);
-			await saveLock(lock);
-			ok(`group ${pc.bold(name)} deleted ${pc.dim("(deployed jars stay on disk)")}`);
-
-			return;
-		}
-
-		const editing =
-			opts.plugins !== undefined ||
-			opts.add !== undefined ||
-			opts.remove !== undefined ||
-			opts.description !== undefined;
-
-		if (!editing) {
-			if (!existing) {
-				throw new UsageError(`unknown group: ${name} — pass --plugins to create it`);
-			}
-
-			console.log();
-			info(`${pc.bold(name)}${existing.builtin ? pc.dim(" (builtin)") : ""} — ${existing.description ?? pc.dim("no description")}`);
-
-			printTable(existing.plugins.map((plugin) => {
-				const keys = entriesOf(lock, plugin);
-				const families = keys.map((key) => familyOf(lock.plugins[key]!)).join(", ");
-
-				return [plugin, families || pc.red("not installed")];
-			}), { head: ["plugin", "families"] });
-
-			info(`used by: ${groupInstances(cfg, name).join(", ") || pc.dim("nobody yet")}`);
-			console.log();
-
-			return;
-		}
-
-		const known = new Set(allPluginNames(lock));
-		const parse = (raw: unknown): string[] =>
-			String(raw).split(",").map((entry) => entry.trim()).filter(Boolean);
-
-		let members = opts.plugins !== undefined ? parse(opts.plugins) : [...(existing?.plugins ?? [])];
-
-		if (opts.add !== undefined) {
-			members = [...members, ...parse(opts.add)];
-		}
-
-		if (opts.remove !== undefined) {
-			const drop = new Set(parse(opts.remove));
-
-			members = members.filter((plugin) => !drop.has(plugin));
-		}
-
-		for (const plugin of members) {
-			if (!known.has(plugin)) {
-				warn(`"${plugin}" is not a pooled plugin — it validates as missing until installed`);
-			}
-		}
-
-		const before = existing ? [...existing.plugins] : [];
-
-		setGroup(lock, name, {
-			plugins: members,
-			...(opts.description !== undefined ? { description: String(opts.description) } : {}),
-		});
-
-		await saveLock(lock);
-
-		const after = lock.groups![name]!.plugins;
-		const added = after.filter((plugin) => !before.includes(plugin));
-		const removed = before.filter((plugin) => !after.includes(plugin));
-
-		ok(
-			`group ${pc.bold(name)} saved — ${after.length} plugin(s)` +
-				(added.length ? pc.green(` +${added.join(",")}`) : "") +
-				(removed.length ? pc.red(` -${removed.join(",")}`) : ""),
-		);
-
-		if (removed.length) {
-			info(`removed plugins stay deployed — clean them with ${pc.cyan("plugins remove <name> --from <inst>")}`);
-		}
-
-		// membership changed → push jars to everyone the group covers
-		const affected = groupInstances(cfg, name);
-
-		if (affected.length && (added.length || removed.length)) {
-			await runDeploy(affected, undefined);
-			await applyGroupRestart(cfg, name, opts.restart as string | undefined);
-		}
-	},
-});
-
-command({
 	path: ["plugins", "validate"],
 	desc: "How a group selection lands on an instance (OK / no version / skipped)",
 	args: [{ name: "instance", required: true, complete: instanceNames }],
@@ -1054,7 +1004,7 @@ command({
 
 		const groups = opts.groups
 			? String(opts.groups).split(",").map((entry) => entry.trim()).filter(Boolean)
-			: (inst.pluginGroups ?? []);
+			: instanceGroupNames(inst).filter((group) => group !== "default");
 
 		const rows = validateGroups(cfg, lock, {
 			software: inst.software,

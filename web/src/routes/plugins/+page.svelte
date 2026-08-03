@@ -2,14 +2,17 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, post, patch, del } from '$lib/api';
+	import { api, post, patch, del, fileToBase64 } from '$lib/api';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
+	import SplitBtn from '$lib/components/SplitBtn.svelte';
+	import FileDrop from '$lib/components/FileDrop.svelte';
+	import { ADDON_PROVIDERS } from '$lib/components/addons';
 	import Panel from '$lib/components/Panel.svelte';
-	import SearchInput from '$lib/components/SearchInput.svelte';
+	import AddonPicker from '$lib/components/AddonPicker.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import Modal from '$lib/components/Modal.svelte';
@@ -53,11 +56,16 @@
 	let checked = $state(false);
 
 	let addOpen = $state(false);
-	let addQuery = $state('');
 	let addLoader = $state<'paper' | 'velocity'>('paper');
-	let addHits: any[] = $state([]);
 	let addSlug = $state('');
 	let addTargets: string[] = $state([]);
+	let addProvider = $state('modrinth');
+
+	let uploadOpen = $state(false);
+	let uploadFile: File | null = $state(null);
+	let uploadName = $state('');
+	let uploadFamily = $state<'paper' | 'velocity' | 'universal'>('paper');
+	let uploadTargets: string[] = $state([]);
 	let removeTarget: PluginRow | null = $state(null);
 	let removeOpen = $state(false);
 
@@ -289,12 +297,6 @@
 			await refresh();
 		});
 
-	async function searchModrinth(): Promise<void> {
-		const query = encodeURIComponent(addQuery);
-
-		addHits = (await api(`/plugins/search?q=${query}&loader=${addLoader}`)).hits;
-	}
-
 	const installPlugin = () =>
 		run('add', `Installing ${addSlug} from Modrinth…`, async (note) => {
 			const res = await post('/plugins/add', {
@@ -307,7 +309,11 @@
 				level: 'success',
 				message: `Installed ${res.name}`,
 				detail: res.groups
-					.map((group: any) => `${group.version} → ${group.targets.join(', ')}`)
+					.map((group: any) =>
+						group.targets.length
+							? `${group.version} → ${group.targets.join(', ')}`
+							: `${group.version} pooled — not deployed anywhere yet`
+					)
 					.join('; '),
 				closeable: true
 			});
@@ -340,14 +346,55 @@
 		return list.includes(target) ? list.filter((entry) => entry !== target) : [...list, target];
 	}
 
-	/** Open the install dialog on a clean slate. */
-	function openInstall(): void {
+	/** Open the provider search on one provider, on a clean slate. */
+	function openSearch(provider: string): void {
+		addProvider = provider;
 		addOpen = true;
-		addHits = [];
-		addQuery = '';
 		addSlug = '';
 		addTargets = [];
 	}
+
+	$effect(() => {
+		if (uploadOpen) {
+			uploadFile = null;
+			uploadName = '';
+			uploadTargets = [];
+		}
+	});
+
+	// prefill the plugin name from the jar, dropping the @family suffix luna's
+	// own pool files carry — but never overwrite an edit
+	$effect(() => {
+		if (uploadFile && !uploadName) {
+			uploadName = uploadFile.name
+				.replace(/\.jar$/i, '')
+				.replace(/[@_].*$/, '')
+				.toLowerCase();
+		}
+	});
+
+	const uploadPlugin = () =>
+		run('upload', `Uploading ${uploadFile?.name}…`, async (note) => {
+			const res = await post('/plugins/upload', {
+				plugin: uploadName.trim(),
+				family: uploadFamily,
+				targets: uploadTargets,
+				data: await fileToBase64(uploadFile!)
+			});
+
+			uploadOpen = false;
+
+			note.set({
+				level: 'success',
+				message: `Pooled ${res.name}`,
+				detail: uploadTargets.length
+					? `${res.deployed} deploy change(s) — a running server loads it on restart.`
+					: 'Not deployed anywhere yet — add it to an instance or an addon group.',
+				closeable: true
+			});
+
+			await refresh();
+		});
 
 	/** A plugin's verbs — the row menu and the toolbar's Actions button. */
 	function rowActions(row: PluginRow): ContextMenuItem[] {
@@ -421,7 +468,19 @@
 		<Btn icon="upload" loading={busy === 'deploy'} disabled={!!busy} onclick={deployAll}>
 			Deploy
 		</Btn>
-		<Btn variant="primary" icon="plus" onclick={openInstall}>Install plugin</Btn>
+		<SplitBtn
+			label="Install"
+			icon="upload"
+			primary
+			onclick={() => (uploadOpen = true)}
+			menu={ADDON_PROVIDERS.map((entry) => ({
+				label: `Search ${entry.label}`,
+				brand: entry.id,
+				disabled: !entry.available,
+				hint: entry.note,
+				action: () => openSearch(entry.id)
+			}))}
+		/>
 	{/snippet}
 </PageHeader>
 
@@ -511,30 +570,33 @@
 </Panel>
 
 <!-- install modal -->
-<Modal title="Install plugin from Modrinth" bind:open={addOpen}>
-	<div class="addrow">
-		<SearchInput bind:value={addQuery} placeholder="Search Modrinth…" width="100%" />
-		<Select
-			value={addLoader}
-			width="9rem"
-			options={[
-				{ value: 'paper', label: 'paper' },
-				{ value: 'velocity', label: 'velocity' }
-			]}
-			onchange={(value) => (addLoader = value as 'paper' | 'velocity')}
-		/>
-		<Btn onclick={searchModrinth}>Search</Btn>
-	</div>
-	{#each addHits as hit}
-		<label class="hit" class:sel={addSlug === hit.slug}>
-			<input type="radio" name="hit" value={hit.slug} bind:group={addSlug} class="hidden" />
-			<b>{hit.title}</b> <span class="dim">{hit.downloads.toLocaleString()} downloads</span>
-			<div class="dim hitdesc">{hit.description}</div>
-		</label>
-	{/each}
+<Modal title="Install a plugin" bind:open={addOpen} wide>
+	<AddonPicker
+		endpoint="/plugins/search"
+		params={{ loader: addLoader }}
+		bind:selected={addSlug}
+		bind:provider={addProvider}
+		placeholder="Search plugins by name…"
+	>
+		{#snippet toolbar()}
+			<Select
+				value={addLoader}
+				width="9rem"
+				options={[
+					{ value: 'paper', label: 'paper' },
+					{ value: 'velocity', label: 'velocity' }
+				]}
+				onchange={(value) => (addLoader = value as 'paper' | 'velocity')}
+			/>
+		{/snippet}
+	</AddonPicker>
 	{#if addSlug}
 		<div class="tgt">
-			<div class="tgtlbl">Apply to instances</div>
+			<div class="tgtlbl">Apply to instances <span class="opt">optional</span></div>
+			<p class="dim tgthint">
+				Leave every box unticked to pool the jar without deploying it — put it in an addon group
+				or on an instance whenever you are ready.
+			</p>
 			<div class="targets">
 				{#each ['*paper', '*velocity', ...instanceNames] as target}
 					<label class="tchk">
@@ -553,11 +615,65 @@
 		<Btn onclick={() => (addOpen = false)}>Cancel</Btn>
 		<Btn
 			variant="primary"
-			disabled={!addSlug || !addTargets.length}
+			disabled={!addSlug}
 			loading={busy === 'add'}
 			onclick={installPlugin}
 		>
 			Install
+		</Btn>
+	{/snippet}
+</Modal>
+
+<!-- upload a jar from this computer -->
+<Modal title="Upload a plugin" bind:open={uploadOpen}>
+	<FileDrop bind:file={uploadFile} accept=".jar" hint="Drop a plugin jar here, or click to browse" />
+	<label class="field uploadname">
+		<span class="lbl">Plugin name</span>
+		<span class="hint">
+			The pool file becomes &lt;name&gt;@&lt;platform&gt;.jar; uploading under an existing name
+			replaces that build
+		</span>
+		<input class="input" bind:value={uploadName} placeholder="my-plugin" />
+	</label>
+	<div class="field">
+		<span class="lbl">Platform</span>
+		<span class="hint">Universal jars load on the backends and the proxy alike</span>
+		<Select
+			value={uploadFamily}
+			width="12rem"
+			options={[
+				{ value: 'paper', label: 'paper' },
+				{ value: 'velocity', label: 'velocity' },
+				{ value: 'universal', label: 'universal' }
+			]}
+			onchange={(value) => (uploadFamily = value as 'paper' | 'velocity' | 'universal')}
+		/>
+	</div>
+	<div class="tgt">
+		<div class="tgtlbl">Apply to instances <span class="opt">optional</span></div>
+		<p class="dim tgthint">Leave every box unticked to pool the jar without deploying it.</p>
+		<div class="targets">
+			{#each ['*paper', '*velocity', ...instanceNames] as target}
+				<label class="tchk">
+					<Checkbox
+						checked={uploadTargets.includes(target)}
+						label="Apply to {target}"
+						onchange={() => (uploadTargets = toggleTarget(uploadTargets, target))}
+					/>
+					{target}
+				</label>
+			{/each}
+		</div>
+	</div>
+	{#snippet footer()}
+		<Btn onclick={() => (uploadOpen = false)}>Cancel</Btn>
+		<Btn
+			variant="primary"
+			disabled={!uploadFile || !uploadName.trim()}
+			loading={busy === 'upload'}
+			onclick={uploadPlugin}
+		>
+			Upload
 		</Btn>
 	{/snippet}
 </Modal>
@@ -620,48 +736,48 @@
 		gap: 0.375rem;
 	}
 
-	.addrow {
-		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
-		align-items: center;
-	}
-
-	// the radio input is hidden, so the whole card is the click target
-	.hit {
-		display: block;
-		border: 0.1rem solid var(--border-divider);
-		border-radius: 0.5rem;
-		padding: 0.5rem 0.75rem;
-		margin-bottom: 0.375rem;
-		cursor: pointer;
-
-		&:hover {
-			border-color: var(--link);
-		}
-
-		&.sel {
-			border-color: var(--link);
-			background: var(--bg-selected);
-		}
-	}
-
-	.hitdesc {
-		font-size: 0.75rem;
-	}
-
-	.hidden {
-		display: none;
-	}
-
 	.tgt {
 		margin-top: 0.75rem;
+	}
+
+	.field {
+		display: block;
+		margin-bottom: 0.875rem;
+	}
+
+	.lbl {
+		display: block;
+		font-weight: 700;
+		color: var(--text-heading);
+	}
+
+	.hint {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+		margin-bottom: 0.25rem;
+	}
+
+	.uploadname {
+		margin-top: 1rem;
 	}
 
 	.tgtlbl {
 		font-weight: 700;
 		color: var(--text-heading);
 		margin-bottom: 0.375rem;
+	}
+
+	// the field is genuinely optional, and the label is where that has to be said
+	.opt {
+		font-weight: 400;
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+
+	.tgthint {
+		margin: 0 0 0.5rem;
+		font-size: 0.75rem;
 	}
 
 	.targets {
