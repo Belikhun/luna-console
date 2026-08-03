@@ -330,6 +330,15 @@ Wiring rules:
   toolbar. The table bar is search + filters on the left, range/paging/preferences on the
   right. A page never wires `DataTable`, `SearchInput`, `PagingBar` and `ContextMenu`
   together by hand, and never re-implements search or paging — extend `ResourceTable`.
+- **A table never has an action column.** No trailing column of buttons, no icon-button
+  column, whatever the table — row verbs live in the **row's context menu** (`rowActions(row)`,
+  right-click or the ⋯ affordance), and the bulk form of the same verb lives in the screen's
+  Actions dropdown. A button per row multiplies the same control by the row count, competes
+  with the row's own data for width, shifts every other column when its label changes, and
+  puts a destructive click one mis-scroll away. `DataTable` takes `rowActions`/`rowLabel` too,
+  so a table on a *detail* screen gets the same menu without going through `ResourceTable`.
+  A control that edits a value **in place** (a per-row toggle, an inline field) is not an
+  action column and is fine where it belongs — in that value's own column.
 - **Every screen has a real action bar** in its `PageHeader`, modelled on the instances
   screen (DESIGN.md §5.2), in this order: `RefreshControl`, Actions dropdown for the
   selection, screen-wide operations, then the creating action last as `primary`. Actions apply to the table selection, an

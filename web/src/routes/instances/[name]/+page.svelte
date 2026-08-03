@@ -22,6 +22,7 @@
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
+	import type { DistributionSegment } from '$lib/components/distribution';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -92,9 +93,14 @@
 	let pluginTotals = $state({ warnings: 0, errors: 0, sessionComplete: true });
 	let instDatapacks: any[] = $state([]);
 	let datapackWorld = $state('');
+	/** addon jars in the instance's directory that luna does not manage */
+	let instUnmanaged: string[] = $state([]);
 	/** addon stream state, in the same vocabulary the log stream uses */
 	let addonLive: 'off' | 'connecting' | 'live' | 'reconnecting' = $state('off');
 	let instRespacks: any[] = $state([]);
+
+	/** Pack key whose per-instance rule edit is in flight, for the row's button. */
+	let respackBusy = $state('');
 	let metrics: { history: any[]; events: any[] } = $state({ history: [], events: [] });
 	let logData: { content: string; archives: any[] } = $state({ content: '', archives: [] });
 	/** whether the snapshot behind the log view has been read at least once */
@@ -165,9 +171,10 @@
 		return addonLive === 'live';
 	}
 
-	/** Fold one frame of the addon stream into the tabs it feeds. */
+	/** Fold one frame of the addon stream into the summary and the tabs it feeds. */
 	function applyAddonSnapshot(snapshot: any): void {
 		instPlugins = snapshot.plugins;
+		instUnmanaged = snapshot.unmanaged ?? [];
 		pluginTotals = {
 			warnings: snapshot.warnings,
 			errors: snapshot.errors,
@@ -390,19 +397,16 @@
 	});
 
 	/**
-	 * Addon state is live for as long as one of the tabs showing it is open.
+	 * Addon state is live for as long as the page is open — the distribution bars
+	 * in the summary sit above the tabs, so this is not something a tab can own.
 	 *
 	 * It has to be a stream rather than the page's poll: the interesting window
 	 * is a restart, where every addon's state changes twice in a few seconds and
 	 * a poll would show a stale "running" for most of it. The server sends a
 	 * frame only when the snapshot actually differs, and slows down on its own
-	 * once the instance settles, so an idle tab costs nothing to keep open.
+	 * once the instance settles, so an idle page costs nothing to keep open.
 	 */
 	$effect(() => {
-		if (tab !== 'plugins' && tab !== 'datapacks') {
-			return;
-		}
-
 		const stream = new EventSource(`/api/instances/${name}/addons/stream`);
 
 		addonLive = 'connecting';
@@ -749,6 +753,50 @@
 		}
 	}
 
+	/**
+	 * Serve, or stop serving, one pack on *this* instance. The pack's server
+	 * rules are the only place that can say so, so the route rewrites them —
+	 * which is why disabling here does not touch the pack's global enabled flag
+	 * and does not affect any other backend.
+	 */
+	async function setRespackHere(key: string, on: boolean): Promise<void> {
+		respackBusy = key;
+
+		const note = Notify.loading(`${on ? 'Serving' : 'Withholding'} ${key} on ${name}…`);
+
+		try {
+			const res = await post(`/respacks/${encodeURIComponent(key)}/instances`, {
+				instance: name,
+				on
+			});
+
+			note.set({
+				level: 'success',
+				message: `${key} ${on ? 'now served on' : 'withheld from'} ${name}`,
+				detail:
+					`Rules: ${res.pack.servers.join(', ')}. ` +
+					(res.groupConflict
+						? `An addon group grants ${name}; the exclusion overrides it, but leaving the group is cleaner. `
+						: '') +
+					(res.reloaded
+						? 'Reload sent to the proxy — players get the change on their next join or switch.'
+						: 'The proxy is not running; the change applies on its next boot.'),
+				closeable: true
+			});
+
+			await loadTab('respacks');
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: `Could not update ${key} for ${name}`,
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+
+		respackBusy = '';
+	}
+
 	const isUp = $derived(inst && (inst.state === 'running' || inst.state === 'starting'));
 	const checksPassed = $derived(inst ? inst.checks.filter((check: any) => check.ok).length : 0);
 
@@ -878,11 +926,101 @@
 	 */
 	const PLUGIN_STATE_BADGE: Record<string, { state: string; label: string }> = {
 		running: { state: 'running', label: 'Running' },
-		loading: { state: 'warning', label: 'Loading' },
+		loading: { state: 'loading', label: 'Loading' },
 		errored: { state: 'failed', label: 'Errored' },
 		unknown: { state: 'unknown', label: 'Unknown' },
 		disabled: { state: 'stopped', label: 'Disabled' }
 	};
+
+	/**
+	 * The addon phases as a distribution, in the order they read as a lifecycle:
+	 * working, coming up, broken, then the ones luna is not speaking for.
+	 * "Unmanaged" is counted here rather than left out, because a modpack's own
+	 * mods are most of what is in the directory and a bar that ignored them would
+	 * claim the instance runs six mods when it runs two hundred.
+	 */
+	const addonSegments: DistributionSegment[] = $derived.by(() => {
+		const by = (state: string): number =>
+			instPlugins.filter((plugin) => !plugin.disabled && plugin.state === state).length;
+
+		return [
+			{ key: 'running', label: 'running', count: by('running'), color: 'var(--success)' },
+			{ key: 'loading', label: 'loading', count: by('loading'), color: 'var(--warning)' },
+			{ key: 'errored', label: 'errored', count: by('errored'), color: 'var(--error)' },
+			{ key: 'unknown', label: 'unknown', count: by('unknown'), color: 'var(--bg-track)' },
+			{
+				key: 'disabled',
+				label: 'disabled',
+				count: instPlugins.filter((plugin) => plugin.disabled).length,
+				color: 'var(--text-disabled)'
+			},
+			{
+				key: 'unmanaged',
+				label: 'unmanaged',
+				count: instUnmanaged.length,
+				color: 'var(--link)'
+			}
+		];
+	});
+
+	const addonTotal = $derived(addonSegments.reduce((sum, segment) => sum + segment.count, 0));
+
+	/**
+	 * Which bucket one data pack falls in — the same order the tab's own badges
+	 * decide in, so the bar and the table never disagree.
+	 *
+	 * An if-chain rather than one predicate per bucket: the conditions genuinely
+	 * overlap (a pack can be both untargeted and stale), and counting each bucket
+	 * independently would tally that pack twice and inflate the total.
+	 */
+	function datapackBucket(row: any): string {
+		if (!row.managed) {
+			return 'unmanaged';
+		}
+
+		if (!row.present) {
+			return 'missing';
+		}
+
+		if (row.stale) {
+			return 'stale';
+		}
+
+		if (!row.targeted) {
+			return 'untargeted';
+		}
+
+		return 'insync';
+	}
+
+	/** Data pack distribution, using the same vocabulary as the tab's own badges. */
+	const datapackSegments: DistributionSegment[] = $derived.by(() => {
+		const count = (bucket: string): number =>
+			instDatapacks.filter((row) => datapackBucket(row) === bucket).length;
+
+		return [
+			{ key: 'insync', label: 'in sync', count: count('insync'), color: 'var(--success)' },
+			{ key: 'stale', label: 'stale', count: count('stale'), color: 'var(--warning)' },
+			{
+				key: 'missing',
+				label: 'not deployed',
+				count: count('missing'),
+				color: 'var(--error)'
+			},
+			{
+				key: 'untargeted',
+				label: 'untargeted',
+				count: count('untargeted'),
+				color: 'var(--text-disabled)'
+			},
+			{ key: 'unmanaged', label: 'unmanaged', count: count('unmanaged'), color: 'var(--link)' }
+		];
+	});
+
+	const datapackTotal = $derived(
+		datapackSegments.reduce((sum, segment) => sum + segment.count, 0)
+	);
+
 	/** A plugin row's verbs on this instance. */
 	function pluginActions(plugin: any): ContextMenuItem[] {
 		return [
@@ -956,12 +1094,41 @@
 		{ id: 'version', label: 'Version' }
 	];
 
+	/** Whether this instance is in a pack's rule set right now. */
+	function respackHere(row: any): boolean {
+		return row.matched.includes(name ?? '');
+	}
+
 	/** A resource pack row's verbs, seen from this instance. */
 	function respackActions(row: any): ContextMenuItem[] {
+		const here = respackHere(row);
+		const granted = row.granted.includes(name ?? '');
+
 		return [
 			{
-				label: row.enabled ? 'Disable pack' : 'Enable pack',
-				icon: row.enabled ? 'toggleOff' : 'toggleOn',
+				label: here ? `Stop serving on ${name}` : `Serve on ${name}`,
+				icon: here ? 'toggleOff' : 'toggleOn',
+				disabled: !!respackBusy || (granted && here),
+				hint:
+					granted && here
+						? `granted by addon group ${row.groups.join(', ')} — edit the group instead`
+						: undefined,
+				action: () => setRespackHere(row.key, !here)
+			},
+			{ separator: true },
+			{
+				label: 'Pack details',
+				icon: 'circleInfo',
+				action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
+			},
+			{
+				label: 'Configure pack',
+				icon: 'pen',
+				action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
+			},
+			{
+				label: row.enabled ? 'Disable everywhere' : 'Enable everywhere',
+				icon: row.enabled ? 'ban' : 'circleCheck',
 				action: () => setRespackEnabled(row.key, !row.enabled)
 			},
 			{
@@ -1068,6 +1235,14 @@
 				<span class="dim">{inst.checks.length - checksPassed} pending</span>
 			{/if}
 		</OverviewCell>
+		<OverviewCell
+			label="{addonLabel} ({addonTotal})"
+			segments={addonSegments}
+			segmentsEmpty="none installed"
+		/>
+		{#if datapackTotal > 0}
+			<OverviewCell label="Data packs ({datapackTotal})" segments={datapackSegments} />
+		{/if}
 		<OverviewCell label="Software">
 			{inst.software} {inst.mcVersion ?? ''}
 		</OverviewCell>
@@ -1386,7 +1561,12 @@
 				A running server loads data pack changes on its next restart (or /minecraft:reload).
 			</p>
 		{:else if tab === 'respacks'}
-			<Panel title="Resource packs" count={instRespacks.length} flush>
+			<Panel
+				title="Resource packs"
+				count={instRespacks.length}
+				description="Every pack in the proxy's catalog, and whether {name} is in its rules — serving one here rewrites that pack's rules and reloads the proxy"
+				flush
+			>
 				{#snippet actions()}
 					<Btn icon="sync" onclick={() => loadTab('respacks')}>Refresh</Btn>
 					<Btn icon="image" onclick={() => goto('/packs')}>Manage packs</Btn>
@@ -1414,14 +1594,14 @@
 				>
 					{#snippet cell(row, col)}
 						{#if col === 'name'}
-							{row.key}
+							<a href="/packs/{encodeURIComponent(row.key)}">{row.key}</a>
 							{#if row.name && row.name.toLowerCase() !== row.key}
 								<span class="dim">({row.name})</span>
 							{/if}
 						{:else if col === 'applies'}
-							{#if row.matched.includes(name ?? '') && row.enabled}
+							{#if respackHere(row) && row.enabled}
 								<StatusBadge state="ok" label="Applies" />
-							{:else if row.matched.includes(name ?? '')}
+							{:else if respackHere(row)}
 								<StatusBadge
 									state="stopped"
 									label="Would apply"
@@ -1440,6 +1620,9 @@
 							{row.priority}
 						{:else if col === 'servers'}
 							<span class="mono">{row.servers.join(', ') || '–'}</span>
+							{#if row.granted.includes(name ?? '')}
+								<span class="dim">· from {row.groups.join(', ')}</span>
+							{/if}
 						{:else if col === 'version'}
 							<span class="mono">{row.versionNumber ?? '–'}</span>
 						{/if}

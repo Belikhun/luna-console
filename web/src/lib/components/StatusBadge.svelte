@@ -57,6 +57,9 @@
 		provisioning: { color: 'var(--link)', icon: 'rotate', spin: true },
 		deleting: { color: 'var(--warning)', icon: 'rotate', spin: true },
 		pending: { color: 'var(--text-secondary)', icon: 'rotate', spin: true },
+		// an addon the server has begun loading: amber to match its slice of the
+		// distribution bar, spinning because it is a phase that resolves on its own
+		loading: { color: 'var(--warning)', icon: 'rotate', spin: true },
 		warning: { color: 'var(--warning)', icon: 'triangleExclamation' },
 		unknown: { color: 'var(--text-secondary)', icon: 'circleQuestion' },
 		external: { color: 'var(--text-secondary)', icon: 'externalLink' }

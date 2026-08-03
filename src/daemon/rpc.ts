@@ -26,6 +26,7 @@ import * as lunaCore from "../core/luna";
 import * as packslockCore from "../core/packslock";
 import * as pluginstateCore from "../core/pluginstate";
 import * as pluginsCore from "../core/plugins";
+import * as respackinfoCore from "../core/respackinfo";
 import * as respacksCore from "../core/respacks";
 import * as portsCore from "../core/ports";
 import * as proxyCore from "../core/proxy";
@@ -673,8 +674,13 @@ export const OPS: Record<string, OpSpec> = {
 	"respacks.checkUpdates": { fn: respacksCore.checkResourcePackUpdates, lock: 0 },
 	"respacks.applyUpdate": { fn: respacksCore.applyResourcePackUpdate, lock: 0 },
 	"respacks.removeResourcePack": { fn: respacksCore.removeResourcePack, cfg: 0, lock: 1 },
+	"respacks.setForInstance": { fn: respacksCore.setResourcePackForInstance, cfg: 0, lock: 1 },
 	"respacks.reload": { fn: respacksCore.reloadResourcePacks, cfg: 0 },
 	"respacks.syncGroups": { fn: respacksCore.syncResourcePackGroups, cfg: 0, lock: 1 },
+	"respacks.detail": { fn: respackinfoCore.resourcePackDetail, cfg: 0, lock: 1 },
+	"respacks.serveConfig": { fn: respackinfoCore.packServeConfig, cfg: 0 },
+	"respacks.holders": { fn: respackinfoCore.packHolders },
+	"respacks.resolution": { fn: respackinfoCore.packResolution },
 	"datapacks.list": { fn: datapacksCore.listDataPacks, cfg: 0, lock: 1 },
 	"datapacks.instanceReport": {
 		fn: datapacksCore.instanceDataPackReport,

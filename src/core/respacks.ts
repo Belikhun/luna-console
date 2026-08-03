@@ -32,6 +32,7 @@ import {
 } from "./packslock";
 import * as mr from "./services/modrinth";
 import type { AddonGroup, ClusterConfig } from "./types";
+import { respackMatchesServer, toggleServerRule } from "../shared/packrules";
 
 /** Directory all resource packs (zips + yml definitions) live in. */
 export function respacksDir(): string {
@@ -75,47 +76,9 @@ export interface RespackRow extends RespackDefinition {
 	granted: string[];
 }
 
-/**
- * Whether a pack's server rules match one backend name — a direct port of
- * luna-pack's `PackDefinition.matchesServer`, so the console predicts exactly
- * what the plugin will do. Exclusions win; "all" is an alias for "*".
- */
-export function respackMatchesServer(servers: string[], serverName: string): boolean {
-	const normalized = serverName.trim().toLowerCase();
-	let included = false;
-
-	for (const rawRule of servers) {
-		let rule = rawRule.trim().toLowerCase();
-
-		if (!rule) {
-			continue;
-		}
-
-		const excluded = rule.startsWith("!");
-
-		if (excluded) {
-			rule = rule.slice(1).trim();
-		}
-
-		if (rule === "all") {
-			rule = "*";
-		}
-
-		const matches = rule === "*" || rule === normalized;
-
-		if (!matches) {
-			continue;
-		}
-
-		if (excluded) {
-			return false;
-		}
-
-		included = true;
-	}
-
-	return included;
-}
+// the rule algebra is shared with the browser, which needs to predict a
+// checkbox before it is saved — see shared/packrules.ts
+export { hasWildcard, respackMatchesServer, toggleServerRule, toggleWildcard } from "../shared/packrules";
 
 /**
  * Backends an addon group grants this pack. The proxy serves resource packs
@@ -148,6 +111,52 @@ function mergedServers(manual: string[], granted: string[]): string[] {
 	}
 
 	return out.length ? out : ["!*"];
+}
+
+/**
+ * Serve (or stop serving) one pack on one backend, by editing that pack's
+ * server rules — the per-instance verb the instance screen offers, expressed in
+ * the only vocabulary luna-pack has.
+ *
+ * A pack an addon group carries keeps gaining that group's backends, so turning
+ * one off writes an exclusion that outranks the grant rather than fighting it;
+ * `groupConflict` says so, and the caller is expected to mention it.
+ */
+export async function setResourcePackForInstance(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	key: string,
+	instance: string,
+	on: boolean,
+	groups?: Record<string, AddonGroup>,
+): Promise<{ pack: RespackRow; groupConflict: boolean }> {
+	const rows = await listResourcePacks(cfg, lock, groups);
+	const row = rows.find((candidate) => candidate.key === key);
+
+	if (!row) {
+		throw new Error(`unknown resource pack: ${key}`);
+	}
+
+	if (!cfg.instances[instance]) {
+		throw new Error(`unknown instance: ${instance}`);
+	}
+
+	// an unregistered zip has no rules at all; serving it somewhere is what
+	// finally registers it, and a registration nobody enabled would serve
+	// nothing — so the same click enables it, exactly as joining a group does
+	const current = row.defFile ? row.servers : [];
+	const pack = await updateResourcePack(
+		cfg,
+		lock,
+		key,
+		{
+			servers: toggleServerRule(current, instance, on),
+			enabled: !row.defFile && on ? true : undefined,
+		},
+		groups,
+	);
+
+	return { pack, groupConflict: !on && row.granted.includes(instance) };
 }
 
 /** Parse one definition yml; undefined when the file is not a valid definition. */
@@ -331,13 +340,18 @@ export async function updateResourcePack(
 		? patch.servers.filter((rule) => !granted.includes(rule))
 		: (lock.resourcepacks[key]?.servers ?? current.filter((rule) => !granted.includes(rule)));
 
+	// the merge only has something to say when the pack is on the group scheme
+	// (a grant now, or a manual list the lock remembers from one); otherwise the
+	// yml alone owns the rules, and an edit that names none leaves them be
+	const merged = granted.length > 0 || lock.resourcepacks[key]?.servers !== undefined || patch.servers;
+
 	const def: RespackDefinition = {
 		name: patch.name ?? row.name,
 		filename: row.filename,
 		priority: patch.priority ?? row.priority,
 		required: patch.required ?? row.required,
 		enabled: patch.enabled ?? row.enabled,
-		servers: granted.length || lock.resourcepacks[key]?.servers ? mergedServers(manual, granted) : current,
+		servers: merged ? mergedServers(manual, granted) : current,
 	};
 
 	await saveDefinition(key, def);

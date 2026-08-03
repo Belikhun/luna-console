@@ -1,24 +1,39 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	/** One cell in an OverviewBar: bold label, value line, optional progress bar. */
+	import DistributionBar from './DistributionBar.svelte';
+	import type { DistributionSegment } from './distribution';
+
+	/**
+	 * One cell in an OverviewBar: bold label, value line, and optionally a bar
+	 * above it — either a single `progress` fill or a `segments` distribution.
+	 * Passing `segments` wins; a cell has room for one bar.
+	 */
 	let {
 		label,
 		progress,
 		progressColor = 'var(--success)',
+		segments,
+		segmentsEmpty = 'none',
 		children
 	}: {
 		label: string;
 		/** 0..1 */
 		progress?: number;
 		progressColor?: string;
-		children: Snippet;
+		/** stacked breakdown, drawn in place of `progress`; brings its own legend,
+		 *  which stands in for the value line when there are no children */
+		segments?: DistributionSegment[];
+		segmentsEmpty?: string;
+		children?: Snippet;
 	} = $props();
 </script>
 
 <div class="ovc">
 	<div class="l">{label}</div>
-	{#if progress !== undefined}
+	{#if segments}
+		<DistributionBar {segments} empty={segmentsEmpty} />
+	{:else if progress !== undefined}
 		<div class="bar">
 			<div
 				class="fill"
@@ -27,7 +42,9 @@
 			></div>
 		</div>
 	{/if}
-	<div class="v">{@render children()}</div>
+	{#if children}
+		<div class="v">{@render children()}</div>
+	{/if}
 </div>
 
 <style lang="scss">

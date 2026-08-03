@@ -12,6 +12,7 @@ import { loadCluster, loadLock, saveLock } from "../../client/core/config";
 import { pruneAddon } from "../../client/core/families";
 import * as datapacks from "../../client/core/datapacks";
 import { loadPacksLock, savePacksLock, type PackChannel } from "../../client/core/packslock";
+import * as respackinfo from "../../client/core/respackinfo";
 import * as respacks from "../../client/core/respacks";
 import * as mr from "../../client/core/services/modrinth";
 
@@ -210,6 +211,127 @@ command({
 				`priority ${row.priority}, ${row.required ? "required" : "optional"}, servers ${row.servers.join(",")}`,
 		);
 		info("apply live with: luna packs reload");
+	},
+});
+
+command({
+	path: ["packs", "serve"],
+	desc: "Serve a pack on one or more backends (stop serving with --off)",
+	args: [
+		{ name: "pack", required: true, complete: respackKeys },
+		{ name: "instance", required: true, variadic: true, complete: instanceNames },
+	],
+	opts: [{ flag: "--off", desc: "stop serving the pack on those backends" }],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadPacksLock();
+		const key = args[0]!;
+		const on = !opts.off;
+
+		for (const instance of args.slice(1)) {
+			const { pack, groupConflict } = await respacks.setResourcePackForInstance(
+				cfg,
+				lock,
+				key,
+				instance,
+				on,
+				await addonGroups(),
+			);
+
+			ok(
+				`${pc.bold(key)} ${on ? pc.green("on") : pc.dim("off")} ${instance} ` +
+					pc.dim(`(servers ${pack.servers.join(",")})`),
+			);
+
+			if (groupConflict) {
+				warn(
+					`${instance} is granted by addon group(s) ${pack.groups.join(", ")} — ` +
+						"the exclusion overrides the grant, but removing it from the group is cleaner",
+				);
+			}
+		}
+
+		await savePacksLock(lock);
+		info("apply live with: luna packs reload");
+	},
+});
+
+command({
+	path: ["packs", "info"],
+	desc: "One pack in full: contents, serve URL, reachability, holders and traffic",
+	args: [{ name: "pack", required: true, complete: respackKeys }],
+	opts: [{ flag: "--no-probe", desc: "skip the HTTP reachability check" }],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadPacksLock();
+		const spin = new Spinner().start("collecting...");
+
+		const detail = await respackinfo.resourcePackDetail(cfg, lock, args[0]!, await addonGroups(), {
+			probe: !opts["no-probe"],
+		});
+
+		spin.stop();
+
+		const { pack, manifest, reachability, traffic, holders, resolution } = detail;
+
+		console.log();
+		console.log(
+			`  ${pc.bold(pack.key)} ${pc.dim(pack.name)} — ` +
+				`${pack.enabled ? pc.green("enabled") : pc.dim("disabled")}, priority ${pack.priority}, ` +
+				`${pack.required ? "required" : "optional"}`,
+		);
+		console.log();
+
+		printTable(
+			[
+				["file", `${pack.filename} ${pack.present ? pc.dim(fmtBytes(pack.sizeBytes)) : pc.red("missing")}`],
+				[
+					"contents",
+					manifest.readable
+						? `${manifest.entries} entries, ${fmtBytes(manifest.uncompressedBytes)} unpacked` +
+							`${manifest.packFormat ? pc.dim(` — pack_format ${manifest.packFormat}`) : ""}`
+						: pc.yellow(manifest.problem ?? "unreadable"),
+				],
+				["description", manifest.description ?? pc.dim("—")],
+				["rules", `${pack.servers.join(",") || pc.yellow("unregistered")} ${pc.dim(`→ ${pack.matched.join(",") || "nothing"}`)}`],
+				["url", detail.url ?? pc.yellow(detail.serve.problem ?? "no base URL")],
+				[
+					"reachable",
+					!reachability.checked
+						? pc.dim(reachability.problem ?? "not checked")
+						: reachability.ok
+							? `${pc.green(`HTTP ${reachability.status}`)} ${pc.dim(`${reachability.elapsedMs}ms, ${reachability.sizeMatches === false ? pc.yellow("size differs from disk") : "size matches"}`)}`
+							: pc.red(reachability.problem ?? `HTTP ${reachability.status}`),
+				],
+				[
+					"on the proxy",
+					!resolution.available
+						? pc.dim(resolution.problem ?? "unavailable")
+						: resolution.resolved
+							? resolution.resolved.available
+								? `${pc.green("resolved")} ${pc.dim(`sha1 ${resolution.resolved.sha1.slice(0, 12)}`)}`
+								: pc.red(resolution.resolved.unavailableReason || "unavailable")
+							: pc.yellow("not in the running catalog — reload the proxy"),
+				],
+				[
+					"holders",
+					!holders.available
+						? pc.dim(holders.problem ?? "unavailable")
+						: `${holders.loaded}/${holders.online} online player(s) loaded${holders.pending ? pc.dim(`, ${holders.pending} pending`) : ""}`,
+				],
+				[
+					"traffic",
+					!traffic.available
+						? pc.dim(traffic.problem ?? "unavailable")
+						: `${traffic.requests} download(s), ${fmtBytes(traffic.bytes)}, ${traffic.uniqueClients} client(s)` +
+							`${traffic.lastAt ? pc.dim(` — last ${new Date(traffic.lastAt).toLocaleString()}`) : ""}`,
+				],
+			],
+			{ head: ["", ""] },
+		);
+		console.log();
 	},
 });
 

@@ -329,6 +329,67 @@ export async function playerHistory(limit = 50): Promise<LunaResult<{ activity: 
 	return await call<{ activity: PlayerActivity[] }>(`/players/history?limit=${limit}`);
 }
 
+/** One player's resource-pack state, as LunaPackLoader tracks it. */
+export interface PackSession {
+	uuid: string;
+	username: string;
+	server: string;
+	/** Pack names the client has applied */
+	loaded: string[];
+	/** Pack names sent and not yet accepted or declined */
+	pending: string[];
+	lastFailure: string;
+}
+
+export interface PackSessionList {
+	generatedAtEpochMillis: number;
+	onlineCount: number;
+	players: PackSession[];
+}
+
+/**
+ * Who is holding which resource pack right now. Served by LunaPackLoader rather
+ * than LunaCore, so an older pack plugin answers 404 — the caller renders that
+ * as "unavailable", never as "nobody has it".
+ */
+export async function packSessions(): Promise<LunaResult<PackSessionList>> {
+	return await call<PackSessionList>("/packs/sessions");
+}
+
+/** One pack as the proxy resolved it: the URL and hash clients are actually given. */
+export interface ResolvedPackInfo {
+	name: string;
+	normalizedName: string;
+	filename: string;
+	priority: number;
+	required: boolean;
+	enabled: boolean;
+	servers: string[];
+	url: string;
+	sha1: string;
+	sizeBytes: number;
+	available: boolean;
+	unavailableReason: string;
+}
+
+export interface PackCatalog {
+	generatedAtEpochMillis: number;
+	report: {
+		discoveredFiles: number;
+		validDefinitions: number;
+		invalidDefinitions: number;
+		resolvedAvailable: number;
+		resolvedMissingFiles: number;
+		resolvedInvalidUrls: number;
+	};
+	packs: ResolvedPackInfo[];
+}
+
+/** The pack catalog the running proxy holds — its view, not the directory's. */
+export async function packCatalog(): Promise<LunaResult<PackCatalog>> {
+	return await call<PackCatalog>("/packs/catalog");
+}
+
 export interface CommandResult {
 	command: string;
 	handled: boolean;

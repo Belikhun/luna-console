@@ -5,6 +5,7 @@
 	import Toggle from './Toggle.svelte';
 	import PagingBar from './PagingBar.svelte';
 	import Modal from './Modal.svelte';
+	import ContextMenu from './ContextMenu.svelte';
 	import Btn from './Btn.svelte';
 	import Select from './Select.svelte';
 	import {
@@ -17,6 +18,7 @@
 		loadPrefs,
 		savePrefs
 	} from './table';
+	import type { ContextMenuItem } from './contextmenu';
 
 	/**
 	 * Resource table: darker sticky header with column dividers and
@@ -39,6 +41,8 @@
 		sortValue,
 		onRowClick,
 		onRowContextMenu,
+		rowActions,
+		rowLabel,
 		rowDim,
 		paging = false,
 		pageSize = 25,
@@ -62,8 +66,15 @@
 		selected?: Set<string>;
 		sortValue?: (row: T, columnId: string) => string | number | null;
 		onRowClick?: (row: T) => void;
-		/** right-click on a row — the row is selected first, then this fires */
+		/** right-click on a row — the row is selected first, then this fires.
+		 *  Prefer `rowActions`: this is the escape hatch for a caller that owns its
+		 *  own menu (and is what ResourceTable used before the menu moved here) */
 		onRowContextMenu?: (row: T, event: MouseEvent) => void;
+		/** the row's verbs, as its right-click menu — a table never grows a column
+		 *  of buttons instead (see CLAUDE.md, web console conventions) */
+		rowActions?: (row: T) => ContextMenuItem[];
+		/** heading of the row's context menu (defaults to the row's id) */
+		rowLabel?: (row: T) => string;
 		/** rows rendered dimmed & unselectable (e.g. external resources) */
 		rowDim?: (row: T) => boolean;
 		paging?: boolean;
@@ -119,6 +130,8 @@
 	let sortDir: 'asc' | 'desc' = $state(initial.sortDir ?? 'asc');
 	let page = $state(1);
 	let prefsOpen = $state(false);
+	let rowMenu: ContextMenu | undefined = $state();
+	let menuRow: T | undefined = $state();
 
 	// each group starts on its first option, which is the "any value" entry
 	const filterValues: Record<string, string> = $state(
@@ -270,19 +283,30 @@
 		onRowClick?.(row);
 	}
 
-	function rowContext(row: T, event: MouseEvent): void {
-		if (rowDim?.(row) || !onRowContextMenu) {
+	/**
+	 * A dimmed row still has verbs — it is usually the one that needs them, since
+	 * "dim" here means disabled, withheld or not deployed, and the verb that fixes
+	 * that is in this menu. Dimming suppresses *selection*, not the menu.
+	 */
+	async function rowContext(row: T, event: MouseEvent): Promise<void> {
+		if (!onRowContextMenu && !rowActions) {
 			return;
 		}
 
 		event.preventDefault();
 
 		// right-clicking outside the selection moves it to this row first
-		if (selectable !== 'none' && !selected.has(getId(row))) {
+		if (selectable !== 'none' && !rowDim?.(row) && !selected.has(getId(row))) {
 			selected = new Set([getId(row)]);
 		}
 
-		onRowContextMenu(row, event);
+		if (rowActions) {
+			menuRow = row;
+
+			await rowMenu?.openAt(event.clientX, event.clientY);
+		}
+
+		onRowContextMenu?.(row, event);
 	}
 
 	function toggleAll(): void {
@@ -776,6 +800,13 @@
 		{/if}
 	</div>
 </div>
+
+<ContextMenu
+	bind:this={rowMenu}
+	items={menuRow && rowActions ? rowActions(menuRow) : []}
+	header={menuRow ? (rowLabel?.(menuRow) ?? getId(menuRow)) : undefined}
+	minWidth="14rem"
+/>
 
 <Modal title="Preferences" bind:open={prefsOpen} wide>
 	<div class="prefs">

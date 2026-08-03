@@ -50,7 +50,7 @@
 	/** Addon phases, plus the override that explains an absent one. */
 	const STATE_BADGE: Record<string, { state: string; label: string }> = {
 		running: { state: 'running', label: 'Running' },
-		loading: { state: 'warning', label: 'Loading' },
+		loading: { state: 'loading', label: 'Loading' },
 		errored: { state: 'failed', label: 'Errored' },
 		unknown: { state: 'unknown', label: 'Unknown' },
 		disabled: { state: 'stopped', label: 'Disabled' }

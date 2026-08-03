@@ -2,7 +2,6 @@
 	import type { Snippet } from 'svelte';
 	import DataTable from './DataTable.svelte';
 	import SearchInput from './SearchInput.svelte';
-	import ContextMenu from './ContextMenu.svelte';
 	import Btn from './Btn.svelte';
 	import type { Column, TableFilterGroup } from './table';
 	import type { ContextMenuItem } from './contextmenu';
@@ -89,8 +88,6 @@
 	// only the reset is called from here, and naming the component type inside
 	// its own generic instantiation is what TS cannot resolve
 	let table: { clearFilters: () => void } | undefined = $state();
-	let rowMenu: ContextMenu | undefined = $state();
-	let menuRow: T | undefined = $state();
 
 	const haystack = (row: T): string => searchValue?.(row) ?? rowText(row);
 
@@ -103,16 +100,6 @@
 	// "nothing matches" and "nothing exists" are different situations, and only
 	// one of them is the user's to fix
 	const noMatch = $derived(rows.length > 0 && visible.length === 0);
-
-	async function openRowMenu(row: T, event: MouseEvent): Promise<void> {
-		if (!rowActions) {
-			return;
-		}
-
-		menuRow = row;
-
-		await rowMenu?.openAt(event.clientX, event.clientY);
-	}
 
 	function clearAll(): void {
 		search = '';
@@ -150,14 +137,8 @@
 	{paging}
 	{pageSize}
 	{maxHeight}
-	onRowContextMenu={rowActions ? openRowMenu : undefined}
+	{rowActions}
+	{rowLabel}
 	emptyTitle={noMatch ? `No ${noun} matches your search` : emptyTitle}
 	emptyText={noMatch ? 'Nothing here answers the current search and filters.' : emptyText}
-/>
-
-<ContextMenu
-	bind:this={rowMenu}
-	items={menuRow && rowActions ? rowActions(menuRow) : []}
-	header={menuRow ? (rowLabel?.(menuRow) ?? getId(menuRow)) : undefined}
-	minWidth="14rem"
 />

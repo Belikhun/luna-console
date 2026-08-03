@@ -7,6 +7,7 @@
 	import Icon from './Icon.svelte';
 	import DataTable from './DataTable.svelte';
 	import type { Column } from './table';
+	import type { ContextMenuItem } from './contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
@@ -281,9 +282,53 @@
 		{ id: 'status', label: 'Status', width: 210 },
 		{ id: 'family', label: 'Family', width: 110 },
 		{ id: 'version', label: 'Version' },
-		{ id: 'groups', label: 'From' },
-		{ id: 'actions', label: '', width: 130, align: 'right' }
+		{ id: 'groups', label: 'From' }
 	];
+
+	/**
+	 * One plugin's per-instance override, as the row's menu. A disabled row is
+	 * dimmed and is precisely the one that needs "Enable", so the verbs live in
+	 * the menu rather than in a column of buttons (see CLAUDE.md).
+	 */
+	function rowActions(row: CheckRow): ContextMenuItem[] {
+		if (row.disabled) {
+			return [
+				{
+					label: 'Enable on this instance',
+					icon: 'circleCheck',
+					disabled,
+					action: () => setOverride(row.plugin, null)
+				}
+			];
+		}
+
+		if (row.manual) {
+			return [
+				{
+					label: 'Remove this manually added plugin',
+					icon: 'trash',
+					color: 'danger',
+					disabled,
+					action: () => setOverride(row.plugin, null)
+				}
+			];
+		}
+
+		if (row.status === 'skipped') {
+			return [];
+		}
+
+		return [
+			{
+				label: 'Disable on this instance',
+				icon: 'ban',
+				color: 'danger',
+				disabled,
+				hint: 'disables it here even though a group provides it',
+				action: () => setOverride(row.plugin, false)
+			}
+		];
+	}
 
 	const problems = $derived(
 		rows.filter((row) => !row.disabled && (row.status === 'no-version' || row.status === 'missing'))
@@ -380,6 +425,8 @@
 		{columns}
 		rows={rows}
 		getId={(row) => row.plugin}
+		{rowActions}
+		rowLabel={(row) => row.plugin}
 		rowDim={(row) => !!row.disabled}
 		emptyTitle="Nothing to validate"
 		emptyText="The selected groups name no plugins."
@@ -420,34 +467,6 @@
 					<span class="manual">manual</span>
 				{:else}
 					<span class="dim">{row.groups.join(', ')}</span>
-				{/if}
-			{:else if col === 'actions'}
-				{#if row.disabled}
-					<Btn
-						loading={overriding === row.plugin}
-						disabled={disabled}
-						onclick={() => setOverride(row.plugin, null)}
-					>
-						Enable
-					</Btn>
-				{:else if row.manual}
-					<Btn
-						variant="icon"
-						icon="trash"
-						title="Remove this manually added plugin"
-						loading={overriding === row.plugin}
-						disabled={disabled}
-						onclick={() => setOverride(row.plugin, null)}
-					/>
-				{:else if row.status !== 'skipped'}
-					<Btn
-						loading={overriding === row.plugin}
-						disabled={disabled}
-						title="Disable on this instance even though a group provides it"
-						onclick={() => setOverride(row.plugin, false)}
-					>
-						Disable
-					</Btn>
 				{/if}
 			{/if}
 		{/snippet}

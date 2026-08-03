@@ -212,7 +212,7 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 				group: 'Resource packs',
 				label: String(pack.key),
 				detail: `${pack.enabled ? 'enabled' : 'disabled'} · priority ${pack.priority} · ${pack.servers?.join(', ') || 'no servers'}`,
-				href: screenHref('/packs', pack.key),
+				href: `/packs/${encodeURIComponent(pack.key)}`,
 				icon: 'image'
 			}));
 		}

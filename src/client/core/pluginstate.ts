@@ -16,6 +16,7 @@ export {
 export type {
 	BootSession,
 	PluginLogReport,
+	InstancePluginReport,
 	InstancePluginRow,
 	PluginRuntimeState,
 	ReportLifecycle,

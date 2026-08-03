@@ -170,57 +170,6 @@
 		});
 	}
 
-	// -- edit dialog ------------------------------------------------------------
-
-	let editOpen = $state(false);
-	let editKey = $state('');
-	let editName = $state('');
-	let editPriority = $state(0);
-	let editRequired = $state(false);
-	let editEnabled = $state(false);
-	let editServers = $state('');
-	let editAuto = $state(false);
-	let editChannel = $state('release');
-	let editHasModrinth = $state(false);
-	/** rules the pack's addon groups contribute — merged back in on save */
-	let editGranted: string[] = $state([]);
-
-	function openEdit(row: PackRow): void {
-		editKey = row.key;
-		editName = row.name;
-		editPriority = row.priority;
-		editRequired = row.required;
-		editEnabled = row.enabled;
-		editServers = (row.servers.length ? row.servers : ['*']).join(', ');
-		editAuto = row.autoUpdate;
-		editChannel = row.channel ?? 'release';
-		editHasModrinth = !!row.modrinth;
-		editGranted = row.granted;
-		editOpen = true;
-	}
-
-	const saveEdit = () =>
-		run('edit', `Saving ${editKey}…`, async (note) => {
-			await patch(`/respacks/${encodeURIComponent(editKey)}`, {
-				name: editName,
-				priority: editPriority,
-				required: editRequired,
-				enabled: editEnabled,
-				servers: editServers.split(',').map((rule) => rule.trim()).filter(Boolean),
-				autoUpdate: editAuto,
-				channel: editChannel
-			});
-
-			editOpen = false;
-
-			note.set({
-				level: 'success',
-				message: `${editKey} saved`,
-				detail: await sendReload(),
-				closeable: true
-			});
-		});
-
 	// -- install dialog -----------------------------------------------------------
 
 	let addOpen = $state(false);
@@ -355,14 +304,19 @@
 	function rowActions(row: PackRow): ContextMenuItem[] {
 		return [
 			{
+				label: 'Pack details',
+				icon: 'circleInfo',
+				action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
+			},
+			{
 				label: row.enabled ? 'Disable pack' : 'Enable pack',
 				icon: row.enabled ? 'toggleOff' : 'toggleOn',
 				action: () => setEnabled(row, !row.enabled)
 			},
 			{
-				label: 'Edit registration',
+				label: 'Configure pack',
 				icon: 'pen',
-				action: () => openEdit(row)
+				action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
 			},
 			{
 				label: 'Check for update',
@@ -457,7 +411,7 @@
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'name'}
-				{row.key}
+				<a href="/packs/{encodeURIComponent(row.key)}">{row.key}</a>
 				{#if row.name && row.name.toLowerCase() !== row.key}
 					<span class="dim">({row.name})</span>
 				{/if}
@@ -466,7 +420,7 @@
 					<StatusBadge
 						state="warning"
 						label="Unregistered"
-						detail="the zip exists but no definition registers it — edit the registration to serve it"
+						detail="the zip exists but no definition registers it — configure it to serve it"
 					/>
 				{:else if !row.present}
 					<StatusBadge
@@ -513,65 +467,6 @@
 		{/snippet}
 	</ResourceTable>
 </Panel>
-
-<!-- edit registration -->
-<Modal title="Edit {editKey}" bind:open={editOpen}>
-	<label class="field">
-		<span class="lbl">Display name</span>
-		<input class="input" bind:value={editName} />
-	</label>
-	<label class="field">
-		<span class="lbl">Priority</span>
-		<span class="hint">Higher-priority packs apply over lower ones</span>
-		<input class="input" type="number" bind:value={editPriority} />
-	</label>
-	<label class="field">
-		<span class="lbl">Servers</span>
-		<span class="hint">Comma-separated rules: instance names, * for all, !name to exclude</span>
-		<input class="input mono" bind:value={editServers} placeholder="*, !create" />
-		{#if editGranted.length}
-			<span class="hint">
-				Addon groups add {editGranted.join(', ')} on top — those names come back whatever you
-				write here.
-			</span>
-		{/if}
-	</label>
-	<label class="checkrow">
-		<Checkbox checked={editEnabled} label="Enabled" onchange={(value) => (editEnabled = value)} />
-		Enabled — the proxy offers this pack to matching servers' players
-	</label>
-	<label class="checkrow">
-		<Checkbox checked={editRequired} label="Required" onchange={(value) => (editRequired = value)} />
-		Required — players cannot decline the pack
-	</label>
-	{#if editHasModrinth}
-		<label class="checkrow">
-			<Checkbox
-				checked={editAuto}
-				label="Auto-update"
-				onchange={(value) => (editAuto = value)}
-			/>
-			Auto-update from Modrinth on update checks
-		</label>
-		<label class="field">
-			<span class="lbl">Update channel</span>
-			<Select
-				value={editChannel}
-				width="10rem"
-				options={[
-					{ value: 'release', label: 'release' },
-					{ value: 'beta', label: 'beta' },
-					{ value: 'alpha', label: 'alpha' }
-				]}
-				onchange={(value) => (editChannel = value)}
-			/>
-		</label>
-	{/if}
-	{#snippet footer()}
-		<Btn onclick={() => (editOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" loading={busy === 'edit'} onclick={saveEdit}>Save</Btn>
-	{/snippet}
-</Modal>
 
 <!-- install from Modrinth -->
 <Modal title="Install a resource pack" bind:open={addOpen} wide>

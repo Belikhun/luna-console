@@ -15,6 +15,7 @@ import { join } from "node:path";
 
 import type {
 	ClusterConfig,
+	InstanceConfig,
 	PluginEntry,
 	PluginFamily,
 	PluginMeta,
@@ -617,10 +618,45 @@ export interface InstancePluginRow {
 	errors: number;
 }
 
+export interface InstancePluginReport {
+	rows: InstancePluginRow[];
+	session: BootSession;
+	/** Addon jars in the instance's own directory that no lock entry claims */
+	unmanaged: string[];
+}
+
+/**
+ * Addon jars sitting in an instance's directory that luna does not manage —
+ * the modpack's own mods, or plugins an operator dropped in by hand.
+ *
+ * Identity is the file name against the lockfile's, which is the same test
+ * `deploy` writes by and costs one directory listing. Deliberately *not* a hash
+ * comparison: that is `scan`'s job, and it walks the whole cluster hashing every
+ * jar — far too much for something a summary redraws every few seconds.
+ */
+async function unmanagedAddons(inst: InstanceConfig, lock: PluginsLock): Promise<string[]> {
+	const dir = instanceAddonDir(inst);
+
+	if (!existsSync(dir)) {
+		return [];
+	}
+
+	const managed = new Set(
+		Object.values(lock.plugins).map((entry) => entry.file.toLowerCase()),
+	);
+
+	const files = await readdir(dir);
+
+	return files
+		.filter((file) => file.toLowerCase().endsWith(".jar") && !managed.has(file.toLowerCase()))
+		.sort();
+}
+
 /**
  * Full plugin report for one instance: every entry that deploys there plus the
  * ones its overrides disabled, each with its runtime state and the warn/error
- * counts attributed to it in the current boot session.
+ * counts attributed to it in the current boot session, alongside the jars in its
+ * directory that luna does not manage at all.
  *
  * `opts.state` is the instance's lifecycle as the caller knows it — pass the
  * console's transient state so a restart is reported as a restart. Without it
@@ -631,7 +667,7 @@ export async function instancePluginReport(
 	lock: PluginsLock,
 	instance: string,
 	opts: { state?: ReportLifecycle } = {},
-): Promise<{ rows: InstancePluginRow[]; session: BootSession }> {
+): Promise<InstancePluginReport> {
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
@@ -732,7 +768,11 @@ export async function instancePluginReport(
 		});
 	}
 
-	return { rows: rows.sort((a, b) => a.plugin.localeCompare(b.plugin)), session };
+	return {
+		rows: rows.sort((a, b) => a.plugin.localeCompare(b.plugin)),
+		session,
+		unmanaged: await unmanagedAddons(inst, lock),
+	};
 }
 
 export interface PluginUsageRow {

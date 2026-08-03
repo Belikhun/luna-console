@@ -25,6 +25,8 @@ export interface AddonSnapshot {
 	sessionComplete: boolean;
 	warnings: number;
 	errors: number;
+	/** Addon jars in the instance's directory that luna does not manage */
+	unmanaged: string[];
 	/** Absent for software with no world of its own (the proxy) */
 	datapacks?: { world: string; rows: InstanceDataPackRow[] };
 }
@@ -57,14 +59,15 @@ export async function addonSnapshot(name: string): Promise<AddonSnapshot> {
 	const status = await instanceStatus(name);
 	const state = (status.state as ReportLifecycle) ?? 'unknown';
 
-	const { rows, session } = await instancePluginReport(cfg, lock, name);
+	const { rows, session, unmanaged } = await instancePluginReport(cfg, lock, name);
 
 	const snapshot: AddonSnapshot = {
 		state,
 		plugins: rows,
 		sessionComplete: session.complete,
 		warnings: rows.reduce((sum, row) => sum + row.warnings, 0),
-		errors: rows.reduce((sum, row) => sum + row.errors, 0)
+		errors: rows.reduce((sum, row) => sum + row.errors, 0),
+		unmanaged
 	};
 
 	try {

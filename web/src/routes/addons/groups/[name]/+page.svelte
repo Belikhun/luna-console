@@ -12,6 +12,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 
@@ -259,25 +260,92 @@
 	const pluginCols: Column[] = [
 		{ id: 'plugin', label: 'Plugin', sortable: true },
 		{ id: 'families', label: 'Families' },
-		{ id: 'versions', label: 'Primary versions' },
-		{ id: 'actions', label: '', width: 110, align: 'right' }
+		{ id: 'versions', label: 'Primary versions' }
 	];
 
 	const respackCols: Column[] = [
 		{ id: 'key', label: 'Resource pack', sortable: true },
 		{ id: 'state', label: 'State', width: 140 },
 		{ id: 'servers', label: 'Server rules' },
-		{ id: 'version', label: 'Version', width: 120 },
-		{ id: 'actions', label: '', width: 110, align: 'right' }
+		{ id: 'version', label: 'Version', width: 120 }
 	];
 
 	const datapackCols: Column[] = [
 		{ id: 'name', label: 'Data pack', sortable: true },
 		{ id: 'state', label: 'State', width: 140 },
 		{ id: 'targets', label: 'Deploys to' },
-		{ id: 'version', label: 'Version', width: 120 },
-		{ id: 'actions', label: '', width: 110, align: 'right' }
+		{ id: 'version', label: 'Version', width: 120 }
 	];
+
+	/** A member row's verbs: leave the group, and go look at the thing itself. */
+	function pluginActions(row: any): ContextMenuItem[] {
+		return [
+			{
+				label: 'Remove from this group',
+				icon: 'trash',
+				color: 'danger',
+				disabled: row.locked || !!busy,
+				hint: row.locked ? 'baseline members of the default group are locked' : undefined,
+				action: () =>
+					changeMembers({
+						plugins: pluginMembers.filter((plugin: string) => plugin !== row.plugin)
+					})
+			},
+			{ separator: true },
+			{
+				label: 'Plugin details',
+				icon: 'circleInfo',
+				action: () => goto(`/plugins/${encodeURIComponent(row.plugin)}`)
+			}
+		];
+	}
+
+	function respackActions(row: any): ContextMenuItem[] {
+		return [
+			{
+				label: 'Remove from this group',
+				icon: 'trash',
+				color: 'danger',
+				disabled: !!busy,
+				action: () =>
+					changeMembers({
+						respacks: respackMembers.filter((key: string) => key !== row.key)
+					})
+			},
+			{ separator: true },
+			{
+				label: 'Pack details',
+				icon: 'circleInfo',
+				action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
+			},
+			{
+				label: 'Configure pack',
+				icon: 'pen',
+				action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
+			}
+		];
+	}
+
+	function datapackActions(row: any): ContextMenuItem[] {
+		return [
+			{
+				label: 'Remove from this group',
+				icon: 'trash',
+				color: 'danger',
+				disabled: !!busy,
+				action: () =>
+					changeMembers({
+						datapacks: datapackMembers.filter((pack: string) => pack !== row.name)
+					})
+			},
+			{ separator: true },
+			{
+				label: 'Manage in Data packs',
+				icon: 'box',
+				action: () => goto(`/datapacks?q=${encodeURIComponent(row.name)}`)
+			}
+		];
+	}
 
 	const instCols: Column[] = [
 		{ id: 'name', label: 'Instance', sortable: true },
@@ -358,6 +426,8 @@
 			searchWidth="20rem"
 			noun="member"
 			pageSize={25}
+			rowActions={pluginActions}
+			rowLabel={(row) => row.plugin}
 			emptyTitle="No plugins yet"
 			emptyText="Add members with the control above."
 		>
@@ -377,19 +447,6 @@
 							.filter(Boolean)
 							.join(', ') || '–'}
 					</span>
-				{:else if col === 'actions'}
-					<Btn
-						variant="icon"
-						icon="trash"
-						title={row.locked
-							? 'Baseline members of the default group are locked'
-							: 'Remove from the group'}
-						disabled={row.locked || !!busy}
-						onclick={() =>
-							changeMembers({
-								plugins: pluginMembers.filter((plugin: string) => plugin !== row.plugin)
-							})}
-					/>
 				{/if}
 			{/snippet}
 		</ResourceTable>
@@ -416,6 +473,8 @@
 			searchWidth="20rem"
 			noun="pack"
 			pageSize={25}
+			rowActions={respackActions}
+			rowLabel={(row) => row.key}
 			emptyTitle="No resource packs"
 			emptyText="Add one to serve it on every instance using this group."
 		>
@@ -441,17 +500,6 @@
 					{/if}
 				{:else if col === 'version'}
 					<span class="mono dim">{row.version ?? '–'}</span>
-				{:else if col === 'actions'}
-					<Btn
-						variant="icon"
-						icon="trash"
-						title="Remove from the group"
-						disabled={!!busy}
-						onclick={() =>
-							changeMembers({
-								respacks: respackMembers.filter((key: string) => key !== row.key)
-							})}
-					/>
 				{/if}
 			{/snippet}
 		</ResourceTable>
@@ -478,6 +526,8 @@
 			searchWidth="20rem"
 			noun="pack"
 			pageSize={25}
+			rowActions={datapackActions}
+			rowLabel={(row) => row.name}
 			emptyTitle="No data packs"
 			emptyText="Add one to deploy it into every world using this group."
 		>
@@ -500,17 +550,6 @@
 					<span class="dim">{row.targets.join(', ') || 'nowhere'}</span>
 				{:else if col === 'version'}
 					<span class="mono dim">{row.version ?? '–'}</span>
-				{:else if col === 'actions'}
-					<Btn
-						variant="icon"
-						icon="trash"
-						title="Remove from the group"
-						disabled={!!busy}
-						onclick={() =>
-							changeMembers({
-								datapacks: datapackMembers.filter((pack: string) => pack !== row.name)
-							})}
-					/>
 				{/if}
 			{/snippet}
 		</ResourceTable>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
@@ -16,6 +17,7 @@
 	import DataTable from '$lib/components/DataTable.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import Icon from '$lib/components/Icon.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -238,9 +240,54 @@
 		{ id: 'env', label: 'Environment' },
 		{ id: 'family', label: 'Family', width: 110 },
 		{ id: 'version', label: 'Runs version' },
-		{ id: 'origin', label: 'From' },
-		{ id: 'actions', label: '', width: 130, align: 'right' }
+		{ id: 'origin', label: 'From' }
 	];
+
+	/**
+	 * One instance's verbs for this plugin. A row that is dimmed because the
+	 * plugin is disabled there is exactly the row whose menu matters, which is
+	 * why the menu — not a column of buttons — carries them.
+	 */
+	function usageActions(row: any): ContextMenuItem[] {
+		const enable = {
+			label: `Enable on ${row.instance}`,
+			icon: 'circleCheck',
+			disabled: !!busy,
+			action: () => setOverride(row.instance, null, 'Re-enabling')
+		};
+
+		const remove = {
+			label: `Remove from ${row.instance}`,
+			icon: 'trash',
+			color: 'danger' as const,
+			disabled: !!busy,
+			action: () => setOverride(row.instance, null, 'Removing')
+		};
+
+		const disable = {
+			label: `Disable on ${row.instance}`,
+			icon: 'ban',
+			color: 'danger' as const,
+			disabled: !!busy,
+			hint: 'disables it on this instance even though a group provides it',
+			action: () => setOverride(row.instance, false, 'Disabling')
+		};
+
+		return [
+			row.disabled ? enable : row.origin === 'manual' ? remove : disable,
+			{ separator: true },
+			{
+				label: 'Open on this instance',
+				icon: 'circleInfo',
+				action: () => goto(`/instances/${row.instance}/plugins/${data.plugin}`)
+			},
+			{
+				label: 'Open instance',
+				icon: 'server',
+				action: () => goto(`/instances/${row.instance}`)
+			}
+		];
+	}
 
 	const familyCols: Column[] = [
 		{ id: 'family', label: 'Family', width: 130 },
@@ -444,6 +491,8 @@
 					searchWidth="18rem"
 					noun="instance"
 					pageSize={15}
+					rowActions={usageActions}
+					rowLabel={(row) => row.instance}
 					rowDim={(row) => row.disabled}
 					emptyTitle="Not used anywhere"
 					emptyText="Add it to an instance with the control above, or put it in an addon group."
@@ -476,34 +525,6 @@
 								<span class="dim">{row.groups.join(', ')}</span>
 							{:else}
 								<span class="dim">explicit</span>
-							{/if}
-						{:else if col === 'actions'}
-							{#if row.disabled}
-								<Btn
-									loading={busy === `ovr-${row.instance}`}
-									disabled={!!busy}
-									onclick={() => setOverride(row.instance, null, 'Re-enabling')}
-								>
-									Enable
-								</Btn>
-							{:else if row.origin === 'manual'}
-								<Btn
-									variant="icon"
-									icon="trash"
-									title="Remove from this instance"
-									loading={busy === `ovr-${row.instance}`}
-									disabled={!!busy}
-									onclick={() => setOverride(row.instance, null, 'Removing')}
-								/>
-							{:else}
-								<Btn
-									loading={busy === `ovr-${row.instance}`}
-									disabled={!!busy}
-									title="Disable on this instance even though a group provides it"
-									onclick={() => setOverride(row.instance, false, 'Disabling')}
-								>
-									Disable
-								</Btn>
 							{/if}
 						{/if}
 					{/snippet}
