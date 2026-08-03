@@ -1,9 +1,15 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import Icon from './Icon.svelte';
 	import BrandIcon from './BrandIcon.svelte';
 	import Spinner from './Spinner.svelte';
-	import { clampMenu, type ContextMenuItem, type MenuAnchor } from './contextmenu';
+	import {
+		claimMenu,
+		clampMenu,
+		releaseMenu,
+		type ContextMenuItem,
+		type MenuAnchor
+	} from './contextmenu';
 
 	/**
 	 * Context menu, behaviour and motion ported from the vloom dashboard
@@ -49,6 +55,14 @@
 
 	const keyOf = (item: ContextMenuItem, index: number): string =>
 		item.id ?? item.label ?? `i${index}`;
+
+	// the handle the single-open-menu registry holds; stable for this instance's
+	// lifetime, so claiming and releasing always refer to the same menu
+	const handle = { close: (): void => close() };
+
+	// a page that navigates away with a menu open must not leave the registry
+	// pointing at a component that no longer exists
+	onDestroy(() => releaseMenu(handle));
 
 	export function isOpen(): boolean {
 		return mounted;
@@ -101,6 +115,10 @@
 	}
 
 	async function show(): Promise<void> {
+		// only one menu is open at a time — this closes whatever held the slot,
+		// and its onclose resets that trigger, so no button is left looking open
+		claimMenu(handle);
+
 		// A reopen that lands inside the close animation must cancel the pending
 		// unmount, or the menu is torn down again a frame after it appears and the
 		// trigger is left stuck in its open state.
@@ -128,6 +146,7 @@
 			return;
 		}
 
+		releaseMenu(handle);
 		cancelSubClose();
 		shown = false;
 		openSub = null;

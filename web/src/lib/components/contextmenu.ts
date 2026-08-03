@@ -24,6 +24,45 @@ export interface ContextMenuItem {
 
 export type MenuAnchor = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 
+/** What the registry needs of a menu: a way to shut it. */
+export interface ClosableMenu {
+	close: () => void;
+}
+
+/**
+ * The one top-level menu allowed open at a time.
+ *
+ * Ported from the dashboard's `app.currentContextMenu` (src/libs.js): opening a
+ * menu closes whatever was open before it. Without this, every trigger owns its
+ * own menu and a second click elsewhere leaves the first one hanging over the
+ * page — two menus, two highlighted triggers, and a click that dismisses only
+ * one of them.
+ *
+ * Submenus never register: they belong to their parent and close with it.
+ */
+let current: ClosableMenu | null = null;
+
+/** Close the menu currently open (if any) and take its place. */
+export function claimMenu(menu: ClosableMenu): void {
+	if (current && current !== menu) {
+		current.close();
+	}
+
+	current = menu;
+}
+
+/** Give up the slot, if this menu still holds it. */
+export function releaseMenu(menu: ClosableMenu): void {
+	if (current === menu) {
+		current = null;
+	}
+}
+
+/** Close whatever is open — used when something else takes over the screen. */
+export function closeOpenMenu(): void {
+	current?.close();
+}
+
 /** Viewport margin kept free when a menu is clamped back on screen (in px). */
 export const MENU_EDGE_MARGIN = 16;
 

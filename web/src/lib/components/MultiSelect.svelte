@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
+	import { claimMenu, releaseMenu } from './contextmenu';
 	import Icon from './Icon.svelte';
 
 	/**
@@ -69,6 +71,26 @@
 			above
 		};
 	}
+
+	// One popup at a time, through the same registry the context menus use. A
+	// menu trigger stops its own pointerdown (or this control's outside-click
+	// handler would fire before the menu opened), so without the registry a
+	// dropdown opening over an open list would leave both on screen.
+	const handle = {
+		close: (): void => {
+			open = false;
+		}
+	};
+
+	$effect(() => {
+		if (open) {
+			claimMenu(handle);
+		} else {
+			releaseMenu(handle);
+		}
+	});
+
+	onDestroy(() => releaseMenu(handle));
 
 	function toggle(): void {
 		open = !open;
