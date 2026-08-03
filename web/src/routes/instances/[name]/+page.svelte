@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, post, patch, del } from '$lib/api';
@@ -9,6 +9,7 @@
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Select from '$lib/components/Select.svelte';
+	import Toggle from '$lib/components/Toggle.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -48,6 +49,18 @@
 
 	const LOG_LINE_CHOICES = [100, 200, 500, 1000];
 
+	/** a scroll further than this from the bottom is the user reading back */
+	const LOG_FOLLOW_SLACK = 40;
+
+	const LOG_FOLLOW_KEY = 'luna.logs.follow';
+
+	const LOG_LIVE_LABEL = {
+		off: '',
+		connecting: 'connecting…',
+		live: 'live',
+		reconnecting: 'reconnecting…'
+	};
+
 	/** headroom over the busiest sample, so the player chart never clips */
 	const PLAYER_HEADROOM = 1.2;
 
@@ -82,6 +95,11 @@
 	let metrics: { history: any[]; events: any[] } = $state({ history: [], events: [] });
 	let logData: { content: string; archives: any[] } = $state({ content: '', archives: [] });
 	let logLines = $state(200);
+	let logFollow = $state(false);
+	/** streamed lines while following; null when the snapshot is what is shown */
+	let logStream: string[] | null = $state(null);
+	let logLive: 'off' | 'connecting' | 'live' | 'reconnecting' = $state('off');
+	let logEl: HTMLElement | null = $state(null);
 
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
@@ -159,7 +177,9 @@
 			metrics = await api(`/instances/${name}/metrics`);
 		}
 
-		if (which === 'logs') {
+		// while following, the stream is the view — a snapshot fetch would be read
+		// by nobody, and the page-wide refresh control reaches this tab too
+		if (which === 'logs' && !logStream) {
 			logData = await api(`/instances/${name}/logs?lines=${logLines}`);
 		}
 
@@ -178,7 +198,94 @@
 		}
 	}
 
+	/** Pin the log view to its newest line, once the new content is in the DOM. */
+	async function pinLogToBottom(): Promise<void> {
+		await tick();
+
+		if (logEl) {
+			logEl.scrollTop = logEl.scrollHeight;
+		}
+	}
+
+	/** Turn following on or off, remembering the choice for the next visit. */
+	function setLogFollow(on: boolean): void {
+		logFollow = on;
+
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(LOG_FOLLOW_KEY, on ? '1' : '0');
+		}
+
+		if (on) {
+			void pinLogToBottom();
+
+			return;
+		}
+
+		// the stream just went away — the snapshot behind it is as old as the
+		// moment following started, so re-read it rather than show stale lines
+		void loadTab('logs').catch(() => {});
+	}
+
+	/**
+	 * Scrolling back through the log turns following off — otherwise the next
+	 * streamed line would yank the view away from whatever is being read. Our
+	 * own pin lands at the bottom, so it never trips this.
+	 */
+	function onLogScroll(): void {
+		if (!logFollow || !logEl) {
+			return;
+		}
+
+		if (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight > LOG_FOLLOW_SLACK) {
+			setLogFollow(false);
+		}
+	}
+
+	/**
+	 * Following is a real stream, not a poll: the daemon already tails the
+	 * instance's latest.log on its own host and pipes it as SSE — the same
+	 * stream the live console reads. Browser streaming here is always SSE and
+	 * never a WebSocket (DESIGN.md §4); the WebSockets in luna are the
+	 * daemon-to-daemon links, and a follower-owned instance's tail is tunnelled
+	 * over one before reaching this EventSource.
+	 *
+	 * The stream owns the view while it is open — it opens with the daemon's own
+	 * backlog and grows from there, so there is no snapshot to splice it onto and
+	 * no chance of showing a line twice.
+	 */
+	$effect(() => {
+		if (tab !== 'logs' || !logFollow) {
+			return;
+		}
+
+		const keep = logLines;
+		const stream = new EventSource(`/api/instances/${name}/console`);
+
+		logStream = [];
+		logLive = 'connecting';
+
+		stream.onopen = () => (logLive = 'live');
+
+		// EventSource reconnects on its own; saying so beats a view that has
+		// quietly stopped moving
+		stream.onerror = () => (logLive = 'reconnecting');
+
+		stream.onmessage = (event) => {
+			logStream = [...(logStream ?? []), String(JSON.parse(event.data))].slice(-keep);
+
+			void pinLogToBottom();
+		};
+
+		return () => {
+			stream.close();
+			logStream = null;
+			logLive = 'off';
+		};
+	});
+
 	onMount(() => {
+		logFollow = localStorage.getItem(LOG_FOLLOW_KEY) === '1';
+
 		// the instances table deep-links into a tab
 		const urlTab = page.url.searchParams.get('tab');
 
@@ -1213,10 +1320,32 @@
 							void loadTab('logs');
 						}}
 					/>
-					<Btn icon="sync" onclick={() => loadTab('logs')}>Refresh</Btn>
+					<label class="follow">
+						<Toggle
+							checked={logFollow}
+							label="Follow the log"
+							onchange={(value) => setLogFollow(value)}
+						/>
+						Follow
+						{#if logLive !== 'off'}
+							<span class="live {logLive}">{LOG_LIVE_LABEL[logLive]}</span>
+						{/if}
+					</label>
+					<Btn
+						icon="sync"
+						disabled={logFollow}
+						title={logFollow ? 'Following — the log re-reads itself' : ''}
+						onclick={() => loadTab('logs')}
+					>
+						Refresh
+					</Btn>
 					<Btn icon="code" onclick={() => goto(`/instances/${name}/console`)}>Live console</Btn>
 				{/snippet}
-				<pre class="logview mono">{logData.content || '(empty)'}</pre>
+				<pre
+					class="logview mono"
+					bind:this={logEl}
+					onscroll={onLogScroll}
+				>{logStream ? logStream.join('\n') : logData.content || '(empty)'}</pre>
 			</Panel>
 			{#if logData.archives.length}
 				<div class="gap"></div>
@@ -1419,6 +1548,32 @@
 		font-size: 0.75rem;
 		line-height: 1.6;
 	}
+	// the toggle reads as one control with its word, and lines up with the
+	// buttons beside it in the panel's action row
+	.follow {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: var(--text-secondary);
+		cursor: pointer;
+		user-select: none;
+	}
+
+	// stream state, in the same colours the status badges use: green while the
+	// lines are arriving, amber while EventSource is retrying
+	.live {
+		font-size: 0.75rem;
+
+		&.live {
+			color: var(--success);
+		}
+
+		&.connecting,
+		&.reconnecting {
+			color: var(--warning);
+		}
+	}
+
 	.logview {
 		margin: 0;
 		padding: 0.75rem 1rem;
