@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock } from '$core/config';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
 import { addResourcePackFile, listResourcePacks } from '$core/respacks';
+import { projectUrl } from '$core/services/providers';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
@@ -9,8 +10,15 @@ import { errorMessage } from '$lib/server/http';
 export async function GET() {
 	const cfg = await loadCluster();
 	const lock = await loadPacksLock();
+	const rows = await listResourcePacks(cfg, lock, (await loadLock()).groups);
 
-	return json({ packs: await listResourcePacks(cfg, lock, (await loadLock()).groups) });
+	// the provider's web page is built here — the browser has no URL scheme
+	const packs = rows.map((row) => ({
+		...row,
+		url: row.remote ? projectUrl(row.remote, 'resourcepack') : null
+	}));
+
+	return json({ packs });
 }
 
 /**

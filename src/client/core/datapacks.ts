@@ -17,7 +17,7 @@ export type {
 
 export const listDataPacks = call("datapacks.list", { cfg: 0, lock: 1 }) as typeof core.listDataPacks;
 export const instanceDataPackReport = call("datapacks.instanceReport", { cfg: 0, lock: 1 }) as typeof core.instanceDataPackReport;
-export const installDataPackFromModrinth = call("datapacks.installFromModrinth", { cfg: 0, lock: 1 }) as typeof core.installDataPackFromModrinth;
+export const installDataPackFromProvider = call("datapacks.installFromProvider", { cfg: 0, lock: 1 }) as typeof core.installDataPackFromProvider;
 export const checkDataPackUpdates = call("datapacks.checkUpdates", { cfg: 0, lock: 1 }) as typeof core.checkDataPackUpdates;
 export const applyDataPackUpdate = call("datapacks.applyUpdate", { lock: 0 }) as typeof core.applyDataPackUpdate;
 export const addDataPackFile = call("datapacks.addFile", { cfg: 0, lock: 1 }) as typeof core.addDataPackFile;

@@ -17,7 +17,9 @@ export interface FamilyRow {
 	autoUpdate: boolean;
 	channel: string;
 	version: string | null;
-	modrinth: { slug: string } | null;
+	remote: { provider: string; projectId: string; slug: string } | null;
+	/** Provider web page, built server-side (the URL scheme is per provider) */
+	url: string | null;
 	effective: string[];
 }
 
@@ -45,8 +47,10 @@ export interface CatalogKind {
 	families: AddonFamily[];
 	/** Target wildcards offered alongside the instance names */
 	wildcards: string[];
-	/** Modrinth's own URL segment for the project type */
-	modrinthPath: string;
+	/** The provider project type this kind installs (search + URLs) */
+	type: 'plugin' | 'mod';
+	/** Provider sources the filter offers, beside luna/manual */
+	sources: string[];
 	emptyText: string;
 }
 
@@ -57,8 +61,9 @@ export const CATALOG_KINDS: Record<AddonKind, CatalogKind> = {
 		plural: 'plugins',
 		families: ['paper', 'velocity', 'universal'],
 		wildcards: ['*paper', '*velocity'],
-		modrinthPath: 'plugin',
-		emptyText: 'Install one from Modrinth, or run a scan to adopt the jars already on disk.'
+		type: 'plugin',
+		sources: ['modrinth', 'curseforge', 'hangar'],
+		emptyText: 'Install one from a provider, or run a scan to adopt the jars already on disk.'
 	},
 	mods: {
 		label: 'Mods',
@@ -66,9 +71,10 @@ export const CATALOG_KINDS: Record<AddonKind, CatalogKind> = {
 		plural: 'mods',
 		families: ['neoforge'],
 		wildcards: ['*neoforge'],
-		modrinthPath: 'mod',
+		type: 'mod',
+		sources: ['modrinth', 'curseforge'],
 		emptyText:
-			'Install one from Modrinth, or upload a jar. A mod loader instance keeps its own mods — ' +
+			'Install one from a provider, or upload a jar. A mod loader instance keeps its own mods — ' +
 			'only the ones luna pooled appear here.'
 	}
 };

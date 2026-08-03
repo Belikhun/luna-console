@@ -2,37 +2,60 @@ import { readdir, rm, copyFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
 
-import type { ClusterConfig, InstanceConfig, PluginEntry, PluginFamily, PluginsLock } from "./types";
+import type { ClusterConfig, InstanceConfig, PluginEntry, PluginFamily, PluginsLock, ProviderId } from "./types";
 import type { AddonDir } from "./config";
 import { addonDirForFamily, addonDirOf, expandTargets, instanceDir, managedInstances, poolDir } from "./config";
 import { carriesMcRequirement, effectiveTargets, familyMatches, familyOf, pluginNameOf } from "./families";
-import * as mr from "./services/modrinth";
+import { download, sha512File } from "./services/download";
+import * as modrinth from "./services/modrinth";
+import type { AddonProject, AddonType, AddonVersion } from "./services/providers";
+import {
+	coversMc,
+	getVersions,
+	NEOFORGE_LOADERS,
+	PAPER_LOADERS,
+	pickCompatible,
+	primaryFile,
+	remoteRefFor,
+	VELOCITY_LOADERS,
+} from "./services/providers";
 import type { ProgressReporter } from "./progress";
 
 /**
- * Modrinth loader facets a family's builds are published under — a paper server
- * also loads bukkit/spigot jars, a mod loader accepts only its own. A universal
+ * Loader facets a family's builds are published under — a paper server also
+ * loads bukkit/spigot jars, a mod loader accepts only its own. A universal
  * jar is a paper build that happens to carry a velocity descriptor too, so the
  * paper facets are what find it.
  */
 export function loadersFor(family: PluginFamily): string[] {
 	if (family === "neoforge") {
-		return mr.NEOFORGE_LOADERS;
+		return NEOFORGE_LOADERS;
 	}
 
 	if (family === "velocity") {
-		return mr.VELOCITY_LOADERS;
+		return VELOCITY_LOADERS;
 	}
 
-	return mr.PAPER_LOADERS;
+	return PAPER_LOADERS;
 }
 
 /**
- * Modrinth project type a family's builds are published as. Mods and plugins
- * are separate types upstream, and a search for one never returns the other.
+ * Project type a family's builds are published as. Mods and plugins are
+ * separate types upstream, and a search for one never returns the other.
  */
-export function projectTypeFor(family: PluginFamily): mr.MrProjectType {
+export function projectTypeFor(family: PluginFamily): AddonType {
 	return family === "neoforge" ? "mod" : "plugin";
+}
+
+/** The version list of an entry's remote project, in its family's facets. */
+async function remoteVersions(entry: PluginEntry): Promise<AddonVersion[]> {
+	if (!entry.remote) {
+		return [];
+	}
+
+	const family = familyOf(entry);
+
+	return await getVersions(entry.remote, projectTypeFor(family), loadersFor(family));
 }
 
 /** Lockfile key for a pool jar: its file name, lowercased and without `.jar`. */
@@ -57,8 +80,8 @@ export function identityFromFile(file: string): { plugin: string; family: Plugin
 	return { plugin: match[1]!, family: match[2] as PluginFamily };
 }
 
-/** Guess which side a jar belongs to from its file name. */
-function guessLoader(file: string): "paper" | "velocity" {
+/** Guess which side a hand-dropped jar belongs to from its file name. */
+function guessFamily(file: string): "paper" | "velocity" {
 	return /velocity/i.test(file) ? "velocity" : "paper";
 }
 
@@ -130,7 +153,7 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 	const poolHashes = new Map<string, string>();
 
 	for (const jar of poolJars) {
-		poolHashes.set(jar, await mr.sha512File(join(pool, jar)));
+		poolHashes.set(jar, await sha512File(join(pool, jar)));
 	}
 
 	// Index instance jars twice: by name (a deployed copy keeps the pool's file
@@ -143,7 +166,7 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 		const dir = addonDirOf(inst.software);
 
 		for (const jar of await listJars(join(instanceDir(inst), dir))) {
-			const hash = await mr.sha512File(join(instanceDir(inst), dir, jar));
+			const hash = await sha512File(join(instanceDir(inst), dir, jar));
 			const found: InstanceJar = { instance: name, dir, actual: jar, hash };
 
 			instJars.push(found);
@@ -183,16 +206,12 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 				file: jar,
 				source: isLuna ? "luna" : "manual",
 				// the file name already says which platform a standardized jar is
-				// for; only a legacy name has to be guessed at
-				loader: identity?.family === "neoforge" ? "neoforge" : guessLoader(jar),
+				// for; only a hand-dropped legacy name has to be guessed at
+				plugin: identity?.plugin ?? name,
+				family: identity?.family ?? guessFamily(jar),
 				autoUpdate: !isLuna,
 				targets: [],
 			};
-
-			if (identity) {
-				entry.plugin = identity.plugin;
-				entry.family = identity.family;
-			}
 
 			lock.plugins[name] = entry;
 			report.added.push(name);
@@ -208,27 +227,29 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 			delete entry.meta;
 		}
 
-		// Identify on Modrinth (skip luna, skip when hash unchanged and already identified with a channel)
+		// Identify on Modrinth by hash — the one provider that can answer "what
+		// is this jar". Skip luna, skip entries another provider owns, and skip
+		// when the hash is unchanged and already identified with a channel.
 		const needsLookup =
 			hashChanged ||
-			!entry.modrinth ||
-			(entry.source === "modrinth" && entry.channel === undefined);
+			!entry.remote ||
+			(entry.remote.provider === "modrinth" && entry.channel === undefined);
 
 		if (entry.source !== "luna" && needsLookup) {
-			const version = await mr.lookupByHash(hash);
+			const version = await modrinth.lookupByHash(hash);
 
 			if (version) {
 				let slug = slugCache.get(version.project_id);
 
 				if (!slug) {
-					const project = await mr.getProject(version.project_id);
+					const project = await modrinth.getProject(version.project_id);
 
 					slug = project?.slug ?? version.project_id;
 					slugCache.set(version.project_id, slug);
 				}
 
 				entry.source = "modrinth";
-				entry.modrinth = { projectId: version.project_id, slug };
+				entry.remote = { provider: "modrinth", projectId: version.project_id, slug };
 
 				entry.installed = {
 					versionId: version.id,
@@ -241,10 +262,12 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 
 				const velocityOnly =
 					version.loaders.includes("velocity") &&
-					!version.loaders.some((loader) => mr.PAPER_LOADERS.includes(loader));
+					!version.loaders.some((loader) => PAPER_LOADERS.includes(loader));
 
-				if (velocityOnly) {
-					entry.loader = "velocity";
+				// a hash identification outranks a name guess, never the file name's
+				// own declaration — a standardized jar already said what it is
+				if (velocityOnly && isNew && !identity) {
+					entry.family = "velocity";
 				}
 
 				report.identified.push({ name, slug, version: version.version_number });
@@ -371,13 +394,9 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 	return report;
 }
 
-/** Fetch the Modrinth version list for an entry (helper for pin dialogs etc.). */
-export async function getVersionsForEntry(entry: PluginEntry): Promise<mr.MrVersion[]> {
-	if (!entry.modrinth) {
-		return [];
-	}
-
-	return await mr.getVersions(entry.modrinth.projectId, loadersFor(familyOf(entry)));
+/** Fetch the provider's version list for an entry (helper for pin dialogs etc.). */
+export async function getVersionsForEntry(entry: PluginEntry): Promise<AddonVersion[]> {
+	return await remoteVersions(entry);
 }
 
 /** The version an instance currently gets for an entry (pin > auto-assign > primary). */
@@ -395,9 +414,9 @@ function variantFileName(name: string, versionNumber: string): string {
 	return `${name}@${versionNumber.replace(/[^\w.+-]/g, "_")}.jar`;
 }
 
-/** One resolved version group: these targets should run this Modrinth version. */
+/** One resolved version group: these targets should run this provider version. */
 export interface ResolvedGroup {
-	version: mr.MrVersion;
+	version: AddonVersion;
 	targets: string[];
 	/** true = becomes the pool primary (entry.file); false = stored as a variant */
 	isPrimary: boolean;
@@ -427,12 +446,12 @@ export interface EntryResolution {
 export function resolveEntry(
 	cfg: ClusterConfig,
 	entry: PluginEntry,
-	versions: mr.MrVersion[],
+	versions: AddonVersion[],
 	targets?: string[],
 ): EntryResolution {
 	const insts = managedInstances(cfg);
 	const channel = entry.channel ?? "release";
-	const byVersion = new Map<string, mr.MrVersion>();
+	const byVersion = new Map<string, AddonVersion>();
 	const groupTargets = new Map<string, string[]>();
 	const holdbacks: Holdback[] = [];
 	const pinned: Array<{ target: string; version: string }> = [];
@@ -462,7 +481,7 @@ export function resolveEntry(
 				? [inst.mcVersion]
 				: [];
 
-		const { best } = mr.pickCompatible(versions, required, { channel });
+		const { best } = pickCompatible(versions, required, { channel });
 
 		if (!best) {
 			holdbacks.push({
@@ -527,7 +546,7 @@ export interface UpdateCandidate {
 }
 
 /**
- * Resolve every lock entry against Modrinth and report what would change.
+ * Resolve every lock entry against its provider and report what would change.
  * Passing `names` also overrides the per-entry `autoUpdate: false` opt-out, so an
  * explicit `plugins update <name>` still works on a pinned-back plugin.
  */
@@ -553,8 +572,8 @@ export async function checkUpdates(
 			continue;
 		}
 
-		if (entry.source === "manual" || !entry.modrinth) {
-			skipped.push({ name, reason: "not identified on modrinth" });
+		if (entry.source === "manual" || !entry.remote) {
+			skipped.push({ name, reason: "not identified with a provider" });
 
 			continue;
 		}
@@ -565,9 +584,9 @@ export async function checkUpdates(
 			continue;
 		}
 
-		const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(familyOf(entry)));
+		const versions = await remoteVersions(entry);
 
-		// backfill the primary's game-version requirement from modrinth data
+		// backfill the primary's game-version requirement from provider data
 		const installed = versions.find((version) => version.id === entry.installed?.versionId);
 
 		if (installed && entry.installed && !entry.installed.gameVersions) {
@@ -581,11 +600,15 @@ export async function checkUpdates(
 				return true;
 			}
 
-			// same version number but a different jar: modrinth re-published the build
+			// same version number but a different jar: the provider re-published the
+			// build (only detectable when it publishes a sha512, i.e. modrinth)
+			const published = primaryFile(group.version).hashes.sha512;
+
 			return (
 				group.isPrimary &&
 				group.version.version_number === entry.installed?.versionNumber &&
-				mr.primaryFile(group.version).hashes.sha512 !== entry.installed?.sha512
+				published !== undefined &&
+				published !== entry.installed?.sha512
 			);
 		});
 
@@ -602,15 +625,15 @@ export async function applyUpdate(lock: PluginsLock, cand: UpdateCandidate): Pro
 	const entry = cand.entry;
 
 	for (const group of cand.pendingGroups) {
-		const file = mr.primaryFile(group.version);
+		const file = primaryFile(group.version);
 
 		if (group.isPrimary) {
-			await mr.download(file.url, join(poolDir(), entry.file), file.hashes.sha512);
+			const sha512 = await download(file.url, join(poolDir(), entry.file), file.hashes);
 
 			entry.installed = {
 				versionId: group.version.id,
 				versionNumber: group.version.version_number,
-				sha512: file.hashes.sha512,
+				sha512,
 				gameVersions: group.version.game_versions,
 			};
 
@@ -624,13 +647,14 @@ export async function applyUpdate(lock: PluginsLock, cand: UpdateCandidate): Pro
 		const variantFile = variantFileName(cand.name, group.version.version_number);
 
 		await mkdir(variantsDir(), { recursive: true });
-		await mr.download(file.url, join(variantsDir(), variantFile), file.hashes.sha512);
+
+		const sha512 = await download(file.url, join(variantsDir(), variantFile), file.hashes);
 
 		entry.variants ??= {};
 		entry.variants[group.version.version_number] = {
 			versionId: group.version.id,
 			versionNumber: group.version.version_number,
-			sha512: file.hashes.sha512,
+			sha512,
 			file: variantFile,
 			gameVersions: group.version.game_versions,
 		};
@@ -684,7 +708,7 @@ function pruneVariants(name: string, entry: PluginEntry): void {
 	}
 }
 
-/** Pin instances to a specific Modrinth version (downloads it as a pooled variant). */
+/** Pin instances to a specific provider version (downloads it as a pooled variant). */
 export async function pinVersion(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
@@ -692,18 +716,18 @@ export async function pinVersion(
 	versionSpec: string,
 	targets: string[],
 	force = false,
-): Promise<{ version: mr.MrVersion; incompatible: string[] }> {
+): Promise<{ version: AddonVersion; incompatible: string[] }> {
 	const entry = lock.plugins[name];
 
 	if (!entry) {
 		throw new Error(`unknown plugin: ${name}`);
 	}
 
-	if (!entry.modrinth) {
-		throw new Error(`${name} is not a modrinth plugin — pinning needs modrinth version metadata`);
+	if (!entry.remote) {
+		throw new Error(`${name} has no provider — pinning needs provider version metadata`);
 	}
 
-	const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(familyOf(entry)));
+	const versions = await remoteVersions(entry);
 	const version = versions.find(
 		(candidate) => candidate.version_number === versionSpec || candidate.id === versionSpec,
 	);
@@ -727,7 +751,7 @@ export async function pinVersion(
 			return false;
 		}
 
-		return version.game_versions.length > 0 && !version.game_versions.includes(inst.mcVersion);
+		return version.game_versions.length > 0 && !coversMc(version.game_versions, inst.mcVersion);
 	});
 
 	// server-version gate per DESIGN.md — an explicit --force is the only way past it
@@ -743,17 +767,18 @@ export async function pinVersion(
 	}
 
 	if (version.version_number !== entry.installed?.versionNumber) {
-		const file = mr.primaryFile(version);
+		const file = primaryFile(version);
 		const variantFile = variantFileName(name, version.version_number);
 
 		await mkdir(variantsDir(), { recursive: true });
-		await mr.download(file.url, join(variantsDir(), variantFile), file.hashes.sha512);
+
+		const sha512 = await download(file.url, join(variantsDir(), variantFile), file.hashes);
 
 		entry.variants ??= {};
 		entry.variants[version.version_number] = {
 			versionId: version.id,
 			versionNumber: version.version_number,
-			sha512: file.hashes.sha512,
+			sha512,
 			file: variantFile,
 			gameVersions: version.game_versions,
 		};
@@ -773,9 +798,9 @@ export async function pinVersion(
 
 /**
  * Make sure the pool holds a build of `name` that supports `mcVersion`,
- * downloading one from Modrinth when it does not — the "download compatible
- * version" action behind a group-validation warning. Returns the version that
- * now covers the MC version.
+ * downloading one from the entry's provider when it does not — the "download
+ * compatible version" action behind a group-validation warning. Returns the
+ * version that now covers the MC version.
  */
 export async function ensureVariantForMc(
 	lock: PluginsLock,
@@ -788,40 +813,41 @@ export async function ensureVariantForMc(
 		throw new Error(`unknown plugin: ${name}`);
 	}
 
-	if (entry.installed?.gameVersions?.includes(mcVersion)) {
-		return { version: entry.installed.versionNumber ?? "?", downloaded: false };
+	if (coversMc(entry.installed?.gameVersions, mcVersion)) {
+		return { version: entry.installed?.versionNumber ?? "?", downloaded: false };
 	}
 
 	const pooled = Object.values(entry.variants ?? {}).find((variant) =>
-		variant.gameVersions?.includes(mcVersion),
+		coversMc(variant.gameVersions, mcVersion),
 	);
 
 	if (pooled) {
 		return { version: pooled.versionNumber, downloaded: false };
 	}
 
-	if (!entry.modrinth) {
-		throw new Error(`${name} has no Modrinth metadata — pool a compatible build manually`);
+	if (!entry.remote) {
+		throw new Error(`${name} has no provider metadata — pool a compatible build manually`);
 	}
 
-	const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(familyOf(entry)));
-	const { best } = mr.pickCompatible(versions, [mcVersion], { channel: entry.channel ?? "release" });
+	const versions = await remoteVersions(entry);
+	const { best } = pickCompatible(versions, [mcVersion], { channel: entry.channel ?? "release" });
 
 	if (!best) {
 		throw new Error(`no ${entry.channel ?? "release"}-channel build of ${name} supports MC ${mcVersion}`);
 	}
 
-	const file = mr.primaryFile(best);
+	const file = primaryFile(best);
 	const variantFile = variantFileName(name, best.version_number);
 
 	await mkdir(variantsDir(), { recursive: true });
-	await mr.download(file.url, join(variantsDir(), variantFile), file.hashes.sha512);
+
+	const sha512 = await download(file.url, join(variantsDir(), variantFile), file.hashes);
 
 	entry.variants ??= {};
 	entry.variants[best.version_number] = {
 		versionId: best.id,
 		versionNumber: best.version_number,
-		sha512: file.hashes.sha512,
+		sha512,
 		file: variantFile,
 		gameVersions: best.game_versions,
 	};
@@ -902,7 +928,7 @@ export function compatReport(
 
 		const status = !gameVersions || gameVersions.length === 0
 			? "unknown"
-			: gameVersions.includes(mcVersion)
+			: coversMc(gameVersions, mcVersion)
 				? "ok"
 				: "incompatible";
 
@@ -978,9 +1004,9 @@ export async function deploy(
 						? entry.installed?.gameVersions
 						: entry.variants?.[version ?? ""]?.gameVersions;
 
-				if (assigned?.length && !assigned.includes(mc)) {
+				if (assigned?.length && !coversMc(assigned, mc)) {
 					const fit = Object.values(entry.variants ?? {}).find((variant) =>
-						variant.gameVersions?.includes(mc),
+						coversMc(variant.gameVersions, mc),
 					);
 
 					if (fit) {
@@ -1041,7 +1067,7 @@ export async function deploy(
 			const src = resolved.src;
 
 			if (!hashCache.has(src)) {
-				hashCache.set(src, await mr.sha512File(src));
+				hashCache.set(src, await sha512File(src));
 			}
 
 			const srcHash = hashCache.get(src)!;
@@ -1078,7 +1104,7 @@ export async function deploy(
 				continue;
 			}
 
-			if ((await mr.sha512File(dest)) === srcHash) {
+			if ((await sha512File(dest)) === srcHash) {
 				actions.push({
 					instance: target,
 					file: entry.file,
@@ -1119,8 +1145,6 @@ export async function deploy(
 	return actions;
 }
 
-/** Install a new plugin from Modrinth into the pool.
- *  Per-target resolution: older backends may receive an older variant. */
 /**
  * The resolution for an install with no targets: the plugin is being *pooled*,
  * not deployed, so no instance constrains the choice — take the newest build on
@@ -1128,9 +1152,9 @@ export async function deploy(
  * (an explicit target, or an addon group), the per-instance resolution fetches
  * a fitting build for it exactly as it does for every other entry.
  */
-function poolOnlyResolution(entry: PluginEntry, versions: mr.MrVersion[]): EntryResolution {
+function poolOnlyResolution(entry: PluginEntry, versions: AddonVersion[]): EntryResolution {
 	const channel = entry.channel ?? "release";
-	const { best } = mr.pickCompatible(versions, [], { channel });
+	const { best } = pickCompatible(versions, [], { channel });
 
 	if (!best) {
 		return {
@@ -1147,10 +1171,13 @@ function poolOnlyResolution(entry: PluginEntry, versions: mr.MrVersion[]): Entry
 	};
 }
 
-export async function installFromModrinth(
+/** Install a new plugin or mod from a provider into the pool.
+ *  Per-target resolution: older backends may receive an older variant. */
+export async function installFromProvider(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
-	project: mr.MrProject,
+	provider: ProviderId,
+	project: AddonProject,
 	family: "paper" | "velocity" | "neoforge",
 	targets: string[],
 ): Promise<{ name: string; entry: PluginEntry; resolution: EntryResolution }> {
@@ -1158,15 +1185,15 @@ export async function installFromModrinth(
 	const plugin = project.slug.toLowerCase();
 	const name = `${plugin}@${family}`;
 	const file = `${name}.jar`;
-	const versions = await mr.getVersions(project.id, loadersFor(family));
+	const remote = remoteRefFor(provider, project);
+	const versions = await getVersions(remote, projectTypeFor(family), loadersFor(family));
 
 	const entry: PluginEntry = {
 		file,
-		source: "modrinth",
-		loader: family,
+		source: provider,
 		plugin,
 		family,
-		modrinth: { projectId: project.id, slug: project.slug },
+		remote,
 		autoUpdate: true,
 		targets,
 	};
@@ -1277,17 +1304,16 @@ export async function uploadJar(
 		...existing,
 		file,
 		source: plugin.startsWith("luna-") ? "luna" : "manual",
-		loader: opts.family === "universal" ? "paper" : opts.family,
 		plugin,
 		family: opts.family,
 		autoUpdate: false,
 		targets: targets.length ? targets : (existing?.targets ?? []),
-		installed: { sha512: await mr.sha512File(join(poolDir(), file)) },
+		installed: { sha512: await sha512File(join(poolDir(), file)) },
 	};
 
-	// an uploaded jar is not the Modrinth build the entry used to track, so the
+	// an uploaded jar is not the provider build the entry used to track, so the
 	// provenance that would make an "update" compare against it has to go
-	delete entry.modrinth;
+	delete entry.remote;
 	delete entry.variants;
 	delete entry.assign;
 	delete entry.meta;
@@ -1334,14 +1360,13 @@ export async function adopt(
 	const entry: PluginEntry = {
 		file: jarName,
 		source: jarName.toLowerCase().startsWith("luna-") ? "luna" : "manual",
-		loader: inst.software,
 		plugin: identity?.plugin ?? entryNameFor(jarName),
 		// the jar runs on the software it was found under; a universal build is
 		// only ever declared by hand, never guessed from one instance
 		family: identity?.family ?? inst.software,
 		autoUpdate: false,
 		targets: [instance],
-		installed: { sha512: await mr.sha512File(src) },
+		installed: { sha512: await sha512File(src) },
 	};
 
 	lock.plugins[entryNameFor(jarName)] = entry;

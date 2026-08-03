@@ -1,24 +1,26 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster } from '$core/config';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
-import { installResourcePackFromModrinth } from '$core/respacks';
-import { getProject } from '$core/services/modrinth';
+import { installResourcePackFromProvider } from '$core/respacks';
+import { getProject } from '$core/services/providers';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
+import type { ProviderId } from '$core/types';
 
-/** POST { slug, channel? } → install a resource pack from Modrinth. */
+/** POST { slug, channel?, provider?, id? } → install a resource pack from a provider. */
 export async function POST({ request }) {
 	const body = await request.json();
 	const cfg = await loadCluster();
 	const lock = await loadPacksLock();
-	const project = await getProject(body.slug);
+	const provider = (body.provider ?? 'modrinth') as ProviderId;
+	const project = await getProject(provider, body.id ?? body.slug, 'resourcepack');
 
 	if (!project) {
-		throw error(404, `modrinth project "${body.slug}" not found`);
+		throw error(404, `${provider} project "${body.slug ?? body.id}" not found`);
 	}
 
 	try {
-		const row = await installResourcePackFromModrinth(cfg, lock, project, {
+		const row = await installResourcePackFromProvider(cfg, lock, provider, project, {
 			channel: body.channel
 		});
 

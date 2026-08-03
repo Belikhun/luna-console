@@ -27,8 +27,10 @@ import {
 	type PacksLock,
 } from "./packslock";
 import type { ProgressReporter } from "./progress";
-import * as mr from "./services/modrinth";
-import type { AddonGroup, ClusterConfig, InstanceConfig } from "./types";
+import { download, sha512File } from "./services/download";
+import type { AddonProject, AddonVersion, AddonVersionFile } from "./services/providers";
+import { getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
+import type { AddonGroup, ClusterConfig, InstanceConfig, ProviderId } from "./types";
 
 /** The addon groups a pack operation resolves membership against. */
 export type AddonGroups = Record<string, AddonGroup> | undefined;
@@ -195,7 +197,7 @@ export async function instanceDataPackReport(
 			const poolPath = join(datapacksDir(), entry.file);
 
 			if (existsSync(poolPath)) {
-				stale = (await mr.sha512File(join(dir, file))) !== (await mr.sha512File(poolPath));
+				stale = (await sha512File(join(dir, file))) !== (await sha512File(poolPath));
 			}
 
 			seen.add(entry.file);
@@ -311,7 +313,7 @@ export async function deployDataPacks(
 					continue;
 				}
 
-				if (there && (await mr.sha512File(destPath)) === (await mr.sha512File(poolPath))) {
+				if (there && (await sha512File(destPath)) === (await sha512File(poolPath))) {
 					actions.push({ instance, file: entry.file, action: "unchanged" });
 
 					continue;
@@ -351,25 +353,27 @@ function requiredMcVersions(cfg: ClusterConfig, targets: string[]): string[] {
 }
 
 /**
- * Install a data pack from Modrinth: the newest version covering every
+ * Install a data pack from a provider: the newest version covering every
  * target's MC version (channel-gated, falling back through beta/alpha for
  * projects without releases), pooled and recorded. Deploying is the caller's
  * follow-up — routing to follower-owned targets happens at the daemon layer.
  */
-export async function installDataPackFromModrinth(
+export async function installDataPackFromProvider(
 	cfg: ClusterConfig,
 	lock: PacksLock,
-	project: mr.MrProject,
+	provider: ProviderId,
+	project: AddonProject,
 	targets: string[],
 	opts: { channel?: PackChannel } = {},
 ): Promise<{ name: string; entry: DataPackEntry }> {
 	const name = packKeyFrom(project.slug);
 	const expanded = expandTargets(cfg, targets);
 	const required = requiredMcVersions(cfg, expanded);
-	const versions = await mr.getVersions(project.id, mr.DATAPACK_LOADERS);
+	const remote = remoteRefFor(provider, project);
+	const versions = await getVersions(remote, "datapack");
 
 	let channel: PackChannel = opts.channel ?? "release";
-	let picked = mr.pickCompatible(versions, required, { channel });
+	let picked = pickCompatible(versions, required, { channel });
 
 	for (const fallback of ["beta", "alpha"] as const) {
 		if (picked.best || opts.channel) {
@@ -377,7 +381,7 @@ export async function installDataPackFromModrinth(
 		}
 
 		channel = fallback;
-		picked = mr.pickCompatible(versions, required, { channel });
+		picked = pickCompatible(versions, required, { channel });
 	}
 
 	if (!picked.best) {
@@ -390,20 +394,21 @@ export async function installDataPackFromModrinth(
 		);
 	}
 
-	const file = mr.primaryFile(picked.best);
+	const file = primaryFile(picked.best);
 	const zipName = `${name}.zip`;
 
 	await mkdir(datapacksDir(), { recursive: true });
-	await mr.download(file.url, join(datapacksDir(), zipName), file.hashes.sha512);
+
+	const sha512 = await download(file.url, join(datapacksDir(), zipName), file.hashes);
 
 	const entry: DataPackEntry = {
 		file: zipName,
-		source: "modrinth",
-		modrinth: { projectId: project.id, slug: project.slug },
+		source: provider,
+		remote,
 		installed: {
 			versionId: picked.best.id,
 			versionNumber: picked.best.version_number,
-			sha512: file.hashes.sha512,
+			sha512,
 			gameVersions: picked.best.game_versions,
 			publishedAt: picked.best.date_published,
 		},
@@ -427,14 +432,16 @@ export interface DataPackUpdate {
 	to: string;
 	versionId: string;
 	publishedAt: string;
-	sha512: string;
+	/** Hashes the provider published, verified on download */
+	hashes: AddonVersionFile["hashes"];
 	url: string;
 	gameVersions: string[];
 }
 
 /**
- * Check Modrinth for data pack updates: channel-gated, downgrade-guarded by
- * publish date, and never onto a version that drops a target's MC version.
+ * Check the packs' providers for data pack updates: channel-gated,
+ * downgrade-guarded by publish date, and never onto a version that drops a
+ * target's MC version.
  */
 export async function checkDataPackUpdates(
 	cfg: ClusterConfig,
@@ -450,8 +457,8 @@ export async function checkDataPackUpdates(
 			continue;
 		}
 
-		if (entry.source !== "modrinth" || !entry.modrinth) {
-			skipped.push({ name, reason: "not identified on modrinth" });
+		if (entry.source === "manual" || !entry.remote) {
+			skipped.push({ name, reason: "not identified with a provider" });
 
 			continue;
 		}
@@ -463,8 +470,8 @@ export async function checkDataPackUpdates(
 		}
 
 		const required = requiredMcVersions(cfg, datapackTargets(cfg, name, entry, groups));
-		const versions = await mr.getVersions(entry.modrinth.projectId, mr.DATAPACK_LOADERS);
-		const picked = mr.pickCompatible(versions, required, {
+		const versions = await getVersions(entry.remote, "datapack");
+		const picked = pickCompatible(versions, required, {
 			channel: entry.channel ?? "release",
 			afterDate: entry.installed?.publishedAt,
 		});
@@ -473,9 +480,10 @@ export async function checkDataPackUpdates(
 			continue;
 		}
 
-		const file = mr.primaryFile(picked.best);
+		const file = primaryFile(picked.best);
 
-		if (file.hashes.sha512 === entry.installed?.sha512) {
+		// a re-publish under the same bytes is no update (when the hash is known)
+		if (file.hashes.sha512 !== undefined && file.hashes.sha512 === entry.installed?.sha512) {
 			continue;
 		}
 
@@ -485,7 +493,7 @@ export async function checkDataPackUpdates(
 			to: picked.best.version_number,
 			versionId: picked.best.id,
 			publishedAt: picked.best.date_published,
-			sha512: file.hashes.sha512,
+			hashes: file.hashes,
 			url: file.url,
 			gameVersions: picked.best.game_versions,
 		});
@@ -502,12 +510,12 @@ export async function applyDataPackUpdate(lock: PacksLock, update: DataPackUpdat
 		throw new Error(`unknown data pack: ${update.name}`);
 	}
 
-	await mr.download(update.url, join(datapacksDir(), entry.file), update.sha512);
+	const sha512 = await download(update.url, join(datapacksDir(), entry.file), update.hashes ?? {});
 
 	entry.installed = {
 		versionId: update.versionId,
 		versionNumber: update.to,
-		sha512: update.sha512,
+		sha512,
 		gameVersions: update.gameVersions,
 		publishedAt: update.publishedAt,
 	};
@@ -540,7 +548,7 @@ export async function addDataPackFile(
 		source: "manual",
 		autoUpdate: false,
 		targets: targets ?? existing?.targets ?? [],
-		installed: { sha512: await mr.sha512File(join(datapacksDir(), file)) },
+		installed: { sha512: await sha512File(join(datapacksDir(), file)) },
 	};
 
 	lock.datapacks[key] = entry;
@@ -578,7 +586,7 @@ export async function adoptDataPack(
 		source: "manual",
 		autoUpdate: false,
 		targets: [instance],
-		installed: { sha512: await mr.sha512File(src) },
+		installed: { sha512: await sha512File(src) },
 	};
 
 	lock.datapacks[name] = entry;

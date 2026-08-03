@@ -31,6 +31,9 @@ export interface DaemonConfig {
 	 *  advertised to the primary for proxy routing (default: what the primary
 	 *  sees on the socket) */
 	host?: string;
+	/** CurseForge API key (console.curseforge.com) — the curseforge provider
+	 *  reports itself unavailable without one */
+	curseforgeApiKey?: string;
 	/** Where the config came from, for `daemon status` */
 	configFile?: string;
 }
@@ -201,6 +204,7 @@ export async function resolveDaemonConfig(): Promise<DaemonConfig> {
 		token: process.env.LUNA_TOKEN ?? file.token,
 		primary: primaryAddress ? { address: primaryAddress } : undefined,
 		host: process.env.LUNA_HOST ?? file.host,
+		curseforgeApiKey: process.env.LUNA_CURSEFORGE_KEY ?? file.curseforgeApiKey,
 		configFile,
 	};
 

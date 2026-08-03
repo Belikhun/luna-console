@@ -167,7 +167,7 @@
 		});
 
 	async function openPin(family: any): Promise<void> {
-		if (!family?.modrinth) {
+		if (!family?.remote) {
 			return;
 		}
 
@@ -333,6 +333,7 @@
 				kind: 'primary',
 				version: selFamily.installed.versionNumber ?? '?',
 				mc: selFamily.installed.gameVersions,
+				url: selFamily.installed.url,
 				usedBy: versionUsers(selFamily, selFamily.installed.versionNumber)
 			});
 		}
@@ -342,6 +343,7 @@
 				kind: 'variant',
 				version: variant.versionNumber,
 				mc: variant.gameVersions,
+				url: variant.url,
 				usedBy: versionUsers(selFamily, variant.versionNumber)
 			});
 		}
@@ -397,7 +399,7 @@
 			<Btn
 				icon="download"
 				loading={busy === 'update'}
-				disabled={!!busy || !data.families.some((family: any) => family.modrinth)}
+				disabled={!!busy || !data.families.some((family: any) => family.remote)}
 				onclick={updateNow}
 			>
 				Update
@@ -446,12 +448,12 @@
 					>
 						{#snippet custom(cell)}
 							{#if cell.id === `src-${family.key}`}
-								{family.source}{#if family.modrinth}&nbsp;·&nbsp;<a
-										href="https://modrinth.com/plugin/{family.modrinth.slug}"
+								{family.source}{#if family.url}&nbsp;·&nbsp;<a
+										href={family.url}
 										target="_blank"
 										rel="noreferrer"
 									>
-										<span class="lt">modrinth</span>
+										<span class="lt">{family.remote?.provider ?? 'provider'}</span>
 										<Icon name="externalLink" size="0.625rem" />
 									</a>{/if}
 							{:else if cell.id === `web-${family.key}`}
@@ -566,7 +568,7 @@
 					{#snippet actions()}
 						<Btn
 							icon="tag"
-							disabled={!selFamily.modrinth || !!busy}
+							disabled={!selFamily.remote || !!busy}
 							onclick={() => openPin(selFamily)}
 						>
 							Pin a version…
@@ -591,13 +593,9 @@
 							{:else if col === 'mc'}
 								<span class="dim mcs" title={row.mc.join(', ')}>{mcLabel(row.mc)}</span>
 							{:else if col === 'source'}
-								{#if selFamily.modrinth}
-									<a
-										href="https://modrinth.com/plugin/{selFamily.modrinth.slug}/version/{row.version}"
-										target="_blank"
-										rel="noreferrer"
-									>
-										modrinth
+								{#if row.url}
+									<a href={row.url} target="_blank" rel="noreferrer">
+										{selFamily.remote?.provider ?? 'provider'}
 										<Icon name="externalLink" size="0.625rem" />
 									</a>
 								{:else if selFamily.luna}

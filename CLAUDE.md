@@ -26,7 +26,8 @@ web console (no Elysia, no separate backend) · **SCSS** (`sass-embedded` throug
 `vitePreprocess`) for every stylesheet · xterm.js for the terminal drawer · SSE for all
 client streaming (never WebSockets to a browser; daemons talk to each other over
 WebSocket + HTTP file streaming) · HTTP over a unix socket between clients and the
-local daemon · Modrinth + PaperMC Fill v3 as the only external APIs.
+local daemon · the addon providers (Modrinth, CurseForge, Hangar, Smithed — behind
+`core/services/providers.ts`) + PaperMC Fill v3 as the only external APIs.
 
 ## Layout
 
@@ -339,6 +340,23 @@ Wiring rules:
   so a table on a *detail* screen gets the same menu without going through `ResourceTable`.
   A control that edits a value **in place** (a per-row toggle, an inline field) is not an
   action column and is fine where it belongs — in that value's own column.
+- **A checkbox column promises multi-select — so default to `selectable="multi"`.** A square
+  tickbox per row tells the user they may tick several; a screen that then only honours one is
+  broken, not minimal. Reach for `selectable="single"` only when the verbs genuinely take one
+  target (picking a version, editing one variable), and then `DataTable` draws a **radio**
+  instead of a checkbox so the affordance still tells the truth. A multi-select screen's
+  Actions dropdown must stay alive as the selection grows: declare the verbs once as
+  `xActions(rows)` over the *selection*, have `rowActions(row)` forward the whole selection
+  when the right-clicked row is inside it, disable a single-target verb **with its reason**
+  ("pick a single pack") rather than killing the menu, and let a bulk verb target only the
+  rows it applies to — enabling five packs of which two are already on is a three-pack job,
+  reported as one outcome after a single reload (`web/src/routes/packs/+page.svelte`).
+- **Dimming is not disabling.** `rowDim` de-emphasises a row (disabled, withheld, not
+  deployed) and nothing more: it keeps its checkbox, its hover and its verbs, because the
+  verb that un-dims it — enable, deploy, serve here — is usually the one the user opened the
+  screen for, and locking that row out of the selection is what pushes an author back toward
+  a per-row button. `rowLocked` is the separate, rare opt-out for rows **no** verb can apply
+  to (an external server luna does not own); it dims *and* withholds the checkbox.
 - **Every screen has a real action bar** in its `PageHeader`, modelled on the instances
   screen (DESIGN.md §5.2), in this order: `RefreshControl`, Actions dropdown for the
   selection, screen-wide operations, then the creating action last as `primary`. Actions apply to the table selection, an
@@ -400,8 +418,9 @@ Daemon config: JSON file (`$LUNA_DAEMON_CONFIG` → `/etc/luna/daemon.json` →
 `~/.config/luna/daemon.json`) with env overrides (`LUNA_MODE`, `LUNA_ROOT`,
 `LUNA_DAEMON_NAME`, `LUNA_SOCKET`, `LUNA_LISTEN`, `LUNA_TOKEN`,
 `LUNA_PRIMARY_ADDRESS`, `LUNA_HOST`, plus `LUNA_WEB_DIR` for a console outside the
-source tree and `LUNA_RELEASE_REPO`/`LUNA_GITHUB_API`/`LUNA_GITHUB_TOKEN` for the
-upgrade fallback). A daemon's name defaults to the machine's
+source tree, `LUNA_CURSEFORGE_KEY` (or `curseforgeApiKey` in the file) to unlock the
+CurseForge provider, and `LUNA_RELEASE_REPO`/`LUNA_GITHUB_API`/`LUNA_GITHUB_TOKEN` for
+the upgrade fallback). A daemon's name defaults to the machine's
 hostname (short form, lowercased) — it keys `cluster.json` and decides instance
 ownership, so it must be unique across the cluster. No config + a discoverable
 cluster root = primary with defaults. For dev, start one with

@@ -184,12 +184,12 @@
 				{#if cell.id === 'state'}
 					<StatusBadge state={badge.state} label={badge.label} />
 				{:else if cell.id === 'source'}
-					{data.row.source}{#if data.modrinth}&nbsp;·&nbsp;<a
-							href="https://modrinth.com/plugin/{data.modrinth.slug}"
+					{data.row.source}{#if data.url}&nbsp;·&nbsp;<a
+							href={data.url}
 							target="_blank"
 							rel="noreferrer"
 						>
-							<span class="lt">modrinth</span>
+							<span class="lt">{data.remote?.provider ?? 'provider'}</span>
 							<Icon name="externalLink" size="0.625rem" />
 						</a>{/if}
 				{/if}

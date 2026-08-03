@@ -7,7 +7,7 @@ import { errorMessage } from '$lib/server/http';
 /** How many versions the pin dialog offers — the list is newest-first. */
 const VERSION_LIMIT = 40;
 
-/** GET ?name= — list available modrinth versions for the pin dialog */
+/** GET ?name= — list available provider versions for the pin dialog */
 export async function GET({ url }) {
 	const name = url.searchParams.get('name');
 
@@ -18,8 +18,8 @@ export async function GET({ url }) {
 	const lock = await loadLock();
 	const entry = lock.plugins[name];
 
-	if (!entry?.modrinth) {
-		throw error(400, 'not a modrinth plugin');
+	if (!entry?.remote) {
+		throw error(400, 'this plugin has no provider');
 	}
 
 	const versions = await getVersionsForEntry(entry);

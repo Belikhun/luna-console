@@ -40,6 +40,7 @@
 		sortValue,
 		onRowClick,
 		rowDim,
+		rowLocked,
 		paging = true,
 		pageSize = 25,
 		maxHeight,
@@ -71,7 +72,10 @@
 		selected?: Set<string>;
 		sortValue?: (row: T, columnId: string) => string | number | null;
 		onRowClick?: (row: T) => void;
+		/** dimmed rows — de-emphasis only, still selectable */
 		rowDim?: (row: T) => boolean;
+		/** rows no bulk verb can apply to: dimmed *and* kept out of the selection */
+		rowLocked?: (row: T) => boolean;
 		paging?: boolean;
 		pageSize?: number;
 		maxHeight?: string;
@@ -134,6 +138,7 @@
 	{sortValue}
 	{onRowClick}
 	{rowDim}
+	{rowLocked}
 	{paging}
 	{pageSize}
 	{maxHeight}

@@ -44,6 +44,7 @@
 		rowActions,
 		rowLabel,
 		rowDim,
+		rowLocked,
 		paging = false,
 		pageSize = 25,
 		maxHeight,
@@ -75,8 +76,14 @@
 		rowActions?: (row: T) => ContextMenuItem[];
 		/** heading of the row's context menu (defaults to the row's id) */
 		rowLabel?: (row: T) => string;
-		/** rows rendered dimmed & unselectable (e.g. external resources) */
+		/** rows rendered dimmed — de-emphasis only (disabled, withheld, not deployed).
+		 *  A dimmed row is still selectable, because the verb that un-dims it is
+		 *  usually the one the user came for */
 		rowDim?: (row: T) => boolean;
+		/** rows that cannot be selected at all — no checkbox, clicks don't select.
+		 *  Only for rows no bulk verb can ever apply to (e.g. external servers luna
+		 *  does not own); these render dimmed too */
+		rowLocked?: (row: T) => boolean;
 		paging?: boolean;
 		pageSize?: number;
 		maxHeight?: string;
@@ -210,7 +217,7 @@
 		paging ? sorted.slice((page - 1) * effPageSize, page * effPageSize) : sorted
 	);
 
-	const selectableRows = $derived(filtered.filter((row) => !rowDim?.(row)));
+	const selectableRows = $derived(filtered.filter((row) => !rowLocked?.(row)));
 	const allSelected = $derived(selectableRows.length > 0 && selected.size >= selectableRows.length);
 	const someSelected = $derived(selected.size > 0 && !allSelected);
 
@@ -272,7 +279,7 @@
 	}
 
 	function rowClick(row: T): void {
-		if (rowDim?.(row)) {
+		if (rowLocked?.(row)) {
 			return;
 		}
 
@@ -286,7 +293,7 @@
 	/**
 	 * A dimmed row still has verbs — it is usually the one that needs them, since
 	 * "dim" here means disabled, withheld or not deployed, and the verb that fixes
-	 * that is in this menu. Dimming suppresses *selection*, not the menu.
+	 * that is in this menu. Only a *locked* row is kept out of the selection.
 	 */
 	async function rowContext(row: T, event: MouseEvent): Promise<void> {
 		if (!onRowContextMenu && !rowActions) {
@@ -296,7 +303,7 @@
 		event.preventDefault();
 
 		// right-clicking outside the selection moves it to this row first
-		if (selectable !== 'none' && !rowDim?.(row) && !selected.has(getId(row))) {
+		if (selectable !== 'none' && !rowLocked?.(row) && !selected.has(getId(row))) {
 			selected = new Set([getId(row)]);
 		}
 
@@ -752,22 +759,27 @@
 			</thead>
 			<tbody>
 				{#each paged as row, i (getId(row))}
-					{@const dim = rowDim?.(row) ?? false}
+					{@const locked = rowLocked?.(row) ?? false}
+					{@const dim = locked || (rowDim?.(row) ?? false)}
 					{@const isSelected = selected.has(getId(row))}
 					{@const afterSelected = !isSelected && i > 0 && selected.has(getId(paged[i - 1]!))}
 					<tr
 						class:selected={isSelected}
 						class:after-selected={afterSelected}
 						class:dim
+						class:locked
 						onclick={() => rowClick(row)}
 						oncontextmenu={(event) => rowContext(row, event)}
 					>
 						{#if selectable !== 'none'}
 							<td class="sel" class:sticky={stickyCount > 0} style={stickyStyle(0)}>
 								<div class="cell chk">
-									{#if !dim}
+									{#if !locked}
+										<!-- a square promises "as many as you like", so a table that
+										     only takes one row wears a radio instead -->
 										<Checkbox
 											checked={isSelected}
+											shape={selectable === 'single' ? 'radio' : 'check'}
 											label="Select {getId(row)}"
 											onchange={() => toggle(row)}
 										/>
@@ -1273,9 +1285,15 @@
 		border-bottom-color: var(--link);
 	}
 
+	// Dim is de-emphasis only, so the row keeps its hover and its pointer — it can
+	// still be selected, and the verb that un-dims it is the one being looked for.
 	tbody tr.dim {
-		cursor: default;
 		color: var(--text-secondary);
+	}
+
+	// A locked row has nothing to click: no hover lift, no pointer, no checkbox.
+	tbody tr.locked {
+		cursor: default;
 
 		&:hover > td {
 			background-color: transparent;

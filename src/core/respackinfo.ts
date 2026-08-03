@@ -22,7 +22,7 @@ import { getAllStatuses } from "./instances";
 import type { PacksLock } from "./packslock";
 import { listResourcePacks, respacksDir, type RespackRow } from "./respacks";
 import * as lunaApi from "./services/luna";
-import * as mr from "./services/modrinth";
+import { sha512File } from "./services/download";
 import type { AddonGroup, ClusterConfig } from "./types";
 
 // -- zip reading ---------------------------------------------------------------
@@ -977,7 +977,7 @@ async function cachedDigest(path: string, sizeBytes: number, mtimeMs?: number): 
 		return hit;
 	}
 
-	const digest = await mr.sha512File(path);
+	const digest = await sha512File(path);
 
 	// one entry per pack file is the steady state; a rewritten pack leaves its
 	// old key behind, so the map is trimmed rather than grown

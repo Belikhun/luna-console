@@ -1,27 +1,33 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock, saveCluster } from '$core/config';
-import { installFromModrinth, deploy } from '$core/plugins';
-import { getProject } from '$core/services/modrinth';
+import { installFromProvider, deploy, projectTypeFor } from '$core/plugins';
+import { getProject } from '$core/services/providers';
 import { ensurePortAllocations } from '$core/ports';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
+import type { ProviderId } from '$core/types';
 
-/** POST { slug, family, targets } — `loader` is the pre-mods spelling of `family`. */
+/**
+ * POST { slug, family, targets, provider?, id? } — `id` is the provider's
+ * project id when the picker knows it (some providers cannot look a project
+ * up by slug alone).
+ */
 export async function POST({ request }) {
 	const body = await request.json();
 	const cfg = await loadCluster();
 	const lock = await loadLock();
-	const project = await getProject(body.slug);
+
+	const family =
+		body.family === 'velocity' || body.family === 'neoforge' ? body.family : 'paper';
+	const provider = (body.provider ?? 'modrinth') as ProviderId;
+	const project = await getProject(provider, body.id ?? body.slug, projectTypeFor(family));
 
 	if (!project) {
-		throw error(404, `modrinth project "${body.slug}" not found`);
+		throw error(404, `${provider} project "${body.slug ?? body.id}" not found`);
 	}
 
-	const requested = body.family ?? body.loader;
-	const family = requested === 'velocity' || requested === 'neoforge' ? requested : 'paper';
-
 	try {
-		const res = await installFromModrinth(cfg, lock, project, family, body.targets);
+		const res = await installFromProvider(cfg, lock, provider, project, family, body.targets);
 
 		await saveLock(lock);
 

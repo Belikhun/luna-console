@@ -39,7 +39,7 @@
 	let registered = $state(true);
 	let granted: string[] = $state([]);
 	let groups: string[] = $state([]);
-	let hasModrinth = $state(false);
+	let hasProvider = $state(false);
 	let instances: string[] = $state([]);
 	let running: string[] = $state([]);
 
@@ -66,7 +66,7 @@
 			registered = !!pack.defFile;
 			granted = pack.granted;
 			groups = pack.groups;
-			hasModrinth = !!pack.modrinth;
+			hasProvider = !!pack.remote;
 			instances = detail.instances.map((row: any) => row.name);
 			running = detail.instances.filter((row: any) => row.running).map((row: any) => row.name);
 		} catch (err) {
@@ -261,8 +261,8 @@
 		{/if}
 	</Panel>
 
-	{#if hasModrinth}
-		<Panel title="Updates" description="How this pack follows its Modrinth project">
+	{#if hasProvider}
+		<Panel title="Updates" description="How this pack follows its provider project">
 			<label class="checkrow">
 				<Checkbox
 					checked={autoUpdate}

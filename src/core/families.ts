@@ -2,10 +2,8 @@
  * Plugin identity, families and addon groups (DESIGN.md §3.1–3.2).
  *
  * A lockfile entry is one *build* of a plugin: the pair (plugin name, family).
- * Entry keys already encode that pair ("spark-bukkit" / "spark-velocity"), so
- * identity is two derived fields on the entry rather than a new data model —
- * `migrateLock` fills them once and the helpers here fall back to the old
- * meaning (key = name, loader = family) so unmigrated data still resolves.
+ * Entry keys encode that pair under the standardized `<plugin>@<family>`
+ * scheme, and the entry carries both fields explicitly.
  *
  * An **addon group** is a named set of addons — plugin names, resource pack
  * keys and data pack names — applied to instances as a unit. An instance's
@@ -25,6 +23,7 @@ import type {
 	Software,
 } from "./types";
 import { addonDirForFamily, addonDirOf, expandTargets, managedInstances } from "./config";
+import { coversMc } from "./services/providers";
 
 export const DEFAULT_GROUP = "default";
 
@@ -43,8 +42,8 @@ export const DEFAULT_GROUP_PLUGINS = [
 	"luckperms",
 ];
 
-/** Current lockfile schema revision written by `migrateLock`. */
-export const LOCK_VERSION = 2;
+/** Current lockfile schema revision (3 = provider provenance via `remote`). */
+export const LOCK_VERSION = 3;
 
 /** The plugin name an entry belongs to. */
 export function pluginNameOf(key: string, entry: PluginEntry): string {
@@ -53,7 +52,7 @@ export function pluginNameOf(key: string, entry: PluginEntry): string {
 
 /** The platform family an entry runs on. */
 export function familyOf(entry: PluginEntry): PluginFamily {
-	return entry.family ?? entry.loader;
+	return entry.family;
 }
 
 /**
@@ -88,9 +87,7 @@ export function carriesMcRequirement(software: Software): boolean {
 
 /** Group names applied to an instance — "default" always, then its own list. */
 export function instanceGroupNames(inst: InstanceConfig): string[] {
-	// `pluginGroups` is the pre-addon-group spelling; cluster.json is migrated on
-	// load, but an in-flight config passed over RPC may still carry it
-	const own = inst.addonGroups ?? inst.pluginGroups ?? [];
+	const own = inst.addonGroups ?? [];
 
 	return [DEFAULT_GROUP, ...own.filter((name) => name !== DEFAULT_GROUP)];
 }
@@ -433,7 +430,7 @@ export interface GroupCheckRow {
 	/** Version that would deploy (ok/unverified) */
 	version?: string;
 	gameVersions?: string[];
-	/** A compatible build could be downloaded from Modrinth */
+	/** A compatible build could be downloaded from the entry's provider */
 	downloadable: boolean;
 }
 
@@ -568,7 +565,7 @@ export function validateGroups(
 			continue;
 		}
 
-		if (gameVersions.includes(opts.mcVersion)) {
+		if (coversMc(gameVersions, opts.mcVersion)) {
 			rows.push({
 				plugin,
 				groups,
@@ -585,7 +582,7 @@ export function validateGroups(
 
 		// the assigned build does not fit — maybe another pooled variant does
 		const fallback = Object.values(entry.variants ?? {}).find((variant) =>
-			variant.gameVersions?.includes(opts.mcVersion!),
+			coversMc(variant.gameVersions, opts.mcVersion!),
 		);
 
 		if (fallback) {
@@ -611,7 +608,7 @@ export function validateGroups(
 			status: "no-version",
 			version,
 			gameVersions,
-			downloadable: !!entry.modrinth,
+			downloadable: !!entry.remote,
 		});
 	}
 
@@ -632,56 +629,6 @@ export function validateGroups(
 	});
 }
 
-/**
- * Derive (plugin, family) for a v1 entry from its naming conventions, falling
- * back to where the jar is actually deployed for suffix-less names — that is
- * what tells a universal jar (proxy + backends) from a mislabeled one.
- */
-function deriveIdentity(key: string, entry: PluginEntry): { plugin: string; family: PluginFamily } {
-	// the standardized scheme is unambiguous: <plugin>@<family>
-	const standardized = key.match(/^(.+)@(paper|velocity|universal|neoforge)$/);
-
-	if (standardized) {
-		return { plugin: standardized[1]!, family: standardized[2] as PluginFamily };
-	}
-
-	let base = key.endsWith("-all") ? key.slice(0, -4) : key;
-	let family: PluginFamily | undefined;
-
-	const velocity = base.match(/^(.*)-velocity$/);
-	const paper = base.match(/^(.*)-(bukkit|paper|spigot)$/);
-
-	if (velocity) {
-		base = velocity[1]!;
-		family = "velocity";
-	} else if (paper) {
-		base = paper[1]!;
-		family = "paper";
-	}
-
-	// "-backend" marks the paper-side module of a velocity plugin (luna-auth-backend)
-	if (base.endsWith("-backend")) {
-		base = base.slice(0, -8);
-		family ??= entry.loader;
-	}
-
-	if (!family) {
-		const targets = entry.targets;
-		const proxyOnly = targets.length > 0 && targets.every((target) => target === "proxy");
-		const both = targets.includes("proxy") && targets.some((target) => target !== "proxy");
-
-		if (entry.loader === "paper" && proxyOnly) {
-			family = "velocity";
-		} else if (entry.loader === "paper" && both) {
-			family = "universal";
-		} else {
-			family = entry.loader;
-		}
-	}
-
-	return { plugin: base, family };
-}
-
 /** Explicit target lists made fully redundant by default-group coverage. */
 function coveredByDefault(entry: PluginEntry, family: PluginFamily): boolean {
 	if (family === "paper") {
@@ -695,9 +642,7 @@ function coveredByDefault(entry: PluginEntry, family: PluginFamily): boolean {
 	return false;
 }
 
-/** Config templates seeded on migration, keyed by entry name (DESIGN.md §3.3).
- *  Both the legacy and the standardized (`<plugin>@<family>`) keys are listed,
- *  so seeding works on either side of the naming migration. */
+/** Config templates seeded once per known entry (DESIGN.md §3.3). */
 const LUNA_CORE_TEMPLATE: PluginEntry["config"] = [
 	{
 		file: "plugins/LunaCore/config.yml",
@@ -727,31 +672,19 @@ const LUCKPERMS_TEMPLATE: PluginEntry["config"] = [
 ];
 
 const SEED_TEMPLATES: Record<string, PluginEntry["config"]> = {
-	"luna-core-paper-all": LUNA_CORE_TEMPLATE,
 	"luna-core@paper": LUNA_CORE_TEMPLATE,
-	"luckperms-bukkit": LUCKPERMS_TEMPLATE,
 	"luckperms@paper": LUCKPERMS_TEMPLATE,
 };
 
 /**
- * Bring a lockfile up to the current schema, in place. Idempotent; returns
- * whether anything changed so the caller knows to persist. Never touches a
- * field the operator may have edited (existing plugin/family/config survive).
+ * Enforce the lockfile's standing invariants, in place. Idempotent; returns
+ * whether anything changed so the caller knows to persist. Not a migration —
+ * these hold on every load: the builtin default group exists with its
+ * hardcoded members, redundant explicit targets stay collapsed into group
+ * coverage, and known plugins get their config templates seeded once.
  */
-export function migrateLock(lock: PluginsLock): boolean {
+export function ensureLockDefaults(lock: PluginsLock): boolean {
 	let changed = false;
-
-	for (const [key, entry] of Object.entries(lock.plugins)) {
-		if (entry.plugin !== undefined && entry.family !== undefined) {
-			continue;
-		}
-
-		const identity = deriveIdentity(key, entry);
-
-		entry.plugin ??= identity.plugin;
-		entry.family ??= identity.family;
-		changed = true;
-	}
 
 	if (!lock.groups?.[DEFAULT_GROUP]) {
 		setGroup(lock, DEFAULT_GROUP, { plugins: DEFAULT_GROUP_PLUGINS });

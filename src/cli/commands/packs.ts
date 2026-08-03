@@ -14,7 +14,8 @@ import * as datapacks from "../../client/core/datapacks";
 import { loadPacksLock, savePacksLock, type PackChannel } from "../../client/core/packslock";
 import * as respackinfo from "../../client/core/respackinfo";
 import * as respacks from "../../client/core/respacks";
-import * as mr from "../../client/core/services/modrinth";
+import * as providers from "../../client/core/services/providers";
+import type { ProviderId } from "../../client/core/types";
 
 /** The addon groups pack membership resolves against (plugins.lock.json). */
 async function addonGroups(): Promise<Awaited<ReturnType<typeof loadLock>>["groups"]> {
@@ -39,14 +40,29 @@ async function datapackNames(): Promise<string[]> {
 	return Object.keys(lock.datapacks);
 }
 
-/** Resolve a slug or free-text query to one Modrinth project, prompting on search. */
+/** The provider a `--provider` flag selects, defaulting to Modrinth. */
+export function parseProvider(value: string | undefined): ProviderId {
+	const provider = (value ?? "modrinth").toLowerCase();
+
+	if (!(providers.PROVIDER_IDS as string[]).includes(provider)) {
+		throw new UsageError(
+			`unknown provider: ${provider} (expected ${providers.PROVIDER_IDS.join(", ")})`,
+		);
+	}
+
+	return provider as ProviderId;
+}
+
+/** Resolve a slug or free-text query to one provider project, prompting on search. */
 async function resolveProject(
 	query: string,
 	type: "resourcepack" | "datapack",
-): Promise<mr.MrProject | undefined> {
-	const spin = new Spinner().start(`resolving "${query}" on Modrinth...`);
+	provider: ProviderId,
+): Promise<providers.AddonProject | undefined> {
+	const label = providers.PROVIDER_IDS.includes(provider) ? provider : "provider";
+	const spin = new Spinner().start(`resolving "${query}" on ${label}...`);
 
-	let project = await mr.getProject(query);
+	let project = await providers.getProject(provider, query, type);
 
 	spin.stop();
 
@@ -54,7 +70,7 @@ async function resolveProject(
 		return project;
 	}
 
-	const hits = await mr.searchProjects(query, type);
+	const hits = await providers.searchProvider(provider, query, type);
 
 	if (!hits.length) {
 		throw new Bail(`nothing found for "${query}"`);
@@ -65,7 +81,8 @@ async function resolveProject(
 	const picked = await select({
 		message: `Select a ${type === "datapack" ? "data pack" : "resource pack"}`,
 		options: hits.map((hit) => ({
-			value: hit.slug,
+			// smithed slugs are only known after a project lookup — pick by id
+			value: hit.project_id,
 			label: hit.title,
 			hint: `${hit.downloads.toLocaleString()} downloads — ${hit.description.slice(0, 60)}`,
 		})),
@@ -77,7 +94,7 @@ async function resolveProject(
 		return undefined;
 	}
 
-	return await mr.getProject(picked as string);
+	return await providers.getProject(provider, picked as string, type);
 }
 
 // -- resource packs -----------------------------------------------------------
@@ -116,23 +133,30 @@ command({
 
 command({
 	path: ["packs", "add"],
-	desc: "Install a resource pack from Modrinth (slug, or search query)",
+	desc: "Install a resource pack from a provider (slug, or search query)",
 	args: [{ name: "slug-or-query", required: true, variadic: true }],
 	opts: [
 		{ flag: "--channel", desc: "release channel: release, beta or alpha", value: true },
+		{
+			flag: "--provider",
+			desc: "where to install from: modrinth (default) or curseforge",
+			value: true,
+			complete: async () => ["modrinth", "curseforge"],
+		},
 	],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const lock = await loadPacksLock();
-		const project = await resolveProject(args.join(" "), "resourcepack");
+		const provider = parseProvider(opts.provider as string | undefined);
+		const project = await resolveProject(args.join(" "), "resourcepack", provider);
 
 		if (!project) {
 			return;
 		}
 
 		const spin = new Spinner().start(`installing ${project.title}...`);
-		const row = await respacks.installResourcePackFromModrinth(cfg, lock, project, {
+		const row = await respacks.installResourcePackFromProvider(cfg, lock, provider, project, {
 			channel: opts.channel as PackChannel | undefined,
 		});
 
@@ -354,13 +378,13 @@ command({
 
 command({
 	path: ["packs", "update"],
-	desc: "Check resource packs for Modrinth updates (apply with --apply)",
+	desc: "Check resource packs for provider updates (apply with --apply)",
 	args: [{ name: "pack", variadic: true, complete: respackKeys }],
 	opts: [{ flag: "--apply", desc: "download the updates instead of listing them" }],
 
 	handler: async (args, opts) => {
 		const lock = await loadPacksLock();
-		const spin = new Spinner().start("checking Modrinth...");
+		const spin = new Spinner().start("checking providers...");
 		const { updates, skipped } = await respacks.checkResourcePackUpdates(
 			lock,
 			args.length ? args : undefined,
@@ -479,7 +503,7 @@ command({
 
 command({
 	path: ["datapacks", "add"],
-	desc: "Install a data pack from Modrinth (slug, or search query)",
+	desc: "Install a data pack from a provider (slug, or search query)",
 	args: [{ name: "slug-or-query", required: true, variadic: true }],
 	opts: [
 		{
@@ -489,6 +513,12 @@ command({
 			complete: targetSelectors,
 		},
 		{ flag: "--channel", desc: "release channel: release, beta or alpha", value: true },
+		{
+			flag: "--provider",
+			desc: "where to install from: modrinth (default), curseforge or smithed",
+			value: true,
+			complete: async () => ["modrinth", "curseforge", "smithed"],
+		},
 	],
 
 	handler: async (args, opts) => {
@@ -498,7 +528,8 @@ command({
 
 		const cfg = await loadCluster();
 		const lock = await loadPacksLock();
-		const project = await resolveProject(args.join(" "), "datapack");
+		const provider = parseProvider(opts.provider as string | undefined);
+		const project = await resolveProject(args.join(" "), "datapack", provider);
 
 		if (!project) {
 			return;
@@ -506,7 +537,7 @@ command({
 
 		const targets = String(opts.to).split(",").map((target) => target.trim()).filter(Boolean);
 		const spin = new Spinner().start(`installing ${project.title}...`);
-		const res = await datapacks.installDataPackFromModrinth(cfg, lock, project, targets, {
+		const res = await datapacks.installDataPackFromProvider(cfg, lock, provider, project, targets, {
 			channel: opts.channel as PackChannel | undefined,
 		});
 
@@ -567,14 +598,14 @@ command({
 
 command({
 	path: ["datapacks", "update"],
-	desc: "Check data packs for Modrinth updates (apply with --apply)",
+	desc: "Check data packs for provider updates (apply with --apply)",
 	args: [{ name: "pack", variadic: true, complete: datapackNames }],
 	opts: [{ flag: "--apply", desc: "download the updates and redeploy" }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const lock = await loadPacksLock();
-		const spin = new Spinner().start("checking Modrinth...");
+		const spin = new Spinner().start("checking providers...");
 		const { updates, skipped } = await datapacks.checkDataPackUpdates(
 			cfg,
 			lock,

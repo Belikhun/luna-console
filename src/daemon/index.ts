@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import { mkdir, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import { configureProviders } from "../core/services/providers";
 import { resolveDaemonConfig, type DaemonConfig } from "./config";
 import { setDaemonIdentity } from "./identity";
 import { buildHandler, type WsData } from "./server";
@@ -43,6 +44,9 @@ export async function runDaemon(): Promise<void> {
 	process.env.LUNA_ROOT = dcfg.root;
 
 	setDaemonIdentity(dcfg);
+
+	// provider credentials come from the daemon config — core never reads env
+	configureProviders({ curseforgeApiKey: dcfg.curseforgeApiKey });
 
 	if (!existsSync(dcfg.root)) {
 		if (dcfg.mode !== "follower") {

@@ -16,8 +16,9 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { root } from "./config";
+import type { ProviderId, RemoteRef } from "./types";
 
-export type PackSource = "modrinth" | "manual";
+export type PackSource = ProviderId | "manual";
 
 export type PackChannel = "release" | "beta" | "alpha";
 
@@ -26,7 +27,7 @@ export interface PackInstall {
 	versionId?: string;
 	versionNumber?: string;
 	sha512: string;
-	/** MC versions the build supports, as Modrinth declares them */
+	/** MC versions the build supports, as the provider declares them */
 	gameVersions?: string[];
 	/** Publish date of the installed version — updates must be newer than this */
 	publishedAt?: string;
@@ -37,7 +38,8 @@ export interface PackEntry {
 	/** File name in the pack's directory (packs/ or datapacks/) */
 	file: string;
 	source: PackSource;
-	modrinth?: { projectId: string; slug: string };
+	/** Provider the pack installs/updates from; absent for manual packs */
+	remote?: RemoteRef;
 	installed?: PackInstall;
 	autoUpdate: boolean;
 	/** Most unstable release channel to accept for updates (default "release") */

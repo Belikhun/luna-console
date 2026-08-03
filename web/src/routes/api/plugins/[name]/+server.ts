@@ -1,9 +1,10 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock, managedInstances } from '$core/config';
-import { removePlugin } from '$core/plugins';
+import { projectTypeFor, removePlugin } from '$core/plugins';
 import { effectiveTargets, entriesOf, familyOf, pluginNameOf } from '$core/families';
 import { aliasesOf, displayNameOf, ensureAliases, pluginUsageReport } from '$core/pluginstate';
 import { getAllStatuses } from '$core/instances';
+import { projectUrl, versionUrl } from '$core/services/providers';
 import { pushEvent } from '$lib/server/luna';
 
 /**
@@ -37,6 +38,19 @@ export async function GET({ params }) {
 
 	const families = keys.map((key) => {
 		const entry = lock.plugins[key]!;
+		const type = projectTypeFor(familyOf(entry));
+
+		/** Provider page of one pooled version, when enough identity survives. */
+		const versionLink = (versionId?: string, versionNumber?: string): string | null => {
+			if (!entry.remote || !versionNumber) {
+				return null;
+			}
+
+			return versionUrl(entry.remote, type, {
+				id: versionId ?? versionNumber,
+				version_number: versionNumber
+			});
+		};
 
 		return {
 			key,
@@ -48,18 +62,24 @@ export async function GET({ params }) {
 			file: entry.file,
 			autoUpdate: entry.autoUpdate,
 			channel: entry.channel ?? 'release',
-			modrinth: entry.modrinth ?? null,
+			remote: entry.remote ?? null,
+			url: entry.remote ? projectUrl(entry.remote, type) : null,
 			luna: entry.luna ?? null,
 			installed: entry.installed
 				? {
 						versionNumber: entry.installed.versionNumber ?? null,
-						gameVersions: entry.installed.gameVersions ?? []
+						gameVersions: entry.installed.gameVersions ?? [],
+						url: versionLink(
+							entry.installed.versionId,
+							entry.installed.versionNumber ?? undefined
+						)
 					}
 				: null,
 			variants: Object.values(entry.variants ?? {}).map((variant) => ({
 				versionNumber: variant.versionNumber,
 				gameVersions: variant.gameVersions ?? [],
-				file: variant.file
+				file: variant.file,
+				url: versionLink(variant.versionId, variant.versionNumber)
 			})),
 			pins: entry.pins ?? {},
 			assign: entry.assign ?? {},

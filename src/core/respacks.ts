@@ -30,8 +30,10 @@ import {
 	type PacksLock,
 	type PackSource,
 } from "./packslock";
-import * as mr from "./services/modrinth";
-import type { AddonGroup, ClusterConfig } from "./types";
+import { download, sha512File } from "./services/download";
+import type { AddonProject, AddonVersion, AddonVersionFile } from "./services/providers";
+import { getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
+import type { AddonGroup, ClusterConfig, ProviderId, RemoteRef } from "./types";
 import { respackMatchesServer, toggleServerRule } from "../shared/packrules";
 
 /** Directory all resource packs (zips + yml definitions) live in. */
@@ -67,7 +69,7 @@ export interface RespackRow extends RespackDefinition {
 	versionNumber?: string;
 	autoUpdate: boolean;
 	channel?: PackChannel;
-	modrinth?: { projectId: string; slug: string };
+	remote?: RemoteRef;
 	/** Instance names the server rules currently match */
 	matched: string[];
 	/** Addon groups carrying this pack */
@@ -267,7 +269,7 @@ export async function listResourcePacks(
 			versionNumber: entry?.installed?.versionNumber,
 			autoUpdate: entry?.autoUpdate ?? false,
 			channel: entry?.channel,
-			modrinth: entry?.modrinth,
+			remote: entry?.remote,
 			matched: backends.filter((name) => respackMatchesServer(def.servers, name)),
 			groups: groupsWith(groups, "respacks", key),
 			granted: respackGroupServers(cfg, groups, key),
@@ -422,7 +424,7 @@ export async function syncResourcePackGroups(
 			// that only ever existed to hold them goes with it
 			delete record.servers;
 
-			if (!record.modrinth && !record.installed && record.source === "manual") {
+			if (!record.remote && !record.installed && record.source === "manual") {
 				delete lock.resourcepacks[row.key];
 			}
 		}
@@ -479,13 +481,13 @@ export async function addResourcePackFile(
 		});
 	}
 
-	// an upload over a Modrinth-installed pack makes it manual: the file on
+	// an upload over a provider-installed pack makes it manual: the file on
 	// disk no longer is what the lock's installed version says it is
 	lock.resourcepacks[key] = {
 		file,
 		source: "manual",
 		autoUpdate: false,
-		installed: { sha512: await mr.sha512File(join(respacksDir(), file)) },
+		installed: { sha512: await sha512File(join(respacksDir(), file)) },
 	};
 
 	const fresh = await listResourcePacks(cfg, lock);
@@ -495,29 +497,31 @@ export async function addResourcePackFile(
 
 /** Pick the newest acceptable version of a pack project on a channel. */
 function pickPackVersion(
-	versions: mr.MrVersion[],
+	versions: AddonVersion[],
 	channel: PackChannel,
 	afterDate?: string,
-): mr.MrVersion | undefined {
-	const { best } = mr.pickCompatible(versions, [], { channel, afterDate });
+): AddonVersion | undefined {
+	const { best } = pickCompatible(versions, [], { channel, afterDate });
 
 	return best;
 }
 
 /**
- * Install a resource pack from Modrinth: newest release (falling back through
- * beta and alpha for projects that never publish releases), downloaded into
- * the packs directory with a definition registering it everywhere, disabled —
- * going live is a deliberate enable + reload.
+ * Install a resource pack from a provider: newest release (falling back
+ * through beta and alpha for projects that never publish releases),
+ * downloaded into the packs directory with a definition registering it
+ * everywhere, disabled — going live is a deliberate enable + reload.
  */
-export async function installResourcePackFromModrinth(
+export async function installResourcePackFromProvider(
 	cfg: ClusterConfig,
 	lock: PacksLock,
-	project: mr.MrProject,
+	provider: ProviderId,
+	project: AddonProject,
 	opts: { channel?: PackChannel } = {},
 ): Promise<RespackRow> {
 	const key = packKeyFrom(project.slug);
-	const versions = await mr.getVersions(project.id, mr.RESOURCEPACK_LOADERS);
+	const remote = remoteRefFor(provider, project);
+	const versions = await getVersions(remote, "resourcepack");
 
 	let channel = opts.channel ?? "release";
 	let version = pickPackVersion(versions, channel);
@@ -535,19 +539,19 @@ export async function installResourcePackFromModrinth(
 		throw new Error(`no installable version of ${project.slug} on the ${channel} channel`);
 	}
 
-	const file = mr.primaryFile(version);
+	const file = primaryFile(version);
 	const zipName = `${key}.zip`;
 
-	await mr.download(file.url, join(respacksDir(), zipName), file.hashes.sha512);
+	const sha512 = await download(file.url, join(respacksDir(), zipName), file.hashes);
 
 	const entry: PackEntry = {
 		file: zipName,
-		source: "modrinth",
-		modrinth: { projectId: project.id, slug: project.slug },
+		source: provider,
+		remote,
 		installed: {
 			versionId: version.id,
 			versionNumber: version.version_number,
-			sha512: file.hashes.sha512,
+			sha512,
 			gameVersions: version.game_versions,
 			publishedAt: version.date_published,
 		},
@@ -586,14 +590,15 @@ export interface RespackUpdate {
 	to: string;
 	versionId: string;
 	publishedAt: string;
-	sha512: string;
+	/** Hashes the provider published, verified on download */
+	hashes: AddonVersionFile["hashes"];
 	url: string;
 }
 
 /**
- * Check Modrinth for updates: channel-gated and downgrade-guarded by publish
- * date, exactly like plugin updates. Explicitly named packs are checked even
- * with auto-update off.
+ * Check the packs' providers for updates: channel-gated and downgrade-guarded
+ * by publish date, exactly like plugin updates. Explicitly named packs are
+ * checked even with auto-update off.
  */
 export async function checkResourcePackUpdates(
 	lock: PacksLock,
@@ -607,8 +612,8 @@ export async function checkResourcePackUpdates(
 			continue;
 		}
 
-		if (entry.source !== "modrinth" || !entry.modrinth) {
-			skipped.push({ key, reason: "not identified on modrinth" });
+		if (entry.source === "manual" || !entry.remote) {
+			skipped.push({ key, reason: "not identified with a provider" });
 
 			continue;
 		}
@@ -619,7 +624,7 @@ export async function checkResourcePackUpdates(
 			continue;
 		}
 
-		const versions = await mr.getVersions(entry.modrinth.projectId, mr.RESOURCEPACK_LOADERS);
+		const versions = await getVersions(entry.remote, "resourcepack");
 		const best = pickPackVersion(
 			versions,
 			entry.channel ?? "release",
@@ -630,9 +635,10 @@ export async function checkResourcePackUpdates(
 			continue;
 		}
 
-		const file = mr.primaryFile(best);
+		const file = primaryFile(best);
 
-		if (file.hashes.sha512 === entry.installed?.sha512) {
+		// a re-publish under the same bytes is no update (when the hash is known)
+		if (file.hashes.sha512 !== undefined && file.hashes.sha512 === entry.installed?.sha512) {
 			continue;
 		}
 
@@ -642,7 +648,7 @@ export async function checkResourcePackUpdates(
 			to: best.version_number,
 			versionId: best.id,
 			publishedAt: best.date_published,
-			sha512: file.hashes.sha512,
+			hashes: file.hashes,
 			url: file.url,
 		});
 	}
@@ -661,12 +667,12 @@ export async function applyResourcePackUpdate(
 		throw new Error(`unknown resource pack: ${update.key}`);
 	}
 
-	await mr.download(update.url, join(respacksDir(), entry.file), update.sha512);
+	const sha512 = await download(update.url, join(respacksDir(), entry.file), update.hashes ?? {});
 
 	entry.installed = {
 		versionId: update.versionId,
 		versionNumber: update.to,
-		sha512: update.sha512,
+		sha512,
 		publishedAt: update.publishedAt,
 	};
 }

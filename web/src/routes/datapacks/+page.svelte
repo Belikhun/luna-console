@@ -33,12 +33,13 @@
 		entry: {
 			file: string;
 			source: string;
-			modrinth?: { projectId: string; slug: string };
+			remote?: { provider: string; projectId: string; slug: string };
 			installed?: { versionNumber?: string; gameVersions?: string[] };
 			autoUpdate: boolean;
 			channel?: string;
 			targets: string[];
 		};
+		url?: string | null;
 		present: boolean;
 		sizeBytes: number;
 		effectiveTargets: string[];
@@ -186,6 +187,7 @@
 
 	let addOpen = $state(false);
 	let addSlug = $state('');
+	let addId = $state('');
 	let addTargets: string[] = $state([]);
 	let addProvider = $state('modrinth');
 
@@ -193,13 +195,19 @@
 	function openSearch(provider: string): void {
 		addProvider = provider;
 		addSlug = '';
+		addId = '';
 		addTargets = [];
 		addOpen = true;
 	}
 
 	const installPack = () =>
-		run('add', `Installing ${addSlug} from Modrinth…`, async (note) => {
-			const res = await post('/datapacks/add', { slug: addSlug, targets: addTargets });
+		run('add', `Installing ${addSlug} from ${addProvider}…`, async (note) => {
+			const res = await post('/datapacks/add', {
+				slug: addSlug,
+				id: addId || undefined,
+				provider: addProvider,
+				targets: addTargets
+			});
 
 			addOpen = false;
 
@@ -354,8 +362,8 @@
 			{
 				label: 'Check for update',
 				icon: 'download',
-				disabled: !row.entry.modrinth,
-				hint: !row.entry.modrinth ? 'not identified on modrinth' : undefined,
+				disabled: !row.entry.remote,
+				hint: !row.entry.remote ? 'not identified with a provider' : undefined,
 				action: () => checkUpdates([row.name])
 			},
 			{
@@ -364,12 +372,12 @@
 				action: () => goto('/addons/groups')
 			},
 			{
-				label: 'Open on Modrinth',
+				label: row.entry.remote ? `Open on ${row.entry.remote.provider}` : 'Open on provider',
 				icon: 'externalLink',
-				disabled: !row.entry.modrinth,
-				hint: !row.entry.modrinth ? 'not identified on modrinth' : undefined,
+				disabled: !row.url,
+				hint: !row.url ? 'not identified with a provider' : undefined,
 				action: () => {
-					window.open(`https://modrinth.com/datapack/${row.entry.modrinth!.slug}`, '_blank', 'noreferrer');
+					window.open(row.url!, '_blank', 'noreferrer');
 				}
 			},
 			{ separator: true },
@@ -484,13 +492,15 @@
 	</ResourceTable>
 </Panel>
 
-<!-- install from Modrinth -->
+<!-- install from a provider -->
 <Modal title="Install a data pack" bind:open={addOpen} wide>
 	<AddonPicker
 		endpoint="/datapacks/search"
+		kind="datapack"
 		bind:selected={addSlug}
 		bind:provider={addProvider}
 		placeholder="Search data packs by name…"
+		onpick={(hit) => (addId = hit?.project_id ?? '')}
 	/>
 	{#if addSlug}
 		<div class="tgtlbl">Deploy to instances</div>
@@ -623,6 +633,16 @@
 
 		&.modrinth {
 			color: var(--success);
+		}
+
+		// curseforge's own orange, readable on the dark panel
+		&.curseforge {
+			color: #f16436;
+		}
+
+		// smithed's plate blue, lifted enough to read on the dark panel
+		&.smithed {
+			color: #7da2f5;
 		}
 
 		&.manual {

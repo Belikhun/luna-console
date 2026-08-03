@@ -44,7 +44,8 @@
 		versionNumber?: string;
 		autoUpdate: boolean;
 		channel?: string;
-		modrinth?: { projectId: string; slug: string };
+		remote?: { provider: string; projectId: string; slug: string };
+		url?: string | null;
 		matched: string[];
 		groups: string[];
 		granted: string[];
@@ -56,7 +57,12 @@
 	let busy = $state('');
 	let selected: Set<string> = $state(new Set());
 
-	const one = $derived(packs.find((row) => selected.has(row.key)));
+	const selRows = $derived(packs.filter((row) => selected.has(row.key)));
+
+	/** "pack" / "3 packs" — how a verb names what it is about to act on. */
+	function packNoun(rows: PackRow[]): string {
+		return rows.length === 1 ? 'pack' : `${rows.length} packs`;
+	}
 
 	async function refresh(): Promise<void> {
 		loading = true;
@@ -119,14 +125,34 @@
 			note.set({ level: 'success', message: await sendReload(), closeable: true });
 		});
 
-	const setEnabled = (row: PackRow, enabled: boolean) =>
-		run(row.key, `${enabled ? 'Enabling' : 'Disabling'} ${row.key}…`, async (note) => {
-			await patch(`/respacks/${encodeURIComponent(row.key)}`, { enabled });
+	/**
+	 * Flip every named pack, then reload the proxy **once** — a selection of six
+	 * is one change to the catalog, not six. A pack that refuses is named in the
+	 * detail rather than aborting the rest.
+	 */
+	const setEnabledMany = (rows: PackRow[], enabled: boolean) =>
+		run('enabled', `${enabled ? 'Enabling' : 'Disabling'} ${packNoun(rows)}…`, async (note) => {
+			const failed: string[] = [];
+
+			for (const row of rows) {
+				try {
+					await patch(`/respacks/${encodeURIComponent(row.key)}`, { enabled });
+				} catch (err) {
+					failed.push(`${row.key}: ${(err as Error).message}`);
+				}
+			}
+
+			const done = rows.length - failed.length;
+			const verb = enabled ? 'enabled' : 'disabled';
+			const reload = done > 0 ? await sendReload() : '';
 
 			note.set({
-				level: 'success',
-				message: `${row.key} ${enabled ? 'enabled' : 'disabled'}`,
-				detail: await sendReload(),
+				level: failed.length === 0 ? 'success' : done > 0 ? 'warning' : 'error',
+				message:
+					failed.length === 0 && rows[0] && rows.length === 1
+						? `${rows[0].key} ${verb}`
+						: `${done} of ${rows.length} packs ${verb}`,
+				detail: [...failed, reload].filter(Boolean).join(' · '),
 				closeable: true
 			});
 		});
@@ -174,18 +200,24 @@
 
 	let addOpen = $state(false);
 	let addSlug = $state('');
+	let addId = $state('');
 	let addProvider = $state('modrinth');
 
 	/** Open the provider search on one provider, on a clean slate. */
 	function openSearch(provider: string): void {
 		addProvider = provider;
 		addSlug = '';
+		addId = '';
 		addOpen = true;
 	}
 
 	const installPack = () =>
-		run('add', `Installing ${addSlug} from Modrinth…`, async (note) => {
-			const res = await post('/respacks/add', { slug: addSlug });
+		run('add', `Installing ${addSlug} from ${addProvider}…`, async (note) => {
+			const res = await post('/respacks/add', {
+				slug: addSlug,
+				id: addId || undefined,
+				provider: addProvider
+			});
 
 			addOpen = false;
 
@@ -239,23 +271,34 @@
 	// -- remove dialog ----------------------------------------------------------------
 
 	let removeOpen = $state(false);
-	let removeTarget: PackRow | null = $state(null);
+	let removeTargets: PackRow[] = $state([]);
 	let removeKeepFile = $state(false);
 
 	const doRemove = () =>
-		run('remove', `Removing ${removeTarget?.key}…`, async (note) => {
-			await del(`/respacks/${encodeURIComponent(removeTarget!.key)}?keepFile=${removeKeepFile}`);
+		run('remove', `Removing ${packNoun(removeTargets)}…`, async (note) => {
+			const failed: string[] = [];
+			const gone: string[] = [];
+
+			for (const row of removeTargets) {
+				try {
+					await del(`/respacks/${encodeURIComponent(row.key)}?keepFile=${removeKeepFile}`);
+					gone.push(row.key);
+				} catch (err) {
+					failed.push(`${row.key}: ${(err as Error).message}`);
+				}
+			}
 
 			removeOpen = false;
 
 			note.set({
-				level: 'success',
-				message: `Removed ${removeTarget!.key}`,
-				detail: await sendReload(),
+				level: failed.length === 0 ? 'success' : gone.length ? 'warning' : 'error',
+				message: gone.length === 1 ? `Removed ${gone[0]}` : `Removed ${gone.length} packs`,
+				detail: [...failed, gone.length ? await sendReload() : ''].filter(Boolean).join(' · '),
 				closeable: true
 			});
 
-			removeTarget = null;
+			removeTargets = [];
+			selected = new Set();
 		});
 
 	// -- table ---------------------------------------------------------------------------
@@ -301,56 +344,99 @@
 		}
 	}
 
-	function rowActions(row: PackRow): ContextMenuItem[] {
+	/**
+	 * The verbs for a *selection* of packs — one declaration behind both the row's
+	 * context menu (a selection of one) and the screen's Actions dropdown. A verb
+	 * that only makes sense for a single pack disables itself with the reason
+	 * instead of the whole menu going dead the moment a second row is ticked, and
+	 * a bulk verb targets only the rows it applies to (enabling skips the ones
+	 * already enabled) so a mixed selection still has one obvious meaning.
+	 */
+	function packActions(rows: PackRow[]): ContextMenuItem[] {
+		const only = rows.length === 1 ? rows[0] : undefined;
+		const oneOnly = 'pick a single pack';
+
+		const toEnable = rows.filter((row) => !row.enabled);
+		const toDisable = rows.filter((row) => row.enabled);
+		const updatable = rows.filter((row) => row.remote);
+		const updTargets = updatable.length ? updatable : rows;
+
 		return [
 			{
 				label: 'Pack details',
 				icon: 'circleInfo',
-				action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
-			},
-			{
-				label: row.enabled ? 'Disable pack' : 'Enable pack',
-				icon: row.enabled ? 'toggleOff' : 'toggleOn',
-				action: () => setEnabled(row, !row.enabled)
+				disabled: !only,
+				hint: only ? undefined : oneOnly,
+				action: () => goto(`/packs/${encodeURIComponent(only!.key)}`)
 			},
 			{
 				label: 'Configure pack',
 				icon: 'pen',
-				action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
+				disabled: !only,
+				hint: only ? undefined : oneOnly,
+				action: () => goto(`/packs/${encodeURIComponent(only!.key)}/configure`)
+			},
+			{ separator: true },
+			{
+				label: `Enable ${packNoun(toEnable.length ? toEnable : rows)}`,
+				icon: 'toggleOn',
+				disabled: toEnable.length === 0,
+				hint: toEnable.length === 0 ? 'already enabled' : undefined,
+				action: () => setEnabledMany(toEnable, true)
 			},
 			{
-				label: 'Check for update',
-				icon: 'download',
-				disabled: !row.modrinth,
-				hint: !row.modrinth ? 'not identified on modrinth' : undefined,
-				action: () => checkUpdates([row.key])
+				label: `Disable ${packNoun(toDisable.length ? toDisable : rows)}`,
+				icon: 'toggleOff',
+				disabled: toDisable.length === 0,
+				hint: toDisable.length === 0 ? 'already disabled' : undefined,
+				action: () => setEnabledMany(toDisable, false)
 			},
+			{
+				label: updTargets.length === 1 ? 'Check for update' : `Check ${updTargets.length} packs for updates`,
+				icon: 'download',
+				disabled: updatable.length === 0,
+				hint: updatable.length === 0 ? 'not identified with a provider' : undefined,
+				action: () => checkUpdates(updatable.map((row) => row.key))
+			},
+			{ separator: true },
 			{
 				label: 'Manage addon groups',
 				icon: 'layerGroup',
 				action: () => goto('/addons/groups')
 			},
 			{
-				label: 'Open on Modrinth',
+				label: only?.remote ? `Open on ${only.remote.provider}` : 'Open on provider',
 				icon: 'externalLink',
-				disabled: !row.modrinth,
-				hint: !row.modrinth ? 'not identified on modrinth' : undefined,
+				disabled: !only?.url,
+				hint: !only ? oneOnly : !only.url ? 'not identified with a provider' : undefined,
 				action: () => {
-					window.open(`https://modrinth.com/resourcepack/${row.modrinth!.slug}`, '_blank', 'noreferrer');
+					window.open(only!.url!, '_blank', 'noreferrer');
 				}
 			},
 			{ separator: true },
 			{
-				label: 'Remove pack',
+				label: `Remove ${packNoun(rows)}`,
 				icon: 'trash',
 				color: 'danger',
 				action: () => {
-					removeTarget = row;
+					removeTargets = rows;
 					removeKeepFile = false;
 					removeOpen = true;
 				}
 			}
 		];
+	}
+
+	/**
+	 * Right-clicking inside a multi-row selection acts on the whole selection —
+	 * the highlight is a promise about what the next verb will touch, so the menu
+	 * has to keep it. Outside the selection, DataTable has already moved the
+	 * selection onto this row.
+	 */
+	function rowActions(row: PackRow): ContextMenuItem[] {
+		const inSelection = selected.has(row.key) && selected.size > 1;
+
+		return packActions(inSelection ? selRows : [row]);
 	}
 </script>
 
@@ -358,13 +444,19 @@
 
 <PageHeader
 	title="Resource packs"
-	count={packs.length}
+	count="{selected.size ? `${selected.size}/` : ''}{packs.length}"
 	description="Zips in <root>/packs served to players by the luna-pack proxy plugin — priority stacks them, server rules scope them, and a reload applies changes live"
 	info
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="respacks" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
+		<!-- the selection's verbs are the row's verbs — one declaration, two places
+		     to reach it (here and the row's context menu) -->
+		<Dropdown
+			label="Actions"
+			disabled={selRows.length === 0}
+			menu={selRows.length ? packActions(selRows) : []}
+		/>
 		<Btn icon="download" loading={busy === 'update'} disabled={!!busy} onclick={() => checkUpdates()}>
 			Check updates
 		</Btn>
@@ -398,7 +490,7 @@
 			`${row.key} ${row.name} ${row.source} ${row.servers.join(' ')} ` +
 			`${row.groups.join(' ')} ${row.versionNumber ?? ''}`}
 		searchPlaceholder="Find a resource pack"
-		selectable="single"
+		selectable="multi"
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.key}
@@ -468,13 +560,15 @@
 	</ResourceTable>
 </Panel>
 
-<!-- install from Modrinth -->
+<!-- install from a provider -->
 <Modal title="Install a resource pack" bind:open={addOpen} wide>
 	<AddonPicker
 		endpoint="/respacks/search"
+		kind="resourcepack"
 		bind:selected={addSlug}
 		bind:provider={addProvider}
 		placeholder="Search resource packs by name…"
+		onpick={(hit) => (addId = hit?.project_id ?? '')}
 	/>
 	<p class="dim after">
 		The pack is downloaded into <code>&lt;root&gt;/packs</code> and starts disabled — enable it and
@@ -510,11 +604,28 @@
 </Modal>
 
 <!-- remove -->
-<Modal title="Remove {removeTarget?.key}?" bind:open={removeOpen}>
+<Modal
+	title={removeTargets.length === 1
+		? `Remove ${removeTargets[0]?.key}?`
+		: `Remove ${removeTargets.length} resource packs?`}
+	bind:open={removeOpen}
+>
 	<p>
-		Removes the registration — the proxy stops serving <b>{removeTarget?.key}</b> after the next
-		reload.
+		Removes the registration — the proxy stops serving
+		{#if removeTargets.length === 1}
+			<b>{removeTargets[0]?.key}</b>
+		{:else}
+			these packs
+		{/if}
+		after the next reload.
 	</p>
+	{#if removeTargets.length > 1}
+		<ul class="targets">
+			{#each removeTargets as target (target.key)}
+				<li>{target.key}</li>
+			{/each}
+		</ul>
+	{/if}
 	<label class="checkrow">
 		<Checkbox
 			checked={removeKeepFile}
@@ -554,6 +665,13 @@
 		margin-bottom: 0.75rem;
 	}
 
+	// what a bulk removal is about to take, named one per line
+	.targets {
+		margin: 0 0 0.875rem;
+		padding-left: 1.25rem;
+		color: var(--text-heading);
+	}
+
 	.rules {
 		margin-right: 0.5rem;
 	}
@@ -564,6 +682,11 @@
 
 		&.modrinth {
 			color: var(--success);
+		}
+
+		// curseforge's own orange, readable on the dark panel
+		&.curseforge {
+			color: #f16436;
 		}
 
 		&.manual {

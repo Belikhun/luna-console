@@ -1,30 +1,33 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock } from '$core/config';
-import { deployDataPacks, installDataPackFromModrinth } from '$core/datapacks';
+import { deployDataPacks, installDataPackFromProvider } from '$core/datapacks';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
-import { getProject } from '$core/services/modrinth';
+import { getProject } from '$core/services/providers';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
+import type { ProviderId } from '$core/types';
 
 /**
- * POST { slug, targets?, channel? } → install a data pack from Modrinth and
- * deploy it. Targets may be empty: a pack can reach its instances through an
- * addon group instead, and then there is no MC version to gate the install on.
+ * POST { slug, targets?, channel?, provider?, id? } → install a data pack from
+ * a provider and deploy it. Targets may be empty: a pack can reach its
+ * instances through an addon group instead, and then there is no MC version to
+ * gate the install on.
  */
 export async function POST({ request }) {
 	const body = await request.json();
 	const cfg = await loadCluster();
 	const lock = await loadPacksLock();
-	const project = await getProject(body.slug);
+	const provider = (body.provider ?? 'modrinth') as ProviderId;
+	const project = await getProject(provider, body.id ?? body.slug, 'datapack');
 
 	if (!project) {
-		throw error(404, `modrinth project "${body.slug}" not found`);
+		throw error(404, `${provider} project "${body.slug ?? body.id}" not found`);
 	}
 
 	const targets = Array.isArray(body.targets) ? body.targets.map(String) : [];
 
 	try {
-		const res = await installDataPackFromModrinth(cfg, lock, project, targets, {
+		const res = await installDataPackFromProvider(cfg, lock, provider, project, targets, {
 			channel: body.channel
 		});
 

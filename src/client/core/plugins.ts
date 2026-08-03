@@ -35,7 +35,7 @@ export const checkUpdates = call("plugins.checkUpdates", { cfg: 0, lock: 1 }) as
 export const applyUpdate = call("plugins.applyUpdate", { lock: 0 }) as typeof core.applyUpdate;
 export const pinVersion = call("plugins.pinVersion", { cfg: 0, lock: 1 }) as typeof core.pinVersion;
 export const ensureVariantForMc = call("plugins.ensureVariantForMc", { lock: 0 }) as typeof core.ensureVariantForMc;
-export const installFromModrinth = call("plugins.installFromModrinth", { cfg: 0, lock: 1 }) as typeof core.installFromModrinth;
+export const installFromProvider = call("plugins.installFromProvider", { cfg: 0, lock: 1 }) as typeof core.installFromProvider;
 export const adopt = call("plugins.adopt", { cfg: 0, lock: 1 }) as typeof core.adopt;
 // an uploaded jar is written into the pool, so it crosses to the daemon whole
 export const uploadJar = call("plugins.uploadJar", { cfg: 0, lock: 1 }) as typeof core.uploadJar;

@@ -22,7 +22,7 @@ import { localBinaryMeta, localBinaryPath } from "./upgrade";
 import { BUILD_AT, COMMIT, VERSION, buildPlatform, buildVersion } from "../version";
 
 /** Local API protocol revision — clients refuse to talk across a mismatch. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** How often the fleet health stream emits. Matches the heartbeat cadence. */
 const DAEMON_STREAM_MS = 5_000;

@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { addonDirForFamily, loadCluster, loadLock, saveLock } from '$core/config';
 import { effectiveTargets, familyOf, pluginNameOf } from '$core/families';
+import { projectTypeFor } from '$core/plugins';
 import { displayNameOf, ensureAliases } from '$core/pluginstate';
+import { projectUrl } from '$core/services/providers';
 
 /**
  * GET ?kind=plugins|mods → the addon universe grouped by identity: one row per
@@ -58,7 +60,8 @@ export async function GET({ url }) {
 			channel: entry.channel ?? 'release',
 			version: entry.installed?.versionNumber ?? null,
 			gameVersions: entry.installed?.gameVersions ?? null,
-			modrinth: entry.modrinth ?? null,
+			remote: entry.remote ?? null,
+			url: entry.remote ? projectUrl(entry.remote, projectTypeFor(familyOf(entry))) : null,
 			targets: entry.targets,
 			effective,
 			variants: Object.values(entry.variants ?? {}).map((variant) => ({

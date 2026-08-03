@@ -1,11 +1,14 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock, managedInstances } from '$core/config';
+import { familyOf } from '$core/families';
+import { projectTypeFor } from '$core/plugins';
 import {
 	aliasesOf,
 	ensureAliases,
 	instancePluginReport,
 	pluginLogReport
 } from '$core/pluginstate';
+import { projectUrl } from '$core/services/providers';
 
 /**
  * GET → one plugin on one instance: its report row (state, version, origin) plus
@@ -37,7 +40,10 @@ export async function GET({ params }) {
 		row,
 		aliases: aliasesOf(row.key, entry),
 		meta: entry.meta ?? null,
-		modrinth: entry.modrinth ?? null,
+		remote: entry.remote ?? null,
+		url: entry.remote
+			? projectUrl(entry.remote, projectTypeFor(familyOf(entry)))
+			: null,
 		channel: entry.channel ?? 'release',
 		sessionComplete: session.complete,
 		log: {

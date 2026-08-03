@@ -5,24 +5,31 @@
 	import Btn from './Btn.svelte';
 	import SearchInput from './SearchInput.svelte';
 	import BrandIcon from './BrandIcon.svelte';
-	import { ADDON_PROVIDERS, type AddonHit } from './addons';
+	import {
+		ADDON_PROVIDERS,
+		providerAvailability,
+		type AddonHit,
+		type AddonKindType,
+		type AddonProvider
+	} from './addons';
 
 	/**
 	 * The provider-search half of every install dialog: the provider tabs, a
 	 * query row (with an optional extra control, e.g. the plugin loader), and a
 	 * results list that always shows *some* state — idle, searching, failed,
 	 * nothing found, or hits. One project is picked at a time; the caller reads
-	 * the slug.
+	 * the slug (and the id, for providers whose slug alone cannot be looked up).
 	 *
 	 * Searching happens on Enter, on the button, and — debounced — as the query
 	 * is typed, so the dialog answers without a deliberate second click.
 	 *
-	 * Only Modrinth answers today. The others are tabs that say so rather than
-	 * absences the operator has to guess about; wiring one up means a search
-	 * route for it and flipping `available` in `addons.ts`.
+	 * The tabs are the providers hosting this `kind` of addon; whether each is
+	 * usable right now comes from the daemon (`/api/providers`) — CurseForge
+	 * stays greyed with the reason until an API key is configured.
 	 */
 	let {
 		endpoint,
+		kind = 'plugin',
 		params = {},
 		selected = $bindable(''),
 		provider = $bindable('modrinth'),
@@ -32,6 +39,8 @@
 	}: {
 		/** Console API path answering `{ hits }`, e.g. "/plugins/search" */
 		endpoint: string;
+		/** Addon type being installed — filters which provider tabs appear */
+		kind?: AddonKindType;
 		/** Extra query parameters merged into every request */
 		params?: Record<string, string>;
 		/** Slug of the picked project; empty when nothing is selected */
@@ -45,9 +54,18 @@
 		onpick?: (hit: AddonHit | undefined) => void;
 	} = $props();
 
-	const current = $derived(
-		ADDON_PROVIDERS.find((entry) => entry.id === provider) ?? ADDON_PROVIDERS[0]!
+	let providers: AddonProvider[] = $state(
+		ADDON_PROVIDERS.filter((entry) => entry.types.includes(kind))
 	);
+
+	// overlay the daemon's live availability once it answers
+	$effect(() => {
+		providerAvailability().then((list) => {
+			providers = list.filter((entry) => entry.types.includes(kind));
+		});
+	});
+
+	const current = $derived(providers.find((entry) => entry.id === provider) ?? providers[0]!);
 
 	let query = $state('');
 	let hits: AddonHit[] = $state([]);
@@ -73,7 +91,7 @@
 			return;
 		}
 
-		const qs = `${new URLSearchParams({ q: term, ...params })}`;
+		const qs = `${new URLSearchParams({ q: term, provider: current.id, ...params })}`;
 
 		inflight = qs;
 		searching = true;
@@ -148,7 +166,7 @@
 
 <div class="picker">
 	<div class="tabs" role="tablist">
-		{#each ADDON_PROVIDERS as entry (entry.id)}
+		{#each providers as entry (entry.id)}
 			<button
 				type="button"
 				role="tab"
@@ -161,7 +179,7 @@
 			>
 				<BrandIcon name={entry.id} size="0.875rem" />
 				{entry.label}
-				{#if !entry.available}<span class="badge">soon</span>{/if}
+				{#if !entry.available}<span class="badge">off</span>{/if}
 			</button>
 		{/each}
 	</div>
@@ -192,8 +210,8 @@
 			<div class="state">
 				<BrandIcon name={current.id} size="1.25rem" />
 				<span class="dim">
-					{current.label} is {current.note ?? 'not available'} — install from Modrinth, or upload
-					the file yourself.
+					{current.label} is not available — {current.note ?? 'not connected yet'}. Install from
+					another provider, or upload the file yourself.
 				</span>
 			</div>
 		{:else if failed}

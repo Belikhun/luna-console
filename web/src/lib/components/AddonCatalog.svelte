@@ -10,7 +10,11 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import SplitBtn from '$lib/components/SplitBtn.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
-	import { ADDON_PROVIDERS } from '$lib/components/addons';
+	import {
+		ADDON_PROVIDERS,
+		providerAvailability,
+		type AddonProvider
+	} from '$lib/components/addons';
 	import Panel from '$lib/components/Panel.svelte';
 	import AddonPicker from '$lib/components/AddonPicker.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -45,8 +49,20 @@
 	let addOpen = $state(false);
 	let addFamily = $state<AddonFamily>('paper');
 	let addSlug = $state('');
+	let addId = $state('');
 	let addTargets: string[] = $state([]);
 	let addProvider = $state('modrinth');
+
+	// the Install split-button's provider menu, with live availability
+	let installProviders: AddonProvider[] = $state(
+		ADDON_PROVIDERS.filter((entry) => entry.types.includes(spec.type))
+	);
+
+	$effect(() => {
+		providerAvailability().then((list) => {
+			installProviders = list.filter((entry) => entry.types.includes(spec.type));
+		});
+	});
 
 	let uploadOpen = $state(false);
 	let uploadFile: File | null = $state(null);
@@ -69,11 +85,11 @@
 			label: 'Filter source',
 			options: [
 				{ value: 'any', label: 'Any source' },
-				{
-					value: 'modrinth',
-					label: 'Modrinth managed',
-					match: (row) => row.sources.includes('modrinth')
-				},
+				...spec.sources.map((source) => ({
+					value: source,
+					label: `${ADDON_PROVIDERS.find((entry) => entry.id === source)?.label ?? source} managed`,
+					match: (row: AddonRow) => row.sources.includes(source)
+				})),
 				{ value: 'luna', label: 'Luna in-house', match: (row) => row.sources.includes('luna') },
 				{
 					value: 'manual',
@@ -287,9 +303,11 @@
 		});
 
 	const installAddon = () =>
-		run('add', `Installing ${addSlug} from Modrinth…`, async (note) => {
+		run('add', `Installing ${addSlug} from ${addProvider}…`, async (note) => {
 			const res = await post('/plugins/add', {
 				slug: addSlug,
+				id: addId || undefined,
+				provider: addProvider,
 				family: addFamily,
 				targets: addTargets
 			});
@@ -340,6 +358,7 @@
 		addProvider = provider;
 		addOpen = true;
 		addSlug = '';
+		addId = '';
 		addTargets = [];
 	}
 
@@ -387,7 +406,11 @@
 
 	/** An addon's verbs — the row menu and the toolbar's Actions button. */
 	function rowActions(row: AddonRow): ContextMenuItem[] {
-		const modrinth = row.families.find((family) => family.modrinth);
+		const linked = row.families.find((family) => family.url);
+		const providerLabel = linked?.remote
+			? (ADDON_PROVIDERS.find((entry) => entry.id === linked.remote!.provider)?.label ??
+				linked.remote.provider)
+			: 'provider';
 
 		return [
 			{
@@ -406,15 +429,11 @@
 				action: () => toggleAutoUpdate(row)
 			},
 			{
-				label: 'Open on Modrinth',
+				label: `Open on ${providerLabel}`,
 				icon: 'externalLink',
-				disabled: !modrinth,
+				disabled: !linked,
 				action: () => {
-					window.open(
-						`https://modrinth.com/${spec.modrinthPath}/${modrinth!.modrinth!.slug}`,
-						'_blank',
-						'noreferrer'
-					);
+					window.open(linked!.url!, '_blank', 'noreferrer');
 				}
 			},
 			{ separator: true },
@@ -462,7 +481,7 @@
 			icon="upload"
 			primary
 			onclick={() => (uploadOpen = true)}
-			menu={ADDON_PROVIDERS.map((entry) => ({
+			menu={installProviders.map((entry) => ({
 				label: `Search ${entry.label}`,
 				brand: entry.id,
 				disabled: !entry.available,
@@ -541,7 +560,7 @@
 							)
 						].join(', ')}
 					</span>
-				{:else if checked && row.sources.includes('modrinth')}
+				{:else if checked && row.sources.some((source) => spec.sources.includes(source))}
 					<span class="dim">current</span>
 				{:else}
 					<span class="dim">–</span>
@@ -562,10 +581,12 @@
 <Modal title="Install a {spec.noun}" bind:open={addOpen} wide>
 	<AddonPicker
 		endpoint="/plugins/search"
+		kind={spec.type}
 		params={{ family: addFamily }}
 		bind:selected={addSlug}
 		bind:provider={addProvider}
 		placeholder="Search {spec.plural} by name…"
+		onpick={(hit) => (addId = hit?.project_id ?? '')}
 	>
 		{#snippet toolbar()}
 			{#if spec.families.length > 1}
@@ -684,6 +705,20 @@
 
 		&.modrinth {
 			color: var(--success);
+		}
+
+		// curseforge's own orange, readable on the dark panel
+		&.curseforge {
+			color: #f16436;
+		}
+
+		&.hangar {
+			color: var(--info);
+		}
+
+		// smithed's plate blue, lifted enough to read on the dark panel
+		&.smithed {
+			color: #7da2f5;
 		}
 
 		&.luna {

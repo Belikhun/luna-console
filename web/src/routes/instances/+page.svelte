@@ -526,7 +526,7 @@
 				rowLabel={(row) => row.name}
 				noun="instance"
 				{sortValue}
-				rowDim={(row) => !!row.externalOnly}
+				rowLocked={(row) => !!row.externalOnly}
 				{filters}
 				pageSize={25}
 				emptyTitle="No instances registered"

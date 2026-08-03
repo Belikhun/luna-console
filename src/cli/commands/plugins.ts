@@ -26,15 +26,25 @@ import {
 	removeInstanceJars,
 } from "../../client/core/pluginstate";
 import { standardizeNaming } from "../../client/core/standardize";
-import * as mr from "../../client/core/services/modrinth";
+import * as providers from "../../client/core/services/providers";
 import { getAllStatuses } from "../../client/core/instances";
 import { ensurePortAllocations } from "../../client/core/ports";
+import { parseProvider } from "./packs";
 
 /** Coloured label for a lock entry's source. */
 function sourceBadge(source: string): string {
 	switch (source) {
 		case "modrinth":
 			return pc.green("modrinth");
+
+		case "curseforge":
+			return pc.redBright("curseforge");
+
+		case "hangar":
+			return pc.blue("hangar");
+
+		case "smithed":
+			return pc.cyan("smithed");
 
 		case "luna":
 			return pc.magenta("luna");
@@ -244,13 +254,13 @@ function renderCandidates(candidates: plugins.UpdateCandidate[]): {
 
 command({
 	path: ["plugins", "check"],
-	desc: "Check Modrinth for updates (per-instance version resolution)",
+	desc: "Check providers for updates (per-instance version resolution)",
 	args: [{ name: "plugin", variadic: true, complete: pluginNames }],
 
 	handler: async (args) => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
-		const spin = new Spinner().start("checking Modrinth for updates...");
+		const spin = new Spinner().start("checking providers for updates...");
 
 		const { candidates, skipped } = await plugins.checkUpdates(
 			cfg,
@@ -297,7 +307,7 @@ command({
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
-		const spin = new Spinner().start("checking Modrinth for updates...");
+		const spin = new Spinner().start("checking providers for updates...");
 
 		const { candidates } = await plugins.checkUpdates(cfg, lock, args.length ? args : undefined);
 		const updatable = candidates.filter((cand) => cand.pendingGroups.length);
@@ -409,7 +419,7 @@ command({
 
 command({
 	path: ["plugins", "add"],
-	desc: "Install a plugin or mod from Modrinth (slug, or search query)",
+	desc: "Install a plugin or mod from a provider (slug, or search query)",
 	args: [{ name: "slug-or-query", required: true, variadic: true }],
 	opts: [
 		{
@@ -421,6 +431,12 @@ command({
 		{ flag: "--pool", desc: "pool the jar only — deploy it nowhere yet" },
 		{ flag: "--velocity", desc: "install the velocity variant" },
 		{ flag: "--neoforge", desc: "install the neoforge mod (searches mods, not plugins)" },
+		{
+			flag: "--provider",
+			desc: "where to install from: modrinth (default), curseforge or hangar",
+			value: true,
+			complete: async () => ["modrinth", "curseforge", "hangar"],
+		},
 	],
 
 	handler: async (args, opts) => {
@@ -438,17 +454,20 @@ command({
 				? "velocity"
 				: "paper";
 
-		const spin = new Spinner().start(`resolving "${query}" on Modrinth...`);
+		const provider = parseProvider(opts.provider as string | undefined);
+		const type = plugins.projectTypeFor(family);
+		const spin = new Spinner().start(`resolving "${query}" on ${provider}...`);
 
-		let project = await mr.getProject(query);
+		let project = await providers.getProject(provider, query, type);
 
 		spin.stop();
 
 		// not a slug — fall back to search and let the user pick
 		if (!project) {
-			const hits = await mr.searchProjects(
+			const hits = await providers.searchProvider(
+				provider,
 				query,
-				plugins.projectTypeFor(family),
+				type,
 				plugins.loadersFor(family),
 			);
 
@@ -461,7 +480,7 @@ command({
 			const picked = await select({
 				message: family === "neoforge" ? "Select a mod" : "Select a plugin",
 				options: hits.map((hit) => ({
-					value: hit.slug,
+					value: hit.project_id,
 					label: hit.title,
 					hint: `${hit.downloads.toLocaleString()} downloads — ${hit.description.slice(0, 60)}`,
 				})),
@@ -473,7 +492,7 @@ command({
 				return;
 			}
 
-			project = (await mr.getProject(picked as string))!;
+			project = (await providers.getProject(provider, picked as string, type))!;
 		}
 
 		const targets = opts.pool ? [] : await parseTargets(opts.to as string | undefined);
@@ -481,7 +500,7 @@ command({
 		expandTargets(cfg, targets); // validate
 
 		const installSpinner = new Spinner().start(`installing ${project.title}...`);
-		const res = await plugins.installFromModrinth(cfg, lock, project, family, targets);
+		const res = await plugins.installFromProvider(cfg, lock, provider, project, family, targets);
 
 		await saveLock(lock);
 		installSpinner.stop();
@@ -722,12 +741,15 @@ command({
 		printTable([
 			["file", entry.file],
 			["source", sourceBadge(entry.source)],
-			["loader", entry.loader],
+			["family", familyOf(entry)],
 			["auto-update", entry.autoUpdate ? pc.green("on") : pc.yellow("off")],
 			["channel", entry.channel ?? "release"],
 			["targets", entry.targets.join(",")],
-			...(entry.modrinth
-				? [["modrinth", `https://modrinth.com/plugin/${entry.modrinth.slug}`]]
+			...(entry.remote
+				? [[
+						entry.remote.provider,
+						providers.projectUrl(entry.remote, plugins.projectTypeFor(familyOf(entry))),
+					]]
 				: []),
 		]);
 

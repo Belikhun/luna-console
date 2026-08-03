@@ -38,6 +38,7 @@ import * as templatesCore from "../core/templates";
 import * as lunaApi from "../core/services/luna";
 import * as modrinth from "../core/services/modrinth";
 import * as papermc from "../core/services/papermc";
+import * as providers from "../core/services/providers";
 
 import * as events from "./events";
 import * as health from "./health";
@@ -653,7 +654,7 @@ export const OPS: Record<string, OpSpec> = {
 	"plugins.pinVersion": { fn: pluginsCore.pinVersion, cfg: 0, lock: 1 },
 	"plugins.ensureVariantForMc": { fn: pluginsCore.ensureVariantForMc, lock: 0 },
 	"plugins.deploy": { fn: deployRouted, cfg: 0, lock: 1, reporter: { arg: 2, prop: "reporter" } },
-	"plugins.installFromModrinth": { fn: pluginsCore.installFromModrinth, cfg: 0, lock: 1 },
+	"plugins.installFromProvider": { fn: pluginsCore.installFromProvider, cfg: 0, lock: 1 },
 	"plugins.adopt": { fn: pluginsCore.adopt, cfg: 0, lock: 1, instance: 2 },
 	"plugins.uploadJar": { fn: pluginsCore.uploadJar, cfg: 0, lock: 1 },
 	"plugins.removePlugin": { fn: pluginsCore.removePlugin, cfg: 0, lock: 1 },
@@ -670,7 +671,7 @@ export const OPS: Record<string, OpSpec> = {
 	"respacks.listResourcePacks": { fn: respacksCore.listResourcePacks, cfg: 0, lock: 1 },
 	"respacks.updateResourcePack": { fn: respacksCore.updateResourcePack, cfg: 0, lock: 1 },
 	"respacks.addResourcePackFile": { fn: respacksCore.addResourcePackFile, cfg: 0, lock: 1 },
-	"respacks.installFromModrinth": { fn: respacksCore.installResourcePackFromModrinth, cfg: 0, lock: 1 },
+	"respacks.installFromProvider": { fn: respacksCore.installResourcePackFromProvider, cfg: 0, lock: 1 },
 	"respacks.checkUpdates": { fn: respacksCore.checkResourcePackUpdates, lock: 0 },
 	"respacks.applyUpdate": { fn: respacksCore.applyResourcePackUpdate, lock: 0 },
 	"respacks.removeResourcePack": { fn: respacksCore.removeResourcePack, cfg: 0, lock: 1 },
@@ -695,7 +696,7 @@ export const OPS: Record<string, OpSpec> = {
 		lock: 1,
 		reporter: { arg: 2, prop: "reporter" },
 	},
-	"datapacks.installFromModrinth": { fn: datapacksCore.installDataPackFromModrinth, cfg: 0, lock: 1 },
+	"datapacks.installFromProvider": { fn: datapacksCore.installDataPackFromProvider, cfg: 0, lock: 1 },
 	"datapacks.checkUpdates": { fn: datapacksCore.checkDataPackUpdates, cfg: 0, lock: 1 },
 	"datapacks.applyUpdate": { fn: datapacksCore.applyDataPackUpdate, lock: 0 },
 	"datapacks.addFile": { fn: datapacksCore.addDataPackFile, cfg: 0, lock: 1 },
@@ -713,7 +714,7 @@ export const OPS: Record<string, OpSpec> = {
 	// reads both lockfiles and renames files inside the instance, so it runs on
 	// the owner; the lockfile half is pure and stays with the caller
 	"addons.adoptInstanceAddons": { fn: addonsCore.adoptInstanceAddons, cfg: 0, instance: 3 },
-	"modrinth.searchProjects": { fn: modrinth.searchProjects },
+	"providers.search": { fn: providers.searchProvider },
 
 	// -- plugin runtime state ---------------------------------------------------
 	"pluginstate.ensureAliases": { fn: pluginstateCore.ensureAliases, lock: 0 },
@@ -780,9 +781,9 @@ export const OPS: Record<string, OpSpec> = {
 
 	// -- external services ---------------------------------------------------------------
 	"modrinth.lookupByHash": { fn: modrinth.lookupByHash },
-	"modrinth.getProject": { fn: modrinth.getProject },
-	"modrinth.getVersions": { fn: modrinth.getVersions },
-	"modrinth.search": { fn: modrinth.search },
+	"providers.status": { fn: providers.providerStatus },
+	"providers.getProject": { fn: providers.getProject },
+	"providers.getVersions": { fn: providers.getVersions },
 	"papermc.latestBuild": { fn: papermc.latestBuild },
 	"papermc.listVersions": { fn: papermc.listVersions },
 	"lunaApi.dashboard": { fn: lunaApi.dashboard },

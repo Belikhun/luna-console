@@ -1,11 +1,11 @@
 import { join } from "node:path";
 
-import type { ClusterConfig, PluginEntry, PluginsLock, PortBindingSpec } from "./types";
+import type { ClusterConfig, PluginEntry, PluginFamily, PluginsLock, PortBindingSpec } from "./types";
 import { instanceDir, managedInstances } from "./config";
 import { effectiveTargets } from "./families";
 import { getConfValue, setConfValue } from "./confedit";
 
-/** Built-in port binding presets for known plugins, keyed by "<modrinth-slug>:<loader>". */
+/** Built-in port binding presets for known plugins, keyed by "<provider-slug>:<side>". */
 export const PORT_PRESETS: Record<string, PortBindingSpec[]> = {
 	"simple-voice-chat:paper": [
 		{
@@ -54,18 +54,21 @@ export const PORT_PRESETS: Record<string, PortBindingSpec[]> = {
 /** Port specs for a lock entry: explicit declaration wins, then slug+loader preset. */
 export function portSpecsFor(entry: {
 	ports?: PortBindingSpec[];
-	modrinth?: { slug: string };
-	loader: string;
+	remote?: { slug: string };
+	family: PluginFamily;
 }): PortBindingSpec[] | undefined {
 	if (entry.ports) {
 		return entry.ports;
 	}
 
-	if (!entry.modrinth) {
+	if (!entry.remote) {
 		return undefined;
 	}
 
-	return PORT_PRESETS[`${entry.modrinth.slug}:${entry.loader}`];
+	// preset keys name concrete sides; a universal build binds on the paper side
+	const side = entry.family === "universal" ? "paper" : entry.family;
+
+	return PORT_PRESETS[`${entry.remote.slug}:${side}`];
 }
 
 export interface PortRow {

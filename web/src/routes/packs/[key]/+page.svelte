@@ -246,8 +246,8 @@
 			{
 				label: 'Check for update',
 				icon: 'download',
-				disabled: !pack.modrinth || !!busy,
-				hint: !pack.modrinth ? 'not identified on modrinth' : undefined,
+				disabled: !pack.remote || !!busy,
+				hint: !pack.remote ? 'not identified with a provider' : undefined,
 				action: checkUpdate
 			},
 			{
@@ -268,16 +268,12 @@
 				action: () => goto('/addons/groups')
 			},
 			{
-				label: 'Open on Modrinth',
+				label: pack.remote ? `Open on ${pack.remote.provider}` : 'Open on provider',
 				icon: 'externalLink',
-				disabled: !pack.modrinth,
-				hint: !pack.modrinth ? 'not identified on modrinth' : undefined,
+				disabled: !pack.providerUrl,
+				hint: !pack.providerUrl ? 'not identified with a provider' : undefined,
 				action: () => {
-					window.open(
-						`https://modrinth.com/resourcepack/${pack.modrinth.slug}`,
-						'_blank',
-						'noreferrer'
-					);
+					window.open(pack.providerUrl, '_blank', 'noreferrer');
 				}
 			},
 			{ separator: true },
@@ -317,7 +313,7 @@
 			{ label: 'Version', value: pack.versionNumber ?? null, style: 'mono' },
 			{
 				label: 'Auto-update',
-				value: pack.modrinth ? `${pack.autoUpdate ? 'on' : 'off'} (${pack.channel ?? 'release'})` : null
+				value: pack.remote ? `${pack.autoUpdate ? 'on' : 'off'} (${pack.channel ?? 'release'})` : null
 			},
 			{ id: 'groups', label: 'Addon groups' },
 			{
@@ -604,10 +600,10 @@
 							<InfoGrid cells={metaCells}>
 								{#snippet custom(cell)}
 									{#if cell.id === 'source'}
-										{#if pack.modrinth}
+										{#if pack.providerUrl}
 											<a
 												class="brandlink"
-												href="https://modrinth.com/resourcepack/{pack.modrinth.slug}"
+												href={pack.providerUrl}
 												target="_blank"
 												rel="noreferrer"
 											>

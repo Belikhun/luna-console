@@ -1,7 +1,8 @@
 import { json, error } from '@sveltejs/kit';
-import { searchProjects } from '$core/services/modrinth';
+import { searchProvider } from '$core/services/providers';
+import type { ProviderId } from '$core/types';
 
-/** GET ?q= — Modrinth data pack search for the install dialog. */
+/** GET ?q=&provider= — data pack search for the install dialog. */
 export async function GET({ url }) {
 	const query = url.searchParams.get('q');
 
@@ -9,5 +10,11 @@ export async function GET({ url }) {
 		throw error(400, 'q required');
 	}
 
-	return json({ hits: await searchProjects(query, 'datapack') });
+	const provider = (url.searchParams.get('provider') ?? 'modrinth') as ProviderId;
+
+	try {
+		return json({ hits: await searchProvider(provider, query, 'datapack') });
+	} catch (err) {
+		throw error(400, err instanceof Error ? err.message : String(err));
+	}
 }

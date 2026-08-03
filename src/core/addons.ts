@@ -28,7 +28,7 @@ import type { PacksLock } from "./packslock";
 import { identityFromFile, instanceAddonDir } from "./plugins";
 import type { ProgressReporter } from "./progress";
 import { reloadResourcePacks, syncResourcePackGroups } from "./respacks";
-import * as mr from "./services/modrinth";
+import { sha512File } from "./services/download";
 import type { AddonGroup, ClusterConfig, PluginsLock } from "./types";
 
 /** What applying the groups' pack membership changed. */
@@ -184,7 +184,7 @@ export async function adoptInstanceAddons(
 		const jars = (await readdir(addonDir)).filter((file) => file.toLowerCase().endsWith(".jar"));
 
 		for (const file of jars.sort()) {
-			const hash = await mr.sha512File(join(addonDir, file));
+			const hash = await sha512File(join(addonDir, file));
 			const match = matchPooledJar(lock, dir, file, hash);
 
 			if (!match) {
@@ -222,7 +222,7 @@ export async function adoptInstanceAddons(
 			const worldRel = relative(instanceDir(inst), worldDir);
 
 			for (const file of zips.sort()) {
-				const hash = await mr.sha512File(join(worldDir, file));
+				const hash = await sha512File(join(worldDir, file));
 
 				const match = Object.entries(packs.datapacks).find(
 					([, entry]) =>

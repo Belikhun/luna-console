@@ -18,7 +18,7 @@ import { instanceDir, managedInstances, poolDir } from "./config";
 import type { ProgressReporter } from "./progress";
 import { effectiveTargets } from "./families";
 import { entryNameFor } from "./plugins";
-import * as mr from "./services/modrinth";
+import { sha512File } from "./services/download";
 
 /** Platforms whose artifacts are pooled for this cluster. */
 export const LUNA_PLATFORMS = ["paper", "velocity", "neoforge"] as const;
@@ -295,7 +295,7 @@ export async function artifacts(source: Required<LunaSourceConfig>): Promise<Lun
 			file: module.file,
 			poolFile: module.poolFile!,
 			path,
-			sha512: await mr.sha512File(path),
+			sha512: await sha512File(path),
 			sizeBytes: info.size,
 			builtAt: info.mtime,
 		});
@@ -362,7 +362,7 @@ export async function sync(
 	for (const artifact of built) {
 		const name = entryNameFor(artifact.poolFile);
 		const target = join(pool, artifact.poolFile);
-		const pooled = existsSync(target) ? await mr.sha512File(target) : undefined;
+		const pooled = existsSync(target) ? await sha512File(target) : undefined;
 
 		let entry = lock.plugins[name];
 		let action: SyncAction = pooled === artifact.sha512 ? "unchanged" : pooled ? "updated" : "pooled";
@@ -373,12 +373,12 @@ export async function sync(
 			entry = {
 				file: artifact.poolFile,
 				source: "luna",
-				loader:
-					artifact.platform === "velocity" || artifact.platform === "neoforge"
+				plugin: identity?.[1] ?? name,
+				family:
+					(identity?.[2] as PluginEntry["family"] | undefined) ??
+					(artifact.platform === "velocity" || artifact.platform === "neoforge"
 						? artifact.platform
-						: "paper",
-				plugin: identity?.[1],
-				family: identity?.[2] as PluginEntry["family"],
+						: "paper"),
 				autoUpdate: false,
 				targets: [],
 			};
@@ -500,7 +500,7 @@ export async function status(
 
 			const deployed = join(plugDir, entry.file);
 
-			if (!existsSync(deployed) || (await mr.sha512File(deployed)) !== pooledHash) {
+			if (!existsSync(deployed) || (await sha512File(deployed)) !== pooledHash) {
 				drifted.push(target);
 			}
 		}

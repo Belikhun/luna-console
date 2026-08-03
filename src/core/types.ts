@@ -41,11 +41,8 @@ export interface InstanceConfig {
 	/** Plugin port allocations, key = "<plugin>/<portId>" */
 	ports?: Record<string, number>;
 	/** Addon groups applied to this instance ("default" is always applied, never
-	 *  listed). Read through `instanceGroupNames`, which also accepts the legacy
-	 *  `pluginGroups` key this field was migrated from. */
+	 *  listed). Read through `instanceGroupNames`. */
 	addonGroups?: string[];
-	/** @deprecated pre-addon-group name for `addonGroups`; migrated on load */
-	pluginGroups?: string[];
 	/** Per-instance plugin overrides, plugin name → enabled. `true` force-adds the
 	 *  plugin regardless of groups; `false` disables it even when a group (or an
 	 *  explicit lockfile target) provides it. Overrides win over groups. */
@@ -96,7 +93,23 @@ export interface ClusterConfig {
 	daemons?: Record<string, DaemonRegistration>;
 }
 
-export type PluginSource = "modrinth" | "luna" | "manual";
+/** An upstream platform luna can install addons from (core/services/providers.ts). */
+export type ProviderId = "modrinth" | "curseforge" | "hangar" | "smithed";
+
+/**
+ * Where a provider-sourced entry installs and updates from. `projectId` is the
+ * provider's immutable identity (Modrinth project id, CurseForge mod id,
+ * Hangar numeric id, Smithed docId); `slug` is the human name used in URLs.
+ */
+export interface RemoteRef {
+	provider: ProviderId;
+	projectId: string;
+	slug: string;
+	/** Hangar only: the project's owner, half of its web URL */
+	owner?: string;
+}
+
+export type PluginSource = ProviderId | "luna" | "manual";
 
 /** Platform a plugin build runs on. "universal" jars load on paper and velocity alike. */
 export type PluginFamily = "paper" | "velocity" | "universal" | "neoforge";
@@ -191,12 +204,10 @@ export interface PluginEntry {
 	/** File name in the common pool (the primary/newest version) */
 	file: string;
 	source: PluginSource;
-	/** @deprecated pre-family spelling of `family`; still the fallback for v1 entries */
-	loader: "paper" | "velocity" | "neoforge";
 	/** Plugin name this build belongs to (several entries share one); defaults to the entry key */
 	plugin?: string;
-	/** Platform this build runs on; defaults to `loader` */
-	family?: PluginFamily;
+	/** Platform this build runs on */
+	family: PluginFamily;
 	/** Names this build goes by in server logs (plugin.yml `name`, velocity id/name).
 	 *  First entry is the display name. Extracted from the pool jar on demand. */
 	aliases?: string[];
@@ -205,7 +216,8 @@ export interface PluginEntry {
 	meta?: PluginMeta;
 	/** Config-template ops applied on deploy */
 	config?: ConfigOp[];
-	modrinth?: { projectId: string; slug: string };
+	/** Provider the entry installs/updates from; absent for luna/manual entries */
+	remote?: RemoteRef;
 	installed?: {
 		versionId?: string;
 		versionNumber?: string;

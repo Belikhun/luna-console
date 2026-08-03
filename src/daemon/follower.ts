@@ -23,7 +23,7 @@ import { effectiveTargets } from "../core/families";
 import type { PacksLock } from "../core/packslock";
 import { ProgressReporter } from "../core/progress";
 import type { BackendCard } from "../core/services/luna";
-import { sha512File } from "../core/services/modrinth";
+import { sha512File } from "../core/services/download";
 import type { ClusterConfig, PluginsLock } from "../core/types";
 
 import type { DaemonConfig } from "./config";
