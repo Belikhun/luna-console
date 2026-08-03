@@ -3,12 +3,12 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
-	import { fmtDuration, fmtDateTime, fmtTime } from '$lib/format';
+	import { fmtDuration, fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
-	import Select from '$lib/components/Select.svelte';
+	import MultiSelect from '$lib/components/MultiSelect.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
@@ -17,80 +17,90 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
+	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
-	 * Everyone on the network, from LunaCore's own view of the proxy.
-	 *
-	 * The list is polled through RefreshControl like every other page, but it also
-	 * subscribes to LunaCore's players stream: joins and leaves are exactly the events
-	 * a poll interval feels slow for, and the stream only speaks when something
-	 * actually happened, so reacting to it costs nothing while the network is idle.
+	 * The player directory: every player the network has ever recorded, from
+	 * LunaCore's persisted profiles — online or not. The live roster has its own
+	 * screen (Online players); this one is for administration: finding a player,
+	 * opening their profile, and bulk moderation across instances.
 	 */
 
 	interface Player {
 		uuid: string;
 		username: string;
+		firstSeenAtEpochMillis: number;
+		lastSeenAtEpochMillis: number;
+		lastServer: string;
+		lastAddress: string;
+		lastClientVersion: string;
+		onlineMode: boolean;
+		sessionCount: number;
+		hasSkin: boolean;
+		online: boolean;
 		server: string;
 		pingMillis: number;
 		sessionMillis: number;
-		connectedAtEpochMillis: number;
-		remoteAddress: string;
-		virtualHost: string;
-		protocolVersion: number;
-		clientVersion: string;
-		onlineMode: boolean;
+		totalPlayMillis: number;
 	}
 
-	interface Activity {
-		type: string;
-		uuid: string;
-		username: string;
-		server: string;
-		previousServer: string;
-		atEpochMillis: number;
-		sessionMillis: number;
-	}
-
-	/** Latency bands, in ms — the same thresholds the proxy's own tab list uses. */
-	const PING_FAIR = 120;
-	const PING_POOR = 250;
+	/** LunaCore pages at 200 max; the sweep stops here even if the DB has more. */
+	const PAGE_LIMIT = 200;
+	const SWEEP_CAP = 2000;
 
 	let players: Player[] = $state([]);
-	let activity: Activity[] = $state([]);
-	let byServer: Record<string, number> = $state({});
+	let total = $state(0);
 	let available = $state(true);
 	let problem = $state('');
-	let servers: string[] = $state([]);
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
+	let instances: string[] = $state([]);
 
 	let selected: Set<string> = $state(new Set());
 
-	let kickOpen = $state(false);
-	let kickReason = $state('');
-	let messageOpen = $state(false);
-	let messageText = $state('');
-	let transferOpen = $state(false);
-	let transferTo = $state('');
-	let broadcastOpen = $state(false);
-	let broadcastText = $state('');
-	let broadcastServer = $state('');
+	/** The bulk-moderation dialog: one verb applied to the selection. */
+	let moderateOpen = $state(false);
+	let moderateAction = $state('');
+	let moderateTargets: string[] = $state([]);
+	let moderateInstances: string[] = $state([]);
+	let moderateReason = $state('');
 
-	const one = $derived(
-		selected.size === 1 ? players.find((player) => selected.has(player.uuid)) : undefined
-	);
+	const selection = $derived(players.filter((player) => selected.has(player.uuid)));
 
 	async function refresh(): Promise<void> {
 		try {
-			const data = await api('/luna/players');
+			const collected: Player[] = [];
+			let offset = 0;
+			let reported = 0;
 
-			available = data.available !== false;
-			problem = available ? '' : (data.error ?? 'LunaCore is unreachable');
-			players = data.players ?? [];
-			activity = data.activity ?? [];
-			byServer = data.byServer ?? {};
+			// The directory outlives any one proxy uptime, so it can be larger than a
+			// single LunaCore page; sweep until it is all here (capped defensively).
+			for (;;) {
+				const data = await api(`/players?limit=${PAGE_LIMIT}&offset=${offset}`);
+
+				if (data.available === false) {
+					available = false;
+					problem = data.error ?? 'LunaCore is unreachable';
+					loading = false;
+					return;
+				}
+
+				reported = data.total ?? 0;
+				collected.push(...(data.players ?? []));
+
+				if (collected.length >= reported || collected.length >= SWEEP_CAP || !(data.players ?? []).length) {
+					break;
+				}
+
+				offset = collected.length;
+			}
+
+			available = true;
+			problem = '';
+			players = collected;
+			total = reported;
 			lastUpdated = Date.now();
 		} catch (err) {
 			available = false;
@@ -103,65 +113,53 @@
 	onMount(() => {
 		void refresh();
 
-		// the backend list is only needed to offer transfer targets
+		// backends the moderation verbs can target — the proxy keeps no lists
 		void api('/instances').then((data) => {
-			servers = [
-				...data.instances
-					.filter((inst: any) => inst.name !== 'proxy')
-					.map((inst: any) => inst.name),
-				...data.externals.map((inst: any) => inst.name)
-			].sort();
-
-			transferTo = servers[0] ?? '';
+			instances = data.instances
+				.filter((inst: any) => inst.software !== 'velocity' && inst.name !== 'proxy')
+				.map((inst: any) => inst.name)
+				.sort();
 		});
-
-		// any event on the stream means the roster changed; the payload is LunaCore's
-		// own event shape, and re-reading /players is cheaper than mirroring it here
-		const stream = new EventSource('/api/luna/stream?stream=players');
-
-		stream.onmessage = () => void refresh();
-
-		return () => stream.close();
 	});
 
 	const columns: Column[] = [
-		{ id: 'username', label: 'Player', sortable: true, minWidth: 140 },
-		{ id: 'server', label: 'Backend', sortable: true },
-		{ id: 'session', label: 'Session', sortable: true },
-		{ id: 'ping', label: 'Ping', sortable: true, width: 110, align: 'right' },
-		{ id: 'client', label: 'Client', sortable: true },
+		{ id: 'username', label: 'Player', sortable: true, minWidth: 180 },
+		{ id: 'status', label: 'Status', sortable: true },
+		{ id: 'lastSeen', label: 'Last seen', sortable: true },
+		{ id: 'playtime', label: 'Playtime', sortable: true },
+		{ id: 'sessions', label: 'Sessions', sortable: true, width: 110, align: 'right' },
+		{ id: 'firstSeen', label: 'First seen', sortable: true, hidden: true },
 		{ id: 'mode', label: 'Auth' },
-		{ id: 'address', label: 'Address', hidden: true },
-		{ id: 'host', label: 'Connected via', hidden: true },
+		{ id: 'client', label: 'Client', hidden: true },
+		{ id: 'address', label: 'Last address', hidden: true },
 		{ id: 'uuid', label: 'UUID', width: 300, hidden: true }
 	];
 
+	const onlineCount = $derived(players.filter((player) => player.online).length);
+
 	const filters: TableFilterGroup<Player>[] = $derived([
+		{
+			id: 'status',
+			label: 'Filter status',
+			options: [
+				{ value: 'any', label: 'Any status' },
+				{ value: 'online', label: `Online (${onlineCount})`, match: (player: Player) => player.online },
+				{ value: 'offline', label: 'Offline', match: (player: Player) => !player.online }
+			]
+		},
 		{
 			id: 'server',
 			label: 'Filter backend',
 			options: [
 				{ value: 'any', label: 'Any backend' },
-				...Object.keys(byServer)
+				...[...new Set(players.map((player) => player.online ? player.server : player.lastServer))]
+					.filter(Boolean)
 					.sort()
 					.map((name) => ({
 						value: name,
-						label: `${name} (${byServer[name]})`,
-						match: (player: Player) => player.server === name
+						label: name,
+						match: (player: Player) => (player.online ? player.server : player.lastServer) === name
 					}))
-			]
-		},
-		{
-			id: 'ping',
-			label: 'Filter latency',
-			options: [
-				{ value: 'any', label: 'Any latency' },
-				{ value: 'good', label: `Under ${PING_FAIR} ms`, match: (player) => player.pingMillis < PING_FAIR },
-				{
-					value: 'poor',
-					label: `Over ${PING_POOR} ms`,
-					match: (player) => player.pingMillis >= PING_POOR
-				}
 			]
 		}
 	]);
@@ -171,176 +169,100 @@
 			case 'username':
 				return player.username.toLowerCase();
 
-			case 'server':
-				return player.server;
+			case 'status':
+				return player.online ? 0 : 1;
 
-			case 'session':
-				return player.sessionMillis;
+			case 'lastSeen':
+				return player.online ? Date.now() : player.lastSeenAtEpochMillis;
 
-			case 'ping':
-				return player.pingMillis;
+			case 'playtime':
+				return player.totalPlayMillis;
 
-			case 'client':
-				return player.protocolVersion;
+			case 'sessions':
+				return player.sessionCount;
+
+			case 'firstSeen':
+				return player.firstSeenAtEpochMillis;
 
 			default:
 				return null;
 		}
 	}
 
-	/** Latency band, for the coloured ping figure. */
-	function pingClass(ping: number): string {
-		if (ping < PING_FAIR) {
-			return 'good';
-		}
-
-		return ping < PING_POOR ? 'fair' : 'poor';
+	/** Open the moderation dialog for one verb over a set of players. */
+	function openModerate(action: string, targets: Player[]): void {
+		moderateAction = action;
+		moderateTargets = targets.map((player) => player.username);
+		moderateInstances = action === 'kick' ? [] : [...instances];
+		moderateReason = '';
+		moderateOpen = true;
 	}
 
-	const longestSession = $derived(
-		players.length ? Math.max(...players.map((player) => player.sessionMillis)) : 0
-	);
+	/** Verbs over a selection — the Actions dropdown and each row's menu share these. */
+	function bulkActions(rows: Player[]): ContextMenuItem[] {
+		const none = rows.length === 0;
+		const anyOnline = rows.some((player) => player.online);
 
-	const averagePing = $derived(
-		players.length
-			? Math.round(players.reduce((sum, player) => sum + player.pingMillis, 0) / players.length)
-			: 0
-	);
-
-	/** Joins within the last hour, from the activity log. */
-	const recentJoins = $derived(
-		activity.filter(
-			(event) => event.type === 'join' && Date.now() - event.atEpochMillis < 3_600_000
-		).length
-	);
-
-	/** Run an admin action against LunaCore and report what it did. */
-	async function act(
-		body: Record<string, unknown>,
-		pending: string,
-		done: (result: any) => string
-	): Promise<void> {
-		const note = Notify.loading(pending);
-
-		try {
-			const result = await post('/luna/admin', body);
-
-			if (result.ok === false) {
-				throw new Error(result.error ?? 'LunaCore refused the action');
-			}
-
-			note.set({ level: 'success', message: done(result.data ?? {}), closeable: true });
-
-			await refresh();
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: pending,
-				detail: (err as Error).message,
-				closeable: true
-			});
-		}
-	}
-
-	async function doKick(): Promise<void> {
-		const player = one;
-
-		kickOpen = false;
-
-		if (!player) {
-			return;
-		}
-
-		await act(
-			{ action: 'kick', player: player.username, reason: kickReason },
-			`Disconnecting ${player.username}…`,
-			() => `${player.username} disconnected`
-		);
-
-		kickReason = '';
-	}
-
-	async function doMessage(): Promise<void> {
-		const player = one;
-		const text = messageText.trim();
-
-		messageOpen = false;
-
-		if (!player || !text) {
-			return;
-		}
-
-		await act(
-			{ action: 'message', player: player.username, message: text },
-			`Sending a message to ${player.username}…`,
-			() => `Message delivered to ${player.username}`
-		);
-
-		messageText = '';
-	}
-
-	async function doTransfer(): Promise<void> {
-		const player = one;
-
-		transferOpen = false;
-
-		if (!player || !transferTo) {
-			return;
-		}
-
-		await act(
-			{ action: 'transfer', player: player.username, server: transferTo },
-			`Moving ${player.username} to ${transferTo}…`,
-			(data) => `${player.username} moved to ${data.server ?? transferTo}`
-		);
-	}
-
-	async function doBroadcast(): Promise<void> {
-		const text = broadcastText.trim();
-
-		broadcastOpen = false;
-
-		if (!text) {
-			return;
-		}
-
-		await act(
-			{
-				action: 'broadcast',
-				message: text,
-				server: broadcastServer || undefined
-			},
-			'Broadcasting…',
-			(data) => `Broadcast reached ${data.reached ?? 0} player(s)`
-		);
-
-		broadcastText = '';
-	}
-
-	/** A player's verbs — the row menu and the toolbar's Actions button. */
-	function rowActions(player: Player): ContextMenuItem[] {
 		return [
 			{
-				label: `Open ${player.server}`,
-				icon: 'server',
-				action: () => goto(`/instances/${player.server}`)
+				label: 'Kick from the network',
+				icon: 'userSlash',
+				disabled: none || !anyOnline,
+				hint: none ? 'select players first' : anyOnline ? undefined : 'nobody selected is online',
+				action: () => openModerate('kick', rows.filter((player) => player.online))
 			},
 			{ separator: true },
 			{
-				label: 'Send a message',
-				icon: 'paperPlane',
-				action: () => {
-					selected = new Set([player.uuid]);
-					messageOpen = true;
-				}
+				label: 'Add to whitelist…',
+				icon: 'userTick',
+				disabled: none,
+				action: () => openModerate('whitelist-add', rows)
 			},
 			{
-				label: 'Move to another backend',
-				icon: 'rightLeft',
-				action: () => {
-					selected = new Set([player.uuid]);
-					transferOpen = true;
-				}
+				label: 'Remove from whitelist…',
+				icon: 'userMinus',
+				disabled: none,
+				action: () => openModerate('whitelist-remove', rows)
+			},
+			{
+				label: 'Grant operator…',
+				icon: 'userCog',
+				disabled: none,
+				action: () => openModerate('op', rows)
+			},
+			{
+				label: 'Revoke operator…',
+				icon: 'userLock',
+				disabled: none,
+				action: () => openModerate('deop', rows)
+			},
+			{ separator: true },
+			{
+				label: 'Ban…',
+				icon: 'gavel',
+				color: 'danger',
+				disabled: none,
+				action: () => openModerate('ban', rows)
+			},
+			{
+				label: 'Pardon…',
+				icon: 'handshake',
+				disabled: none,
+				action: () => openModerate('pardon', rows)
+			}
+		];
+	}
+
+	/** A row's menu: profile verbs first, then the bulk verbs over the selection. */
+	function rowActions(player: Player): ContextMenuItem[] {
+		// right-clicking inside the selection acts on all of it, outside on the row
+		const rows = selected.has(player.uuid) && selection.length > 1 ? selection : [player];
+
+		return [
+			{
+				label: 'View profile',
+				icon: 'user',
+				action: () => goto(`/players/${player.uuid}`)
 			},
 			{
 				label: 'Copy UUID',
@@ -348,81 +270,122 @@
 				action: () => void copy(player.uuid)
 			},
 			{ separator: true },
-			{
-				label: 'Disconnect player',
-				icon: 'userSlash',
-				color: 'danger',
-				action: () => {
-					selected = new Set([player.uuid]);
-					kickOpen = true;
-				}
-			}
+			...bulkActions(rows)
 		];
 	}
 
-	/** The console runs on plain HTTP, where navigator.clipboard does not exist. */
 	async function copy(text: string): Promise<void> {
 		const { copyText } = await import('$lib/clipboard');
 
 		await copyText(text);
 	}
 
-	const activityCols: Column[] = [
-		{ id: 'time', label: 'Time', width: 170, sortable: true },
-		{ id: 'type', label: 'Event', width: 120 },
-		{ id: 'username', label: 'Player', sortable: true },
-		{ id: 'where', label: 'Backend' },
-		{ id: 'session', label: 'Session length' }
-	];
+	const ACTION_LABELS: Record<string, string> = {
+		kick: 'Kick',
+		'whitelist-add': 'Add to whitelist',
+		'whitelist-remove': 'Remove from whitelist',
+		op: 'Grant operator',
+		deop: 'Revoke operator',
+		ban: 'Ban',
+		pardon: 'Pardon'
+	};
+
+	const needsInstances = $derived(moderateAction !== 'kick');
+	const needsReason = $derived(['kick', 'ban'].includes(moderateAction));
+
+	async function doModerate(): Promise<void> {
+		moderateOpen = false;
+
+		const label = ACTION_LABELS[moderateAction] ?? moderateAction;
+		const note = Notify.loading(`${label}: ${moderateTargets.length} player(s)…`);
+
+		try {
+			const result = await post('/players/moderate', {
+				action: moderateAction,
+				targets: moderateTargets,
+				instances: moderateInstances,
+				reason: moderateReason
+			});
+
+			const outcomes: Array<{ ok: boolean; target: string; instance: string; error?: string }> =
+				result.outcomes ?? [];
+			const failed = outcomes.filter((outcome) => !outcome.ok);
+
+			if (failed.length === 0) {
+				note.set({
+					level: 'success',
+					message: `${label} applied to ${moderateTargets.length} player(s)`,
+					closeable: true
+				});
+			} else {
+				note.set({
+					level: 'warning',
+					message: `${label}: ${outcomes.length - failed.length}/${outcomes.length} succeeded`,
+					detail: failed
+						.map((outcome) => `${outcome.target}${outcome.instance ? ` @ ${outcome.instance}` : ''}: ${outcome.error}`)
+						.join('\n'),
+					closeable: true
+				});
+			}
+
+			await refresh();
+		} catch (err) {
+			note.set({ level: 'error', message: label, detail: (err as Error).message, closeable: true });
+		}
+	}
 </script>
 
 <svelte:head><title>Players | Luna Console</title></svelte:head>
 
-<PageHeader title="Players" count="{selected.size ? `${selected.size}/` : ''}{players.length}" info>
+<PageHeader
+	title="Players"
+	count="{selected.size ? `${selected.size}/` : ''}{players.length}"
+	info
+	description="Everyone the network has ever seen — profiles, playtime and moderation, recorded by LunaCore"
+>
 	{#snippet actions()}
-		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
-		<Btn icon="bullhorn" onclick={() => (broadcastOpen = true)}>Broadcast</Btn>
+		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players-directory" />
+		<Dropdown label="Actions" disabled={selection.length === 0} menu={bulkActions(selection)} />
+		<Btn icon="userPortrait" onclick={() => goto('/players/online')}>Online players</Btn>
 	{/snippet}
 </PageHeader>
 
 {#if !available}
 	<Flash kind="warning">
-		<b>LunaCore is not answering:</b> {problem}. The proxy may be stopped, or running a
-		build without the players API.
+		<b>LunaCore is not answering:</b> {problem}. The proxy may be stopped, or running a build
+		without the player directory.
 	</Flash>
 {/if}
 
-<OverviewBar title="Network overview">
+<OverviewBar title="Directory overview">
+	<OverviewCell label="Registered players">
+		{total}
+	</OverviewCell>
 	<OverviewCell label="Online now">
-		{players.length}
+		{onlineCount}
 	</OverviewCell>
-	<OverviewCell label="Backends occupied">
-		{Object.keys(byServer).length || '–'}
+	<OverviewCell label="Total playtime">
+		{players.length
+			? fmtDuration(players.reduce((sum, player) => sum + player.totalPlayMillis, 0))
+			: '–'}
 	</OverviewCell>
-	<OverviewCell label="Average ping">
-		{players.length ? `${averagePing} ms` : '–'}
-	</OverviewCell>
-	<OverviewCell label="Longest session">
-		{players.length ? fmtDuration(longestSession) : '–'}
-	</OverviewCell>
-	<OverviewCell label="Joins in the last hour">
-		{recentJoins}
+	<OverviewCell label="Sessions recorded">
+		{players.reduce((sum, player) => sum + player.sessionCount, 0)}
 	</OverviewCell>
 </OverviewBar>
 
 <div class="body">
 	<Panel flush>
 		<ResourceTable
-			tableId="players"
+			tableId="players-directory"
 			initialSearch={page.url.searchParams.get('q') ?? ''}
 			{columns}
 			rows={players}
 			getId={(player) => player.uuid}
 			searchValue={(player) =>
-				`${player.username} ${player.server} ${player.uuid} ${player.clientVersion} ${player.remoteAddress} ${player.virtualHost}`}
+				`${player.username} ${player.uuid} ${player.lastServer} ${player.lastAddress} ${player.lastClientVersion}`}
 			searchPlaceholder="Find player by name, backend or UUID"
-			selectable="single"
+			selectable="multi"
 			bind:selected
 			{rowActions}
 			rowLabel={(player) => player.username}
@@ -430,155 +393,91 @@
 			{sortValue}
 			{filters}
 			pageSize={25}
-			emptyTitle="Nobody is online"
-			emptyText="Joins appear here as they happen — the page listens to LunaCore rather than waiting for the next poll."
+			emptyTitle="No players recorded yet"
+			emptyText="Profiles appear here after the first join once LunaCore's player directory is running on the proxy."
 		>
 			{#snippet cell(player, col)}
 				{#if col === 'username'}
-					<b>{player.username}</b>
-				{:else if col === 'server'}
-					<a href="/instances/{player.server}">{player.server}</a>
-				{:else if col === 'session'}
-					<span title={fmtDateTime(player.connectedAtEpochMillis)}>
-						{fmtDuration(player.sessionMillis)}
+					<span class="who">
+						<PlayerSkin player={player.uuid} view="face" px={3} />
+						<a href="/players/{player.uuid}"><b>{player.username}</b></a>
 					</span>
-				{:else if col === 'ping'}
-					<span class="ping {pingClass(player.pingMillis)}">{player.pingMillis} ms</span>
-				{:else if col === 'client'}
-					<span class="dim">{player.clientVersion}</span>
+				{:else if col === 'status'}
+					{#if player.online}
+						<span class="status">
+							<StatusBadge state="ok" label="Online" />
+							<a href="/instances/{player.server}" class="dim">{player.server}</a>
+						</span>
+					{:else}
+						<StatusBadge state="stopped" label="Offline" />
+					{/if}
+				{:else if col === 'lastSeen'}
+					{#if player.online}
+						<span class="dim">now — on for {fmtDuration(player.sessionMillis)}</span>
+					{:else if player.lastSeenAtEpochMillis}
+						<span title={fmtDateTime(player.lastSeenAtEpochMillis)}>
+							{fmtDateTime(player.lastSeenAtEpochMillis)}
+						</span>
+					{:else}
+						<span class="dim">–</span>
+					{/if}
+				{:else if col === 'playtime'}
+					{player.totalPlayMillis ? fmtDuration(player.totalPlayMillis) : '–'}
+				{:else if col === 'sessions'}
+					{player.sessionCount}
+				{:else if col === 'firstSeen'}
+					{player.firstSeenAtEpochMillis ? fmtDateTime(player.firstSeenAtEpochMillis) : '–'}
 				{:else if col === 'mode'}
 					<StatusBadge
 						state={player.onlineMode ? 'passed' : 'warning'}
 						label={player.onlineMode ? 'Premium' : 'Offline'}
 					/>
+				{:else if col === 'client'}
+					<span class="dim">{player.lastClientVersion || '–'}</span>
 				{:else if col === 'address'}
-					<span class="mono dim">{player.remoteAddress}</span>
-				{:else if col === 'host'}
-					<span class="mono dim">{player.virtualHost}</span>
+					<span class="mono dim">{player.lastAddress || '–'}</span>
 				{:else if col === 'uuid'}
 					<span class="mono dim">{player.uuid}</span>
 				{/if}
 			{/snippet}
 		</ResourceTable>
 	</Panel>
-
-	<Panel
-		title="Recent activity"
-		count={activity.length}
-		description="Joins, leaves and backend switches as the proxy saw them, newest first"
-		flush
-	>
-		<ResourceTable
-			tableId="player-activity"
-			columns={activityCols}
-			rows={activity}
-			getId={(event) => `${event.atEpochMillis}-${event.uuid}-${event.type}`}
-			searchValue={(event) => `${event.username} ${event.server ?? ''} ${event.type}`}
-			searchPlaceholder="Find activity"
-			searchWidth="20rem"
-			noun="event"
-			pageSize={20}
-			sortValue={(event, col) =>
-				col === 'time' ? event.atEpochMillis : col === 'username' ? event.username : null}
-			maxHeight="32rem"
-			emptyTitle="No activity recorded"
-			emptyText="LunaCore keeps this log in memory, so it starts empty after a proxy restart."
-		>
-			{#snippet cell(event, col)}
-				{#if col === 'time'}
-					<span class="mono dim" title={fmtDateTime(event.atEpochMillis)}>
-						{fmtTime(event.atEpochMillis)}
-					</span>
-				{:else if col === 'type'}
-					<StatusBadge
-						state={event.type === 'join' ? 'ok' : event.type === 'leave' ? 'stopped' : 'warning'}
-						label={event.type}
-					/>
-				{:else if col === 'username'}
-					{event.username}
-				{:else if col === 'where'}
-					<!-- a switch is the only event with both ends, and the pair is the point -->
-					{#if event.type === 'switch' && event.previousServer}
-						<span class="dim">{event.previousServer}</span>
-						<span class="dim">→</span>
-						{event.server}
-					{:else}
-						{event.server || '–'}
-					{/if}
-				{:else if col === 'session'}
-					{event.sessionMillis ? fmtDuration(event.sessionMillis) : '–'}
-				{/if}
-			{/snippet}
-		</ResourceTable>
-	</Panel>
 </div>
 
-<Modal title="Disconnect {one?.username ?? 'player'}" bind:open={kickOpen}>
-	<p>They are removed from the network immediately and can reconnect straight away.</p>
-	<label class="field">
-		<span class="lbl">Reason shown to the player</span>
-		<span class="hint">Optional — LunaCore sends its own default when this is blank</span>
-		<input class="input" bind:value={kickReason} placeholder="e.g. restarting the lobby" />
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (kickOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" onclick={doKick}>Disconnect</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title="Message {one?.username ?? 'player'}" bind:open={messageOpen}>
-	<label class="field">
-		<span class="lbl">Message</span>
-		<span class="hint">Delivered in chat, visible only to them</span>
-		<input class="input" bind:value={messageText} placeholder="Type a message" />
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (messageOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!messageText.trim()} onclick={doMessage}>Send</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title="Move {one?.username ?? 'player'}" bind:open={transferOpen}>
-	<p>
-		The proxy moves them to another backend without a reconnect. A backend that is down
-		refuses the transfer and they stay where they are.
+<Modal title="{ACTION_LABELS[moderateAction] ?? moderateAction}: {moderateTargets.length} player(s)" bind:open={moderateOpen}>
+	<p class="targets">
+		{moderateTargets.join(', ')}
 	</p>
-	<div class="field">
-		<span class="lbl">Destination backend</span>
-		<Select
-			bind:value={transferTo}
-			width="100%"
-			options={servers
-				.filter((name) => name !== one?.server)
-				.map((name) => ({ value: name, label: name }))}
-		/>
-	</div>
-	{#snippet footer()}
-		<Btn onclick={() => (transferOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!transferTo} onclick={doTransfer}>Move</Btn>
-	{/snippet}
-</Modal>
 
-<Modal title="Broadcast a message" bind:open={broadcastOpen}>
-	<label class="field">
-		<span class="lbl">Message</span>
-		<span class="hint">Sent to everyone on the network, or on one backend</span>
-		<input class="input" bind:value={broadcastText} placeholder="Type a message" />
-	</label>
-	<div class="field">
-		<span class="lbl">Audience</span>
-		<Select
-			bind:value={broadcastServer}
-			width="100%"
-			options={[
-				{ value: '', label: 'Everyone on the network' },
-				...servers.map((name) => ({ value: name, label: `Only ${name}` }))
-			]}
-		/>
-	</div>
+	{#if needsInstances}
+		<div class="field">
+			<span class="lbl">Instances</span>
+			<span class="hint">The change is applied on each selected instance</span>
+			<MultiSelect
+				bind:value={moderateInstances}
+				width="100%"
+				options={instances.map((name) => ({ value: name, label: name }))}
+			/>
+		</div>
+	{/if}
+
+	{#if needsReason}
+		<label class="field">
+			<span class="lbl">Reason</span>
+			<span class="hint">Optional — recorded in the moderation log{moderateAction === 'ban' ? ' and shown to the player' : ''}</span>
+			<input class="input" bind:value={moderateReason} placeholder="e.g. griefing on survival" />
+		</label>
+	{/if}
+
 	{#snippet footer()}
-		<Btn onclick={() => (broadcastOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!broadcastText.trim()} onclick={doBroadcast}>Broadcast</Btn>
+		<Btn onclick={() => (moderateOpen = false)}>Cancel</Btn>
+		<Btn
+			variant={moderateAction === 'ban' || moderateAction === 'kick' ? 'danger' : 'primary'}
+			disabled={needsInstances && moderateInstances.length === 0}
+			onclick={doModerate}
+		>
+			{ACTION_LABELS[moderateAction] ?? 'Apply'}
+		</Btn>
 	{/snippet}
 </Modal>
 
@@ -590,20 +489,20 @@
 		margin-top: 1rem;
 	}
 
-	// latency bands, the same three-step scale as the instances table's TPS column
-	.ping {
-		font-variant-numeric: tabular-nums;
+	.who {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
 
-		&.good {
-			color: var(--success);
-		}
+	.status {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
 
-		&.fair {
-			color: var(--warning);
-		}
-
-		&.poor {
-			color: var(--error);
-		}
+	.targets {
+		color: var(--text-secondary);
+		word-break: break-word;
 	}
 </style>

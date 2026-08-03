@@ -27,6 +27,7 @@ import * as packslockCore from "../core/packslock";
 import * as pluginstateCore from "../core/pluginstate";
 import * as pluginsCore from "../core/plugins";
 import * as respackinfoCore from "../core/respackinfo";
+import * as playerlistsCore from "../core/playerlists";
 import * as respacksCore from "../core/respacks";
 import * as portsCore from "../core/ports";
 import * as proxyCore from "../core/proxy";
@@ -623,6 +624,11 @@ export const OPS: Record<string, OpSpec> = {
 	"instances.stopInstance": { fn: instancesCore.stopInstance, cfg: 0, instance: 1 },
 	"instances.sendCommand": { fn: instancesCore.sendCommand, cfg: 0, instance: 1 },
 
+	// -- player access lists (whitelist / ops / bans; run on the instance's owner) --
+	"playerlists.get": { fn: playerlistsCore.getAccessLists, cfg: 0, instance: 1 },
+	"playerlists.apply": { fn: playerlistsCore.applyAccessChange, cfg: 0, instance: 1 },
+	"playerlists.setWhitelist": { fn: playerlistsCore.setWhitelistEnabled, cfg: 0, instance: 1 },
+
 	// -- tracked lifecycle (log-derived live progress; run as jobs) -------------
 	"lifecycle.startTracked": {
 		fn: lifecycleCore.startInstanceTracked,
@@ -795,6 +801,25 @@ export const OPS: Record<string, OpSpec> = {
 	"lunaApi.kick": { fn: lunaApi.kick },
 	"lunaApi.message": { fn: lunaApi.message },
 	"lunaApi.transfer": { fn: lunaApi.transfer },
+	"lunaApi.registeredPlayers": { fn: lunaApi.registeredPlayers },
+	"lunaApi.registeredPlayer": { fn: lunaApi.registeredPlayer },
+	"lunaApi.playerSessions": { fn: lunaApi.playerSessions },
+	"lunaApi.playerChat": { fn: lunaApi.playerChat },
+	"lunaApi.playerModeration": { fn: lunaApi.playerModeration },
+	"lunaApi.recordModeration": { fn: lunaApi.recordModeration },
+	"lunaApi.permissionGroups": { fn: lunaApi.permissionGroups },
+	"lunaApi.permissionGroup": { fn: lunaApi.permissionGroup },
+	"lunaApi.createPermissionGroup": { fn: lunaApi.createPermissionGroup },
+	"lunaApi.deletePermissionGroup": { fn: lunaApi.deletePermissionGroup },
+	"lunaApi.editGroupNode": { fn: lunaApi.editGroupNode },
+	"lunaApi.editGroupMeta": { fn: lunaApi.editGroupMeta },
+	"lunaApi.permissionUser": { fn: lunaApi.permissionUser },
+	"lunaApi.editUserNode": { fn: lunaApi.editUserNode },
+	"lunaApi.editUserGroups": { fn: lunaApi.editUserGroups },
+	"lunaApi.skinInfo": { fn: lunaApi.skinInfo },
+	"lunaApi.setSkin": { fn: lunaApi.setSkin },
+	"lunaApi.authAccount": { fn: lunaApi.authAccount },
+	"lunaApi.setAuth": { fn: lunaApi.setAuth },
 
 	// -- daemon-native (sampler, events) ---------------------------------------------------
 	"daemon.listStatuses": { fn: sampler.listStatuses },

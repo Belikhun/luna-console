@@ -54,7 +54,21 @@ const PAGES: SearchHit[] = [
 		href: '/instances/launch',
 		icon: 'rocket'
 	},
-	{ group: 'Pages', label: 'Players', detail: 'Who is online', href: '/players', icon: 'users' },
+	{ group: 'Pages', label: 'Players', detail: 'Every player the network has seen', href: '/players', icon: 'users' },
+	{
+		group: 'Pages',
+		label: 'Online players',
+		detail: 'Who is online right now',
+		href: '/players/online',
+		icon: 'userPortrait'
+	},
+	{
+		group: 'Pages',
+		label: 'Permission groups',
+		detail: 'LuckPerms groups and nodes',
+		href: '/permissions',
+		icon: 'key'
+	},
 	{ group: 'Pages', label: 'Plugins', detail: 'Plugin pool and updates', href: '/plugins', icon: 'plug' },
 	{ group: 'Pages', label: 'Mods', detail: 'Mod pool for the loader instances', href: '/mods', icon: 'puzzle' },
 	{
@@ -270,14 +284,31 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 		group: 'Players',
 		icon: 'users',
 		load: async () => {
-			const body = await fetchJson<{ players?: any[] }>('/api/luna/players');
+			// the directory covers everyone; online players carry their backend
+			const body = await fetchJson<{ players?: any[] }>('/api/players?limit=200');
 
 			return (body?.players ?? []).map((player) => ({
 				group: 'Players',
 				label: String(player.username),
-				detail: `on ${player.server} · ${player.uuid}`,
-				href: screenHref('/players', player.username),
+				detail: player.online ? `on ${player.server} · ${player.uuid}` : `offline · ${player.uuid}`,
+				href: `/players/${player.uuid}`,
 				icon: 'users'
+			}));
+		}
+	},
+
+	{
+		group: 'Permission groups',
+		icon: 'key',
+		load: async () => {
+			const body = await fetchJson<{ groups?: any[] }>('/api/permissions/groups');
+
+			return (body?.groups ?? []).map((group) => ({
+				group: 'Permission groups',
+				label: String(group.name),
+				detail: `weight ${group.weight} · ${group.memberCount} member(s)`,
+				href: `/permissions/${encodeURIComponent(String(group.name))}`,
+				icon: 'key'
 			}));
 		}
 	},

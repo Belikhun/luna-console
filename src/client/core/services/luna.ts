@@ -18,6 +18,27 @@ export type {
 	PlayerActivity,
 	CommandResult,
 	TransferResult,
+	RegisteredPlayer,
+	RegisteredPlayerList,
+	RegisteredPlayerQuery,
+	RegisteredPlayerDetail,
+	PlayerPermissionsSummary,
+	PlayerServerPlaytime,
+	PlaySession,
+	PlaySessionPage,
+	PlayerChatEntry,
+	PlayerChatPage,
+	ModerationEntry,
+	ModerationPage,
+	ModerationRecord,
+	PermissionNode,
+	PermissionGroupSummary,
+	PermissionGroupDetail,
+	PermissionUserDetail,
+	NodeChange,
+	SkinInfo,
+	SkinChange,
+	SkinChangeResult,
 } from "../../../core/services/luna";
 
 export const dashboard = call("lunaApi.dashboard") as typeof core.dashboard;
@@ -29,6 +50,25 @@ export const broadcast = call("lunaApi.broadcast") as typeof core.broadcast;
 export const kick = call("lunaApi.kick") as typeof core.kick;
 export const message = call("lunaApi.message") as typeof core.message;
 export const transfer = call("lunaApi.transfer") as typeof core.transfer;
+export const registeredPlayers = call("lunaApi.registeredPlayers") as typeof core.registeredPlayers;
+export const registeredPlayer = call("lunaApi.registeredPlayer") as typeof core.registeredPlayer;
+export const playerSessions = call("lunaApi.playerSessions") as typeof core.playerSessions;
+export const playerChat = call("lunaApi.playerChat") as typeof core.playerChat;
+export const playerModeration = call("lunaApi.playerModeration") as typeof core.playerModeration;
+export const recordModeration = call("lunaApi.recordModeration") as typeof core.recordModeration;
+export const permissionGroups = call("lunaApi.permissionGroups") as typeof core.permissionGroups;
+export const permissionGroup = call("lunaApi.permissionGroup") as typeof core.permissionGroup;
+export const createPermissionGroup = call("lunaApi.createPermissionGroup") as typeof core.createPermissionGroup;
+export const deletePermissionGroup = call("lunaApi.deletePermissionGroup") as typeof core.deletePermissionGroup;
+export const editGroupNode = call("lunaApi.editGroupNode") as typeof core.editGroupNode;
+export const editGroupMeta = call("lunaApi.editGroupMeta") as typeof core.editGroupMeta;
+export const permissionUser = call("lunaApi.permissionUser") as typeof core.permissionUser;
+export const editUserNode = call("lunaApi.editUserNode") as typeof core.editUserNode;
+export const editUserGroups = call("lunaApi.editUserGroups") as typeof core.editUserGroups;
+export const skinInfo = call("lunaApi.skinInfo") as typeof core.skinInfo;
+export const setSkin = call("lunaApi.setSkin") as typeof core.setSkin;
+export const authAccount = call("lunaApi.authAccount") as typeof core.authAccount;
+export const setAuth = call("lunaApi.setAuth") as typeof core.setAuth;
 
 /** Open a LunaCore SSE stream, tunneled through the daemon. */
 export async function openStream(path: string, signal?: AbortSignal): Promise<Response> {

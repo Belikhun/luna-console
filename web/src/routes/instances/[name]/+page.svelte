@@ -7,6 +7,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
+	import AccessLists from '$lib/components/AccessLists.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
@@ -1266,7 +1267,8 @@
 				? []
 				: [
 						{ id: 'datapacks', label: 'Data packs' },
-						{ id: 'respacks', label: 'Resource packs' }
+						{ id: 'respacks', label: 'Resource packs' },
+						{ id: 'access', label: 'Players & access' }
 					]),
 			{ id: 'network', label: 'Networking' },
 			{ id: 'logs', label: 'Logs' },
@@ -1633,6 +1635,8 @@
 				Resource packs are served by the proxy: players get every enabled pack whose server rules
 				match <b>{name}</b>, stacked by priority.
 			</p>
+		{:else if tab === 'access'}
+			<AccessLists instance={name ?? ''} />
 		{:else if tab === 'network'}
 			<Panel title="Ports">
 				<InfoGrid cells={portCells} />

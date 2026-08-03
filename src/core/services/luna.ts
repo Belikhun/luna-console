@@ -452,3 +452,641 @@ export async function transfer(player: string, server: string): Promise<LunaResu
 		{ form: { server }, timeoutMs: 8000 },
 	);
 }
+
+// ---------------------------------------------------------------------------
+// Player directory — profiles LunaCore persists in the shared database
+// ---------------------------------------------------------------------------
+
+/** One persisted player profile, merged with live session state when online. */
+export interface RegisteredPlayer {
+	uuid: string;
+	username: string;
+	firstSeenAtEpochMillis: number;
+	lastSeenAtEpochMillis: number;
+	lastServer: string;
+	lastAddress: string;
+	lastClientVersion: string;
+	onlineMode: boolean;
+	sessionCount: number;
+	hasSkin: boolean;
+	online: boolean;
+	/** Current backend when online, empty otherwise */
+	server: string;
+	pingMillis: number;
+	sessionMillis: number;
+	/** Closed playtime plus the open session when online */
+	totalPlayMillis: number;
+}
+
+export interface RegisteredPlayerList {
+	generatedAtEpochMillis: number;
+	total: number;
+	offset: number;
+	limit: number;
+	players: RegisteredPlayer[];
+}
+
+export interface RegisteredPlayerQuery {
+	search?: string;
+	/** username | firstSeen | lastSeen | playtime | sessions */
+	sort?: string;
+	dir?: "asc" | "desc";
+	limit?: number;
+	offset?: number;
+}
+
+/** Every player the proxy has ever recorded, paged and searchable. */
+export async function registeredPlayers(
+	query: RegisteredPlayerQuery = {},
+): Promise<LunaResult<RegisteredPlayerList>> {
+	const params = new URLSearchParams();
+
+	if (query.search) {
+		params.set("search", query.search);
+	}
+
+	if (query.sort) {
+		params.set("sort", query.sort);
+	}
+
+	if (query.dir) {
+		params.set("dir", query.dir);
+	}
+
+	if (query.limit !== undefined) {
+		params.set("limit", String(query.limit));
+	}
+
+	if (query.offset !== undefined) {
+		params.set("offset", String(query.offset));
+	}
+
+	const suffix = params.size > 0 ? `?${params.toString()}` : "";
+
+	return await call<RegisteredPlayerList>(`/players/registered${suffix}`);
+}
+
+export interface PlayerPermissionsSummary {
+	available: boolean;
+	primaryGroup?: string;
+	primaryGroupDisplay?: string;
+	prefix?: string;
+	suffix?: string;
+}
+
+export interface PlayerServerPlaytime {
+	server: string;
+	playMillis: number;
+	stints: number;
+}
+
+/** Full detail for one registered player. */
+export interface RegisteredPlayerDetail extends RegisteredPlayer {
+	/** Base64 game-profile texture payload, when a skin was captured */
+	skinTexture: string | null;
+	skinSignature: string | null;
+	playtimeByServer: PlayerServerPlaytime[];
+	sessionTotal: number;
+	chatTotal: number;
+	commandTotal: number;
+	moderationTotal: number;
+	permissions: PlayerPermissionsSummary;
+}
+
+/** One registered player by name or UUID, with aggregates and permissions. */
+export async function registeredPlayer(player: string): Promise<LunaResult<RegisteredPlayerDetail>> {
+	return await call<RegisteredPlayerDetail>(`/players/registered/${encodeURIComponent(player)}`);
+}
+
+export interface PlaySession {
+	id: number;
+	server: string;
+	connectedAtEpochMillis: number;
+	disconnectedAtEpochMillis: number;
+	durationMillis: number;
+	open: boolean;
+}
+
+export interface PlaySessionPage {
+	total: number;
+	offset: number;
+	limit: number;
+	sessions: PlaySession[];
+}
+
+/** A page of one player's per-backend play sessions, newest first. */
+export async function playerSessions(
+	player: string,
+	opts: { limit?: number; offset?: number } = {},
+): Promise<LunaResult<PlaySessionPage>> {
+	const params = new URLSearchParams();
+
+	if (opts.limit !== undefined) {
+		params.set("limit", String(opts.limit));
+	}
+
+	if (opts.offset !== undefined) {
+		params.set("offset", String(opts.offset));
+	}
+
+	const suffix = params.size > 0 ? `?${params.toString()}` : "";
+
+	return await call<PlaySessionPage>(
+		`/players/registered/${encodeURIComponent(player)}/sessions${suffix}`,
+	);
+}
+
+export interface PlayerChatEntry {
+	id: number;
+	server: string;
+	/** chat | command */
+	type: string;
+	content: string;
+	atEpochMillis: number;
+}
+
+export interface PlayerChatPage {
+	total: number;
+	offset: number;
+	limit: number;
+	entries: PlayerChatEntry[];
+}
+
+/** A page of one player's chat and command log, newest first. */
+export async function playerChat(
+	player: string,
+	opts: { type?: "chat" | "command"; limit?: number; offset?: number } = {},
+): Promise<LunaResult<PlayerChatPage>> {
+	const params = new URLSearchParams();
+
+	if (opts.type) {
+		params.set("type", opts.type);
+	}
+
+	if (opts.limit !== undefined) {
+		params.set("limit", String(opts.limit));
+	}
+
+	if (opts.offset !== undefined) {
+		params.set("offset", String(opts.offset));
+	}
+
+	const suffix = params.size > 0 ? `?${params.toString()}` : "";
+
+	return await call<PlayerChatPage>(
+		`/players/registered/${encodeURIComponent(player)}/chat${suffix}`,
+	);
+}
+
+export interface ModerationEntry {
+	id: number;
+	action: string;
+	actor: string;
+	reason: string;
+	server: string;
+	details: string;
+	atEpochMillis: number;
+}
+
+export interface ModerationPage {
+	total: number;
+	offset: number;
+	limit: number;
+	entries: ModerationEntry[];
+}
+
+/** A page of one player's moderation history, newest first. */
+export async function playerModeration(
+	player: string,
+	opts: { limit?: number; offset?: number } = {},
+): Promise<LunaResult<ModerationPage>> {
+	const params = new URLSearchParams();
+
+	if (opts.limit !== undefined) {
+		params.set("limit", String(opts.limit));
+	}
+
+	if (opts.offset !== undefined) {
+		params.set("offset", String(opts.offset));
+	}
+
+	const suffix = params.size > 0 ? `?${params.toString()}` : "";
+
+	return await call<ModerationPage>(
+		`/players/registered/${encodeURIComponent(player)}/moderation${suffix}`,
+	);
+}
+
+export interface ModerationRecord {
+	action: string;
+	targetName?: string;
+	targetUuid?: string;
+	actor?: string;
+	reason?: string;
+	server?: string;
+	details?: string;
+}
+
+/**
+ * Append an entry to a player's moderation log. The daemon calls this for every
+ * moderation action it performs itself (bans, whitelist changes, op grants), so
+ * the history LunaCore serves stays complete.
+ */
+export async function recordModeration(
+	record: ModerationRecord,
+): Promise<LunaResult<{ action: string; targetUuid: string; targetName: string }>> {
+	const form: Record<string, string> = { action: record.action };
+
+	if (record.targetName) {
+		form.targetName = record.targetName;
+	}
+
+	if (record.targetUuid) {
+		form.targetUuid = record.targetUuid;
+	}
+
+	if (record.actor) {
+		form.actor = record.actor;
+	}
+
+	if (record.reason) {
+		form.reason = record.reason;
+	}
+
+	if (record.server) {
+		form.server = record.server;
+	}
+
+	if (record.details) {
+		form.details = record.details;
+	}
+
+	return await call<{ action: string; targetUuid: string; targetName: string }>(
+		"/moderation/log",
+		{ form },
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Skins — SkinsRestorer administration through the proxy
+// ---------------------------------------------------------------------------
+
+export interface SkinInfo {
+	uuid: string;
+	hasStoredSkin: boolean;
+	/** SkinsRestorer's identifier for the stored skin, when one is set */
+	skinIdentifier?: string;
+	/** player | url | custom | legacy */
+	skinType?: string;
+}
+
+/** What SkinsRestorer has stored for a player. */
+export async function skinInfo(player: string): Promise<LunaResult<SkinInfo>> {
+	return await call<SkinInfo>(`/skins/${encodeURIComponent(player)}`);
+}
+
+export interface SkinChange {
+	/** name = mirror a Mojang account · url = generate via MineSkin ·
+	 *  texture = raw signed data · reset = drop the stored skin */
+	mode: "name" | "url" | "texture" | "reset";
+	/** Mojang account name (mode name) */
+	skin?: string;
+	/** Public image URL (mode url) */
+	url?: string;
+	/** classic | slim (mode url; auto-detected when omitted) */
+	variant?: string;
+	/** Signed texture payload (mode texture) */
+	value?: string;
+	signature?: string;
+	/** Who performed the change; lands in the moderation log */
+	actor?: string;
+}
+
+export interface SkinChangeResult {
+	uuid: string;
+	mode: string;
+	applied: boolean;
+	skinTexture?: string;
+	skinSignature?: string;
+}
+
+/**
+ * Change (or reset) a player's skin through SkinsRestorer on the proxy.
+ * MineSkin generation can take a while, hence the generous timeout.
+ */
+export async function setSkin(player: string, change: SkinChange): Promise<LunaResult<SkinChangeResult>> {
+	const form: Record<string, string> = { mode: change.mode };
+
+	if (change.skin) {
+		form.skin = change.skin;
+	}
+
+	if (change.url) {
+		form.url = change.url;
+	}
+
+	if (change.variant) {
+		form.variant = change.variant;
+	}
+
+	if (change.value) {
+		form.value = change.value;
+	}
+
+	if (change.signature) {
+		form.signature = change.signature;
+	}
+
+	if (change.actor) {
+		form.actor = change.actor;
+	}
+
+	return await call<SkinChangeResult>(
+		`/skins/${encodeURIComponent(player)}`,
+		{ form, timeoutMs: 45000 },
+	);
+}
+
+// ---------------------------------------------------------------------------
+// LuckPerms — groups, nodes and user memberships, managed through the proxy
+// ---------------------------------------------------------------------------
+
+export interface PermissionNode {
+	key: string;
+	value: boolean;
+	/** permission | inheritance | prefix | suffix | meta | weight | display_name | regex_permission */
+	type: string;
+	/** 0 when the node never expires */
+	expiryEpochMillis: number;
+	contexts: Array<{ key: string; value: string }>;
+}
+
+export interface PermissionGroupSummary {
+	name: string;
+	displayName: string;
+	weight: number;
+	prefix: string;
+	suffix: string;
+	parents: string[];
+	nodeCount: number;
+	memberCount: number;
+}
+
+export interface PermissionGroupDetail extends PermissionGroupSummary {
+	nodes: PermissionNode[];
+	members: Array<{ uuid: string; username: string }>;
+}
+
+/** All LuckPerms groups, heaviest weight first. */
+export async function permissionGroups(): Promise<LunaResult<{ groups: PermissionGroupSummary[] }>> {
+	return await call<{ groups: PermissionGroupSummary[] }>("/permissions/groups", { timeoutMs: 10000 });
+}
+
+/** One group with its full node list and direct members. */
+export async function permissionGroup(name: string): Promise<LunaResult<PermissionGroupDetail>> {
+	return await call<PermissionGroupDetail>(
+		`/permissions/groups/${encodeURIComponent(name)}`,
+		{ timeoutMs: 10000 },
+	);
+}
+
+/** Create a LuckPerms group. */
+export async function createPermissionGroup(
+	name: string,
+	opts: { weight?: number; displayName?: string } = {},
+): Promise<LunaResult<{ name: string }>> {
+	const form: Record<string, string> = { name };
+
+	if (opts.weight !== undefined) {
+		form.weight = String(opts.weight);
+	}
+
+	if (opts.displayName) {
+		form.displayName = opts.displayName;
+	}
+
+	return await call<{ name: string }>("/permissions/groups", { form, timeoutMs: 10000 });
+}
+
+/** Delete a LuckPerms group (the default group is refused server-side). */
+export async function deletePermissionGroup(name: string): Promise<LunaResult<{ name: string }>> {
+	const target = await endpoint();
+
+	if (target.problem) {
+		return { ok: false, status: 0, error: target.problem };
+	}
+
+	try {
+		const response = await fetch(`${target.baseUrl}/permissions/groups/${encodeURIComponent(name)}`, {
+			method: "DELETE",
+			headers: { "X-Luna-Forwarding-Secret": target.secret },
+			signal: AbortSignal.timeout(10000),
+		});
+
+		const envelope = (await response.json()) as Envelope;
+
+		if (!response.ok || envelope.success === false) {
+			return { ok: false, status: response.status, error: envelope.error ?? `HTTP ${response.status}` };
+		}
+
+		return { ok: true, status: response.status, data: envelope.data as { name: string } };
+	} catch (err) {
+		return { ok: false, status: 0, error: (err as Error)?.message ?? String(err) };
+	}
+}
+
+export interface NodeChange {
+	action: "add" | "remove";
+	key: string;
+	/** For add: grant (true) or negate (false); defaults to true */
+	value?: boolean;
+	/** For add: seconds until the node expires */
+	expirySeconds?: number;
+	/** Context pairs, e.g. { server: "survival" } */
+	contexts?: Record<string, string>;
+}
+
+function nodeChangeForm(change: NodeChange): Record<string, string> {
+	const form: Record<string, string> = {
+		action: change.action,
+		key: change.key,
+	};
+
+	if (change.value !== undefined) {
+		form.value = String(change.value);
+	}
+
+	if (change.expirySeconds !== undefined && change.expirySeconds > 0) {
+		form.expirySeconds = String(change.expirySeconds);
+	}
+
+	for (const [key, value] of Object.entries(change.contexts ?? {})) {
+		form[`context.${key}`] = value;
+	}
+
+	return form;
+}
+
+/** Add or remove one node on a group; returns the group's updated node list. */
+export async function editGroupNode(
+	group: string,
+	change: NodeChange,
+): Promise<LunaResult<{ nodes: PermissionNode[] }>> {
+	return await call<{ nodes: PermissionNode[] }>(
+		`/permissions/groups/${encodeURIComponent(group)}/nodes`,
+		{ form: nodeChangeForm(change), timeoutMs: 10000 },
+	);
+}
+
+/** Set a group's weight, prefix, suffix or display name (empty value clears). */
+export async function editGroupMeta(
+	group: string,
+	field: "weight" | "prefix" | "suffix" | "displayname",
+	value: string,
+	priority?: number,
+): Promise<LunaResult<PermissionGroupSummary>> {
+	const form: Record<string, string> = { field, value };
+
+	if (priority !== undefined) {
+		form.priority = String(priority);
+	}
+
+	return await call<PermissionGroupSummary>(
+		`/permissions/groups/${encodeURIComponent(group)}/meta`,
+		{ form, timeoutMs: 10000 },
+	);
+}
+
+export interface PermissionUserDetail {
+	uuid: string;
+	username: string;
+	primaryGroup: string;
+	groups: string[];
+	nodes: PermissionNode[];
+}
+
+/** One player's LuckPerms data: primary group, memberships and nodes. */
+export async function permissionUser(player: string): Promise<LunaResult<PermissionUserDetail>> {
+	return await call<PermissionUserDetail>(
+		`/permissions/users/${encodeURIComponent(player)}`,
+		{ timeoutMs: 10000 },
+	);
+}
+
+/** Add or remove one node on a user; returns the user's updated node list. */
+export async function editUserNode(
+	player: string,
+	change: NodeChange,
+): Promise<LunaResult<{ nodes: PermissionNode[] }>> {
+	return await call<{ nodes: PermissionNode[] }>(
+		`/permissions/users/${encodeURIComponent(player)}/nodes`,
+		{ form: nodeChangeForm(change), timeoutMs: 10000 },
+	);
+}
+
+/** Change a user's group memberships: add, remove, or set (sole group). */
+export async function editUserGroups(
+	player: string,
+	action: "add" | "remove" | "set",
+	group: string,
+): Promise<LunaResult<{ primaryGroup: string; groups: string[] }>> {
+	return await call<{ primaryGroup: string; groups: string[] }>(
+		`/permissions/users/${encodeURIComponent(player)}/groups`,
+		{ form: { action, group }, timeoutMs: 10000 },
+	);
+}
+
+export interface AuthSession {
+	hasSession: boolean;
+	connected: boolean;
+	createdAtEpochMillis: number;
+	expiresAtEpochMillis: number;
+	ip: string;
+}
+
+export interface AuthAccountInfo {
+	uuid: string;
+	username: string;
+	online: boolean;
+	/** Passed the password check in the current connection */
+	authenticated: boolean;
+	/** Has a password on file — a player who never registered has none */
+	registered: boolean;
+	locked: boolean;
+	lockedUntilEpochMillis: number;
+	failedAttempts: number;
+	lastIp: string;
+	lastLoginAtEpochMillis: number;
+	createdAtEpochMillis: number;
+	updatedAtEpochMillis: number;
+	/** The password on file was issued by an admin and expires on its own */
+	temporaryPassword: boolean;
+	temporaryPasswordUntilEpochMillis: number;
+	temporaryPasswordExpired: boolean;
+	session: AuthSession;
+}
+
+/** A player's authentication state, as luna-auth on the proxy holds it. */
+export async function authAccount(player: string): Promise<LunaResult<AuthAccountInfo>> {
+	return await call<AuthAccountInfo>(`/auth/accounts/${encodeURIComponent(player)}`);
+}
+
+export interface AuthChange {
+	/** reset = clear the password · temporary = issue an expiring one ·
+	 *  password = set a permanent one · unlock = clear the lockout ·
+	 *  logout = drop the current session */
+	action: "reset" | "temporary" | "password" | "unlock" | "logout";
+	/** The password to set; generated by the proxy when omitted (temporary only) */
+	password?: string;
+	/** Lifetime of a temporary password, 5 minutes to 30 days */
+	expiresInMinutes?: number;
+	/** Name to create the account under, when the player never registered */
+	username?: string;
+	/** Who performed the change; lands in the auth audit log */
+	actor?: string;
+}
+
+export interface AuthChangeResult extends AuthAccountInfo {
+	action: string;
+	success: boolean;
+	message: string;
+	/**
+	 * The plaintext of a temporary password — returned by the request that
+	 * created it and never again, since only its hash is stored.
+	 */
+	password?: string;
+	generated?: boolean;
+	expiresInMinutes?: number;
+}
+
+/**
+ * Administer a player's password: reset it, issue a temporary one, set a
+ * permanent one, unlock the account or force a logout.
+ *
+ * A connected player is disconnected by the proxy whenever their credential
+ * changes, so the new state is the one they come back to.
+ */
+export async function setAuth(player: string, change: AuthChange): Promise<LunaResult<AuthChangeResult>> {
+	const form: Record<string, string> = { action: change.action };
+
+	if (change.password) {
+		form.password = change.password;
+	}
+
+	if (change.expiresInMinutes) {
+		form.expiresInMinutes = String(change.expiresInMinutes);
+	}
+
+	if (change.username) {
+		form.username = change.username;
+	}
+
+	if (change.actor) {
+		form.actor = change.actor;
+	}
+
+	return await call<AuthChangeResult>(
+		`/auth/accounts/${encodeURIComponent(player)}`,
+		{ form, timeoutMs: 10000 },
+	);
+}

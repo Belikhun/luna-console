@@ -7,6 +7,7 @@ import "./commands/plugins";
 import "./commands/addons";
 import "./commands/luna";
 import "./commands/net";
+import "./commands/players";
 import "./commands/misc";
 import "./commands/web";
 import "./commands/env";

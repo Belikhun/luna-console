@@ -66,7 +66,11 @@
 		},
 		{
 			section: 'Players',
-			items: [{ label: 'Players', href: '/players', icon: 'users' }]
+			items: [
+				{ label: 'Players', href: '/players', icon: 'users' },
+				{ label: 'Online players', href: '/players/online', icon: 'userPortrait' },
+				{ label: 'Permission groups', href: '/permissions', icon: 'key' }
+			]
 		},
 		{
 			section: 'Addons',
@@ -123,6 +127,11 @@
 		// "Launch instance" is its own nav entry, so /instances must not claim it
 		if (href === '/instances') {
 			return /^\/instances(?!\/launch)/.test(page.url.pathname);
+		}
+
+		// "Online players" is its own nav entry, so /players must not claim it
+		if (href === '/players') {
+			return /^\/players(?!\/online)/.test(page.url.pathname);
 		}
 
 		return page.url.pathname === href || page.url.pathname.startsWith(href + '/');
