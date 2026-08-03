@@ -29,7 +29,7 @@ import {
 	instanceGroupNames,
 	pluginNameOf,
 } from "./families";
-import { assignedVersion } from "./plugins";
+import { assignedVersion, instanceAddonDir } from "./plugins";
 import { getStatus } from "./instances";
 
 /** Rotated files walked back at most, looking for the boot marker. */
@@ -414,7 +414,15 @@ function loadEvidence(
 	session: BootSession,
 	software: Software,
 	aliases: string[],
-): "loaded" | "errored" | "none" {
+): "loaded" | "errored" | "none" | "unknown" {
+	// A mod loader announces its mods as one batch and then says nothing per
+	// mod, so there is no per-alias line to look for — a silent mod is loaded
+	// and indistinguishable from an absent one. Reporting "unknown" is the
+	// truth; the paper/velocity heuristics below would call every mod missing.
+	if (software === "neoforge") {
+		return "unknown";
+	}
+
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
 	let loaded = false;
 
@@ -533,6 +541,8 @@ export async function instancePluginReport(
 				state = "errored";
 			} else if (evidence === "loaded") {
 				state = "running";
+			} else if (evidence === "unknown") {
+				state = "unknown";
 			} else {
 				state = session.complete ? "not-loaded" : "unknown";
 			}
@@ -674,7 +684,7 @@ export async function removeInstanceJars(
 			continue;
 		}
 
-		const path = join(instanceDir(inst), "plugins", entry.file);
+		const path = join(instanceAddonDir(inst), entry.file);
 
 		if (existsSync(path)) {
 			await rm(path);

@@ -326,9 +326,17 @@
 		starting: 'starting',
 		stopped: 'stopped'
 	};
+
+	// an addon whose every build is a mod is a mod, and the page says so — the
+	// route is shared because the identity is, not because the kinds are
+	const kindLabel = $derived(
+		data?.families?.length && data.families.every((family: any) => family.family === 'neoforge')
+			? 'Mods'
+			: 'Plugins'
+	);
 </script>
 
-<svelte:head><title>{name} | Plugins | Luna Console</title></svelte:head>
+<svelte:head><title>{name} | {kindLabel} | Luna Console</title></svelte:head>
 
 {#if data}
 	<PageHeader title={data.plugin} info>
@@ -364,7 +372,7 @@
 
 	<div class="tabbody">
 		{#if tab === 'overview'}
-			<Panel title="Plugin summary">
+			<Panel title="{kindLabel.slice(0, -1)} summary">
 				<InfoGrid cells={overviewCells} />
 			</Panel>
 			<div class="gap"></div>

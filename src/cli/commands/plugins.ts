@@ -13,6 +13,7 @@ import * as plugins from "../../client/core/plugins";
 import {
 	allPluginNames,
 	effectiveTargets,
+	familyOf,
 	entriesOf,
 	groupInstances,
 	instanceGroupNames,
@@ -107,18 +108,18 @@ command({
 				entry.autoUpdate ? Sym.ok : Sym.off,
 				pc.bold(name),
 				sourceBadge(entry.source),
-				entry.loader,
+				familyOf(entry),
 				version,
 				entry.targets.join(",") || pc.red("(none)"),
 			];
 		});
 
 		console.log();
-		printTable(rows, { head: ["auto", "plugin", "source", "loader", "version", "targets"] });
+		printTable(rows, { head: ["auto", "addon", "source", "family", "version", "targets"] });
 
 		console.log(
 			pc.dim(
-				`\n  ${rows.length} plugins — ${Sym.ok} auto-update on, ${Sym.off} off, ` +
+				`\n  ${rows.length} addons — ${Sym.ok} auto-update on, ${Sym.off} off, ` +
 					"+Nv = per-instance variants/pins (see plugins info)\n",
 			),
 		);
@@ -162,8 +163,22 @@ command({
 
 			for (const mismatch of report.caseMismatches) {
 				console.log(
-					`    ${mismatch.instance}/plugins/${pc.red(mismatch.actual)} ${Sym.arrow} ` +
+					`    ${mismatch.instance}/${mismatch.dir}/${pc.red(mismatch.actual)} ${Sym.arrow} ` +
 						`${pc.green(mismatch.expected)} ${pc.dim("(fixed on next deploy)")}`,
+				);
+			}
+		}
+
+		if (report.recognized.length) {
+			console.log();
+			info(
+				`${report.recognized.length} instance file(s) are a pooled build under another name ` +
+					"(register with: luna instance adopt-addons <instance>)",
+			);
+
+			for (const hit of report.recognized) {
+				console.log(
+					`    ${pc.dim(`${hit.instance}/${hit.dir}/`)}${hit.file} ${Sym.arrow} ${pc.green(hit.entry)}`,
 				);
 			}
 		}
@@ -171,12 +186,12 @@ command({
 		if (report.unmanaged.length) {
 			console.log();
 			info(
-				`${report.unmanaged.length} instance-only jars not in the pool ` +
+				`${report.unmanaged.length} instance-only jars not in the pool — left where they are ` +
 					"(adopt with: luna plugins adopt <instance> <jar>)",
 			);
 
 			for (const jar of report.unmanaged) {
-				console.log(`    ${pc.dim(`${jar.instance}/plugins/`)}${jar.file}`);
+				console.log(`    ${pc.dim(`${jar.instance}/${jar.dir}/`)}${jar.file}`);
 			}
 		}
 
@@ -394,24 +409,35 @@ command({
 
 command({
 	path: ["plugins", "add"],
-	desc: "Install a plugin from Modrinth (slug, or search query)",
+	desc: "Install a plugin or mod from Modrinth (slug, or search query)",
 	args: [{ name: "slug-or-query", required: true, variadic: true }],
 	opts: [
 		{
 			flag: "--to",
-			desc: "targets: *, *paper, *velocity, or names",
+			desc: "targets: *, *paper, *velocity, *neoforge, or names",
 			value: true,
 			complete: targetSelectors,
 		},
 		{ flag: "--pool", desc: "pool the jar only — deploy it nowhere yet" },
 		{ flag: "--velocity", desc: "install the velocity variant" },
+		{ flag: "--neoforge", desc: "install the neoforge mod (searches mods, not plugins)" },
 	],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
 		const query = args.join(" ");
-		const loader: "paper" | "velocity" = opts.velocity ? "velocity" : "paper";
+
+		if (opts.velocity && opts.neoforge) {
+			throw new UsageError("--velocity and --neoforge are different platforms — pick one");
+		}
+
+		const family: "paper" | "velocity" | "neoforge" = opts.neoforge
+			? "neoforge"
+			: opts.velocity
+				? "velocity"
+				: "paper";
+
 		const spin = new Spinner().start(`resolving "${query}" on Modrinth...`);
 
 		let project = await mr.getProject(query);
@@ -420,7 +446,11 @@ command({
 
 		// not a slug — fall back to search and let the user pick
 		if (!project) {
-			const hits = await mr.search(query, plugins.loadersFor(loader));
+			const hits = await mr.searchProjects(
+				query,
+				plugins.projectTypeFor(family),
+				plugins.loadersFor(family),
+			);
 
 			if (!hits.length) {
 				throw new Bail(`nothing found for "${query}"`);
@@ -429,7 +459,7 @@ command({
 			const { select, isCancel } = await import("@clack/prompts");
 
 			const picked = await select({
-				message: "Select a plugin",
+				message: family === "neoforge" ? "Select a mod" : "Select a plugin",
 				options: hits.map((hit) => ({
 					value: hit.slug,
 					label: hit.title,
@@ -451,7 +481,7 @@ command({
 		expandTargets(cfg, targets); // validate
 
 		const installSpinner = new Spinner().start(`installing ${project.title}...`);
-		const res = await plugins.installFromModrinth(cfg, lock, project, loader, targets);
+		const res = await plugins.installFromModrinth(cfg, lock, project, family, targets);
 
 		await saveLock(lock);
 		installSpinner.stop();
@@ -607,9 +637,9 @@ command({
 		{ flag: "--name", desc: "plugin name (default: the jar's basename)", value: true },
 		{
 			flag: "--family",
-			desc: "paper (default), velocity or universal",
+			desc: "paper (default), velocity, universal or neoforge",
 			value: true,
-			complete: async () => ["paper", "velocity", "universal"],
+			complete: async () => ["paper", "velocity", "universal", "neoforge"],
 		},
 		{
 			flag: "--to",
@@ -631,8 +661,8 @@ command({
 
 		const family = (opts.family as string | undefined) ?? "paper";
 
-		if (family !== "paper" && family !== "velocity" && family !== "universal") {
-			throw new UsageError("--family must be paper, velocity or universal");
+		if (family !== "paper" && family !== "velocity" && family !== "universal" && family !== "neoforge") {
+			throw new UsageError("--family must be paper, velocity, universal or neoforge");
 		}
 
 		const plugin =

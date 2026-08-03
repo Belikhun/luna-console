@@ -2,20 +2,59 @@ import { readdir, rm, copyFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
 
-import type { ClusterConfig, PluginEntry, PluginFamily, PluginsLock } from "./types";
-import { expandTargets, instanceDir, managedInstances, poolDir } from "./config";
-import { effectiveTargets, familyMatches, familyOf } from "./families";
+import type { ClusterConfig, InstanceConfig, PluginEntry, PluginFamily, PluginsLock } from "./types";
+import type { AddonDir } from "./config";
+import { addonDirForFamily, addonDirOf, expandTargets, instanceDir, managedInstances, poolDir } from "./config";
+import { carriesMcRequirement, effectiveTargets, familyMatches, familyOf, pluginNameOf } from "./families";
 import * as mr from "./services/modrinth";
 import type { ProgressReporter } from "./progress";
 
-/** Modrinth loader facets a side accepts — a paper server also loads bukkit/spigot jars. */
-export function loadersFor(loader: "paper" | "velocity"): string[] {
-	return loader === "paper" ? mr.PAPER_LOADERS : mr.VELOCITY_LOADERS;
+/**
+ * Modrinth loader facets a family's builds are published under — a paper server
+ * also loads bukkit/spigot jars, a mod loader accepts only its own. A universal
+ * jar is a paper build that happens to carry a velocity descriptor too, so the
+ * paper facets are what find it.
+ */
+export function loadersFor(family: PluginFamily): string[] {
+	if (family === "neoforge") {
+		return mr.NEOFORGE_LOADERS;
+	}
+
+	if (family === "velocity") {
+		return mr.VELOCITY_LOADERS;
+	}
+
+	return mr.PAPER_LOADERS;
+}
+
+/**
+ * Modrinth project type a family's builds are published as. Mods and plugins
+ * are separate types upstream, and a search for one never returns the other.
+ */
+export function projectTypeFor(family: PluginFamily): mr.MrProjectType {
+	return family === "neoforge" ? "mod" : "plugin";
 }
 
 /** Lockfile key for a pool jar: its file name, lowercased and without `.jar`. */
 export function entryNameFor(file: string): string {
 	return basename(file, ".jar").toLowerCase();
+}
+
+/** Pool file names under the standardized `<addon>@<family>.jar` scheme. */
+const STANDARDIZED = /^(.+)@(paper|velocity|universal|neoforge)$/;
+
+/**
+ * The (name, family) a pool jar declares through its own file name. Undefined
+ * for a jar that predates the standardized scheme — the caller then guesses.
+ */
+export function identityFromFile(file: string): { plugin: string; family: PluginFamily } | undefined {
+	const match = entryNameFor(file).match(STANDARDIZED);
+
+	if (!match) {
+		return undefined;
+	}
+
+	return { plugin: match[1]!, family: match[2] as PluginFamily };
 }
 
 /** Guess which side a jar belongs to from its file name. */
@@ -32,22 +71,44 @@ async function listJars(dir: string): Promise<string[]> {
 	return (await readdir(dir)).filter((file) => file.toLowerCase().endsWith(".jar"));
 }
 
+/** Absolute path of the directory luna deploys an instance's addons into. */
+export function instanceAddonDir(inst: InstanceConfig): string {
+	return join(instanceDir(inst), addonDirOf(inst.software));
+}
+
+/** One addon jar found inside an instance's own addon directory. */
+interface InstanceJar {
+	instance: string;
+	dir: AddonDir;
+	actual: string;
+	hash: string;
+}
+
 export interface ScanReport {
 	added: string[];
 	updatedHash: string[];
 	identified: Array<{ name: string; slug: string; version: string }>;
 	unidentified: string[];
 	luna: string[];
-	caseMismatches: Array<{ instance: string; actual: string; expected: string }>;
-	unmanaged: Array<{ instance: string; file: string }>;
+	caseMismatches: Array<{ instance: string; dir: AddonDir; actual: string; expected: string }>;
+	/** Instance jars that are a pooled build under the instance's own file name */
+	recognized: Array<{ instance: string; dir: AddonDir; file: string; entry: string; plugin: string }>;
+	unmanaged: Array<{ instance: string; dir: AddonDir; file: string }>;
 	removedEntries: string[];
 }
 
 /**
- * Scan the common pool + all instance plugin folders; build/refresh the lockfile.
+ * Scan the common pool + every instance's addon directory (`plugins/`, or
+ * `mods/` on a mod loader); build/refresh the lockfile.
  * - identifies pool jars on Modrinth by sha512
- * - seeds `targets` from which instances contain the jar (by name, case-insensitive, or hash)
+ * - seeds `targets` from the instances that already hold *our* build of a jar
  * - reports case mismatches and instance-only (unmanaged) jars
+ *
+ * "Ours" is deliberately narrow: the instance's copy has to be byte-identical
+ * to a pooled build, or carry the standardized `<addon>@<family>.jar` name that
+ * only a luna deploy writes. A server that was adopted with its own jars keeps
+ * them — a name that merely happens to collide never pulls a stranger's file
+ * under management (DESIGN.md — adoption leaves the directory alone).
  */
 export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanReport> {
 	const report: ScanReport = {
@@ -57,6 +118,7 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 		unidentified: [],
 		luna: [],
 		caseMismatches: [],
+		recognized: [],
 		unmanaged: [],
 		removedEntries: [],
 	};
@@ -71,23 +133,31 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 		poolHashes.set(jar, await mr.sha512File(join(pool, jar)));
 	}
 
-	// Index instance jars: name(lower) -> {instance, actualName, hash}
-	const instJars = new Map<string, Array<{ instance: string; actual: string; hash: string }>>();
+	// Index instance jars twice: by name (a deployed copy keeps the pool's file
+	// name) and by content (a renamed copy is still the same build)
+	const instJars: InstanceJar[] = [];
+	const byName = new Map<string, InstanceJar[]>();
+	const byHash = new Map<string, InstanceJar[]>();
 
 	for (const [name, inst] of Object.entries(insts)) {
-		const dir = join(instanceDir(inst), "plugins");
+		const dir = addonDirOf(inst.software);
 
-		for (const jar of await listJars(dir)) {
-			const hash = await mr.sha512File(join(dir, jar));
-			const key = jar.toLowerCase();
+		for (const jar of await listJars(join(instanceDir(inst), dir))) {
+			const hash = await mr.sha512File(join(instanceDir(inst), dir, jar));
+			const found: InstanceJar = { instance: name, dir, actual: jar, hash };
 
-			if (!instJars.has(key)) {
-				instJars.set(key, []);
-			}
+			instJars.push(found);
 
-			instJars.get(key)!.push({ instance: name, actual: jar, hash });
+			const nameKey = jar.toLowerCase();
+
+			byName.set(nameKey, [...(byName.get(nameKey) ?? []), found]);
+			byHash.set(hash, [...(byHash.get(hash) ?? []), found]);
 		}
 	}
+
+	// instance/file pairs claimed by a lockfile entry — everything left over is
+	// the instance's own business and gets reported, never adopted
+	const claimed = new Set<string>();
 
 	// Drop lock entries whose pool file disappeared
 	for (const [name, entry] of Object.entries(lock.plugins)) {
@@ -103,6 +173,7 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 		const name = entryNameFor(jar);
 		const hash = poolHashes.get(jar)!;
 		const isLuna = jar.toLowerCase().startsWith("luna-");
+		const identity = identityFromFile(jar);
 
 		let entry = lock.plugins[name];
 		const isNew = !entry;
@@ -111,10 +182,17 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 			entry = {
 				file: jar,
 				source: isLuna ? "luna" : "manual",
-				loader: guessLoader(jar),
+				// the file name already says which platform a standardized jar is
+				// for; only a legacy name has to be guessed at
+				loader: identity?.family === "neoforge" ? "neoforge" : guessLoader(jar),
 				autoUpdate: !isLuna,
 				targets: [],
 			};
+
+			if (identity) {
+				entry.plugin = identity.plugin;
+				entry.family = identity.family;
+			}
 
 			lock.plugins[name] = entry;
 			report.added.push(name);
@@ -187,16 +265,59 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 			}
 		}
 
-		// Seed targets from instance folders (match by lowercased filename)
-		const found = instJars.get(jar.toLowerCase()) ?? [];
+		// Seed targets from the instances that already hold this build. A
+		// standardized file name is proof on its own (luna wrote it, and a drifted
+		// copy still belongs to us); anything else has to match by content.
+		const dir = addonDirForFamily(familyOf(entry));
+		const pooledHashes = new Set([hash, ...Object.values(entry.variants ?? {}).map((variant) => variant.sha512)]);
+
+		const found = new Map<string, InstanceJar>();
+
+		for (const pooled of pooledHashes) {
+			for (const hit of byHash.get(pooled) ?? []) {
+				found.set(`${hit.instance}/${hit.actual}`, hit);
+			}
+		}
+
+		if (identity) {
+			for (const hit of byName.get(jar.toLowerCase()) ?? []) {
+				found.set(`${hit.instance}/${hit.actual}`, hit);
+			}
+		}
+
 		const targets = new Set(entry.targets.filter((target) => target.startsWith("*")));
 
-		for (const hit of found) {
+		for (const hit of found.values()) {
+			// a copy sitting in the other kind's directory is not this build's
+			// deployment — leave it to whichever entry actually owns that side
+			if (hit.dir !== dir) {
+				continue;
+			}
+
+			claimed.add(`${hit.instance}/${hit.dir}/${hit.actual}`);
+
+			// Byte-identical but under the instance's own file name: ours by
+			// content, not by deployment. Making it a target would have deploy
+			// write the pool name beside it and the server would load the addon
+			// twice, so this is offered as an action instead of done silently.
+			if (hit.actual.toLowerCase() !== jar.toLowerCase()) {
+				report.recognized.push({
+					instance: hit.instance,
+					dir: hit.dir,
+					file: hit.actual,
+					entry: name,
+					plugin: pluginNameOf(name, entry),
+				});
+
+				continue;
+			}
+
 			targets.add(hit.instance);
 
 			if (hit.actual !== jar) {
 				report.caseMismatches.push({
 					instance: hit.instance,
+					dir: hit.dir,
 					actual: hit.actual,
 					expected: jar,
 				});
@@ -228,20 +349,22 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 		pruneVariants(name, entry);
 	}
 
-	// Unmanaged: instance jars with no pool counterpart
-	const poolLower = new Set(poolJars.map((jar) => jar.toLowerCase()));
-
-	for (const [key, entries] of instJars) {
-		if (poolLower.has(key)) {
+	// Unmanaged: everything no entry claimed. These are the instance's own —
+	// adopted with the server, hand-dropped, or shipped by a modpack — and scan
+	// only ever reports them.
+	for (const hit of instJars) {
+		if (claimed.has(`${hit.instance}/${hit.dir}/${hit.actual}`)) {
 			continue;
 		}
 
-		for (const hit of entries) {
-			report.unmanaged.push({ instance: hit.instance, file: hit.actual });
-		}
+		report.unmanaged.push({ instance: hit.instance, dir: hit.dir, file: hit.actual });
 	}
 
 	report.unmanaged.sort(
+		(a, b) => a.instance.localeCompare(b.instance) || a.file.localeCompare(b.file),
+	);
+
+	report.recognized.sort(
 		(a, b) => a.instance.localeCompare(b.instance) || a.file.localeCompare(b.file),
 	);
 
@@ -254,7 +377,7 @@ export async function getVersionsForEntry(entry: PluginEntry): Promise<mr.MrVers
 		return [];
 	}
 
-	return await mr.getVersions(entry.modrinth.projectId, loadersFor(entry.loader));
+	return await mr.getVersions(entry.modrinth.projectId, loadersFor(familyOf(entry)));
 }
 
 /** The version an instance currently gets for an entry (pin > auto-assign > primary). */
@@ -329,11 +452,13 @@ export function resolveEntry(
 			continue;
 		}
 
-		// Only paper-side builds on a paper backend carry an MC-version requirement;
-		// velocity builds are version-independent. Universal jars count when they
-		// land on a paper backend.
+		// Builds that land on a game server carry an MC-version requirement — a
+		// paper plugin and a neoforge mod alike; velocity builds are
+		// version-independent. Universal jars count when they land on a backend.
 		const required =
-			familyMatches(familyOf(entry), "paper") && inst.software === "paper" && inst.mcVersion
+			carriesMcRequirement(inst.software) &&
+			familyMatches(familyOf(entry), inst.software) &&
+			inst.mcVersion
 				? [inst.mcVersion]
 				: [];
 
@@ -440,7 +565,7 @@ export async function checkUpdates(
 			continue;
 		}
 
-		const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(entry.loader));
+		const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(familyOf(entry)));
 
 		// backfill the primary's game-version requirement from modrinth data
 		const installed = versions.find((version) => version.id === entry.installed?.versionId);
@@ -578,7 +703,7 @@ export async function pinVersion(
 		throw new Error(`${name} is not a modrinth plugin — pinning needs modrinth version metadata`);
 	}
 
-	const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(entry.loader));
+	const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(familyOf(entry)));
 	const version = versions.find(
 		(candidate) => candidate.version_number === versionSpec || candidate.id === versionSpec,
 	);
@@ -598,12 +723,11 @@ export async function pinVersion(
 	const incompatible = expanded.filter((target) => {
 		const inst = insts[target];
 
-		return (
-			entry.loader === "paper" &&
-			inst?.mcVersion !== undefined &&
-			version.game_versions.length > 0 &&
-			!version.game_versions.includes(inst.mcVersion)
-		);
+		if (!inst || !carriesMcRequirement(inst.software) || inst.mcVersion === undefined) {
+			return false;
+		}
+
+		return version.game_versions.length > 0 && !version.game_versions.includes(inst.mcVersion);
 	});
 
 	// server-version gate per DESIGN.md — an explicit --force is the only way past it
@@ -680,7 +804,7 @@ export async function ensureVariantForMc(
 		throw new Error(`${name} has no Modrinth metadata — pool a compatible build manually`);
 	}
 
-	const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(entry.loader));
+	const versions = await mr.getVersions(entry.modrinth.projectId, loadersFor(familyOf(entry)));
 	const { best } = mr.pickCompatible(versions, [mcVersion], { channel: entry.channel ?? "release" });
 
 	if (!best) {
@@ -745,7 +869,7 @@ export interface CompatRow {
 	pinned: boolean;
 }
 
-/** Server-version requirement check: can `instance` (at mcVersion) run its assigned plugin builds? */
+/** Server-version requirement check: can `instance` (at mcVersion) run its assigned addon builds? */
 export function compatReport(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
@@ -753,11 +877,16 @@ export function compatReport(
 	mcVersion: string,
 ): CompatRow[] {
 	const rows: CompatRow[] = [];
+	const software = managedInstances(cfg)[instance]?.software ?? "paper";
+
+	if (!carriesMcRequirement(software)) {
+		return rows;
+	}
 
 	for (const [name, entry] of Object.entries(lock.plugins)) {
 		// velocity-side builds carry no MC requirement; universal jars do when
-		// they run on a paper backend
-		if (!familyMatches(familyOf(entry), "paper")) {
+		// they run on a backend, and every mod does
+		if (!familyMatches(familyOf(entry), software)) {
 			continue;
 		}
 
@@ -841,9 +970,9 @@ export async function deploy(
 			// pooled variant fits, deploy that and record the assignment so the choice
 			// is stable — and so pruneVariants keeps the jar.
 			const inst = insts[target];
-			const mc = inst?.software === "paper" ? inst.mcVersion : undefined;
+			const mc = inst && carriesMcRequirement(inst.software) ? inst.mcVersion : undefined;
 
-			if (mc && familyMatches(familyOf(entry), "paper")) {
+			if (mc && inst && familyMatches(familyOf(entry), inst.software)) {
 				const assigned =
 					version === entry.installed?.versionNumber
 						? entry.installed?.gameVersions
@@ -888,9 +1017,11 @@ export async function deploy(
 				continue;
 			}
 
-			const plugDir = join(instanceDir(inst), "plugins");
+			// `mods/` on a mod loader, `plugins/` everywhere else — effectiveTargets
+			// already guaranteed the build belongs in whichever one this is
+			const addonDir = instanceAddonDir(inst);
 
-			if (!existsSync(plugDir)) {
+			if (!existsSync(addonDir)) {
 				continue;
 			}
 
@@ -920,17 +1051,17 @@ export async function deploy(
 					? `variant ${resolved.version}`
 					: undefined;
 
-			const dest = join(plugDir, entry.file);
+			const dest = join(addonDir, entry.file);
 
 			// remove wrong-case duplicates
-			const duplicates = (await listJars(plugDir)).filter(
+			const duplicates = (await listJars(addonDir)).filter(
 				(jar) => jar.toLowerCase() === entry.file.toLowerCase() && jar !== entry.file,
 			);
 
 			let renamed = false;
 
 			for (const duplicate of duplicates) {
-				await rm(join(plugDir, duplicate));
+				await rm(join(addonDir, duplicate));
 				renamed = true;
 			}
 
@@ -1020,21 +1151,21 @@ export async function installFromModrinth(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
 	project: mr.MrProject,
-	loader: "paper" | "velocity",
+	family: "paper" | "velocity" | "neoforge",
 	targets: string[],
 ): Promise<{ name: string; entry: PluginEntry; resolution: EntryResolution }> {
 	// standardized scheme: key <plugin>@<family>, pool file <plugin>@<family>.jar
 	const plugin = project.slug.toLowerCase();
-	const name = `${plugin}@${loader}`;
+	const name = `${plugin}@${family}`;
 	const file = `${name}.jar`;
-	const versions = await mr.getVersions(project.id, loadersFor(loader));
+	const versions = await mr.getVersions(project.id, loadersFor(family));
 
 	const entry: PluginEntry = {
 		file,
 		source: "modrinth",
-		loader,
+		loader: family,
 		plugin,
-		family: loader,
+		family,
 		modrinth: { projectId: project.id, slug: project.slug },
 		autoUpdate: true,
 		targets,
@@ -1067,7 +1198,7 @@ export async function installFromModrinth(
 			.join("; ");
 
 		throw new Error(
-			`no installable version of ${project.slug} (${loader}): ${reasons || "no versions found"}`,
+			`no installable version of ${project.slug} (${family}): ${reasons || "no versions found"}`,
 		);
 	}
 
@@ -1146,7 +1277,7 @@ export async function uploadJar(
 		...existing,
 		file,
 		source: plugin.startsWith("luna-") ? "luna" : "manual",
-		loader: opts.family === "velocity" ? "velocity" : "paper",
+		loader: opts.family === "universal" ? "paper" : opts.family,
 		plugin,
 		family: opts.family,
 		autoUpdate: false,
@@ -1167,7 +1298,16 @@ export async function uploadJar(
 	return { name, entry };
 }
 
-/** Adopt an instance-only jar into the common pool. */
+/**
+ * Adopt an instance-only jar into the common pool — the explicit way an addon
+ * a server brought with it becomes managed. Nothing else does this: a scan
+ * reports unmanaged jars and leaves them where they are, because a server that
+ * was adopted with its own plugins or modpack is working and rewriting its
+ * directory is how that stops being true.
+ *
+ * The jar keeps its file name so the instance's existing copy *is* the
+ * deployment — no rename, no second jar the server would load twice.
+ */
 export async function adopt(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
@@ -1180,18 +1320,25 @@ export async function adopt(
 		throw new Error(`unknown instance: ${instance}`);
 	}
 
-	const src = join(instanceDir(inst), "plugins", jarName);
+	const dir = addonDirOf(inst.software);
+	const src = join(instanceDir(inst), dir, jarName);
 
 	if (!existsSync(src)) {
-		throw new Error(`${jarName} not found in ${instance}/plugins`);
+		throw new Error(`${jarName} not found in ${instance}/${dir}`);
 	}
 
 	await copyFile(src, join(poolDir(), jarName));
 
+	const identity = identityFromFile(jarName);
+
 	const entry: PluginEntry = {
 		file: jarName,
 		source: jarName.toLowerCase().startsWith("luna-") ? "luna" : "manual",
-		loader: inst.software === "velocity" ? "velocity" : "paper",
+		loader: inst.software,
+		plugin: identity?.plugin ?? entryNameFor(jarName),
+		// the jar runs on the software it was found under; a universal build is
+		// only ever declared by hand, never guessed from one instance
+		family: identity?.family ?? inst.software,
 		autoUpdate: false,
 		targets: [instance],
 		installed: { sha512: await mr.sha512File(src) },
@@ -1228,7 +1375,7 @@ export async function removePlugin(
 			continue;
 		}
 
-		const dest = join(instanceDir(inst), "plugins", entry.file);
+		const dest = join(instanceAddonDir(inst), entry.file);
 
 		if (existsSync(dest)) {
 			await rm(dest);

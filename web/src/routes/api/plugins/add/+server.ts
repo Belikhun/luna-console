@@ -6,7 +6,7 @@ import { ensurePortAllocations } from '$core/ports';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
-/** POST { slug, loader, targets } */
+/** POST { slug, family, targets } — `loader` is the pre-mods spelling of `family`. */
 export async function POST({ request }) {
 	const body = await request.json();
 	const cfg = await loadCluster();
@@ -17,10 +17,11 @@ export async function POST({ request }) {
 		throw error(404, `modrinth project "${body.slug}" not found`);
 	}
 
-	const loader = body.loader === 'velocity' ? 'velocity' : 'paper';
+	const requested = body.family ?? body.loader;
+	const family = requested === 'velocity' || requested === 'neoforge' ? requested : 'paper';
 
 	try {
-		const res = await installFromModrinth(cfg, lock, project, loader, body.targets);
+		const res = await installFromModrinth(cfg, lock, project, family, body.targets);
 
 		await saveLock(lock);
 

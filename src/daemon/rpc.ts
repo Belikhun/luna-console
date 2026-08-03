@@ -703,6 +703,9 @@ export const OPS: Record<string, OpSpec> = {
 		lock: 1,
 		reporter: { arg: 3, prop: "reporter" },
 	},
+	// reads both lockfiles and renames files inside the instance, so it runs on
+	// the owner; the lockfile half is pure and stays with the caller
+	"addons.adoptInstanceAddons": { fn: addonsCore.adoptInstanceAddons, cfg: 0, instance: 3 },
 	"modrinth.searchProjects": { fn: modrinth.searchProjects },
 
 	// -- plugin runtime state ---------------------------------------------------

@@ -1,16 +1,24 @@
 import { json } from '@sveltejs/kit';
-import { loadCluster, loadLock, saveLock } from '$core/config';
+import { addonDirForFamily, loadCluster, loadLock, saveLock } from '$core/config';
 import { effectiveTargets, familyOf, pluginNameOf } from '$core/families';
 import { displayNameOf, ensureAliases } from '$core/pluginstate';
 
 /**
- * GET → the plugin universe grouped by identity: one row per plugin, its
- * family builds nested — the list view never shows loaders, the info view
- * unpacks the families.
+ * GET ?kind=plugins|mods → the addon universe grouped by identity: one row per
+ * addon, its family builds nested — the list view never shows loaders, the info
+ * view unpacks the families.
+ *
+ * `kind` splits the two screens. It is a filter on the *builds*, not on the
+ * addon: something like luna-core, which ships a paper plugin and a neoforge
+ * mod, is genuinely both and appears on both screens with only the matching
+ * families listed.
  */
-export async function GET() {
+export async function GET({ url }) {
 	const cfg = await loadCluster();
 	const lock = await loadLock();
+
+	const requested = url.searchParams.get('kind');
+	const kind = requested === 'mods' || requested === 'plugins' ? requested : null;
 
 	if (await ensureAliases(lock)) {
 		await saveLock(lock);
@@ -20,6 +28,10 @@ export async function GET() {
 
 	for (const [key, entry] of Object.entries(lock.plugins)) {
 		const plugin = pluginNameOf(key, entry);
+
+		if (kind && addonDirForFamily(familyOf(entry)) !== kind) {
+			continue;
+		}
 
 		if (!grouped.has(plugin)) {
 			grouped.set(plugin, {

@@ -56,6 +56,7 @@ const PAGES: SearchHit[] = [
 	},
 	{ group: 'Pages', label: 'Players', detail: 'Who is online', href: '/players', icon: 'users' },
 	{ group: 'Pages', label: 'Plugins', detail: 'Plugin pool and updates', href: '/plugins', icon: 'plug' },
+	{ group: 'Pages', label: 'Mods', detail: 'Mod pool for the loader instances', href: '/mods', icon: 'puzzle' },
 	{
 		group: 'Pages',
 		label: 'Addon groups',
@@ -106,6 +107,33 @@ function screenHref(path: string, term: string): string {
 	return `${path}?q=${encodeURIComponent(term)}`;
 }
 
+/**
+ * One kind's addons as search hits. Both kinds come from the same endpoint —
+ * the lockfile does not separate them — so the kind filter is what makes the
+ * two providers answer with different things.
+ */
+async function addonHits(
+	kind: 'plugins' | 'mods',
+	group: string,
+	icon: string
+): Promise<SearchHit[]> {
+	const body = await fetchJson<{ plugins?: any[] }>(`/api/plugins?kind=${kind}`);
+
+	return (body?.plugins ?? []).map((addon) => ({
+		group,
+		label: String(addon.plugin),
+		detail: [
+			addon.displayName && addon.displayName !== addon.plugin ? addon.displayName : '',
+			addon.sources?.join(', ') ?? '',
+			addon.families?.map((family: any) => family.family).join(', ') ?? ''
+		]
+			.filter(Boolean)
+			.join(' · '),
+		href: `/plugins/${encodeURIComponent(addon.plugin)}`,
+		icon
+	}));
+}
+
 export const SEARCH_PROVIDERS: SearchProvider[] = [
 	{
 		group: 'Pages',
@@ -141,26 +169,18 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 		}
 	},
 
+	// one provider per kind, because a mod and a plugin are different objects to
+	// look for even though the lockfile stores them the same way
 	{
 		group: 'Plugins',
 		icon: 'plug',
-		load: async () => {
-			const body = await fetchJson<{ plugins?: any[] }>('/api/plugins');
+		load: async () => addonHits('plugins', 'Plugins', 'plug')
+	},
 
-			return (body?.plugins ?? []).map((plugin) => ({
-				group: 'Plugins',
-				label: String(plugin.plugin),
-				detail: [
-					plugin.displayName && plugin.displayName !== plugin.plugin ? plugin.displayName : '',
-					plugin.sources?.join(', ') ?? 'plugin',
-					plugin.families?.map((family: any) => family.family).join(', ') ?? ''
-				]
-					.filter(Boolean)
-					.join(' · '),
-				href: `/plugins/${encodeURIComponent(plugin.plugin)}`,
-				icon: 'plug'
-			}));
-		}
+	{
+		group: 'Mods',
+		icon: 'puzzle',
+		load: async () => addonHits('mods', 'Mods', 'puzzle')
 	},
 
 	{

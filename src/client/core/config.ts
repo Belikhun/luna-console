@@ -12,7 +12,14 @@ import type { ClusterConfig, InstanceConfig } from "../../core/types";
 import { call } from "../rpc";
 import { clientRoot } from "../socket";
 
-export { allInstances, managedInstances, managesPlugins, expandTargets } from "../../core/config";
+export {
+	allInstances,
+	managedInstances,
+	addonDirOf,
+	addonDirForFamily,
+	expandTargets,
+} from "../../core/config";
+export type { AddonDir } from "../../core/config";
 
 /** Cluster root, as reported by the daemon's handshake. */
 export function root(): string {

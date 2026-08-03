@@ -56,6 +56,10 @@
 	let inst: any = $state(null);
 	let tab = $state('details');
 
+	// a mod loader keeps its addons in mods/, so the tab is called what the
+	// operator will look for — the rows and the API behind them are the same
+	const addonLabel = $derived(inst?.software === 'neoforge' ? 'Mods' : 'Plugins');
+
 	let cfgData: any = $state(null);
 	let cfgMemory = $state('');
 	let cfgProfile = $state('');
@@ -829,7 +833,7 @@
 			{ id: 'details', label: 'Details' },
 			{ id: 'checks', label: 'Status and alarms' },
 			{ id: 'monitoring', label: 'Monitoring' },
-			{ id: 'plugins', label: 'Plugins' },
+			{ id: 'plugins', label: addonLabel },
 			// the proxy has no world for data packs, and resource packs are ITS
 			// catalog — the per-backend view only makes sense on a backend
 			...(inst.software === 'velocity'
@@ -982,7 +986,7 @@
 				{/if}
 			</p>
 		{:else if tab === 'plugins'}
-			<Panel title="Plugins on {name}" count={instPlugins.length} flush>
+			<Panel title="{addonLabel} on {name}" count={instPlugins.length} flush>
 				{#snippet actions()}
 					<Alerts warnings={pluginTotals.warnings} errors={pluginTotals.errors} />
 					<Btn icon="sync" onclick={() => loadTab('plugins')}>Refresh</Btn>
@@ -995,7 +999,7 @@
 					getId={(plugin) => plugin.plugin}
 					searchValue={(plugin) =>
 						`${plugin.plugin} ${plugin.displayName ?? ''} ${plugin.state} ${plugin.version ?? ''} ${plugin.source} ${(plugin.groups ?? []).join(' ')}`}
-					searchPlaceholder="Find a plugin on this instance"
+					searchPlaceholder="Find an addon on this instance"
 					rowActions={pluginActions}
 					rowLabel={(plugin) => plugin.plugin}
 					noun="plugin"

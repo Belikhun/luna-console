@@ -72,6 +72,7 @@
 			section: 'Addons',
 			items: [
 				{ label: 'Plugins', href: '/plugins', icon: 'plug' },
+				{ label: 'Mods', href: '/mods', icon: 'puzzle' },
 				{ label: 'Resource packs', href: '/packs', icon: 'image' },
 				{ label: 'Data packs', href: '/datapacks', icon: 'box' },
 				{ label: 'Addon groups', href: '/addons/groups', icon: 'layerGroup' }

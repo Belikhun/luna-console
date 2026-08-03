@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 
-import { loadCluster, loadLock, managedInstances, managesPlugins } from '$core/config';
+import { loadCluster, loadLock, managedInstances } from '$core/config';
 import { validateGroups } from '$core/families';
 import type { Software } from '$core/types';
 
@@ -31,11 +31,6 @@ export async function GET({ url }) {
 
 	if (software !== 'paper' && software !== 'velocity' && software !== 'neoforge') {
 		throw error(400, 'software=paper|velocity|neoforge (or instance=) is required');
-	}
-
-	// nothing to validate for a mod loader — its mods/ is outside the plugin system
-	if (!managesPlugins(software)) {
-		return json({ rows: [] });
 	}
 
 	const groups = (url.searchParams.get('groups') ?? '')

@@ -10,7 +10,9 @@ import { call, jobCall } from "../rpc";
 
 export {
 	loadersFor,
+	projectTypeFor,
 	entryNameFor,
+	identityFromFile,
 	assignedVersion,
 	resolveEntry,
 	compatReport,

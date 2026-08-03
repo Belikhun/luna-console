@@ -2,4 +2,4 @@
 	import AddonCatalog from '$lib/components/AddonCatalog.svelte';
 </script>
 
-<AddonCatalog kind="plugins" />
+<AddonCatalog kind="mods" />

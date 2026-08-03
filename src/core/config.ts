@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-import type { ClusterConfig, InstanceConfig, PluginsLock, Software } from "./types";
+import type { ClusterConfig, InstanceConfig, PluginFamily, PluginsLock, Software } from "./types";
 
 /**
  * Locate the cluster root: the nearest ancestor of the working directory that
@@ -183,14 +183,27 @@ export function instanceDir(inst: InstanceConfig): string {
 	return join(root(), inst.dir);
 }
 
+/** The directory name an addon of one kind lives in, inside an instance. */
+export type AddonDir = "plugins" | "mods";
+
 /**
- * Whether luna's plugin system owns this software's plugin directory. Mod
- * loaders bring their own ecosystem — a neoforge server's `mods/` is curated by
- * hand (or by a modpack), and pushing pool jars into it would break the pack —
- * so they are lifecycle-managed only.
+ * Where luna deploys a server's addons. Mod loaders keep theirs in `mods/`
+ * rather than `plugins/`, and the two are not interchangeable: a bukkit jar in
+ * `mods/` is ignored at best and a crash at worst. Everything that reads or
+ * writes an instance's addons goes through this, so neither kind can ever be
+ * written into the other's directory.
  */
-export function managesPlugins(software: Software): boolean {
-	return software !== "neoforge";
+export function addonDirOf(software: Software): AddonDir {
+	return software === "neoforge" ? "mods" : "plugins";
+}
+
+/**
+ * The directory a *build* belongs in, from its family. Paired with
+ * `addonDirOf`, this is the one comparison that keeps a plugin out of a
+ * modpack's `mods/` even when an operator names the instance explicitly.
+ */
+export function addonDirForFamily(family: PluginFamily): AddonDir {
+	return family === "neoforge" ? "mods" : "plugins";
 }
 
 /** Software names accepted as a `*<software>` wildcard target. */

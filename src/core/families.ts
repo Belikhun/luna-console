@@ -24,7 +24,7 @@ import type {
 	PluginsLock,
 	Software,
 } from "./types";
-import { expandTargets, managedInstances, managesPlugins } from "./config";
+import { addonDirForFamily, addonDirOf, expandTargets, managedInstances } from "./config";
 
 export const DEFAULT_GROUP = "default";
 
@@ -57,13 +57,16 @@ export function familyOf(entry: PluginEntry): PluginFamily {
 }
 
 /**
- * Whether a build of this family loads on the given server software. Software
- * outside the plugin system (neoforge) matches nothing, so a group can never
- * pull a pool jar into a modpack's `mods/`.
+ * Whether a build of this family loads on the given server software.
+ *
+ * A mod loader is a closed ecosystem in both directions: only a `neoforge`
+ * build loads on neoforge, and a neoforge build loads nowhere else. `universal`
+ * means "paper and velocity" (the jars that carry both descriptors) — never
+ * "every platform" — so it stops at the loader boundary too.
  */
 export function familyMatches(family: PluginFamily, software: Software): boolean {
-	if (!managesPlugins(software)) {
-		return false;
+	if (family === "neoforge" || software === "neoforge") {
+		return family === "neoforge" && software === "neoforge";
 	}
 
 	if (family === "universal") {
@@ -71,6 +74,16 @@ export function familyMatches(family: PluginFamily, software: Software): boolean
 	}
 
 	return family === software;
+}
+
+/**
+ * Whether a build for this software is tied to a Minecraft version. Only the
+ * proxy is version-independent — a paper plugin and a neoforge mod are both
+ * compiled against a game version and refuse to load outside it, so they go
+ * through the same resolution, holdback and compatibility rules.
+ */
+export function carriesMcRequirement(software: Software): boolean {
+	return software !== "velocity";
 }
 
 /** Group names applied to an instance — "default" always, then its own list. */
@@ -205,8 +218,9 @@ export function groupCoverage(cfg: ClusterConfig, lock: PluginsLock, key: string
  * extras, wildcards included) united with group/override coverage, minus the
  * instances that disabled the plugin — a `false` override beats an explicit
  * lockfile target too. This is the single resolution deploy, drift detection
- * and compat checks all share, so it is also where instances outside the plugin
- * system drop out: naming one explicitly must not deploy into its `mods/`.
+ * and compat checks all share, so it is also where the loader boundary is
+ * enforced against explicit targets: naming a modpack does not put a bukkit jar
+ * in its `mods/`, and naming a paper backend does not put a mod in `plugins/`.
  */
 export function effectiveTargets(cfg: ClusterConfig, lock: PluginsLock, key: string): string[] {
 	const entry = lock.plugins[key];
@@ -217,6 +231,7 @@ export function effectiveTargets(cfg: ClusterConfig, lock: PluginsLock, key: str
 
 	const insts = managedInstances(cfg);
 	const plugin = pluginNameOf(key, entry);
+	const dir = addonDirForFamily(familyOf(entry));
 	const out = new Set<string>(expandTargets(cfg, entry.targets));
 
 	for (const name of groupCoverage(cfg, lock, key)) {
@@ -226,7 +241,7 @@ export function effectiveTargets(cfg: ClusterConfig, lock: PluginsLock, key: str
 	for (const name of [...out]) {
 		const inst = insts[name];
 
-		if (!inst || !managesPlugins(inst.software)) {
+		if (!inst || addonDirOf(inst.software) !== dir) {
 			out.delete(name);
 
 			continue;
@@ -531,7 +546,7 @@ export function validateGroups(
 			: entry.installed?.versionNumber;
 
 		// velocity builds are MC-version independent (same rule resolveEntry applies)
-		if (opts.software !== "paper" || !opts.mcVersion) {
+		if (!carriesMcRequirement(opts.software) || !opts.mcVersion) {
 			rows.push({ plugin, groups, entry: key, family, status: "ok", version, downloadable: false });
 
 			continue;

@@ -13,6 +13,7 @@ import { deploy, compatReport } from "../../client/core/plugins";
 import { listVersions } from "../../client/core/services/papermc";
 import { ProgressReporter } from "../../client/core/progress";
 import { loadPacksLock, savePacksLock } from "../../client/core/packslock";
+import * as addons from "../../client/core/addons";
 import { applyAddonGroups } from "../../client/core/addons";
 import {
 	SERVER_SETTINGS,
@@ -447,6 +448,70 @@ command({
 	},
 });
 
+/**
+ * Account for the addons an instance already holds, and print the outcome.
+ *
+ * Everything the server brought stays where it is; only files that are already
+ * in the pool — same bytes, or the standardized pool file name — are registered
+ * as deployments of that addon. Shared by `instance adopt` (which runs it once,
+ * on registration) and `instance adopt-addons` (which re-runs it after the pool
+ * has grown).
+ */
+async function adoptAddons(cfg: ClusterConfig, name: string): Promise<void> {
+	const lock = await loadLock();
+	const packs = await loadPacksLock();
+	const adoption = await addons.adoptInstanceAddons(cfg, lock, packs, name);
+	const registered = addons.applyAddonAdoption(cfg, lock, packs, name, adoption);
+
+	if (registered.length) {
+		await saveLock(lock);
+		await savePacksLock(packs);
+	}
+
+	if (adoption.adopted.length) {
+		ok(
+			`${adoption.adopted.length} addon(s) recognised from the pool` +
+				(registered.length ? `, ${registered.length} newly registered` : " (already registered)"),
+		);
+
+		for (const item of adoption.adopted) {
+			const renamed = item.renamedTo ? pc.dim(` → ${item.renamedTo}`) : "";
+			const pinned = item.version ? pc.yellow(` @${item.version}`) : "";
+
+			console.log(`    ${Sym.check} ${item.file}${renamed} ${pc.dim(item.addon)}${pinned}`);
+		}
+	}
+
+	if (adoption.unmanaged.length) {
+		info(`${adoption.unmanaged.length} addon(s) left unmanaged — the server keeps its own`);
+
+		for (const item of adoption.unmanaged.slice(0, 10)) {
+			console.log(`    ${pc.dim(item.path)}`);
+		}
+
+		if (adoption.unmanaged.length > 10) {
+			console.log(pc.dim(`    …and ${adoption.unmanaged.length - 10} more`));
+		}
+	}
+}
+
+command({
+	path: ["instance", "adopt-addons"],
+	desc: "Re-check an instance's own plugins/mods/data packs against the pool",
+	args: [{ name: "instance", required: true, complete: instanceNames }],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const name = args[0]!;
+
+		if (!managedInstances(cfg)[name]) {
+			throw new UsageError(`unknown instance: ${name}`);
+		}
+
+		await adoptAddons(cfg, name);
+	},
+});
+
 command({
 	path: ["instance", "adopt"],
 	desc: "Register a server directory that already exists as a managed instance",
@@ -520,6 +585,10 @@ command({
 		for (const note of result.notes) {
 			warn(note);
 		}
+
+		// what the server brought with it: recognised addons join the pool's
+		// targets, everything else is reported and left exactly where it is
+		await adoptAddons(cfg, name);
 
 		if (sync.changed) {
 			info("velocity.toml updated — reload the proxy to apply");

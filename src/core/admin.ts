@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 import type { ClusterConfig, InstanceConfig, Software } from "./types";
-import { instanceDir, managedInstances, managesPlugins, root } from "./config";
+import { addonDirOf, instanceDir, managedInstances, root } from "./config";
 import * as papermc from "./services/papermc";
 import { readForwardingSecret } from "./proxy";
 import { nextFreePort } from "./ports";
@@ -369,9 +369,11 @@ export async function adoptInstance(
 		);
 	}
 
-	if (!managesPlugins(inst.software)) {
-		notes.push(`${inst.software} mods stay outside the plugin system — mods/ is left alone`);
-	}
+	// what the directory already contains is accounted for separately, by
+	// `adoptInstanceAddons` — adopt itself never reads or writes an addon
+	notes.push(
+		`existing ${addonDirOf(inst.software)}/ stay unmanaged — only addons already in the pool are registered`,
+	);
 
 	cfg.instances[name] = inst;
 

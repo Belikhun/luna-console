@@ -1,7 +1,7 @@
 /**
- * Server software luna can launch. `neoforge` instances are lifecycle-managed
- * only — luna starts, stops, consoles and proxies them, but their `mods/`
- * directory is outside the plugin system (see `managesPlugins`).
+ * Server software luna can launch. A `neoforge` instance keeps its addons in
+ * `mods/` rather than `plugins/` (see `addonDirOf`), and only `neoforge`-family
+ * builds ever land there — the two ecosystems never cross.
  */
 export type Software = "paper" | "velocity" | "neoforge";
 
@@ -191,7 +191,8 @@ export interface PluginEntry {
 	/** File name in the common pool (the primary/newest version) */
 	file: string;
 	source: PluginSource;
-	loader: "paper" | "velocity";
+	/** @deprecated pre-family spelling of `family`; still the fallback for v1 entries */
+	loader: "paper" | "velocity" | "neoforge";
 	/** Plugin name this build belongs to (several entries share one); defaults to the entry key */
 	plugin?: string;
 	/** Platform this build runs on; defaults to `loader` */

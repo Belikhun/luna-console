@@ -7,6 +7,10 @@ const UA = "belikhun/luna-control";
 export const PAPER_LOADERS = ["paper", "spigot", "bukkit", "folia"];
 export const VELOCITY_LOADERS = ["velocity"];
 
+// A mod loader accepts only its own artifacts — nothing cross-loads with paper,
+// and a fabric jar in a neoforge `mods/` is a crash, not a fallback.
+export const NEOFORGE_LOADERS = ["neoforge"];
+
 // Pack "loaders": resource packs publish under the pseudo-loader "minecraft",
 // data packs under "datapack" (Modrinth stores them as mods with that loader).
 export const RESOURCEPACK_LOADERS = ["minecraft"];
@@ -99,7 +103,7 @@ export interface MrSearchHit {
 }
 
 /** Kinds of Modrinth project luna installs from. */
-export type MrProjectType = "plugin" | "resourcepack" | "datapack";
+export type MrProjectType = "plugin" | "mod" | "resourcepack" | "datapack";
 
 /**
  * The search facets selecting one project type. Data packs are the odd one
@@ -107,6 +111,10 @@ export type MrProjectType = "plugin" | "resourcepack" | "datapack";
  * search index answers `project_type:datapack` for exactly those — pairing it
  * with `project_type:mod` (which is what the hits report themselves as) is an
  * empty intersection, so the pseudo type has to stand alone.
+ *
+ * `mod` and `plugin` are separate project types upstream, so a mod search must
+ * not fall through to the plugin facet: "create" is a mod and would never
+ * appear under `project_type:plugin` no matter which loader is asked for.
  */
 function typeFacets(type: MrProjectType, loaders: string[]): string[][] {
 	if (type === "datapack") {
@@ -115,6 +123,10 @@ function typeFacets(type: MrProjectType, loaders: string[]): string[][] {
 
 	if (type === "resourcepack") {
 		return [["project_type:resourcepack"]];
+	}
+
+	if (type === "mod") {
+		return [["project_type:mod"], loaders.map((loader) => `categories:${loader}`)];
 	}
 
 	return [["project_type:plugin"], loaders.map((loader) => `categories:${loader}`)];
