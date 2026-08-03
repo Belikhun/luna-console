@@ -2,34 +2,24 @@ import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveCluster, saveLock, managedInstances } from '$core/config';
 import { effectiveTargets, entriesOf, setPluginOverride } from '$core/families';
 import { deploy } from '$core/plugins';
-import { ensureAliases, instancePluginReport, removeInstanceJars } from '$core/pluginstate';
+import { removeInstanceJars } from '$core/pluginstate';
+import { addonSnapshot } from '$lib/server/addons';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
 /**
  * GET → the plugins this instance runs: version, origin (group/manual/explicit),
  * runtime state from the current boot session, and per-plugin warn/error counts.
+ * Same payload the addon stream pushes, so a refresh and a live update agree.
  */
 export async function GET({ params }) {
-	const cfg = await loadCluster();
-	const lock = await loadLock();
+	try {
+		const { datapacks, ...plugins } = await addonSnapshot(params.name);
 
-	if (!managedInstances(cfg)[params.name]) {
-		throw error(404, 'unknown instance');
+		return json(plugins);
+	} catch (err) {
+		throw error(404, errorMessage(err));
 	}
-
-	if (await ensureAliases(lock)) {
-		await saveLock(lock);
-	}
-
-	const { rows, session } = await instancePluginReport(cfg, lock, params.name);
-
-	return json({
-		plugins: rows,
-		sessionComplete: session.complete,
-		warnings: rows.reduce((sum, row) => sum + row.warnings, 0),
-		errors: rows.reduce((sum, row) => sum + row.errors, 0)
-	});
 }
 
 /**

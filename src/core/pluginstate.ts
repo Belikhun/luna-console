@@ -10,7 +10,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { readdir, rm } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
@@ -30,7 +30,7 @@ import {
 	pluginNameOf,
 } from "./families";
 import { assignedVersion, instanceAddonDir } from "./plugins";
-import { getStatus } from "./instances";
+import { getStatus, type InstanceStatus } from "./instances";
 
 /** Rotated files walked back at most, looking for the boot marker. */
 const MAX_ROTATIONS = 6;
@@ -39,26 +39,48 @@ const MAX_ROTATIONS = 6;
 const MAX_SESSION_BYTES = 8 * 1024 * 1024;
 
 /**
- * running    — the server enabled/loaded it this session and is up
- * errored    — the log says enabling/loading it failed
- * not-loaded — deployed, but this session never loaded it (installed after boot)
- * disabled   — per-instance override keeps it off the instance
- * stopped    — the instance is not running
- * unknown    — the boot lines rotated out of reach, and there is no evidence
+ * The four phases an addon passes through, read from the server's own log.
+ *
+ * unknown — nothing in the session speaks about it: the instance is down, the
+ *           boot lines rotated out of reach, or the addon is not there at all
+ * loading — the server announced it was loading the addon, and has not finished
+ *           starting up yet
+ * errored — the log says loading or enabling it failed
+ * running — the addon reported itself up, or the server finished starting with
+ *           the addon loaded
+ *
+ * `running` has two routes on purpose. An addon that logs "started" (or
+ * "đã khởi động") says so itself; most say nothing at all, and for those the
+ * server's own "Done (Xs)!" is the proof that loading finished.
  */
-export type PluginRuntimeState =
-	| "running"
-	| "errored"
-	| "not-loaded"
-	| "disabled"
-	| "stopped"
-	| "unknown";
+export type PluginRuntimeState = "unknown" | "loading" | "errored" | "running";
+
+/**
+ * Lifecycle state the report reasons from. Core can probe `running`, `stopped`,
+ * `starting` and `unknown` itself; `stopping` and `restarting` are known only to
+ * whoever asked for the transition, so they are passed in.
+ */
+export type ReportLifecycle = InstanceStatus["state"] | "stopping" | "restarting";
 
 export interface BootSession {
 	lines: string[];
 	/** Whether the boot marker was found — without it absence proves nothing */
 	complete: boolean;
+	/** Software that wrote the log, which decides how a line is attributed */
+	software: Software;
+	/** Whether the server announced it had finished starting up ("Done (Xs)!") */
+	startupComplete: boolean;
+	/** When latest.log was last written (epoch ms), absent when there is no such file */
+	writtenAt?: number;
 }
+
+/**
+ * The line every one of paper, velocity and neoforge prints once startup is
+ * over. It is what promotes a quietly-loaded addon from `loading` to `running`:
+ * most addons never announce themselves, so the server finishing is the only
+ * evidence that their loading finished too.
+ */
+const STARTUP_COMPLETE = /\bDone \([^)]*\)!/;
 
 /** Read one member of a jar (jars are zip files); undefined when absent. */
 async function unzipRead(jar: string, member: string): Promise<string | undefined> {
@@ -288,6 +310,22 @@ async function rotatedLogs(logsDir: string): Promise<string[]> {
 }
 
 /**
+ * First line of a boot, per software — everything from here down is one
+ * session.
+ *
+ * The marker has to sit *before* the software says anything about its addons.
+ * For neoforge that rules out "Starting minecraft server version": the game
+ * server only starts once mod construction is finished, so anchoring there
+ * would cut the mod roster — the one place a mod's load is recorded — off the
+ * top of the session. ModLauncher's banner is the true first line of the run.
+ */
+const BOOT_MARKERS: Record<Software, RegExp> = {
+	velocity: /Booting up Velocity/,
+	neoforge: /ModLauncher running:/,
+	paper: /\[bootstrap\] Running Java|Starting minecraft server version/,
+};
+
+/**
  * Reconstruct the current boot session of an instance: latest.log, extended
  * backwards through rotated files until the boot marker appears (log4j rolls
  * latest.log at midnight, so a long-running server's boot lines usually live
@@ -302,16 +340,15 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 	}
 
 	const logsDir = join(instanceDir(inst), "logs");
-	const marker =
-		inst.software === "velocity"
-			? /Booting up Velocity/
-			: /\[bootstrap\] Running Java|Starting minecraft server version/;
+	const marker = BOOT_MARKERS[inst.software];
 
 	let text = "";
+	let writtenAt: number | undefined;
 	const latest = join(logsDir, "latest.log");
 
 	if (existsSync(latest)) {
 		text = await Bun.file(latest).text();
+		writtenAt = (await stat(latest)).mtimeMs;
 	}
 
 	const rotations = await rotatedLogs(logsDir);
@@ -351,10 +388,24 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 	}
 
 	if (start === -1) {
-		return { lines, complete: false };
+		return {
+			lines,
+			complete: false,
+			software: inst.software,
+			startupComplete: lines.some((line) => STARTUP_COMPLETE.test(line)),
+			...(writtenAt !== undefined ? { writtenAt } : {}),
+		};
 	}
 
-	return { lines: lines.slice(start), complete: true };
+	const session = lines.slice(start);
+
+	return {
+		lines: session,
+		complete: true,
+		software: inst.software,
+		startupComplete: session.some((line) => STARTUP_COMPLETE.test(line)),
+		...(writtenAt !== undefined ? { writtenAt } : {}),
+	};
 }
 
 const SEVERITY = /\[[^\]]*\/(WARN|ERROR)\]|\[(WARN|ERROR)\]:/;
@@ -370,9 +421,39 @@ function severityOf(line: string): "warn" | "error" | undefined {
 	return (match[1] ?? match[2])!.toLowerCase() as "warn" | "error";
 }
 
-/** Whether a line is attributed to one of the aliases (`[Name]` anywhere). */
-function attributed(lowerLine: string, lowerAliases: string[]): boolean {
-	return lowerAliases.some((alias) => lowerLine.includes(`[${alias}]`));
+/**
+ * Logger name of a neoforge line. Its log4j layout is
+ * `[time] [thread/LEVEL] [Logger/MARKER]: message`, so the logger is the third
+ * bracket, up to the slash.
+ */
+const NEOFORGE_LOGGER = /^\[[^\]]*\]\s*\[[^\]]*\]\s*\[([^\]/]*)\//;
+
+/**
+ * Whether a line is attributed to one of the aliases.
+ *
+ * Bukkit prefixes the message itself with `[Name]`, so a substring test is the
+ * whole rule there. NeoForge does not: the mod is named in the layout's logger
+ * field (`[LunaCore/]`), and the message body regularly mentions *other* mods
+ * ("Registering events for 'lunacore'"), which a substring test would happily
+ * credit to the wrong mod. So a mod loader is matched on the logger alone, and
+ * matched whole — a prefix test would file every `LunaCoreMessaging` line under
+ * `LunaCore`. A multi-platform mod commonly names its logger after the platform
+ * class, so a trailing loader suffix is stripped before comparing.
+ */
+function attributed(lowerLine: string, lowerAliases: string[], software: Software): boolean {
+	if (software !== "neoforge") {
+		return lowerAliases.some((alias) => lowerLine.includes(`[${alias}]`));
+	}
+
+	const logger = lowerLine.match(NEOFORGE_LOGGER)?.[1];
+
+	if (!logger) {
+		return false;
+	}
+
+	const bare = logger.replace(/(neo)?forge$/, "");
+
+	return lowerAliases.some((alias) => logger === alias || bare === alias);
 }
 
 export interface PluginLogReport {
@@ -391,7 +472,7 @@ export function pluginLogReport(session: BootSession, aliases: string[]): Plugin
 	for (const line of session.lines) {
 		const lower = line.toLowerCase();
 
-		if (!attributed(lower, lowerAliases)) {
+		if (!attributed(lower, lowerAliases, session.software)) {
 			continue;
 		}
 
@@ -409,54 +490,110 @@ export function pluginLogReport(session: BootSession, aliases: string[]): Plugin
 	return { lines, warnings, errors };
 }
 
-/** Load/enable evidence for one plugin in a session. */
-function loadEvidence(
-	session: BootSession,
-	software: Software,
-	aliases: string[],
-): "loaded" | "errored" | "none" | "unknown" {
-	// A mod loader announces its mods as one batch and then says nothing per
-	// mod, so there is no per-alias line to look for — a silent mod is loaded
-	// and indistinguishable from an absent one. Reporting "unknown" is the
-	// truth; the paper/velocity heuristics below would call every mod missing.
-	if (software === "neoforge") {
-		return "unknown";
-	}
+/**
+ * Phrases an addon uses to announce that it has finished coming up, in its own
+ * log lines. Only a handful of addons say anything at all, which is why this
+ * list does not need to be exhaustive — "Done (Xs)!" catches the silent
+ * majority. It is matched against lines already attributed to the addon, so a
+ * word as common as "running" cannot be picked up from someone else's line.
+ */
+const READY_HINTS = [
+	"started",
+	"running",
+	"is ready",
+	"enabled successfully",
+	// LunaCore and friends log in Vietnamese
+	"đã khởi động",
+	"khởi động thành công",
+];
 
+/**
+ * What a session says about one addon, before the server's own progress is
+ * folded in.
+ *
+ * errored — a load or enable failure names it
+ * ready   — it announced itself up
+ * loading — the server announced it was loading it, and it has said no more
+ * none    — the session never mentions it, though it did describe its peers
+ * unknown — the session cannot answer (the part that would have is missing)
+ */
+type AddonEvidence = "errored" | "ready" | "loading" | "none" | "unknown";
+
+/** Whether an addon's own line claims it is up. */
+function claimsReady(lowerLine: string): boolean {
+	return READY_HINTS.some((hint) => lowerLine.includes(hint));
+}
+
+/** Load, ready and failure evidence for one addon in a session. */
+function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
-	let loaded = false;
+	const software = session.software;
 
-	for (const line of session.lines) {
-		const lower = line.toLowerCase();
+	let loading = false;
+	let ready = false;
+
+	// A mod loader has no per-mod "enabling" line. What neoforge does print is a
+	// roster of everything it constructed, one line per mod ending in the mod id
+	// — "\t\tLunaCore 0.1.0-SNAPSHOT (lunacore)". Absence only means "not there"
+	// when the roster was captured at all, so its two guaranteed members double
+	// as the marker that it is in the session.
+	let roster = software !== "neoforge";
+
+	for (const rawLine of session.lines) {
+		const lower = rawLine.trimEnd().toLowerCase();
+		const mine = attributed(lower, lowerAliases, software);
+
+		if (software === "neoforge" && (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)"))) {
+			roster = true;
+		}
 
 		for (const alias of lowerAliases) {
 			if (software === "paper") {
-				// bukkit prints "[Name] Enabling Name vX"; failures follow as
+				// bukkit prints "[Name] Loading server plugin Name vX", then
+				// "[Name] Enabling Name vX"; failures follow as
 				// "Error occurred while enabling Name vX"
 				if (lower.includes(`error occurred while enabling ${alias} `)) {
 					return "errored";
 				}
 
-				if (lower.includes(`could not load plugin`) && lower.includes(alias)) {
+				if (lower.includes("could not load plugin") && lower.includes(alias)) {
 					return "errored";
 				}
 
-				if (lower.includes(`enabling ${alias} v`) || lower.includes(`disabling ${alias} v`)) {
-					loaded = true;
+				if (
+					lower.includes(`loading server plugin ${alias} v`) ||
+					lower.includes(`enabling ${alias} v`) ||
+					lower.includes(`disabling ${alias} v`)
+				) {
+					loading = true;
 				}
-			} else {
+			} else if (software === "velocity") {
 				if (lower.includes(`can't create plugin ${alias}`)) {
 					return "errored";
 				}
 
 				if (lower.includes(`loaded plugin ${alias} `)) {
-					loaded = true;
+					loading = true;
 				}
+			} else if (lower.endsWith(`(${alias})`)) {
+				loading = true;
 			}
+		}
+
+		if (mine && claimsReady(lower)) {
+			ready = true;
 		}
 	}
 
-	return loaded ? "loaded" : "none";
+	if (ready) {
+		return "ready";
+	}
+
+	if (loading) {
+		return "loading";
+	}
+
+	return roster ? "none" : "unknown";
 }
 
 export interface InstancePluginRow {
@@ -484,12 +621,16 @@ export interface InstancePluginRow {
  * Full plugin report for one instance: every entry that deploys there plus the
  * ones its overrides disabled, each with its runtime state and the warn/error
  * counts attributed to it in the current boot session.
+ *
+ * `opts.state` is the instance's lifecycle as the caller knows it — pass the
+ * console's transient state so a restart is reported as a restart. Without it
+ * the instance is probed, which cannot see a stop that was only just asked for.
  */
 export async function instancePluginReport(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
 	instance: string,
-	opts: { running?: boolean } = {},
+	opts: { state?: ReportLifecycle } = {},
 ): Promise<{ rows: InstancePluginRow[]; session: BootSession }> {
 	const inst = managedInstances(cfg)[instance];
 
@@ -497,10 +638,32 @@ export async function instancePluginReport(
 		throw new Error(`unknown instance: ${instance}`);
 	}
 
-	const running =
-		opts.running ?? (await getStatus(cfg, instance)).state !== "stopped";
+	const status = await getStatus(cfg, instance);
+	const lifecycle = opts.state ?? status.state;
+
+	// Whether a process is up is most of the question, and the probe answers it:
+	// nothing is loaded on a server that is not running, and an unreachable owner
+	// cannot be spoken for either way.
+	const down = lifecycle === "stopped" || lifecycle === "unknown";
 
 	const session = await readBootSession(cfg, instance);
+
+	// The rest of the question is whether the log belongs to the process that is
+	// up *now*. It does not, for the first stretch of a boot: the JVM starts,
+	// but log4j only rolls latest.log once it initialises, so until then the file
+	// still holds the run that just ended — and reading it would report a server
+	// that is barely alive as fully up, which is the stale "running" this whole
+	// report exists to avoid.
+	//
+	// A log untouched since the process began cannot describe it. That is a fact
+	// about two clocks on the same machine, not a guess about the log's contents:
+	// a session that merely *looks* finished is indistinguishable mid-restart
+	// from the new run having genuinely finished.
+	const startedAt = status.uptimeMs !== undefined ? Date.now() - status.uptimeMs : undefined;
+
+	const stale =
+		startedAt !== undefined && session.writtenAt !== undefined && session.writtenAt < startedAt;
+
 	const rows: InstancePluginRow[] = [];
 
 	for (const [key, entry] of Object.entries(lock.plugins)) {
@@ -530,21 +693,20 @@ export async function instancePluginReport(
 
 		let state: PluginRuntimeState;
 
-		if (disabled) {
-			state = "disabled";
-		} else if (!running) {
-			state = "stopped";
+		if (disabled || down || stale) {
+			state = "unknown";
 		} else {
-			const evidence = loadEvidence(session, inst.software, aliases);
+			const evidence = loadEvidence(session, aliases);
 
 			if (evidence === "errored") {
 				state = "errored";
-			} else if (evidence === "loaded") {
+			} else if (evidence === "ready") {
 				state = "running";
-			} else if (evidence === "unknown") {
-				state = "unknown";
+			} else if (evidence === "loading") {
+				// a quiet addon is only proven up by the server finishing startup
+				state = session.startupComplete ? "running" : "loading";
 			} else {
-				state = session.complete ? "not-loaded" : "unknown";
+				state = "unknown";
 			}
 		}
 

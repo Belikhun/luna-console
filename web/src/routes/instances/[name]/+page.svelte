@@ -54,6 +54,7 @@
 
 	const LOG_FOLLOW_KEY = 'luna.logs.follow';
 
+	/** Shared by the log tail and the addon stream — both are EventSources. */
 	const LOG_LIVE_LABEL = {
 		off: '',
 		connecting: 'connecting…',
@@ -91,12 +92,19 @@
 	let pluginTotals = $state({ warnings: 0, errors: 0, sessionComplete: true });
 	let instDatapacks: any[] = $state([]);
 	let datapackWorld = $state('');
+	/** addon stream state, in the same vocabulary the log stream uses */
+	let addonLive: 'off' | 'connecting' | 'live' | 'reconnecting' = $state('off');
 	let instRespacks: any[] = $state([]);
 	let metrics: { history: any[]; events: any[] } = $state({ history: [], events: [] });
 	let logData: { content: string; archives: any[] } = $state({ content: '', archives: [] });
+	/** whether the snapshot behind the log view has been read at least once */
+	let logSnapshotRead = $state(false);
 	let logLines = $state(200);
 	let logFollow = $state(false);
-	/** streamed lines while following; null when the snapshot is what is shown */
+	/**
+	 * Streamed lines; null when the snapshot is what is shown. They outlive the
+	 * stream that produced them — see `setLogFollow`.
+	 */
 	let logStream: string[] | null = $state(null);
 	let logLive: 'off' | 'connecting' | 'live' | 'reconnecting' = $state('off');
 	let logEl: HTMLElement | null = $state(null);
@@ -148,24 +156,58 @@
 		}
 	}
 
+	/**
+	 * Whether the addon stream is the authority for the tabs it feeds. Read
+	 * through a call rather than inline, so a check after an await is not
+	 * narrowed away — the stream connecting mid-request is the case it exists for.
+	 */
+	function addonStreamOwnsView(): boolean {
+		return addonLive === 'live';
+	}
+
+	/** Fold one frame of the addon stream into the tabs it feeds. */
+	function applyAddonSnapshot(snapshot: any): void {
+		instPlugins = snapshot.plugins;
+		pluginTotals = {
+			warnings: snapshot.warnings,
+			errors: snapshot.errors,
+			sessionComplete: snapshot.sessionComplete
+		};
+
+		// absent for software with no world of its own — leave the tab as it was
+		if (snapshot.datapacks) {
+			instDatapacks = snapshot.datapacks.rows;
+			datapackWorld = snapshot.datapacks.world;
+		}
+	}
+
 	/** Each tab loads its own data the first time it is shown, and on refresh. */
 	async function loadTab(which: string): Promise<void> {
-		if (which === 'plugins') {
+		// The stream owns both of these tabs whenever it is up; this fetch is the
+		// fallback for the moment before it connects, and for a browser that
+		// cannot keep it open. The state is re-checked after the await too — the
+		// stream can go live mid-request, and a late snapshot must not paint an
+		// older state over a newer frame.
+		if (which === 'plugins' && !addonStreamOwnsView()) {
 			const data = await api(`/instances/${name}/plugins`);
 
-			instPlugins = data.plugins;
-			pluginTotals = {
-				warnings: data.warnings,
-				errors: data.errors,
-				sessionComplete: data.sessionComplete
-			};
+			if (!addonStreamOwnsView()) {
+				instPlugins = data.plugins;
+				pluginTotals = {
+					warnings: data.warnings,
+					errors: data.errors,
+					sessionComplete: data.sessionComplete
+				};
+			}
 		}
 
-		if (which === 'datapacks') {
+		if (which === 'datapacks' && !addonStreamOwnsView()) {
 			const data = await api(`/instances/${name}/datapacks`);
 
-			instDatapacks = data.rows;
-			datapackWorld = data.world;
+			if (!addonStreamOwnsView()) {
+				instDatapacks = data.rows;
+				datapackWorld = data.world;
+			}
 		}
 
 		if (which === 'respacks') {
@@ -177,10 +219,18 @@
 			metrics = await api(`/instances/${name}/metrics`);
 		}
 
-		// while following, the stream is the view — a snapshot fetch would be read
-		// by nobody, and the page-wide refresh control reaches this tab too
-		if (which === 'logs' && !logStream) {
+		// While following, the stream is the body of the view, and a refresh tick
+		// re-reading it would fetch lines nobody looks at — except the first time,
+		// because the archive list shown beside the log comes with the snapshot.
+		//
+		// This deliberately never touches `logStream`. Auto-refresh runs every ten
+		// seconds by default, and replacing the body resets the scroll: doing it
+		// here would yank a reader back to the top of the log a few seconds after
+		// they scrolled down to read something. Only `showLogSnapshot` swaps the
+		// body, and only because someone asked it to.
+		if (which === 'logs' && (!followingLog() || !logSnapshotRead)) {
 			logData = await api(`/instances/${name}/logs?lines=${logLines}`);
+			logSnapshotRead = true;
 		}
 
 		if (which === 'config') {
@@ -207,7 +257,38 @@
 		}
 	}
 
-	/** Turn following on or off, remembering the choice for the next visit. */
+	/**
+	 * Whether the log stream is the authority for the view. Read through a call
+	 * so a check after an await is not narrowed away.
+	 */
+	function followingLog(): boolean {
+		return logFollow;
+	}
+
+	/**
+	 * Put the snapshot back in the body of the log view, dropping whatever lines a
+	 * closed stream left there. This resets the scroll to the top, which is why it
+	 * is only ever reached from a control the reader actually used.
+	 */
+	async function showLogSnapshot(): Promise<void> {
+		logStream = null;
+		logSnapshotRead = false;
+
+		await loadTab('logs');
+	}
+
+	/**
+	 * Turn following on or off, remembering the choice for the next visit.
+	 *
+	 * Turning it *off* deliberately does nothing to the view. The usual way it
+	 * happens is the reader scrolling back to look at something, so the lines
+	 * they scrolled to have to stay exactly where they are — re-reading the
+	 * snapshot here would swap the whole body of the view and throw them back to
+	 * the top of the log, which is the opposite of what scrolling up asked for.
+	 * The lines the stream left behind stay on screen until something the reader
+	 * actually asked for replaces them (Refresh, a line-count change, or leaving
+	 * the tab).
+	 */
 	function setLogFollow(on: boolean): void {
 		logFollow = on;
 
@@ -217,13 +298,7 @@
 
 		if (on) {
 			void pinLogToBottom();
-
-			return;
 		}
-
-		// the stream just went away — the snapshot behind it is as old as the
-		// moment following started, so re-read it rather than show stale lines
-		void loadTab('logs').catch(() => {});
 	}
 
 	/**
@@ -252,6 +327,11 @@
 	 * The stream owns the view while it is open — it opens with the daemon's own
 	 * backlog and grows from there, so there is no snapshot to splice it onto and
 	 * no chance of showing a line twice.
+	 *
+	 * Closing it leaves those lines on screen. They are the newest the page has,
+	 * and more to the point the view is a single text node: replacing its content
+	 * resets the scroll, and following usually stops *because* someone scrolled
+	 * back to read something. `loadTab` is what swaps them for a snapshot again.
 	 */
 	$effect(() => {
 		if (tab !== 'logs' || !logFollow) {
@@ -271,6 +351,14 @@
 		stream.onerror = () => (logLive = 'reconnecting');
 
 		stream.onmessage = (event) => {
+			// A line can arrive between the reader scrolling away and this effect
+			// tearing the stream down a tick later. Taking it would pin the view
+			// back to the bottom, and trimming to `keep` would drop lines off the
+			// top — both of them moving the text the reader just scrolled to.
+			if (!followingLog()) {
+				return;
+			}
+
 			logStream = [...(logStream ?? []), String(JSON.parse(event.data))].slice(-keep);
 
 			void pinLogToBottom();
@@ -278,8 +366,61 @@
 
 		return () => {
 			stream.close();
-			logStream = null;
 			logLive = 'off';
+		};
+	});
+
+	/**
+	 * Lines a closed stream left in the view belong to the visit that produced
+	 * them, so leaving the logs tab drops them and coming back starts from a
+	 * fresh snapshot.
+	 *
+	 * This is keyed on the tab alone — turning following off is not a dependency,
+	 * which is the whole point: that is the one case where the lines have to stay.
+	 */
+	$effect(() => {
+		if (tab !== 'logs') {
+			return;
+		}
+
+		return () => {
+			logStream = null;
+			logSnapshotRead = false;
+		};
+	});
+
+	/**
+	 * Addon state is live for as long as one of the tabs showing it is open.
+	 *
+	 * It has to be a stream rather than the page's poll: the interesting window
+	 * is a restart, where every addon's state changes twice in a few seconds and
+	 * a poll would show a stale "running" for most of it. The server sends a
+	 * frame only when the snapshot actually differs, and slows down on its own
+	 * once the instance settles, so an idle tab costs nothing to keep open.
+	 */
+	$effect(() => {
+		if (tab !== 'plugins' && tab !== 'datapacks') {
+			return;
+		}
+
+		const stream = new EventSource(`/api/instances/${name}/addons/stream`);
+
+		addonLive = 'connecting';
+
+		stream.onopen = () => (addonLive = 'live');
+
+		// EventSource reconnects on its own; saying so beats a table that has
+		// quietly stopped moving
+		stream.onerror = () => (addonLive = 'reconnecting');
+
+		stream.onmessage = (event) => {
+			addonLive = 'live';
+			applyAddonSnapshot(JSON.parse(event.data));
+		};
+
+		return () => {
+			stream.close();
+			addonLive = 'off';
 		};
 	});
 
@@ -730,14 +871,17 @@
 		{ id: 'assign', label: 'Assignment', hidden: true }
 	];
 
-	/** Badge look of each plugin runtime state. */
+	/**
+	 * Badge look of each addon phase. "Disabled" is not a phase — it is the
+	 * per-instance override, and it says why the log has nothing to report rather
+	 * than what the log saw, so it is shown in place of the phase.
+	 */
 	const PLUGIN_STATE_BADGE: Record<string, { state: string; label: string }> = {
 		running: { state: 'running', label: 'Running' },
+		loading: { state: 'warning', label: 'Loading' },
 		errored: { state: 'failed', label: 'Errored' },
-		'not-loaded': { state: 'warning', label: 'Not loaded' },
-		disabled: { state: 'stopped', label: 'Disabled' },
-		stopped: { state: 'stopped', label: 'Stopped' },
-		unknown: { state: 'unknown', label: 'Unknown' }
+		unknown: { state: 'unknown', label: 'Unknown' },
+		disabled: { state: 'stopped', label: 'Disabled' }
 	};
 	/** A plugin row's verbs on this instance. */
 	function pluginActions(plugin: any): ContextMenuItem[] {
@@ -1096,6 +1240,9 @@
 			<Panel title="{addonLabel} on {name}" count={instPlugins.length} flush>
 				{#snippet actions()}
 					<Alerts warnings={pluginTotals.warnings} errors={pluginTotals.errors} />
+					{#if addonLive !== 'off'}
+						<span class="live {addonLive}">{LOG_LIVE_LABEL[addonLive]}</span>
+					{/if}
 					<Btn icon="sync" onclick={() => loadTab('plugins')}>Refresh</Btn>
 					<Btn icon="upload" onclick={deployPlugins}>Deploy to this instance</Btn>
 				{/snippet}
@@ -1132,7 +1279,10 @@
 								<span class="dim">({plugin.displayName})</span>
 							{/if}
 						{:else if col === 'state'}
-							{@const badge = PLUGIN_STATE_BADGE[plugin.state] ?? PLUGIN_STATE_BADGE.unknown}
+							{@const badge =
+							(plugin.disabled
+								? PLUGIN_STATE_BADGE.disabled
+								: PLUGIN_STATE_BADGE[plugin.state]) ?? PLUGIN_STATE_BADGE.unknown}
 							<StatusBadge state={badge.state} label={badge.label} />
 						{:else if col === 'version'}
 							<span class="mono">{plugin.version ?? '?'}</span>
@@ -1172,6 +1322,9 @@
 				flush
 			>
 				{#snippet actions()}
+					{#if addonLive !== 'off'}
+						<span class="live {addonLive}">{LOG_LIVE_LABEL[addonLive]}</span>
+					{/if}
 					<Btn icon="sync" onclick={() => loadTab('datapacks')}>Refresh</Btn>
 					<Btn icon="box" onclick={() => goto('/datapacks')}>Manage pool</Btn>
 					<Btn icon="upload" onclick={deployDatapacks}>Deploy to this instance</Btn>
@@ -1316,8 +1469,9 @@
 							label: `${count} lines`
 						}))}
 						onchange={(value) => {
+							// a different window of the log is a different snapshot
 							logLines = Number(value);
-							void loadTab('logs');
+							void showLogSnapshot();
 						}}
 					/>
 					<label class="follow">
@@ -1335,7 +1489,7 @@
 						icon="sync"
 						disabled={logFollow}
 						title={logFollow ? 'Following — the log re-reads itself' : ''}
-						onclick={() => loadTab('logs')}
+						onclick={() => showLogSnapshot()}
 					>
 						Refresh
 					</Btn>

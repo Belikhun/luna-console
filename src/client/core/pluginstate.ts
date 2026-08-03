@@ -18,6 +18,7 @@ export type {
 	PluginLogReport,
 	InstancePluginRow,
 	PluginRuntimeState,
+	ReportLifecycle,
 } from "../../core/pluginstate";
 
 export const ensureAliases = call("pluginstate.ensureAliases", { lock: 0 }) as typeof core.ensureAliases;

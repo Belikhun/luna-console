@@ -1245,14 +1245,18 @@ command({
 
 		spin.stop();
 
-		const stateGlyph = (state: string): string =>
-			state === "running"
-				? pc.green(state)
-				: state === "errored"
-					? pc.red(state)
-					: state === "disabled" || state === "stopped"
-						? pc.dim(state)
-						: pc.yellow(state);
+		// "disabled" is the override, not a phase — it says why there is nothing to
+		// report rather than what the log saw, so it is shown in place of the state
+		const stateGlyph = (state: string, disabled: boolean): string =>
+			disabled
+				? pc.dim("disabled")
+				: state === "running"
+					? pc.green(state)
+					: state === "errored"
+						? pc.red(state)
+						: state === "loading"
+							? pc.yellow(state)
+							: pc.dim(state);
 
 		console.log();
 
@@ -1260,7 +1264,7 @@ command({
 			rows.map((row) => [
 				row.plugin,
 				pc.dim(row.displayName),
-				stateGlyph(row.state),
+				stateGlyph(row.state, row.disabled),
 				row.version ?? pc.dim("—"),
 				row.warnings ? pc.yellow(String(row.warnings)) : pc.dim("0"),
 				row.errors ? pc.red(String(row.errors)) : pc.dim("0"),

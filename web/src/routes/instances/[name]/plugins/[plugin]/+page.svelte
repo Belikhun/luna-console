@@ -47,18 +47,24 @@
 		void refresh();
 	});
 
+	/** Addon phases, plus the override that explains an absent one. */
 	const STATE_BADGE: Record<string, { state: string; label: string }> = {
 		running: { state: 'running', label: 'Running' },
+		loading: { state: 'warning', label: 'Loading' },
 		errored: { state: 'failed', label: 'Errored' },
-		'not-loaded': { state: 'warning', label: 'Not loaded' },
-		disabled: { state: 'stopped', label: 'Disabled' },
-		stopped: { state: 'stopped', label: 'Stopped' },
-		unknown: { state: 'unknown', label: 'Unknown' }
+		unknown: { state: 'unknown', label: 'Unknown' },
+		disabled: { state: 'stopped', label: 'Disabled' }
 	};
 
-	const badge = $derived(
-		data ? (STATE_BADGE[data.row.state] ?? STATE_BADGE.unknown) : STATE_BADGE.unknown
-	);
+	const badge = $derived.by(() => {
+		if (!data) {
+			return STATE_BADGE.unknown;
+		}
+
+		const key = data.row.disabled ? 'disabled' : data.row.state;
+
+		return STATE_BADGE[key] ?? STATE_BADGE.unknown;
+	});
 
 	/** Toggle the per-instance override behind a loading flash, then reload. */
 	async function setOverride(state: boolean | null, label: string): Promise<void> {
