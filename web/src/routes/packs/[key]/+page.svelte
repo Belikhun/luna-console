@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
-	import { fmtBytes, fmtDateTime } from '$lib/format';
+	import { fmtBytes, fmtDateTime, fmtDuration } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -19,6 +19,8 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import Icon from '$lib/components/Icon.svelte';
+	import BrandIcon from '$lib/components/BrandIcon.svelte';
+	import { ADDON_PROVIDERS } from '$lib/components/addons';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 
@@ -36,6 +38,9 @@
 	/** How many characters of a digest identify it on screen. */
 	const HASH_CHARS = 16;
 
+	/** ms — under this, "3 seconds ago" is noise and the clocks may disagree anyway */
+	const JUST_NOW_MS = 5_000;
+
 	const key = $derived(page.params.key);
 
 	let detail: any = $state(null);
@@ -45,25 +50,18 @@
 	let busy = $state('');
 
 	/**
-	 * The URL probe is skipped on the automatic ticks: it is an outbound request
-	 * per refresh, and its answer changes on the timescale of a web server
-	 * restart, not of a page tick. The Refresh button probes.
+	 * Reachability is the daemon's stored answer on every load — measuring it is
+	 * an outbound request to the public pack host, which is not something a page
+	 * tick should trigger. `retest` asks for a fresh measurement; the daemon also
+	 * re-measures on its own when the proxy logs a failed load.
 	 */
-	async function load(probe: boolean): Promise<void> {
+	async function load(retest = false): Promise<void> {
 		loading = true;
-
-		const previous = detail?.reachability;
 
 		try {
 			const res = await api(
-				`/respacks/${encodeURIComponent(key ?? '')}/detail${probe ? '' : '?probe=0'}`
+				`/respacks/${encodeURIComponent(key ?? '')}/detail${retest ? '?retest=1' : ''}`
 			);
-
-			// a load that did not probe must not un-answer the question: the last
-			// real result stands until something probes again
-			if (!probe && previous?.checked && !res.detail.reachability.checked) {
-				res.detail.reachability = previous;
-			}
 
 			detail = res.detail;
 			lastUpdated = Date.now();
@@ -75,8 +73,25 @@
 	}
 
 	onMount(() => {
-		void load(true);
+		void load();
 	});
+
+	/** Re-measure the pack URL now, on the operator's say-so. */
+	const retest = () =>
+		run('retest', `Testing ${detail?.url ?? key}…`, async () => {
+			await load(true);
+
+			const reach = detail.reachability;
+
+			if (!reach.checked) {
+				return reach.problem ?? 'there is nothing to test';
+			}
+
+			return reach.ok
+				? `HTTP ${reach.status} in ${reach.elapsedMs}ms` +
+						(reach.sizeMatches === false ? ' — but the served size differs from the zip on disk' : '')
+				: (reach.problem ?? `HTTP ${reach.status}`);
+		});
 
 	const pack = $derived(detail?.pack);
 
@@ -118,7 +133,7 @@
 
 			note.set({ level: 'success', message, closeable: true });
 
-			await load(false);
+			await load();
 		} catch (err) {
 			note.set({
 				level: 'error',
@@ -141,6 +156,63 @@
 	}
 
 	const doReload = () => run('reload', 'Reloading packs on the proxy…', sendReload);
+
+	/**
+	 * Ask Modrinth whether this pack has a newer version. A named pack is checked
+	 * even with auto-update off, so this works as a deliberate one-off look, and
+	 * the answer carries the apply button rather than leaving it on screen.
+	 */
+	async function checkUpdate(): Promise<void> {
+		busy = 'update';
+
+		const note = Notify.loading(`Checking Modrinth for ${key} updates…`);
+
+		try {
+			const res = await post('/respacks/update', { names: [key] });
+			const update = res.updates[0];
+
+			if (!update) {
+				const skip = res.skipped?.find((entry: any) => entry.key === key);
+
+				note.set({
+					level: 'success',
+					message: skip ? `${key}: ${skip.reason}` : `${key} is up to date`,
+					closeable: true
+				});
+			} else {
+				note.set({
+					level: 'info',
+					message: `${key}: ${update.from ?? '?'} → ${update.to} available`,
+					detail: `Published ${fmtDateTime(Date.parse(update.publishedAt))}.`,
+					closeable: true,
+					actions: [{ label: 'Download it', run: () => void applyUpdate(update) }]
+				});
+			}
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: `Could not check ${key}`,
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+
+		busy = '';
+
+		await load();
+	}
+
+	/** Download the offered update over the pack's zip, then reload the proxy. */
+	const applyUpdate = (update: any) =>
+		run('update', `Updating ${key} to ${update.to}…`, async () => {
+			const res = await post('/respacks/update', { names: [key], apply: true });
+
+			// the zip changed under the same URL, so the stored reachability answer
+			// describes a file that is no longer there — measure the new one
+			await load(true);
+
+			return `${key} updated (${res.applied.length} file(s)). ${await sendReload()}`;
+		});
 
 	/** Serve, or stop serving, this pack on one backend. */
 	const setInstance = (instance: string, on: boolean) =>
@@ -170,6 +242,20 @@
 				label: 'Configure pack',
 				icon: 'pen',
 				action: () => goto(`/packs/${encodeURIComponent(pack.key)}/configure`)
+			},
+			{
+				label: 'Check for update',
+				icon: 'download',
+				disabled: !pack.modrinth || !!busy,
+				hint: !pack.modrinth ? 'not identified on modrinth' : undefined,
+				action: checkUpdate
+			},
+			{
+				label: 'Test reachability',
+				icon: 'rotate',
+				disabled: !detail.url || !pack.present || !!busy,
+				hint: !detail.url || !pack.present ? 'there is no URL to test' : undefined,
+				action: retest
 			},
 			{
 				label: 'Reload on proxy',
@@ -227,7 +313,7 @@
 			{ label: 'Supported formats', value: manifest.supportedFormats ?? null },
 			{ label: 'Namespaces', value: manifest.namespaces.join(', ') || null },
 			{ label: 'Modified', value: detail.modifiedAt ? fmtDateTime(detail.modifiedAt) : null },
-			{ label: 'Source', value: pack.source },
+			{ id: 'source', label: 'Source' },
 			{ label: 'Version', value: pack.versionNumber ?? null, style: 'mono' },
 			{
 				label: 'Auto-update',
@@ -265,7 +351,8 @@
 				style: 'mono'
 			},
 			{ id: 'url', label: 'Pack URL' },
-			{ id: 'reach', label: 'Reachable' },
+			{ id: 'reach', label: 'Reachable', colSpan: 2 },
+			{ id: 'failures', label: 'Failed loads' },
 			{
 				label: 'Served from',
 				value: serve.packPath || null,
@@ -274,13 +361,58 @@
 					? undefined
 					: 'the proxy reads packs from somewhere other than the directory luna manages'
 			},
-			{ id: 'resolved', label: 'On the proxy' },
-			{ label: 'Proxy sha1', value: resolved?.sha1 ? `${resolved.sha1.slice(0, HASH_CHARS)}…` : null, style: 'mono' },
+			{ id: 'resolved', label: 'On the proxy', colSpan: 2 },
+			{ label:
+				'Proxy sha1',
+				value: resolved?.sha1 ? `${resolved.sha1.slice(0, HASH_CHARS)}…` : null,
+				style: 'mono',
+				colSpan: 2
+			},
 			{
 				label: 'Proxy size',
 				value: resolved?.sizeBytes ? fmtBytes(resolved.sizeBytes) : null
 			}
 		];
+	});
+
+	/**
+	 * The provider's own name, as the providers list spells it — "Modrinth", not
+	 * the `modrinth` key the lockfile stores. A pack that came from nowhere in
+	 * particular says so in the same voice.
+	 */
+	const sourceLabel = $derived.by(() => {
+		if (!pack) {
+			return '';
+		}
+
+		const provider = ADDON_PROVIDERS.find((entry) => entry.id === pack.source);
+
+		return provider?.label ?? (pack.source === 'manual' ? 'Uploaded by hand' : pack.source);
+	});
+
+	/** How the current reachability answer came about, in words. */
+	const measured = $derived.by(() => {
+		const reach = detail?.reachability;
+
+		if (!reach?.at) {
+			return '';
+		}
+
+		const elapsed = Math.max(0, Date.now() - reach.at);
+
+		if (elapsed < JUST_NOW_MS) {
+			return 'measured just now';
+		}
+
+		const age = fmtDuration(elapsed);
+		const why =
+			reach.trigger === 'failure'
+				? ', after a failed load'
+				: reach.trigger === 'moved'
+					? ', after the URL changed'
+					: '';
+
+		return `measured ${age} ago${why}`;
 	});
 
 	// -- backends --------------------------------------------------------------------
@@ -391,7 +523,7 @@
 		{/snippet}
 		{#snippet actions()}
 			<RefreshControl
-				onrefresh={() => load(true)}
+				onrefresh={() => load()}
 				{lastUpdated}
 				{loading}
 				storageKey="respack-detail"
@@ -462,7 +594,7 @@
 
 	<div class="tabbody">
 		{#if tab === 'overview'}
-			<div class="split">
+			<div class="stack">
 				<Panel title="Pack" description="What the zip is and what it declares about itself">
 					<div class="withicon">
 						{#if detail.manifest.icon}
@@ -471,7 +603,22 @@
 						<div class="iconside">
 							<InfoGrid cells={metaCells}>
 								{#snippet custom(cell)}
-									{#if cell.id === 'groups'}
+									{#if cell.id === 'source'}
+										{#if pack.modrinth}
+											<a
+												class="brandlink"
+												href="https://modrinth.com/resourcepack/{pack.modrinth.slug}"
+												target="_blank"
+												rel="noreferrer"
+											>
+												<BrandIcon name={pack.source} size="0.875rem" />
+												{sourceLabel}
+												<Icon name="externalLink" size="0.625rem" />
+											</a>
+										{:else}
+											{sourceLabel}
+										{/if}
+									{:else if cell.id === 'groups'}
 										{#if pack.groups.length}
 											{#each pack.groups as group, index (group)}
 												{#if index > 0}<span class="dim">, </span>{/if}
@@ -506,36 +653,72 @@
 									<span class="dim">{detail.serve.problem ?? '—'}</span>
 								{/if}
 							{:else if cell.id === 'reach'}
-								{#if detail.reachability.ok}
-									<StatusBadge
-										state="ok"
-										label="HTTP {detail.reachability.status} in {detail.reachability.elapsedMs}ms"
-									/>
-									{#if detail.reachability.sizeMatches === false}
+								<span class="reach">
+									{#if detail.reachability.ok}
 										<StatusBadge
-											state="warning"
-											label="size differs"
-											detail="the URL serves {fmtBytes(
-												detail.reachability.contentLength ?? 0
-											)}, the zip on disk is {fmtBytes(
-												pack.sizeBytes
-											)} — the published copy is stale"
+											state="ok"
+											label="HTTP {detail.reachability.status} in {detail.reachability.elapsedMs}ms"
+										/>
+										{#if detail.reachability.sizeMatches === false}
+											<StatusBadge
+												state="warning"
+												label="size differs"
+												detail="the URL serves {fmtBytes(
+													detail.reachability.contentLength ?? 0
+												)}, the zip on disk is {fmtBytes(
+													pack.sizeBytes
+												)} — the published copy is stale"
+											/>
+										{/if}
+									{:else if detail.reachability.checked}
+										<StatusBadge
+											state="failed"
+											label={detail.reachability.status
+												? `HTTP ${detail.reachability.status}`
+												: 'Unreachable'}
+											detail={detail.reachability.problem}
+										/>
+									{:else}
+										<StatusBadge
+											state="unknown"
+											label="Not testable"
+											detail={detail.reachability.problem}
 										/>
 									{/if}
-								{:else if detail.reachability.checked}
-									<StatusBadge
-										state="failed"
-										label={detail.reachability.status
-											? `HTTP ${detail.reachability.status}`
-											: 'Unreachable'}
-										detail={detail.reachability.problem}
-									/>
+									{#if measured}
+										<span class="dim when">{measured}</span>
+									{/if}
+									<Btn
+										icon="rotate"
+										loading={busy === 'retest'}
+										disabled={!!busy || !detail.url || !pack.present}
+										title={!detail.url || !pack.present
+											? 'there is no URL to test'
+											: 'Measure the pack URL again now'}
+										onclick={retest}
+									>
+										Test
+									</Btn>
+								</span>
+							{:else if cell.id === 'failures'}
+								{#if !detail.failures.available}
+									<span class="dim">{detail.failures.problem}</span>
+								{:else if !detail.failures.failures.length}
+									<span class="dim">none in the live log</span>
 								{:else}
+									{@const last = detail.failures.failures.at(-1)}
 									<StatusBadge
-										state="unknown"
-										label="Not checked"
-										detail={detail.reachability.problem}
+										state="warning"
+										label="{detail.failures.failures.length} recent"
+										detail={detail.failures.failures
+											.slice()
+											.reverse()
+											.map(
+												(entry: any) =>
+													`${fmtDateTime(entry.at)} — ${entry.player}: ${entry.status}`
+											)}
 									/>
+									<span class="dim">last {last.player}: {last.status}</span>
 								{/if}
 							{:else if cell.id === 'resolved'}
 								{#if !detail.resolution.available}
@@ -562,6 +745,11 @@
 							{/if}
 						{/snippet}
 					</InfoGrid>
+					<p class="dim note">
+						Reachability is measured once and kept — testing it is a request to the public pack
+						host, not something a page refresh should send. luna re-measures on its own when the
+						proxy logs a player failing to load this pack.
+					</p>
 					{#if detail.resolution.report}
 						<p class="dim note">
 							The proxy's catalog: {detail.resolution.report.resolvedAvailable} available of
@@ -761,6 +949,25 @@
 		font-weight: 400;
 	}
 
+	// the provider mark, its name and the external-link cue read as one link
+	.brandlink {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
+
+	// badge + when it was measured + the Test button, on one baseline
+	.reach {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.when {
+		font-size: 0.75rem;
+	}
+
 	.tabbody {
 		margin-top: 1rem;
 	}
@@ -771,15 +978,12 @@
 
 	// the two overview panels sit side by side where there is room, and stack
 	// before either one has to squeeze its info grid into one column
-	.split {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
+	// one panel per row: side by side, each one's info grid had to fold its
+	// columns to fit, which is what made "Namespaces" wrap into a stack
+	.stack {
+		display: flex;
+		flex-direction: column;
 		gap: 1rem;
-		align-items: start;
-
-		@include below($bp-wide) {
-			grid-template-columns: 1fr;
-		}
 	}
 
 	.withicon {

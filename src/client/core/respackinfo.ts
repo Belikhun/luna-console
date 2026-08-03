@@ -9,8 +9,10 @@ import type * as core from "../../core/respackinfo";
 import { call } from "../rpc";
 
 export type {
+	PackFailures,
 	PackHolder,
 	PackHolders,
+	PackLoadFailure,
 	PackInstanceUse,
 	PackManifest,
 	PackReachability,
@@ -25,4 +27,5 @@ export type {
 export const resourcePackDetail = call("respacks.detail", { cfg: 0, lock: 1 }) as typeof core.resourcePackDetail;
 export const packServeConfig = call("respacks.serveConfig", { cfg: 0 }) as typeof core.packServeConfig;
 export const packHolders = call("respacks.holders") as typeof core.packHolders;
+export const packLoadFailures = call("respacks.loadFailures", { cfg: 0 }) as typeof core.packLoadFailures;
 export const packResolution = call("respacks.resolution") as typeof core.packResolution;

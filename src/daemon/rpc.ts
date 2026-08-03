@@ -680,6 +680,7 @@ export const OPS: Record<string, OpSpec> = {
 	"respacks.detail": { fn: respackinfoCore.resourcePackDetail, cfg: 0, lock: 1 },
 	"respacks.serveConfig": { fn: respackinfoCore.packServeConfig, cfg: 0 },
 	"respacks.holders": { fn: respackinfoCore.packHolders },
+	"respacks.loadFailures": { fn: respackinfoCore.packLoadFailures, cfg: 0 },
 	"respacks.resolution": { fn: respackinfoCore.packResolution },
 	"datapacks.list": { fn: datapacksCore.listDataPacks, cfg: 0, lock: 1 },
 	"datapacks.instanceReport": {

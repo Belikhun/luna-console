@@ -261,7 +261,7 @@ command({
 	path: ["packs", "info"],
 	desc: "One pack in full: contents, serve URL, reachability, holders and traffic",
 	args: [{ name: "pack", required: true, complete: respackKeys }],
-	opts: [{ flag: "--no-probe", desc: "skip the HTTP reachability check" }],
+	opts: [{ flag: "--retest", desc: "re-measure the pack URL instead of using the stored answer" }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
@@ -269,12 +269,12 @@ command({
 		const spin = new Spinner().start("collecting...");
 
 		const detail = await respackinfo.resourcePackDetail(cfg, lock, args[0]!, await addonGroups(), {
-			probe: !opts["no-probe"],
+			retest: !!opts.retest,
 		});
 
 		spin.stop();
 
-		const { pack, manifest, reachability, traffic, holders, resolution } = detail;
+		const { pack, manifest, reachability, traffic, holders, resolution, failures } = detail;
 
 		console.log();
 		console.log(
@@ -301,9 +301,26 @@ command({
 					"reachable",
 					!reachability.checked
 						? pc.dim(reachability.problem ?? "not checked")
-						: reachability.ok
-							? `${pc.green(`HTTP ${reachability.status}`)} ${pc.dim(`${reachability.elapsedMs}ms, ${reachability.sizeMatches === false ? pc.yellow("size differs from disk") : "size matches"}`)}`
-							: pc.red(reachability.problem ?? `HTTP ${reachability.status}`),
+						: (reachability.ok
+								? `${pc.green(`HTTP ${reachability.status}`)} ${pc.dim(`${reachability.elapsedMs}ms, ${reachability.sizeMatches === false ? pc.yellow("size differs from disk") : "size matches"}`)}`
+								: pc.red(reachability.problem ?? `HTTP ${reachability.status}`)) +
+							pc.dim(
+								reachability.at
+									? ` — measured ${new Date(reachability.at).toLocaleTimeString()}` +
+										(reachability.cached ? " (stored)" : ` (${reachability.trigger})`)
+									: "",
+							),
+				],
+				[
+					"failed loads",
+					!failures.available
+						? pc.dim(failures.problem ?? "unavailable")
+						: failures.failures.length
+							? pc.yellow(`${failures.failures.length} in the live log`) +
+								pc.dim(
+									` — last ${failures.failures.at(-1)!.player}: ${failures.failures.at(-1)!.status}`,
+								)
+							: pc.dim("none in the live log"),
 				],
 				[
 					"on the proxy",

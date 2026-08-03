@@ -17,7 +17,7 @@ import { readdir, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
-import { root } from "./config";
+import { instanceDir, managedInstances, root } from "./config";
 import { getAllStatuses } from "./instances";
 import type { PacksLock } from "./packslock";
 import { listResourcePacks, respacksDir, type RespackRow } from "./respacks";
@@ -337,7 +337,8 @@ export async function packServeConfig(
 	cfg: ClusterConfig,
 	proxyName = "proxy",
 ): Promise<PackServeConfig> {
-	const proxyDir = join(root(), cfg.instances[proxyName] ? proxyName : "proxy");
+	const inst = managedInstances(cfg)[proxyName];
+	const proxyDir = inst ? instanceDir(inst) : join(root(), proxyName);
 	const configPath = join(proxyDir, LOADER_CONFIG);
 
 	const fallback: PackServeConfig = {
@@ -390,6 +391,13 @@ export interface PackReachability {
 	sizeMatches?: boolean;
 	elapsedMs?: number;
 	problem?: string;
+	/** When this answer was measured, epoch ms */
+	at?: number;
+	/** True when it is the stored answer rather than one measured just now */
+	cached?: boolean;
+	/** What caused the measurement: nothing had one yet, an operator asked, or
+	 *  the proxy logged a player failing to load the pack */
+	trigger?: "first" | "manual" | "failure" | "moved";
 }
 
 /** A client that cannot fetch a pack in this long has effectively failed. */
@@ -447,6 +455,95 @@ export async function probePackUrl(url: string, diskBytes?: number): Promise<Pac
 			problem: timedOut ? `no response within ${PROBE_TIMEOUT_MS}ms` : ((err as Error)?.message ?? String(err)),
 		};
 	}
+}
+
+// -- what the proxy says about players failing to load a pack ------------------------
+
+/** One failed pack load, as luna-pack logged it on the proxy. */
+export interface PackLoadFailure {
+	at: number;
+	player: string;
+	/** The client's own verdict: DECLINED, FAILED_DOWNLOAD, INVALID_URL, … */
+	status: string;
+}
+
+/** Recent failed loads of one pack, oldest first, or why there are none to read. */
+export interface PackFailures {
+	available: boolean;
+	problem?: string;
+	failures: PackLoadFailure[];
+	/** Newest failure's timestamp, epoch ms */
+	lastAt?: number;
+}
+
+/** Failures kept per pack — enough to see a pattern, not a log viewer. */
+const MAX_FAILURES = 20;
+
+/**
+ * luna-pack's failure line, which is what a client refusing or failing a pack
+ * ends up as on the proxy: `<player> lỗi pack <Pack Name>: <STATUS>`. The status
+ * is anchored to the end of the line so a pack name containing a colon cannot
+ * eat it.
+ */
+const FAILURE_LINE = /^\[(\d{2}):(\d{2}):(\d{2})\].*?(\S+) lỗi pack (.+?): ([A-Z_]+)\s*$/;
+
+/**
+ * Read the proxy's live log for players failing to load one pack.
+ *
+ * Only `latest.log` is read: a failure old enough to have rotated out says
+ * nothing about whether the pack is reachable *now*, which is the question this
+ * feeds. Timestamps in the log carry no date, so they are anchored to the file's
+ * own mtime — and a line whose clock time is later than the file's belongs to
+ * the day before, since log4j rolls the file at midnight.
+ */
+export async function packLoadFailures(
+	cfg: ClusterConfig,
+	packName: string,
+	proxyName = "proxy",
+): Promise<PackFailures> {
+	const inst = managedInstances(cfg)[proxyName];
+
+	if (!inst) {
+		return { available: false, problem: `there is no ${proxyName} instance`, failures: [] };
+	}
+
+	const path = join(instanceDir(inst), "logs", "latest.log");
+
+	if (!existsSync(path)) {
+		return { available: false, problem: "the proxy has no live log to read", failures: [] };
+	}
+
+	const info = await stat(path);
+	const anchor = new Date(info.mtimeMs);
+	const wanted = packName.trim().toLowerCase();
+	const failures: PackLoadFailure[] = [];
+
+	for (const line of (await Bun.file(path).text()).split("\n")) {
+		if (!line.includes(" lỗi pack ")) {
+			continue;
+		}
+
+		const match = FAILURE_LINE.exec(line);
+
+		if (!match || match[5]!.trim().toLowerCase() !== wanted) {
+			continue;
+		}
+
+		const at = new Date(anchor);
+
+		at.setHours(Number(match[1]), Number(match[2]), Number(match[3]), 0);
+
+		// a clock time ahead of the file's own mtime cannot be from today
+		if (at.getTime() > info.mtimeMs) {
+			at.setDate(at.getDate() - 1);
+		}
+
+		failures.push({ at: at.getTime(), player: match[4]!, status: match[6]! });
+	}
+
+	const kept = failures.slice(-MAX_FAILURES);
+
+	return { available: true, failures: kept, lastAt: kept.at(-1)?.at };
 }
 
 // -- traffic, from the web server in front of the packs directory --------------------
@@ -837,6 +934,32 @@ export async function packHolders(packName: string): Promise<PackHolders> {
 
 // -- the whole picture -----------------------------------------------------------------
 
+/** A stored reachability answer, and what it already knows about. */
+interface CachedProbe {
+	/** The URL that was probed — a pack whose URL moved needs a fresh answer */
+	url: string;
+	result: PackReachability;
+	/** Newest failure timestamp at the time of the probe */
+	seenFailureAt?: number;
+}
+
+/**
+ * Reachability answers, kept per pack.
+ *
+ * Probing means an outbound HTTP request to the public pack host, and the answer
+ * changes when the web server changes — not when a console page ticks. So it is
+ * measured once, then only again when an operator asks (`retest`) or when the
+ * proxy logs a player failing to load the pack, which is the one event that says
+ * the stored answer may have gone wrong. Held in memory: a daemon restart simply
+ * measures again on the next look.
+ */
+const probeCache = new Map<string, CachedProbe>();
+
+/** Forget a pack's stored reachability — used when its file or URL changes. */
+export function forgetPackReachability(key: string): void {
+	probeCache.delete(key);
+}
+
 /** Digests keyed by identity of the file that produced them. */
 const digestCache = new Map<string, string>();
 
@@ -933,23 +1056,26 @@ export interface RespackDetail {
 	instances: PackInstanceUse[];
 	resolution: PackResolution;
 	holders: PackHolders;
+	failures: PackFailures;
 	traffic: PackTraffic;
 }
 
 /**
  * Assemble one pack's full picture. Every section is independent and best
- * effort, so the four remote-ish parts (statuses, the URL probe, the proxy's
- * session list, the log scan) run together rather than in series.
+ * effort, so the remote-ish parts (statuses, the proxy's two views, the log
+ * scans) run together rather than in series.
  *
- * `probe` is opt-out because the detail view refreshes on a timer and a dead
- * host costs the probe timeout every time.
+ * Reachability is the exception: it is *not* measured per call. It comes from
+ * the stored answer, and is measured only when there is none, when `retest` asks
+ * for one, when the URL has moved, or when the proxy has logged a player failing
+ * to load the pack since the stored answer was taken.
  */
 export async function resourcePackDetail(
 	cfg: ClusterConfig,
 	lock: PacksLock,
 	key: string,
 	groups?: Record<string, AddonGroup>,
-	opts: { probe?: boolean } = {},
+	opts: { retest?: boolean } = {},
 ): Promise<RespackDetail> {
 	const rows = await listResourcePacks(cfg, lock, groups);
 	const pack = rows.find((candidate) => candidate.key === key);
@@ -974,27 +1100,16 @@ export async function resourcePackDetail(
 				hasIcon: false,
 			};
 
-	const [statuses, reachability, resolution, holders, traffic, fileInfo] = await Promise.all([
+	const [statuses, resolution, holders, failures, traffic, fileInfo] = await Promise.all([
 		getAllStatuses(cfg),
-		url && pack.present && opts.probe !== false
-			? probePackUrl(url, pack.sizeBytes)
-			: Promise.resolve<PackReachability>({
-					checked: false,
-					ok: false,
-					url,
-					problem: serve.builtIn
-						? "the proxy serves packs on loopback (base-url: built-in) — clients off this machine cannot reach it"
-						: !url
-							? (serve.problem ?? "no pack URL to probe")
-							: !pack.present
-								? "the zip is missing, so there is nothing to serve"
-								: undefined,
-				}),
 		packResolution(pack.name),
 		packHolders(pack.name),
+		packLoadFailures(cfg, pack.name),
 		packTraffic(serve, pack.filename),
 		pack.present ? stat(path).catch(() => undefined) : Promise.resolve(undefined),
 	]);
+
+	const reachability = await storedReachability(key, url, pack, serve, failures, opts.retest);
 
 	const running = new Set(statuses.filter((status) => status.state === "running").map((status) => status.name));
 
@@ -1025,6 +1140,62 @@ export async function resourcePackDetail(
 			})),
 		resolution,
 		holders,
+		failures,
 		traffic,
 	};
+}
+
+/**
+ * The pack's reachability: the stored answer, measured afresh only when there is
+ * a reason to. `trigger` says which reason it was, so the console can explain
+ * why the number moved without the operator having asked.
+ */
+async function storedReachability(
+	key: string,
+	url: string | undefined,
+	pack: RespackRow,
+	serve: PackServeConfig,
+	failures: PackFailures,
+	retest?: boolean,
+): Promise<PackReachability> {
+	// nothing to measure: say why, and never cache a non-answer — the reason can
+	// stop being true the moment the zip or the config does
+	if (!url || !pack.present) {
+		probeCache.delete(key);
+
+		return {
+			checked: false,
+			ok: false,
+			url,
+			problem: serve.builtIn
+				? "the proxy serves packs on loopback (base-url: built-in) — clients off this machine cannot reach it"
+				: !url
+					? (serve.problem ?? "no pack URL to probe")
+					: "the zip is missing, so there is nothing to serve",
+		};
+	}
+
+	const cached = probeCache.get(key);
+	const newFailure =
+		failures.lastAt !== undefined && failures.lastAt > (cached?.seenFailureAt ?? 0);
+
+	const trigger: PackReachability["trigger"] | undefined = retest
+		? "manual"
+		: !cached
+			? "first"
+			: cached.url !== url
+				? "moved"
+				: newFailure
+					? "failure"
+					: undefined;
+
+	if (!trigger) {
+		return { ...cached!.result, cached: true };
+	}
+
+	const result = { ...(await probePackUrl(url, pack.sizeBytes)), at: Date.now(), trigger };
+
+	probeCache.set(key, { url, result, seenFailureAt: failures.lastAt });
+
+	return result;
 }
