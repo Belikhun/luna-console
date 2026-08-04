@@ -29,7 +29,7 @@ import { standardizeNaming } from "../../client/core/standardize";
 import * as providers from "../../client/core/services/providers";
 import { getAllStatuses } from "../../client/core/instances";
 import { ensurePortAllocations } from "../../client/core/ports";
-import { parseProvider } from "./packs";
+import { parseProvider, printProbe } from "./packs";
 
 /** Coloured label for a lock entry's source. */
 function sourceBadge(source: string): string {
@@ -1360,5 +1360,75 @@ command({
 		} else {
 			ok("parity verified: every instance runs the same plugin set as before");
 		}
+	},
+});
+
+command({
+	path: ["plugins", "identify"],
+	desc: "Map an existing plugin/mod to a provider project (so updates apply)",
+	args: [
+		{ name: "plugin", required: true, complete: pluginNames },
+		{ name: "slug-or-id", required: true },
+	],
+	opts: [
+		{ flag: "--provider", desc: "provider to map against (default modrinth)", value: true },
+		{ flag: "--version", desc: "version id to record as installed", value: true },
+		{ flag: "--unidentified", desc: "record the project but no version" },
+		{ flag: "--auto", desc: "auto-update: on or off (default on only for a proven match)", value: true },
+		{ flag: "--yes", desc: "accept an unproven match without asking" },
+	],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadLock();
+		const name = args[0]!;
+		const provider = parseProvider(opts.provider as string | undefined);
+
+		const spin = new Spinner().start(`identifying ${name} at ${provider}…`);
+		const probe = await plugins.probePluginIdentity(lock, name, provider, args[1]!);
+
+		spin.stop();
+		info(`local file: ${pc.dim(probe.local.file)}`);
+		printProbe(probe);
+
+		// mapping an unproven file is the operator's judgement, never a default:
+		// the recorded version is what the downgrade guard compares against
+		if (probe.confidence !== "exact" && !opts.version && !opts.unidentified && !opts.yes) {
+			throw new Bail(
+				"nothing proved which version this is — re-run with --version <id>, --unidentified, or --yes",
+			);
+		}
+
+		const { entry, match } = await plugins.identifyPlugin(cfg, lock, name, {
+			provider,
+			project: args[1]!,
+			versionId: opts.version as string | undefined,
+			unidentified: opts.unidentified as boolean | undefined,
+			autoUpdate: opts.auto === undefined ? undefined : opts.auto === "on",
+		});
+
+		await saveLock(lock);
+
+		ok(
+			`${pc.bold(name)} → ${provider}:${probe.project.slug} ` +
+				`${match ? pc.green(match.versionNumber) : pc.dim("version unknown")}, ` +
+				`auto-update ${entry.autoUpdate ? pc.green("on") : pc.dim("off")}`,
+		);
+		info(`check it with: luna plugins check ${name}`);
+	},
+});
+
+command({
+	path: ["plugins", "forget"],
+	desc: "Drop a plugin's provider mapping (keeps the jar and its deployments)",
+	args: [{ name: "plugin", required: true, complete: pluginNames }],
+
+	handler: async (args) => {
+		const lock = await loadLock();
+
+		await plugins.forgetPluginIdentity(lock, args[0]!);
+		await saveLock(lock);
+
+		ok(`${pc.bold(args[0]!)} is no longer mapped to a provider — updates will not be checked`);
 	},
 });

@@ -106,7 +106,11 @@ command({
 	handler: async () => {
 		const cfg = await loadCluster();
 		const lock = await loadPacksLock();
-		const rows = await respacks.listResourcePacks(cfg, lock, await addonGroups());
+		const { rows, dynamic } = await respacks.listResourcePacksLive(
+			cfg,
+			lock,
+			await addonGroups(),
+		);
 
 		if (!rows.length) {
 			info("no resource packs — add one with: luna packs add <slug>");
@@ -117,19 +121,57 @@ command({
 		const table = rows.map((row) => [
 			row.enabled ? pc.green(Sym.ok) : pc.dim("○"),
 			pc.bold(row.key),
-			row.defFile ? String(row.priority) : pc.yellow("unregistered"),
+			registrationCell(row),
 			row.required ? "required" : "",
 			row.servers.join(","),
 			row.present ? fmtBytes(row.sizeBytes) : pc.red("file missing"),
-			row.source,
+			row.registration === "dynamic" ? pc.magenta("plugin") : row.source,
 			row.versionNumber ?? "",
 		]);
 
 		console.log();
 		printTable(table, { head: ["", "pack", "priority", "", "servers", "size", "source", "version"] });
 		console.log();
+
+		const runtime = rows.filter((row) => row.registration === "dynamic");
+		const shadowed = rows.filter((row) => row.shadowsDynamic);
+
+		if (runtime.length) {
+			info(
+				`${runtime.length} pack(s) registered by a plugin at runtime: ${runtime
+					.map((row) => row.key)
+					.join(", ")} — luna has no definition for them`,
+			);
+		}
+
+		for (const row of shadowed) {
+			warn(
+				`${row.key}: your ${row.defFile} overrides the plugin that also registers it — ` +
+					`release it with: luna packs release ${row.key}`,
+			);
+		}
+
+		if (!dynamic.available) {
+			info(`runtime registrations unknown: ${dynamic.problem}`);
+		}
 	},
 });
+
+/**
+ * The priority cell, which is also where a pack's registration is reported: a
+ * number is a real stacking order, anything else says why there is none.
+ */
+function registrationCell(row: respacks.RespackRow): string {
+	if (row.registration === "dynamic") {
+		return `${row.priority} ${pc.magenta("(plugin)")}`;
+	}
+
+	if (row.defFile) {
+		return String(row.priority);
+	}
+
+	return row.registration === "unknown" ? pc.dim("registration unknown") : pc.yellow("unregistered");
+}
 
 command({
 	path: ["packs", "add"],
@@ -234,6 +276,164 @@ command({
 			`${pc.bold(row.key)}: ${row.enabled ? pc.green("enabled") : pc.dim("disabled")}, ` +
 				`priority ${row.priority}, ${row.required ? "required" : "optional"}, servers ${row.servers.join(",")}`,
 		);
+		info("apply live with: luna packs reload");
+	},
+});
+
+/**
+ * Print a probe: what luna thinks the local file is, and on what evidence. The
+ * CLI shows this instead of guessing whenever the answer is not proven, because
+ * recording the wrong version is what makes a later "update" a downgrade.
+ */
+export function printProbe(probe: {
+	confidence: string;
+	best?: { versionNumber: string; basis: string; publishedAt: string };
+	matches: Array<{ versionId: string; versionNumber: string; basis: string }>;
+	newest?: { versionNumber: string };
+	project: { title: string; slug: string };
+}): void {
+	info(`project: ${pc.bold(probe.project.title)} (${probe.project.slug})`);
+
+	if (probe.confidence === "exact" && probe.best) {
+		ok(`identified as ${pc.green(probe.best.versionNumber)} — ${probe.best.basis} matches`);
+
+		return;
+	}
+
+	if (probe.confidence === "likely" && probe.best) {
+		warn(`probably ${pc.yellow(probe.best.versionNumber)} — matched by ${probe.best.basis}, not a hash`);
+	} else {
+		warn("no published version matches this file");
+	}
+
+	if (probe.matches.length > 1) {
+		info("candidates:");
+
+		for (const match of probe.matches) {
+			console.log(`   ${match.versionNumber}  ${pc.dim(match.versionId)}  ${pc.dim(match.basis)}`);
+		}
+	}
+
+	if (probe.newest) {
+		info(`newest release: ${probe.newest.versionNumber} — what an unidentified mapping would pull`);
+	}
+}
+
+command({
+	path: ["packs", "identify"],
+	desc: "Map an existing resource pack to a provider project (so updates apply)",
+	args: [
+		{ name: "pack", required: true, complete: respackKeys },
+		{ name: "slug-or-id", required: true },
+	],
+	opts: [
+		{ flag: "--provider", desc: "provider to map against (default modrinth)", value: true },
+		{ flag: "--version", desc: "version id to record as installed", value: true },
+		{ flag: "--unidentified", desc: "record the project but no version" },
+		{ flag: "--auto", desc: "auto-update: on or off (default on only for a proven match)", value: true },
+		{ flag: "--yes", desc: "accept an unproven match without asking" },
+	],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadPacksLock();
+		const key = args[0]!;
+		const provider = parseProvider(opts.provider as string | undefined);
+
+		const spin = new Spinner().start(`identifying ${key} at ${provider}…`);
+		const probe = await respacks.probeRespackIdentity(cfg, lock, key, provider, args[1]!);
+
+		spin.stop();
+		printProbe(probe);
+
+		// an unproven match is a guess about what the server is running, so it is
+		// the operator's call and never a default
+		if (probe.confidence !== "exact" && !opts.version && !opts.unidentified && !opts.yes) {
+			throw new Bail(
+				"nothing proved which version this is — re-run with --version <id>, --unidentified, or --yes",
+			);
+		}
+
+		const { row, match } = await respacks.identifyResourcePack(cfg, lock, key, {
+			provider,
+			project: args[1]!,
+			versionId: opts.version as string | undefined,
+			unidentified: opts.unidentified as boolean | undefined,
+			autoUpdate: opts.auto === undefined ? undefined : opts.auto === "on",
+		});
+
+		await savePacksLock(lock);
+
+		ok(
+			`${pc.bold(row.key)} → ${provider}:${probe.project.slug} ` +
+				`${match ? pc.green(match.versionNumber) : pc.dim("version unknown")}, ` +
+				`auto-update ${row.autoUpdate ? pc.green("on") : pc.dim("off")}`,
+		);
+
+		if (!match) {
+			info("with no version recorded, the next check offers the newest compatible release");
+		}
+	},
+});
+
+command({
+	path: ["packs", "forget"],
+	desc: "Drop a resource pack's provider mapping (keeps the zip and its rules)",
+	args: [{ name: "pack", required: true, complete: respackKeys }],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const lock = await loadPacksLock();
+		const row = await respacks.forgetRespackIdentity(cfg, lock, args[0]!);
+
+		await savePacksLock(lock);
+
+		ok(`${pc.bold(row.key)} is no longer mapped to a provider — updates will not be checked`);
+	},
+});
+
+command({
+	path: ["packs", "takeover"],
+	desc: "Take over a plugin-registered pack by writing its definition",
+	args: [{ name: "pack", required: true, complete: respackKeys }],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const lock = await loadPacksLock();
+		const { row, from } = await respacks.takeOverDynamicPack(cfg, lock, args[0]!);
+
+		await savePacksLock(lock);
+
+		ok(`wrote ${pc.bold(`${row.key}.yml`)} from the running registration`);
+		info(
+			`priority ${from.priority}, ${from.required ? "required" : "optional"}, ` +
+				`servers ${from.servers.join(",")} — the plugin no longer decides these`,
+		);
+		info("apply live with: luna packs reload");
+	},
+});
+
+command({
+	path: ["packs", "release"],
+	desc: "Give a taken-over pack back to the plugin that registers it",
+	args: [{ name: "pack", required: true, complete: respackKeys }],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const lock = await loadPacksLock();
+		const { removed, dynamic } = await respacks.releaseDynamicPack(cfg, lock, args[0]!);
+
+		await savePacksLock(lock);
+
+		ok(`removed ${pc.bold(removed)}`);
+
+		if (dynamic) {
+			info(
+				`the plugin's own registration applies again: priority ${dynamic.priority}, ` +
+					`servers ${dynamic.servers.join(",")}`,
+			);
+		}
+
 		info("apply live with: luna packs reload");
 	},
 });
@@ -700,5 +900,71 @@ command({
 		const where = res.deletedFrom.length ? res.deletedFrom.join(", ") : "no worlds held it";
 
 		ok(`removed ${pc.bold(args[0]!)} ${pc.dim(`(${where}${res.entryRemoved ? "; pool entry dropped" : ""})`)}`);
+	},
+});
+
+command({
+	path: ["datapacks", "identify"],
+	desc: "Map an existing data pack to a provider project (so updates apply)",
+	args: [
+		{ name: "pack", required: true, complete: datapackNames },
+		{ name: "slug-or-id", required: true },
+	],
+	opts: [
+		{ flag: "--provider", desc: "provider to map against (default modrinth)", value: true },
+		{ flag: "--version", desc: "version id to record as installed", value: true },
+		{ flag: "--unidentified", desc: "record the project but no version" },
+		{ flag: "--auto", desc: "auto-update: on or off (default on only for a proven match)", value: true },
+		{ flag: "--yes", desc: "accept an unproven match without asking" },
+	],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const lock = await loadPacksLock();
+		const name = args[0]!;
+		const provider = parseProvider(opts.provider as string | undefined);
+
+		const spin = new Spinner().start(`identifying ${name} at ${provider}…`);
+		const probe = await datapacks.probeDataPackIdentity(lock, name, provider, args[1]!);
+
+		spin.stop();
+		printProbe(probe);
+
+		if (probe.confidence !== "exact" && !opts.version && !opts.unidentified && !opts.yes) {
+			throw new Bail(
+				"nothing proved which version this is — re-run with --version <id>, --unidentified, or --yes",
+			);
+		}
+
+		const { entry, match } = await datapacks.identifyDataPack(cfg, lock, name, {
+			provider,
+			project: args[1]!,
+			versionId: opts.version as string | undefined,
+			unidentified: opts.unidentified as boolean | undefined,
+			autoUpdate: opts.auto === undefined ? undefined : opts.auto === "on",
+		});
+
+		await savePacksLock(lock);
+
+		ok(
+			`${pc.bold(name)} → ${provider}:${probe.project.slug} ` +
+				`${match ? pc.green(match.versionNumber) : pc.dim("version unknown")}, ` +
+				`auto-update ${entry.autoUpdate ? pc.green("on") : pc.dim("off")}`,
+		);
+	},
+});
+
+command({
+	path: ["datapacks", "forget"],
+	desc: "Drop a data pack's provider mapping (keeps the zip and its targets)",
+	args: [{ name: "pack", required: true, complete: datapackNames }],
+
+	handler: async (args) => {
+		const lock = await loadPacksLock();
+
+		await datapacks.forgetDataPackIdentity(lock, args[0]!);
+		await savePacksLock(lock);
+
+		ok(`${pc.bold(args[0]!)} is no longer mapped to a provider — updates will not be checked`);
 	},
 });

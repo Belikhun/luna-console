@@ -27,6 +27,8 @@ export type {
 	ResolvedGroup,
 	Holdback,
 	JarUpload,
+	IdentifyPluginOptions,
+	PluginIdentityProbe,
 } from "../../core/plugins";
 
 export const scan = call("plugins.scan", { cfg: 0, lock: 1 }) as typeof core.scan;
@@ -40,6 +42,11 @@ export const adopt = call("plugins.adopt", { cfg: 0, lock: 1 }) as typeof core.a
 // an uploaded jar is written into the pool, so it crosses to the daemon whole
 export const uploadJar = call("plugins.uploadJar", { cfg: 0, lock: 1 }) as typeof core.uploadJar;
 export const removePlugin = call("plugins.removePlugin", { cfg: 0, lock: 1 }) as typeof core.removePlugin;
+// provider mapping: the probe reads the pool jar and the provider, so it runs in
+// the daemon like every other identification
+export const probePluginIdentity = call("plugins.probeIdentity", { lock: 0 }) as typeof core.probePluginIdentity;
+export const identifyPlugin = call("plugins.identify", { cfg: 0, lock: 1 }) as typeof core.identifyPlugin;
+export const forgetPluginIdentity = call("plugins.forgetIdentity", { lock: 0 }) as typeof core.forgetPluginIdentity;
 
 export const deploy = jobCall("plugins.deploy", {
 	cfg: 0,

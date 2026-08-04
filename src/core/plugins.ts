@@ -20,6 +20,14 @@ import {
 	VELOCITY_LOADERS,
 } from "./services/providers";
 import type { ProgressReporter } from "./progress";
+import type { IdentityMatch, IdentityProbe } from "./identify";
+import {
+	autoUpdateDefault,
+	chosenMatch,
+	installedFrom,
+	localFile,
+	probeIdentity,
+} from "./identify";
 
 /**
  * Loader facets a family's builds are published under — a paper server also
@@ -1439,4 +1447,157 @@ export async function removePlugin(
 	pruneVariants(name, entry);
 
 	return { deletedFrom, entryRemoved: false };
+}
+
+// -- provider mapping ----------------------------------------------------------
+
+/**
+ * What the operator is asking luna to record about a plugin's origin.
+ */
+export interface IdentifyPluginOptions {
+	provider: ProviderId;
+	/** Project slug or id at that provider */
+	project: string;
+	/** Version to record; omitted takes the probe's own best match */
+	versionId?: string;
+	/** Map the project but record no version at all */
+	unidentified?: boolean;
+	/** Overrides the auto-update default (on only for a proven version) */
+	autoUpdate?: boolean;
+}
+
+/** A probe carrying the entry it was run for. */
+export interface PluginIdentityProbe extends IdentityProbe {
+	name: string;
+	entry: PluginEntry;
+}
+
+/**
+ * The pooled file of an entry, which is what a mapping has to identify — not the
+ * copies in the instance directories, which deploy may not have caught up with.
+ */
+function poolFileOf(name: string, entry: PluginEntry): string {
+	const path = join(poolDir(), entry.file);
+
+	if (!existsSync(path)) {
+		throw new Error(`${name}: ${entry.file} is not in the pool, so it cannot be identified`);
+	}
+
+	return path;
+}
+
+/** An entry a mapping may touch at all, with the reason when it may not. */
+function mappable(lock: PluginsLock, name: string): PluginEntry {
+	const entry = lock.plugins[name];
+
+	if (!entry) {
+		throw new Error(`unknown plugin: ${name}`);
+	}
+
+	// an in-house jar has no upstream project: its provenance is the gradle
+	// workspace, and pointing it at a provider would make `update` fight `luna sync`
+	if (entry.source === "luna") {
+		throw new Error(`${name} is an in-house build — its source is the luna workspace`);
+	}
+
+	return entry;
+}
+
+/**
+ * Grade what a plugin's pooled jar could be at one provider, without writing
+ * anything. The console shows this before asking the operator to commit, and the
+ * CLI prints it when a mapping is ambiguous.
+ */
+export async function probePluginIdentity(
+	lock: PluginsLock,
+	name: string,
+	provider: ProviderId,
+	project: string,
+): Promise<PluginIdentityProbe> {
+	const entry = mappable(lock, name);
+	const local = await localFile(poolFileOf(name, entry), entry.file);
+
+	const probe = await probeIdentity(
+		provider,
+		project,
+		projectTypeFor(entry.family),
+		local,
+		loadersFor(entry.family),
+	);
+
+	return { ...probe, name, entry };
+}
+
+/**
+ * Map a plugin luna already holds to the project it came from: the jar stays
+ * exactly as it is (no download, no rename), and the entry gains the provenance
+ * that makes update checks, channels and the downgrade guard apply to it.
+ */
+export async function identifyPlugin(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	name: string,
+	opts: IdentifyPluginOptions,
+): Promise<{ name: string; entry: PluginEntry; probe: PluginIdentityProbe; match?: IdentityMatch }> {
+	const probe = await probePluginIdentity(lock, name, opts.provider, opts.project);
+	const match = chosenMatch(probe, opts);
+	const entry = probe.entry;
+
+	entry.source = opts.provider;
+	entry.remote = probe.remote;
+	entry.installed = installedFrom(probe.local, match);
+	entry.autoUpdate = opts.autoUpdate ?? autoUpdateDefault(match);
+
+	// the mapped build's own channel, so a beta jar is not "updated" to the
+	// newest release the moment it is identified
+	if (match && match.channel !== "release") {
+		entry.channel = match.channel;
+	} else {
+		delete entry.channel;
+	}
+
+	// the jar was never a provider build before, so nothing that describes one
+	// may survive the mapping
+	delete entry.variants;
+	delete entry.assign;
+
+	lock.plugins[name] = entry;
+
+	return { name, entry, probe, match };
+}
+
+/**
+ * Drop a plugin's provider mapping, back to a file luna simply has. The jar and
+ * its deployments are untouched; what goes is the claim that an upstream project
+ * says what this file should be.
+ */
+export async function forgetPluginIdentity(
+	lock: PluginsLock,
+	name: string,
+): Promise<PluginEntry> {
+	const entry = lock.plugins[name];
+
+	if (!entry) {
+		throw new Error(`unknown plugin: ${name}`);
+	}
+
+	if (entry.source === "luna") {
+		throw new Error(`${name} is an in-house build, not a provider mapping`);
+	}
+
+	entry.source = "manual";
+	entry.autoUpdate = false;
+
+	// the sha512 of what luna actually holds is the one fact that survives, so
+	// drift detection keeps working; the pool is re-read when it was never recorded
+	entry.installed = {
+		sha512: entry.installed?.sha512 ?? (await sha512File(poolFileOf(name, entry))),
+	};
+
+	delete entry.remote;
+	delete entry.channel;
+	delete entry.variants;
+	delete entry.assign;
+
+	return entry;
 }

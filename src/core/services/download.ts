@@ -69,3 +69,23 @@ export async function sha512File(path: string): Promise<string> {
 
 	return hasher.digest("hex");
 }
+
+/**
+ * Every hash a provider might have published for this file, computed in one
+ * read. Identifying a local file against a project means comparing against
+ * whichever algorithm its provider happens to publish, and the file is on disk
+ * either way — so all three are cheaper than guessing which one is needed.
+ */
+export async function hashesOfFile(path: string): Promise<Required<KnownHashes>> {
+	const buf = new Uint8Array(await Bun.file(path).arrayBuffer());
+	const out = {} as Record<(typeof HASH_ALGOS)[number], string>;
+
+	for (const algo of HASH_ALGOS) {
+		const hasher = new Bun.CryptoHasher(algo);
+
+		hasher.update(buf);
+		out[algo] = hasher.digest("hex");
+	}
+
+	return out as Required<KnownHashes>;
+}

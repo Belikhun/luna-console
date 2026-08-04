@@ -340,9 +340,20 @@
 	 * measurement exists: it is a hint the natural layout has already honoured, so
 	 * preferring it afterwards would hold the column at its minimum and leave the
 	 * space it should have taken to the filler.
+	 *
+	 * A declared `minWidth` bounds all three. A drag is already clamped to it, so
+	 * a stored width below it can only be one saved before the column asked for
+	 * more — and the alternative is a column that stays too narrow for its own
+	 * content until the user happens to drag it.
 	 */
 	function sizeOf(col: Column): number | undefined {
-		return widths[col.id] ?? autoWidths[col.id] ?? col.width;
+		const size = widths[col.id] ?? autoWidths[col.id] ?? col.width;
+
+		if (size === undefined) {
+			return undefined;
+		}
+
+		return Math.max(size, col.minWidth ?? 0);
 	}
 
 	const layoutReady = $derived(visibleCols.every((col) => autoWidths[col.id] !== undefined));

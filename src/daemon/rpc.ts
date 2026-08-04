@@ -856,6 +856,10 @@ export const OPS: Record<string, OpSpec> = {
 	"plugins.adopt": { fn: pluginsCore.adopt, cfg: 0, lock: 1, instance: 2 },
 	"plugins.uploadJar": { fn: pluginsCore.uploadJar, cfg: 0, lock: 1 },
 	"plugins.removePlugin": { fn: pluginsCore.removePlugin, cfg: 0, lock: 1 },
+	// provider mapping: the probe writes nothing, the other two rewrite the entry
+	"plugins.probeIdentity": { fn: pluginsCore.probePluginIdentity, lock: 0 },
+	"plugins.identify": { fn: pluginsCore.identifyPlugin, cfg: 0, lock: 1 },
+	"plugins.forgetIdentity": { fn: pluginsCore.forgetPluginIdentity, lock: 0 },
 	"standardize.standardizeNaming": {
 		fn: standardizeCore.standardizeNaming,
 		cfg: 0,
@@ -867,6 +871,14 @@ export const OPS: Record<string, OpSpec> = {
 	"packslock.loadPacksLock": { fn: packslockCore.loadPacksLock },
 	"packslock.savePacksLock": { fn: packslockCore.savePacksLock, lock: 0 },
 	"respacks.listResourcePacks": { fn: respacksCore.listResourcePacks, cfg: 0, lock: 1 },
+	// the listing that also asks the running proxy which packs plugins register
+	"respacks.listLive": { fn: respacksCore.listResourcePacksLive, cfg: 0, lock: 1 },
+	"respacks.dynamic": { fn: respacksCore.dynamicResourcePacks },
+	"respacks.takeOverDynamic": { fn: respacksCore.takeOverDynamicPack, cfg: 0, lock: 1 },
+	"respacks.releaseDynamic": { fn: respacksCore.releaseDynamicPack, cfg: 0, lock: 1 },
+	"respacks.probeIdentity": { fn: respacksCore.probeRespackIdentity, cfg: 0, lock: 1 },
+	"respacks.identify": { fn: respacksCore.identifyResourcePack, cfg: 0, lock: 1 },
+	"respacks.forgetIdentity": { fn: respacksCore.forgetRespackIdentity, cfg: 0, lock: 1 },
 	"respacks.updateResourcePack": { fn: respacksCore.updateResourcePack, cfg: 0, lock: 1 },
 	"respacks.addResourcePackFile": { fn: respacksCore.addResourcePackFile, cfg: 0, lock: 1 },
 	"respacks.installFromProvider": { fn: respacksCore.installResourcePackFromProvider, cfg: 0, lock: 1 },
@@ -898,6 +910,9 @@ export const OPS: Record<string, OpSpec> = {
 	"datapacks.checkUpdates": { fn: datapacksCore.checkDataPackUpdates, cfg: 0, lock: 1 },
 	"datapacks.applyUpdate": { fn: datapacksCore.applyDataPackUpdate, lock: 0 },
 	"datapacks.addFile": { fn: datapacksCore.addDataPackFile, cfg: 0, lock: 1 },
+	"datapacks.probeIdentity": { fn: datapacksCore.probeDataPackIdentity, lock: 0 },
+	"datapacks.identify": { fn: datapacksCore.identifyDataPack, cfg: 0, lock: 1 },
+	"datapacks.forgetIdentity": { fn: datapacksCore.forgetDataPackIdentity, lock: 0 },
 	"datapacks.adopt": { fn: datapacksCore.adoptDataPack, cfg: 0, lock: 1, instance: 2 },
 	"datapacks.remove": { fn: removeDataPackRouted, cfg: 0, lock: 1 },
 	// the per-owner slice of a routed removal — the primary calls it on each

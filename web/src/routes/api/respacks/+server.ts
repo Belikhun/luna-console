@@ -1,16 +1,22 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock } from '$core/config';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
-import { addResourcePackFile, listResourcePacks } from '$core/respacks';
+import { addResourcePackFile, listResourcePacksLive } from '$core/respacks';
 import { projectUrl } from '$core/services/providers';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
-/** GET → every resource pack: registration, file status, provenance. */
+/**
+ * GET → every resource pack: registration, file status, provenance.
+ *
+ * The live listing, so a pack a plugin registers at runtime arrives as what it
+ * is rather than as an abandoned zip. `dynamic.available` is false when the
+ * proxy is not answering, and the screen says so instead of guessing.
+ */
 export async function GET() {
 	const cfg = await loadCluster();
 	const lock = await loadPacksLock();
-	const rows = await listResourcePacks(cfg, lock, (await loadLock()).groups);
+	const { rows, dynamic } = await listResourcePacksLive(cfg, lock, (await loadLock()).groups);
 
 	// the provider's web page is built here — the browser has no URL scheme
 	const packs = rows.map((row) => ({
@@ -18,7 +24,7 @@ export async function GET() {
 		url: row.remote ? projectUrl(row.remote, 'resourcepack') : null
 	}));
 
-	return json({ packs });
+	return json({ packs, dynamic });
 }
 
 /**

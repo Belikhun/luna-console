@@ -14,6 +14,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import BrandLink from '$lib/components/BrandLink.svelte';
+	import IdentifyAddonModal from '$lib/components/IdentifyAddonModal.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -46,6 +47,21 @@
 	let busy = $state('');
 
 	let addOpen = $state(false);
+
+	// provider mapping, per family: each family build is its own lock entry, so
+	// "which project is this?" is asked about one jar at a time
+	let identifyOpen = $state(false);
+	let identifyKey = $state('');
+	let identifyFamily = $state('paper');
+	let identifyMapped = $state(false);
+
+	/** Open the mapping dialog for one family build. */
+	function openIdentify(family: { key: string; family: string; remote?: unknown }): void {
+		identifyKey = family.key;
+		identifyFamily = family.family;
+		identifyMapped = !!family.remote;
+		identifyOpen = true;
+	}
 
 	let pinOpen = $state(false);
 	let pinEntry = $state('');
@@ -431,6 +447,15 @@
 					title="{family.family} build — {family.key}"
 					description={family.meta?.description ?? `Pool file ${family.file}`}
 				>
+					{#snippet actions()}
+						<Btn
+							icon="link"
+							disabled={family.source === 'luna' || !!busy}
+							onclick={() => openIdentify(family)}
+						>
+							{family.remote ? 'Change provider mapping…' : 'Map to a provider…'}
+						</Btn>
+					{/snippet}
 					<InfoGrid
 						cells={[
 							{ label: 'Display name', value: family.displayName },
@@ -620,6 +645,16 @@
 	options={addable.map((inst: any) => inst.name)}
 	busy={busy === 'ovr-add'}
 	onconfirm={(instances) => void addToInstances(instances)}
+/>
+
+<!-- map an unidentified build to the project it came from -->
+<IdentifyAddonModal
+	bind:open={identifyOpen}
+	kind={identifyFamily === 'neoforge' ? 'mod' : 'plugin'}
+	target={identifyKey}
+	family={identifyFamily}
+	mapped={identifyMapped}
+	onchanged={refresh}
 />
 
 <!-- pin modal -->

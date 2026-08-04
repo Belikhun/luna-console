@@ -14,6 +14,11 @@ export type {
 	RespackRow,
 	RespackPatch,
 	RespackUpdate,
+	PackRegistration,
+	DynamicPack,
+	DynamicPackReport,
+	IdentifyPackOptions,
+	RespackIdentityProbe,
 } from "../../core/respacks";
 
 export const listResourcePacks = call("respacks.listResourcePacks", { cfg: 0, lock: 1 }) as typeof core.listResourcePacks;
@@ -30,3 +35,13 @@ export const reloadResourcePacks = call("respacks.reload", { cfg: 0 }) as typeof
 // group membership is materialized into the definitions the proxy reads, so
 // the sync is a daemon-side write like every other pack mutation
 export const syncResourcePackGroups = call("respacks.syncGroups", { cfg: 0, lock: 1 }) as typeof core.syncResourcePackGroups;
+// the operator-facing listing: disk merged with the runtime registrations only
+// the running proxy knows about
+export const listResourcePacksLive = call("respacks.listLive", { cfg: 0, lock: 1 }) as typeof core.listResourcePacksLive;
+export const dynamicResourcePacks = call("respacks.dynamic") as typeof core.dynamicResourcePacks;
+export const takeOverDynamicPack = call("respacks.takeOverDynamic", { cfg: 0, lock: 1 }) as typeof core.takeOverDynamicPack;
+export const releaseDynamicPack = call("respacks.releaseDynamic", { cfg: 0, lock: 1 }) as typeof core.releaseDynamicPack;
+// provider mapping
+export const probeRespackIdentity = call("respacks.probeIdentity", { cfg: 0, lock: 1 }) as typeof core.probeRespackIdentity;
+export const identifyResourcePack = call("respacks.identify", { cfg: 0, lock: 1 }) as typeof core.identifyResourcePack;
+export const forgetRespackIdentity = call("respacks.forgetIdentity", { cfg: 0, lock: 1 }) as typeof core.forgetRespackIdentity;

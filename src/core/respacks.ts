@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { root } from "./config";
 import { groupsWith, memberInstances } from "./families";
 import * as instances from "./instances";
+import * as lunaApi from "./services/luna";
 import {
 	decodePackZip,
 	packKeyFrom,
@@ -31,6 +32,14 @@ import {
 	type PackSource,
 } from "./packslock";
 import { download, sha512File } from "./services/download";
+import type { IdentityMatch, IdentityProbe } from "./identify";
+import {
+	autoUpdateDefault,
+	chosenMatch,
+	installedFrom,
+	localFile,
+	probeIdentity,
+} from "./identify";
 import type { AddonProject, AddonVersion, AddonVersionFile } from "./services/providers";
 import { getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
 import type { AddonGroup, ClusterConfig, ProviderId, RemoteRef } from "./types";
@@ -56,12 +65,35 @@ export interface RespackDefinition {
 	servers: string[];
 }
 
+/**
+ * How a pack came to be registered with luna-pack.
+ *
+ * `file`     a `.yml` in the packs directory — luna wrote it, luna can edit it
+ * `dynamic`  a plugin registered it at runtime through luna-pack's API (e.g.
+ *            luna-glyph builds its glyph pack and registers it on every reload).
+ *            There is no file to edit: the registering plugin *is* the config.
+ * `unknown`  a zip nothing on disk registers, and the proxy is not answering, so
+ *            whether a plugin registers it at runtime cannot be known right now
+ * `none`     a zip nothing registers, with a live proxy confirming it
+ */
+export type PackRegistration = "file" | "dynamic" | "unknown" | "none";
+
 /** One resource pack as the console and CLI list it. */
 export interface RespackRow extends RespackDefinition {
 	/** Registry key — the definition file's basename */
 	key: string;
 	/** Definition file name; undefined for a zip with no registration yet */
 	defFile?: string;
+	/** Where this pack's registration lives */
+	registration: PackRegistration;
+	/** The runtime registration, when a plugin provides one */
+	dynamic?: DynamicPack;
+	/**
+	 * A `.yml` and a runtime registration both claim this pack. luna-pack takes
+	 * the file and ignores the plugin, so the operator is overriding a plugin
+	 * without having said so — worth reporting wherever the row is shown.
+	 */
+	shadowsDynamic?: boolean;
 	/** Whether the zip the definition points at exists */
 	present: boolean;
 	sizeBytes: number;
@@ -222,9 +254,97 @@ export async function saveDefinition(key: string, def: RespackDefinition): Promi
 }
 
 /**
+ * One pack a plugin registered with luna-pack at runtime, as the running proxy
+ * reports it. The numbers are the plugin's, not luna's: nothing on disk here
+ * decides them, and they change when that plugin reloads.
+ */
+export interface DynamicPack {
+	/** luna-pack's own key: the pack name, normalized */
+	name: string;
+	filename: string;
+	priority: number;
+	required: boolean;
+	enabled: boolean;
+	servers: string[];
+	/** Whether the proxy could resolve the zip into something it can serve */
+	available: boolean;
+	unavailableReason?: string;
+	/** The URL clients are handed, when it resolved */
+	url?: string;
+}
+
+/** What the running proxy could tell us about runtime registrations. */
+export interface DynamicPackReport {
+	/** false when the proxy is stopped or its API did not answer */
+	available: boolean;
+	problem?: string;
+	packs: DynamicPack[];
+}
+
+/**
+ * Resource packs registered at runtime rather than by a `.yml`.
+ *
+ * The proxy's catalog is the only place these exist: luna-pack merges its
+ * directory with whatever its dynamic providers hand it, and a plugin's
+ * registration never touches disk. So the packs directory alone cannot tell a
+ * plugin-provided pack from an abandoned zip — this is the difference.
+ *
+ * Which entries are dynamic is inferred rather than asked: a pack the proxy
+ * resolved that no local `.yml` declares can only have come from a provider.
+ * (luna-pack does record `[dynamic]/<provider>.yml` as such a definition's path,
+ * but its HTTP catalog does not publish that field, so the registering plugin
+ * cannot be named yet.)
+ */
+export async function dynamicResourcePacks(): Promise<DynamicPackReport> {
+	const catalog = await lunaApi.packCatalog();
+
+	if (!catalog.ok || !catalog.data) {
+		return { available: false, problem: catalog.error ?? "the proxy did not answer", packs: [] };
+	}
+
+	const dir = respacksDir();
+	const declared = new Set<string>();
+
+	if (existsSync(dir)) {
+		for (const file of await readdir(dir)) {
+			if (!/\.ya?ml$/i.test(file)) {
+				continue;
+			}
+
+			const def = await readDefinition(join(dir, file));
+
+			if (def) {
+				declared.add(def.name.trim().toLowerCase());
+			}
+		}
+	}
+
+	const packs = catalog.data.packs
+		.filter((pack) => !declared.has(pack.normalizedName.toLowerCase()))
+		.map((pack) => ({
+			name: pack.normalizedName.toLowerCase(),
+			filename: pack.filename,
+			priority: pack.priority,
+			required: pack.required,
+			enabled: pack.enabled,
+			servers: pack.servers,
+			available: pack.available,
+			unavailableReason: pack.unavailableReason || undefined,
+			url: pack.url || undefined,
+		}));
+
+	return { available: true, packs };
+}
+
+/**
  * Every resource pack the cluster has: registered definitions merged with
  * their zips, plus stray zips nothing registers yet (listed so they can be
  * registered or cleaned up rather than silently ignored).
+ *
+ * Runtime registrations are *not* consulted here — this function reads the
+ * cluster's own disk and nothing else, because deploys, group syncs and the
+ * cleanup sweep all call it and none of them may depend on the proxy being up.
+ * `listResourcePacksLive` is the listing that also asks the proxy.
  */
 export async function listResourcePacks(
 	cfg: ClusterConfig,
@@ -263,6 +383,7 @@ export async function listResourcePacks(
 			...def,
 			key,
 			defFile,
+			registration: "file",
 			present,
 			sizeBytes: size,
 			source: entry?.source ?? "manual",
@@ -283,9 +404,12 @@ export async function listResourcePacks(
 
 		const size = (await stat(join(dir, zip))).size;
 
-		// unregistered: luna-pack cannot serve it until a definition exists
+		// nothing on disk registers it. Whether a plugin does at runtime is a
+		// question only the proxy can answer, so the disk-only listing says
+		// "unknown" and `listResourcePacksLive` settles it
 		rows.push({
 			key: packKeyFrom(zip),
+			registration: "unknown",
 			name: zip.replace(/\.zip$/i, ""),
 			filename: zip,
 			priority: 0,
@@ -303,6 +427,211 @@ export async function listResourcePacks(
 	}
 
 	return rows;
+}
+
+/**
+ * The listing every operator-facing surface uses: the packs directory merged
+ * with what the running proxy says is registered at runtime.
+ *
+ * Three things come out of the merge:
+ * - a zip whose registration is a plugin's is `dynamic`, and carries that
+ *   plugin's priority/rules/enablement instead of the zeroes disk implies
+ * - a `.yml` that shadows a runtime registration of the same name is flagged,
+ *   because luna-pack silently prefers the file and the plugin's own settings
+ *   stop applying
+ * - a runtime pack whose zip is not in the directory is still listed: the
+ *   registering plugin may build it on its next reload, and a row that vanishes
+ *   is worse than a row that says the file is missing
+ *
+ * A proxy that is not answering leaves the strays as `unknown` rather than
+ * calling them unregistered — an unavailable fact is not a negative one.
+ */
+export async function listResourcePacksLive(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	groups?: Record<string, AddonGroup>,
+): Promise<{ rows: RespackRow[]; dynamic: DynamicPackReport }> {
+	const rows = await listResourcePacks(cfg, lock, groups);
+	const dynamic = await dynamicResourcePacks();
+
+	if (!dynamic.available) {
+		return { rows, dynamic };
+	}
+
+	const backends = Object.keys(cfg.instances);
+	const byZip = new Map(dynamic.packs.map((pack) => [pack.filename.toLowerCase(), pack]));
+
+	for (const row of rows) {
+		const runtime = byZip.get(row.filename.toLowerCase());
+
+		// A definition luna wrote over a plugin's registration hides that
+		// registration from the catalog — luna-pack answers with the definition it
+		// prefers and never says one was displaced. So the takeover is read back
+		// from where it was recorded, not from the proxy.
+		if (row.defFile && lock.resourcepacks[row.key]?.takenOverFrom === "plugin") {
+			row.shadowsDynamic = true;
+		}
+
+		if (!runtime) {
+			// a stray zip the live proxy does not know is genuinely unregistered
+			if (row.registration === "unknown") {
+				row.registration = "none";
+			}
+
+			continue;
+		}
+
+		byZip.delete(row.filename.toLowerCase());
+
+		if (row.defFile) {
+			// a yml and a *visible* runtime registration for the same zip: the file
+			// wins in luna-pack, so say that it is doing so
+			row.dynamic = runtime;
+			row.shadowsDynamic = true;
+
+			continue;
+		}
+
+		// the plugin's registration is this pack's whole configuration
+		row.registration = "dynamic";
+		row.dynamic = runtime;
+		row.name = runtime.name;
+		row.priority = runtime.priority;
+		row.required = runtime.required;
+		row.enabled = runtime.enabled;
+		row.servers = runtime.servers;
+		row.matched = backends.filter((name) => respackMatchesServer(runtime.servers, name));
+	}
+
+	// registered at runtime, with no zip on disk yet
+	for (const runtime of byZip.values()) {
+		rows.push({
+			key: packKeyFrom(runtime.filename),
+			name: runtime.name,
+			filename: runtime.filename,
+			priority: runtime.priority,
+			required: runtime.required,
+			enabled: runtime.enabled,
+			servers: runtime.servers,
+			registration: "dynamic",
+			dynamic: runtime,
+			present: false,
+			sizeBytes: 0,
+			source: "manual",
+			autoUpdate: false,
+			matched: backends.filter((name) => respackMatchesServer(runtime.servers, name)),
+			groups: [],
+			granted: [],
+		});
+	}
+
+	return { rows: rows.sort((a, b) => a.key.localeCompare(b.key)), dynamic };
+}
+
+/**
+ * Take a dynamically registered pack over: write the `.yml` that luna-pack
+ * prefers, seeded with exactly what the plugin currently registers, so nothing
+ * changes for players at the moment of the takeover.
+ *
+ * This is a real transfer of ownership and not a formality — from here on the
+ * registering plugin's priority, rules and enablement are ignored, while it
+ * keeps rebuilding the zip. That is the only way to give a plugin's pack an
+ * operator-chosen priority or server rule, and the reason it is a deliberate
+ * verb instead of a side effect of editing.
+ */
+export async function takeOverDynamicPack(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	key: string,
+): Promise<{ row: RespackRow; from: DynamicPack }> {
+	const { rows, dynamic } = await listResourcePacksLive(cfg, lock);
+
+	if (!dynamic.available) {
+		throw new Error(
+			`the proxy is not answering, so ${key}'s runtime registration cannot be read: ${dynamic.problem}`,
+		);
+	}
+
+	const row = rows.find((candidate) => candidate.key === key);
+
+	if (!row?.dynamic) {
+		throw new Error(`${key} is not registered by a plugin at runtime`);
+	}
+
+	if (row.defFile) {
+		throw new Error(`${key} already has a definition of its own (${row.defFile})`);
+	}
+
+	const from = row.dynamic;
+
+	await saveDefinition(key, {
+		name: from.name,
+		filename: from.filename,
+		priority: from.priority,
+		required: from.required,
+		enabled: from.enabled,
+		servers: from.servers,
+	});
+
+	// the pack becomes luna's, so it gets the lock entry every luna-owned pack
+	// has — and the flag that makes the takeover reversible
+	const entry = lock.resourcepacks[key];
+
+	lock.resourcepacks[key] = {
+		...entry,
+		file: from.filename,
+		source: entry?.source ?? "manual",
+		autoUpdate: entry?.autoUpdate ?? false,
+		takenOverFrom: "plugin",
+	};
+
+	const fresh = await listResourcePacksLive(cfg, lock);
+
+	return { row: fresh.rows.find((candidate) => candidate.key === key)!, from };
+}
+
+/**
+ * Hand a taken-over pack back to the plugin that registers it: delete the `.yml`
+ * that was shadowing the runtime registration. The zip stays — it is the
+ * plugin's, and it will be re-registered on the next reload.
+ */
+export async function releaseDynamicPack(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	key: string,
+): Promise<{ removed: string; dynamic?: DynamicPack }> {
+	const { rows } = await listResourcePacksLive(cfg, lock);
+	const row = rows.find((candidate) => candidate.key === key);
+
+	if (!row) {
+		throw new Error(`unknown resource pack: ${key}`);
+	}
+
+	if (!row.defFile) {
+		throw new Error(`${key} has no definition of its own to release`);
+	}
+
+	if (!row.shadowsDynamic) {
+		throw new Error(
+			`${key} is not shadowing a runtime registration — deleting its definition would unregister it`,
+		);
+	}
+
+	await rm(join(respacksDir(), row.defFile));
+
+	const entry = lock.resourcepacks[key];
+
+	if (entry) {
+		delete entry.takenOverFrom;
+
+		// nothing else in the entry was ever luna's: an unmapped pack that only
+		// existed to hold the takeover flag is noise once the flag is gone
+		if (entry.source === "manual" && !entry.remote && !entry.installed && !entry.servers) {
+			delete lock.resourcepacks[key];
+		}
+	}
+
+	return { removed: row.defFile, dynamic: row.dynamic };
 }
 
 /** The fields of a definition an edit may change. */
@@ -716,4 +1045,134 @@ export async function removeResourcePack(
  */
 export async function reloadResourcePacks(cfg: ClusterConfig): Promise<boolean> {
 	return await instances.sendCommand(cfg, "proxy", "lunapack reload");
+}
+
+// -- provider mapping ----------------------------------------------------------
+
+/** What the operator is asking luna to record about a pack's origin. */
+export interface IdentifyPackOptions {
+	provider: ProviderId;
+	/** Project slug or id at that provider */
+	project: string;
+	/** Version to record; omitted takes the probe's own best match */
+	versionId?: string;
+	/** Map the project but record no version at all */
+	unidentified?: boolean;
+	/** Overrides the auto-update default (on only for a proven version) */
+	autoUpdate?: boolean;
+}
+
+/** A probe carrying the pack it was run for. */
+export interface RespackIdentityProbe extends IdentityProbe {
+	key: string;
+	/** The zip the probe hashed */
+	zip: string;
+}
+
+/**
+ * The zip a mapping has to identify. Taken from the row rather than the lock,
+ * because the packs worth mapping are exactly the ones with no lock entry yet —
+ * a hand-uploaded zip is known only by the definition that points at it.
+ */
+async function packZipOf(cfg: ClusterConfig, lock: PacksLock, key: string): Promise<RespackRow> {
+	const rows = await listResourcePacks(cfg, lock);
+	const row = rows.find((candidate) => candidate.key === key);
+
+	if (!row) {
+		throw new Error(`unknown resource pack: ${key}`);
+	}
+
+	if (!row.present) {
+		throw new Error(`${key}: ${row.filename} is missing, so it cannot be identified`);
+	}
+
+	return row;
+}
+
+/**
+ * Grade what a pack's zip could be at one provider, writing nothing. Resource
+ * packs carry no loader facet, so the whole published version list is fair game.
+ */
+export async function probeRespackIdentity(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	key: string,
+	provider: ProviderId,
+	project: string,
+): Promise<RespackIdentityProbe> {
+	const row = await packZipOf(cfg, lock, key);
+	const local = await localFile(join(respacksDir(), row.filename), row.filename);
+	const probe = await probeIdentity(provider, project, "resourcepack", local);
+
+	return { ...probe, key, zip: row.filename };
+}
+
+/**
+ * Map a resource pack luna already serves to the project it came from. The zip
+ * and its definition are untouched — priority, rules and enablement are the
+ * operator's, not the provider's; what changes is that updates can now be found.
+ */
+export async function identifyResourcePack(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	key: string,
+	opts: IdentifyPackOptions,
+): Promise<{ row: RespackRow; probe: RespackIdentityProbe; match?: IdentityMatch }> {
+	const probe = await probeRespackIdentity(cfg, lock, key, opts.provider, opts.project);
+	const match = chosenMatch(probe, opts);
+	const existing = lock.resourcepacks[key];
+
+	const entry: PackEntry = {
+		...existing,
+		file: probe.zip,
+		source: opts.provider,
+		remote: probe.remote,
+		installed: installedFrom(probe.local, match),
+		autoUpdate: opts.autoUpdate ?? autoUpdateDefault(match),
+	};
+
+	if (match && match.channel !== "release") {
+		entry.channel = match.channel;
+	} else {
+		delete entry.channel;
+	}
+
+	lock.resourcepacks[key] = entry;
+
+	const rows = await listResourcePacks(cfg, lock);
+
+	return { row: rows.find((candidate) => candidate.key === key)!, probe, match };
+}
+
+/**
+ * Drop a pack's provider mapping. Its definition, rules and group membership are
+ * untouched: only the claim that an upstream project governs its contents goes.
+ */
+export async function forgetRespackIdentity(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	key: string,
+): Promise<RespackRow> {
+	const entry = lock.resourcepacks[key];
+
+	if (!entry) {
+		throw new Error(`${key} has no provider mapping`);
+	}
+
+	entry.source = "manual";
+	entry.autoUpdate = false;
+	entry.installed = { sha512: entry.installed?.sha512 ?? "" };
+
+	if (!entry.installed.sha512) {
+		const row = await packZipOf(cfg, lock, key);
+
+		entry.installed = { sha512: await sha512File(join(respacksDir(), row.filename)) };
+	}
+
+	delete entry.remote;
+	delete entry.channel;
+
+	const rows = await listResourcePacks(cfg, lock);
+
+	return rows.find((candidate) => candidate.key === key)!;
 }

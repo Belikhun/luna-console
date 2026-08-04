@@ -19,6 +19,7 @@
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import AddonPicker from '$lib/components/AddonPicker.svelte';
 	import BrandLink from '$lib/components/BrandLink.svelte';
+	import IdentifyAddonModal from '$lib/components/IdentifyAddonModal.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 
@@ -315,6 +316,19 @@
 			removeTarget = null;
 		});
 
+	// -- provider mapping --------------------------------------------------------------
+
+	let identifyOpen = $state(false);
+	let identifyName = $state('');
+	let identifyMapped = $state(false);
+
+	/** Open the mapping dialog for one pooled pack. */
+	function openIdentify(row: DataPackRow): void {
+		identifyName = row.name;
+		identifyMapped = !!row.entry.remote;
+		identifyOpen = true;
+	}
+
 	// -- table ---------------------------------------------------------------------------
 
 	const columns: Column[] = [
@@ -366,6 +380,12 @@
 				disabled: !row.entry.remote,
 				hint: !row.entry.remote ? 'not identified with a provider' : undefined,
 				action: () => checkUpdates([row.name])
+			},
+			{
+				label: row.entry.remote ? 'Change provider mapping…' : 'Map to a provider…',
+				icon: 'link',
+				hint: 'record which project this zip came from',
+				action: () => openIdentify(row)
 			},
 			{
 				label: 'Manage addon groups',
@@ -492,6 +512,15 @@
 		{/snippet}
 	</ResourceTable>
 </Panel>
+
+<!-- map a pooled zip to the project it came from -->
+<IdentifyAddonModal
+	bind:open={identifyOpen}
+	kind="datapack"
+	target={identifyName}
+	mapped={identifyMapped}
+	onchanged={refresh}
+/>
 
 <!-- install from a provider -->
 <Modal title="Install a data pack" bind:open={addOpen} wide>

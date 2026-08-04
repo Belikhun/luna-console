@@ -101,6 +101,26 @@
 			return { state: 'unknown', label: 'Loading', detail: undefined };
 		}
 
+		// a plugin's runtime registration is a registration: the pack is served,
+		// there is simply no file of luna's behind it
+		if (pack.registration === 'dynamic') {
+			return {
+				state: pack.enabled ? 'ok' : 'stopped',
+				label: pack.enabled ? 'Enabled' : 'Disabled',
+				detail:
+					"registered by a plugin at runtime — its priority, rules and enablement are the plugin's"
+			};
+		}
+
+		if (pack.registration === 'unknown') {
+			return {
+				state: 'unknown',
+				label: 'Registration unknown',
+				detail:
+					'no definition on disk, and the proxy is not answering — a plugin may register it at runtime'
+			};
+		}
+
 		if (!pack.defFile) {
 			return {
 				state: 'warning',

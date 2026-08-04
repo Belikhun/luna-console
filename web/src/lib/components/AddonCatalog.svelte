@@ -11,6 +11,7 @@
 	import SplitBtn from '$lib/components/SplitBtn.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import BrandLink from '$lib/components/BrandLink.svelte';
+	import IdentifyAddonModal from '$lib/components/IdentifyAddonModal.svelte';
 	import {
 		ADDON_PROVIDERS,
 		providerAvailability,
@@ -405,6 +406,24 @@
 			await refresh();
 		});
 
+	// Provider mapping. A row here is an addon *identity* — its paper and velocity
+	// builds are separate lock entries with separate files — so a mapping can only
+	// be made from this screen when there is exactly one build to map; otherwise
+	// the detail screen asks about each one.
+	let identifyOpen = $state(false);
+	let identifyKey = $state('');
+	let identifyFamily = $state('paper');
+	let identifyMapped = $state(false);
+
+	function openIdentify(row: AddonRow): void {
+		const family = row.families[0]!;
+
+		identifyKey = family.key;
+		identifyFamily = family.family;
+		identifyMapped = !!family.remote;
+		identifyOpen = true;
+	}
+
 	/** An addon's verbs — the row menu and the toolbar's Actions button. */
 	function rowActions(row: AddonRow): ContextMenuItem[] {
 		const linked = row.families.find((family) => family.url);
@@ -428,6 +447,18 @@
 				label: row.autoUpdate ? 'Disable auto-update' : 'Enable auto-update',
 				icon: row.autoUpdate ? 'ban' : 'circleCheck',
 				action: () => toggleAutoUpdate(row)
+			},
+			{
+				label: row.families[0]?.remote ? 'Change provider mapping…' : 'Map to a provider…',
+				icon: 'link',
+				disabled: row.families.length !== 1 || row.families[0]?.source === 'luna',
+				hint:
+					row.families[0]?.source === 'luna'
+						? 'in-house build — its source is the luna workspace'
+						: row.families.length !== 1
+							? `${row.families.length} builds — map each one from the ${spec.noun} details`
+							: 'record which project this file came from',
+				action: () => openIdentify(row)
 			},
 			{
 				label: `Open on ${providerLabel}`,
@@ -579,6 +610,16 @@
 </Panel>
 
 <!-- install modal -->
+<!-- map a file luna already pools to the project it came from -->
+<IdentifyAddonModal
+	bind:open={identifyOpen}
+	kind={identifyFamily === 'neoforge' ? 'mod' : 'plugin'}
+	target={identifyKey}
+	family={identifyFamily}
+	mapped={identifyMapped}
+	onchanged={refresh}
+/>
+
 <Modal title="Install a {spec.noun}" bind:open={addOpen} wide>
 	<AddonPicker
 		endpoint="/plugins/search"

@@ -51,6 +51,18 @@ export interface PackEntry {
 	 * exactly the granted names away and never a hand-written rule.
 	 */
 	servers?: string[];
+	/**
+	 * Resource packs only: this pack's definition was written by luna over a
+	 * *runtime* registration — a plugin registers the same pack through
+	 * luna-pack's dynamic API, and luna-pack prefers the file.
+	 *
+	 * It has to be recorded rather than observed. luna-pack's HTTP catalog
+	 * publishes a definition's name but not where it came from, so once a `.yml`
+	 * exists the plugin's registration behind it is invisible from outside. This
+	 * flag is what makes the takeover reversible: without it, "give it back to
+	 * the plugin" would be indistinguishable from "unregister the pack".
+	 */
+	takenOverFrom?: "plugin";
 }
 
 /** A data pack additionally knows which instances it deploys to. */

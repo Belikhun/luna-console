@@ -13,6 +13,8 @@ export type {
 	InstanceDataPackRow,
 	DataPackDeployAction,
 	DataPackUpdate,
+	IdentifyDataPackOptions,
+	DataPackIdentityProbe,
 } from "../../core/datapacks";
 
 export const listDataPacks = call("datapacks.list", { cfg: 0, lock: 1 }) as typeof core.listDataPacks;
@@ -21,6 +23,10 @@ export const installDataPackFromProvider = call("datapacks.installFromProvider",
 export const checkDataPackUpdates = call("datapacks.checkUpdates", { cfg: 0, lock: 1 }) as typeof core.checkDataPackUpdates;
 export const applyDataPackUpdate = call("datapacks.applyUpdate", { lock: 0 }) as typeof core.applyDataPackUpdate;
 export const addDataPackFile = call("datapacks.addFile", { cfg: 0, lock: 1 }) as typeof core.addDataPackFile;
+// provider mapping
+export const probeDataPackIdentity = call("datapacks.probeIdentity", { lock: 0 }) as typeof core.probeDataPackIdentity;
+export const identifyDataPack = call("datapacks.identify", { cfg: 0, lock: 1 }) as typeof core.identifyDataPack;
+export const forgetDataPackIdentity = call("datapacks.forgetIdentity", { lock: 0 }) as typeof core.forgetDataPackIdentity;
 export const adoptDataPack = call("datapacks.adopt", { cfg: 0, lock: 1 }) as typeof core.adoptDataPack;
 // routed in the daemon: each owner deletes its own worlds' copies, then the
 // lock entry is settled once

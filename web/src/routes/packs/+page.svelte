@@ -20,6 +20,8 @@
 	import Select from '$lib/components/Select.svelte';
 	import AddonPicker from '$lib/components/AddonPicker.svelte';
 	import BrandLink from '$lib/components/BrandLink.svelte';
+	import IdentifyAddonModal from '$lib/components/IdentifyAddonModal.svelte';
+	import Flash from '$lib/components/Flash.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 
@@ -35,6 +37,19 @@
 		name: string;
 		filename: string;
 		defFile?: string;
+		/** file = a yml luna owns · dynamic = a plugin registers it at runtime */
+		registration: 'file' | 'dynamic' | 'unknown' | 'none';
+		dynamic?: {
+			name: string;
+			priority: number;
+			required: boolean;
+			enabled: boolean;
+			servers: string[];
+			available: boolean;
+			unavailableReason?: string;
+		};
+		/** this pack's yml is overriding a plugin that also registers it */
+		shadowsDynamic?: boolean;
 		priority: number;
 		required: boolean;
 		enabled: boolean;
@@ -53,6 +68,8 @@
 	}
 
 	let packs: PackRow[] = $state([]);
+	/** what the running proxy could say about runtime registrations */
+	let dynamic: { available: boolean; problem?: string } = $state({ available: true });
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
 	let busy = $state('');
@@ -69,7 +86,10 @@
 		loading = true;
 
 		try {
-			packs = (await api('/respacks')).packs;
+			const answer = await api('/respacks');
+
+			packs = answer.packs;
+			dynamic = answer.dynamic ?? { available: true };
 			lastUpdated = Date.now();
 		} catch (err) {
 			Notify.error('Could not load resource packs', { detail: (err as Error).message });
@@ -124,6 +144,51 @@
 	const doReload = () =>
 		run('reload', 'Reloading packs on the proxy…', async (note) => {
 			note.set({ level: 'success', message: await sendReload(), closeable: true });
+		});
+
+	// provider mapping, one pack at a time
+	let identifyOpen = $state(false);
+	let identifyKey = $state('');
+	let identifyMapped = $state(false);
+
+	/** Open the mapping dialog for one pack. */
+	function openIdentify(row: PackRow): void {
+		identifyKey = row.key;
+		identifyMapped = !!row.remote;
+		identifyOpen = true;
+	}
+
+	/**
+	 * Take a plugin-registered pack over: luna writes the yml luna-pack prefers,
+	 * copied from what the plugin currently registers, so nothing changes for
+	 * players at the moment of the transfer — only who decides it from now on.
+	 */
+	const takeOver = (row: PackRow) =>
+		run('takeover', `Taking over ${row.key}…`, async (note) => {
+			const answer = await post('/respacks/dynamic', { key: row.key, action: 'takeover' });
+
+			note.set({
+				level: 'success',
+				message: `${row.key} is now luna's to configure`,
+				detail:
+					`Copied from the running registration: priority ${answer.from.priority}, ` +
+					`${answer.from.required ? 'required' : 'optional'}, servers ${answer.from.servers.join(', ')}. ` +
+					`The plugin keeps rebuilding the zip but no longer decides these. ${await sendReload()}`,
+				closeable: true
+			});
+		});
+
+	/** Give a taken-over pack back: delete the yml, leaving the plugin in charge. */
+	const releaseBack = (row: PackRow) =>
+		run('release', `Releasing ${row.key}…`, async (note) => {
+			const answer = await post('/respacks/dynamic', { key: row.key, action: 'release' });
+
+			note.set({
+				level: 'success',
+				message: `${row.key} is back with its plugin`,
+				detail: `Removed ${answer.removed}. ${await sendReload()}`,
+				closeable: true
+			});
 		});
 
 	/**
@@ -306,7 +371,8 @@
 
 	const columns: Column[] = [
 		{ id: 'name', label: 'Pack', sortable: true, minWidth: 160 },
-		{ id: 'state', label: 'State', sortable: true },
+		// the badge plus a registration tag ("plugin", "overrides plugin") needs the room
+		{ id: 'state', label: 'State', sortable: true, minWidth: 240 },
 		{ id: 'priority', label: 'Priority', sortable: true, width: 90, align: 'right' },
 		{ id: 'required', label: 'Required', sortable: true },
 		{ id: 'servers', label: 'Servers' },
@@ -401,6 +467,39 @@
 			},
 			{ separator: true },
 			{
+				label: only?.remote ? 'Change provider mapping…' : 'Map to a provider…',
+				icon: 'link',
+				disabled: !only,
+				hint: only ? 'record which project this zip came from' : oneOnly,
+				action: () => openIdentify(only!)
+			},
+			{
+				label: 'Take over from its plugin',
+				icon: 'handshake',
+				// only a pack a plugin registers can be taken over, and only once
+				disabled: only?.registration !== 'dynamic',
+				hint:
+					!only
+						? oneOnly
+						: only.registration === 'dynamic'
+							? 'write a definition luna owns, copied from the running one'
+							: 'not registered by a plugin',
+				action: () => takeOver(only!)
+			},
+			{
+				label: 'Release back to its plugin',
+				icon: 'rotate',
+				disabled: !only?.shadowsDynamic,
+				hint:
+					!only
+						? oneOnly
+						: only.shadowsDynamic
+							? 'delete luna\'s definition and let the plugin decide again'
+							: 'no plugin registration behind this pack',
+				action: () => releaseBack(only!)
+			},
+			{ separator: true },
+			{
 				label: 'Manage addon groups',
 				icon: 'layerGroup',
 				action: () => goto('/addons/groups')
@@ -480,6 +579,14 @@
 	{/snippet}
 </PageHeader>
 
+{#if !dynamic.available}
+	<Flash kind="info">
+		The proxy is not answering, so packs that plugins register at runtime cannot be seen — a zip
+		with no definition may still be registered. {dynamic.problem}
+	</Flash>
+	<div class="gap"></div>
+{/if}
+
 <Panel flush>
 	<ResourceTable
 		tableId="respacks"
@@ -509,7 +616,20 @@
 					<span class="dim">({row.name})</span>
 				{/if}
 			{:else if col === 'state'}
-				{#if !row.defFile}
+				{#if row.registration === 'dynamic'}
+					<StatusBadge
+						state={row.enabled ? 'ok' : 'stopped'}
+						label={row.enabled ? 'Enabled' : 'Disabled'}
+						detail="registered by a plugin at runtime — its priority, rules and enablement are the plugin's, and luna has no definition for it"
+					/>
+					<span class="reg">plugin</span>
+				{:else if row.registration === 'unknown'}
+					<StatusBadge
+						state="unknown"
+						label="Registration unknown"
+						detail="no definition on disk, and the proxy is not answering — a plugin may be registering it at runtime"
+					/>
+				{:else if !row.defFile}
 					<StatusBadge
 						state="warning"
 						label="Unregistered"
@@ -525,6 +645,14 @@
 					<StatusBadge state="ok" label="Enabled" />
 				{:else}
 					<StatusBadge state="stopped" label="Disabled" />
+				{/if}
+				{#if row.shadowsDynamic}
+					<span
+						class="reg warn"
+						title="a plugin also registers this pack; luna-pack uses your definition and ignores the plugin's"
+					>
+						overrides plugin
+					</span>
 				{/if}
 			{:else if col === 'priority'}
 				{row.priority}
@@ -551,7 +679,11 @@
 			{:else if col === 'size'}
 				{row.present ? fmtBytes(row.sizeBytes) : '–'}
 			{:else if col === 'source'}
-				<BrandLink source={row.source} short />
+				{#if (row.registration === 'dynamic' || row.shadowsDynamic) && !row.remote}
+					<span class="dim">plugin</span>
+				{:else}
+					<BrandLink source={row.source} short />
+				{/if}
 			{:else if col === 'version'}
 				<span class="mono">{row.versionNumber ?? '–'}</span>
 			{:else if col === 'auto'}
@@ -560,6 +692,15 @@
 		{/snippet}
 	</ResourceTable>
 </Panel>
+
+<!-- map an existing zip to the project it came from -->
+<IdentifyAddonModal
+	bind:open={identifyOpen}
+	kind="respack"
+	target={identifyKey}
+	mapped={identifyMapped}
+	onchanged={refresh}
+/>
 
 <!-- install from a provider -->
 <Modal title="Install a resource pack" bind:open={addOpen} wide>
@@ -671,6 +812,26 @@
 		margin: 0 0 0.875rem;
 		padding-left: 1.25rem;
 		color: var(--text-heading);
+	}
+
+	.gap {
+		height: 1rem;
+	}
+
+	// a word beside the state badge, for where a registration comes from
+	.reg {
+		margin-left: 0.375rem;
+		padding: 0.125rem 0.375rem;
+		border: 0.1rem solid var(--border-divider);
+		border-radius: var(--radius-input);
+		font-size: 0.6875rem;
+		color: var(--text-secondary);
+		white-space: nowrap;
+
+		&.warn {
+			color: var(--warning);
+			border-color: var(--warning);
+		}
 	}
 
 	.rules {

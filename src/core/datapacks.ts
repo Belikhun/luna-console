@@ -28,6 +28,14 @@ import {
 } from "./packslock";
 import type { ProgressReporter } from "./progress";
 import { download, sha512File } from "./services/download";
+import type { IdentityMatch, IdentityProbe } from "./identify";
+import {
+	autoUpdateDefault,
+	chosenMatch,
+	installedFrom,
+	localFile,
+	probeIdentity,
+} from "./identify";
 import type { AddonProject, AddonVersion, AddonVersionFile } from "./services/providers";
 import { getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
 import type { AddonGroup, ClusterConfig, InstanceConfig, ProviderId } from "./types";
@@ -714,4 +722,103 @@ export async function removeDataPack(
 	);
 
 	return { deletedFrom, entryRemoved };
+}
+
+// -- provider mapping ----------------------------------------------------------
+
+/** What the operator is asking luna to record about a data pack's origin. */
+export interface IdentifyDataPackOptions {
+	provider: ProviderId;
+	/** Project slug or id at that provider */
+	project: string;
+	/** Version to record; omitted takes the probe's own best match */
+	versionId?: string;
+	/** Map the project but record no version at all */
+	unidentified?: boolean;
+	/** Overrides the auto-update default (on only for a proven version) */
+	autoUpdate?: boolean;
+}
+
+/** A probe carrying the pack it was run for. */
+export interface DataPackIdentityProbe extends IdentityProbe {
+	name: string;
+	/** The pooled zip the probe hashed */
+	zip: string;
+}
+
+/** The pooled zip a mapping identifies — never a world's own copy of it. */
+function dataPackZipOf(lock: PacksLock, name: string): DataPackEntry {
+	const entry = lock.datapacks[name];
+
+	if (!entry) {
+		throw new Error(`unknown data pack: ${name}`);
+	}
+
+	if (!existsSync(join(datapacksDir(), entry.file))) {
+		throw new Error(`${name}: ${entry.file} is not in the pool, so it cannot be identified`);
+	}
+
+	return entry;
+}
+
+/** Grade what a data pack's pooled zip could be at one provider, writing nothing. */
+export async function probeDataPackIdentity(
+	lock: PacksLock,
+	name: string,
+	provider: ProviderId,
+	project: string,
+): Promise<DataPackIdentityProbe> {
+	const entry = dataPackZipOf(lock, name);
+	const local = await localFile(join(datapacksDir(), entry.file), entry.file);
+	const probe = await probeIdentity(provider, project, "datapack", local);
+
+	return { ...probe, name, zip: entry.file };
+}
+
+/**
+ * Map a pooled data pack to the project it came from. Its targets and the copies
+ * already deployed into worlds are untouched; the pack simply becomes one whose
+ * updates luna can find.
+ */
+export async function identifyDataPack(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	name: string,
+	opts: IdentifyDataPackOptions,
+): Promise<{ name: string; entry: DataPackEntry; probe: DataPackIdentityProbe; match?: IdentityMatch }> {
+	const probe = await probeDataPackIdentity(lock, name, opts.provider, opts.project);
+	const match = chosenMatch(probe, opts);
+	const entry = lock.datapacks[name]!;
+
+	entry.source = opts.provider;
+	entry.remote = probe.remote;
+	entry.installed = installedFrom(probe.local, match);
+	entry.autoUpdate = opts.autoUpdate ?? autoUpdateDefault(match);
+
+	if (match && match.channel !== "release") {
+		entry.channel = match.channel;
+	} else {
+		delete entry.channel;
+	}
+
+	return { name, entry, probe, match };
+}
+
+/** Drop a data pack's provider mapping, leaving its file and targets alone. */
+export async function forgetDataPackIdentity(
+	lock: PacksLock,
+	name: string,
+): Promise<DataPackEntry> {
+	const entry = dataPackZipOf(lock, name);
+
+	entry.source = "manual";
+	entry.autoUpdate = false;
+	entry.installed = {
+		sha512: entry.installed?.sha512 ?? (await sha512File(join(datapacksDir(), entry.file))),
+	};
+
+	delete entry.remote;
+	delete entry.channel;
+
+	return entry;
 }

@@ -20,7 +20,7 @@ import { gunzipSync } from "node:zlib";
 import { instanceDir, managedInstances, root } from "./config";
 import { getAllStatuses } from "./instances";
 import type { PacksLock } from "./packslock";
-import { listResourcePacks, respacksDir, type RespackRow } from "./respacks";
+import { listResourcePacksLive, respacksDir, type RespackRow } from "./respacks";
 import * as lunaApi from "./services/luna";
 import { sha512File } from "./services/download";
 import { readZipEntries, readZipEntry, type ZipEntry } from "./services/zip";
@@ -955,7 +955,10 @@ export async function resourcePackDetail(
 	groups?: Record<string, AddonGroup>,
 	opts: { retest?: boolean } = {},
 ): Promise<RespackDetail> {
-	const rows = await listResourcePacks(cfg, lock, groups);
+	// the live listing: this screen already depends on the proxy for its
+	// resolution and holder sections, and it is where "who registers this pack"
+	// is the whole question
+	const { rows } = await listResourcePacksLive(cfg, lock, groups);
 	const pack = rows.find((candidate) => candidate.key === key);
 
 	if (!pack) {

@@ -45,15 +45,17 @@
 		border-radius: var(--radius-container);
 		overflow: hidden;
 	}
+
 	.hd {
-		padding: 0.75rem 1.25rem;
-		border-bottom: 0.1rem solid var(--border-divider);
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
-		flex-wrap: wrap;
+
+		padding: 0.75rem 1.25rem;
+		border-bottom: 0.1rem solid var(--border-divider);
 	}
+
 	.desc {
 		color: var(--text-secondary);
 		font-size: 0.75rem;
