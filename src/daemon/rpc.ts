@@ -23,6 +23,7 @@ import * as instancesCore from "../core/instances";
 import * as lifecycleCore from "../core/lifecycle";
 import * as logsCore from "../core/logs";
 import * as lunaCore from "../core/luna";
+import * as mcassetsCore from "../core/mcassets";
 import * as packslockCore from "../core/packslock";
 import * as pluginstateCore from "../core/pluginstate";
 import * as pluginsCore from "../core/plugins";
@@ -32,6 +33,7 @@ import * as respacksCore from "../core/respacks";
 import * as portsCore from "../core/ports";
 import * as proxyCore from "../core/proxy";
 import * as scheduleCore from "../core/schedule";
+import * as selectorCore from "../core/selector";
 import * as screenCore from "../core/screen";
 import * as settingsCore from "../core/settings";
 import * as standardizeCore from "../core/standardize";
@@ -386,6 +388,40 @@ export async function getAllStatusesRouted(
 	return Object.keys(insts)
 		.map((name) => results.get(name))
 		.filter((status): status is instancesCore.InstanceStatus => status !== undefined);
+}
+
+// -- server selector -----------------------------------------------------------
+// The primary's name is what `server-info.host-name` says for every instance it
+// owns, and it lives in daemon/, so core takes it as an argument and the wrappers
+// below supply it.
+
+function selectorDraftRouted(cfg: ClusterConfig): selectorCore.SelectorDraft {
+	return selectorCore.draftFromCluster(cfg, daemonName());
+}
+
+function selectorPreviewRouted(cfg: ClusterConfig): string {
+	return selectorCore.buildServersYml(cfg, daemonName());
+}
+
+async function selectorStatusRouted(cfg: ClusterConfig): Promise<selectorCore.SelectorState> {
+	return await selectorCore.selectorStatus(cfg, daemonName());
+}
+
+async function selectorImportRouted(
+	cfg: ClusterConfig,
+	opts: { dryRun?: boolean; force?: boolean } = {},
+): Promise<selectorCore.ImportReport> {
+	return await selectorCore.importServersYml(cfg, daemonName(), {
+		...opts,
+		write: async (updated) => await configCore.saveCluster(updated),
+	});
+}
+
+async function selectorApplyRouted(
+	cfg: ClusterConfig,
+	opts: { reporter?: ProgressReporter } = {},
+): Promise<selectorCore.ApplyResult> {
+	return await selectorCore.applySelector(cfg, daemonName(), opts);
 }
 
 /** Route instance creation to the daemon named in the options. */
@@ -771,6 +807,19 @@ export const OPS: Record<string, OpSpec> = {
 	// the daemon whose instances will actually read the value
 	"environment.builtinVars": { fn: environmentCore.builtinVars, cfg: 0, instance: 1 },
 	"environment.resolveVars": { fn: environmentCore.resolveVars, cfg: 0, instance: 2 },
+
+	// -- server selector -------------------------------------------------------------
+	// cluster.json is primary-owned, so none of these route to a follower; the
+	// proxy the reload targets is the primary's too.
+	"selector.draft": { fn: selectorDraftRouted, cfg: 0 },
+	"selector.preview": { fn: selectorPreviewRouted, cfg: 0 },
+	"selector.state": { fn: selectorStatusRouted, cfg: 0 },
+	"selector.import": { fn: selectorImportRouted, cfg: 0 },
+	"selector.apply": { fn: selectorApplyRouted, cfg: 0, reporter: { arg: 1, prop: "reporter" } },
+
+	// -- minecraft client assets -----------------------------------------------------
+	"mcassets.state": { fn: mcassetsCore.assetState, cfg: 0 },
+	"mcassets.ensure": { fn: mcassetsCore.ensureMcAssets, cfg: 0, reporter: { arg: 1, prop: "reporter" } },
 
 	// -- schedules -------------------------------------------------------------------
 	"schedule.loadSchedules": { fn: scheduleCore.loadSchedules },

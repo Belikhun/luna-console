@@ -61,6 +61,7 @@
 			section: 'Instances',
 			items: [
 				{ label: 'Instances', href: '/instances', icon: 'server' },
+				{ label: 'Server selector', href: '/instances/selector', icon: 'grid' },
 				{ label: 'Launch instance', href: '/instances/launch', icon: 'rocket' }
 			]
 		},
@@ -124,9 +125,10 @@
 	});
 
 	function isActive(href: string): boolean {
-		// "Launch instance" is its own nav entry, so /instances must not claim it
+		// "Launch instance" and "Server selector" are their own nav entries, so
+		// /instances must not claim them
 		if (href === '/instances') {
-			return /^\/instances(?!\/launch)/.test(page.url.pathname);
+			return /^\/instances(?!\/launch|\/selector)/.test(page.url.pathname);
 		}
 
 		// "Online players" is its own nav entry, so /players must not claim it

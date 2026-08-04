@@ -49,6 +49,13 @@ const PAGES: SearchHit[] = [
 	{ group: 'Pages', label: 'Instances', detail: 'Cluster instances', href: '/instances', icon: 'server' },
 	{
 		group: 'Pages',
+		label: 'Server selector',
+		detail: 'The chest players open with /servers',
+		href: '/instances/selector',
+		icon: 'grid'
+	},
+	{
+		group: 'Pages',
 		label: 'Launch instance',
 		detail: 'Create a new backend',
 		href: '/instances/launch',

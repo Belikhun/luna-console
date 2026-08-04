@@ -1,3 +1,7 @@
+import type { InstanceSelectorEntry, SelectorStatus, ServerSelectorConfig } from "../shared/selector";
+
+export * from "../shared/selector";
+
 /**
  * Server software luna can launch. A `neoforge` instance keeps its addons in
  * `mods/` rather than `plugins/` (see `addonDirOf`), and only `neoforge`-family
@@ -52,6 +56,24 @@ export interface InstanceConfig {
 	/** Daemon that owns this instance; absent = the primary daemon's host */
 	daemon?: string;
 	proxy?: ProxyRegistration;
+
+	// -- server selector presentation ------------------------------------------
+	// These describe how the instance appears in the proxy's `/servers` GUI and in
+	// the messages around it. cluster.json owns them; `servers.yml` is generated
+	// from them (core/selector.ts), never the other way round.
+
+	/** MiniMessage display name, e.g. "<gradient:#AC92FE:#25EED0>SMP</gradient>" */
+	serverDisplay?: string;
+	/** Hex accent colour, "#RRGGBB" */
+	accentColor?: string;
+	/** Bukkit material of the selector item */
+	serverIcon?: string;
+	/** Material overrides per selector status */
+	serverStatusIcons?: Partial<Record<SelectorStatus, string>>;
+	/** MiniMessage lore lines shown under the item's name */
+	description?: string[];
+	/** Placement in the GUI and click behaviour; absent = not shown */
+	selector?: InstanceSelectorEntry;
 }
 
 /** Persisted registration of a follower daemon (live state comes from the hub). */
@@ -89,6 +111,9 @@ export interface ClusterConfig {
 	instances: Record<string, InstanceConfig>;
 	/** In-house plugin build source, for `luna luna …` */
 	luna?: LunaSourceConfig;
+	/** Cluster-wide half of the server selector; per-server halves live on the
+	 *  instances themselves (core/selector.ts renders both into servers.yml) */
+	serverSelector?: ServerSelectorConfig;
 	/** Known follower daemons, keyed by daemon name */
 	daemons?: Record<string, DaemonRegistration>;
 }

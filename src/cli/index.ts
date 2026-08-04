@@ -13,6 +13,7 @@ import "./commands/web";
 import "./commands/env";
 import "./commands/packs";
 import "./commands/schedule";
+import "./commands/selector";
 import "./commands/daemon";
 import "./commands/setup";
 

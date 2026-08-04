@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { claimMenu, releaseMenu } from './contextmenu';
+	import { score } from '$lib/search/match';
 	import Icon from './Icon.svelte';
+	import SearchInput from './SearchInput.svelte';
 
 	/**
 	 * Select: a bordered field whose optional label is set *into* the top border
@@ -14,6 +16,7 @@
 		value = $bindable(''),
 		options,
 		width = '15rem',
+		searchable,
 		onchange
 	}: {
 		/** caption notched into the field's top border */
@@ -23,10 +26,14 @@
 		 *  caller wants seen but not chosen (an offline machine, say) */
 		options: Array<{ value: string; label: string; disabled?: boolean }>;
 		width?: string;
+		/** Filter box inside the listbox; on by default once the list is long
+		 *  enough to be worth one, off for the handful-of-entries filters */
+		searchable?: boolean;
 		onchange?: (value: string) => void;
 	} = $props();
 
 	let open = $state(false);
+	let query = $state('');
 	let root: HTMLDivElement | undefined = $state();
 	let box: HTMLButtonElement | undefined = $state();
 	let list: HTMLDivElement | undefined = $state();
@@ -39,6 +46,24 @@
 	const LIST_PADDING = 8;
 
 	const selected = $derived(options.find((option) => option.value === value) ?? options[0]);
+
+	// past a certain length a list cannot be found by scrolling: the material
+	// picker offers fifteen hundred entries, and hunting one of those by eye is
+	// not a control. Ranking is the tables' own matcher, never a second one.
+	const SEARCH_THRESHOLD = 12;
+	const filtering = $derived(searchable ?? options.length > SEARCH_THRESHOLD);
+
+	const shown = $derived.by(() => {
+		if (!filtering || !query.trim()) {
+			return options;
+		}
+
+		return options
+			.map((option) => ({ option, rank: score(option.label, query) }))
+			.filter((entry) => entry.rank > 0)
+			.sort((left, right) => right.rank - left.rank)
+			.map((entry) => entry.option);
+	});
 
 	/**
 	 * The listbox is placed in viewport space: panels and modal bodies clip their
@@ -87,6 +112,7 @@
 		open = !open;
 
 		if (open) {
+			query = '';
 			place();
 		}
 	}
@@ -98,6 +124,7 @@
 
 		value = option.value;
 		open = false;
+		query = '';
 		onchange?.(option.value);
 	}
 
@@ -156,7 +183,19 @@
 			tabindex="-1"
 			style="left: {pos.left}px; top: {pos.top}px; width: {pos.width}px"
 		>
-			{#each options as option (option.value)}
+			{#if filtering}
+				<div class="find">
+					<SearchInput
+						bind:value={query}
+						placeholder="Filter"
+						width="100%"
+						focus
+						onenter={() => shown[0] && pick(shown[0])}
+					/>
+				</div>
+			{/if}
+
+			{#each shown as option (option.value)}
 				{@const current = option.value === selected?.value}
 				<button
 					class="opt"
@@ -170,6 +209,10 @@
 					{#if current}<Icon name="check" size="0.875rem" style="solid" />{/if}
 				</button>
 			{/each}
+
+			{#if shown.length === 0}
+				<p class="none">nothing matches &ldquo;{query}&rdquo;</p>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -258,6 +301,25 @@
 	// opening below is the default, so an upward list is pulled up by its own height
 	.list.above {
 		transform: translateY(-100%);
+	}
+
+	// the field stays put while the options scroll under it — a filter you have to
+	// scroll back up to reach is worse than no filter
+	.find {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		padding: 0.375rem;
+		background: var(--bg-dropdown);
+		border-bottom: 0.1rem solid var(--border);
+	}
+
+	.none {
+		margin: 0;
+		padding: 0.75rem;
+		text-align: center;
+		font-size: 0.75rem;
+		color: var(--text-secondary);
 	}
 
 	.opt {
