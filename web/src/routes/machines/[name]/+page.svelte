@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, del, post } from '$lib/api';
+	import { api, del, post, put } from '$lib/api';
 	import { fmtDateTime, fmtDuration } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
@@ -20,7 +20,10 @@
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import DistributionBar from '$lib/components/DistributionBar.svelte';
 	import { checksFailed, checksPassed, diskPct, fmtGb, latencyTone, memPct } from '$lib/daemons';
+	import { consumersLine, poolsPayload } from '$lib/pools';
+	import type { PortPool } from '$core/types';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -63,12 +66,150 @@
 			events = detail.events;
 			lastUpdated = Date.now();
 			missing = false;
+
+			await loadPools();
 		} catch (err) {
 			missing = true;
 			Notify.error(`Could not load daemon ${name}`, { detail: (err as Error).message });
 		} finally {
 			loading = false;
 		}
+	}
+
+	// -- port pools --------------------------------------------------------------
+	// The catalog is cluster-wide; what belongs on this screen is the one column of
+	// it this machine serves — its ranges, its usage, and the override that makes
+	// them differ from everybody else's.
+
+	interface OverrideDraft {
+		from: string;
+		to: string;
+		reserved: string;
+	}
+
+	let catalog: PortPool[] = $state([]);
+	let poolDefaults: PortPool[] = $state([]);
+	let poolViews: any[] = $state([]);
+	let poolConsumerMap: Record<string, any[]> = $state({});
+	let overrideDrafts: Record<string, OverrideDraft> = $state({});
+	let savingPools = $state(false);
+
+	/** This machine's key in the registry's port namespace ("" = the primary). */
+	const machineKey = $derived(row ? (row.mode === 'primary' ? '' : row.name) : null);
+
+	async function loadPools(): Promise<void> {
+		const data = await api('/ports');
+
+		catalog = data.catalog;
+		poolDefaults = data.defaults;
+		poolConsumerMap = data.consumers;
+		poolViews = (data.pools as any[]).filter((view) => view.machine === machineKey);
+
+		const drafts: Record<string, OverrideDraft> = {};
+
+		for (const pool of catalog) {
+			const override = pool.overrides?.[machineKey ?? ''];
+
+			drafts[pool.id] = {
+				from: override?.range ? String(override.range[0]) : '',
+				to: override?.range ? String(override.range[1]) : '',
+				reserved: (override?.reserved ?? []).join(', ')
+			};
+		}
+
+		overrideDrafts = drafts;
+	}
+
+	function parsePorts(text: string): number[] {
+		return text
+			.split(/[\s,]+/)
+			.filter(Boolean)
+			.map(Number)
+			.filter((port) => Number.isInteger(port));
+	}
+
+	/** Usage view for one pool on this machine. */
+	function viewOf(poolId: string): any | undefined {
+		return poolViews.find((view) => view.pool.id === poolId);
+	}
+
+	function poolSegments(view: any): Array<{ key: string; label: string; count: number; color: string }> {
+		return [
+			{ key: 'used', label: 'allocated', count: view.used.length, color: 'var(--link)' },
+			{ key: 'reserved', label: 'held back', count: view.reserved.length, color: 'var(--warning)' },
+			{ key: 'pending', label: 'in flight', count: view.pending.length, color: 'var(--primary)' },
+			{ key: 'free', label: 'free', count: view.free, color: 'var(--bg-track)' }
+		];
+	}
+
+	const overridesDirty = $derived(
+		catalog.some((pool) => {
+			const draft = overrideDrafts[pool.id];
+			const existing = pool.overrides?.[machineKey ?? ''];
+			const from = existing?.range ? String(existing.range[0]) : '';
+			const to = existing?.range ? String(existing.range[1]) : '';
+			const held = (existing?.reserved ?? []).join(', ');
+
+			return (
+				(draft?.from ?? '') !== from ||
+				(draft?.to ?? '') !== to ||
+				(draft?.reserved ?? '').replace(/\s/g, '') !== held.replace(/\s/g, '')
+			);
+		})
+	);
+
+	/** Write this machine's overrides back into the cluster catalog. */
+	async function savePools(): Promise<void> {
+		if (machineKey === null) {
+			return;
+		}
+
+		savingPools = true;
+
+		const note = Notify.loading('Saving port pool ranges…');
+
+		try {
+			const updated: PortPool[] = catalog.map((pool) => {
+				const draft = overrideDrafts[pool.id] ?? { from: '', to: '', reserved: '' };
+				const overrides = { ...(pool.overrides ?? {}) };
+				const hasRange = draft.from.trim() !== '' && draft.to.trim() !== '';
+				const held = parsePorts(draft.reserved);
+
+				if (hasRange || held.length) {
+					overrides[machineKey] = {
+						...(hasRange ? { range: [Number(draft.from), Number(draft.to)] as [number, number] } : {}),
+						...(held.length ? { reserved: held } : {})
+					};
+				} else {
+					delete overrides[machineKey];
+				}
+
+				return {
+					...pool,
+					...(Object.keys(overrides).length ? { overrides } : { overrides: undefined })
+				};
+			});
+
+			const res = await put('/ports', { pools: poolsPayload(updated, poolDefaults) });
+
+			note.set({
+				level: 'success',
+				message: `Port pool ranges saved for ${row?.name ?? 'this machine'}`,
+				detail: res.warnings?.length ? res.warnings.join(' · ') : '',
+				closeable: true
+			});
+
+			await loadPools();
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: 'Could not save the pool ranges',
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+
+		savingPools = false;
 	}
 
 	onMount(() => {
@@ -423,6 +564,71 @@
 			</Panel>
 			<div class="gap"></div>
 			<Panel
+				title="Port pools on {row.name}"
+				count={poolViews.length}
+				description="Pools are defined once for the cluster, so a provision can land on any machine; here you set only the numbers this machine hands out. Blank inherits the pool's cluster-wide range."
+			>
+				{#snippet actions()}
+					<Btn icon="sitemap" href="/network/pools">Edit catalog</Btn>
+					<Btn
+						variant="primary"
+						icon="floppyDisk"
+						disabled={!overridesDirty}
+						loading={savingPools}
+						onclick={savePools}
+					>
+						Save ranges
+					</Btn>
+				{/snippet}
+
+				{#each catalog as pool (pool.id)}
+					{@const view = viewOf(pool.id)}
+					{@const draft = overrideDrafts[pool.id]}
+					<div class="poolrow">
+						<div class="pmeta">
+							<b>{pool.id}</b>
+							<span class="proto dim">{pool.protocol}</span>
+							{#if view?.overridden}
+								<span class="otag" title="this machine departs from the cluster range">override</span>
+							{/if}
+							<span class="pconsumers dim">{consumersLine(poolConsumerMap, pool.id)}</span>
+						</div>
+
+						{#if draft}
+							<div class="pinputs">
+								<input class="input mono" bind:value={draft.from} placeholder={String(pool.range[0])} />
+								<span class="dash dim">–</span>
+								<input class="input mono" bind:value={draft.to} placeholder={String(pool.range[1])} />
+								<input
+									class="input mono"
+									bind:value={draft.reserved}
+									placeholder="held back (none)"
+								/>
+							</div>
+						{/if}
+
+						{#if view}
+							<div class="pusage">
+								<DistributionBar segments={poolSegments(view)} legend={false} />
+								<span class="dim">
+									{view.used.length}/{view.capacity} used ·
+									{#if view.next === null}
+										<b class="bad">exhausted</b>
+									{:else}
+										next <b class="mono">{view.next}</b>
+									{/if}
+								</span>
+							</div>
+						{/if}
+					</div>
+				{/each}
+
+				{#if !catalog.length}
+					<p class="dim">No pools defined.</p>
+				{/if}
+			</Panel>
+			<div class="gap"></div>
+			<Panel
 				title="Build and upgrades"
 				description="The primary's own binary is preferred; the GitHub release is the fallback"
 			>
@@ -714,6 +920,64 @@
 		&:last-child {
 			border-bottom: none;
 		}
+	}
+
+	// pool id + consumers | the machine's range fields | its usage
+	.poolrow {
+		display: grid;
+		grid-template-columns: 1fr 20rem 14rem;
+		gap: 0.875rem;
+		align-items: center;
+		padding: 0.5rem 0;
+		border-bottom: 0.1rem solid var(--border-divider);
+
+		&:last-child {
+			border-bottom: none;
+		}
+
+		@include below($bp-medium) {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	.pmeta {
+		min-width: 0;
+
+		b {
+			color: var(--text-heading);
+		}
+
+		.proto {
+			margin-left: 0.375rem;
+			font-size: 0.75rem;
+		}
+	}
+
+	.pconsumers {
+		display: block;
+		font-size: 0.75rem;
+		@include ellipsis;
+	}
+
+	.otag {
+		margin-left: 0.375rem;
+		border: 0.1rem solid var(--border-divider);
+		border-radius: var(--radius-input);
+		padding: 0 0.25rem;
+		color: var(--link);
+		font-size: 0.625rem;
+		text-transform: uppercase;
+	}
+
+	.pinputs {
+		display: grid;
+		grid-template-columns: 5rem auto 5rem 1fr;
+		gap: 0.375rem;
+		align-items: center;
+	}
+
+	.pusage {
+		font-size: 0.75rem;
 	}
 
 	// wide enough for "Primary"/"GitHub" so the values line up under each other

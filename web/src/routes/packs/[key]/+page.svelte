@@ -19,7 +19,7 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import Icon from '$lib/components/Icon.svelte';
-	import BrandIcon from '$lib/components/BrandIcon.svelte';
+	import BrandLink from '$lib/components/BrandLink.svelte';
 	import { ADDON_PROVIDERS } from '$lib/components/addons';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -600,20 +600,11 @@
 							<InfoGrid cells={metaCells}>
 								{#snippet custom(cell)}
 									{#if cell.id === 'source'}
-										{#if pack.providerUrl}
-											<a
-												class="brandlink"
-												href={pack.providerUrl}
-												target="_blank"
-												rel="noreferrer"
-											>
-												<BrandIcon name={pack.source} size="0.875rem" />
-												{sourceLabel}
-												<Icon name="externalLink" size="0.625rem" />
-											</a>
-										{:else}
-											{sourceLabel}
-										{/if}
+										<BrandLink
+											source={pack.source}
+											href={pack.providerUrl}
+											label={sourceLabel}
+										/>
 									{:else if cell.id === 'groups'}
 										{#if pack.groups.length}
 											{#each pack.groups as group, index (group)}
@@ -946,12 +937,6 @@
 	}
 
 	// the provider mark, its name and the external-link cue read as one link
-	.brandlink {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-	}
-
 	// badge + when it was measured + the Test button, on one baseline
 	.reach {
 		display: flex;

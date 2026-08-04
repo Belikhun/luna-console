@@ -26,6 +26,7 @@ function ghostRow(
 		software: 'paper',
 		mcVersion: null,
 		port: null,
+		address: null,
 		memory: '',
 		profile: '',
 		javaPid: null,

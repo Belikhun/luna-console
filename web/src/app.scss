@@ -48,6 +48,30 @@
 	--primary-hover: #ffb84d;
 	--primary-text: #0f141a;
 
+	// Luna's own brand: the violet primary and the near-black it fades into, as
+	// the artwork ships them. They are a *logo* pair, not UI colours — the plate
+	// under the mark, the favicon, the login panel. Nothing typographic reads on
+	// --luna-deep, and --luna-primary itself only reaches 2.7:1 on --bg-panel,
+	// which is why the tint that carries text (--src-luna) is a lifted sibling
+	// rather than the primary. --primary stays the console's orange: the accent a
+	// user clicks and the brand a user recognises are different jobs.
+	--luna-primary: #692ce6;
+	--luna-deep: #020132;
+	--luna-gradient: linear-gradient(225deg, var(--luna-primary), var(--luna-deep));
+
+	// Where an addon came from, in the provider's own brand primary — the word
+	// "Modrinth" reads as Modrinth wherever it appears. Hangar (#004ee9) and
+	// Smithed (#216bea) publish primaries too dark to read on these panels, so
+	// theirs are lifted to clear 4.5:1; the other two are their published values.
+	// `luna` is our violet lifted the same way (5.3:1, same hue); `manual` is not
+	// a brand at all, so it borrows the house warning tint.
+	--src-modrinth: #1bd96a;
+	--src-curseforge: #f16436;
+	--src-hangar: #4f86ff;
+	--src-smithed: #7da2f5;
+	--src-luna: #a179f2;
+	--src-manual: var(--warning);
+
 	// control metrics: 28px controls, 20px pill radius, 2px control borders
 	--control-h: 1.75rem;
 	--radius-container: 1rem;

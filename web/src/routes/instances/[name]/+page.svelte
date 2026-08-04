@@ -25,6 +25,7 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import type { DistributionSegment } from '$lib/components/distribution';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
+	import BrandLink from '$lib/components/BrandLink.svelte';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
@@ -835,7 +836,7 @@
 			{ id: 'state', label: 'Instance state' },
 			{ label: 'Software', value: `${inst.software} ${inst.mcVersion ?? ''}` },
 			{ label: 'Ping version', value: inst.pingVersion },
-			{ label: 'Game address', value: `127.0.0.1:${inst.port}`, copyable: true, style: 'mono' },
+			{ label: 'Game address', value: inst.address, copyable: true, style: 'mono' },
 			{ label: 'Memory (heap)', value: inst.memory },
 			{ label: 'Java profile', value: inst.profile },
 			{
@@ -867,16 +868,22 @@
 			return [];
 		}
 
+		// the plugin allocations are bound on the same machine as the game port, so
+		// they are shown at that machine's host too — a follower's voice-chat port
+		// answers on the LAN, never on the console's own loopback
+		const host = (inst.address ?? '').split(':')[0] ?? '';
+
 		return [
 			{
 				label: 'Game port (tcp)',
-				value: `127.0.0.1:${inst.port}`,
+				value: inst.address,
 				copyable: true,
 				style: 'mono'
 			},
 			...Object.entries(inst.ports).map(([key, port]) => ({
 				label: key,
-				value: String(port),
+				value: host ? `${host}:${port}` : String(port),
+				copyable: true,
 				style: 'mono' as const
 			}))
 		];
@@ -915,7 +922,7 @@
 		{ id: 'version', label: 'Version' },
 		{ id: 'alerts', label: 'Alerts', sortable: true, width: 230 },
 		{ id: 'origin', label: 'From', sortable: true },
-		{ id: 'source', label: 'Source', sortable: true },
+		{ id: 'source', label: 'Source', sortable: true, minWidth: 140 },
 		{ id: 'auto', label: 'Auto-update', hidden: true },
 		{ id: 'assign', label: 'Assignment', hidden: true }
 	];
@@ -1050,7 +1057,7 @@
 		{ id: 'state', label: 'State', width: 150 },
 		{ id: 'version', label: 'Version' },
 		{ id: 'size', label: 'Size', width: 100, align: 'right' },
-		{ id: 'source', label: 'Source' }
+		{ id: 'source', label: 'Source', minWidth: 140 }
 	];
 
 	/** A data pack row's verbs on this instance. */
@@ -1474,7 +1481,7 @@
 								<span class="dim">explicit</span>
 							{/if}
 						{:else if col === 'source'}
-							{plugin.source}
+							<BrandLink source={plugin.source} short />
 						{:else if col === 'auto'}
 							<StatusBadge
 								state={plugin.autoUpdate ? 'ok' : 'stopped'}
@@ -1554,7 +1561,11 @@
 						{:else if col === 'size'}
 							{row.present ? fmtBytes(row.sizeBytes) : '–'}
 						{:else if col === 'source'}
-							{row.source ?? '–'}
+							{#if row.source}
+								<BrandLink source={row.source} short />
+							{:else}
+								<span class="dim">–</span>
+							{/if}
 						{/if}
 					{/snippet}
 				</ResourceTable>

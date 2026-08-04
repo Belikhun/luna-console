@@ -19,6 +19,7 @@
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import AddonPicker from '$lib/components/AddonPicker.svelte';
+	import BrandLink from '$lib/components/BrandLink.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 
@@ -311,7 +312,7 @@
 		{ id: 'servers', label: 'Servers' },
 		{ id: 'groups', label: 'Groups' },
 		{ id: 'size', label: 'Size', sortable: true, width: 100, align: 'right' },
-		{ id: 'source', label: 'Source', sortable: true },
+		{ id: 'source', label: 'Source', sortable: true, minWidth: 140 },
 		{ id: 'version', label: 'Version' },
 		{ id: 'auto', label: 'Auto-update', sortable: true }
 	];
@@ -550,7 +551,7 @@
 			{:else if col === 'size'}
 				{row.present ? fmtBytes(row.sizeBytes) : '–'}
 			{:else if col === 'source'}
-				<span class="src {row.source}">{row.source}</span>
+				<BrandLink source={row.source} short />
 			{:else if col === 'version'}
 				<span class="mono">{row.versionNumber ?? '–'}</span>
 			{:else if col === 'auto'}
@@ -674,24 +675,6 @@
 
 	.rules {
 		margin-right: 0.5rem;
-	}
-
-	// source column, tinted per origin like the plugins table
-	.src {
-		text-transform: capitalize;
-
-		&.modrinth {
-			color: var(--success);
-		}
-
-		// curseforge's own orange, readable on the dark panel
-		&.curseforge {
-			color: #f16436;
-		}
-
-		&.manual {
-			color: var(--warning);
-		}
 	}
 
 	.uploadname {

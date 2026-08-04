@@ -344,8 +344,10 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 
 			return (body?.ports ?? []).map((entry) => ({
 				group: 'Ports',
+				// the same number on two machines is two different ports, so the
+				// machine belongs in what tells them apart
 				label: `${entry.port}/${entry.protocol}`,
-				detail: `${entry.owner} · ${entry.kind}`,
+				detail: `${entry.owner} · ${entry.kind} · ${entry.machine === null ? 'external' : entry.machine || 'primary'}`,
 				href: screenHref('/network', String(entry.port)),
 				icon: 'sitemap'
 			}));

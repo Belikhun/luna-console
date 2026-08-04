@@ -10,6 +10,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import SplitBtn from '$lib/components/SplitBtn.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
+	import BrandLink from '$lib/components/BrandLink.svelte';
 	import {
 		ADDON_PROVIDERS,
 		providerAvailability,
@@ -129,7 +130,7 @@
 
 	const columns: Column[] = $derived([
 		{ id: 'name', label: 'Name', sortable: true },
-		{ id: 'source', label: 'Source', sortable: true },
+		{ id: 'source', label: 'Source', sortable: true, minWidth: 140 },
 		...(spec.families.length > 1
 			? [{ id: 'families', label: 'Families', width: 170 }]
 			: []),
@@ -534,7 +535,7 @@
 			{:else if col === 'source'}
 				{#each row.sources as source, index}
 					{#if index > 0}<span class="dim">, </span>{/if}
-					<span class="src {source}">{source}</span>
+					<BrandLink {source} short />
 				{/each}
 			{:else if col === 'families'}
 				<span class="fams">
@@ -699,37 +700,6 @@
 </Modal>
 
 <style lang="scss">
-	// source is stored lowercase and capitalised here, tinted per origin
-	.src {
-		text-transform: capitalize;
-
-		&.modrinth {
-			color: var(--success);
-		}
-
-		// curseforge's own orange, readable on the dark panel
-		&.curseforge {
-			color: #f16436;
-		}
-
-		&.hangar {
-			color: var(--info);
-		}
-
-		// smithed's plate blue, lifted enough to read on the dark panel
-		&.smithed {
-			color: #7da2f5;
-		}
-
-		&.luna {
-			color: #bf7edb;
-		}
-
-		&.manual {
-			color: var(--warning);
-		}
-	}
-
 	.fams {
 		display: inline-flex;
 		gap: 0.375rem;

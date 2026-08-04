@@ -228,6 +228,21 @@ export interface InstanceConfig {}
 - Custom JVM flags (`javaArgs` on an instance) are appended after the profile's flags and land
   **unquoted** in the generated `run.sh`, so they are validated as flags: no shell
   metacharacters, no restating `-Xmx`/`-Xms`, which come from the instance's memory field.
+- **A port pool is named, cluster-wide, and its id is the mapping.** `cfg.portPools` is a
+  catalog (`PortPool[]`); a machine that needs different numbers carries a `PortPoolOverride`
+  inside the pool, never a definition of its own — a pool must exist on every machine or a
+  provision could not land there. Consumers ask by id: provisioning takes `game`, a plugin's
+  `PortBindingSpec.pool` names its own. `poolConsumers()` derives that list, and it is what
+  forbids renaming a built-in id or narrowing a pool past a consumer's protocol. Nothing is
+  "assigned" to an instance or a plugin; a pool nobody asks for is inert, and the UI says so.
+- **Ports are per machine, and the registry is the ledger.** A port is only taken on the host
+  that binds it, so allocation, duplicate detection and usage are machine-scoped — the proxy's
+  25565 here says nothing about a follower's own 25565 (DESIGN.md §2.7). Provisioning goes through
+  `acquirePort` (pool + machine + a reservation held until the registry catches up, because the
+  jar download outlasts the pick) and an explicit port through `checkPort`; deleting an instance
+  *is* the release, because an allocation exists only because an instance records it. Never add a
+  second list of who holds what, and never compute an instance's address by hand — everything
+  routable comes from `instanceAddress()`, which is also what writes `velocity.toml`.
 - Plugin versions resolve **per instance**: newest compatible jar is the pool primary, older
   compatible builds are variants in `plugins/versions/<name>@<ver>.jar`, and explicit pins
   win. Updates are channel-gated (release/beta/alpha) with a date-based downgrade guard —

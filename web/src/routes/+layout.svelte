@@ -10,6 +10,7 @@
 	import TooltipHost from '$lib/components/TooltipHost.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import Icon from '$lib/components/Icon.svelte';
+	import LunaMark from '$lib/components/LunaMark.svelte';
 	import { fmtBytes } from '$lib/format';
 	import { tooltip } from '$lib/tooltip.svelte';
 
@@ -148,6 +149,8 @@
 <div class="app" style:--shell-h="{shellOpen && browser ? shellHeight : 0}px">
 	<header class="topnav">
 		<a class="brand" href="/instances">
+			<LunaMark size="1.5rem" glyph="1rem" />
+			<span class="dim-sep">|</span>
 			<span class="logo"><Icon name="cube" size="1.125rem" style="solid" /></span>
 			<b>luna</b><span class="dim-sep">|</span><span class="sub">Luna Cluster Console</span>
 		</a>

@@ -13,6 +13,7 @@
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import BrandLink from '$lib/components/BrandLink.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -448,14 +449,7 @@
 					>
 						{#snippet custom(cell)}
 							{#if cell.id === `src-${family.key}`}
-								{family.source}{#if family.url}&nbsp;·&nbsp;<a
-										href={family.url}
-										target="_blank"
-										rel="noreferrer"
-									>
-										<span class="lt">{family.remote?.provider ?? 'provider'}</span>
-										<Icon name="externalLink" size="0.625rem" />
-									</a>{/if}
+								<BrandLink source={family.source} href={family.url} />
 							{:else if cell.id === `web-${family.key}`}
 								{#if family.meta?.website}
 									<a href={family.meta.website} target="_blank" rel="noreferrer">
@@ -552,7 +546,7 @@
 						{:else if col === 'variants'}
 							{family.variants.length}
 						{:else if col === 'source'}
-							{family.source}
+							<BrandLink source={family.source} href={family.url} />
 						{/if}
 					{/snippet}
 				</DataTable>
@@ -594,14 +588,11 @@
 								<span class="dim mcs" title={row.mc.join(', ')}>{mcLabel(row.mc)}</span>
 							{:else if col === 'source'}
 								{#if row.url}
-									<a href={row.url} target="_blank" rel="noreferrer">
-										{selFamily.remote?.provider ?? 'provider'}
-										<Icon name="externalLink" size="0.625rem" />
-									</a>
+									<BrandLink source={selFamily.source} href={row.url} />
 								{:else if selFamily.luna}
-									<span class="dim">luna · {selFamily.luna.module}</span>
+									<BrandLink source="luna" label="luna · {selFamily.luna.module}" />
 								{:else}
-									<span class="dim">manual</span>
+									<BrandLink source={selFamily.source} />
 								{/if}
 							{:else if col === 'usedBy'}
 								{#if row.usedBy.length}

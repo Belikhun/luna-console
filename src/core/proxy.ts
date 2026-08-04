@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import type { ClusterConfig } from "./types";
 import { instanceDir } from "./config";
+import { instanceAddress } from "./ports";
 
 /** Path of the proxy's velocity.toml. */
 export function velocityTomlPath(cfg: ClusterConfig): string {
@@ -35,11 +36,9 @@ function buildSections(cfg: ClusterConfig): ProxySections {
 		}
 
 		// a follower-owned instance is reached over the LAN at its daemon's host;
-		// everything on the primary's own machine stays on loopback
-		const daemonHost = inst.daemon ? cfg.daemons?.[inst.daemon]?.host : undefined;
-		const local = daemonHost ? `${daemonHost}:${inst.port}` : `127.0.0.1:${inst.port}`;
-
-		servers[name] = inst.external ?? local;
+		// everything on the primary's own machine stays on loopback (the port audit
+		// compares against the same helper, so the two can never disagree)
+		servers[name] = instanceAddress(cfg, inst);
 
 		if (reg.priority !== undefined) {
 			tryEntries.push({ name, priority: reg.priority });

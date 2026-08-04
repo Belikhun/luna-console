@@ -47,7 +47,7 @@ import * as events from "./events";
 import * as health from "./health";
 import * as upgrade from "./upgrade";
 import type { DaemonRow } from "./hub";
-import { daemonName } from "./identity";
+import { daemonName, machineKey } from "./identity";
 import { buildVersion } from "../version";
 import * as sampler from "./sampler";
 
@@ -481,6 +481,162 @@ async function adoptInstanceRouted(
 	return await adminCore.adoptInstance(cfg, name, opts);
 }
 
+// -- ports ---------------------------------------------------------------------
+// `ss` only sees its own host and a plugin's config file only exists on the
+// machine running it, so the port map is gathered per machine: this daemon looks
+// at itself and every other owner is asked about its own.
+
+/** Machines owning at least one instance, other than this daemon's own. */
+function remoteMachines(cfg: ClusterConfig): string[] {
+	const mine = machineKey();
+
+	return portsCore
+		.machineInfo(cfg)
+		.filter((info) => info.machine !== mine && info.instances.length > 0)
+		.map((info) => info.machine);
+}
+
+/**
+ * Ask one machine's daemon for something about its own ports. A machine we have
+ * no link to is not an error — the caller renders "unknown" for it, which is the
+ * truth, rather than a confident "not bound".
+ */
+async function askMachine(machine: string, op: string, args: unknown[]): Promise<unknown | null> {
+	try {
+		if (!forwardOp) {
+			throw new Error("no cluster link");
+		}
+
+		const outcome = await forwardOp(machine, op, args);
+
+		return outcome.result;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The list form of `askMachine`. A follower one build behind may not have the op
+ * at all, or may answer with an older shape — `listeningPorts` used to return a
+ * Map, and a Map crosses JSON as `{}`. Only a real array is an answer; anything
+ * else is "not known from here", which is what the callers already render.
+ */
+async function askMachineList<T>(
+	machine: string,
+	op: string,
+	args: unknown[],
+): Promise<T[] | null> {
+	const answer = await askMachine(machine, op, args);
+
+	return Array.isArray(answer) ? (answer as T[]) : null;
+}
+
+/** The port map with bind state from every machine that owns instances. */
+async function collectPortRowsRouted(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+): Promise<portsCore.PortRow[]> {
+	const probes: portsCore.MachineProbe[] = [
+		{ machine: machineKey(), listening: await portsCore.listeningPorts() },
+	];
+
+	await Promise.all(
+		remoteMachines(cfg).map(async (machine) => {
+			const listening = await askMachineList<string>(machine, "ports.listeningPorts", []);
+
+			probes.push({ machine, listening });
+		}),
+	);
+
+	return await portsCore.collectPortRows(cfg, lock, probes);
+}
+
+/** The port audit, with each machine's config drift read on that machine. */
+async function auditPortsRouted(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	velocityServers: Record<string, string>,
+): Promise<portsCore.PortIssue[]> {
+	const issues = await portsCore.auditPorts(cfg, lock, velocityServers, machineKey());
+
+	await Promise.all(
+		remoteMachines(cfg).map(async (machine) => {
+			const drift = await askMachineList<portsCore.PortIssue>(
+				machine,
+				"ports.auditConfigDrift",
+				[cfg, lock, machine],
+			);
+
+			if (drift === null) {
+				issues.push({
+					kind: "unchecked",
+					machine,
+					message: `${portsCore.machineLabel(machine)} is unreachable — its plugin port configuration was not checked`,
+				});
+
+				return;
+			}
+
+			issues.push(...drift);
+		}),
+	);
+
+	return issues;
+}
+
+/**
+ * Allocate every plugin port from the owning machine's pools here, then have each
+ * other owner write the numbers into its own config files. Allocation is registry
+ * work and stays on one daemon, so two machines can never hand out the same port
+ * for the same plugin at the same time.
+ */
+async function ensurePortAllocationsRouted(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+): Promise<portsCore.PortAllocation[]> {
+	const others = remoteMachines(cfg);
+
+	// adopt first, allocate second: a port another machine's plugin config already
+	// binds is the port that plugin answers on, and allocating over the top of it
+	// would move a working service without anybody asking for it
+	await Promise.all(
+		others.map(async (machine) => {
+			const onDisk = await askMachineList<{ instance: string; key: string; port: number }>(
+				machine,
+				"ports.readPortConfigs",
+				[cfg, lock, machine],
+			);
+
+			for (const found of onDisk ?? []) {
+				const inst = configCore.managedInstances(cfg)[found.instance];
+
+				if (!inst) {
+					continue;
+				}
+
+				inst.ports ??= {};
+				inst.ports[found.key] ??= found.port;
+			}
+		}),
+	);
+
+	const results = await portsCore.ensurePortAllocations(cfg, lock, machineKey());
+
+	await Promise.all(
+		others.map(async (machine) => {
+			const written = await askMachineList<portsCore.PortAllocation>(
+				machine,
+				"ports.writePortConfigs",
+				[cfg, lock, machine],
+			);
+
+			results.push(...(written ?? []));
+		}),
+	);
+
+	return results;
+}
+
 /** Route a directory inspection to the daemon whose disk holds the directory. */
 async function inspectInstanceDirRouted(
 	dir: string,
@@ -784,10 +940,13 @@ export const OPS: Record<string, OpSpec> = {
 	"luna.status": { fn: lunaCore.status, cfg: 0, lock: 1 },
 
 	// -- ports & proxy -------------------------------------------------------------
-	"ports.ensurePortAllocations": { fn: portsCore.ensurePortAllocations, cfg: 0, lock: 1 },
+	"ports.ensurePortAllocations": { fn: ensurePortAllocationsRouted, cfg: 0, lock: 1 },
+	"ports.writePortConfigs": { fn: portsCore.writePortConfigs, cfg: 0, lock: 1 },
+	"ports.readPortConfigs": { fn: portsCore.readPortConfigs, cfg: 0, lock: 1 },
 	"ports.listeningPorts": { fn: portsCore.listeningPorts },
-	"ports.auditPorts": { fn: portsCore.auditPorts, cfg: 0, lock: 1 },
-	"ports.collectPortRows": { fn: portsCore.collectPortRows, cfg: 0, lock: 1 },
+	"ports.auditPorts": { fn: auditPortsRouted, cfg: 0, lock: 1 },
+	"ports.auditConfigDrift": { fn: portsCore.auditConfigDrift, cfg: 0, lock: 1 },
+	"ports.collectPortRows": { fn: collectPortRowsRouted, cfg: 0, lock: 1 },
 	"proxy.syncVelocityToml": { fn: proxyCore.syncVelocityToml, cfg: 0 },
 	"proxy.readVelocityServers": { fn: proxyCore.readVelocityServers, cfg: 0 },
 	"proxy.readForwardingSecret": { fn: proxyCore.readForwardingSecret, cfg: 0 },

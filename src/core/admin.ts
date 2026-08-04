@@ -6,7 +6,18 @@ import type { ClusterConfig, InstanceConfig, Software } from "./types";
 import { addonDirOf, instanceDir, managedInstances, root } from "./config";
 import * as papermc from "./services/papermc";
 import { readForwardingSecret } from "./proxy";
-import { nextFreePort } from "./ports";
+import {
+	GAME_POOL,
+	PRIMARY_MACHINE,
+	acquirePort,
+	checkPort,
+	heldPorts,
+	machineLabel,
+	machineOf,
+	releaseInstancePorts,
+	releaseReservation,
+	reservePort,
+} from "./ports";
 import { getConfValue, setConfValue } from "./confedit";
 import { ProgressReporter } from "./progress";
 import { SERVER_SETTINGS, validateJavaArgs, validateSettings } from "./settings";
@@ -288,17 +299,20 @@ export async function adoptInstance(
 
 	// A port is only taken on the machine that binds it: the proxy holds 25565 on
 	// the primary, which says nothing about a follower's own 25565.
-	const clash = Object.entries(managedInstances(cfg)).find(
-		([other, inst]) => other !== name && inst.port === port && inst.daemon === opts.daemon,
-	);
+	const check = checkPort(cfg, port, { machine: opts.daemon, instance: name });
 
-	if (clash) {
-		const where = opts.daemon ? ` on ${opts.daemon}` : "";
-
-		throw new Error(`port ${port} is already used by ${clash[0]}${where}`);
+	if (!check.ok) {
+		throw new Error(check.error);
 	}
 
 	const notes: string[] = [];
+
+	// adopt takes the port the directory already binds, so a number outside the
+	// machine's pools is reported rather than moved — the server is running on it
+	if (check.warning) {
+		notes.push(check.warning);
+	}
+
 	const memory = opts.memory ?? detected.memory;
 
 	if (!memory) {
@@ -475,7 +489,10 @@ export async function createInstance(
 	// this node's work is entirely its children's, so it contributes none of its own
 	progress.weighOwn(0);
 
-	await checks.task({ start: `checking ${name}` }, async () => {
+	const machine = opts.daemon ?? PRIMARY_MACHINE;
+	let port = 0;
+
+	await checks.task({ start: `checking ${name}` }, async (step) => {
 		if (managedInstances(cfg)[name] || cfg.instances[name]) {
 			throw new Error(`instance "${name}" already exists`);
 		}
@@ -499,10 +516,67 @@ export async function createInstance(
 		if (badArgs) {
 			throw new Error(badArgs);
 		}
+
+		// The port is taken here, before the first byte is written: a provision runs
+		// for as long as a server jar takes to download, and a second one started in
+		// that window must not be handed the same number. The reservation is dropped
+		// once the registry records it (or when this fails, below).
+		if (opts.port === undefined) {
+			port = acquirePort(cfg, {
+				machine: opts.daemon,
+				pool: GAME_POOL,
+				protocol: "tcp",
+				reserve: true,
+			}).port;
+
+			step.info(0.8, `port ${port} acquired on ${machineLabel(machine)}`);
+
+			return;
+		}
+
+		const check = checkPort(cfg, opts.port, { machine: opts.daemon });
+
+		if (!check.ok) {
+			throw new Error(check.error);
+		}
+
+		port = opts.port;
+		reservePort(machine, port);
+
+		if (check.warning) {
+			step.warn(0.8, check.warning);
+		}
 	});
 
 	const dir = join(root(), name);
-	const port = opts.port ?? nextFreePort(cfg, cfg.serverPortRange);
+
+	try {
+		return await buildInstance(cfg, name, opts, { dir, port, fetching, writing });
+	} catch (err) {
+		// nothing landed in the registry, so the number goes straight back to its pool
+		releaseReservation(machine, port);
+
+		throw err;
+	}
+}
+
+/**
+ * The half of `createInstance` that writes: the paper build, the instance files
+ * and the registry entry. Split out so the port acquired before it can be
+ * released again when any of it fails.
+ */
+async function buildInstance(
+	cfg: ClusterConfig,
+	name: string,
+	opts: CreateOptions,
+	ctx: {
+		dir: string;
+		port: number;
+		fetching: ProgressReporter;
+		writing: ProgressReporter;
+	},
+): Promise<CreateResult> {
+	const { dir, port, fetching, writing } = ctx;
 
 	const build = await fetching.task(
 		{
@@ -695,12 +769,23 @@ export function setJavaArgs(cfg: ClusterConfig, name: string, args: string[]): v
 	}
 }
 
-/** Change an instance's game port (server.properties + registry; caller runs proxy sync). */
+/**
+ * Change an instance's game port (server.properties + registry; caller runs proxy
+ * sync). The number is checked against its own machine's allocations first — a
+ * port moved onto one another instance on that host already binds would take both
+ * servers down, and nothing else in the pipeline would notice.
+ */
 export async function setPort(cfg: ClusterConfig, name: string, port: number): Promise<void> {
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
 		throw new Error(`unknown instance: ${name}`);
+	}
+
+	const check = checkPort(cfg, port, { machine: inst.daemon, instance: name });
+
+	if (!check.ok) {
+		throw new Error(check.error);
 	}
 
 	// velocity's port lives in velocity.toml, which proxy sync owns; every
@@ -712,6 +797,10 @@ export async function setPort(cfg: ClusterConfig, name: string, port: number): P
 			throw new Error(`could not update server-port in ${props}`);
 		}
 	}
+
+	// an instance provisioned moments ago still has its reservation held, and the
+	// number it is moving off would otherwise sit blocked until that expires
+	releaseReservation(machineOf(inst), inst.port);
 
 	inst.port = port;
 }
@@ -763,7 +852,7 @@ export async function deleteInstance(
 	name: string,
 	purge: boolean,
 	reporter?: ProgressReporter,
-): Promise<{ purged: boolean }> {
+): Promise<{ purged: boolean; released: number[] }> {
 	const progress = reporter ?? new ProgressReporter(`delete ${name}`);
 	const inst = cfg.instances[name];
 
@@ -771,8 +860,20 @@ export async function deleteInstance(
 		throw new Error(`unknown instance: ${name}`);
 	}
 
+	// dropping the entry *is* the release: what a pool has free is derived from the
+	// registry, so every number this instance held is available again from here
+	const released = heldPorts(inst);
+
 	progress.info(0.05, "deregistering from the cluster");
 	delete cfg.instances[name];
+	releaseInstancePorts(inst);
+
+	if (released.length) {
+		progress.info(
+			0.08,
+			`released ${released.map((entry) => `${entry.port} (${entry.key})`).join(", ")} on ${machineLabel(machineOf(inst))}`,
+		);
+	}
 
 	if (purge && !inst.external) {
 		const dir = instanceDir(inst);
@@ -797,5 +898,5 @@ export async function deleteInstance(
 		purge && !inst.external ? "directory deleted" : "deregistered — directory kept",
 	);
 
-	return { purged: purge };
+	return { purged: purge, released: released.map((entry) => entry.port) };
 }

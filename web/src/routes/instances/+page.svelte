@@ -378,7 +378,11 @@
 			{
 				label: 'Copy game address',
 				icon: 'copy',
-				action: () => navigator.clipboard?.writeText(`10.0.0.10:${row.port}`)
+				// the daemon resolves this to the owning machine's host — an external
+				// server advertises its own, and a mid-provision row has none yet
+				disabled: !(row.address ?? row.external),
+				hint: (row.address ?? row.external) ? undefined : 'the instance has no address yet',
+				action: () => navigator.clipboard?.writeText(row.address ?? row.external ?? '')
 			},
 			{ separator: true },
 			{
@@ -410,7 +414,7 @@
 				value: one.daemon ?? hostName,
 				href: (one.daemon ?? hostName) ? `/machines/${one.daemon ?? hostName}` : undefined
 			},
-			{ label: 'Game address', value: `127.0.0.1:${one.port}`, copyable: true, style: 'mono' },
+			{ label: 'Game address', value: one.address, copyable: true, style: 'mono' },
 			{ label: 'Memory (heap)', value: one.memory },
 			{ label: 'Java profile', value: one.profile },
 			{ label: 'Java PID', value: one.javaPid },

@@ -7,17 +7,118 @@
  *   modrinth, curseforge  simple-icons (CC0 icon set)
  *   hangar                HangarMC/Hangar, frontend/app/assets/hangar-icon.svg
  *   smithed               Smithed-MC/smithed, src/images/logo_box.svg (plate dropped)
+ *   luna                  our own favicon artwork (the ring dropped, see below)
  */
+
+/** One shape of a mark: its path data and the transform its source placed it under. */
+export interface BrandPath {
+	d: string;
+	transform?: string;
+}
 
 /** One monochrome mark: its own coordinate system and the shapes inside it. */
 export interface BrandMark {
 	viewBox: string;
 	/** applied to the whole group — some sources ship flipped coordinates */
 	transform?: string;
-	paths: string[];
+	/** a bare `d` when the shape needs no placing, otherwise `d` + its transform */
+	paths: Array<string | BrandPath>;
 }
 
+/**
+ * Tint for each addon source, as a token reference so the value lives in
+ * `app.scss` with the rest of the palette (the comment there records which are
+ * the providers' published primaries and which had to be lifted for contrast).
+ * Every screen that names a source reads this, so the word "Modrinth" is the
+ * same colour in a table cell, an info grid and a link.
+ */
+export const SOURCE_COLORS: Record<string, string> = {
+	modrinth: 'var(--src-modrinth)',
+	curseforge: 'var(--src-curseforge)',
+	hangar: 'var(--src-hangar)',
+	smithed: 'var(--src-smithed)',
+	luna: 'var(--src-luna)',
+	manual: 'var(--src-manual)',
+};
+
+/** A source's tint, falling back to the surrounding colour for an unknown one. */
+export function sourceColor(source: string | null | undefined): string {
+	return SOURCE_COLORS[source ?? ''] ?? 'currentColor';
+}
+
+/**
+ * The two sources that are not providers, named twice: `short` for a table cell,
+ * where the column is the width of a word, and `long` for an info grid, which
+ * has the room to say what actually happened. Providers keep the one name they
+ * publish (`ADDON_PROVIDERS`).
+ */
+export const SOURCE_LABELS: Record<string, { short: string; long: string }> = {
+	luna: { short: 'Luna', long: 'In-house build' },
+	manual: { short: 'Manual', long: 'Uploaded by hand' },
+};
+
+/**
+ * The crescent and its three stars, one path each, kept under the group
+ * transforms the artwork ships rather than re-baked into a single coordinate
+ * space — the crescent is rotated ~10°, so flattening it by hand is how the moon
+ * ends up subtly wrong. Everything is in the artwork's own coordinates, which
+ * `LUNA_ARTWORK_ORIGIN` brings back to the 233×233 canvas.
+ */
+const LUNA_GLYPH: BrandPath[] = [
+	{
+		d: 'M47.744,0A47.744,47.744,0,1,0,80.81,82.172a4.47,4.47,0,0,0-3.45-7.684c-.914.075-1.828.112-2.76.112A34.32,34.32,0,0,1,59.326,9.549a4.479,4.479,0,0,0-1.007-8.374A48.358,48.358,0,0,0,47.744,0Z',
+		transform: 'matrix(0.985, -0.174, 0.174, 0.985, 7728.386, -913.873)'
+	},
+	{
+		d: 'M43.6-277.439c-.514.472-1.227,2.16-3.869,9.154-1.793,4.718-3.334,8.661-3.429,8.755s-4.037,1.646-8.766,3.439c-9.992,3.8-10.286,3.995-9.542,6.26.377,1.122.713,1.279,9.688,4.624,4.572,1.709,8.409,3.167,8.525,3.24s1.688,4.037,3.492,8.818c3.5,9.279,3.523,9.332,4.771,9.667,2.181.587,2.464.136,6.165-9.867,1.688-4.561,3.177-8.388,3.313-8.525s4.058-1.667,8.724-3.418c9.563-3.575,9.646-3.628,9.646-5.41-.01-1.835.608-1.5-9.982-5.515-4.6-1.751-8.4-3.208-8.441-3.25s-1.552-4.005-3.355-8.829c-3.083-8.22-3.324-8.8-3.995-9.248A2.315,2.315,0,0,0,43.6-277.439Z',
+		transform: 'translate(7775.869 -643.677)'
+	},
+	{
+		d: 'M31.722-277.705c-.278.255-.663,1.168-2.092,4.948-.969,2.551-1.8,4.682-1.853,4.733s-2.182.89-4.738,1.859c-5.4,2.052-5.56,2.16-5.158,3.384.2.607.385.692,5.237,2.5,2.471.924,4.546,1.712,4.608,1.751s.913,2.182,1.887,4.767c1.893,5.016,1.9,5.045,2.579,5.226,1.179.317,1.332.074,3.333-5.334.913-2.466,1.717-4.534,1.791-4.608s2.194-.9,4.716-1.848c5.169-1.933,5.215-1.961,5.215-2.925-.006-.992.329-.811-5.4-2.981-2.488-.947-4.54-1.734-4.563-1.757s-.839-2.165-1.814-4.772c-1.666-4.444-1.8-4.755-2.16-5A1.251,1.251,0,0,0,31.722-277.705Z',
+		transform: 'translate(7808.159 -686.303)'
+	},
+	{
+		d: 'M26.1-277.832a13.56,13.56,0,0,0-1.251,2.959c-.58,1.525-1.078,2.8-1.108,2.831s-1.305.532-2.834,1.112c-3.23,1.227-3.325,1.292-3.085,2.024.122.363.231.414,3.132,1.495,1.478.553,2.719,1.024,2.756,1.047s.546,1.305,1.129,2.851c1.132,3,1.139,3.017,1.542,3.125.705.19.8.044,1.993-3.19.546-1.475,1.027-2.712,1.071-2.756s1.312-.539,2.82-1.105c3.091-1.156,3.119-1.173,3.119-1.749,0-.593.2-.485-3.227-1.783-1.488-.566-2.715-1.037-2.729-1.051s-.5-1.295-1.085-2.854c-1-2.658-1.075-2.844-1.292-2.99A.748.748,0,0,0,26.1-277.832Z',
+		transform: 'translate(7821.627 -597.814)'
+	},
+];
+
+/** What the artwork's coordinates need to land on the 233×233 canvas. */
+const LUNA_ARTWORK_ORIGIN = 'translate(-7686 1009)';
+
+/**
+ * The ring the artwork draws around the glyph, as a filled annulus: the source
+ * draws it as a 12-wide stroke on r=110.5, which path data cannot carry, so it is
+ * the two circles r=116.5 and r=104.5 with opposite arc sweeps — the inner one
+ * winds the other way and punches the hole under the default nonzero fill rule.
+ *
+ * Its own transform cancels the group's, so the circle can be written in the
+ * canvas coordinates it is actually centred in (116.5, 116.5).
+ */
+const LUNA_RING: BrandPath = {
+	d: 'M116.5,0A116.5,116.5,0,1,1,116.5,233A116.5,116.5,0,1,1,116.5,0ZM116.5,12A104.5,104.5,0,1,0,116.5,221A104.5,104.5,0,1,0,116.5,12Z',
+	transform: 'translate(7686 -1009)'
+};
+
+/**
+ * The mark for a plate that is already a circle (LunaMark, the favicon): the ring
+ * would be a second one, a hairline inside the plate's own edge. viewBox is the
+ * glyph's measured bounds, squared.
+ */
+export const LUNA_PLATE_MARK: BrandMark = {
+	viewBox: '34.4 44.7 144.5 144.5',
+	transform: LUNA_ARTWORK_ORIGIN,
+	paths: LUNA_GLYPH
+};
+
 export const BRAND_MARKS: Record<string, BrandMark> = {
+	// our own mark, ringed as the artwork draws it — the whole 233 canvas, so the
+	// ring is the icon's edge wherever a provider mark appears
+	luna: {
+		viewBox: '0 0 233 233',
+		transform: LUNA_ARTWORK_ORIGIN,
+		paths: [LUNA_RING, ...LUNA_GLYPH]
+	},
 	modrinth: {
 		viewBox: '0 0 24 24',
 		paths: [

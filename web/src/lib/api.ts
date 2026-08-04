@@ -39,6 +39,11 @@ export function post<T = any>(path: string, body?: unknown): Promise<T> {
 	return api<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) });
 }
 
+/** PUT a JSON body. */
+export function put<T = any>(path: string, body?: unknown): Promise<T> {
+	return api<T>(path, { method: 'PUT', body: JSON.stringify(body ?? {}) });
+}
+
 /** PATCH a JSON body. */
 export function patch<T = any>(path: string, body?: unknown): Promise<T> {
 	return api<T>(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) });
@@ -86,6 +91,8 @@ export interface InstanceRow {
 	mcVersion: string | null;
 	/** null on a placeholder row for a mid-provision instance */
 	port: number | null;
+	/** host:port the instance answers on — its owning machine's, not always loopback */
+	address: string | null;
 	memory: string;
 	profile: string;
 	javaPid: number | null;

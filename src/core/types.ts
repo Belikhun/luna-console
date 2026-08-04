@@ -102,9 +102,47 @@ export interface LunaSourceConfig {
 	platforms?: string[];
 }
 
+/** One machine's departure from a pool's cluster-wide numbers. */
+export interface PortPoolOverride {
+	/** Range this machine hands out instead of the pool's default */
+	range?: [number, number];
+	/** Numbers this machine must never hand out (replaces the pool's own list) */
+	reserved?: number[];
+}
+
+/**
+ * A named range of ports, addressed by id. The id is the whole mapping: a
+ * consumer asks for a pool by name — instance provisioning takes the game port
+ * from `game`, a plugin's port spec (`PortBindingSpec.pool`) names the pool its
+ * per-instance port comes from — and the pool answers with a number on the
+ * machine the consumer lands on. Provisioning acquires from a pool and the
+ * number stays on the instance until it is deleted, so a pool's free set is
+ * derived from the registry rather than tracked separately (DESIGN.md §2.7).
+ *
+ * The definition is cluster-wide so every machine can serve every consumer;
+ * only the *numbers* vary per machine (`overrides`), because a port is only
+ * taken on the host that binds it and two hosts may hand out the same range.
+ */
+export interface PortPool {
+	/** Pool id, unique across the cluster — what a consumer asks for */
+	id: string;
+	/** What the pool is for, shown in the console */
+	label?: string;
+	/** `both` reserves the number for either protocol — use it for pools whose
+	 *  consumers bind tcp and udp on the same port */
+	protocol: "tcp" | "udp" | "both";
+	/** Range every machine hands out, unless it overrides */
+	range: [number, number];
+	/** Numbers inside the range no machine may hand out */
+	reserved?: number[];
+	/** Per-machine departures, keyed by daemon name ("" = the primary) */
+	overrides?: Record<string, PortPoolOverride>;
+}
+
 export interface ClusterConfig {
 	screenPrefix: string;
-	/** Port pool for new paper instances */
+	/** Default range of the `game` port pool, for machines that define no pool of
+	 *  their own (per-machine pools live in `portPools`) */
 	serverPortRange: [number, number];
 	javaProfiles: Record<string, JavaProfile>;
 	proxy: InstanceConfig;
@@ -116,6 +154,10 @@ export interface ClusterConfig {
 	serverSelector?: ServerSelectorConfig;
 	/** Known follower daemons, keyed by daemon name */
 	daemons?: Record<string, DaemonRegistration>;
+	/** Cluster-wide port pool catalog. An entry replaces the built-in default of
+	 *  the same id; a new id adds a pool. Read through `poolCatalog`/`poolsFor`
+	 *  (core/ports.ts), which merge in the defaults. */
+	portPools?: PortPool[];
 }
 
 /** An upstream platform luna can install addons from (core/services/providers.ts). */
@@ -191,6 +233,9 @@ export interface PortBindingSpec {
 	id: string;
 	protocol: "tcp" | "udp";
 	scope: "instance" | "proxy";
+	/** Pool id the allocation is acquired from on the target's machine; `range` is
+	 *  the fallback for a machine that has no such pool */
+	pool?: string;
 	range: [number, number];
 	/** Fixed port (proxy scope), overrides range */
 	fixed?: number;

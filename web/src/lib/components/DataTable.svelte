@@ -431,7 +431,14 @@
 
 			// a cell that measures as nothing is not a column worth keeping — a
 			// declared or default width beats collapsing it to a sliver
-			next[col.id] = natural >= MIN_COL_W ? natural : (col.width ?? DEFAULT_COL_W);
+			const measured = natural >= MIN_COL_W ? natural : (col.width ?? DEFAULT_COL_W);
+
+			// A declared minWidth is a floor here too, not only under a drag: this
+			// pass runs the table at 100%, so a crowded one hands every column its
+			// squeezed share, and a column whose content is indivisible (a brand mark
+			// beside its name) ends up ellipsised at rest. Raising it past the share
+			// costs the table width the wrap already scrolls.
+			next[col.id] = Math.max(measured, col.minWidth ?? 0);
 		});
 
 		cols.forEach((col, index) => (col.style.width = savedCols[index] ?? ''));

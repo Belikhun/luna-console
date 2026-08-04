@@ -8,8 +8,8 @@
 	import Btn from '$lib/components/Btn.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import BrandLink from '$lib/components/BrandLink.svelte';
 	import type { InfoCell } from '$lib/components/grid';
-	import Icon from '$lib/components/Icon.svelte';
 	import Alerts from '$lib/components/Alerts.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -184,14 +184,7 @@
 				{#if cell.id === 'state'}
 					<StatusBadge state={badge.state} label={badge.label} />
 				{:else if cell.id === 'source'}
-					{data.row.source}{#if data.url}&nbsp;·&nbsp;<a
-							href={data.url}
-							target="_blank"
-							rel="noreferrer"
-						>
-							<span class="lt">{data.remote?.provider ?? 'provider'}</span>
-							<Icon name="externalLink" size="0.625rem" />
-						</a>{/if}
+					<BrandLink source={data.row.source} href={data.url} />
 				{/if}
 			{/snippet}
 		</InfoGrid>

@@ -18,6 +18,7 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import AddonPicker from '$lib/components/AddonPicker.svelte';
+	import BrandLink from '$lib/components/BrandLink.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 
@@ -322,7 +323,7 @@
 		{ id: 'targets', label: 'Deploys to' },
 		{ id: 'groups', label: 'Groups' },
 		{ id: 'size', label: 'Size', sortable: true, width: 100, align: 'right' },
-		{ id: 'source', label: 'Source', sortable: true },
+		{ id: 'source', label: 'Source', sortable: true, minWidth: 140 },
 		{ id: 'version', label: 'Version' },
 		{ id: 'mc', label: 'MC versions', hidden: true },
 		{ id: 'auto', label: 'Auto-update', sortable: true }
@@ -477,7 +478,7 @@
 			{:else if col === 'size'}
 				{row.present ? fmtBytes(row.sizeBytes) : '–'}
 			{:else if col === 'source'}
-				<span class="src {row.entry.source}">{row.entry.source}</span>
+				<BrandLink source={row.entry.source} short />
 			{:else if col === 'version'}
 				<span class="mono">{row.entry.installed?.versionNumber ?? '–'}</span>
 			{:else if col === 'mc'}
@@ -626,28 +627,6 @@
 	.hint {
 		font-size: 0.75rem;
 		color: var(--text-secondary);
-	}
-
-	.src {
-		text-transform: capitalize;
-
-		&.modrinth {
-			color: var(--success);
-		}
-
-		// curseforge's own orange, readable on the dark panel
-		&.curseforge {
-			color: #f16436;
-		}
-
-		// smithed's plate blue, lifted enough to read on the dark panel
-		&.smithed {
-			color: #7da2f5;
-		}
-
-		&.manual {
-			color: var(--warning);
-		}
 	}
 
 	.uploadname {

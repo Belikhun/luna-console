@@ -29,6 +29,15 @@ export function isPrimary(): boolean {
 }
 
 /**
+ * This machine's key in the registry's port namespace: a follower is keyed by its
+ * own name, the primary by `""` — the same "absent `daemon` field" its instances
+ * carry (core/ports.ts).
+ */
+export function machineKey(): string {
+	return identity.mode === "primary" ? "" : identity.name;
+}
+
+/**
  * Whether this daemon owns an instance: an instance with no `daemon` field
  * belongs to the primary; one with the field belongs to the named follower.
  */

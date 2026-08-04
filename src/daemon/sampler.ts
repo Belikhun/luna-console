@@ -8,6 +8,7 @@
 import { readFile } from "node:fs/promises";
 
 import { instanceDir, loadCluster, managedInstances } from "../core/config";
+import { instanceAddress } from "../core/ports";
 import * as instances from "../core/instances";
 import * as luna from "../core/services/luna";
 import type { BackendCard } from "../core/services/luna";
@@ -534,6 +535,10 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 		software: st.inst.software,
 		mcVersion: st.inst.mcVersion ?? null,
 		port: st.inst.port,
+		// where this instance actually answers: loopback on the primary's own
+		// machine, the owning follower's LAN host otherwise — never a bare
+		// 127.0.0.1 the console then shows for another machine's server
+		address: instanceAddress(cfg, st.inst),
 		memory: st.inst.memory,
 		profile: st.inst.profile,
 		javaPid: st.javaPid ?? null,

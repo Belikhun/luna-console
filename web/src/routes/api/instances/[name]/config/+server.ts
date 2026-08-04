@@ -109,7 +109,14 @@ export async function PATCH({ params, request }) {
 	}
 
 	if (body.port) {
-		await setPort(cfg, name, Number(body.port));
+		// the port is checked against its own machine's allocations — a clash is the
+		// caller's mistake, so it comes back as a 400 with the reason, not a 500
+		try {
+			await setPort(cfg, name, Number(body.port));
+		} catch (err) {
+			throw error(400, (err as Error).message);
+		}
+
 		await syncVelocityToml(cfg);
 		changed.push('port');
 	}
