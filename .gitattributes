@@ -11,6 +11,7 @@ deploy/** text eol=lf
 
 *.jar binary
 *.png binary
+*.webp binary
 *.jpg binary
 *.gif binary
 *.woff2 binary

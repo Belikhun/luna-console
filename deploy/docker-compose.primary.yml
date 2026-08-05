@@ -22,7 +22,7 @@ name: luna-primary
 
 services:
   luna:
-    image: ghcr.io/belikhun/luna-control:latest
+    image: ghcr.io/belikhun/luna-console:latest
     container_name: luna-primary
     restart: unless-stopped
     command: ["daemon", "run"]
@@ -59,7 +59,7 @@ services:
       start_period: 30s
 
   console:
-    image: ghcr.io/belikhun/luna-control:latest
+    image: ghcr.io/belikhun/luna-console:latest
     container_name: luna-console
     restart: unless-stopped
     depends_on:

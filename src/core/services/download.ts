@@ -12,7 +12,7 @@ import { t } from "../../shared/i18n";
  */
 
 /** User-Agent every outbound provider request carries. */
-export const USER_AGENT = "belikhun/luna-control";
+export const USER_AGENT = "belikhun/luna-console";
 
 /** The hashes a provider published for a file, by algorithm. */
 export interface KnownHashes {

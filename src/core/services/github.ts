@@ -16,10 +16,10 @@ import { t } from "../../shared/i18n";
 
 /** API base. Overridable for GitHub Enterprise, and for testing the fallback. */
 const API = process.env.LUNA_GITHUB_API ?? "https://api.github.com";
-const UA = "belikhun/luna-control";
+const UA = "belikhun/luna-console";
 
 /** Repository the releases come from. */
-export const RELEASE_REPO = process.env.LUNA_RELEASE_REPO ?? "Belikhun/luna-control";
+export const RELEASE_REPO = process.env.LUNA_RELEASE_REPO ?? "Belikhun/luna-console";
 
 /** Asset naming the release workflow produces, one per platform triple. */
 export function assetName(platform: string): string {

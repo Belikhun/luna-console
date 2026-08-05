@@ -61,7 +61,7 @@ export interface UpgradeOffer {
 	sha256: string | null;
 	/** Where the bytes are fetched from */
 	url: string;
-	/** Human-facing origin, e.g. "primary daemon" or "github Belikhun/luna-control" */
+	/** Human-facing origin, e.g. "primary daemon" or "github Belikhun/luna-console" */
 	origin: string;
 	/** GitHub only: the release page and its notes */
 	pageUrl?: string;

@@ -20,7 +20,7 @@ name: luna-follower
 
 services:
   luna:
-    image: ghcr.io/belikhun/luna-control:latest
+    image: ghcr.io/belikhun/luna-console:latest
     container_name: luna-follower
     restart: unless-stopped
     command: ["daemon", "run"]

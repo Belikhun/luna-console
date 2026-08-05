@@ -6,7 +6,7 @@ Two ways to run a daemon: the binary under systemd (what the cluster on
 ## Binary
 
 ```
-curl -fsSLO https://github.com/Belikhun/luna-control/releases/latest/download/luna-linux-x64
+curl -fsSLO https://github.com/Belikhun/luna-console/releases/latest/download/luna-linux-x64
 chmod +x luna-linux-x64
 sudo ./luna-linux-x64 setup
 ```
@@ -47,7 +47,7 @@ say) cannot upgrade itself at all, and says so instead of failing on an errno.
 
 ## Container
 
-`ghcr.io/belikhun/luna-control:latest`, or a pinned `:1.2.3`. The image carries
+`ghcr.io/belikhun/luna-console:latest`, or a pinned `:1.2.3`. The image carries
 the `luna` binary, the web console, a JRE and the tools the daemon shells out to
 (`screen`, `df`, `ss`, `pgrep`, `unzip`) — a Minecraft backend runs *inside* the
 container, in a screen session the daemon starts.

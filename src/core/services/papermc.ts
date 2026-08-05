@@ -6,7 +6,7 @@ import { t } from "../../shared/i18n";
 
 /** PaperMC download API client (Fill v3, falling back to legacy v2). */
 
-const UA = "belikhun/luna-control";
+const UA = "belikhun/luna-console";
 
 export type PaperProject = "paper" | "velocity";
 

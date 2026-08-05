@@ -1,5 +1,5 @@
 {
-  "name": "luna-control",
+  "name": "luna-console",
   "version": "1.0.0",
   "module": "src/cli/index.ts",
   "type": "module",
