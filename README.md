@@ -2,7 +2,7 @@
 	<img src="docs/console.svg" alt="luna cluster console">
 </p>
 
-# Luna Console `>_`
+# Luna Console ` >_ `
 
 The control centre for Luna Network: every Minecraft server across every machine in the cluster, with its plugins, config, ports and players, managed from a centralized web console or a terminal.
 
