@@ -25,9 +25,16 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
+	import DataTable from '$lib/components/DataTable.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
+	import { jobFlash } from '$lib/jobflash';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
-	import type { AddonFamily, AddonKind, AddonRow } from '$lib/components/addoncatalog';
+	import type {
+		AddonFamily,
+		AddonKind,
+		AddonRow,
+		AddonUpdate
+	} from '$lib/components/addoncatalog';
 	import { CATALOG_KINDS } from '$lib/components/addoncatalog';
 
 	/**
@@ -45,8 +52,12 @@
 
 	let addons: AddonRow[] = $state([]);
 	let busy = $state('');
-	let updates: any[] = $state([]);
+	let updates: AddonUpdate[] = $state([]);
 	let checked = $state(false);
+
+	// the check's summary dialog, and the rows the user ticked in it
+	let updatesOpen = $state(false);
+	let updateSel: Set<string> = $state(new Set());
 
 	let addOpen = $state(false);
 	let addFamily = $state<AddonFamily>('paper');
@@ -80,6 +91,22 @@
 	/** Update candidates whose entry key belongs to this addon's families. */
 	const updatesFor = (row: AddonRow) =>
 		updates.filter((candidate) => row.families.some((family) => family.key === candidate.name));
+
+	// a check sweeps the whole lockfile — plugins and mods alike — so the summary
+	// keeps to the builds this screen is actually showing
+	const catalogKeys = $derived(
+		new Set(addons.flatMap((row) => row.families.map((family) => family.key)))
+	);
+
+	/** Checked builds with a jar waiting to be downloaded. */
+	const pendingUpdates = $derived(
+		updates.filter((candidate) => candidate.groups.length && catalogKeys.has(candidate.name))
+	);
+
+	/** Checked builds the resolution had something to say about but nothing to fetch. */
+	const heldBack = $derived(
+		updates.filter((candidate) => !candidate.groups.length && catalogKeys.has(candidate.name))
+	);
 
 	const filters: TableFilterGroup<AddonRow>[] = $derived([
 		{
@@ -139,6 +166,14 @@
 		{ id: 'update', label: 'Update' },
 		{ id: 'auto', label: 'Auto-update', sortable: true },
 		{ id: 'targets', label: 'Deploys to' }
+	]);
+
+	// The summary dialog's own table. No tableId on purpose: it would grow a
+	// preferences gear opening a second modal on top of this one.
+	const updateColumns: Column[] = $derived([
+		{ id: 'addon', label: 'Name', sortable: true },
+		{ id: 'version', label: 'Update', sortable: true, minWidth: 190 },
+		{ id: 'targets', label: 'Lands on' }
 	]);
 
 	let loading = $state(true);
@@ -245,23 +280,60 @@
 		);
 	}
 
-	const checkUpdates = () =>
-		run('check', 'Checking Modrinth for updates…', async (note) => {
-			updates = (await post('/plugins/check')).candidates;
-			checked = true;
+	/**
+	 * Ask every provider what it has, one entry at a time — a job, so the card
+	 * reports which addon it is waiting on. The outcome opens the summary dialog,
+	 * which is where the updates are actually chosen.
+	 */
+	async function checkUpdates(): Promise<void> {
+		busy = 'check';
 
-			note.set({
-				level: updates.length ? 'info' : 'success',
-				message: updates.length
-					? `${updates.length} build(s) have updates or holdbacks`
-					: 'Everything is up to date',
-				closeable: true
-			});
+		const job = await jobFlash({
+			title: 'Checking providers for updates…',
+			start: () => post('/plugins/check'),
+			success: (result) => {
+				const found = (result as { candidates: AddonUpdate[] }).candidates;
+				const pending = found.filter((candidate) => candidate.groups.length);
+
+				return {
+					message: pending.length
+						? `${pending.length} build(s) have updates`
+						: 'Everything is up to date',
+					detail:
+						found.length > pending.length
+							? `${found.length - pending.length} build(s) held back or pinned`
+							: ''
+				};
+			}
 		});
 
-	const updateAll = () =>
-		run('update', 'Downloading and deploying updates…', async (note) => {
-			const res = await post('/plugins/update', { deploy: true });
+		busy = '';
+
+		if (!job) {
+			return;
+		}
+
+		updates = (job.result as { candidates: AddonUpdate[] }).candidates;
+		checked = true;
+		updateSel = new Set();
+
+		// nothing to preview when nothing came back — the card already said so
+		if (pendingUpdates.length || heldBack.length) {
+			updatesOpen = true;
+		}
+	}
+
+	/**
+	 * Download the named builds into the pool and deploy them. `names` empty means
+	 * whatever the daemon's own re-check finds, which is what the toolbar's
+	 * unqualified "Update all" asks for.
+	 */
+	function applyUpdates(names: string[], label: string, flag: string): Promise<void> {
+		return run(flag, `Downloading and deploying ${label}…`, async (note) => {
+			const res = await post('/plugins/update', {
+				names: names.length ? names : undefined,
+				deploy: true
+			});
 
 			note.set({
 				level: 'success',
@@ -270,10 +342,28 @@
 				closeable: true
 			});
 
-			updates = [];
+			updatesOpen = false;
+			updateSel = new Set();
+
+			// the untouched candidates stay on screen, so the Update column keeps
+			// reporting what is still waiting
+			updates = names.length
+				? updates.filter((candidate) => !names.includes(candidate.name))
+				: [];
 
 			await refresh();
 		});
+	}
+
+	const updateAll = () =>
+		applyUpdates(
+			pendingUpdates.map((candidate) => candidate.name),
+			pendingUpdates.length ? `${pendingUpdates.length} update(s)` : 'updates',
+			'update'
+		);
+
+	const updateSelected = () =>
+		applyUpdates([...updateSel], `${updateSel.size} selected update(s)`, 'update-sel');
 
 	const deployAll = () =>
 		run('deploy', `Deploying ${spec.plural} to every target…`, async (note) => {
@@ -726,6 +816,101 @@
 	{/snippet}
 </Modal>
 
+<!-- what the last check found, and where the updates are chosen -->
+<Modal title="Updates available" bind:open={updatesOpen} wide>
+	{#if pendingUpdates.length}
+		<p class="dim intro">
+			{pendingUpdates.length} build(s) have a newer version. Updating downloads the jar into the
+			pool and deploys it — a running instance keeps the old one loaded until it restarts.
+		</p>
+
+		<DataTable
+			columns={updateColumns}
+			rows={pendingUpdates}
+			getId={(row) => row.name}
+			selectable="multi"
+			bind:selected={updateSel}
+			maxHeight="26rem"
+			sortValue={(row, col) => (col === 'addon' ? row.name : (row.groups[0]?.version ?? ''))}
+			emptyTitle="Nothing to update"
+		>
+			{#snippet cell(row, col)}
+				{#if col === 'addon'}
+					<b>{row.plugin}</b>
+					{#if spec.families.length > 1}
+						<span class="fam upd-fam">{row.family}</span>
+					{/if}
+				{:else if col === 'version'}
+					<span class="upd-ver">
+						<span class="mono dim">{row.groups[0]?.current || row.installed || '?'}</span>
+						<Icon name="right" size="0.75rem" />
+						{#each row.groups as group, index (group.version)}
+							{#if index > 0}<span class="dim">, </span>{/if}
+							<span class="mono upd">{group.version}</span>
+							{#if !group.isPrimary}
+								<span class="dim" title="pooled beside the primary for older backends">
+									(variant)
+								</span>
+							{/if}
+						{/each}
+					</span>
+				{:else if col === 'targets'}
+					{@const targets = [...new Set(row.groups.flatMap((group) => group.targets))]}
+					<span class="dim" title={targets.join(', ')}>{targets.join(', ') || '–'}</span>
+				{/if}
+			{/snippet}
+		</DataTable>
+	{:else}
+		<p class="dim intro">
+			Nothing to download — every build this screen shows already runs the newest version its
+			targets can take.
+		</p>
+	{/if}
+
+	{#if heldBack.length}
+		<div class="held">
+			<div class="tgtlbl">Held back</div>
+			{#each heldBack as candidate (candidate.name)}
+				{#each candidate.holdbacks as holdback}
+					<p class="heldrow">
+						<Icon name="triangleExclamation" size="0.75rem" />
+						<span><b>{candidate.plugin}</b> on {holdback.targets.join(', ')} — {holdback.reason}</span>
+					</p>
+				{/each}
+				{#each candidate.pinned as pin}
+					<p class="heldrow">
+						<Icon name="tag" size="0.75rem" />
+						<span><b>{candidate.plugin}</b> pinned to {pin.version} on {pin.target}</span>
+					</p>
+				{/each}
+			{/each}
+		</div>
+	{/if}
+
+	{#snippet footer()}
+		<Btn onclick={() => (updatesOpen = false)}>Cancel</Btn>
+		<Btn
+			icon="download"
+			disabled={!updateSel.size || !!busy}
+			title={updateSel.size ? '' : 'tick the builds to update'}
+			loading={busy === 'update-sel'}
+			onclick={updateSelected}
+		>
+			Update selected{updateSel.size ? ` (${updateSel.size})` : ''}
+		</Btn>
+		<Btn
+			variant="primary"
+			icon="download"
+			disabled={!pendingUpdates.length || !!busy}
+			title={pendingUpdates.length ? '' : 'nothing to download'}
+			loading={busy === 'update'}
+			onclick={updateAll}
+		>
+			Update all ({pendingUpdates.length})
+		</Btn>
+	{/snippet}
+</Modal>
+
 <!-- remove modal -->
 <Modal title="Remove {removeTarget?.plugin}" bind:open={removeOpen}>
 	<p>
@@ -768,6 +953,37 @@
 
 	.tgt {
 		margin-top: 0.75rem;
+	}
+
+	// update summary dialog
+	.intro {
+		margin: 0 0 0.75rem;
+		font-size: 0.875rem;
+	}
+
+	.upd-fam {
+		margin-left: 0.375rem;
+	}
+
+	.upd-ver {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
+
+	.held {
+		margin-top: 1rem;
+		padding-top: 0.75rem;
+		border-top: 0.1rem solid var(--border-divider);
+	}
+
+	.heldrow {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		margin: 0.25rem 0;
+		font-size: 0.75rem;
+		color: var(--warning);
 	}
 
 	.field {

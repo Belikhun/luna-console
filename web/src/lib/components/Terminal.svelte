@@ -10,7 +10,7 @@
 	import type { FitAddon } from '@xterm/addon-fit';
 	import { post } from '$lib/api';
 
-	const PROMPT = '\x1b[38;5;135mluna\x1b[0m \x1b[90m»\x1b[0m ';
+	const PROMPT = '\x1b[38;5;135mluna\x1b[0m \x1b[90m>>>\x1b[0m ';
 
 	const GHOST_DEBOUNCE_MS = 60;
 	const HISTORY_KEY = 'luna.shell.history';

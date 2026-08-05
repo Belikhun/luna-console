@@ -1,5 +1,6 @@
 import { command, UsageError, Bail } from "../framework";
-import { pc, Sym, ok, warn, info, printTable, versionDiff, Spinner } from "../ui";
+import { pc, Sym, ok, warn, info, printTable, versionDiff, Spinner, ProgressView } from "../ui";
+import { ProgressReporter } from "../../client/core/progress";
 import { instanceNames, pluginNames, targetSelectors } from "../completers";
 import {
 	loadCluster,
@@ -260,16 +261,19 @@ command({
 	handler: async (args) => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
-		const spin = new Spinner().start("checking providers for updates...");
+
+		const progress = new ProgressReporter("check for updates");
+		const view = new ProgressView(progress).start();
 
 		const { candidates, skipped } = await plugins.checkUpdates(
 			cfg,
 			lock,
 			args.length ? args : undefined,
+			{ reporter: progress },
 		);
 
+		view.stop();
 		await saveLock(lock); // persist backfilled game-version metadata
-		spin.stop();
 
 		const { rows, notes } = renderCandidates(candidates);
 
@@ -307,17 +311,25 @@ command({
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
-		const spin = new Spinner().start("checking providers for updates...");
 
-		const { candidates } = await plugins.checkUpdates(cfg, lock, args.length ? args : undefined);
+		const progress = new ProgressReporter("check for updates");
+		const view = new ProgressView(progress).start();
+
+		const { candidates } = await plugins.checkUpdates(cfg, lock, args.length ? args : undefined, {
+			reporter: progress,
+		});
+
+		view.stop();
+
 		const updatable = candidates.filter((cand) => cand.pendingGroups.length);
 
 		if (!updatable.length) {
-			spin.stop();
 			ok("everything is up to date");
 
 			return;
 		}
+
+		const spin = new Spinner().start("downloading updates...");
 
 		for (const cand of updatable) {
 			spin.update(`downloading ${cand.name}...`);

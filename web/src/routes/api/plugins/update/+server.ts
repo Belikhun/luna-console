@@ -30,12 +30,20 @@ export async function POST({ request }) {
 	let deployed = 0;
 
 	if (body.deploy && applied.length) {
-		const actions = await deploy(cfg, lock, {});
+		// only what this call updated: an unqualified update sweeps the pool, but a
+		// named one must not push unrelated jars nobody asked about
+		const entries = body.names?.length
+			? [...new Set(applied.map((entry) => entry.name))]
+			: [undefined];
+
+		for (const plugin of entries) {
+			const actions = await deploy(cfg, lock, { plugin });
+
+			deployed += actions.filter((action) => action.action !== 'unchanged').length;
+		}
 
 		await ensurePortAllocations(cfg, lock);
 		await saveCluster(cfg);
-
-		deployed = actions.filter((action) => action.action !== 'unchanged').length;
 	}
 
 	if (applied.length) {

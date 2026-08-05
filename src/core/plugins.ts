@@ -557,17 +557,27 @@ export interface UpdateCandidate {
  * Resolve every lock entry against its provider and report what would change.
  * Passing `names` also overrides the per-entry `autoUpdate: false` opt-out, so an
  * explicit `plugins update <name>` still works on a pinned-back plugin.
+ *
+ * One provider round trip per entry, so it reports live: the entries that cost a
+ * query are counted first and each one reports twice — once as its request goes
+ * out, once with what came back.
  */
 export async function checkUpdates(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
 	names?: string[],
+	opts: { reporter?: ProgressReporter } = {},
 ): Promise<{
 	candidates: UpdateCandidate[];
 	skipped: Array<{ name: string; reason: string }>;
 }> {
 	const candidates: UpdateCandidate[] = [];
 	const skipped: Array<{ name: string; reason: string }> = [];
+	const progress = opts.reporter;
+
+	// classified up front so the progress denominator counts only the entries
+	// that actually reach a provider — the skips are free
+	const queryable: Array<[string, PluginEntry]> = [];
 
 	for (const [name, entry] of Object.entries(lock.plugins)) {
 		if (names && !names.includes(name)) {
@@ -591,6 +601,24 @@ export async function checkUpdates(
 
 			continue;
 		}
+
+		queryable.push([name, entry]);
+	}
+
+	if (!queryable.length) {
+		progress?.complete(
+			skipped.length
+				? `nothing to check — ${skipped.length} entr(ies) skipped`
+				: "nothing to check",
+		);
+
+		return { candidates, skipped };
+	}
+
+	let checked = 0;
+
+	for (const [name, entry] of queryable) {
+		progress?.info(checked / queryable.length, `${name} — asking ${entry.remote!.provider}`);
 
 		const versions = await remoteVersions(entry);
 
@@ -623,7 +651,31 @@ export async function checkUpdates(
 		if (pendingGroups.length || resolution.holdbacks.length) {
 			candidates.push({ name, entry, resolution, pendingGroups });
 		}
+
+		checked += 1;
+
+		// what came back, per entry — the reason a check that finds nothing still
+		// reads as work having happened
+		const outcome = pendingGroups.length
+			? `${pendingGroups.map((group) => group.version.version_number).join(", ")} available`
+			: resolution.holdbacks.length
+				? "held back"
+				: "up to date";
+
+		progress?.report(
+			checked / queryable.length,
+			resolution.holdbacks.length && !pendingGroups.length ? "warn" : "okay",
+			`${name} — ${outcome}`,
+		);
 	}
+
+	const updatable = candidates.filter((cand) => cand.pendingGroups.length).length;
+
+	progress?.complete(
+		updatable
+			? `${checked} checked — ${updatable} with updates`
+			: `${checked} checked — everything up to date`,
+	);
 
 	return { candidates, skipped };
 }

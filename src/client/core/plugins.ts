@@ -1,7 +1,8 @@
 /**
  * Bridge mirror of core/plugins: resolution math is pure and runs locally;
- * scanning, downloading, pinning and deploying run in the daemon. Deploy runs
- * as a job with live progress mirrored into the caller's reporter.
+ * scanning, downloading, pinning and deploying run in the daemon. Deploy and
+ * the update check run as jobs, with live progress mirrored into the caller's
+ * reporter.
  */
 
 import type * as core from "../../core/plugins";
@@ -33,7 +34,13 @@ export type {
 
 export const scan = call("plugins.scan", { cfg: 0, lock: 1 }) as typeof core.scan;
 export const getVersionsForEntry = call("plugins.getVersionsForEntry") as typeof core.getVersionsForEntry;
-export const checkUpdates = call("plugins.checkUpdates", { cfg: 0, lock: 1 }) as typeof core.checkUpdates;
+// one provider round trip per entry — a job, so its progress reaches the caller
+export const checkUpdates = jobCall("plugins.checkUpdates", {
+	cfg: 0,
+	lock: 1,
+	reporter: { arg: 3, prop: "reporter" },
+	kind: "check-updates",
+}) as typeof core.checkUpdates;
 export const applyUpdate = call("plugins.applyUpdate", { lock: 0 }) as typeof core.applyUpdate;
 export const pinVersion = call("plugins.pinVersion", { cfg: 0, lock: 1 }) as typeof core.pinVersion;
 export const ensureVariantForMc = call("plugins.ensureVariantForMc", { lock: 0 }) as typeof core.ensureVariantForMc;

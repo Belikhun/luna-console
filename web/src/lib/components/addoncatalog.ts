@@ -36,6 +36,30 @@ export interface AddonRow {
 	variantCount: number;
 }
 
+/** One version group an update check found waiting for a lock entry. */
+export interface AddonUpdateGroup {
+	version: string;
+	/** The pool's newest build; anything else is a per-instance variant */
+	isPrimary: boolean;
+	targets: string[];
+	/** What those targets run today, joined when they disagree */
+	current: string;
+}
+
+/** A build the provider has something newer for, or something to say about. */
+export interface AddonUpdate {
+	/** Lock entry key, e.g. "luckperms@paper" — what an update call names */
+	name: string;
+	/** Addon identity the build belongs to */
+	plugin: string;
+	family: AddonFamily;
+	provider: string;
+	installed: string | null;
+	groups: AddonUpdateGroup[];
+	holdbacks: Array<{ targets: string[]; current?: string; reason: string }>;
+	pinned: Array<{ target: string; version: string }>;
+}
+
 export interface CatalogKind {
 	/** Screen title, and the noun in "<X> details" */
 	label: string;

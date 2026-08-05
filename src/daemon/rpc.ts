@@ -847,7 +847,12 @@ export const OPS: Record<string, OpSpec> = {
 	// -- plugins ---------------------------------------------------------------
 	"plugins.scan": { fn: pluginsCore.scan, cfg: 0, lock: 1 },
 	"plugins.getVersionsForEntry": { fn: pluginsCore.getVersionsForEntry },
-	"plugins.checkUpdates": { fn: pluginsCore.checkUpdates, cfg: 0, lock: 1 },
+	"plugins.checkUpdates": {
+		fn: pluginsCore.checkUpdates,
+		cfg: 0,
+		lock: 1,
+		reporter: { arg: 3, prop: "reporter" },
+	},
 	"plugins.applyUpdate": { fn: pluginsCore.applyUpdate, lock: 0 },
 	"plugins.pinVersion": { fn: pluginsCore.pinVersion, cfg: 0, lock: 1 },
 	"plugins.ensureVariantForMc": { fn: pluginsCore.ensureVariantForMc, lock: 0 },

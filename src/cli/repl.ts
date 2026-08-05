@@ -59,7 +59,7 @@ export async function repl(): Promise<void> {
 	const rl = createInterface({
 		input: process.stdin,
 		output: process.stdout,
-		prompt: `${pc.magenta("luna")} ${pc.dim("»")} `,
+		prompt: `${pc.magenta("luna")} ${pc.dim(">>>")} `,
 		historySize: 500,
 
 		completer: (line: string, cb: (err: null, result: [string[], string]) => void) => {
