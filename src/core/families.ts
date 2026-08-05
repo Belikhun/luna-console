@@ -1,12 +1,12 @@
 /**
- * Plugin identity, families and addon groups (DESIGN.md §3.1–3.2).
+ * Plugin identity, families and addon groups (DESIGN.md §3.1-3.2).
  *
  * A lockfile entry is one *build* of a plugin: the pair (plugin name, family).
  * Entry keys encode that pair under the standardized `<plugin>@<family>`
  * scheme, and the entry carries both fields explicitly.
  *
- * An **addon group** is a named set of addons — plugin names, resource pack
- * keys and data pack names — applied to instances as a unit. An instance's
+ * An **addon group** is a named set of addons; plugin names, resource pack
+ * keys and data pack names; applied to instances as a unit. An instance's
  * effective plugin set is the union of its groups (always including
  * "default"); an entry deploys to an instance when its plugin is in that set
  * and its family matches the instance's software. The pack kinds resolve the
@@ -22,6 +22,7 @@ import type {
 	PluginsLock,
 	Software,
 } from "./types";
+import { t } from "../shared/i18n";
 import { addonDirForFamily, addonDirOf, expandTargets, managedInstances } from "./config";
 import { coversMc } from "./services/providers";
 
@@ -60,8 +61,8 @@ export function familyOf(entry: PluginEntry): PluginFamily {
  *
  * A mod loader is a closed ecosystem in both directions: only a `neoforge`
  * build loads on neoforge, and a neoforge build loads nowhere else. `universal`
- * means "paper and velocity" (the jars that carry both descriptors) — never
- * "every platform" — so it stops at the loader boundary too.
+ * means "paper and velocity" (the jars that carry both descriptors); never
+ * "every platform"; so it stops at the loader boundary too.
  */
 export function familyMatches(family: PluginFamily, software: Software): boolean {
 	if (family === "neoforge" || software === "neoforge") {
@@ -77,7 +78,7 @@ export function familyMatches(family: PluginFamily, software: Software): boolean
 
 /**
  * Whether a build for this software is tied to a Minecraft version. Only the
- * proxy is version-independent — a paper plugin and a neoforge mod are both
+ * proxy is version-independent; a paper plugin and a neoforge mod are both
  * compiled against a game version and refuse to load outside it, so they go
  * through the same resolution, holdback and compatibility rules.
  */
@@ -85,7 +86,7 @@ export function carriesMcRequirement(software: Software): boolean {
 	return software !== "velocity";
 }
 
-/** Group names applied to an instance — "default" always, then its own list. */
+/** Group names applied to an instance; "default" always, then its own list. */
 export function instanceGroupNames(inst: InstanceConfig): string[] {
 	const own = inst.addonGroups ?? [];
 
@@ -109,7 +110,7 @@ export function groupMembers(group: AddonGroup, kind: AddonKind): string[] {
 }
 
 /**
- * Group names carrying one addon, sorted — "used by" for a pack or plugin.
+ * Group names carrying one addon, sorted; "used by" for a pack or plugin.
  * Takes the group map rather than the lockfile, because the pack modules
  * resolve membership against `plugins.lock.json`'s groups while their own
  * source of truth is `packs.lock.json`.
@@ -213,7 +214,7 @@ export function groupCoverage(cfg: ClusterConfig, lock: PluginsLock, key: string
 /**
  * Every instance an entry deploys to: explicit targets (instance-specific
  * extras, wildcards included) united with group/override coverage, minus the
- * instances that disabled the plugin — a `false` override beats an explicit
+ * instances that disabled the plugin; a `false` override beats an explicit
  * lockfile target too. This is the single resolution deploy, drift detection
  * and compat checks all share, so it is also where the loader boundary is
  * enforced against explicit targets: naming a modpack does not put a bukkit jar
@@ -254,7 +255,7 @@ export function effectiveTargets(cfg: ClusterConfig, lock: PluginsLock, key: str
 
 /**
  * Set (or clear, with `null`) an instance's per-instance override for a plugin
- * name. Mutates the cluster config — the caller persists it. Force-adding a
+ * name. Mutates the cluster config; the caller persists it. Force-adding a
  * plugin the pool does not know is refused; disabling anything is allowed.
  */
 export function setPluginOverride(
@@ -267,11 +268,11 @@ export function setPluginOverride(
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${instance}`);
+		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
 	if (state === true && entriesOf(lock, plugin).length === 0) {
-		throw new Error(`unknown plugin: ${plugin} — nothing pooled under that name`);
+		throw new Error(t("core.families.unknownPlugin", { name: plugin }));
 	}
 
 	if (state === null) {
@@ -305,7 +306,7 @@ export function setGroup(
 	},
 ): AddonGroup {
 	if (!/^[a-z0-9_-]+$/.test(name)) {
-		throw new Error("group name must be lowercase alphanumeric/-/_");
+		throw new Error(t("core.families.badGroupName"));
 	}
 
 	lock.groups ??= {};
@@ -356,7 +357,7 @@ export function setGroup(
 }
 
 /**
- * Drop one addon from every group carrying it — what a pack's removal owes the
+ * Drop one addon from every group carrying it; what a pack's removal owes the
  * groups, so a deleted pack does not linger as a phantom member. Returns
  * whether anything changed, so the caller knows to persist.
  */
@@ -389,11 +390,11 @@ export function pruneAddon(lock: PluginsLock, kind: AddonKind, member: string): 
 /** Delete a group. The default group cannot be deleted. */
 export function deleteGroup(lock: PluginsLock, name: string): void {
 	if (name === DEFAULT_GROUP) {
-		throw new Error("the default group cannot be deleted");
+		throw new Error(t("core.families.defaultUndeletable"));
 	}
 
 	if (!lock.groups?.[name]) {
-		throw new Error(`unknown group: ${name}`);
+		throw new Error(t("core.families.unknownGroup", { name }));
 	}
 
 	delete lock.groups[name];
@@ -414,17 +415,17 @@ export interface GroupCheckRow {
 	groups: string[];
 	/** Force-added by a per-instance override rather than a group */
 	manual?: boolean;
-	/** Disabled by a per-instance override — will not deploy regardless of status */
+	/** Disabled by a per-instance override; will not deploy regardless of status */
 	disabled?: boolean;
 	/** Lockfile key of the matched build, when one exists */
 	entry?: string;
 	family?: PluginFamily;
 	/**
-	 * ok         — matching family with a compatible (or version-independent) build
-	 * unverified — matching family, but the build carries no MC metadata (luna/manual jars)
-	 * no-version — matching family, no pooled build supports the MC version
-	 * skipped    — no build for this platform
-	 * missing    — named in a group but nothing is pooled at all
+	 * ok        ; matching family with a compatible (or version-independent) build
+	 * unverified; matching family, but the build carries no MC metadata (luna/manual jars)
+	 * no-version; matching family, no pooled build supports the MC version
+	 * skipped   ; no build for this platform
+	 * missing   ; named in a group but nothing is pooled at all
 	 */
 	status: "ok" | "unverified" | "no-version" | "skipped" | "missing";
 	/** Version that would deploy (ok/unverified) */
@@ -463,7 +464,7 @@ function pooledGameVersions(entry: PluginEntry, version: string | undefined): st
  * Validation table for a group selection: how each wanted plugin lands on an
  * instance of the given software + MC version. `instance` sharpens version
  * resolution with its pins/assignments when the instance already exists.
- * `overrides` are the per-instance force-adds/disables to evaluate — they
+ * `overrides` are the per-instance force-adds/disables to evaluate; they
  * default to the instance's stored ones, so a prospective (launch-form)
  * selection can pass its own.
  */
@@ -580,7 +581,7 @@ export function validateGroups(
 			continue;
 		}
 
-		// the assigned build does not fit — maybe another pooled variant does
+		// the assigned build does not fit; maybe another pooled variant does
 		const fallback = Object.values(entry.variants ?? {}).find((variant) =>
 			coversMc(variant.gameVersions, opts.mcVersion!),
 		);
@@ -650,7 +651,7 @@ const LUNA_CORE_TEMPLATE: PluginEntry["config"] = [
 		// it the file only exists after that boot, so `set` stays pending-file
 		// and the plugin reports to its bundled default endpoint (or nowhere)
 		write:
-			"# Written by luna before first boot — LunaCore merges its remaining defaults.\n" +
+			"# Written by luna before first boot. LunaCore merges its remaining defaults.\n" +
 			"heartbeat:\n" +
 			"  enabled: true\n" +
 			'  endpoint: "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat"\n' +
@@ -678,7 +679,7 @@ const SEED_TEMPLATES: Record<string, PluginEntry["config"]> = {
 
 /**
  * Enforce the lockfile's standing invariants, in place. Idempotent; returns
- * whether anything changed so the caller knows to persist. Not a migration —
+ * whether anything changed so the caller knows to persist. Not a migration -
  * these hold on every load: the builtin default group exists with its
  * hardcoded members, redundant explicit targets stay collapsed into group
  * coverage, and known plugins get their config templates seeded once.
@@ -690,7 +691,7 @@ export function ensureLockDefaults(lock: PluginsLock): boolean {
 		setGroup(lock, DEFAULT_GROUP, { plugins: DEFAULT_GROUP_PLUGINS });
 		changed = true;
 	} else {
-		// re-assert the hardcoded members — a hand-edited lockfile must not be able
+		// re-assert the hardcoded members; a hand-edited lockfile must not be able
 		// to drop a baseline plugin from every instance at once
 		const group = lock.groups[DEFAULT_GROUP]!;
 		const missing = DEFAULT_GROUP_PLUGINS.filter((name) => !group.plugins.includes(name));

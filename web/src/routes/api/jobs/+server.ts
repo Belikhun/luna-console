@@ -4,7 +4,7 @@ import { listJobs } from '$lib/server/jobs';
 /**
  * GET → jobs in the registry, filterable by ?target=<name> and ?state=<state>.
  * This is how a page discovers work already in flight for the object it shows
- * — an instance detail opened mid-start attaches its own flash card from here.
+ *; an instance detail opened mid-start attaches its own flash card from here.
  */
 export async function GET({ url }) {
 	const target = url.searchParams.get('target');

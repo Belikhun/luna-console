@@ -5,7 +5,7 @@ export interface Item {
 	label: string;
 	icon?: string;
 	disabled?: boolean;
-	/** why the item is unavailable — a disabled action states its reason rather
+	/** why the item is unavailable; a disabled action states its reason rather
 	 *  than leaving the user to guess (DESIGN.md §5.2) */
 	hint?: string;
 	danger?: boolean;

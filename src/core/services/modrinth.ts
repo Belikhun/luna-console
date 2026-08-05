@@ -2,7 +2,7 @@
  * Modrinth v2 API client, as an addon provider (services/providers.ts). Its
  * wire shapes are what the normalized types were modelled on, so the mapping
  * here is mostly a pass-through. Also home of the sha512 hash lookup `scan`
- * identifies pool jars with — the one capability no other provider has.
+ * identifies pool jars with; the one capability no other provider has.
  */
 
 import type { RemoteRef } from "../types";
@@ -62,7 +62,7 @@ export async function getVersions(idOrSlug: string, loaders: string[]): Promise<
 /**
  * The search facets selecting one project type. Data packs are the odd one
  * out: Modrinth stores them as *mods* carrying the "datapack" loader, and the
- * search index answers `project_type:datapack` for exactly those — pairing it
+ * search index answers `project_type:datapack` for exactly those; pairing it
  * with `project_type:mod` (which is what the hits report themselves as) is an
  * empty intersection, so the pseudo type has to stand alone.
  *

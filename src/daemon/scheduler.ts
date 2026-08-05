@@ -1,6 +1,6 @@
 /**
  * The daemon's schedule runner (DESIGN.md §3.4, hosted per §4.1). Ported from
- * the web console's server process — the daemon is the always-on process, so
+ * the web console's server process; the daemon is the always-on process, so
  * schedules now fire even when nobody has the console open. All schedule logic
  * lives in core; this only supplies the executor and persists the outcome.
  *
@@ -18,7 +18,7 @@ const TICK_MS = 20_000;
 
 let timer: ReturnType<typeof setInterval> | undefined;
 
-/** a tick can outlast the interval (graceful stops are slow) — never overlap */
+/** a tick can outlast the interval (graceful stops are slow); never overlap */
 let running = false;
 
 /** Execute one action against one instance, returning the outcome line. */

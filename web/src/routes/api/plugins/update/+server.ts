@@ -5,7 +5,7 @@ import { ensurePortAllocations } from '$core/ports';
 import { pushEvent } from '$lib/server/luna';
 import { jsonBody } from '$lib/server/http';
 
-/** POST { names?, deploy? } — download updates (and optionally deploy). */
+/** POST { names?, deploy? }; download updates (and optionally deploy). */
 export async function POST({ request }) {
 	const body = await jsonBody(request);
 	const cfg = await loadCluster();

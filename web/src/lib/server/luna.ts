@@ -3,7 +3,7 @@
  *
  * Everything stateful moved into the daemon (DESIGN.md §4): the metrics
  * sampler, the transient starting/stopping states, the event log and the
- * schedule runner all live there now — this module re-exports the daemon
+ * schedule runner all live there now; this module re-exports the daemon
  * client surface under the names the routes always used, so the console reads
  * the same truth the CLI does, over the same socket.
  */

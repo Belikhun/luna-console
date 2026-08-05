@@ -1,7 +1,7 @@
 /**
  * Bridge mirror of core/ports: the pool arithmetic is pure registry work and runs
- * here, while anything that has to look at a machine — `ss`, the plugin config
- * files, another daemon's disk — runs in the daemon that owns it.
+ * here, while anything that has to look at a machine; `ss`, the plugin config
+ * files, another daemon's disk; runs in the daemon that owns it.
  */
 
 import type * as core from "../../core/ports";

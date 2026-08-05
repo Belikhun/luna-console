@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, del, post } from '$lib/api';
@@ -26,46 +27,46 @@
 	let removing = $state(false);
 	let joinOpen = $state(false);
 
-	const filters: TableFilterGroup<DaemonRow>[] = [
+	const filters: TableFilterGroup<DaemonRow>[] = $derived([
 		{
 			id: 'state',
-			label: 'Filter state',
+			label: t('web.machines.filterState'),
 			options: [
-				{ value: 'any', label: 'Any state' },
-				{ value: 'online', label: 'Online', match: (row) => row.online },
-				{ value: 'offline', label: 'Offline', match: (row) => !row.online },
+				{ value: 'any', label: t('web.machines.anyState') },
+				{ value: 'online', label: t('web.machines.online'), match: (row) => row.online },
+				{ value: 'offline', label: t('web.machines.offline'), match: (row) => !row.online },
 				{
 					value: 'degraded',
-					label: 'Degraded',
+					label: t('web.machines.degraded'),
 					match: (row) => row.online && checksFailed(row) > 0
 				}
 			]
 		},
 		{
 			id: 'mode',
-			label: 'Filter role',
+			label: t('web.machines.filterRole'),
 			options: [
-				{ value: 'any', label: 'Any role' },
-				{ value: 'primary', label: 'Primary', match: (row) => row.mode === 'primary' },
-				{ value: 'follower', label: 'Follower', match: (row) => row.mode === 'follower' }
+				{ value: 'any', label: t('web.machines.anyRole') },
+				{ value: 'primary', label: t('web.machines.primary'), match: (row) => row.mode === 'primary' },
+				{ value: 'follower', label: t('web.machines.follower'), match: (row) => row.mode === 'follower' }
 			]
 		}
-	];
+	]);
 
 	function rowActions(row: DaemonRow): ContextMenuItem[] {
 		return [
 			{
-				label: 'Open daemon',
+				label: t('web.machines.openDaemon'),
 				icon: 'circleInfo',
 				action: () => goto(`/machines/${row.name}`)
 			},
 			{
-				label: 'Monitoring',
+				label: t('web.machines.monitoring'),
 				icon: 'chartLine',
 				action: () => goto(`/machines/${row.name}?tab=monitoring`)
 			},
 			{
-				label: 'Events',
+				label: t('web.machines.events'),
 				icon: 'clockRotateLeft',
 				action: () => goto(`/machines/${row.name}?tab=events`)
 			},
@@ -83,20 +84,20 @@
 			},
 			{ separator: true },
 			{
-				label: 'Copy routing host',
+				label: t('web.machines.copyRoutingHost'),
 				icon: 'copy',
 				disabled: !row.host,
 				action: () => navigator.clipboard?.writeText(row.host ?? '')
 			},
 			{
-				label: 'Copy IP addresses',
+				label: t('web.machines.copyIpAddresses'),
 				icon: 'copy',
 				disabled: row.addresses.length === 0,
 				action: () => navigator.clipboard?.writeText(row.addresses.join(', '))
 			},
 			{ separator: true },
 			{
-				label: 'Remove registration',
+				label: t('web.machines.removeRegistration'),
 				icon: 'trash',
 				color: 'danger',
 				// the primary is not a registration, and a live follower would just
@@ -106,7 +107,7 @@
 					row.mode !== 'follower'
 						? 'this is the primary daemon, not a registration'
 						: row.online
-							? 'the daemon is connected — stop it first'
+							? 'the daemon is connected; stop it first'
 							: row.instances.length > 0
 								? `it still owns ${row.instances.join(', ')}`
 								: undefined,
@@ -115,20 +116,20 @@
 		];
 	}
 
-	const columns: Column[] = [
-		{ id: 'state', label: 'State', width: 110 },
-		{ id: 'name', label: 'Daemon', width: 150, sortable: true },
-		{ id: 'checks', label: 'Status check', width: 180, sortable: true },
-		{ id: 'mode', label: 'Mode', width: 90, sortable: true },
-		{ id: 'host', label: 'Host', width: 130 },
-		{ id: 'instances', label: 'Instances' },
-		{ id: 'cpu', label: 'CPU', width: 130, sortable: true },
-		{ id: 'memory', label: 'Memory', width: 165, sortable: true },
-		{ id: 'disk', label: 'Disk', width: 175, sortable: true },
-		{ id: 'latency', label: 'Latency', width: 115, align: 'right', sortable: true },
-		{ id: 'seen', label: 'Last seen', width: 160 },
-		{ id: 'version', label: 'Version', width: 170, sortable: true, hidden: true }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'state', label: t('web.machines.state'), width: 110 },
+		{ id: 'name', label: t('web.machines.daemon'), width: 150, sortable: true },
+		{ id: 'checks', label: t('web.machines.statusCheck'), width: 180, sortable: true },
+		{ id: 'mode', label: t('web.machines.mode'), width: 90, sortable: true },
+		{ id: 'host', label: t('web.machines.host'), width: 130 },
+		{ id: 'instances', label: t('web.machines.instances') },
+		{ id: 'cpu', label: t('web.machines.cpu'), width: 130, sortable: true },
+		{ id: 'memory', label: t('web.machines.memory'), width: 165, sortable: true },
+		{ id: 'disk', label: t('web.machines.disk'), width: 175, sortable: true },
+		{ id: 'latency', label: t('web.machines.latency'), width: 115, align: 'right', sortable: true },
+		{ id: 'seen', label: t('web.machines.lastSeen'), width: 160 },
+		{ id: 'version', label: t('web.machines.version'), width: 170, sortable: true, hidden: true }
+	]);
 
 	async function refresh(): Promise<void> {
 		loading = true;
@@ -140,7 +141,7 @@
 			lastUpdated = Date.now();
 			loaded = true;
 		} catch (err) {
-			Notify.error('Could not load the machines', { detail: (err as Error).message });
+			Notify.error(t('web.machines.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
 		}
@@ -181,12 +182,12 @@
 		try {
 			await del(`/daemons/${encodeURIComponent(removeTarget.name)}`);
 
-			Notify.success(`Removed daemon registration "${removeTarget.name}"`);
+			Notify.success(t('web.machines.removedRegistration', { name: removeTarget.name }));
 			removeOpen = false;
 
 			await refresh();
 		} catch (err) {
-			Notify.error('Could not remove the daemon', { detail: (err as Error).message });
+			Notify.error(t('web.machines.removeFailed'), { detail: (err as Error).message });
 		}
 
 		removing = false;
@@ -258,7 +259,7 @@
 	let upgrading = $state(false);
 	let upgradeTargets: DaemonRow[] = $state([]);
 
-	/** The row the header's Actions dropdown acts on — only ever a single row. */
+	/** The row the header's Actions dropdown acts on; only ever a single row. */
 	const one = $derived(
 		selected.size === 1 ? daemons.find((row) => selected.has(row.name)) : undefined
 	);
@@ -300,13 +301,13 @@
 		upgrading = true;
 		upgradeOpen = false;
 
-		const note = Notify.loading(`Upgrading ${targets.length} daemon(s)…`, { progress: 0 });
+		const note = Notify.loading(t('web.machines.upgradingCount', { count: targets.length }), { progress: 0 });
 		const done: string[] = [];
 		const failed: string[] = [];
 
 		for (const [index, row] of targets.entries()) {
 			note.set({
-				message: `Upgrading ${row.name}… (${index + 1}/${targets.length})`,
+				message: t('web.machines.upgradingOne', { name: row.name, index: index + 1, total: targets.length }),
 				progress: Math.round((index / targets.length) * 100)
 			});
 
@@ -339,40 +340,39 @@
 	}
 </script>
 
-<svelte:head><title>Machines | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.machines.machinesLunaConsole')}</title></svelte:head>
 
 <PageHeader
-	title="Machines"
+	title={t('web.machines.machines')}
 	count="{selected.size ? `${selected.size}/` : ''}{daemons.length}"
-	description="Machines running a luna daemon — the primary owns the registry, plugins and schedules; followers manage the instances assigned to them and mirror everything else from the primary. Health streams in on each daemon's heartbeat."
+	description={t('web.machines.machinesRunningALunaDaemon')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="daemons" />
 		<Dropdown
-			label="Upgrade"
+			label={t('web.machines.upgrade')}
 			disabled={upgrading || (selUpgradable.length === 0 && outdatedRows.length === 0)}
 			items={[
 				{
-					label: `Upgrade selected (${selUpgradable.length})`,
+					label: t('web.machines.upgradeSelected', { count: selUpgradable.length }),
 					icon: 'download',
 					disabled: selUpgradable.length === 0,
 					hint:
 						selected.size === 0
-							? 'select one or more machines first'
-							: 'the primary is the source of the binary, and an offline follower cannot be reached',
+							? 'select one or more machines first' : 'the primary is the source of the binary, and an offline follower cannot be reached',
 					action: () => askUpgrade(selUpgradable)
 				},
 				{
-					label: `Upgrade all outdated (${outdatedRows.length})`,
+					label: t('web.machines.upgradeOutdated', { count: outdatedRows.length }),
 					icon: 'circleUp',
 					disabled: outdatedRows.length === 0,
-					hint: 'every connected follower already runs this primary’s build',
+					hint: t('web.machines.everyConnectedFollowerAlreadyRuns'),
 					action: () => askUpgrade(outdatedRows)
 				}
 			]}
 		/>
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
-		<Btn variant="primary" icon="plus" onclick={() => (joinOpen = true)}>Add a follower</Btn>
+		<Dropdown label={t('web.machines.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Btn variant="primary" icon="plus" onclick={() => (joinOpen = true)}>{t('web.machines.addAFollower')}</Btn>
 	{/snippet}
 </PageHeader>
 
@@ -384,16 +384,16 @@
 		getId={(row) => row.name}
 		searchValue={(row) =>
 			`${row.name} ${row.mode} ${row.host ?? ''} ${row.addresses.join(' ')} ${row.instances.join(' ')}`}
-		searchPlaceholder="Find a daemon by name, address or instance"
+		searchPlaceholder={t('web.machines.findADaemonByName')}
 		{filters}
 		selectable="multi"
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.name}
-		noun="machine"
+		noun={t('web.machines.machine')}
 		{sortValue}
 		onRowClick={(row) => goto(`/machines/${row.name}`)}
-		emptyTitle="No machines registered"
+		emptyTitle={t('web.machines.noMachinesRegistered')}
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'state'}
@@ -417,8 +417,7 @@
 						label="{passed}/{row.checks.length} checks passed"
 						detail={row.checks.map((check) => ({
 							state: check.ok === undefined ? 'pending' : check.ok ? 'passed' : 'failed',
-							label: check.name,
-							detail: check.detail
+							label: check.name, detail: check.detail
 						}))}
 					/>
 				{/if}
@@ -437,7 +436,7 @@
 						<a href="/instances/{name}" onclick={(event) => event.stopPropagation()}>{name}</a>
 					{/each}
 				{:else}
-					<span class="dim">none</span>
+					<span class="dim">{t('web.machines.none')}</span>
 				{/if}
 			{:else if col === 'cpu'}
 				{#if row.health}
@@ -488,7 +487,7 @@
 			{:else if col === 'version'}
 				<span class="mono">{row.version ?? '—'}</span>
 				{#if row.outdated}
-					<StatusBadge state="warning" label="old" />
+					<StatusBadge state="warning" label={t('web.machines.old')} />
 				{/if}
 			{:else if col === 'seen'}
 				{#if row.online}
@@ -506,55 +505,52 @@
 
 	{#if loaded && daemons.length === 1}
 		<div class="hint">
-			No followers yet — run <code>luna daemon run</code> on another machine with
+			No followers yet; run <code>{t('web.machines.lunaDaemonRun')}</code> on another machine with
 			<code>mode: "follower"</code> and this primary's address + token in its daemon config.
 		</div>
 	{/if}
 </Panel>
 
-<Modal title="Add a follower daemon" bind:open={joinOpen} wide>
+<Modal title={t('web.machines.addAFollowerDaemon')} bind:open={joinOpen} wide>
 	<p>
 		Install the same <code class="inline">luna</code> binary on the other machine, drop this
 		config at <code class="inline">/etc/luna/daemon.json</code> (or
 		<code class="inline">~/.config/luna/daemon.json</code>), then run
-		<code class="inline">luna daemon service install</code> there.
+		<code class="inline">{t('web.machines.lunaDaemonServiceInstall')}</code> there.
 	</p>
 	<pre class="code mono">{joinConfig}</pre>
 	<p class="dim">
-		The token is the cluster secret this primary already uses — generate one with
-		<code class="inline">luna daemon token</code> if you have not yet, and set the same value on
-		both machines. The follower registers itself on first connection and appears in this table;
-		nothing needs to be created here.
+		{t('web.machines.theTokenIsThe')}
+		<code class="inline">{t('web.machines.lunaDaemonToken')}</code> if you have not yet, and set the same value on
+		{t('web.machines.bothMachinesTheFollower')}
 	</p>
 	{#snippet footer()}
-		<Btn onclick={() => (joinOpen = false)}>Close</Btn>
+		<Btn onclick={() => (joinOpen = false)}>{t('web.machines.close')}</Btn>
 		<Btn
 			variant="primary"
 			icon="copy"
 			onclick={() => navigator.clipboard?.writeText(joinConfig)}
 		>
-			Copy config
+			{t('web.machines.copyConfig')}
 		</Btn>
 	{/snippet}
 </Modal>
 
-<Modal title="Remove daemon registration" bind:open={removeOpen}>
+<Modal title={t('web.machines.removeDaemonRegistration')} bind:open={removeOpen}>
 	<p>
 		Remove <b>{removeTarget?.name}</b> from the daemons registry? Its machine can re-register at
-		any time by connecting again.
+		{t('web.machines.anyTimeByConnecting')}
 	</p>
 
 	{#snippet footer()}
-		<Btn onclick={() => (removeOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" loading={removing} onclick={remove}>Remove</Btn>
+		<Btn onclick={() => (removeOpen = false)}>{t('web.machines.cancel')}</Btn>
+		<Btn variant="danger" loading={removing} onclick={remove}>{t('web.machines.remove')}</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="Upgrade {upgradeTargets.length} daemon(s)" bind:open={upgradeOpen}>
 	<p>
-		Each of these takes the primary's binary when there is one and the GitHub release
-		otherwise, then exits so its service restarts it on the new build. They go offline for a
-		moment and reconnect on their own.
+		{t('web.machines.eachOfTheseTakes')}
 	</p>
 	<ul class="targets">
 		{#each upgradeTargets as target (target.name)}
@@ -562,14 +558,14 @@
 				<b>{target.name}</b>
 				<span class="dim">{target.version ?? 'unknown build'}</span>
 				{#if !target.outdated}
-					<span class="dim">— already on this build, it will be reinstalled</span>
+					<span class="dim">{t('web.machines.alreadyOnThisBuild')}</span>
 				{/if}
 			</li>
 		{/each}
 	</ul>
 
 	{#snippet footer()}
-		<Btn onclick={() => (upgradeOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (upgradeOpen = false)}>{t('web.machines.cancel')}</Btn>
 		<Btn variant="primary" icon="download" loading={upgrading} onclick={runUpgrade}>
 			Upgrade
 		</Btn>

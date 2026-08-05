@@ -1,5 +1,5 @@
 /**
- * Instance log reads — the tail of latest.log plus the monthly archives. This
+ * Instance log reads; the tail of latest.log plus the monthly archives. This
  * lives in core (and runs as a routed op) because the files are only on the
  * machine that owns the instance: a follower's logs are unreadable from the
  * primary's disk, and pretending otherwise just returns silence.
@@ -11,11 +11,12 @@ import { join } from "node:path";
 
 import { centralLogsDir, instanceDir, managedInstances } from "./config";
 import type { ClusterConfig } from "./types";
+import { t } from "../shared/i18n";
 
 /** How many lines a read returns when the caller does not say. */
 export const DEFAULT_LOG_LINES = 200;
 
-/** Upper bound on one read — the console is a viewer, not an exporter. */
+/** Upper bound on one read; the console is a viewer, not an exporter. */
 export const MAX_LOG_LINES = 2_000;
 
 export interface InstanceLogs {
@@ -37,7 +38,7 @@ export async function readInstanceLogs(
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	const wanted = Math.min(Math.max(1, lines), MAX_LOG_LINES);

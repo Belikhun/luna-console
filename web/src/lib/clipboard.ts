@@ -15,7 +15,7 @@ export async function copyText(text: string): Promise<boolean> {
 			return true;
 		}
 	} catch {
-		// fall through to the legacy path — permission denied, or not focused
+		// fall through to the legacy path; permission denied, or not focused
 	}
 
 	const area = document.createElement('textarea');

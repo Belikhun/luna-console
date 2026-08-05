@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
 	import type { InfoCell } from './grid';
@@ -43,7 +44,7 @@
 
 		copied = keyOf(cellItem);
 
-		// the tooltip is already open on the button — re-read its label in place
+		// the tooltip is already open on the button; re-read its label in place
 		refreshTooltip();
 		clearTimeout(resetTimer);
 
@@ -85,7 +86,7 @@
 						class="copy"
 						aria-label="Copy {cellItem.label}"
 						use:tooltip={{
-								content: () => (copied === keyOf(cellItem) ? 'Copied' : 'Click to copy')
+								content: () => (copied === keyOf(cellItem) ? t('web.common.copied') : t('web.infogrid.clickToCopy'))
 							}}
 						onclick={() => copy(cellItem)}
 					>

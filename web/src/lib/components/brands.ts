@@ -3,7 +3,7 @@
  * stays self-contained (no CDN, no network on render) and the glyphs take
  * `currentColor` like every other icon.
  *
- * Sources — the projects' own artwork, used to name the service they link to:
+ * Sources; the projects' own artwork, used to name the service they link to:
  *   modrinth, curseforge  simple-icons (CC0 icon set)
  *   hangar                HangarMC/Hangar, frontend/app/assets/hangar-icon.svg
  *   smithed               Smithed-MC/smithed, src/images/logo_box.svg (plate dropped)
@@ -19,7 +19,7 @@ export interface BrandPath {
 /** One monochrome mark: its own coordinate system and the shapes inside it. */
 export interface BrandMark {
 	viewBox: string;
-	/** applied to the whole group — some sources ship flipped coordinates */
+	/** applied to the whole group; some sources ship flipped coordinates */
 	transform?: string;
 	/** a bare `d` when the shape needs no placing, otherwise `d` + its transform */
 	paths: Array<string | BrandPath>;
@@ -60,7 +60,7 @@ export const SOURCE_LABELS: Record<string, { short: string; long: string }> = {
 /**
  * The crescent and its three stars, one path each, kept under the group
  * transforms the artwork ships rather than re-baked into a single coordinate
- * space — the crescent is rotated ~10°, so flattening it by hand is how the moon
+ * space; the crescent is rotated ~10°, so flattening it by hand is how the moon
  * ends up subtly wrong. Everything is in the artwork's own coordinates, which
  * `LUNA_ARTWORK_ORIGIN` brings back to the 233×233 canvas.
  */
@@ -89,7 +89,7 @@ const LUNA_ARTWORK_ORIGIN = 'translate(-7686 1009)';
 /**
  * The ring the artwork draws around the glyph, as a filled annulus: the source
  * draws it as a 12-wide stroke on r=110.5, which path data cannot carry, so it is
- * the two circles r=116.5 and r=104.5 with opposite arc sweeps — the inner one
+ * the two circles r=116.5 and r=104.5 with opposite arc sweeps; the inner one
  * winds the other way and punches the hole under the default nonzero fill rule.
  *
  * Its own transform cancels the group's, so the circle can be written in the
@@ -112,7 +112,7 @@ export const LUNA_PLATE_MARK: BrandMark = {
 };
 
 export const BRAND_MARKS: Record<string, BrandMark> = {
-	// our own mark, ringed as the artwork draws it — the whole 233 canvas, so the
+	// our own mark, ringed as the artwork draws it; the whole 233 canvas, so the
 	// ring is the icon's edge wherever a provider mark appears
 	luna: {
 		viewBox: '0 0 233 233',

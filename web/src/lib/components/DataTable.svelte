@@ -1,4 +1,5 @@
 <script lang="ts" generics="T = any">
+	import { t } from '$lib/i18n.svelte';
 	import { untrack, type Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
 	import Checkbox from './Checkbox.svelte';
@@ -25,7 +26,7 @@
 	 * weight-coded sort carets, drag-resizable columns, pinned leading columns,
 	 * canned filters beside the search box, client-side paging, and a two-column
 	 * preferences dialog (page size, display options, column order + visibility)
-	 * — all persisted per tableId. Selecting a row never shifts the layout, and
+	 *; all persisted per tableId. Selecting a row never shifts the layout, and
 	 * runs of selected rows merge into a single block.
 	 */
 	let {
@@ -48,7 +49,7 @@
 		paging = false,
 		pageSize = 25,
 		maxHeight,
-		emptyTitle = 'No resources to display',
+		emptyTitle = t('web.table.emptyTitle'),
 		emptyText = '',
 		emptyExtra,
 		filtersActive = $bindable(false)
@@ -67,20 +68,20 @@
 		selected?: Set<string>;
 		sortValue?: (row: T, columnId: string) => string | number | null;
 		onRowClick?: (row: T) => void;
-		/** right-click on a row — the row is selected first, then this fires.
+		/** right-click on a row; the row is selected first, then this fires.
 		 *  Prefer `rowActions`: this is the escape hatch for a caller that owns its
 		 *  own menu (and is what ResourceTable used before the menu moved here) */
 		onRowContextMenu?: (row: T, event: MouseEvent) => void;
-		/** the row's verbs, as its right-click menu — a table never grows a column
+		/** the row's verbs, as its right-click menu; a table never grows a column
 		 *  of buttons instead (see CLAUDE.md, web console conventions) */
 		rowActions?: (row: T) => ContextMenuItem[];
 		/** heading of the row's context menu (defaults to the row's id) */
 		rowLabel?: (row: T) => string;
-		/** rows rendered dimmed — de-emphasis only (disabled, withheld, not deployed).
+		/** rows rendered dimmed; de-emphasis only (disabled, withheld, not deployed).
 		 *  A dimmed row is still selectable, because the verb that un-dims it is
 		 *  usually the one the user came for */
 		rowDim?: (row: T) => boolean;
-		/** rows that cannot be selected at all — no checkbox, clicks don't select.
+		/** rows that cannot be selected at all; no checkbox, clicks don't select.
 		 *  Only for rows no bulk verb can ever apply to (e.g. external servers luna
 		 *  does not own); these render dimmed too */
 		rowLocked?: (row: T) => boolean;
@@ -89,25 +90,25 @@
 		maxHeight?: string;
 		emptyTitle?: string;
 		emptyText?: string;
-		/** rendered under the empty state — e.g. "clear the search" */
+		/** rendered under the empty state; e.g. "clear the search" */
 		emptyExtra?: Snippet;
 		/** true while any filter group is on something other than "any value" */
 		filtersActive?: boolean;
 	} = $props();
 
 	// untracked on purpose: preferences are read once per mount, and a table's
-	// id never changes under it — re-reading them would fight the user's edits
+	// id never changes under it; re-reading them would fight the user's edits
 	const initial = untrack(() => loadPrefs(tableId));
 
-	/** px — fallbacks for a column that has never been measured or resized */
+	/** px; fallbacks for a column that has never been measured or resized */
 	const DEFAULT_COL_W = 120;
 	const MIN_COL_W = 56;
 
-	/** px — mirrors the `2.75rem` the selection column is given in CSS */
+	/** px; mirrors the `2.75rem` the selection column is given in CSS */
 	const SEL_COL_W = 44;
 
 	/**
-	 * px — how far the container may drift before the measured widths are re-fitted
+	 * px; how far the container may drift before the measured widths are re-fitted
 	 * to it. Comfortably clear of a scrollbar appearing (~15px), which must never
 	 * be mistaken for a resize: re-fitting would toggle the scrollbar right back.
 	 */
@@ -291,7 +292,7 @@
 	}
 
 	/**
-	 * A dimmed row still has verbs — it is usually the one that needs them, since
+	 * A dimmed row still has verbs; it is usually the one that needs them, since
 	 * "dim" here means disabled, withheld or not deployed, and the verb that fixes
 	 * that is in this menu. Only a *locked* row is kept out of the selection.
 	 */
@@ -331,11 +332,11 @@
 	let wrapWidth = $state(0);
 	let autoWidths: Record<string, number> = $state({});
 
-	/** px — the container width the current measurements were taken at */
+	/** px; the container width the current measurements were taken at */
 	let measuredAt = $state(0);
 
 	/**
-	 * px — a column's authoritative width: the user's own resize, else what the
+	 * px; a column's authoritative width: the user's own resize, else what the
 	 * natural layout measured. A declared width only stands in until that
 	 * measurement exists: it is a hint the natural layout has already honoured, so
 	 * preferring it afterwards would hold the column at its minimum and leave the
@@ -343,7 +344,7 @@
 	 *
 	 * A declared `minWidth` bounds all three. A drag is already clamped to it, so
 	 * a stored width below it can only be one saved before the column asked for
-	 * more — and the alternative is a column that stays too narrow for its own
+	 * more; and the alternative is a column that stays too narrow for its own
 	 * content until the user happens to drag it.
 	 */
 	function sizeOf(col: Column): number | undefined {
@@ -395,11 +396,11 @@
 	 * "clear the widths and read them back in the next effect": Svelte coalesces
 	 * the clear with the re-measure into a single flush, so that DOM state is never
 	 * reached and the effect just re-reads the widths already in force. Reading a
-	 * rect forces the reflow, so the natural geometry is real — and the widths are
+	 * rect forces the reflow, so the natural geometry is real; and the widths are
 	 * back in place by the end of the function, well before the frame is painted.
 	 *
 	 * The user's own resizes must come off for the pass, or a pinned neighbour
-	 * would leave the others measuring only the space it did not take — reloading
+	 * would leave the others measuring only the space it did not take; reloading
 	 * a table with one widened column would quietly re-compact everything around
 	 * it. Widths a page *declares* stay on: they are a static hint, identical on
 	 * every load, and the layout being measured is meant to respect them.
@@ -411,8 +412,8 @@
 		const savedWidth = table.style.width;
 		const offset = selectable !== 'none' ? 1 : 0;
 
-		// the selection column is left alone — it is a fixed box in CSS, not a
-		// measured one — while the filler must not hold space during the pass
+		// the selection column is left alone; it is a fixed box in CSS, not a
+		// measured one; while the filler must not hold space during the pass
 		visibleCols.forEach((col, ci) => {
 			const element = cols[ci + offset];
 
@@ -440,7 +441,7 @@
 			// a floor leaves behind disappear into the filler
 			const natural = Math.floor(head?.getBoundingClientRect().width ?? 0);
 
-			// a cell that measures as nothing is not a column worth keeping — a
+			// a cell that measures as nothing is not a column worth keeping; a
 			// declared or default width beats collapsing it to a sliver
 			const measured = natural >= MIN_COL_W ? natural : (col.width ?? DEFAULT_COL_W);
 
@@ -639,11 +640,11 @@
 		const from = (page - 1) * effPageSize + 1;
 		const to = Math.min(page * effPageSize, sorted.length);
 
-		return `${from}–${to} of ${sorted.length}`;
+		return `${from}-${to} of ${sorted.length}`;
 	});
 
 	/**
-	 * Column width in rem, from a resize, a declared width or the measured one —
+	 * Column width in rem, from a resize, a declared width or the measured one -
 	 * and nothing at all during the measuring pass, which must stay natural.
 	 */
 	function colWidth(col: Column): string | undefined {
@@ -657,14 +658,14 @@
 	}
 
 	const STICKY_FIRST_OPTIONS: Array<{ value: StickyFirst; label: string }> = [
-		{ value: 0, label: 'None' },
-		{ value: 1, label: 'First column' },
-		{ value: 2, label: 'First two columns' }
+		{ value: 0, label: t('web.table.stickyNone') },
+		{ value: 1, label: t('web.table.stickyFirst') },
+		{ value: 2, label: t('web.table.stickyFirstTwo') }
 	];
 
 	const STICKY_LAST_OPTIONS = [
-		{ value: false, label: 'None' },
-		{ value: true, label: 'Last column' }
+		{ value: false, label: t('web.table.stickyNone') },
+		{ value: true, label: t('web.table.stickyLast') }
 	];
 </script>
 
@@ -731,7 +732,7 @@
 									<Checkbox
 										checked={allSelected}
 										indeterminate={someSelected}
-										label="Select all resources"
+										label={t('web.table.selectAll')}
 										onchange={toggleAll}
 									/>
 								{/if}
@@ -838,12 +839,12 @@
 	minWidth="14rem"
 />
 
-<Modal title="Preferences" bind:open={prefsOpen} wide>
+<Modal title={t('web.table.preferences')} bind:open={prefsOpen} wide>
 	<div class="prefs">
 		<div class="pcol">
 			{#if paging}
 				<div class="pgroup">
-					<div class="ptitle">Select page size</div>
+					<div class="ptitle">{t('web.table.selectPageSize')}</div>
 					{#each PAGE_SIZES as size}
 						<label class="prow">
 							<input
@@ -852,7 +853,7 @@
 								checked={draft.pageSize === size}
 								onchange={() => (draft.pageSize = size)}
 							/>
-							<span>{size} items</span>
+							<span>{t('web.table.itemCount', { count: size })}</span>
 						</label>
 					{/each}
 				</div>
@@ -862,43 +863,41 @@
 				<label class="prow top">
 					<Checkbox
 						checked={draft.wrapLines}
-						label="Wrap lines"
+						label={t('web.table.wrapLines')}
 						onchange={(value) => (draft.wrapLines = value)}
 					/>
 					<span>
-						<b>Wrap lines</b>
-						<em>Check to see all the text and wrap the lines</em>
+						<b>{t('web.table.wrapLines')}</b>
+						<em>{t('web.table.wrapLinesHint')}</em>
 					</span>
 				</label>
 				<label class="prow top">
 					<Checkbox
 						checked={draft.striped}
-						label="Striped rows"
+						label={t('web.table.striped')}
 						onchange={(value) => (draft.striped = value)}
 					/>
 					<span>
-						<b>Striped rows</b>
-						<em>Select to add alternating shaded rows</em>
+						<b>{t('web.table.striped')}</b>
+						<em>{t('web.table.stripedHint')}</em>
 					</span>
 				</label>
 				<label class="prow top">
 					<Checkbox
 						checked={draft.compact}
-						label="Compact mode"
+						label={t('web.table.compact')}
 						onchange={(value) => (draft.compact = value)}
 					/>
 					<span>
-						<b>Compact mode</b>
-						<em>Select to display content in a denser, more compact mode</em>
+						<b>{t('web.table.compact')}</b>
+						<em>{t('web.table.compactHint')}</em>
 					</span>
 				</label>
 			</div>
 
 			<div class="pgroup">
-				<div class="ptitle">Stick first column(s)</div>
-				<div class="phint">
-					Keep the first column(s) visible while horizontally scrolling the table content.
-				</div>
+				<div class="ptitle">{t('web.table.stickFirstTitle')}</div>
+				<div class="phint">{t('web.table.stickFirstHint')}</div>
 				{#each STICKY_FIRST_OPTIONS as option}
 					<label class="prow">
 						<input
@@ -913,10 +912,8 @@
 			</div>
 
 			<div class="pgroup">
-				<div class="ptitle">Stick last column</div>
-				<div class="phint">
-					Keep the last column visible while horizontally scrolling the table content.
-				</div>
+				<div class="ptitle">{t('web.table.stickLastTitle')}</div>
+				<div class="phint">{t('web.table.stickLastHint')}</div>
 				{#each STICKY_LAST_OPTIONS as option}
 					<label class="prow">
 						<input
@@ -932,8 +929,8 @@
 		</div>
 
 		<div class="pcol right">
-			<div class="ptitle">Column preferences</div>
-			<div class="phint">Customize the columns visibility and order.</div>
+			<div class="ptitle">{t('web.table.columnPreferences')}</div>
+			<div class="phint">{t('web.table.columnsHint')}</div>
 			<div class="clist">
 				{#each draftColumns as col (col.id)}
 					<div
@@ -952,7 +949,7 @@
 						<span class="cname">{col.label}</span>
 						<Toggle
 							checked={!draft.hidden.has(col.id)}
-							label="Show {col.label}"
+							label={t('web.table.showColumn', { name: col.label })}
 							onchange={() => toggleDraftColumn(col.id)}
 						/>
 					</div>
@@ -961,8 +958,8 @@
 		</div>
 	</div>
 	{#snippet footer()}
-		<Btn variant="link" onclick={() => (prefsOpen = false)}>Close modal</Btn>
-		<Btn variant="primary" onclick={confirmPrefs}>Confirm</Btn>
+		<Btn variant="link" onclick={() => (prefsOpen = false)}>{t('web.common.closeModal')}</Btn>
+		<Btn variant="primary" onclick={confirmPrefs}>{t('web.common.confirm')}</Btn>
 	{/snippet}
 </Modal>
 
@@ -1031,7 +1028,7 @@
 		overflow: auto;
 	}
 
-	// the width is set inline, from the sum of the column widths — the table sizes
+	// the width is set inline, from the sum of the column widths; the table sizes
 	// itself to its columns so that a resize can overflow into .wrap's scroll
 	// instead of being paid for by the neighbouring columns
 	table {
@@ -1052,7 +1049,7 @@
 		user-select: none;
 
 		// header labels share the body cells' 0.875rem inset so both sit on the same
-		// vertical axis — the th itself must not add any of its own
+		// vertical axis; the th itself must not add any of its own
 		.hcell {
 			display: flex;
 			align-items: center;
@@ -1144,7 +1141,7 @@
 	// The resize handle *is* the column separator: there is no header border,
 	// just a short rule on the boundary inside a wide grab area, so the divider
 	// and the drag target can never drift apart. The grab area overhangs into the
-	// next column but the rule itself stays flush inside this one — a th sets up
+	// next column but the rule itself stays flush inside this one; a th sets up
 	// its own stacking context, so anything crossing the boundary is painted over
 	// by the following header cell and the divider vanishes at some widths.
 	.rz {
@@ -1162,7 +1159,7 @@
 
 		// The last column's grab area may not overhang: it would reach past the
 		// table's own right edge and give .wrap a scrollbar with nothing to scroll.
-		// Half the width keeps the live area identical to every other column's —
+		// Half the width keeps the live area identical to every other column's -
 		// the overhanging half is painted over by the next header anyway.
 		&.edge {
 			right: 0;
@@ -1186,12 +1183,12 @@
 	// ---- body ----
 	// Every cell reserves the selection edges up front (0.125rem above, the row
 	// divider below, outer sides only on the end cells) so selecting a row never
-	// moves anything. Interior cells deliberately have no side borders — a
+	// moves anything. Interior cells deliberately have no side borders; a
 	// coloured top border mitering into a transparent side border is what leaves
 	// little empty triangles at the cell corners.
 	//
 	// The filler cell is always in the DOM (0-wide once the columns overflow), so
-	// the row's own last cell is reliably :nth-last-child(2) — never :last-child.
+	// the row's own last cell is reliably :nth-last-child(2); never :last-child.
 	td {
 		padding: 0;
 		border-top: 0.125rem solid transparent;
@@ -1263,7 +1260,7 @@
 
 	// A run of adjacent selected rows reads as one block: each boundary is drawn
 	// once, by the *lower* row's top edge, and the run's closing edge is drawn by
-	// the row that follows it — so neighbours never stack two borders.
+	// the row that follows it; so neighbours never stack two borders.
 	tbody tr.selected > td {
 		background-color: var(--bg-selected);
 		border-top-color: var(--link);
@@ -1303,7 +1300,7 @@
 		border-bottom-color: var(--link);
 	}
 
-	// Dim is de-emphasis only, so the row keeps its hover and its pointer — it can
+	// Dim is de-emphasis only, so the row keeps its hover and its pointer; it can
 	// still be selected, and the verb that un-dims it is the one being looked for.
 	tbody tr.dim {
 		color: var(--text-secondary);
@@ -1322,7 +1319,7 @@
 	// It exists only to absorb the space left over when the columns are narrower
 	// than the viewport, so the header strip, the striped rows and the row rules
 	// still reach the right edge without a real column being stretched. It shares
-	// the row's stripe and hover, but stays outside the selection block — those
+	// the row's stripe and hover, but stays outside the selection block; those
 	// edges belong to the last real column.
 	.filler {
 		padding: 0;

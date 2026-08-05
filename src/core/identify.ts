@@ -1,5 +1,5 @@
 /**
- * Mapping an addon luna already has to the project it came from — the operation
+ * Mapping an addon luna already has to the project it came from; the operation
  * that turns a hand-uploaded or adopted file into a provider-managed one, so
  * update checks, channels and the downgrade guard start applying to it.
  *
@@ -11,7 +11,7 @@
  *
  *   exact    the provider published a hash and the local file matches it, so
  *            the version is a fact rather than a claim
- *   likely   the file name or the byte size matches exactly one version — the
+ *   likely   the file name or the byte size matches exactly one version; the
  *            usual case for CurseForge and Smithed, which publish weak hashes
  *            or none at all
  *   unknown  nothing matched. The mapping is still worth making (the project is
@@ -27,6 +27,7 @@ import type { AddonType, AddonProject, AddonVersion, ReleaseChannel } from "./se
 import { getProject, getVersions, primaryFile, remoteRefFor } from "./services/providers";
 import { hashesOfFile } from "./services/download";
 import type { ProviderId, RemoteRef } from "./types";
+import { t } from "../shared/i18n";
 
 /** How a local file was tied to a published version, strongest first. */
 export type MatchBasis = "sha512" | "sha256" | "sha1" | "filename" | "size";
@@ -48,7 +49,7 @@ export interface LocalFile {
 export interface IdentityMatch {
 	versionId: string;
 	versionNumber: string;
-	/** Channel the provider published it on — a mapping adopts this */
+	/** Channel the provider published it on; a mapping adopts this */
 	channel: ReleaseChannel;
 	publishedAt: string;
 	gameVersions?: string[];
@@ -74,7 +75,7 @@ export interface IdentityProbe {
 	confidence: IdentityConfidence;
 	/** The one version luna would record; absent when nothing matched */
 	best?: IdentityMatch;
-	/** Every match found, best first — an ambiguous size match lists them all */
+	/** Every match found, best first; an ambiguous size match lists them all */
 	matches: IdentityMatch[];
 	/** The project's newest version on the release channel, matched or not:
 	 *  what an unidentified mapping would pull on its first update */
@@ -111,7 +112,7 @@ function asMatch(version: AddonVersion, basis: MatchBasis, exact: boolean): Iden
 /**
  * Which versions the local file could be, best first.
  *
- * A hash match ends the search — there is nothing stronger to find, and a second
+ * A hash match ends the search; there is nothing stronger to find, and a second
  * version with the same bytes is the same build re-tagged. Without one, name and
  * size are reported as what they are: candidates. Size is only offered when it
  * picks out a single version, because "some jar of exactly this length" is not
@@ -170,7 +171,7 @@ export async function probeIdentity(
 	const found = await getProject(provider, project, type);
 
 	if (!found) {
-		throw new Error(`${provider} has no ${type} project "${project}"`);
+		throw new Error(t("core.identify.noProject", { provider, type, project }));
 	}
 
 	const remote = remoteRefFor(provider, found);
@@ -216,7 +217,7 @@ export interface IdentityChoice {
 /**
  * The match a mapping should write, given the operator's choice.
  *
- * A named version wins outright — the operator looked at the list. Otherwise
+ * A named version wins outright; the operator looked at the list. Otherwise
  * the probe's own best match stands, and `unidentified` throws all of it away
  * on purpose.
  */
@@ -232,7 +233,7 @@ export function chosenMatch(
 		const named = probe.versions.find((version) => version.versionId === choice.versionId);
 
 		if (!named) {
-			throw new Error(`${probe.project.slug} has no version ${choice.versionId}`);
+			throw new Error(t("core.identify.noVersion", { slug: probe.project.slug, version: choice.versionId }));
 		}
 
 		return named;

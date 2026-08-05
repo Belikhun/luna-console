@@ -16,7 +16,7 @@
 			return;
 		}
 
-		// clamping writes back x/y — read them untracked so it settles in one pass
+		// clamping writes back x/y; read them untracked so it settles in one pass
 		untrack(() => clampTooltip(card!.offsetWidth, card!.offsetHeight));
 	});
 </script>
@@ -96,7 +96,7 @@
 		font-weight: 700;
 		line-height: 1.25rem;
 
-		// nowrap plus a max-width just spills the text out of the card — long
+		// nowrap plus a max-width just spills the text out of the card; long
 		// tooltips have to wrap inside it, as the dashboard's do
 		max-width: 22rem;
 		white-space: normal;

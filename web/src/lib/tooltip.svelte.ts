@@ -19,7 +19,7 @@ interface TooltipStore {
 	target: HTMLElement | null;
 	content: string;
 	position: TooltipPosition;
-	/** in the DOM — stays true through the fade-out */
+	/** in the DOM; stays true through the fade-out */
 	mounted: boolean;
 	/** faded in */
 	visible: boolean;
@@ -123,7 +123,7 @@ export function hideTooltip(el?: HTMLElement): void {
 	}, HIDE_DELAY_MS);
 }
 
-/** Re-read the hovered element's content thunk — e.g. "Copy" → "Copied". */
+/** Re-read the hovered element's content thunk; e.g. "Copy" → "Copied". */
 export function refreshTooltip(): void {
 	if (TooltipState.target && activeContent) {
 		TooltipState.content = activeContent();

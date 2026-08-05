@@ -25,7 +25,7 @@ export function ok(msg: string): void {
 	console.log(`${Sym.check} ${msg}`);
 }
 
-/** Warning line — the operation went through, but something needs attention. */
+/** Warning line: the operation went through, but something needs attention. */
 export function warn(msg: string): void {
 	console.log(`${pc.yellow("!")} ${pc.yellow(msg)}`);
 }
@@ -182,7 +182,7 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 /** Cells in a node's progress bar. */
 const BAR_CELLS = 12;
 
-/** Repaint interval — a burst of reports must not cost a redraw each. */
+/** Repaint interval; a burst of reports must not cost a redraw each. */
 const REPAINT_MS = 80;
 
 /** Colour a status's own text, matching the info/ok/warn/fail lines above. */
@@ -303,7 +303,7 @@ export class ProgressView {
 		// a pty with no size reports 0 columns, which would suppress every message
 		const columns = process.stdout.columns || 80;
 		const room = columns - width(head) - 4;
-		const tail = node.message && room > 8 ? pc.dim(` — ${trim(node.message, room)}`) : "";
+		const tail = node.message && room > 8 ? pc.dim(` · ${trim(node.message, room)}`) : "";
 
 		out.push(head + tail);
 

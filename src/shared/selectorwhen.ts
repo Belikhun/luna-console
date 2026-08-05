@@ -4,7 +4,7 @@
  * The plugin evaluates these by splitting on `||`, then on `&&`, both
  * quote-aware but **not** paren-aware: `(a || b) && c` splits at the top-level
  * `||` first and evaluates as something the author did not write. So the
- * structured form here is deliberately flat — an OR of ANDs, nothing nested —
+ * structured form here is deliberately flat; an OR of ANDs, nothing nested -
  * and anything that does not fit round-trips as raw text instead.
  */
 
@@ -119,7 +119,7 @@ function parseTerm(raw: string): WhenTerm | undefined {
 
 	if (comparison) {
 		// a negated comparison is representable in the plugin but reads badly and
-		// the editor has no control for it — keep it as raw text
+		// the editor has no control for it; keep it as raw text
 		if (negated) {
 			return undefined;
 		}
@@ -142,7 +142,7 @@ function parseTerm(raw: string): WhenTerm | undefined {
  * Parse a condition into the flat structure the editor can render.
  *
  * @returns undefined when the expression is valid for the plugin but not
- *          representable here (parentheses, a negated comparison) — the caller
+ *          representable here (parentheses, a negated comparison); the caller
  *          keeps the original string rather than rewriting it
  */
 export function parseWhen(expression: string): WhenExpression | undefined {

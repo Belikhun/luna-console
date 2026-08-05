@@ -1,4 +1,4 @@
-/** Bridge mirror of core/standardize — the migration is a daemon job. */
+/** Bridge mirror of core/standardize; the migration is a daemon job. */
 
 import type * as core from "../../core/standardize";
 

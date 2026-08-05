@@ -24,21 +24,22 @@ import {
 	readServerProperties,
 	settingSpec,
 } from "../../client/core/settings";
+import { t } from "../../shared/i18n";
 
 /** Coloured state glyph + label for a status table row. */
 function stateCell(status: inst.InstanceStatus): string {
 	switch (status.state) {
 		case "running":
-			return `${Sym.ok} ${pc.green("running")}`;
+			return `${Sym.ok} ${pc.green(t("cli.instance.stateRunning"))}`;
 
 		case "starting":
-			return `${Sym.warn} ${pc.yellow("starting")}`;
+			return `${Sym.warn} ${pc.yellow(t("cli.instance.stateStarting"))}`;
 
 		case "stopped":
-			return `${Sym.off} ${pc.dim("stopped")}`;
+			return `${Sym.off} ${pc.dim(t("cli.instance.stateStopped"))}`;
 
 		case "unknown":
-			return `${Sym.warn} ${pc.yellow("unknown")}`;
+			return `${Sym.warn} ${pc.yellow(t("cli.instance.stateUnknown"))}`;
 	}
 }
 
@@ -58,12 +59,12 @@ async function resolveNames(
 	}
 
 	if (namesArg.length === 0) {
-		throw new UsageError("give instance name(s) or --all");
+		throw new UsageError(t("cli.instance.namesOrAll"));
 	}
 
 	for (const name of namesArg) {
 		if (!managedInstances(cfg)[name]) {
-			throw new UsageError(`unknown instance: ${name}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name }));
 		}
 	}
 
@@ -72,12 +73,12 @@ async function resolveNames(
 
 command({
 	path: ["status"],
-	desc: "Show status of all instances (or one)",
+	desc: t("cli.instance.status.desc"),
 	args: [{ name: "instance", complete: instanceNames }],
 
 	handler: async (args) => {
 		const cfg = await loadCluster();
-		const spin = new Spinner().start("querying instances...");
+		const spin = new Spinner().start(t("cli.instance.status.querying"));
 
 		const statuses = args[0]
 			? [await inst.getStatus(cfg, args[0])]
@@ -105,11 +106,26 @@ command({
 			pc.dim(`:${status.inst.port}`),
 			status.inst.memory,
 			status.uptimeMs !== undefined ? fmtDuration(status.uptimeMs) : pc.dim("—"),
-			status.players ? `${status.players.online}/${status.players.max} online` : pc.dim("—"),
+			status.players
+				? t("cli.instance.status.playersOnline", {
+						online: status.players.online,
+						max: status.players.max,
+					})
+				: pc.dim("—"),
 		]);
 
 		console.log();
-		printTable(rows, { head: ["", "instance", "software", "port", "mem", "uptime", "players"] });
+		printTable(rows, {
+			head: [
+				"",
+				t("cli.head.instance"),
+				t("cli.head.software"),
+				t("cli.head.port"),
+				t("cli.head.mem"),
+				t("cli.head.uptime"),
+				t("cli.head.players"),
+			],
+		});
 
 		const externals = Object.entries(cfg.instances).filter(([, entry]) => entry.external);
 
@@ -120,7 +136,7 @@ command({
 				externals.map(([name, entry]) => [
 					Sym.dot,
 					pc.dim(name),
-					pc.dim("external"),
+					pc.dim(t("cli.instance.status.external")),
 					pc.dim(entry.external!),
 				]),
 			);
@@ -132,9 +148,9 @@ command({
 
 command({
 	path: ["start"],
-	desc: "Start instance(s), or --all (proxy first)",
+	desc: t("cli.instance.start.desc"),
 	args: [{ name: "instance", variadic: true, complete: instanceNames }],
-	opts: [{ flag: "--all", desc: "start every managed instance" }],
+	opts: [{ flag: "--all", desc: t("cli.instance.start.optAll") }],
 
 	handler: async (args, opts) => {
 		const { cfg, names } = await resolveNames(args, !!opts.all, "start");
@@ -150,11 +166,13 @@ command({
 
 				if (res.outcome === "started") {
 					ok(
-						`${pc.bold(name)} started in screen ${pc.cyan(inst.sessionName(cfg, name))} ` +
-							pc.dim(`(${fmtDuration(res.tookMs)})`),
+						`${t("cli.instance.start.started", {
+							name: pc.bold(name),
+							session: pc.cyan(inst.sessionName(cfg, name)),
+						})} ${pc.dim(`(${fmtDuration(res.tookMs)})`)}`,
 					);
 				} else {
-					info(`${pc.bold(name)} already running`);
+					info(t("cli.instance.start.alreadyRunning", { name: pc.bold(name) }));
 				}
 			} catch (err) {
 				view.stop();
@@ -167,9 +185,9 @@ command({
 
 command({
 	path: ["stop"],
-	desc: "Gracefully stop instance(s), or --all (proxy last)",
+	desc: t("cli.instance.stop.desc"),
 	args: [{ name: "instance", variadic: true, complete: instanceNames }],
-	opts: [{ flag: "--all", desc: "stop every managed instance" }],
+	opts: [{ flag: "--all", desc: t("cli.instance.stop.optAll") }],
 
 	handler: async (args, opts) => {
 		const { cfg, names } = await resolveNames(args, !!opts.all, "stop");
@@ -184,11 +202,13 @@ command({
 				view.stop();
 
 				if (res.outcome === "stopped") {
-					ok(`${pc.bold(name)} stopped ${pc.dim(`(${fmtDuration(res.tookMs)})`)}`);
+					ok(
+						`${t("cli.instance.stop.stopped", { name: pc.bold(name) })} ${pc.dim(`(${fmtDuration(res.tookMs)})`)}`,
+					);
 				} else if (res.outcome === "forced") {
-					warn(`${name}: graceful stop timed out, sent SIGTERM`);
+					warn(t("cli.instance.stop.forced", { name }));
 				} else {
-					info(`${pc.bold(name)} not running`);
+					info(t("cli.instance.stop.notRunning", { name: pc.bold(name) }));
 				}
 			} catch (err) {
 				view.stop();
@@ -201,9 +221,9 @@ command({
 
 command({
 	path: ["restart"],
-	desc: "Restart instance(s), or --all",
+	desc: t("cli.instance.restart.desc"),
 	args: [{ name: "instance", variadic: true, complete: instanceNames }],
-	opts: [{ flag: "--all", desc: "restart every managed instance" }],
+	opts: [{ flag: "--all", desc: t("cli.instance.restart.optAll") }],
 
 	handler: async (args, opts) => {
 		const { cfg, names } = await resolveNames(args, !!opts.all, "stop");
@@ -216,7 +236,7 @@ command({
 				await lifecycle.restartInstanceTracked(cfg, name, progress);
 
 				view.stop();
-				ok(`${pc.bold(name)} restarted`);
+				ok(t("cli.instance.restart.restarted", { name: pc.bold(name) }));
 			} catch (err) {
 				view.stop();
 
@@ -228,7 +248,7 @@ command({
 
 command({
 	path: ["console"],
-	desc: "Attach to an instance console (detach: Ctrl+A then D)",
+	desc: t("cli.instance.console.desc"),
 	args: [{ name: "instance", required: true, complete: instanceNames }],
 
 	handler: async (args) => {
@@ -236,23 +256,28 @@ command({
 		const name = args[0]!;
 
 		if (!managedInstances(cfg)[name]) {
-			throw new UsageError(`unknown instance: ${name}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name }));
 		}
 
 		const session = inst.sessionName(cfg, name);
 
 		if (!(await screen.sessionExists(session))) {
-			throw new Bail(`${name} is not running`);
+			throw new Bail(t("cli.instance.notRunning", { name }));
 		}
 
-		info(`attaching to ${pc.cyan(session)} — detach with ${pc.bold("Ctrl+A D")}`);
+		info(
+			t("cli.instance.console.attaching", {
+				session: pc.cyan(session),
+				keys: pc.bold("Ctrl+A D"),
+			}),
+		);
 		await screen.attach(session);
 	},
 });
 
 command({
 	path: ["send"],
-	desc: "Send a console command to a running instance",
+	desc: t("cli.instance.send.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "command", required: true, variadic: true },
@@ -263,10 +288,15 @@ command({
 		const [name, ...cmd] = args as [string, ...string[]];
 
 		if (!(await inst.sendCommand(cfg, name, cmd.join(" ")))) {
-			throw new Bail(`${name} is not running`);
+			throw new Bail(t("cli.instance.notRunning", { name }));
 		}
 
-		ok(`sent ${pc.cyan(cmd.join(" "))} to ${pc.bold(name)}`);
+		ok(
+			t("cli.instance.send.sent", {
+				command: pc.cyan(cmd.join(" ")),
+				name: pc.bold(name),
+			}),
+		);
 	},
 });
 
@@ -282,7 +312,7 @@ function parseSettingPairs(text: string | undefined): Record<string, string> {
 		const eq = pair.indexOf("=");
 
 		if (eq === -1) {
-			throw new UsageError(`--set expects key=value pairs, got "${pair}"`);
+			throw new UsageError(t("cli.instance.create.badSetPair", { pair }));
 		}
 
 		out[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
@@ -293,22 +323,18 @@ function parseSettingPairs(text: string | undefined): Record<string, string> {
 
 command({
 	path: ["instance", "create"],
-	desc: "Create a new paper instance and register it with the proxy",
+	desc: t("cli.instance.create.desc"),
 	args: [{ name: "name", required: true }],
 	opts: [
-		{ flag: "--version", desc: "MC version (default: latest paper release)", value: true },
-		{ flag: "--port", desc: "game port (default: auto from range)", value: true },
-		{ flag: "--memory", desc: "heap size, e.g. 2G (default 2G)", value: true },
-		{ flag: "--profile", desc: "java profile (default aikar)", value: true },
-		{
-			flag: "--set",
-			desc: "server settings, e.g. difficulty=hard,max-players=100 (see instance settings)",
-			value: true,
-		},
-		{ flag: "--java-args", desc: 'extra JVM flags, e.g. "-XX:+UseZGC"', value: true },
-		{ flag: "--groups", desc: "addon groups beside default, comma-separated", value: true },
-		{ flag: "--no-register", desc: "don't register in velocity.toml" },
-		{ flag: "--daemon", desc: "follower daemon that will own the instance", value: true },
+		{ flag: "--version", desc: t("cli.instance.create.optVersion"), value: true },
+		{ flag: "--port", desc: t("cli.instance.create.optPort"), value: true },
+		{ flag: "--memory", desc: t("cli.instance.create.optMemory"), value: true },
+		{ flag: "--profile", desc: t("cli.instance.create.optProfile"), value: true },
+		{ flag: "--set", desc: t("cli.instance.create.optSet"), value: true },
+		{ flag: "--java-args", desc: t("cli.instance.create.optJavaArgs"), value: true },
+		{ flag: "--groups", desc: t("cli.instance.create.optGroups"), value: true },
+		{ flag: "--no-register", desc: t("cli.instance.create.optNoRegister") },
+		{ flag: "--daemon", desc: t("cli.instance.create.optDaemon"), value: true },
 	],
 
 	handler: async (args, opts) => {
@@ -327,16 +353,16 @@ command({
 
 		for (const group of groups ?? []) {
 			if (!lock.groups?.[group]) {
-				throw new UsageError(`unknown addon group: ${group}`);
+				throw new UsageError(t("cli.instance.create.unknownGroup", { name: group }));
 			}
 		}
 
 		let version = opts.version as string | undefined;
 
 		if (!version) {
-			const spin = new Spinner().start("resolving latest paper version...");
+			const spin = new Spinner().start(t("cli.instance.create.resolvingVersion"));
 
-			// plain x.y / x.y.z only — the list also carries snapshots and pre-releases
+			// plain x.y / x.y.z only; the list also carries snapshots and pre-releases
 			const versions = await listVersions("paper");
 
 			version = versions
@@ -350,11 +376,11 @@ command({
 		// one node per phase, weighted by how long each actually takes, so the
 		// roll-up moves at a believable rate (the jar download dominates)
 		const progress = new ProgressReporter(`create ${name}`).weighOwn(0);
-		const files = progress.child("Server files", 6);
-		const plugins = progress.child("Plugins", 2);
-		const packs = progress.child("Packs", 1);
-		const ports = progress.child("Port allocations", 1);
-		const proxy = progress.child("Proxy registration", 1);
+		const files = progress.child(t("cli.instance.create.phaseFiles"), 6);
+		const plugins = progress.child(t("cli.instance.create.phasePlugins"), 2);
+		const packs = progress.child(t("cli.instance.create.phasePacks"), 1);
+		const ports = progress.child(t("cli.instance.create.phasePorts"), 1);
+		const proxy = progress.child(t("cli.instance.create.phaseProxy"), 1);
 
 		const view = new ProgressView(progress).start();
 
@@ -375,14 +401,17 @@ command({
 			await saveCluster(cfg);
 
 			const deployed = await plugins.task(
-				{ start: "deploying wildcard-targeted plugins", done: "plugins deployed" },
+				{
+					start: t("cli.instance.create.deployingPlugins"),
+					done: t("cli.instance.create.pluginsDeployed"),
+				},
 				(step) => deploy(cfg, lock, { instances: [name], reporter: step }),
 			);
 
-			plugins.complete(`${deployed.length} plugin(s) deployed`);
+			plugins.complete(t("cli.instance.create.pluginCount", { count: deployed.length }));
 
 			// the group's other kinds: pack rules for the proxy, data packs for the world
-			await packs.task({ start: "applying addon group packs" }, async (step) => {
+			await packs.task({ start: t("cli.instance.create.applyingPacks") }, async (step) => {
 				const packsLock = await loadPacksLock();
 				const applied = await applyAddonGroups(cfg, packsLock, lock.groups, {
 					instances: [name],
@@ -398,48 +427,58 @@ command({
 					1,
 					"okay",
 					applied.respacks.length || installed
-						? `${applied.respacks.length} pack rule(s), ${installed} data pack(s)`
-						: "no packs for this instance",
+						? t("cli.instance.create.packCounts", {
+								rules: applied.respacks.length,
+								datapacks: installed,
+							})
+						: t("cli.instance.create.noPacks"),
 				);
 			});
 
-			await ports.task({ start: "allocating plugin ports", done: "plugin ports allocated" }, async () => {
-				await ensurePortAllocations(cfg, lock);
-				await saveCluster(cfg);
-				await saveLock(lock);
-			});
+			await ports.task(
+				{
+					start: t("cli.instance.create.allocatingPorts"),
+					done: t("cli.instance.create.portsAllocated"),
+				},
+				async () => {
+					await ensurePortAllocations(cfg, lock);
+					await saveCluster(cfg);
+					await saveLock(lock);
+				},
+			);
 
 			if (opts["no-register"]) {
-				proxy.complete("skipped — --no-register");
+				proxy.complete(t("cli.instance.create.registerSkipped"));
 			} else {
-				await proxy.task(
-					{ start: "registering in velocity.toml" },
-					async (step) => {
-						const sync = await syncVelocityToml(cfg);
+				await proxy.task({ start: t("cli.instance.create.registering") }, async (step) => {
+					const sync = await syncVelocityToml(cfg);
 
-						step.report(
-							1,
-							"okay",
-							sync.changed
-								? "velocity.toml updated (reload the proxy to apply)"
-								: "velocity.toml already up to date",
-						);
-					},
-				);
+					step.report(
+						1,
+						"okay",
+						sync.changed
+							? t("cli.instance.create.velocityUpdated")
+							: t("cli.instance.create.velocityUpToDate"),
+					);
+				});
 			}
 
 			view.stop();
 
 			ok(
-				`created ${pc.bold(name)} — paper ${version} build ${res.build.build}, ` +
-					`port ${pc.cyan(String(res.port))}`,
+				t("cli.instance.create.created", {
+					name: pc.bold(name),
+					version: version,
+					build: res.build.build,
+					port: pc.cyan(String(res.port)),
+				}),
 			);
 
 			if (javaArgs.length) {
-				info(`extra JVM flags: ${pc.cyan(javaArgs.join(" "))}`);
+				info(t("cli.instance.create.jvmFlags", { flags: pc.cyan(javaArgs.join(" ")) }));
 			}
 
-			info(`start it with: ${pc.cyan(`luna start ${name}`)}`);
+			info(t("cli.instance.startHint", { command: pc.cyan(`luna start ${name}`) }));
 		} catch (err) {
 			view.stop();
 
@@ -452,7 +491,7 @@ command({
  * Account for the addons an instance already holds, and print the outcome.
  *
  * Everything the server brought stays where it is; only files that are already
- * in the pool — same bytes, or the standardized pool file name — are registered
+ * in the pool (same bytes, or the standardized pool file name) are registered
  * as deployments of that addon. Shared by `instance adopt` (which runs it once,
  * on registration) and `instance adopt-addons` (which re-runs it after the pool
  * has grown).
@@ -470,8 +509,10 @@ async function adoptAddons(cfg: ClusterConfig, name: string): Promise<void> {
 
 	if (adoption.adopted.length) {
 		ok(
-			`${adoption.adopted.length} addon(s) recognised from the pool` +
-				(registered.length ? `, ${registered.length} newly registered` : " (already registered)"),
+			t("cli.instance.adopt.recognised", { count: adoption.adopted.length }) +
+				(registered.length
+					? t("cli.instance.adopt.newlyRegistered", { count: registered.length })
+					: ` ${t("cli.instance.adopt.alreadyRegistered")}`),
 		);
 
 		for (const item of adoption.adopted) {
@@ -483,21 +524,21 @@ async function adoptAddons(cfg: ClusterConfig, name: string): Promise<void> {
 	}
 
 	if (adoption.unmanaged.length) {
-		info(`${adoption.unmanaged.length} addon(s) left unmanaged — the server keeps its own`);
+		info(t("cli.instance.adopt.unmanaged", { count: adoption.unmanaged.length }));
 
 		for (const item of adoption.unmanaged.slice(0, 10)) {
 			console.log(`    ${pc.dim(item.path)}`);
 		}
 
 		if (adoption.unmanaged.length > 10) {
-			console.log(pc.dim(`    …and ${adoption.unmanaged.length - 10} more`));
+			console.log(pc.dim(`    ${t("cli.instance.adopt.andMore", { count: adoption.unmanaged.length - 10 })}`));
 		}
 	}
 }
 
 command({
 	path: ["instance", "adopt-addons"],
-	desc: "Re-check an instance's own plugins/mods/data packs against the pool",
+	desc: t("cli.instance.adoptAddons.desc"),
 	args: [{ name: "instance", required: true, complete: instanceNames }],
 
 	handler: async (args) => {
@@ -505,7 +546,7 @@ command({
 		const name = args[0]!;
 
 		if (!managedInstances(cfg)[name]) {
-			throw new UsageError(`unknown instance: ${name}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name }));
 		}
 
 		await adoptAddons(cfg, name);
@@ -514,18 +555,18 @@ command({
 
 command({
 	path: ["instance", "adopt"],
-	desc: "Register a server directory that already exists as a managed instance",
+	desc: t("cli.instance.adopt.desc"),
 	args: [{ name: "name", required: true }],
 	opts: [
-		{ flag: "--daemon", desc: "daemon whose disk holds the directory", value: true },
-		{ flag: "--dir", desc: "directory name under that daemon's root (default: the name)", value: true },
-		{ flag: "--port", desc: "override the detected game port", value: true },
-		{ flag: "--memory", desc: "override the detected heap size, e.g. 8G", value: true },
-		{ flag: "--profile", desc: "java profile (default aikar)", value: true },
-		{ flag: "--java", desc: "pin a java binary — modpacks often need an older JDK", value: true },
-		{ flag: "--java-args", desc: 'extra JVM flags, e.g. "-XX:+UseZGC"', value: true },
-		{ flag: "--no-register", desc: "don't register in velocity.toml" },
-		{ flag: "--dry-run", desc: "show what was detected, registering nothing" },
+		{ flag: "--daemon", desc: t("cli.instance.adopt.optDaemon"), value: true },
+		{ flag: "--dir", desc: t("cli.instance.adopt.optDir"), value: true },
+		{ flag: "--port", desc: t("cli.instance.adopt.optPort"), value: true },
+		{ flag: "--memory", desc: t("cli.instance.adopt.optMemory"), value: true },
+		{ flag: "--profile", desc: t("cli.instance.create.optProfile"), value: true },
+		{ flag: "--java", desc: t("cli.instance.adopt.optJava"), value: true },
+		{ flag: "--java-args", desc: t("cli.instance.create.optJavaArgs"), value: true },
+		{ flag: "--no-register", desc: t("cli.instance.create.optNoRegister") },
+		{ flag: "--dry-run", desc: t("cli.instance.adopt.optDryRun") },
 	],
 
 	handler: async (args, opts) => {
@@ -535,7 +576,7 @@ command({
 		const dir = (opts.dir as string | undefined) ?? cfg.instances[name]?.dir ?? name;
 
 		if (daemon && !cfg.daemons?.[daemon]) {
-			throw new UsageError(`unknown daemon: ${daemon} — see \`luna daemon list\``);
+			throw new UsageError(t("cli.instance.adopt.unknownDaemon", { name: daemon }));
 		}
 
 		if (opts["dry-run"]) {
@@ -544,14 +585,17 @@ command({
 
 			printTable(
 				[
-					["software", detected.software],
-					["mc version", detected.mcVersion ?? pc.dim("—")],
-					["loader", detected.loaderVersion ?? pc.dim("—")],
-					["port", detected.port !== undefined ? String(detected.port) : pc.dim("—")],
-					["memory", detected.memory ?? pc.dim("—")],
-					["bind address", detected.bindAddress || pc.dim("(empty)")],
+					[t("cli.head.software"), detected.software],
+					[t("cli.instance.adopt.mcVersion"), detected.mcVersion ?? pc.dim("—")],
+					[t("cli.instance.adopt.loader"), detected.loaderVersion ?? pc.dim("—")],
+					[t("cli.head.port"), detected.port !== undefined ? String(detected.port) : pc.dim("—")],
+					[t("cli.head.mem"), detected.memory ?? pc.dim("—")],
+					[
+						t("cli.instance.adopt.bindAddress"),
+						detected.bindAddress || pc.dim(t("cli.instance.adopt.emptyValue")),
+					],
 				],
-				{ head: ["", `${daemon ?? "local"}:${dir}`] },
+				{ head: ["", `${daemon ?? t("cli.instance.adopt.localDaemon")}:${dir}`] },
 			);
 
 			return;
@@ -574,12 +618,17 @@ command({
 
 		const sync = await syncVelocityToml(cfg);
 		const version = result.inst.mcVersion ? ` ${result.inst.mcVersion}` : "";
-		const loader = result.inst.loaderVersion ? pc.dim(` (loader ${result.inst.loaderVersion})`) : "";
+		const loader = result.inst.loaderVersion
+			? pc.dim(` (${t("cli.instance.adopt.loaderTag", { version: result.inst.loaderVersion })})`)
+			: "";
 
 		ok(
-			`adopted ${pc.bold(name)} — ${result.inst.software}${version}${loader}, ` +
-				`port ${pc.cyan(String(result.inst.port))}, ${result.inst.memory} heap` +
-				(daemon ? ` on ${pc.cyan(daemon)}` : ""),
+			t("cli.instance.adopt.adopted", {
+				name: pc.bold(name),
+				software: `${result.inst.software}${version}${loader}`,
+				port: pc.cyan(String(result.inst.port)),
+				memory: result.inst.memory,
+			}) + (daemon ? ` ${t("cli.instance.adopt.onDaemon", { name: pc.cyan(daemon) })}` : ""),
 		);
 
 		for (const note of result.notes) {
@@ -591,21 +640,21 @@ command({
 		await adoptAddons(cfg, name);
 
 		if (sync.changed) {
-			info("velocity.toml updated — reload the proxy to apply");
+			info(t("cli.instance.adopt.velocityUpdated"));
 		}
 
-		info(`start it with: ${pc.cyan(`luna start ${name}`)}`);
+		info(t("cli.instance.startHint", { command: pc.cyan(`luna start ${name}`) }));
 	},
 });
 
 command({
 	path: ["instance", "set-version"],
-	desc: "Switch an instance to a different MC version (downloads latest build)",
+	desc: t("cli.instance.setVersion.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "version", required: true },
 	],
-	opts: [{ flag: "--force", desc: "proceed even with known-incompatible plugins" }],
+	opts: [{ flag: "--force", desc: t("cli.instance.setVersion.optForce") }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
@@ -614,7 +663,7 @@ command({
 		const status = await inst.getStatus(cfg, name);
 
 		if (status.state !== "stopped") {
-			throw new Bail(`${name} is running — stop it first`);
+			throw new Bail(t("cli.instance.stopFirst", { name }));
 		}
 
 		// Server-version requirement gate: check assigned plugin builds first.
@@ -625,27 +674,24 @@ command({
 		if (bad.length) {
 			for (const row of bad) {
 				warn(
-					`${row.plugin} ${row.version ?? ""} does not support MC ${version} ` +
-						`(supports: ${row.gameVersions?.join(", ")})`,
+					t("cli.instance.setVersion.incompatible", {
+						plugin: `${row.plugin} ${row.version ?? ""}`,
+						mc: version,
+						supported: row.gameVersions?.join(", ") ?? "",
+					}),
 				);
 			}
 
 			if (!opts.force) {
-				throw new Bail(
-					`aborted — ${bad.length} plugin(s) incompatible with ${version}; ` +
-						"fix with plugins update/pin after switching, or pass --force",
-				);
+				throw new Bail(t("cli.instance.setVersion.abortIncompatible", { count: bad.length, mc: version }));
 			}
 		}
 
 		if (unknown.length) {
-			info(
-				`${unknown.length} plugin(s) have unknown MC requirements ` +
-					"(luna/manual jars — verify manually)",
-			);
+			info(t("cli.instance.setVersion.unknownReqs", { count: unknown.length }));
 		}
 
-		const spin = new Spinner().start(`downloading ${version}...`);
+		const spin = new Spinner().start(t("cli.instance.setVersion.downloading", { version }));
 		const res = await admin.setVersion(cfg, name, version);
 
 		await saveCluster(cfg);
@@ -656,14 +702,14 @@ command({
 				`(build ${res.build.build})`,
 		);
 
-		info(`old jar kept at ${pc.dim(res.backedUpJar)}`);
-		info(`re-resolve plugin versions for the new MC: ${pc.cyan("luna plugins update --deploy")}`);
+		info(t("cli.instance.setVersion.jarKept", { path: pc.dim(res.backedUpJar) }));
+		info(t("cli.instance.setVersion.updateHint", { command: pc.cyan("luna plugins update --deploy") }));
 	},
 });
 
 command({
 	path: ["instance", "settings"],
-	desc: "Show or change an instance's server settings (difficulty, max-players, pvp, …)",
+	desc: t("cli.instance.settings.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "key", complete: async () => editableSettingKeys() },
@@ -675,7 +721,7 @@ command({
 		const [name, key, ...rest] = args as [string, string?, ...string[]];
 
 		if (!managedInstances(cfg)[name]) {
-			throw new UsageError(`unknown instance: ${name}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name }));
 		}
 
 		const current = await readServerProperties(cfg, name);
@@ -684,15 +730,15 @@ command({
 			for (const group of SETTING_GROUPS) {
 				const specs = SERVER_SETTINGS.filter((spec) => spec.group === group.id);
 
-				console.log(`\n  ${pc.bold(pc.cyan(group.label))} ${pc.dim(group.hint)}`);
+				console.log(`\n  ${pc.bold(pc.cyan(t(group.label)))} ${pc.dim(t(group.hint))}`);
 
 				printTable(
 					specs.map((spec) => [
 						spec.managed ? pc.dim(spec.key) : spec.key,
 						current[spec.key] === undefined
-							? pc.dim(`${spec.fallback} (default)`)
-							: pc.bold(current[spec.key] || pc.dim("(blank)")),
-						spec.managed ? pc.dim("managed by luna") : pc.dim(spec.hint ?? ""),
+							? pc.dim(t("cli.instance.settings.defaultValue", { value: spec.fallback }))
+							: pc.bold(current[spec.key] || pc.dim(t("cli.instance.settings.blank"))),
+						spec.managed ? pc.dim(t("cli.instance.settings.managedByLuna")) : pc.dim(spec.hint ? t(spec.hint) : ""),
 					]),
 					{ indent: "    " },
 				);
@@ -706,9 +752,7 @@ command({
 		const spec = settingSpec(key);
 
 		if (!spec) {
-			throw new UsageError(
-				`"${key}" is not a known server setting — run "luna instance settings ${name}" for the list`,
-			);
+			throw new UsageError(t("cli.instance.settings.unknownKey", { key, name }));
 		}
 
 		// a value may legitimately contain spaces (motd), so the rest of argv is it
@@ -726,17 +770,17 @@ command({
 		}
 
 		if (res.unchanged.length) {
-			info(`${name}.${key} already ${pc.cyan(value)}`);
+			info(t("cli.instance.settings.already", { name, key, value: pc.cyan(value) }));
 
 			return;
 		}
 
 		const change = res.changed[0]!;
-		const note = change.appended ? pc.dim(" (key added)") : "";
+		const note = change.appended ? pc.dim(` ${t("cli.instance.settings.keyAdded")}`) : "";
 
 		ok(
-			`${name}.${key}: ${pc.dim(change.from ?? "unset")} ${Sym.arrow} ${pc.cyan(change.to)}` +
-				`${note} ${pc.dim("— applies on next restart")}`,
+			`${name}.${key}: ${pc.dim(change.from ?? t("cli.instance.settings.unset"))} ${Sym.arrow} ${pc.cyan(change.to)}` +
+				`${note} ${pc.dim(t("cli.instance.settings.appliesOnRestart"))}`,
 		);
 	},
 });
@@ -746,7 +790,7 @@ const REGISTRY_KEYS = ["memory", "profile", "java", "javaArgs", "port"];
 
 command({
 	path: ["instance", "config"],
-	desc: "Get/set instance settings (memory, profile, port, javaArgs, or any server.properties key)",
+	desc: t("cli.instance.config.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "key", complete: async () => [...REGISTRY_KEYS, ...editableSettingKeys()] },
@@ -759,7 +803,7 @@ command({
 		const instance = managedInstances(cfg)[name];
 
 		if (!instance) {
-			throw new UsageError(`unknown instance: ${name}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name }));
 		}
 
 		if (!key) {
@@ -767,8 +811,8 @@ command({
 				["memory", instance.memory],
 				["profile", instance.profile],
 				["port", String(instance.port)],
-				["java", instance.java ?? pc.dim("(profile default)")],
-				["javaArgs", instance.javaArgs?.join(" ") ?? pc.dim("(none)")],
+				["java", instance.java ?? pc.dim(t("cli.instance.config.profileDefault"))],
+				["javaArgs", instance.javaArgs?.join(" ") ?? pc.dim(`(${t("cli.common.none")})`)],
 				["mcVersion", instance.mcVersion ?? pc.dim("—")],
 				...Object.entries(instance.ports ?? {}).map(([id, port]) => [
 					`port:${id}`,
@@ -776,7 +820,11 @@ command({
 				]),
 			]);
 
-			info(`server settings live in server.properties: ${pc.cyan(`luna instance settings ${name}`)}`);
+			info(
+				t("cli.instance.config.settingsHint", {
+					command: pc.cyan(`luna instance settings ${name}`),
+				}),
+			);
 
 			return;
 		}
@@ -811,7 +859,7 @@ command({
 
 			case "profile":
 				if (!cfg.javaProfiles[value]) {
-					throw new UsageError(`unknown profile: ${value}`);
+					throw new UsageError(t("cli.instance.config.unknownProfile", { name: value }));
 				}
 
 				instance.profile = value;
@@ -831,7 +879,7 @@ command({
 				const sync = await syncVelocityToml(cfg);
 
 				if (sync.changed) {
-					ok("velocity.toml updated");
+					ok(t("cli.proxy.sync.updated"));
 				}
 
 				break;
@@ -851,14 +899,16 @@ command({
 				}
 
 				if (!(await admin.setServerProperty(cfg, name, key, value))) {
-					throw new Bail(`key "${key}" not found in server.properties`);
+					throw new Bail(t("cli.instance.config.keyNotFound", { key }));
 				}
 			}
 		}
 
 		await saveCluster(cfg);
 
-		const note = REGISTRY_KEYS.includes(key) ? pc.dim(" (applies on next restart)") : "";
+		const note = REGISTRY_KEYS.includes(key)
+			? pc.dim(` ${t("cli.instance.config.appliesOnRestart")}`)
+			: "";
 
 		ok(`${name}.${key} = ${pc.cyan(value)}${note}`);
 	},
@@ -866,11 +916,11 @@ command({
 
 command({
 	path: ["instance", "delete"],
-	desc: "Deregister an instance (--purge also deletes its directory)",
+	desc: t("cli.instance.remove.desc"),
 	args: [{ name: "instance", required: true, complete: instanceNames }],
 	opts: [
-		{ flag: "--purge", desc: "DELETE the instance directory from disk" },
-		{ flag: "--yes", desc: "skip confirmation" },
+		{ flag: "--purge", desc: t("cli.instance.remove.optPurge") },
+		{ flag: "--yes", desc: t("cli.common.optYes") },
 	],
 
 	handler: async (args, opts) => {
@@ -878,7 +928,7 @@ command({
 		const name = args[0]!;
 
 		if (!cfg.instances[name]) {
-			throw new UsageError(`unknown instance: ${name}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name }));
 		}
 
 		// external instances run elsewhere, so there is no local state to probe
@@ -887,17 +937,17 @@ command({
 			: await inst.getStatus(cfg, name);
 
 		if (status && status.state !== "stopped") {
-			throw new Bail(`${name} is running — stop it first`);
+			throw new Bail(t("cli.instance.stopFirst", { name }));
 		}
 
 		if (opts.purge && !opts.yes) {
 			const { confirm, isCancel } = await import("@clack/prompts");
 			const sure = await confirm({
-				message: `Really DELETE ${name}'s directory (worlds included)?`,
+				message: t("cli.instance.remove.confirmPurge", { name }),
 			});
 
 			if (isCancel(sure) || !sure) {
-				info("aborted");
+				info(t("cli.common.aborted"));
 
 				return;
 			}
@@ -915,9 +965,11 @@ command({
 		await saveCluster(cfg);
 
 		const sync = await syncVelocityToml(cfg);
-		const purged = opts.purge ? " and purged" : ` ${pc.dim("(directory kept)")}`;
-		const proxyNote = sync.changed ? ", velocity.toml updated" : "";
+		const purged = opts.purge
+			? ` ${t("cli.instance.remove.andPurged")}`
+			: ` ${pc.dim(t("cli.instance.remove.directoryKept"))}`;
+		const proxyNote = sync.changed ? `, ${t("cli.instance.remove.velocityUpdated")}` : "";
 
-		ok(`${pc.bold(name)} deregistered${purged}${proxyNote}`);
+		ok(`${t("cli.instance.remove.deregistered", { name: pc.bold(name) })}${purged}${proxyNote}`);
 	},
 });

@@ -6,6 +6,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { t } from "../shared/i18n";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -121,7 +122,7 @@ async function ensurePoolMirror(cfg: ClusterConfig, lock: PluginsLock): Promise<
 }
 
 /**
- * Bring the local data pack pool up to the lock before a forwarded deploy —
+ * Bring the local data pack pool up to the lock before a forwarded deploy -
  * the primary's pool is the source, this daemon caches only the zips its own
  * instances are targeted with.
  */
@@ -176,12 +177,12 @@ async function openConsoleTail(frame: PrimaryFrame): Promise<void> {
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst || !ownsInstance(inst)) {
-		send({ t: "stream-end", id, error: `this daemon does not own "${instance}"` });
+		send({ t: "stream-end", id, error: t("daemon.notOwned", { name: instance }) });
 
 		return;
 	}
 
-	// the ack is what tells the primary this build understands the tunnel — an
+	// the ack is what tells the primary this build understands the tunnel; an
 	// empty log legitimately produces no lines, so silence cannot mean support
 	send({ t: "stream-ready", id });
 
@@ -198,7 +199,7 @@ async function openConsoleTail(frame: PrimaryFrame): Promise<void> {
 	tails.set(id, handle);
 }
 
-/** Stop every live tail — the link died, nobody is listening anymore. */
+/** Stop every live tail; the link died, nobody is listening anymore. */
 function stopAllTails(): void {
 	for (const handle of tails.values()) {
 		handle.stop();
@@ -236,7 +237,7 @@ async function handleForwardedOp(frame: PrimaryFrame): Promise<void> {
 	}
 
 	try {
-		// a deploy copies out of the pool — mirror it from the primary first,
+		// a deploy copies out of the pool; mirror it from the primary first,
 		// against the cfg travelling with the call (the local sync may lag it)
 		if (op === "plugins.deploy" && Array.isArray(frame.args)) {
 			await ensurePoolMirror(frame.args[0] as ClusterConfig, frame.args[1] as PluginsLock);
@@ -290,7 +291,7 @@ async function recoverFromProtocolMismatch(): Promise<void> {
 
 	recoveryAttempted = buildVersion();
 
-	log("protocol mismatch — attempting a self-upgrade from the primary");
+	log(t("daemon.log.protocolMismatch"));
 
 	try {
 		const result = await selfUpgrade(true);
@@ -351,7 +352,7 @@ function connect(): void {
 
 		if (frame.t === "ping") {
 			// the ping brings LunaCore's telemetry down (only the primary can ask
-			// the proxy for it) and the pong takes this machine's health back up —
+			// the proxy for it) and the pong takes this machine's health back up -
 			// one round trip measures latency and moves both halves of the picture
 			if (frame.luna) {
 				setLunaTelemetry(frame.luna, frame.lunaIssue);
@@ -381,7 +382,7 @@ function connect(): void {
 	};
 
 	ws.onclose = (event) => {
-		log(`primary link lost (${event.code}${event.reason ? ` ${event.reason}` : ""}) — retrying in ${Math.round(backoffMs / 1000)}s`);
+		log(t("daemon.log.linkLost", { code: `${event.code}${event.reason ? ` ${event.reason}` : ""}`, seconds: Math.round(backoffMs / 1000) }));
 
 		stopAllTails();
 
@@ -407,7 +408,7 @@ export function startFollower(config: DaemonConfig, processStartedAt: number): v
 	dcfg = config;
 	startedAt = processStartedAt;
 
-	// a follower never writes state files on its own authority — every save
+	// a follower never writes state files on its own authority; every save
 	// goes up to the primary, which persists it and broadcasts the new sync
 	installSaveHook(async (file, data) => {
 		send({ t: "save", file, data });
@@ -421,7 +422,7 @@ export function startFollower(config: DaemonConfig, processStartedAt: number): v
 	setUpgradeSource(config.primary!.address, config.token ?? "");
 
 	// the proxy runs on the primary's host, so that is where THIS machine's
-	// instances must send their LunaCore heartbeats — not at loopback
+	// instances must send their LunaCore heartbeats; not at loopback
 	setProxyHost(config.primary!.address.split(":")[0]!);
 
 	connect();

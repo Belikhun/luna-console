@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -71,7 +72,7 @@
 			await Promise.all([loadPools(), loadEnvironment()]);
 		} catch (err) {
 			missing = true;
-			Notify.error(`Could not load daemon ${name}`, { detail: (err as Error).message });
+			Notify.error(t('web.machineDetail.loadFailed', { name }), { detail: (err as Error).message });
 		} finally {
 			loading = false;
 		}
@@ -79,7 +80,7 @@
 
 	// -- port pools --------------------------------------------------------------
 	// The catalog is cluster-wide; what belongs on this screen is the one column of
-	// it this machine serves — its ranges, its usage, and the override that makes
+	// it this machine serves; its ranges, its usage, and the override that makes
 	// them differ from everybody else's.
 
 	interface OverrideDraft {
@@ -136,10 +137,10 @@
 
 	function poolSegments(view: any): Array<{ key: string; label: string; count: number; color: string }> {
 		return [
-			{ key: 'used', label: 'allocated', count: view.used.length, color: 'var(--link)' },
-			{ key: 'reserved', label: 'held back', count: view.reserved.length, color: 'var(--warning)' },
-			{ key: 'pending', label: 'in flight', count: view.pending.length, color: 'var(--primary)' },
-			{ key: 'free', label: 'free', count: view.free, color: 'var(--bg-track)' }
+			{ key: 'used', label: t('web.machineDetail.allocated'), count: view.used.length, color: 'var(--link)' },
+			{ key: 'reserved', label: t('web.machineDetail.heldBack'), count: view.reserved.length, color: 'var(--warning)' },
+			{ key: 'pending', label: t('web.machineDetail.inFlight'), count: view.pending.length, color: 'var(--primary)' },
+			{ key: 'free', label: t('web.machineDetail.free'), count: view.free, color: 'var(--bg-track)' }
 		];
 	}
 
@@ -167,7 +168,7 @@
 
 		savingPools = true;
 
-		const note = Notify.loading('Saving port pool ranges…');
+		const note = Notify.loading(t('web.machineDetail.savingPools'));
 
 		try {
 			const updated: PortPool[] = catalog.map((pool) => {
@@ -195,7 +196,7 @@
 
 			note.set({
 				level: 'success',
-				message: `Port pool ranges saved for ${row?.name ?? 'this machine'}`,
+				message: t('web.machineDetail.poolsSaved', { name: row?.name ?? t('web.machineDetail.thisMachine') }),
 				detail: res.warnings?.length ? res.warnings.join(' · ') : '',
 				closeable: true
 			});
@@ -204,7 +205,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Could not save the pool ranges',
+				message: t('web.machineDetail.couldNotSaveThePool'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -261,11 +262,11 @@
 		try {
 			await del(`/daemons/${encodeURIComponent(row.name)}`);
 
-			Notify.success(`Removed daemon registration "${row.name}"`);
+			Notify.success(t('web.machines.removedRegistration', { name: row.name }));
 
 			await goto('/machines');
 		} catch (err) {
-			Notify.error('Could not remove the daemon', { detail: (err as Error).message });
+			Notify.error(t('web.machines.removeFailed'), { detail: (err as Error).message });
 		}
 
 		removing = false;
@@ -277,7 +278,7 @@
 	 * can say where an upgrade would come from before anyone commits to it.
 	 */
 	async function checkUpgrade(refresh: boolean): Promise<void> {
-		// the route parameter, not `row` — this runs on mount, before the first
+		// the route parameter, not `row`; this runs on mount, before the first
 		// detail fetch has resolved
 		if (!name) {
 			return;
@@ -296,7 +297,7 @@
 			// a manual check reports its failure; the one on mount stays quiet,
 			// since the panel already says "not checked yet"
 			if (refresh) {
-				Notify.error('Could not check for updates', { detail: (err as Error).message });
+				Notify.error(t('web.machineDetail.checkFailed'), { detail: (err as Error).message });
 			}
 		}
 
@@ -314,7 +315,7 @@
 
 		upgrading = true;
 
-		const note = Notify.loading(`Upgrading ${row.name}…`);
+		const note = Notify.loading(t('web.machineDetail.upgrading', { name: row.name }));
 
 		try {
 			const res = await post(`/daemons/${encodeURIComponent(row.name)}`, {
@@ -352,23 +353,23 @@
 		}
 
 		return [
-			{ id: 'state', label: 'Daemon state' },
-			{ label: 'Role', value: row.mode },
-			{ label: 'Routing host', value: row.host, copyable: !!row.host, style: 'mono' },
-			{ label: 'IP addresses', value: row.addresses.join(', ') || null, style: 'mono' },
-			{ label: 'Cluster root', value: row.root, copyable: !!row.root, style: 'mono' },
-			{ id: 'version', label: 'Daemon version' },
-			{ label: 'Protocol', value: row.protocol === null ? null : String(row.protocol) },
-			{ label: 'Daemon uptime', value: fmtDuration(row.uptimeMs) },
-			{ label: 'Host uptime', value: health ? fmtDuration(health.uptimeSec * 1000) : null },
+			{ id: 'state', label: t('web.machineDetail.daemonState') },
+			{ label: t('web.machineDetail.role'), value: row.mode },
+			{ label: t('web.machineDetail.routingHost'), value: row.host, copyable: !!row.host, style: 'mono' },
+			{ label: t('web.machineDetail.ipAddresses'), value: row.addresses.join(', ') || null, style: 'mono' },
+			{ label: t('web.machineDetail.clusterRoot'), value: row.root, copyable: !!row.root, style: 'mono' },
+			{ id: 'version', label: t('web.machineDetail.daemonVersion') },
+			{ label: t('web.machineDetail.protocol'), value: row.protocol === null ? null : String(row.protocol) },
+			{ label: t('web.machineDetail.daemonUptime'), value: fmtDuration(row.uptimeMs) },
+			{ label: t('web.machineDetail.hostUptime'), value: health ? fmtDuration(health.uptimeSec * 1000) : null },
 			{
-				label: 'Connected since',
+				label: t('web.machineDetail.connectedSince'),
 				value: row.connectedAt ? fmtDateTime(row.connectedAt) : null
 			},
-			{ id: 'beat', label: 'Last heartbeat' },
-			{ id: 'latency', label: 'Link latency' },
-			{ label: 'Load average', value: health ? `${health.load1.toFixed(2)} · ${health.load5.toFixed(2)} · ${health.load15.toFixed(2)}` : null },
-			{ label: 'Instances owned', value: String(row.instances.length) }
+			{ id: 'beat', label: t('web.machineDetail.lastHeartbeat') },
+			{ id: 'latency', label: t('web.machineDetail.linkLatency') },
+			{ label: t('web.machineDetail.loadAverage'), value: health ? `${health.load1.toFixed(2)} · ${health.load5.toFixed(2)} · ${health.load15.toFixed(2)}` : null },
+			{ label: t('web.machineDetail.instancesOwned'), value: String(row.instances.length) }
 		];
 	});
 
@@ -404,12 +405,12 @@
 		}));
 	});
 
-	const instanceCols: Column[] = [
-		{ id: 'instance', label: 'Instance', sortable: true },
-		{ id: 'state', label: 'State', width: 130, sortable: true },
-		{ id: 'rss', label: 'Resident memory', width: 240, sortable: true },
-		{ id: 'reach', label: 'Reachable from the primary' }
-	];
+	const instanceCols: Column[] = $derived([
+		{ id: 'instance', label: t('web.machineDetail.instance2'), sortable: true },
+		{ id: 'state', label: t('web.machineDetail.state'), width: 130, sortable: true },
+		{ id: 'rss', label: t('web.machineDetail.residentMemory'), width: 240, sortable: true },
+		{ id: 'reach', label: t('web.machineDetail.reachableFromThePrimary') }
+	]);
 
 	function instanceActions(entry: { instance: string }): ContextMenuItem[] {
 		return [
@@ -419,23 +420,23 @@
 				action: () => goto(`/instances/${entry.instance}`)
 			},
 			{
-				label: 'Monitoring',
+				label: t('web.machineDetail.monitoring'),
 				icon: 'chartLine',
 				action: () => goto(`/instances/${entry.instance}?tab=monitoring`)
 			},
 			{
-				label: 'Serial console',
+				label: t('web.machineDetail.serialConsole'),
 				icon: 'code',
 				action: () => goto(`/instances/${entry.instance}/console`)
 			}
 		];
 	}
 
-	const eventCols: Column[] = [
-		{ id: 'time', label: 'Time', width: 190 },
-		{ id: 'kind', label: 'Type', width: 120 },
-		{ id: 'message', label: 'Event' }
-	];
+	const eventCols: Column[] = $derived([
+		{ id: 'time', label: t('web.machineDetail.time'), width: 190 },
+		{ id: 'kind', label: t('web.machineDetail.type'), width: 120 },
+		{ id: 'message', label: t('web.machineDetail.event2') }
+	]);
 
 	// -- environment ---------------------------------------------------------------
 	// Machine-scoped overrides: the values every instance on THIS host resolves in
@@ -481,7 +482,7 @@
 
 		// every value instances on this host resolve: the cluster-wide set with this
 		// machine's overrides applied over it, plus anything defined only here. The
-		// source column is what tells the two apart — a table of overrides alone
+		// source column is what tells the two apart; a table of overrides alone
 		// could not answer "what does this machine actually see".
 		const names = new Set([...globals.keys(), ...own.keys()]);
 
@@ -508,7 +509,7 @@
 	async function revealVar(entry: MachineVar): Promise<void> {
 		try {
 			// an inherited value's secret lives at the global scope, so that is where
-			// the reveal has to look — asking this machine for it would 404
+			// the reveal has to look; asking this machine for it would 404
 			const result = await post(`/env/${encodeURIComponent(entry.name)}/reveal`, {
 				machine: entry.source === 'machine' ? name : undefined
 			});
@@ -534,7 +535,7 @@
 		try {
 			await del(`/env?name=${encodeURIComponent(entry.name)}&machine=${encodeURIComponent(name!)}`);
 			Notify.success(`${entry.name} override removed`, {
-				detail: 'Instances on this machine keep the old value until they restart.'
+				detail: t('web.machineDetail.instancesOnThisMachineKeep')
 			});
 			await loadEnvironment();
 		} catch (err) {
@@ -542,35 +543,35 @@
 		}
 	}
 
-	const envCols: Column[] = [
-		{ id: 'name', label: 'Variable', sortable: true, width: 240 },
-		{ id: 'value', label: 'Value on this machine' },
-		{ id: 'source', label: 'Source', sortable: true, width: 120 },
-		{ id: 'global', label: 'Cluster-wide value' }
-	];
+	const envCols: Column[] = $derived([
+		{ id: 'name', label: t('web.machineDetail.variable2'), sortable: true, width: 240 },
+		{ id: 'value', label: t('web.machineDetail.valueOnThisMachine') },
+		{ id: 'source', label: t('web.machineDetail.source'), sortable: true, width: 120 },
+		{ id: 'global', label: t('web.machineDetail.clusterWideValue') }
+	]);
 
-	const envFilters: TableFilterGroup<MachineVar>[] = [
+	const envFilters: TableFilterGroup<MachineVar>[] = $derived([
 		{
 			id: 'source',
-			label: 'Filter source scope',
+			label: t('web.machineDetail.filterSourceScope'),
 			options: [
-				{ value: 'any', label: 'Any source' },
+				{ value: 'any', label: t('web.machineDetail.anySource') },
 				{
 					value: 'machine',
-					label: 'This machine only',
+					label: t('web.machineDetail.thisMachineOnly'),
 					match: (entry) => entry.source === 'machine'
 				},
-				{ value: 'global', label: 'Inherited', match: (entry) => entry.source === 'global' }
+				{ value: 'global', label: t('web.machineDetail.inherited'), match: (entry) => entry.source === 'global' }
 			]
 		}
-	];
+	]);
 
 	function envActions(entry: MachineVar): ContextMenuItem[] {
 		const own = entry.source === 'machine';
 
 		return [
 			{
-				label: 'Open variable details',
+				label: t('web.machineDetail.openVariableDetails'),
 				icon: 'circleInfo',
 				action: () => goto(`/environment/${encodeURIComponent(entry.name)}`)
 			},
@@ -591,10 +592,10 @@
 			},
 			{ separator: true },
 			{
-				label: 'Remove override',
+				label: t('web.machineDetail.removeOverride'),
 				icon: 'trash',
 				color: 'danger',
-				// an inherited value has nothing to remove here — it lives at the cluster
+				// an inherited value has nothing to remove here; it lives at the cluster
 				// level, and deleting it from this screen would surprise every machine
 				disabled: !own,
 				action: () => removeVar(entry)
@@ -607,7 +608,7 @@
 
 {#if missing && !row}
 	<PageHeader title={name ?? ''} />
-	<Flash kind="error">No daemon named <b>{name}</b> is registered in this cluster.</Flash>
+	<Flash kind="error">{t('web.machineDetail.noDaemonNamed')} <b>{name}</b> {t('web.machineDetail.isRegisteredInThis')}</Flash>
 {:else if row}
 	<PageHeader title={row.name}>
 		{#snippet extra()}
@@ -619,7 +620,7 @@
 		{#snippet actions()}
 			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="daemon-detail" />
 			<Btn icon="rotate" loading={checking} onclick={() => checkUpgrade(true)}>
-				Check for updates
+				{t('web.machineDetail.checkForUpdates')}
 			</Btn>
 			<Btn
 				icon="download"
@@ -631,14 +632,14 @@
 			</Btn>
 			{#if row!.mode === 'follower' && !row!.online}
 				<Btn variant="danger" icon="trash" onclick={() => (removeOpen = true)}>
-					Remove registration
+					{t('web.machineDetail.removeRegistration')}
 				</Btn>
 			{/if}
 		{/snippet}
 	</PageHeader>
 
-	<OverviewBar title="Machine overview">
-		<OverviewCell label="Status">
+	<OverviewBar title={t('web.machineDetail.machineOverview')}>
+		<OverviewCell label={t('web.machineDetail.status')}>
 			<StatusBadge
 				state={row.online ? (failed ? 'warning' : 'ok') : 'stopped'}
 				label={row.online ? (failed ? 'Degraded' : 'Online') : 'Offline'}
@@ -653,33 +654,33 @@
 			<span class="dim">|</span>
 			<span class:bad={failed > 0}>{failed} failing</span>
 		</OverviewCell>
-		<OverviewCell label="Instances">
+		<OverviewCell label={t('web.machineDetail.instances')}>
 			{row.instances.length}
 			<span class="dim">
 				({Object.values(health?.states ?? {}).filter((state) => state === 'running').length} running)
 			</span>
 		</OverviewCell>
-		<OverviewCell label="Link latency">
+		<OverviewCell label={t('web.machineDetail.linkLatency')}>
 			{#if row.latencyMs === null}
 				<span class="dim">{row.mode === 'primary' ? 'local daemon' : '–'}</span>
 			{:else}
 				{row.latencyMs} ms
 			{/if}
 		</OverviewCell>
-		<OverviewCell label="Daemon uptime">
+		<OverviewCell label={t('web.machineDetail.daemonUptime')}>
 			{fmtDuration(row.uptimeMs)}
 		</OverviewCell>
 	</OverviewBar>
 
 	<Tabs
 		tabs={[
-			{ id: 'details', label: 'Details' },
+			{ id: 'details', label: t('web.machineDetail.details') },
 			{ id: 'checks', label: `Health checks (${row.checks.length})` },
-			{ id: 'monitoring', label: 'Monitoring' },
+			{ id: 'monitoring', label: t('web.machineDetail.monitoring') },
 			{ id: 'pools', label: `Port pools (${catalog.length})` },
 			{ id: 'environment', label: `Environment (${machineVars.length})` },
-			{ id: 'instances', label: 'Instances' },
-			{ id: 'events', label: 'Events' }
+			{ id: 'instances', label: t('web.machineDetail.instances') },
+			{ id: 'events', label: t('web.machineDetail.events') }
 		]}
 		bind:active={tab}
 	/>
@@ -688,12 +689,11 @@
 		{#if tab === 'details'}
 			{#if !row.online}
 				<Flash kind="warning">
-					This daemon is not connected. Everything below is the last state the primary recorded
-					for it.
+					{t('web.machineDetail.thisDaemonIsNot')}
 				</Flash>
 				<div class="gap"></div>
 			{/if}
-			<Panel title="Machine summary">
+			<Panel title={t('web.machineDetail.machineSummary')}>
 				<InfoGrid cells={summaryCells}>
 					{#snippet custom(cell)}
 						{#if cell.id === 'state'}
@@ -704,11 +704,11 @@
 						{:else if cell.id === 'version'}
 							<span class="mono">{row!.version ?? '–'}</span>
 							{#if row!.outdated}
-								<StatusBadge state="warning" label="behind the primary" />
+								<StatusBadge state="warning" label={t('web.machineDetail.behindThePrimary')} />
 							{/if}
 						{:else if cell.id === 'beat'}
 							{#if row!.mode === 'primary'}
-								<span class="dim">this daemon — nothing to heartbeat</span>
+								<span class="dim">{t('web.machineDetail.thisDaemonNothingTo')}</span>
 							{:else if row!.lastBeatMs === null}
 								<span class="dim">{row!.lastSeen ? fmtDateTime(Date.parse(row!.lastSeen)) : '–'}</span>
 							{:else}
@@ -733,11 +733,11 @@
 			</Panel>
 			<div class="gap"></div>
 			<Panel
-				title="Build and upgrades"
-				description="The primary's own binary is preferred; the GitHub release is the fallback"
+				title={t('web.machineDetail.buildAndUpgrades')}
+				description={t('web.machineDetail.thePrimarySOwnBinary')}
 			>
 				<div class="buildrow">
-					<span class="blabel">Running</span>
+					<span class="blabel">{t('web.machineDetail.running')}</span>
 					<span class="mono">{row.version ?? '–'}</span>
 					{#if upgradeCheck}
 						<span class="dim">{upgradeCheck.platform} · checked {fmtDateTime(upgradeCheck.checkedAt)}</span>
@@ -749,12 +749,12 @@
 							<span class="blabel">{offer.channel === 'primary' ? 'Primary' : 'GitHub'}</span>
 							<StatusBadge
 								state={offer.newer ? 'warning' : 'passed'}
-								label={offer.newer ? `${offer.version} available` : `${offer.version} — same build`}
+								label={offer.newer ? `${offer.version} available` : `${offer.version}; same build`}
 							/>
 							<span class="dim">
 								{offer.origin} · {(offer.size / 1024 / 1024).toFixed(1)} MB
 								{#if offer.pageUrl}
-									· <a href={offer.pageUrl} target="_blank" rel="noreferrer">release notes</a>
+									· <a href={offer.pageUrl} target="_blank" rel="noreferrer">{t('web.machineDetail.releaseNotes')}</a>
 								{/if}
 							</span>
 						</div>
@@ -766,19 +766,19 @@
 						</div>
 					{/each}
 					{#if upgradeCheck.offers.length === 0 && upgradeCheck.notes.length === 0}
-						<p class="dim">No upgrade source answered.</p>
+						<p class="dim">{t('web.machineDetail.noUpgradeSourceAnswered')}</p>
 					{/if}
 				{:else if checking}
-					<p class="dim">Checking…</p>
+					<p class="dim">{t('web.machineDetail.checking')}</p>
 				{:else}
-					<p class="dim">Not checked yet.</p>
+					<p class="dim">{t('web.machineDetail.notCheckedYet')}</p>
 				{/if}
 			</Panel>
 		{:else if tab === 'checks'}
 			<Panel
-				title="Health checks"
+				title={t('web.machineDetail.healthChecks')}
 				count={row.checks.length}
-				description="Run by the primary's hub against this machine — a check the daemon cannot answer for itself reads as unknown"
+				description={t('web.machineDetail.runByThePrimaryS')}
 			>
 				{#each row.checks as check}
 					<div class="checkrow">
@@ -789,16 +789,16 @@
 						<span class="dim">{check.detail}</span>
 					</div>
 				{:else}
-					<p class="dim">This daemon reports no checks — the primary's hub is what runs them.</p>
+					<p class="dim">{t('web.machineDetail.thisDaemonReportsNo')}</p>
 				{/each}
 			</Panel>
 
 			{#if row.reach?.length}
 				<div class="gap"></div>
 				<Panel
-					title="Reachability from the primary"
+					title={t('web.machineDetail.reachabilityFromThePrimary')}
 					count={row.reach.length}
-					description="Each running instance's port, TCP-probed from the primary's host — a healthy daemon link says nothing about whether velocity can reach the backends"
+					description={t('web.machineDetail.eachRunningInstanceSPort')}
 				>
 					{#each row.reach as probe}
 						<div class="checkrow">
@@ -813,10 +813,10 @@
 			<Panel
 				title="Port pools on {row.name}"
 				count={poolViews.length}
-				description="Pools are defined once for the cluster, so a provision can land on any machine; here you set only the numbers this machine hands out. Blank inherits the pool's cluster-wide range."
+				description={t('web.machineDetail.poolsAreDefinedOnceFor')}
 			>
 				{#snippet actions()}
-					<Btn icon="sitemap" href="/network/pools">Edit catalog</Btn>
+					<Btn icon="sitemap" href="/network/pools">{t('web.machineDetail.editCatalog')}</Btn>
 					<Btn
 						variant="primary"
 						icon="floppyDisk"
@@ -824,7 +824,7 @@
 						loading={savingPools}
 						onclick={savePools}
 					>
-						Save ranges
+						{t('web.machineDetail.saveRanges')}
 					</Btn>
 				{/snippet}
 
@@ -836,7 +836,7 @@
 							<b>{pool.id}</b>
 							<span class="proto dim">{pool.protocol}</span>
 							{#if view?.overridden}
-								<span class="otag" title="this machine departs from the cluster range">override</span>
+								<span class="otag" title={t('web.machineDetail.thisMachineDepartsFromThe')}>{t('web.machineDetail.override')}</span>
 							{/if}
 							<span class="pconsumers dim">{consumersLine(poolConsumerMap, pool.id)}</span>
 						</div>
@@ -849,7 +849,7 @@
 								<input
 									class="input mono"
 									bind:value={draft.reserved}
-									placeholder="held back (none)"
+									placeholder={t('web.machineDetail.heldBackNone')}
 								/>
 							</div>
 						{/if}
@@ -860,7 +860,7 @@
 								<span class="dim">
 									{view.used.length}/{view.capacity} used ·
 									{#if view.next === null}
-										<b class="bad">exhausted</b>
+										<b class="bad">{t('web.machineDetail.exhausted')}</b>
 									{:else}
 										next <b class="mono">{view.next}</b>
 									{/if}
@@ -871,25 +871,25 @@
 				{/each}
 
 				{#if !catalog.length}
-					<p class="dim">No pools defined.</p>
+					<p class="dim">{t('web.machineDetail.noPoolsDefined')}</p>
 				{/if}
 			</Panel>
 		{:else if tab === 'environment'}
 			<Panel
 				title="Environment on {row.name}"
 				count={machineVars.length}
-				description="Every value instances on this host resolve — the cluster-wide set with this machine's own overrides applied over it. The source column says which. A single instance can still depart from these: builtin < global < machine < instance."
+				description={t('web.machineDetail.everyValueInstancesOnThis')}
 				flush
 			>
 				{#snippet actions()}
 					<span class="dim ownnote">{machineOwnCount} defined on this machine</span>
-					<Btn icon="key" href="/environment">All variables</Btn>
+					<Btn icon="key" href="/environment">{t('web.machineDetail.allVariables')}</Btn>
 					<Btn
 						variant="primary"
 						icon="plus"
 						href="/environment/new?machine={encodeURIComponent(row!.name)}"
 					>
-						Add an override
+						{t('web.machineDetail.addAnOverride')}
 					</Btn>
 				{/snippet}
 
@@ -902,13 +902,13 @@
 						getId={(entry) => entry.name}
 						searchValue={(entry) =>
 							`${entry.name} ${entry.secret ? 'secret' : entry.value} ${entry.source}`}
-						searchPlaceholder="Find a variable"
+						searchPlaceholder={t('web.machineDetail.findAVariable')}
 						rowActions={envActions}
 						rowLabel={(entry) => entry.name}
-						noun="variable"
+						noun={t('web.machineDetail.variable')}
 						onRowClick={(entry) => goto(`/environment/${encodeURIComponent(entry.name)}`)}
-						emptyTitle="No variables defined"
-						emptyText="Nothing is defined cluster-wide or on this machine yet."
+						emptyTitle={t('web.machineDetail.noVariablesDefined')}
+						emptyText={t('web.machineDetail.nothingIsDefinedClusterWide')}
 					>
 						{#snippet cell(entry, col)}
 							{#if col === 'name'}
@@ -920,13 +920,13 @@
 									<span class="mono">{entry.value || '(empty)'}</span>
 								{:else if revealedVars[entry.name] !== undefined}
 									<span class="mono">{revealedVars[entry.name] || '(empty)'}</span>
-									<button class="peek" onclick={() => hideVar(entry.name)}>hide</button>
+									<button class="peek" onclick={() => hideVar(entry.name)}>{t('web.machineDetail.hide')}</button>
 								{:else}
-									<StatusBadge state="warning" label="secret" />
+									<StatusBadge state="warning" label={t('web.machineDetail.secret')} />
 									<span class="dim">••••••••</span>
 									<button
 										class="peek"
-										title="Reveal this value — the read is recorded"
+										title={t('web.machineDetail.revealThisValueTheRead')}
 										onclick={() => revealVar(entry)}
 									>
 										reveal
@@ -936,35 +936,34 @@
 								<span class="scope {entry.source}">{entry.source}</span>
 							{:else if col === 'global'}
 								{#if entry.source === 'global'}
-									<span class="dim">inherited — no override here</span>
+									<span class="dim">{t('web.machineDetail.inheritedNoOverrideHere')}</span>
 								{:else if entry.global === null}
-									<span class="dim">not defined cluster-wide — this machine only</span>
+									<span class="dim">{t('web.machineDetail.notDefinedClusterWide')}</span>
 								{:else if entry.globalSecret}
-									<span class="dim">shadows ••••••••</span>
+									<span class="dim">{t('web.machineDetail.shadows')}</span>
 								{:else}
-									<span class="dim">shadows <span class="mono">{entry.global || '(empty)'}</span></span>
+									<span class="dim">{t('web.machineDetail.shadows2')} <span class="mono">{entry.global || '(empty)'}</span></span>
 								{/if}
 							{/if}
 						{/snippet}
 					</ResourceTable>
 				{:else}
 					<p class="none dim">
-						Nothing is defined cluster-wide or on this machine yet, so instances here export only
-						their builtins.
+						{t('web.machineDetail.nothingIsDefinedCluster')}
 					</p>
 				{/if}
 			</Panel>
 		{:else if tab === 'monitoring'}
-			<Panel title="Host health" description="Sampled every 5s on the daemon's own machine">
+			<Panel title={t('web.machineDetail.hostHealth')} description={t('web.machineDetail.sampledEvery5sOnThe')}>
 				<div class="gauges">
-					<Gauge label="CPU" value={health?.cpuPct ?? null} footnote={health ? `load ${health.load1.toFixed(2)}` : undefined} />
+					<Gauge label={t('web.machineDetail.cpu')} value={health?.cpuPct ?? null} footnote={health ? `load ${health.load1.toFixed(2)}` : undefined} />
 					<Gauge
-						label="Memory"
+						label={t('web.machineDetail.memory')}
 						value={memPct(health)}
 						footnote={health ? `${(health.memUsedMb / 1024).toFixed(1)} / ${(health.memTotalMb / 1024).toFixed(0)} GB` : undefined}
 					/>
 					<Gauge
-						label="Disk"
+						label={t('web.machineDetail.disk')}
 						value={diskPct(health)}
 						footnote={health && health.diskTotalBytes > 0
 							? `${fmtGb(health.diskUsedBytes)} / ${fmtGb(health.diskTotalBytes)}`
@@ -972,7 +971,7 @@
 					/>
 					{#if row.mode === 'follower'}
 						<Gauge
-							label="Link latency"
+							label={t('web.machineDetail.linkLatency')}
 							value={row.latencyMs}
 							max={LATENCY_SCALE_MS}
 							unit=" ms"
@@ -981,7 +980,7 @@
 						/>
 					{/if}
 					<Gauge
-						label="Instance memory"
+						label={t('web.machineDetail.instanceMemory')}
 						value={health?.instancesRssMb ?? null}
 						max={health?.memTotalMb || 1}
 						display={health ? `${(health.instancesRssMb / 1024).toFixed(1)} GB` : undefined}
@@ -991,32 +990,32 @@
 			</Panel>
 			<div class="gap"></div>
 			<div class="charts">
-				<Sparkline points={cpuPoints} label="CPU utilization" unit="%" color="#42b4ff" maxY={100} />
-				<Sparkline points={memPoints} label="Memory used" unit=" MB" color="#bf7edb" />
-				<Sparkline points={diskPoints} label="Disk used" unit="%" color="#ff9d5c" maxY={100} />
+				<Sparkline points={cpuPoints} label={t('web.machineDetail.cpuUtilization')} unit="%" color="#42b4ff" maxY={100} />
+				<Sparkline points={memPoints} label={t('web.machineDetail.memoryUsed')} unit=" MB" color="#bf7edb" />
+				<Sparkline points={diskPoints} label={t('web.machineDetail.diskUsed')} unit="%" color="#ff9d5c" maxY={100} />
 				<Sparkline
 					points={instancePoints}
-					label="Instance memory (resident)"
+					label={t('web.machineDetail.instanceMemoryResident')}
 					unit=" MB"
 					color="#2bb534"
 				/>
 				{#if hasLatencySeries}
-					<Sparkline points={latencyPoints} label="Heartbeat latency" unit=" ms" color="#e0ca57" />
+					<Sparkline points={latencyPoints} label={t('web.machineDetail.heartbeatLatency')} unit=" ms" color="#e0ca57" />
 				{/if}
 			</div>
 			<p class="dim note">
 				{#if row.mode === 'primary'}
-					Sampled locally by this daemon (last hour kept in memory).
+					{t('web.machineDetail.sampledLocallyByThis')}
 				{:else}
-					Sampled on {row.name} and carried to the primary on each heartbeat — latency is measured
-					by the primary as the round-trip of that same packet.
+					Sampled on {row.name} and carried to the primary on each heartbeat; latency is measured
+					{t('web.machineDetail.byThePrimaryAs')}
 				{/if}
 			</p>
 		{:else if tab === 'instances'}
 			<Panel
 				title="Instances on {row.name}"
 				count={instanceRows.length}
-				description="Memory as the daemon's own sampler measured it; reachability is a TCP probe from the primary"
+				description={t('web.machineDetail.memoryAsTheDaemonS')}
 				flush
 			>
 				<ResourceTable
@@ -1025,13 +1024,13 @@
 					rows={instanceRows}
 					getId={(entry) => entry.instance}
 					searchValue={(entry) => `${entry.instance} ${entry.state}`}
-					searchPlaceholder="Find an instance"
+					searchPlaceholder={t('web.machineDetail.findAnInstance')}
 					searchWidth="18rem"
 					rowActions={instanceActions}
 					rowLabel={(entry) => entry.instance}
-					noun="instance"
+					noun={t('web.machineDetail.instance')}
 					pageSize={15}
-					emptyTitle="No instances are assigned to this daemon"
+					emptyTitle={t('web.machineDetail.noInstancesAreAssignedTo')}
 					sortValue={(entry, col) =>
 						col === 'rss' ? (entry.rssMb ?? -1) : ((entry as any)[col] ?? '')}
 				>
@@ -1061,7 +1060,7 @@
 								/>
 								<span class="dim mono">{entry.reach.address}</span>
 							{:else}
-								<span class="dim">not probed (only running instances are)</span>
+								<span class="dim">{t('web.machineDetail.notProbedOnlyRunning')}</span>
 							{/if}
 						{/if}
 					{/snippet}
@@ -1069,22 +1068,22 @@
 			</Panel>
 		{:else if tab === 'events'}
 			<Panel
-				title="Daemon events"
+				title={t('web.machineDetail.daemonEvents')}
 				count={events.length}
-				description="Link, heartbeat and reachability events recorded for this daemon"
+				description={t('web.machineDetail.linkHeartbeatAndReachabilityEvents')}
 				flush
 			>
 				<ResourceTable
 					tableId="daemon-events"
 					searchValue={(event) => `${event.kind} ${event.message}`}
-					searchPlaceholder="Find an event"
+					searchPlaceholder={t('web.machineDetail.findAnEvent')}
 					searchWidth="20rem"
-					noun="event"
+					noun={t('web.machineDetail.event')}
 					pageSize={20}
 					columns={eventCols}
 					rows={events}
 					getId={(event) => String(event.t) + event.message}
-					emptyTitle="No events recorded for this daemon"
+					emptyTitle={t('web.machineDetail.noEventsRecordedForThis')}
 					maxHeight="60vh"
 				>
 					{#snippet cell(event, col)}
@@ -1111,37 +1110,34 @@
 	<Modal title="Upgrade {row.name}" bind:open={upgradeOpen}>
 		<p>
 			{#if upgradeCheck?.offer}
-				Replace this daemon's binary — it runs <b>{row.version}</b>, and the
+				Replace this daemon's binary; it runs <b>{row.version}</b>, and the
 				{upgradeCheck.offer.origin} has <b>{upgradeCheck.offer.version}</b>.
 			{:else if upgradeCheck?.offers.length}
 				Nothing newer is on offer: this daemon and the {upgradeCheck.offers[0]!.origin} both report
 				<b>{row.version}</b>, so this only reinstalls the binary.
 			{:else}
-				No upgrade source has answered yet. Check for updates first, or upgrade anyway to make the
-				daemon resolve a source itself.
+				{t('web.machineDetail.noUpgradeSourceHas')}
 			{/if}
 		</p>
 		<p class="dim">
-			The daemon verifies the download, swaps it over its own path and exits, so its service
-			manager starts the new build. Instances it owns keep running — they live in their own
-			screen sessions, not inside the daemon.
+			{t('web.machineDetail.theDaemonVerifiesThe')}
 		</p>
 
 		{#snippet footer()}
-			<Btn onclick={() => (upgradeOpen = false)}>Cancel</Btn>
-			<Btn variant="primary" loading={upgrading} onclick={upgrade}>Upgrade</Btn>
+			<Btn onclick={() => (upgradeOpen = false)}>{t('web.machineDetail.cancel')}</Btn>
+			<Btn variant="primary" loading={upgrading} onclick={upgrade}>{t('web.machineDetail.upgrade')}</Btn>
 		{/snippet}
 	</Modal>
 
-	<Modal title="Remove daemon registration" bind:open={removeOpen}>
+	<Modal title={t('web.machineDetail.removeDaemonRegistration')} bind:open={removeOpen}>
 		<p>
 			Remove <b>{row.name}</b> from the daemons registry? Its machine can re-register at any time
-			by connecting again.
+			{t('web.machineDetail.byConnectingAgain')}
 		</p>
 
 		{#snippet footer()}
-			<Btn onclick={() => (removeOpen = false)}>Cancel</Btn>
-			<Btn variant="danger" loading={removing} onclick={remove}>Remove</Btn>
+			<Btn onclick={() => (removeOpen = false)}>{t('web.machineDetail.cancel')}</Btn>
+			<Btn variant="danger" loading={removing} onclick={remove}>{t('web.machineDetail.remove')}</Btn>
 		{/snippet}
 	</Modal>
 {/if}

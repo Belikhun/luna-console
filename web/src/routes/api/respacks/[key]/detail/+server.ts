@@ -24,7 +24,7 @@ export async function GET({ params, url }) {
 			retest: url.searchParams.get('retest') === '1'
 		});
 
-		// the provider's web page is built here — the browser has no URL scheme
+		// the provider's web page is built here; the browser has no URL scheme
 		const pack = {
 			...detail.pack,
 			providerUrl: detail.pack.remote ? projectUrl(detail.pack.remote, 'resourcepack') : null

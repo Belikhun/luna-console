@@ -6,7 +6,7 @@
  * `standardizeNaming` migrates a live cluster in place, in an order with no
  * unprotected gap: rename the pool and rekey the lockfile and the port
  * allocations first, then deploy (new-name jars land NEXT TO the old ones),
- * then delete the old-name jars — a server restarting mid-migration always has
+ * then delete the old-name jars; a server restarting mid-migration always has
  * a full plugin set. Disk state is snapshotted before and after, per instance,
  * and compared by plugin identity; any difference fails the report.
  */
@@ -16,6 +16,7 @@ import { readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { ClusterConfig, PluginsLock } from "./types";
+import { t } from "../shared/i18n";
 import { instanceDir, managedInstances, poolDir } from "./config";
 import { familyOf, pluginNameOf } from "./families";
 import { deploy } from "./plugins";
@@ -70,7 +71,7 @@ async function jarIndex(dir: string): Promise<Map<string, string>> {
 
 /**
  * Per-instance plugin identities currently on disk, resolved through a
- * file-name → plugin mapping. Only managed jars count — unmanaged strays are
+ * file-name → plugin mapping. Only managed jars count; unmanaged strays are
  * neither part of the guarantee nor touched by the migration.
  */
 async function snapshot(
@@ -100,7 +101,7 @@ async function snapshot(
 /**
  * Migrate every lockfile entry, the pool, the variant files, the port
  * allocations and the deployed jars to the `<plugin>@<family>` scheme.
- * Idempotent — a second run finds nothing to rename. Mutates `cfg` and `lock`;
+ * Idempotent; a second run finds nothing to rename. Mutates `cfg` and `lock`;
  * the caller persists both.
  */
 export async function standardizeNaming(
@@ -141,7 +142,7 @@ export async function standardizeNaming(
 		}
 
 		if (lock.plugins[newKey] && newKey !== key) {
-			throw new Error(`cannot rename ${key} → ${newKey}: an entry with that key already exists`);
+			throw new Error(t("core.standardize.renameConflict", { from: key, to: newKey }));
 		}
 
 		steps.push({ oldKey: key, newKey, oldFile: entry.file, newFile, plugin });
@@ -154,7 +155,7 @@ export async function standardizeNaming(
 		fileToPluginBefore.set(entry.file.toLowerCase(), cleanIdentity(pluginNameOf(key, entry)));
 	}
 
-	progress?.info(0.05, `renaming ${steps.length} entries`);
+	progress?.info(0.05, t("core.standardize.renaming", { count: steps.length }));
 
 	const before = await snapshot(cfg, fileToPluginBefore);
 
@@ -241,13 +242,13 @@ export async function standardizeNaming(
 	}
 
 	// ---- deploy new names, then remove the old jars ---------------------------
-	progress?.info(0.3, "deploying standardized jars");
+	progress?.info(0.3, t("core.standardize.deploying"));
 
 	const actions = await deploy(cfg, lock, {});
 
 	report.deployed = actions.filter((action) => action.action !== "unchanged").length;
 
-	progress?.info(0.7, "removing old-name jars");
+	progress?.info(0.7, t("core.standardize.removingOld"));
 
 	for (const [name, inst] of Object.entries(managedInstances(cfg))) {
 		const dir = join(instanceDir(inst), "plugins");
@@ -296,10 +297,10 @@ export async function standardizeNaming(
 		}
 	}
 
-	// aliases/meta are keyed by content, which did not change — but recompute
+	// aliases/meta are keyed by content, which did not change; but recompute
 	// display data for renamed identities so nothing stale survives
 	lock.version = NAMING_VERSION;
-	progress?.complete("naming standardized");
+	progress?.complete(t("core.standardize.done"));
 
 	return report;
 }

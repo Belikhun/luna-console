@@ -4,11 +4,11 @@
  * URL actually answers, which backends serve it, who is holding it right now,
  * and what the web server in front of the packs directory has been asked for.
  *
- * The pieces come from four independent places and any of them can be absent —
+ * The pieces come from four independent places and any of them can be absent -
  * a zip may be missing, the proxy may be stopped, the access log may not be
  * readable, LunaPackLoader may be an older build. None of that is an error:
  * every section reports its own availability so the console can render the
- * parts it has (DESIGN.md §5 — an unavailable fact is shown as unavailable,
+ * parts it has (DESIGN.md §5; an unavailable fact is shown as unavailable,
  * never as zero).
  */
 
@@ -25,6 +25,7 @@ import * as lunaApi from "./services/luna";
 import { sha512File } from "./services/download";
 import { readZipEntries, readZipEntry, type ZipEntry } from "./services/zip";
 import type { AddonGroup, ClusterConfig } from "./types";
+import { t } from "../shared/i18n";
 
 export { readZipEntries, readZipEntry };
 export type { ZipEntry };
@@ -51,7 +52,7 @@ export interface PackManifest {
 	hasIcon: boolean;
 }
 
-/** Largest pack.png we inline into the response — an icon, not a texture atlas. */
+/** Largest pack.png we inline into the response; an icon, not a texture atlas. */
 const MAX_ICON_BYTES = 512 * 1024;
 
 /** Flatten a `pack.mcmeta` description, which may be a text component tree. */
@@ -154,12 +155,12 @@ export async function readPackManifest(zipPath: string): Promise<PackManifest> {
 			manifest.description = flattenDescription(pack.description)?.trim() || undefined;
 			manifest.supportedFormats = renderSupportedFormats(pack.supported_formats);
 		} catch (err) {
-			// a pack.mcmeta the client would also reject — worth saying so, but the
+			// a pack.mcmeta the client would also reject; worth saying so, but the
 			// rest of the manifest is still good
 			manifest.problem = `pack.mcmeta is unreadable: ${(err as Error).message}`;
 		}
 	} else {
-		manifest.problem = "no pack.mcmeta — the client will reject this pack";
+		manifest.problem = t("core.respackinfo.noMcmeta");
 	}
 
 	const icon = entries.find((entry) => entry.name === "pack.png");
@@ -188,7 +189,7 @@ export interface PackServeConfig {
 	packPath: string;
 	/** Whether that directory is the one luna manages */
 	managedPath: boolean;
-	/** "built-in" runs a loopback HTTP server — reachable to the proxy, nobody else */
+	/** "built-in" runs a loopback HTTP server; reachable to the proxy, nobody else */
 	builtIn: boolean;
 	/** Why the config could not be read, when it could not */
 	problem?: string;
@@ -208,7 +209,7 @@ function readFlatScalar(yaml: string, key: string): string | undefined {
 /**
  * Read the proxy's LunaPackLoader configuration: the base URL clients are sent
  * to, and the directory the plugin serves from. `pack-path` is resolved the way
- * the plugin resolves it — relative to the proxy's working directory, which is
+ * the plugin resolves it; relative to the proxy's working directory, which is
  * the instance directory the screen session starts in.
  */
 export async function packServeConfig(
@@ -282,8 +283,8 @@ export interface PackReachability {
 const PROBE_TIMEOUT_MS = 8000;
 
 /**
- * Fetch the pack's own URL the way a client would. HEAD first — a zip is not
- * something to download twice for a status line — falling back to a one-byte
+ * Fetch the pack's own URL the way a client would. HEAD first; a zip is not
+ * something to download twice for a status line; falling back to a one-byte
  * ranged GET for servers that refuse HEAD.
  */
 export async function probePackUrl(url: string, diskBytes?: number): Promise<PackReachability> {
@@ -354,7 +355,7 @@ export interface PackFailures {
 	lastAt?: number;
 }
 
-/** Failures kept per pack — enough to see a pattern, not a log viewer. */
+/** Failures kept per pack; enough to see a pattern, not a log viewer. */
 const MAX_FAILURES = 20;
 
 /**
@@ -371,7 +372,7 @@ const FAILURE_LINE = /^\[(\d{2}):(\d{2}):(\d{2})\].*?(\S+) lỗi pack (.+?): ([A
  * Only `latest.log` is read: a failure old enough to have rotated out says
  * nothing about whether the pack is reachable *now*, which is the question this
  * feeds. Timestamps in the log carry no date, so they are anchored to the file's
- * own mtime — and a line whose clock time is later than the file's belongs to
+ * own mtime; and a line whose clock time is later than the file's belongs to
  * the day before, since log4j rolls the file at midnight.
  */
 export async function packLoadFailures(
@@ -458,9 +459,9 @@ export interface PackTraffic {
 	windowFrom?: number;
 	windowTo?: number;
 	requests: number;
-	/** 200/206 — the client got the pack */
+	/** 200/206; the client got the pack */
 	completed: number;
-	/** 404/410 — the URL is registered but the file is not there */
+	/** 404/410; the URL is registered but the file is not there */
 	missing: number;
 	bytes: number;
 	uniqueClients: number;
@@ -502,7 +503,7 @@ function parseLogTime(stamp: string): number | undefined {
 	return Number.isFinite(at) ? at : undefined;
 }
 
-/** Every access log to scan, newest first — the live one plus its rotations. */
+/** Every access log to scan, newest first; the live one plus its rotations. */
 async function accessLogFiles(): Promise<string[]> {
 	const configured = process.env.LUNA_PACK_ACCESS_LOG;
 
@@ -518,7 +519,7 @@ async function accessLogFiles(): Promise<string[]> {
 	const base = basename(DEFAULT_ACCESS_LOG);
 	const siblings = (await readdir(dir)).filter((file) => file === base || file.startsWith(`${base}.`));
 
-	// newest first: the live log, then .1, .2.gz … — which is also the order the
+	// newest first: the live log, then .1, .2.gz …; which is also the order the
 	// byte budget should spend itself in
 	const ranked = await Promise.all(
 		siblings.map(async (file) => ({
@@ -543,7 +544,7 @@ let scanCache: { key: string; result: ScannedLogs } | undefined;
 
 /**
  * Scan the access logs once for every request under the packs URL prefix, keyed
- * by the requested path. One scan serves every pack — per-pack scanning would
+ * by the requested path. One scan serves every pack; per-pack scanning would
  * re-read tens of megabytes for each row of a table.
  *
  * Cached against the logs' own sizes: a rotation or an appended line changes
@@ -618,7 +619,7 @@ async function scanAccessLogs(prefix: string): Promise<ScannedLogs> {
 				continue;
 			}
 
-			// a HEAD is a reachability check, not a download — luna's own probe is
+			// a HEAD is a reachability check, not a download; luna's own probe is
 			// one of them, and counting it would make the console its own traffic
 			if (match[3] !== "GET") {
 				continue;
@@ -694,7 +695,7 @@ export async function packTraffic(serve: PackServeConfig, filename: string): Pro
 	};
 
 	if (serve.builtIn) {
-		return { ...empty, problem: "the proxy serves packs itself (base-url: built-in) — no web server log to read" };
+		return { ...empty, problem: t("core.respackinfo.builtinNoLog") };
 	}
 
 	if (!serve.baseUrl) {
@@ -814,7 +815,7 @@ export async function packHolders(packName: string): Promise<PackHolders> {
 
 /** A stored reachability answer, and what it already knows about. */
 interface CachedProbe {
-	/** The URL that was probed — a pack whose URL moved needs a fresh answer */
+	/** The URL that was probed; a pack whose URL moved needs a fresh answer */
 	url: string;
 	result: PackReachability;
 	/** Newest failure timestamp at the time of the probe */
@@ -825,7 +826,7 @@ interface CachedProbe {
  * Reachability answers, kept per pack.
  *
  * Probing means an outbound HTTP request to the public pack host, and the answer
- * changes when the web server changes — not when a console page ticks. So it is
+ * changes when the web server changes; not when a console page ticks. So it is
  * measured once, then only again when an operator asks (`retest`) or when the
  * proxy logs a player failing to load the pack, which is the one event that says
  * the stored answer may have gone wrong. Held in memory: a daemon restart simply
@@ -833,7 +834,7 @@ interface CachedProbe {
  */
 const probeCache = new Map<string, CachedProbe>();
 
-/** Forget a pack's stored reachability — used when its file or URL changes. */
+/** Forget a pack's stored reachability; used when its file or URL changes. */
 export function forgetPackReachability(key: string): void {
 	probeCache.delete(key);
 }
@@ -893,7 +894,7 @@ export interface PackResolution {
 /**
  * How the proxy itself resolved a pack: the URL and sha1 it hands clients, or
  * the reason it dropped the definition. This is the only view that reflects the
- * *running* catalog — everything else here reads the directory, which may have
+ * *running* catalog; everything else here reads the directory, which may have
  * changed since the last reload.
  */
 export async function packResolution(packName: string): Promise<PackResolution> {
@@ -962,7 +963,7 @@ export async function resourcePackDetail(
 	const pack = rows.find((candidate) => candidate.key === key);
 
 	if (!pack) {
-		throw new Error(`unknown resource pack: ${key}`);
+		throw new Error(t("core.respacks.unknown", { key }));
 	}
 
 	const path = join(respacksDir(), pack.filename);
@@ -1039,7 +1040,7 @@ async function storedReachability(
 	failures: PackFailures,
 	retest?: boolean,
 ): Promise<PackReachability> {
-	// nothing to measure: say why, and never cache a non-answer — the reason can
+	// nothing to measure: say why, and never cache a non-answer; the reason can
 	// stop being true the moment the zip or the config does
 	if (!url || !pack.present) {
 		probeCache.delete(key);
@@ -1049,7 +1050,7 @@ async function storedReachability(
 			ok: false,
 			url,
 			problem: serve.builtIn
-				? "the proxy serves packs on loopback (base-url: built-in) — clients off this machine cannot reach it"
+				? t("core.respackinfo.builtinLoopback")
 				: !url
 					? (serve.problem ?? "no pack URL to probe")
 					: "the zip is missing, so there is nothing to serve",

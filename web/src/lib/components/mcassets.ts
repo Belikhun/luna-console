@@ -1,7 +1,7 @@
 /**
  * The Minecraft item registry, as the browser uses it.
  *
- * One fetch per page load, shared by every item the editor draws — a chest page
+ * One fetch per page load, shared by every item the editor draws; a chest page
  * is 45 items and the material picker lists a thousand more, so each of them
  * asking independently would be absurd. The shapes come from `$shared` so the
  * daemon that builds the registry and the canvas that draws it cannot drift.
@@ -51,8 +51,8 @@ export function resetRegistry(): void {
 	pending = null;
 }
 
-// A texture is immutable for a version but its path is not — `font/ascii.png` is
-// a different picture in a different version — so the version rides along in the
+// A texture is immutable for a version but its path is not; `font/ascii.png` is
+// a different picture in a different version; so the version rides along in the
 // query and the response can be cached hard without ever going stale.
 let assetVersion = '';
 
@@ -67,7 +67,7 @@ export function textureUrl(path: string): string {
  * Where a batch of unifont rows is served from.
  *
  * Codepoints go in the query rather than the path because the bundle is eight
- * megabytes and the browser wants a dozen glyphs out of it — one request per
+ * megabytes and the browser wants a dozen glyphs out of it; one request per
  * character would be worse than one request per text block by an order of
  * magnitude.
  */

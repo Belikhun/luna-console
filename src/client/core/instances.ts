@@ -1,6 +1,6 @@
 /**
  * Bridge mirror of core/instances: pure helpers run locally, everything that
- * touches screens, processes or the network runs in the daemon — routed to the
+ * touches screens, processes or the network runs in the daemon; routed to the
  * owning follower when the instance lives on another machine.
  */
 

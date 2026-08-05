@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { post } from '$lib/api';
 	import Modal from './Modal.svelte';
 	import Btn from './Btn.svelte';
@@ -7,7 +8,7 @@
 
 	/**
 	 * Quick one-shot scheduling from instance management: pick start/stop/restart
-	 * and a time, and a one-time schedule is created for the given instances —
+	 * and a time, and a one-time schedule is created for the given instances -
 	 * the full schedule form stays one click away for anything recurring.
 	 */
 	let {
@@ -54,44 +55,44 @@
 			});
 
 			Notify.success(`Scheduled: ${label}`, {
-				detail: `Runs once at ${new Date(at).toLocaleString('sv')} — manage it on the Schedules page.`
+				detail: `Runs once at ${new Date(at).toLocaleString('sv')}; manage it on the Schedules page.`
 			});
 
 			open = false;
 			at = '';
 		} catch (err) {
-			Notify.error('Could not create the schedule', { detail: (err as Error).message });
+			Notify.error(t('web.scheduleModal.createFailed'), { detail: (err as Error).message });
 		}
 
 		creating = false;
 	}
 </script>
 
-<Modal title="Schedule an action" bind:open>
+<Modal title={t('web.scheduleModal.title')} bind:open>
 	<p class="dim intro">
-		One-time run against <b>{instances.join(', ')}</b> — recurring schedules live on the
-		<a href="/schedules">Schedules page</a>.
+		One-time run against <b>{instances.join(', ')}</b>; recurring schedules live on the
+		<a href="/schedules">{t('web.scheduleModal.schedulesPage')}</a>.
 	</p>
 	<div class="two">
 		<div class="field">
-			<span class="lbl">Action</span>
+			<span class="lbl">{t('web.scheduleModal.action')}</span>
 			<Select
 				bind:value={action}
 				width="100%"
 				options={[
-					{ value: 'start', label: 'Start' },
-					{ value: 'stop', label: 'Stop' },
-					{ value: 'restart', label: 'Restart' }
+					{ value: 'start', label: t('web.scheduleModal.start') },
+					{ value: 'stop', label: t('web.scheduleModal.stop') },
+					{ value: 'restart', label: t('web.scheduleModal.restart') }
 				]}
 			/>
 		</div>
 		<label class="field">
-			<span class="lbl">Run at</span>
+			<span class="lbl">{t('web.scheduleModal.runAt')}</span>
 			<input class="input" type="datetime-local" bind:value={at} />
 		</label>
 	</div>
 	{#snippet footer()}
-		<Btn onclick={() => (open = false)}>Cancel</Btn>
+		<Btn onclick={() => (open = false)}>{t('web.common.cancel')}</Btn>
 		<Btn
 			variant="primary"
 			loading={creating}

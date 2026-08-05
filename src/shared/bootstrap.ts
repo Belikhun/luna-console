@@ -1,8 +1,8 @@
 /**
  * What an empty cluster looks like.
  *
- * `core/` bails when `cluster.json` is missing — nothing in it can run without
- * the registry — so a machine being set up for the first time needs one written
+ * `core/` bails when `cluster.json` is missing; nothing in it can run without
+ * the registry; so a machine being set up for the first time needs one written
  * before its daemon starts. That skeleton is domain knowledge, not installer
  * trivia, but the installer runs before any daemon exists to ask, which is why
  * it lives here rather than behind an RPC in `core/`.
@@ -13,7 +13,7 @@
 
 import type { ClusterConfig } from "../core/types";
 
-/** Aikar's flags — the default profile every instance starts from. */
+/** Aikar's flags; the default profile every instance starts from. */
 const AIKAR_FLAGS = [
 	"-XX:+UseG1GC",
 	"-XX:+ParallelRefProcEnabled",
@@ -34,7 +34,7 @@ const AIKAR_FLAGS = [
 ];
 
 export interface StarterOptions {
-	/** Port players connect to — the proxy's listener */
+	/** Port players connect to; the proxy's listener */
 	proxyPort?: number;
 	/** Memory for the proxy, e.g. "2G" */
 	proxyMemory?: string;
@@ -47,7 +47,7 @@ export interface StarterOptions {
 /**
  * A registry with no instances: the proxy definition, the default java profile
  * and the port pool, which is the least a primary daemon needs to start. The
- * proxy directory it names does not have to exist yet — `luna instance launch`
+ * proxy directory it names does not have to exist yet; `luna instance launch`
  * creates it on first use.
  */
 export function starterCluster(opts: StarterOptions = {}): ClusterConfig {

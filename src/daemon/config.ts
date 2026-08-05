@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { t } from "../shared/i18n";
 import { mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -23,7 +24,7 @@ export interface DaemonConfig {
 	socket: string;
 	/** Primary only: TCP listener for followers (and remote tooling) */
 	listen?: DaemonListen;
-	/** Shared cluster secret — required on every TCP request */
+	/** Shared cluster secret; required on every TCP request */
 	token?: string;
 	/** Follower only: primary daemon address, "host:port" */
 	primary?: { address: string };
@@ -31,7 +32,7 @@ export interface DaemonConfig {
 	 *  advertised to the primary for proxy routing (default: what the primary
 	 *  sees on the socket) */
 	host?: string;
-	/** CurseForge API key (console.curseforge.com) — the curseforge provider
+	/** CurseForge API key (console.curseforge.com); the curseforge provider
 	 *  reports itself unavailable without one */
 	curseforgeApiKey?: string;
 	/** Where the config came from, for `daemon status` */
@@ -86,7 +87,7 @@ export interface TokenSource {
  * Deliberately not built on `resolveDaemonConfig`: that one creates the socket
  * directory and refuses a machine with no cluster root, and neither should be a
  * precondition for answering "what is my token". The first *existing* config
- * file is the answer even when it carries no token — that is the file the daemon
+ * file is the answer even when it carries no token; that is the file the daemon
  * would load, so its silence is the honest result.
  */
 export async function configuredToken(): Promise<TokenSource> {
@@ -168,21 +169,21 @@ export async function resolveDaemonConfig(): Promise<DaemonConfig> {
 	const mode = (process.env.LUNA_MODE ?? file.mode ?? "primary") as DaemonMode;
 
 	if (mode !== "primary" && mode !== "follower") {
-		throw new Error(`invalid daemon mode: ${mode} (expected primary or follower)`);
+		throw new Error(t("daemon.invalidMode", { mode }));
 	}
 
 	const root = process.env.LUNA_ROOT ?? file.root ?? discoverRoot();
 
 	if (!root) {
 		throw new Error(
-			"cluster root not found — set root in the daemon config, LUNA_ROOT, or run inside the cluster directory",
+			t("daemon.rootNotFound"),
 		);
 	}
 
 	const primaryAddress = process.env.LUNA_PRIMARY_ADDRESS ?? file.primary?.address;
 
 	if (mode === "follower" && !primaryAddress) {
-		throw new Error("follower mode requires primary.address (or LUNA_PRIMARY_ADDRESS)");
+		throw new Error(t("daemon.followerNeedsPrimary"));
 	}
 
 	let listen = file.listen;

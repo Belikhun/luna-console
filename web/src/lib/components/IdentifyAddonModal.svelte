@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { api, post, del } from '$lib/api';
 	import Modal from './Modal.svelte';
 	import Btn from './Btn.svelte';
@@ -18,7 +19,7 @@
 	 *
 	 * Three steps, deliberately not collapsed into one: search a provider, see
 	 * what luna can *prove* about the local file, then commit. The middle step is
-	 * the reason this dialog exists — the recorded version is what every later
+	 * the reason this dialog exists; the recorded version is what every later
 	 * update check compares against, so a guess presented as a fact is how an
 	 * "update" silently becomes a downgrade. The verdict is stated in those terms,
 	 * and an unproven match never picks a version by itself.
@@ -43,7 +44,7 @@
 		label?: string;
 		/** Plugin/mod only: narrows the provider search to that platform */
 		family?: string;
-		/** Whether it is already mapped — the dialog then offers to unmap */
+		/** Whether it is already mapped; the dialog then offers to unmap */
 		mapped?: boolean;
 		onchanged?: () => void;
 	} = $props();
@@ -64,7 +65,7 @@
 
 	/**
 	 * The verdict lands under a full page of search results, so it is scrolled to
-	 * when it appears — the answer to the click the operator just made must not be
+	 * when it appears; the answer to the click the operator just made must not be
 	 * below the fold.
 	 */
 	let verdictEl: HTMLDivElement | undefined = $state();
@@ -93,7 +94,7 @@
 	/**
 	 * Ask the daemon what the local file could be at the picked project. The
 	 * project is looked up by id when the provider gave one (a slug is not always
-	 * enough — CurseForge and Hangar key on ids), else by slug.
+	 * enough; CurseForge and Hangar key on ids), else by slug.
 	 */
 	async function runProbe(hit: AddonHit | undefined): Promise<void> {
 		slug = hit?.slug ?? '';
@@ -128,9 +129,9 @@
 			label:
 				version.versionNumber +
 				(version.channel === 'release' ? '' : ` (${version.channel})`) +
-				(version.versionId === probe?.best?.versionId ? ' — matched' : '')
+				(version.versionId === probe?.best?.versionId ? `; ${t('web.identify.matched')}` : '')
 		})),
-		{ value: '', label: 'Record no version' }
+		{ value: '', label: t('web.identify.recordNoVersion') }
 	]);
 
 	const chosen = $derived(probe?.versions.find((version) => version.versionId === choice));
@@ -138,7 +139,7 @@
 	async function apply(): Promise<void> {
 		busy = 'map';
 
-		const note = Notify.loading(`Mapping ${name} to ${provider}…`);
+		const note = Notify.loading(t('web.identify.mapping', { name, provider }));
 
 		try {
 			const answer = await post(spec.endpoint(target), {
@@ -154,7 +155,7 @@
 				message: `${name} → ${provider}:${slug}`,
 				detail: answer.match
 					? `Recorded as ${answer.match.versionNumber}. Update checks apply from now on.`
-					: 'No version recorded — the next check offers the newest compatible release.',
+					: 'No version recorded; the next check offers the newest compatible release.',
 				closeable: true
 			});
 
@@ -183,7 +184,7 @@
 			note.set({
 				level: 'success',
 				message: `${name} is no longer mapped`,
-				detail: 'The file and its deployments are untouched; updates will not be checked.',
+				detail: t('web.identify.theFileAndItsDeployments'),
 				closeable: true
 			});
 
@@ -205,7 +206,7 @@
 <Modal title="Map {name} to a provider" bind:open wide>
 	<p class="dim lead">
 		Point <b>{name}</b> at the project it came from, and luna can check it for updates like any
-		installed addon. The file itself is not touched — nothing is downloaded, nothing is renamed.
+		{t('web.identify.installedAddonTheFile')}
 	</p>
 
 	<div class="picker" class:picked={!!probe}>
@@ -221,49 +222,51 @@
 	</div>
 
 	{#if probing}
-		<p class="dim probing">Comparing the local file against every published version…</p>
+		<p class="dim probing">{t('web.identify.probing')}</p>
 	{:else if failed}
-		<Flash kind="error">Could not read that project — {failed}</Flash>
+		<Flash kind="error">{t('web.identify.readFailed')} {failed}</Flash>
 	{:else if probe}
 		<div class="verdict" bind:this={verdictEl}>
 			<div class="head">
 				{#if probe.confidence === 'exact'}
-					<StatusBadge state="ok" label="Identified" />
+					<StatusBadge state="ok" label={t('web.identify.identified')} />
 					<span>
-						This file <b>is</b> {probe.best?.versionNumber} — its {probe.best?.basis} matches what
-						{probe.provider} published.
+						{t('web.identify.exactNote', {
+							version: probe.best?.versionNumber ?? '',
+							basis: probe.best?.basis ?? '',
+							provider: probe.provider
+						})}
 					</span>
 				{:else if probe.confidence === 'likely'}
-					<StatusBadge state="warning" label="Probable" />
+					<StatusBadge state="warning" label={t('web.identify.probable')} />
 					<span>
-						Looks like {probe.best?.versionNumber}, matched by {probe.best?.basis} rather than a
-						hash. Check it, or record no version.
+						{t('web.identify.likelyNote', {
+							version: probe.best?.versionNumber ?? '',
+							basis: probe.best?.basis ?? ''
+						})}
 					</span>
 				{:else}
-					<StatusBadge state="warning" label="Not identified" />
-					<span>
-						No published version matches this file — it may be repackaged, or built from source.
-						Map the project anyway, or pick the version by hand.
-					</span>
+					<StatusBadge state="warning" label={t('web.identify.notIdentified')} />
+					<span>{t('web.identify.noMatchNote')}</span>
 				{/if}
 			</div>
 
 			<dl class="facts">
-				<dt>Local file</dt>
+				<dt>{t('web.identify.localFile')}</dt>
 				<dd class="mono">{probe.local.file} · {fmtBytes(probe.local.sizeBytes)}</dd>
-				<dt>Project</dt>
+				<dt>{t('web.identify.project')}</dt>
 				<dd>
 					<BrandLink source={probe.provider} label={probe.project.title} />
 				</dd>
 				{#if probe.newest}
-					<dt>Newest release</dt>
+					<dt>{t('web.identify.newestRelease')}</dt>
 					<dd>{probe.newest.versionNumber}</dd>
 				{/if}
 			</dl>
 
 			<div class="controls">
 				<Select
-					label="Record as version"
+					label={t('web.identify.recordAs')}
 					bind:value={choice}
 					options={options}
 					width="20rem"
@@ -271,31 +274,25 @@
 				/>
 				<label class="auto">
 					<Toggle checked={autoUpdate} onchange={(value) => (autoUpdate = value)} />
-					Check for updates automatically
+					{t('web.identify.autoCheck')}
 				</label>
 			</div>
 
 			{#if !choice}
-				<p class="dim note">
-					With no version recorded, the first update check offers the newest compatible release —
-					even if this file already is it.
-				</p>
+				<p class="dim note">{t('web.identify.noVersionNote')}</p>
 			{:else if chosen && !chosen.exact && probe.confidence !== 'exact'}
-				<p class="dim note">
-					luna will treat this file as {chosen.versionNumber}. Anything published before it is then
-					never offered as an update.
-				</p>
+				<p class="dim note">{t('web.identify.pinnedNote', { version: chosen.versionNumber })}</p>
 			{/if}
 		</div>
 	{/if}
 
 	{#snippet footer()}
 		{#if mapped}
-			<Btn variant="danger" loading={busy === 'forget'} onclick={forget}>Unmap</Btn>
+			<Btn variant="danger" loading={busy === 'forget'} onclick={forget}>{t('web.identify.unmap')}</Btn>
 		{/if}
-		<Btn onclick={() => (open = false)}>Cancel</Btn>
+		<Btn onclick={() => (open = false)}>{t('web.common.cancel')}</Btn>
 		<Btn variant="primary" disabled={!probe} loading={busy === 'map'} onclick={apply}>
-			{choice ? 'Map and record version' : 'Map without a version'}
+			{choice ? t('web.identify.mapWithVersion') : t('web.identify.mapWithoutVersion')}
 		</Btn>
 	{/snippet}
 </Modal>

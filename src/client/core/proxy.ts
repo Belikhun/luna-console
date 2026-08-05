@@ -1,4 +1,4 @@
-/** Bridge mirror of core/proxy — velocity.toml lives beside the primary daemon. */
+/** Bridge mirror of core/proxy; velocity.toml lives beside the primary daemon. */
 
 import { join } from "node:path";
 

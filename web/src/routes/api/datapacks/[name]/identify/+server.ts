@@ -12,7 +12,7 @@ import type { ProviderId } from '$core/types';
 
 /**
  * The provider mapping of one pooled data pack. Same three steps as the other
- * kinds: grade, record, drop — the pool zip and the worlds already holding it
+ * kinds: grade, record, drop; the pool zip and the worlds already holding it
  * are untouched throughout.
  */
 

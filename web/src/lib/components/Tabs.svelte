@@ -19,7 +19,7 @@
 
 <style lang="scss">
 	// The active indicator is a 0.25rem bar overlapping the
-	// container's bottom rule — it must not be clipped by the scroll box, so the
+	// container's bottom rule; it must not be clipped by the scroll box, so the
 	// indicator lives inside the tab and the rule sits under it.
 	.tabs {
 		display: flex;

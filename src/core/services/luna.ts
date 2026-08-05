@@ -3,7 +3,7 @@
  *
  * LunaCore serves network-wide telemetry, the player list and administrative
  * actions at `http://<proxy>:<http.port><http.pathPrefix>`, authenticated with the
- * Velocity forwarding secret — the credential backends already hold, so the console
+ * Velocity forwarding secret; the credential backends already hold, so the console
  * needs no separate one. Both the port and the secret are read from the proxy's own
  * files rather than hardcoded, so moving either is a config change, not a code
  * change.
@@ -54,7 +54,7 @@ function readScalar(yaml: string, section: string, key: string): string | undefi
 }
 
 /**
- * Resolve the proxy's Luna API base URL and token. Cached for the process — both
+ * Resolve the proxy's Luna API base URL and token. Cached for the process; both
  * come from files that only change when the proxy is reconfigured, which requires a
  * restart anyway.
  */
@@ -191,13 +191,13 @@ export async function call<T>(
 
 /**
  * Open a server-sent-events stream. Returns the raw response so the caller can pipe
- * the body straight through — the web console re-serves these to the browser, and
+ * the body straight through; the web console re-serves these to the browser, and
  * re-framing the events on the way would only add a place for them to be lost.
  *
  * Pass the incoming request's signal as `signal`: aborting it tears down this
  * upstream connection, which is what makes LunaCore drop the subscriber. The body
- * cannot be cancelled by hand once it has been handed to a `Response` — that locks
- * the stream — so the signal is the only way to close it early.
+ * cannot be cancelled by hand once it has been handed to a `Response`; that locks
+ * the stream; so the signal is the only way to close it early.
  */
 export async function openStream(path: string, signal?: AbortSignal): Promise<Response> {
 	const target = await endpoint();
@@ -349,7 +349,7 @@ export interface PackSessionList {
 
 /**
  * Who is holding which resource pack right now. Served by LunaPackLoader rather
- * than LunaCore, so an older pack plugin answers 404 — the caller renders that
+ * than LunaCore, so an older pack plugin answers 404; the caller renders that
  * as "unavailable", never as "nobody has it".
  */
 export async function packSessions(): Promise<LunaResult<PackSessionList>> {
@@ -385,7 +385,7 @@ export interface PackCatalog {
 	packs: ResolvedPackInfo[];
 }
 
-/** The pack catalog the running proxy holds — its view, not the directory's. */
+/** The pack catalog the running proxy holds; its view, not the directory's. */
 export async function packCatalog(): Promise<LunaResult<PackCatalog>> {
 	return await call<PackCatalog>("/packs/catalog");
 }
@@ -454,7 +454,7 @@ export async function transfer(player: string, server: string): Promise<LunaResu
 }
 
 // ---------------------------------------------------------------------------
-// Player directory — profiles LunaCore persists in the shared database
+// Player directory; profiles LunaCore persists in the shared database
 // ---------------------------------------------------------------------------
 
 /** One persisted player profile, merged with live session state when online. */
@@ -728,7 +728,7 @@ export async function recordModeration(
 }
 
 // ---------------------------------------------------------------------------
-// Skins — SkinsRestorer administration through the proxy
+// Skins; SkinsRestorer administration through the proxy
 // ---------------------------------------------------------------------------
 
 export interface SkinInfo {
@@ -808,7 +808,7 @@ export async function setSkin(player: string, change: SkinChange): Promise<LunaR
 }
 
 // ---------------------------------------------------------------------------
-// LuckPerms — groups, nodes and user memberships, managed through the proxy
+// LuckPerms; groups, nodes and user memberships, managed through the proxy
 // ---------------------------------------------------------------------------
 
 export interface PermissionNode {
@@ -1010,7 +1010,7 @@ export interface AuthAccountInfo {
 	online: boolean;
 	/** Passed the password check in the current connection */
 	authenticated: boolean;
-	/** Has a password on file — a player who never registered has none */
+	/** Has a password on file; a player who never registered has none */
 	registered: boolean;
 	locked: boolean;
 	lockedUntilEpochMillis: number;
@@ -1051,7 +1051,7 @@ export interface AuthChangeResult extends AuthAccountInfo {
 	success: boolean;
 	message: string;
 	/**
-	 * The plaintext of a temporary password — returned by the request that
+	 * The plaintext of a temporary password; returned by the request that
 	 * created it and never again, since only its hash is stored.
 	 */
 	password?: string;
@@ -1095,7 +1095,7 @@ export interface VaultCurrency {
 	/** The plain symbol, with the money template's MiniMessage tags stripped */
 	symbol: string;
 	grouping: boolean;
-	/** Decimal places a minor amount carries — 100 minor units to the coin */
+	/** Decimal places a minor amount carries; 100 minor units to the coin */
 	scale: number;
 }
 
@@ -1115,7 +1115,7 @@ export interface VaultAccountInfo {
 	uuid: string;
 	username: string;
 	online: boolean;
-	/** False for a player who has never held money — the balance is then a zero, not a record */
+	/** False for a player who has never held money; the balance is then a zero, not a record */
 	hasAccount: boolean;
 	balanceMinor: number;
 	balance: number;

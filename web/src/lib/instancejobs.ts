@@ -1,6 +1,6 @@
 /**
  * The instance lifecycle flows, as flash-card jobs. Every page that starts,
- * stops, restarts or deletes an instance calls these — the card wording, the
+ * stops, restarts or deletes an instance calls these; the card wording, the
  * live log-derived progress and the failure shape stay identical wherever the
  * flow is triggered from, and a page that *discovers* a running job (an
  * instance detail opened mid-start) attaches the same card via
@@ -122,7 +122,7 @@ export function instanceStateJob(name: string, action: StateAction): Promise<Job
 }
 
 /**
- * Delete one instance behind a live flash card — a purge walks a whole world
+ * Delete one instance behind a live flash card; a purge walks a whole world
  * directory, so the card shows what is currently going.
  */
 export function deleteInstanceJob(name: string, purge: boolean): Promise<JobView | undefined> {
@@ -133,7 +133,7 @@ export function deleteInstanceJob(name: string, purge: boolean): Promise<JobView
 }
 
 /**
- * Raise the matching flash card for an instance job already in flight — same
+ * Raise the matching flash card for an instance job already in flight; same
  * wording as if this browser had started it. Unknown kinds and jobs already
  * carded here are ignored, so calling this on every poll is safe.
  */

@@ -9,6 +9,7 @@ import type {
 	PortPool,
 	PortPoolOverride,
 } from "./types";
+import { t } from "../shared/i18n";
 import { instanceDir, managedInstances } from "./config";
 import { effectiveTargets } from "./families";
 import { getConfValue, setConfValue } from "./confedit";
@@ -20,7 +21,7 @@ import { getConfValue, setConfValue } from "./confedit";
  *   25565 on the primary says nothing about a follower's own 25565, so every
  *   pool, every allocation and every duplicate check is scoped to one machine.
  *   That machine is keyed by the owning daemon's name, with `""` standing for the
- *   primary — the same "absent `daemon` field" the instances themselves use.
+ *   primary; the same "absent `daemon` field" the instances themselves use.
  * - **cluster.json is the ledger.** An allocation exists because an instance
  *   records it, so deleting the instance releases its ports and there is no
  *   second list to keep in step. The only state outside the registry is the
@@ -143,7 +144,7 @@ export function machineOf(inst: InstanceConfig): string {
 	return inst.daemon ?? PRIMARY_MACHINE;
 }
 
-/** How a machine key reads in a message — the primary has no name in cluster.json. */
+/** How a machine key reads in a message; the primary has no name in cluster.json. */
 export function machineLabel(machine: string): string {
 	return machine === PRIMARY_MACHINE ? "primary" : machine;
 }
@@ -170,7 +171,7 @@ export function clusterMachines(cfg: ClusterConfig): string[] {
 	return [PRIMARY_MACHINE, ...[...rest].sort()];
 }
 
-/** Host the primary reaches a machine's instances on — loopback for its own. */
+/** Host the primary reaches a machine's instances on; loopback for its own. */
 export function machineHost(cfg: ClusterConfig, machine: string): string {
 	if (machine === PRIMARY_MACHINE) {
 		return "127.0.0.1";
@@ -206,7 +207,7 @@ export function machineInfo(cfg: ClusterConfig): MachineInfo[] {
 /**
  * Address a backend answers on: its external address, or its owning machine's
  * host and game port. This is what velocity must route to, and what the console
- * offers to copy — never a bare `127.0.0.1` for an instance on another machine.
+ * offers to copy; never a bare `127.0.0.1` for an instance on another machine.
  */
 export function instanceAddress(cfg: ClusterConfig, inst: InstanceConfig): string {
 	if (inst.external) {
@@ -260,7 +261,7 @@ function clonePool(pool: PortPool): PortPool {
 
 /** cluster.json's catalog entries, guarded against the pre-catalog per-machine shape. */
 function storedCatalog(cfg: ClusterConfig): PortPool[] {
-	// the field briefly shipped as Record<machine, PortPool[]> — treat that as unset
+	// the field briefly shipped as Record<machine, PortPool[]>; treat that as unset
 	return Array.isArray(cfg.portPools) ? cfg.portPools : [];
 }
 
@@ -268,7 +269,7 @@ function storedCatalog(cfg: ClusterConfig): PortPool[] {
  * The cluster's pool catalog: the built-in defaults, with anything cluster.json
  * records replacing the default of the same id. Merging rather than replacing
  * means customizing the game range does not silently strip the cluster of the
- * pool its voice-chat ports come from — every consumer's pool always exists.
+ * pool its voice-chat ports come from; every consumer's pool always exists.
  */
 export function poolCatalog(cfg: ClusterConfig): PortPool[] {
 	const byId = new Map<string, PortPool>();
@@ -468,7 +469,7 @@ export function allocatedPorts(cfg: ClusterConfig, machine?: string): Map<number
  * before it downloads a server jar, and without this a second provision started
  * inside that window would be handed the same number. An entry is dropped as
  * soon as the registry records it, or once it has been held long enough that the
- * provision holding it must have died — an abandoned build never parks a number
+ * provision holding it must have died; an abandoned build never parks a number
  * for good.
  */
 const reservations = new Map<string, { machine: string; port: number; at: number }>();
@@ -499,14 +500,14 @@ function pruneReservations(cfg: ClusterConfig, now: number): void {
 }
 
 /**
- * Hold one specific number against concurrent provisioning — the explicit-port
+ * Hold one specific number against concurrent provisioning; the explicit-port
  * counterpart of `acquirePort({ reserve: true })`.
  */
 export function reservePort(machine: string, port: number): void {
 	reservations.set(reservationKey(machine, port), { machine, port, at: Date.now() });
 }
 
-/** Release a reservation explicitly — a provision that failed frees its port now. */
+/** Release a reservation explicitly; a provision that failed frees its port now. */
 export function releaseReservation(machine: string, port: number): void {
 	reservations.delete(reservationKey(machine, port));
 }
@@ -524,7 +525,7 @@ export function reservedPorts(machine: string): number[] {
 	return held.sort((a, b) => a - b);
 }
 
-/** Allocations an instance holds — what deleting it releases. */
+/** Allocations an instance holds; what deleting it releases. */
 export function heldPorts(inst: InstanceConfig): Array<{ key: string; port: number }> {
 	if (inst.external) {
 		return [];
@@ -588,14 +589,19 @@ export function acquirePort(cfg: ClusterConfig, opts: AcquireOptions = {}): Acqu
 	if (!range) {
 		throw new Error(
 			opts.pool
-				? `${machineLabel(machine)} has no "${opts.pool}" port pool and no range was given`
-				: "no port pool or range to acquire from",
+				? t("core.ports.noPool", { machine: machineLabel(machine), pool: opts.pool })
+				: t("core.ports.noRange"),
 		);
 	}
 
 	if (pool && !poolServes(pool, opts.protocol)) {
 		throw new Error(
-			`pool "${pool.id}" on ${machineLabel(machine)} hands out ${pool.protocol} ports, not ${opts.protocol}`,
+			t("core.ports.wrongProtocol", {
+				pool: pool.id,
+				machine: machineLabel(machine),
+				serves: pool.protocol,
+				wanted: opts.protocol ?? "tcp",
+			}),
 		);
 	}
 
@@ -618,7 +624,7 @@ export function acquirePort(cfg: ClusterConfig, opts: AcquireOptions = {}): Acqu
 		? `pool "${pool.id}" on ${machineLabel(machine)}`
 		: `${machineLabel(machine)}'s range`;
 
-	throw new Error(`no free port left in ${where} (${range[0]}-${range[1]})`);
+	throw new Error(t("core.ports.exhausted", { where, from: range[0], to: range[1] }));
 }
 
 /**
@@ -636,7 +642,7 @@ export function nextFreePort(
 
 export interface PortCheck {
 	ok: boolean;
-	/** Why the port cannot be used — ready to throw */
+	/** Why the port cannot be used; ready to throw */
 	error?: string;
 	/** The port is usable, but something about it is worth saying out loud */
 	warning?: string;
@@ -701,7 +707,7 @@ export function checkPort(
 	if (!pool) {
 		return {
 			ok: true,
-			warning: `port ${port} is outside every ${protocol} pool on ${machineLabel(machine)} — it will not be tracked by pool usage`,
+			warning: t("core.ports.outsidePools", { port, protocol, machine: machineLabel(machine) }),
 			pool,
 		};
 	}
@@ -754,7 +760,7 @@ export function portPoolUsage(
 				port >= pool.range[0] && port <= pool.range[1];
 
 			// without a lock a plugin port's protocol is unknown, so anything inside
-			// the range counts — over-reporting usage is the safe direction
+			// the range counts; over-reporting usage is the safe direction
 			const used = allocations.filter(
 				(entry) => inRange(entry.port) && (!lock || poolServes(pool, entry.protocol)),
 			);
@@ -794,7 +800,7 @@ export function portPoolUsage(
 }
 
 export interface PoolValidation {
-	/** Fatal problems — nothing was written */
+	/** Fatal problems; nothing was written */
 	errors: string[];
 	/** Written, but the caller should say these out loud */
 	warnings: string[];
@@ -891,7 +897,7 @@ export interface PoolConsumer {
 /**
  * What acquires from each pool, keyed by pool id. This *is* the mapping: a pool
  * with no entry here is handed out to nothing until a plugin's port declaration
- * (`PortBindingSpec.pool`) names it — pools do not attach to instances or
+ * (`PortBindingSpec.pool`) names it; pools do not attach to instances or
  * plugins themselves, their consumers come asking by id.
  */
 export function poolConsumers(lock?: PluginsLock): Record<string, PoolConsumer[]> {
@@ -907,7 +913,7 @@ export function poolConsumers(lock?: PluginsLock): Record<string, PoolConsumer[]
 				continue;
 			}
 
-			// several family builds of one plugin share a name and a spec — one row
+			// several family builds of one plugin share a name and a spec; one row
 			const name = entry.plugin ?? key;
 			const dedup = `${spec.pool}|${name}|${spec.id}`;
 
@@ -930,9 +936,9 @@ export function poolConsumers(lock?: PluginsLock): Record<string, PoolConsumer[]
 
 /**
  * Replace the cluster's pool catalog. An entry customizes the built-in default
- * of the same id (the defaults always remain — a consumer's pool can never
+ * of the same id (the defaults always remain; a consumer's pool can never
  * disappear); a new id adds a pool; an empty list returns everything to the
- * defaults. Mutates cfg (caller saves) — and only once every definition
+ * defaults. Mutates cfg (caller saves); and only once every definition
  * validates, so a rejected form never leaves half a catalog behind.
  */
 export function setPoolCatalog(
@@ -957,7 +963,7 @@ export function setPoolCatalog(
 		return { errors, warnings };
 	}
 
-	// apply tentatively — the remaining checks judge the merged result (what is
+	// apply tentatively; the remaining checks judge the merged result (what is
 	// written plus the defaults still inherited), and roll back on failure
 	const previous = cfg.portPools;
 
@@ -987,17 +993,19 @@ export function setPoolCatalog(
 
 		for (const consumer of wanting) {
 			if (!pool) {
-				warnings.push(
-					`nothing defines pool "${poolId}", which ${consumer.name} asks for — ` +
-						"it will fall back to the range in its own port declaration",
-				);
+				warnings.push(t("core.ports.undefinedPool", { pool: poolId, consumer: consumer.name }));
 
 				continue;
 			}
 
 			if (!poolServes(pool, consumer.protocol)) {
 				consumerProblems.push(
-					`pool "${poolId}" is ${pool.protocol}-only, but ${consumer.name} acquires ${consumer.protocol} ports from it`,
+					t("core.ports.protocolClash", {
+						pool: poolId,
+						serves: pool.protocol,
+						consumer: consumer.name,
+						wanted: consumer.protocol,
+					}),
 				);
 			}
 		}
@@ -1032,21 +1040,15 @@ export function setPoolCatalog(
 
 	for (const pool of pools) {
 		if (pool.range[0] < 1024) {
-			warnings.push(
-				`pool "${pool.id}" reaches into the privileged range — a server started as an ` +
-					"unprivileged user cannot bind below 1024",
-			);
+			warnings.push(t("core.ports.privilegedRange", { pool: pool.id }));
 		}
 
 		if (!poolConsumers(lock)[pool.id]) {
-			warnings.push(
-				`nothing consumes pool "${pool.id}" yet — a plugin's port declaration names it ` +
-					"with `pool` to start acquiring from it",
-			);
+			warnings.push(t("core.ports.noConsumers", { pool: pool.id }));
 		}
 	}
 
-	// an allocation nothing covers any more still works — it is simply no longer
+	// an allocation nothing covers any more still works; it is simply no longer
 	// tracked, and a later `acquirePort` could hand its number to somebody else
 	for (const machine of machines) {
 		for (const entry of portAllocations(cfg, lock, machine)) {
@@ -1151,7 +1153,7 @@ export async function ensurePortAllocations(
 
 		inst.ports ??= {};
 
-		// Adopt an existing value from the config file if we have no allocation yet —
+		// Adopt an existing value from the config file if we have no allocation yet -
 		// only the owning machine can read it, so a follower's own pass does the
 		// adopting for its instances.
 		if (inst.ports[key] === undefined) {
@@ -1252,7 +1254,7 @@ export async function writePortConfigs(
 
 /**
  * Ports currently bound on this host, as `"<proto>:<port>"` keys. An array
- * rather than a set because this crosses the RPC wire as JSON — a Map or Set
+ * rather than a set because this crosses the RPC wire as JSON; a Map or Set
  * would arrive empty.
  */
 export async function listeningPorts(): Promise<string[]> {
@@ -1296,7 +1298,7 @@ function auditDuplicates(cfg: ClusterConfig, lock: PluginsLock): PortIssue[] {
 
 	for (const entry of portAllocations(cfg, lock)) {
 		// tcp and udp can legitimately share a number, and two machines always
-		// can — only the same protocol on the same host is a real collision
+		// can; only the same protocol on the same host is a real collision
 		const key = `${entry.machine}|${entry.protocol}|${entry.port}`;
 
 		if (!seen.has(key)) {
@@ -1439,7 +1441,7 @@ function auditVelocity(cfg: ClusterConfig, velocityServers: Record<string, strin
 		}
 
 		// a follower-owned backend is routed at its machine's host, exactly as
-		// core/proxy.ts writes it — comparing against loopback would flag every
+		// core/proxy.ts writes it; comparing against loopback would flag every
 		// remote instance in the cluster
 		const expected = instanceAddress(cfg, inst);
 
@@ -1458,7 +1460,7 @@ function auditVelocity(cfg: ClusterConfig, velocityServers: Record<string, strin
 /**
  * Cross-check every place a port is recorded: the registry against itself and
  * against the machines' pools, the plugin config files on disk, and
- * velocity.toml's server table. `machine` scopes the on-disk half — the caller
+ * velocity.toml's server table. `machine` scopes the on-disk half; the caller
  * gathers the other machines' drift from their own daemons.
  */
 export async function auditPorts(
@@ -1501,7 +1503,7 @@ export interface PortRow {
 /**
  * Every allocated port with its owner, its machine, the address it answers on
  * and whether it is currently bound. Bind state comes from the probes the caller
- * gathered — one per machine, because `ss` only ever sees its own host.
+ * gathered; one per machine, because `ss` only ever sees its own host.
  */
 export async function collectPortRows(
 	cfg: ClusterConfig,
@@ -1537,7 +1539,7 @@ export async function collectPortRows(
 
 		const port = inst.external.match(/:(\d+)$/);
 
-		// external servers run on a machine luna does not manage — we record the
+		// external servers run on a machine luna does not manage; we record the
 		// address they advertise and probe nothing
 		if (port) {
 			rows.push({

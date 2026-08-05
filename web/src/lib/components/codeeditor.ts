@@ -12,7 +12,7 @@ export interface EditorSelection {
 	/**
 	 * Character offset of the selection's start in the whole buffer. This is what
 	 * makes a placeholder replace the value the user actually highlighted, rather
-	 * than the first identical string in the file — which for a value like a
+	 * than the first identical string in the file; which for a value like a
 	 * username also appearing inside a queue name is the wrong one.
 	 */
 	offset: number;
@@ -20,7 +20,7 @@ export interface EditorSelection {
 
 /**
  * Monaco language id for a config file, from its name. Server configs are
- * overwhelmingly yaml, so that is the fallback rather than plaintext — a
+ * overwhelmingly yaml, so that is the fallback rather than plaintext; a
  * mis-highlighted comment is a smaller cost than no highlighting at all.
  */
 export function languageFor(path: string): string {

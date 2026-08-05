@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { api, post } from '$lib/api';
@@ -24,28 +25,28 @@
 	let storedIds: string[] = $state([]);
 	let consumers: Record<string, any[]> = $state({});
 	let machines: any[] = $state([]);
-	/** LAN addresses per machine, from the daemons view — the primary has no host in cluster.json */
+	/** LAN addresses per machine, from the daemons view; the primary has no host in cluster.json */
 	let lanAddresses: Record<string, string> = $state({});
 	let busy = $state(false);
 	let loaded = $state(false);
 	let loading = $state(false);
 	let lastUpdated: number | null = $state(null);
 
-	const columns: Column[] = [
-		{ id: 'bound', label: 'Bound', width: 140 },
-		{ id: 'port', label: 'Port', sortable: true, width: 100, align: 'right' },
-		{ id: 'protocol', label: 'Protocol', width: 100 },
-		{ id: 'machine', label: 'Machine', sortable: true, width: 150 },
-		{ id: 'owner', label: 'Owner', sortable: true },
-		{ id: 'kind', label: 'Kind', sortable: true },
-		{ id: 'pool', label: 'Pool', sortable: true, width: 120 },
-		{ id: 'address', label: 'Address', width: 190 }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'bound', label: t('web.ports.colBound'), width: 140 },
+		{ id: 'port', label: t('web.instances.colPort'), sortable: true, width: 100, align: 'right' },
+		{ id: 'protocol', label: t('web.ports.colProtocol'), width: 100 },
+		{ id: 'machine', label: t('web.instances.colMachine'), sortable: true, width: 150 },
+		{ id: 'owner', label: t('web.ports.colOwner'), sortable: true },
+		{ id: 'kind', label: t('web.cleanup.colKind'), sortable: true },
+		{ id: 'pool', label: t('web.ports.colPool'), sortable: true, width: 120 },
+		{ id: 'address', label: t('web.proxy.colAddress'), width: 190 }
+	]);
 
-	/** A machine key of `""` is the primary — its name lives in the daemons view. */
+	/** A machine key of `""` is the primary; its name lives in the daemons view. */
 	function machineName(machine: string | null): string {
 		if (machine === null) {
-			return 'external';
+			return t('web.ports.external');
 		}
 
 		return machines.find((entry: any) => entry.machine === machine)?.label ?? machine;
@@ -65,7 +66,7 @@
 			consumers = data.consumers;
 
 			// the primary's own key is "" in the registry but it is a named daemon in
-			// the fleet view — matching them up is what gives every machine a real
+			// the fleet view; matching them up is what gives every machine a real
 			// name and a LAN address to copy
 			const fleetRows = fleet.daemons ?? [];
 			const primary = fleetRows.find((row: any) => row.mode === 'primary');
@@ -86,7 +87,7 @@
 			loaded = true;
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error('Could not load the port map', { detail: (err as Error).message });
+			Notify.error(t('web.ports.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
 		}
@@ -97,7 +98,7 @@
 	async function fix(): Promise<void> {
 		busy = true;
 
-		const note = Notify.loading('Rewriting plugin port configuration…');
+		const note = Notify.loading(t('web.ports.rewriting'));
 
 		try {
 			const res = await post('/ports');
@@ -105,8 +106,8 @@
 
 			note.set({
 				level: remaining.length ? 'warning' : 'success',
-				message: `Re-ensured ${res.ensured} allocation(s)`,
-				detail: remaining.length ? `${remaining.length} issue(s) remain.` : '',
+				message: t('web.ports.reEnsured', { count: res.ensured }),
+				detail: remaining.length ? t('web.ports.issuesRemain', { count: remaining.length }) : '',
 				closeable: true
 			});
 
@@ -116,7 +117,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Could not fix port configuration',
+				message: t('web.ports.fixFailed'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -131,7 +132,7 @@
 	const problems = $derived(issues.filter((issue: any) => issue.kind !== 'unchecked'));
 	const unchecked = $derived(issues.filter((issue: any) => issue.kind === 'unchecked'));
 
-	/** A plugin port is labelled `plugin:<plugin>/<id>` — show just the allocation. */
+	/** A plugin port is labelled `plugin:<plugin>/<id>`; show just the allocation. */
 	function kindLabel(kind: string): string {
 		return kind.startsWith('plugin:') ? kind.slice(7) : kind;
 	}
@@ -139,38 +140,38 @@
 	const filters: TableFilterGroup<any>[] = $derived([
 		{
 			id: 'bound',
-			label: 'Filter bind state',
+			label: t('web.ports.filterBind'),
 			options: [
-				{ value: 'any', label: 'Any bind state' },
-				{ value: 'yes', label: 'Listening', match: (row) => row.listening === true },
-				{ value: 'no', label: 'Not bound', match: (row) => row.listening === false },
+				{ value: 'any', label: t('web.ports.anyBind') },
+				{ value: 'yes', label: t('web.ports.listening'), match: (row) => row.listening === true },
+				{ value: 'no', label: t('web.ports.notBound'), match: (row) => row.listening === false },
 				{
 					value: 'unknown',
-					label: 'Unknown',
+					label: t('web.ports.unknown'),
 					match: (row) => row.listening === null && row.kind !== 'external'
 				}
 			]
 		},
 		{
 			id: 'protocol',
-			label: 'Filter protocol',
+			label: t('web.ports.filterProtocol'),
 			options: [
-				{ value: 'any', label: 'Any protocol' },
-				{ value: 'tcp', label: 'tcp', match: (row) => row.protocol === 'tcp' },
-				{ value: 'udp', label: 'udp', match: (row) => row.protocol === 'udp' }
+				{ value: 'any', label: t('web.ports.anyProtocol') },
+				{ value: 'tcp', label: t('web.ports.tcp'), match: (row) => row.protocol === 'tcp' },
+				{ value: 'udp', label: t('web.ports.udp'), match: (row) => row.protocol === 'udp' }
 			]
 		},
 		{
 			id: 'machine',
-			label: 'Filter machine',
+			label: t('web.ports.filterMachine'),
 			options: [
-				{ value: 'any', label: 'Any machine' },
+				{ value: 'any', label: t('web.ports.anyMachine') },
 				...machines.map((entry: any) => ({
 					value: entry.machine || 'primary',
 					label: entry.label,
 					match: (row: any) => row.machine === entry.machine
 				})),
-				{ value: 'external', label: 'External', match: (row: any) => row.machine === null }
+				{ value: 'external', label: t('web.instances.external'), match: (row: any) => row.machine === null }
 			]
 		}
 	]);
@@ -180,31 +181,31 @@
 
 		return [
 			{
-				label: `Open ${row.owner}`,
+				label: t('web.cleanup.openInstance', { name: row.owner }),
 				icon: 'server',
 				action: () => goto(`/instances/${row.owner}`)
 			},
 			{
-				label: 'Open its networking tab',
+				label: t('web.ports.openNetworking'),
 				icon: 'sitemap',
 				action: () => goto(`/instances/${row.owner}?tab=network`)
 			},
 			{ separator: true },
 			{
-				label: 'Copy port',
+				label: t('web.ports.copyPort'),
 				icon: 'copy',
 				action: () => navigator.clipboard?.writeText(String(row.port))
 			},
 			{
-				label: `Copy address (${row.address})`,
+				label: t('web.ports.copyAddressWith', { address: row.address }),
 				icon: 'copy',
 				action: () => navigator.clipboard?.writeText(row.address)
 			},
 			{
-				label: lan ? `Copy LAN address (${lan}:${row.port})` : 'Copy LAN address',
+				label: lan ? t('web.ports.copyLanWith', { address: `${lan}:${row.port}` }) : t('web.ports.copyLan'),
 				icon: 'globe',
 				disabled: !lan,
-				hint: lan ? undefined : 'no LAN address known for this machine',
+				hint: lan ? undefined : t('web.ports.noLanKnown'),
 				action: () => navigator.clipboard?.writeText(`${lan}:${row.port}`)
 			}
 		];
@@ -226,35 +227,35 @@
 			.filter(Boolean);
 	}
 
-	/** Segments of a pool's usage bar — allocated, held back, in flight, free. */
+	/** Segments of a pool's usage bar; allocated, held back, in flight, free. */
 	function poolSegments(view: any): Array<{ key: string; label: string; count: number; color: string }> {
 		return [
-			{ key: 'used', label: 'allocated', count: view.used.length, color: 'var(--link)' },
-			{ key: 'reserved', label: 'held back', count: view.reserved.length, color: 'var(--warning)' },
-			{ key: 'pending', label: 'in flight', count: view.pending.length, color: 'var(--primary)' },
-			{ key: 'free', label: 'free', count: view.free, color: 'var(--bg-track)' }
+			{ key: 'used', label: t('web.ports.segAllocated'), count: view.used.length, color: 'var(--link)' },
+			{ key: 'reserved', label: t('web.ports.segHeldBack'), count: view.reserved.length, color: 'var(--warning)' },
+			{ key: 'pending', label: t('web.ports.segInFlight'), count: view.pending.length, color: 'var(--primary)' },
+			{ key: 'free', label: t('web.ports.segFree'), count: view.free, color: 'var(--bg-track)' }
 		];
 	}
 </script>
 
-<svelte:head><title>Ports | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.nav.ports')} | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Ports"
+	title={t('web.nav.ports')}
 	count={ports.length}
-	description="The pool catalog every provision draws from, and every number the registry has handed out — game ports, plugin ports and the external servers the proxy routes to"
+	description={t('web.ports.pageDescription')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="ports" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
-		<Btn icon="wrench" loading={busy} onclick={fix}>Fix config drift</Btn>
-		<Btn icon="pen" variant="primary" href="/network/pools">Edit pools</Btn>
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Btn icon="wrench" loading={busy} onclick={fix}>{t('web.ports.fixDrift')}</Btn>
+		<Btn icon="pen" variant="primary" href="/network/pools">{t('web.ports.editPools')}</Btn>
 	{/snippet}
 </PageHeader>
 
 {#if problems.length}
 	<Flash kind="warning">
-		<b>{problems.length} issue(s) found by the port audit:</b><br />
+		<b>{t('web.ports.auditIssues', { count: problems.length })}</b><br />
 		{#each problems as issue}
 			· [{issue.kind}] {issue.message}<br />
 		{/each}
@@ -264,24 +265,24 @@
 	</Flash>
 {:else if unchecked.length}
 	<Flash kind="info">
-		No port issues found on the machines luna could reach.<br />
+		{t('web.ports.noIssuesReachable')}<br />
 		{#each unchecked as issue}
 			· {issue.message}<br />
 		{/each}
 	</Flash>
 {:else if loaded}
 	<Flash kind="success">
-		Port audit clean — no duplicates on any machine, no config drift, no velocity mismatches.
+		{t('web.ports.auditClean')}
 	</Flash>
 {/if}
 
 <Panel
-	title="Port pools"
+	title={t('web.ports.poolsTitle')}
 	count={catalog.length}
-	description="A pool is a named range ports are acquired from: provisioning takes each backend's game port from “game”, and a plugin's port declaration names the pool its per-instance port comes from. Every machine serves every pool — only the numbers may differ per machine, because a port is only taken on the host that binds it."
+	description={t('web.ports.poolsDescription')}
 >
 	{#snippet actions()}
-		<Btn variant="tool" icon="pen" title="Edit pools" href="/network/pools" />
+		<Btn variant="tool" icon="pen" title={t('web.ports.editPools')} href="/network/pools" />
 	{/snippet}
 
 	<div class="pools">
@@ -292,13 +293,13 @@
 					{#if pool.label}<span class="plabel">{pool.label}</span>{/if}
 					<span class="proto">{pool.protocol}</span>
 					{#if !storedIds.includes(pool.id)}
-						<span class="tag" title="the built-in default — customize it under Edit pools">
-							default
+						<span class="tag" title={t('web.ports.defaultPoolHint')}>
+							{t('web.ports.defaultTag')}
 						</span>
 					{/if}
 				</div>
 
-				<div class="pconsumers" title="what acquires ports from this pool">
+				<div class="pconsumers" title={t('web.ports.consumersTitle')}>
 					{consumersLine(consumers, pool.id)}
 				</div>
 
@@ -308,19 +309,19 @@
 							<a class="mname" href="/machines/{machineName(view.machine)}">
 								{machineName(view.machine)}
 							</a>
-							<span class="prange mono">{view.pool.range[0]}–{view.pool.range[1]}</span>
+							<span class="prange mono">{view.pool.range[0]}-{view.pool.range[1]}</span>
 							{#if view.overridden}
-								<span class="tag" title="this machine overrides the pool's range">override</span>
+								<span class="tag" title={t('web.ports.overrideHint')}>{t('web.ports.overrideTag')}</span>
 							{/if}
 							<div class="pbar">
 								<DistributionBar segments={poolSegments(view)} legend={false} />
 							</div>
 							<span class="pfree">
-								{view.used.length}/{view.capacity} used ·
+								{t('web.ports.usedOf', { used: view.used.length, capacity: view.capacity })} ·
 								{#if view.next === null}
-									<b class="exhausted">exhausted</b>
+									<b class="exhausted">{t('web.ports.exhausted')}</b>
 								{:else}
-									next <b class="mono">{view.next}</b>
+									{t('web.ports.next')} <b class="mono">{view.next}</b>
 								{/if}
 							</span>
 						</div>
@@ -331,7 +332,7 @@
 	</div>
 
 	{#if loaded && !catalog.length}
-		<p class="none">No pools defined.</p>
+		<p class="none">{t('web.ports.noPools')}</p>
 	{/if}
 </Panel>
 
@@ -346,15 +347,15 @@
 		getId={(row) => `${row.protocol}:${row.port}:${row.owner}`}
 		searchValue={(row) =>
 			`${row.port} ${row.protocol} ${row.owner} ${kindLabel(row.kind)} ${row.pool ?? ''} ${machineName(row.machine)} ${row.address}`}
-		searchPlaceholder="Find a port by number, owner, machine or pool"
+		searchPlaceholder={t('web.ports.searchPlaceholder')}
 		{filters}
 		selectable="single"
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => `${row.owner} · ${row.port}/${row.protocol}`}
-		noun="port"
+		noun={t('web.ports.noun')}
 		sortValue={(row, col) => (col === 'machine' ? machineName(row.machine) : ((row as any)[col] ?? ''))}
-		emptyTitle="No ports allocated"
+		emptyTitle={t('web.ports.emptyTitle')}
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'bound'}
@@ -367,12 +368,12 @@
 								? 'unknown'
 								: 'stopped'}
 					label={row.listening === true
-						? 'Listening'
+						? t('web.ports.listening')
 						: row.kind === 'external'
-							? 'External'
+							? t('web.instances.external')
 							: row.listening === null
-								? 'Unknown'
-								: 'Not bound'}
+								? t('web.ports.unknown')
+								: t('web.ports.notBound')}
 				/>
 			{:else if col === 'port'}
 				<b class="mono">{row.port}</b>
@@ -380,7 +381,7 @@
 				{row.protocol}
 			{:else if col === 'machine'}
 				{#if row.machine === null}
-					<span class="dim">external</span>
+					<span class="dim">{t('web.ports.external')}</span>
 				{:else}
 					{machineName(row.machine)}
 				{/if}
@@ -392,7 +393,7 @@
 				{#if row.pool}
 					{row.pool}
 				{:else}
-					<span class="dim" title="outside every pool on its machine">—</span>
+					<span class="dim" title={t('web.ports.outsidePools')}>—</span>
 				{/if}
 			{:else if col === 'address'}
 				<span class="mono">{row.address}</span>

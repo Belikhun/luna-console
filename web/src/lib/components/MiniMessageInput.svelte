@@ -5,13 +5,14 @@
 	 *
 	 * The source stays the thing being edited. A rich-text surface that serialises
 	 * back to MiniMessage would have to decide what to do with the tags it does
-	 * not model — hover events, fonts, nested gradients — and the honest answer is
+	 * not model; hover events, fonts, nested gradients; and the honest answer is
 	 * that it would lose them.
 	 *
 	 * The highlight is a backdrop element behind a transparent textarea, the two
 	 * sharing metrics and scroll position exactly.
 	 */
 
+	import { t } from '$lib/i18n.svelte';
 	import Btn from './Btn.svelte';
 	import ColorPicker from './ColorPicker.svelte';
 	import Icon from './Icon.svelte';
@@ -139,27 +140,27 @@
 
 	<div class="toolbar">
 		<!-- the icon set ships no B/I/U/S glyphs, and the letters read better here anyway -->
-		<Btn variant="icon" title="Bold" disabled={disabled} onclick={() => surround('<b>', '</b>')}>
+		<Btn variant="icon" title={t('web.minimessage.bold')} disabled={disabled} onclick={() => surround('<b>', '</b>')}>
 			<span class="glyph bold">B</span>
 		</Btn>
-		<Btn variant="icon" title="Italic" disabled={disabled} onclick={() => surround('<i>', '</i>')}>
+		<Btn variant="icon" title={t('web.minimessage.italic')} disabled={disabled} onclick={() => surround('<i>', '</i>')}>
 			<span class="glyph italic">I</span>
 		</Btn>
-		<Btn variant="icon" title="Underline" disabled={disabled} onclick={() => surround('<u>', '</u>')}>
+		<Btn variant="icon" title={t('web.minimessage.underline')} disabled={disabled} onclick={() => surround('<u>', '</u>')}>
 			<span class="glyph underline">U</span>
 		</Btn>
-		<Btn variant="icon" title="Strikethrough" disabled={disabled} onclick={() => surround('<st>', '</st>')}>
+		<Btn variant="icon" title={t('web.minimessage.strikethrough')} disabled={disabled} onclick={() => surround('<st>', '</st>')}>
 			<span class="glyph strike">S</span>
 		</Btn>
 
 		<span class="sep"></span>
 
-		<Btn variant="icon" title="Colour" disabled={disabled} onclick={() => (colorOpen = !colorOpen)}>
+		<Btn variant="icon" title={t('web.minimessage.colour')} disabled={disabled} onclick={() => (colorOpen = !colorOpen)}>
 			<Icon name="droplet" style="solid" />
 		</Btn>
 		<Btn
 			variant="icon"
-			title="Gradient"
+			title={t('web.minimessage.gradient')}
 			disabled={disabled}
 			onclick={() => surround('<gradient:#ff9900:#42b4ff>', '</gradient>')}
 		>
@@ -168,7 +169,7 @@
 
 		<span class="sep"></span>
 
-		<Btn variant="icon" title="Insert a placeholder" disabled={disabled} onclick={() => (insertOpen = !insertOpen)}>
+		<Btn variant="icon" title={t('web.minimessage.insertPlaceholder')} disabled={disabled} onclick={() => (insertOpen = !insertOpen)}>
 			<Icon name="percent" style="solid" />
 		</Btn>
 	</div>
@@ -176,7 +177,7 @@
 	{#if colorOpen}
 		<div class="picker">
 			<ColorPicker
-				label="Insert colour"
+				label={t('web.minimessage.insertColour')}
 				onchange={(hex) => {
 					surround(`<color:${hex}>`, '</color>');
 					colorOpen = false;

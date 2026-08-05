@@ -4,10 +4,10 @@ import { pinVersion, getVersionsForEntry } from '$core/plugins';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
-/** How many versions the pin dialog offers — the list is newest-first. */
+/** How many versions the pin dialog offers; the list is newest-first. */
 const VERSION_LIMIT = 40;
 
-/** GET ?name= — list available provider versions for the pin dialog */
+/** GET ?name=; list available provider versions for the pin dialog */
 export async function GET({ url }) {
 	const name = url.searchParams.get('name');
 

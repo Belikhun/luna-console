@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -27,7 +28,7 @@
 	/**
 	 * One plugin identity in full: its families (one pooled build per platform),
 	 * every pooled version of each family with its MC support and who runs it,
-	 * cluster-wide usage, and the tools — pin/upgrade versions per instance,
+	 * cluster-wide usage, and the tools; pin/upgrade versions per instance,
 	 * force-add to an instance, disable anywhere (overrides win over groups).
 	 */
 
@@ -113,7 +114,7 @@
 		try {
 			const detail = await fn();
 
-			note.set({ level: 'success', message: 'Done', detail, closeable: true });
+			note.set({ level: 'success', message: t('web.addonDetail.done'), detail, closeable: true });
 
 			await refresh();
 		} catch (err) {
@@ -163,7 +164,7 @@
 			const res = await post(`/instances/${instance}/plugins`, { plugin: name, state });
 
 			if (res.removed?.length) {
-				return `Removed ${res.removed.join(', ')} — a running server keeps it loaded until restart.`;
+				return `Removed ${res.removed.join(', ')}; a running server keeps it loaded until restart.`;
 			}
 
 			return res.deployed ? `${res.deployed} deploy change(s).` : '';
@@ -227,20 +228,20 @@
 		const meta = data.families.find((family: any) => family.meta)?.meta ?? {};
 
 		return [
-			{ label: 'Plugin', value: data.plugin },
-			{ label: 'Families', value: data.families.map((family: any) => family.family).join(', ') },
+			{ label: t('web.addonDetail.plugin'), value: data.plugin },
+			{ label: t('web.addonDetail.families'), value: data.families.map((family: any) => family.family).join(', ') },
 			{
-				label: 'In groups',
+				label: t('web.addonDetail.inGroups'),
 				value: data.groups.join(', ') || '(none)'
 			},
-			{ label: 'Authors', value: meta.authors?.join(', ') ?? null },
+			{ label: t('web.addonDetail.authors'), value: meta.authors?.join(', ') ?? null },
 			{
-				label: 'Description',
+				label: t('web.addonDetail.description'),
 				value: meta.description ?? null,
 				colSpan: 2
 			},
 			{
-				label: 'Used by',
+				label: t('web.addonDetail.usedBy'),
 				value:
 					data.usage
 						.filter((row: any) => !row.disabled)
@@ -251,19 +252,19 @@
 		];
 	});
 
-	const usageCols: Column[] = [
-		{ id: 'instance', label: 'Instance', sortable: true },
-		{ id: 'state', label: 'Instance state', width: 140 },
-		{ id: 'env', label: 'Environment' },
-		{ id: 'family', label: 'Family', width: 110 },
-		{ id: 'version', label: 'Runs version' },
-		{ id: 'origin', label: 'From' }
-	];
+	const usageCols: Column[] = $derived([
+		{ id: 'instance', label: t('web.addonDetail.instance2'), sortable: true },
+		{ id: 'state', label: t('web.addonDetail.instanceState'), width: 140 },
+		{ id: 'env', label: t('web.addonDetail.environment') },
+		{ id: 'family', label: t('web.addonDetail.family'), width: 110 },
+		{ id: 'version', label: t('web.addonDetail.runsVersion') },
+		{ id: 'origin', label: t('web.addonDetail.from') }
+	]);
 
 	/**
 	 * One instance's verbs for this plugin. A row that is dimmed because the
 	 * plugin is disabled there is exactly the row whose menu matters, which is
-	 * why the menu — not a column of buttons — carries them.
+	 * why the menu; not a column of buttons; carries them.
 	 */
 	function usageActions(row: any): ContextMenuItem[] {
 		const enable = {
@@ -286,7 +287,7 @@
 			icon: 'ban',
 			color: 'danger' as const,
 			disabled: !!busy,
-			hint: 'disables it on this instance even though a group provides it',
+			hint: t('web.addonDetail.disablesItOnThisInstance'),
 			action: () => setOverride(row.instance, false, 'Disabling')
 		};
 
@@ -294,34 +295,34 @@
 			row.disabled ? enable : row.origin === 'manual' ? remove : disable,
 			{ separator: true },
 			{
-				label: 'Open on this instance',
+				label: t('web.addonDetail.openOnThisInstance'),
 				icon: 'circleInfo',
 				action: () => goto(`/instances/${row.instance}/plugins/${data.plugin}`)
 			},
 			{
-				label: 'Open instance',
+				label: t('web.addonDetail.openInstance'),
 				icon: 'server',
 				action: () => goto(`/instances/${row.instance}`)
 			}
 		];
 	}
 
-	const familyCols: Column[] = [
-		{ id: 'family', label: 'Family', width: 130 },
-		{ id: 'key', label: 'Lock entry' },
-		{ id: 'display', label: 'Display name' },
-		{ id: 'version', label: 'Primary version' },
-		{ id: 'variants', label: 'Pooled variants', width: 130, align: 'right' },
-		{ id: 'source', label: 'Source' }
-	];
+	const familyCols: Column[] = $derived([
+		{ id: 'family', label: t('web.addonDetail.family'), width: 130 },
+		{ id: 'key', label: t('web.addonDetail.lockEntry') },
+		{ id: 'display', label: t('web.addonDetail.displayName') },
+		{ id: 'version', label: t('web.addonDetail.primaryVersion') },
+		{ id: 'variants', label: t('web.addonDetail.pooledVariants'), width: 130, align: 'right' },
+		{ id: 'source', label: t('web.addonDetail.source') }
+	]);
 
-	const versionCols: Column[] = [
-		{ id: 'kind', label: 'Kind', width: 100 },
-		{ id: 'version', label: 'Version', width: 160 },
-		{ id: 'mc', label: 'Supports MC', width: 340 },
-		{ id: 'source', label: 'Source', width: 140 },
-		{ id: 'usedBy', label: 'Used by' }
-	];
+	const versionCols: Column[] = $derived([
+		{ id: 'kind', label: t('web.addonDetail.kind'), width: 100 },
+		{ id: 'version', label: t('web.addonDetail.version'), width: 160 },
+		{ id: 'mc', label: t('web.addonDetail.supportsMc'), width: 340 },
+		{ id: 'source', label: t('web.addonDetail.source'), width: 140 },
+		{ id: 'usedBy', label: t('web.addonDetail.usedBy') }
+	]);
 
 	/** A long MC-support list collapses to its newest entries plus a count. */
 	function mcLabel(versions: string[]): string {
@@ -393,7 +394,7 @@
 		stopped: 'stopped'
 	};
 
-	// an addon whose every build is a mod is a mod, and the page says so — the
+	// an addon whose every build is a mod is a mod, and the page says so; the
 	// route is shared because the identity is, not because the kinds are
 	const kindLabel = $derived(
 		data?.families?.length && data.families.every((family: any) => family.family === 'neoforge')
@@ -429,9 +430,9 @@
 
 	<Tabs
 		tabs={[
-			{ id: 'overview', label: 'Overview' },
-			{ id: 'usage', label: 'Instance usage' },
-			{ id: 'families', label: 'Families & versions' }
+			{ id: 'overview', label: t('web.addonDetail.overview') },
+			{ id: 'usage', label: t('web.addonDetail.instanceUsage') },
+			{ id: 'families', label: t('web.addonDetail.familiesVersions') }
 		]}
 		bind:active={tab}
 	/>
@@ -444,7 +445,7 @@
 			<div class="gap"></div>
 			{#each data.families as family (family.key)}
 				<Panel
-					title="{family.family} build — {family.key}"
+					title="{family.family} build; {family.key}"
 					description={family.meta?.description ?? `Pool file ${family.file}`}
 				>
 					{#snippet actions()}
@@ -458,18 +459,18 @@
 					{/snippet}
 					<InfoGrid
 						cells={[
-							{ label: 'Display name', value: family.displayName },
-							{ id: `src-${family.key}`, label: 'Source' },
-							{ label: 'Primary version', value: family.installed?.versionNumber ?? '?', style: 'mono' },
-							{ label: 'Declared version', value: family.meta?.version ?? null, style: 'mono' },
-							{ label: 'Update channel', value: family.channel },
-							{ label: 'Auto-update', value: family.autoUpdate ? 'Enabled' : 'Disabled' },
-							{ label: 'Authors', value: family.meta?.authors?.join(', ') ?? null },
-							{ id: `web-${family.key}`, label: 'Website' },
-							{ label: 'API version', value: family.meta?.apiVersion ?? null },
-							{ label: 'Pool file', value: family.file, copyable: true, style: 'mono' },
-							{ label: 'Config template ops', value: String(family.configOps) },
-							{ label: 'Deploys to', value: family.effective.join(', ') || '(nowhere)', colSpan: 2 }
+							{ label: t('web.addonDetail.displayName'), value: family.displayName },
+							{ id: `src-${family.key}`, label: t('web.addonDetail.source') },
+							{ label: t('web.addonDetail.primaryVersion'), value: family.installed?.versionNumber ?? '?', style: 'mono' },
+							{ label: t('web.addonDetail.declaredVersion'), value: family.meta?.version ?? null, style: 'mono' },
+							{ label: t('web.addonDetail.updateChannel'), value: family.channel },
+							{ label: t('web.addonDetail.autoUpdate'), value: family.autoUpdate ? 'Enabled' : 'Disabled' },
+							{ label: t('web.addonDetail.authors'), value: family.meta?.authors?.join(', ') ?? null },
+							{ id: `web-${family.key}`, label: t('web.addonDetail.website') },
+							{ label: t('web.addonDetail.apiVersion'), value: family.meta?.apiVersion ?? null },
+							{ label: t('web.addonDetail.poolFile'), value: family.file, copyable: true, style: 'mono' },
+							{ label: t('web.addonDetail.configTemplateOps'), value: String(family.configOps) },
+							{ label: t('web.addonDetail.deploysTo'), value: family.effective.join(', ') || '(nowhere)', colSpan: 2 }
 						]}
 					>
 						{#snippet custom(cell)}
@@ -494,12 +495,12 @@
 			<Panel
 				title="Instances using {data.plugin}"
 				count={data.usage.length}
-				description="Overrides win over groups: disabling here removes the jar even when a group provides it"
+				description={t('web.addonDetail.overridesWinOverGroupsDisabling')}
 				flush
 			>
 				{#snippet actions()}
 					<Btn icon="plus" disabled={!!busy} onclick={() => (addOpen = true)}>
-						Add to instances
+						{t('web.addonDetail.addToInstances')}
 					</Btn>
 				{/snippet}
 				<ResourceTable
@@ -508,15 +509,15 @@
 					rows={data.usage}
 					getId={(row) => row.instance}
 					searchValue={(row) => `${row.instance} ${row.origin ?? ''} ${row.version ?? ''}`}
-					searchPlaceholder="Find an instance"
+					searchPlaceholder={t('web.addonDetail.findAnInstance')}
 					searchWidth="18rem"
-					noun="instance"
+					noun={t('web.addonDetail.instance')}
 					pageSize={15}
 					rowActions={usageActions}
 					rowLabel={(row) => row.instance}
 					rowDim={(row) => row.disabled}
-					emptyTitle="Not used anywhere"
-					emptyText="Add it to an instance with the control above, or put it in an addon group."
+					emptyTitle={t('web.addonDetail.notUsedAnywhere')}
+					emptyText={t('web.addonDetail.addItToAnInstance')}
 				>
 					{#snippet cell(row, col)}
 						{@const status = data.instances.find((inst: any) => inst.name === row.instance)}
@@ -530,29 +531,29 @@
 							{row.family}
 						{:else if col === 'version'}
 							{#if row.disabled}
-								<span class="dim">disabled</span>
+								<span class="dim">{t('web.addonDetail.disabled')}</span>
 							{:else}
 								<span class="mono">{row.version ?? '?'}</span>
 								{#if row.pinned}
-									<span class="pin"><Icon name="tag" size="0.75rem" /> pinned</span>
+									<span class="pin"><Icon name="tag" size="0.75rem" /> {t('web.addonDetail.pinned')}</span>
 								{:else if row.variant}
-									<span class="variant">variant</span>
+									<span class="variant">{t('web.addonDetail.variant')}</span>
 								{/if}
 							{/if}
 						{:else if col === 'origin'}
 							{#if row.origin === 'manual'}
-								<span class="manual">manual</span>
+								<span class="manual">{t('web.addonDetail.manual')}</span>
 							{:else if row.origin === 'group'}
 								<span class="dim">{row.groups.join(', ')}</span>
 							{:else}
-								<span class="dim">explicit</span>
+								<span class="dim">{t('web.addonDetail.explicit')}</span>
 							{/if}
 						{/if}
 					{/snippet}
 				</ResourceTable>
 			</Panel>
 		{:else}
-			<Panel title="Families" count={data.families.length} flush>
+			<Panel title={t('web.addonDetail.families')} count={data.families.length} flush>
 				<DataTable
 					columns={familyCols}
 					rows={data.families}
@@ -581,7 +582,7 @@
 				<Panel
 					title="Versions of {selFamily.key}"
 					count={versionRows.length}
-					description="Pooled builds of the selected family — the primary deploys by default, variants serve pinned or older-MC instances"
+					description={t('web.addonDetail.pooledBuildsOfTheSelected')}
 					flush
 				>
 					{#snippet actions()}
@@ -590,7 +591,7 @@
 							disabled={!selFamily.remote || !!busy}
 							onclick={() => openPin(selFamily)}
 						>
-							Pin a version…
+							{t('web.addonDetail.pinAVersion')}
 						</Btn>
 						<Btn
 							icon="unlink"
@@ -598,7 +599,7 @@
 							loading={busy === 'unpin'}
 							onclick={() => doUnpin(selFamily)}
 						>
-							Unpin all
+							{t('web.addonDetail.unpinAll')}
 						</Btn>
 					{/snippet}
 					<DataTable columns={versionCols} rows={versionRows} getId={(row) => row.version}>
@@ -640,7 +641,7 @@
 <MultiAddModal
 	bind:open={addOpen}
 	title="Add {data?.plugin ?? name} to instances"
-	description="Force-added as a per-instance override — deployed immediately, loaded on the server's next restart."
+	description={t('web.addonDetail.forceAddedAsAPer')}
 	selectLabel="Instances"
 	options={addable.map((inst: any) => inst.name)}
 	busy={busy === 'ovr-add'}
@@ -660,22 +661,22 @@
 <!-- pin modal -->
 <Modal title="Pin {pinEntry} to a version" bind:open={pinOpen}>
 	{#if !pinVersions.length}
-		<span class="dim">Loading versions…</span>
+		<span class="dim">{t('web.addonDetail.loadingVersions')}</span>
 	{:else}
 		<div class="field">
-			<span class="lbl">Version</span>
+			<span class="lbl">{t('web.addonDetail.version')}</span>
 			<Select
 				bind:value={pinVersion}
 				width="100%"
 				options={pinVersions.map((version) => ({
 					value: version.versionNumber,
-					label: `${version.versionNumber} (${version.channel}) — MC ${version.gameVersions
+					label: `${version.versionNumber} (${version.channel}); MC ${version.gameVersions
 						.slice(0, MC_LABEL_LIMIT)
 						.join(', ')}${version.gameVersions.length > MC_LABEL_LIMIT ? '…' : ''}`
 				}))}
 			/>
 		</div>
-		<div class="tgtlbl">On instances</div>
+		<div class="tgtlbl">{t('web.addonDetail.onInstances')}</div>
 		<div class="targets">
 			{#each selFamily?.effective ?? [] as target}
 				<label class="tchk">
@@ -690,14 +691,14 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		<Btn onclick={() => (pinOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (pinOpen = false)}>{t('web.addonDetail.cancel')}</Btn>
 		<Btn
 			variant="primary"
 			disabled={!pinVersion || !pinTargets.length}
 			loading={busy === 'pin'}
 			onclick={doPin}
 		>
-			Pin & deploy
+			{t('web.addonDetail.pinDeploy')}
 		</Btn>
 	{/snippet}
 </Modal>

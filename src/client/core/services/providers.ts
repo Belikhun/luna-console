@@ -1,5 +1,5 @@
 /**
- * Bridge mirror of core/services/providers — version-picking, URL building
+ * Bridge mirror of core/services/providers; version-picking, URL building
  * and the compatibility rule are pure; the API calls (and the CurseForge key)
  * live in the daemon, so search/lookup go over RPC.
  */

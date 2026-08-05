@@ -6,7 +6,7 @@ import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
 /**
- * The instance file browser and editor. Listing is one level at a time — a world
+ * The instance file browser and editor. Listing is one level at a time; a world
  * directory holds hundreds of thousands of region files, so nothing recurses.
  *
  * GET ?path=<dir>        → that directory's entries
@@ -30,7 +30,7 @@ export async function GET({ params, url }) {
 		return json(await browseInstance(cfg, params.name, path));
 	} catch (err) {
 		// a path that escapes the instance, a missing file, a binary or oversized
-		// one — all of them are the caller's request being wrong, not a server fault
+		// one; all of them are the caller's request being wrong, not a server fault
 		throw error(400, errorMessage(err));
 	}
 }

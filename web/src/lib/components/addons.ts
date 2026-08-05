@@ -22,17 +22,17 @@ export type AddonKindType = 'plugin' | 'mod' | 'resourcepack' | 'datapack';
 export interface AddonProvider {
 	id: string;
 	label: string;
-	/** Addon types the provider hosts at all — tabs are filtered by this */
+	/** Addon types the provider hosts at all; tabs are filtered by this */
 	types: AddonKindType[];
 	/** false = the daemon reports it unusable (e.g. curseforge without a key) */
 	available: boolean;
-	/** why it cannot be used — the tooltip and the empty state say so */
+	/** why it cannot be used; the tooltip and the empty state say so */
 	note?: string;
 }
 
 /**
  * The providers, in the order they are offered, before the daemon has said
- * which are actually usable — `providerAvailability` overlays that.
+ * which are actually usable; `providerAvailability` overlays that.
  */
 export const ADDON_PROVIDERS: AddonProvider[] = [
 	{ id: 'modrinth', label: 'Modrinth', types: ['plugin', 'mod', 'resourcepack', 'datapack'], available: true },

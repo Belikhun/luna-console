@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onDestroy } from 'svelte';
 	import { claimMenu, releaseMenu } from './contextmenu';
 	import { score } from '$lib/search/match';
@@ -7,7 +8,7 @@
 
 	/**
 	 * Select: a bordered field whose optional label is set *into* the top border
-	 * (the "inline label" treatment — the label paints the panel background over
+	 * (the "inline label" treatment; the label paints the panel background over
 	 * the rule, leaving a notch), and a listbox whose current entry is ringed and
 	 * check-marked. This is the control behind the canned attribute filters.
 	 */
@@ -22,7 +23,7 @@
 		/** caption notched into the field's top border */
 		label?: string;
 		value?: string;
-		/** a disabled entry stays listed, greyed and unpickable — an option the
+		/** a disabled entry stays listed, greyed and unpickable; an option the
 		 *  caller wants seen but not chosen (an offline machine, say) */
 		options: Array<{ value: string; label: string; disabled?: boolean }>;
 		width?: string;
@@ -141,7 +142,7 @@
 		if (event.key === 'Escape' && open) {
 			open = false;
 
-			// an open list swallows the Escape — a surrounding modal must not close too
+			// an open list swallows the Escape; a surrounding modal must not close too
 			event.preventDefault();
 		}
 	}
@@ -187,7 +188,7 @@
 				<div class="find">
 					<SearchInput
 						bind:value={query}
-						placeholder="Filter"
+						placeholder={t('web.common.filter')}
 						width="100%"
 						focus
 						onenter={() => shown[0] && pick(shown[0])}
@@ -252,7 +253,7 @@
 		gap: 0.75rem;
 		width: 100%;
 
-		// the shared control height — a select, a text field and a button on the
+		// the shared control height; a select, a text field and a button on the
 		// same row must agree, or the row reads as three different sizes
 		min-height: var(--control-h);
 		padding: 0.125rem 0.75rem;
@@ -303,7 +304,7 @@
 		transform: translateY(-100%);
 	}
 
-	// the field stays put while the options scroll under it — a filter you have to
+	// the field stays put while the options scroll under it; a filter you have to
 	// scroll back up to reach is worse than no filter
 	.find {
 		position: sticky;
@@ -354,7 +355,7 @@
 			}
 		}
 
-		// last, so it wins over both :hover and .current — a listed-but-unpickable
+		// last, so it wins over both :hover and .current; a listed-but-unpickable
 		// entry must never look interactive
 		&:disabled {
 			background: none;

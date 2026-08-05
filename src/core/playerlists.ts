@@ -1,6 +1,6 @@
 /**
  * Per-instance player access lists: whitelist, operators, player bans and IP
- * bans — the four JSON files every Paper server keeps next to `server.properties`.
+ * bans; the four JSON files every Paper server keeps next to `server.properties`.
  *
  * The rule of the module: **while the server runs, the server owns the files.**
  * A running instance gets console commands (`whitelist add`, `op`, `ban`, …),
@@ -22,6 +22,7 @@ import { instanceDir, managedInstances } from "./config";
 import { readProperties, upsertProperty } from "./confedit";
 import { getStatus, sendCommand } from "./instances";
 import type { ClusterConfig } from "./types";
+import { t } from "../shared/i18n";
 
 /** The four access lists and the file each one lives in. */
 export const ACCESS_LIST_FILES = {
@@ -70,7 +71,7 @@ export interface IpBanEntry {
 
 export interface AccessLists {
 	instance: string;
-	/** stopped | starting | running | unknown — mirrors InstanceStatus.state */
+	/** stopped | starting | running | unknown; mirrors InstanceStatus.state */
 	state: string;
 	whitelistEnabled: boolean;
 	enforceWhitelist: boolean;
@@ -87,7 +88,7 @@ export interface AccessChange {
 	target: string;
 	/** Ban reason (bans and ban-ips only) */
 	reason?: string;
-	/** Op permission level 1–4; used only for file edits (default 4) */
+	/** Op permission level 1-4; used only for file edits (default 4) */
 	level?: number;
 	/** Who performed the change; recorded in ban entries written to file */
 	actor?: string;
@@ -174,7 +175,7 @@ export async function getAccessLists(cfg: ClusterConfig, name: string): Promise<
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	const dir = instanceDir(inst);
@@ -211,7 +212,7 @@ export async function getAccessLists(cfg: ClusterConfig, name: string): Promise<
 	};
 }
 
-/** Loose IPv4/IPv6 shape check — enough to keep garbage out of a console line. */
+/** Loose IPv4/IPv6 shape check; enough to keep garbage out of a console line. */
 function looksLikeIp(value: string): boolean {
 	return /^[0-9a-fA-F:.]{3,45}$/.test(value) && (value.includes(".") || value.includes(":"));
 }
@@ -347,7 +348,7 @@ async function applyToFile(
 }
 
 /**
- * Apply one access-list change to one instance — via the console when the
+ * Apply one access-list change to one instance; via the console when the
  * server runs, via the JSON file when it is stopped. The result reports which
  * path was taken and, for the command path, whether the file actually shows
  * the change after the command settled.
@@ -360,7 +361,7 @@ export async function applyAccessChange(
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	const invalid = validateTarget(change);
@@ -442,7 +443,7 @@ export async function setWhitelistEnabled(
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	const status = await getStatus(cfg, name);

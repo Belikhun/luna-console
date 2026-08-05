@@ -3,7 +3,7 @@
 	 * The server-selector editor: the chest as players see it, with everything
 	 * behind it editable.
 	 *
-	 * cluster.json is the source of truth here — `Save` writes the metadata onto
+	 * cluster.json is the source of truth here; `Save` writes the metadata onto
 	 * the instances, `Apply` generates `servers.yml` and reloads the proxy. They
 	 * are separate on purpose: an admin mid-edit will often have a duplicate slot
 	 * or an unnamed server, and being unable to save that is worse than saving it.
@@ -11,6 +11,7 @@
 	 * and say nothing useful about why.
 	 */
 
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 
@@ -94,7 +95,7 @@
 	const issues = $derived(draft ? validateSelectorDraft(draft) : []);
 	const errors = $derived(issues.filter((issue) => issue.level === 'error'));
 
-	/** Typed so the entries keep their shape — Object.entries widens to unknown. */
+	/** Typed so the entries keep their shape; Object.entries widens to unknown. */
 	function entriesOf(source: SelectorDraft | null): Array<[string, SelectorServerDraft]> {
 		return Object.entries(source?.servers ?? {}) as Array<[string, SelectorServerDraft]>;
 	}
@@ -200,7 +201,7 @@
 			const body = await api('/selector');
 			selectorState = body.state;
 
-			// a refresh must never eat unsaved work — this screen auto-refreshes to
+			// a refresh must never eat unsaved work; this screen auto-refreshes to
 			// keep the live status honest, and adopting the stored draft while the
 			// user is mid-edit would silently undo whatever they just did. Throwing
 			// the edits away stays available, deliberately, as `Discard changes`.
@@ -218,7 +219,7 @@
 			assets = (await api('/mc/assets')).state;
 			registry = await loadRegistry();
 		} catch {
-			// the editor still works without sprites — items fall back to tiles
+			// the editor still works without sprites; items fall back to tiles
 		}
 
 		try {
@@ -234,7 +235,7 @@
 					: 'OFFLINE';
 
 				// a backend that is down reports a row of zeroes, and those are an
-				// absence rather than a measurement — taking them as numbers is what
+				// absence rather than a measurement; taking them as numbers is what
 				// draws `0/0 người chơi` on a card being previewed as ONLINE
 				if (row.online !== true) {
 					continue;
@@ -359,10 +360,10 @@
 		try {
 			await patch('/selector', { draft: $state.snapshot(draft) });
 			pristine = JSON.stringify(draft);
-			note.set({ level: 'success', message: 'Selector saved to cluster.json', closeable: true });
+			note.set({ level: 'success', message: t('web.selector.selectorSavedToClusterJson'), closeable: true });
 			await refresh();
 		} catch (err) {
-			note.set({ level: 'error', message: 'Could not save', detail: (err as Error).message, closeable: true });
+			note.set({ level: 'error', message: t('web.selector.couldNotSave'), detail: (err as Error).message, closeable: true });
 		}
 
 		busy = '';
@@ -382,14 +383,14 @@
 			note.set({
 				level: result.proxyReloaded ? 'success' : 'warning',
 				message: result.proxyReloaded
-					? `Applied — ${result.placed} server(s), proxy reloaded`
+					? `Applied; ${result.placed} server(s), proxy reloaded`
 					: 'servers.yml written, but the proxy did not reload',
 				closeable: true
 			});
 
 			await refresh();
 		} catch (err) {
-			note.set({ level: 'error', message: 'Apply failed', detail: (err as Error).message, closeable: true });
+			note.set({ level: 'error', message: t('web.selector.applyFailed'), detail: (err as Error).message, closeable: true });
 		}
 
 		busy = '';
@@ -427,46 +428,42 @@
 		try {
 			const { job } = await post('/mc/assets', {});
 			await followJob(job.id, () => undefined);
-			note.set({ level: 'success', message: 'Assets extracted', closeable: true });
+			note.set({ level: 'success', message: t('web.selector.assetsExtracted'), closeable: true });
 			registry = null;
 			await refresh();
 		} catch (err) {
-			note.set({ level: 'error', message: 'Could not extract assets', detail: (err as Error).message, closeable: true });
+			note.set({ level: 'error', message: t('web.selector.couldNotExtractAssets'), detail: (err as Error).message, closeable: true });
 		}
 
 		busy = '';
 	}
 
 	const statusOptions = [
-		{ value: 'LIVE', label: 'Live status' },
+		{ value: 'LIVE', label: t('web.selector.liveStatus') },
 		...SELECTOR_STATUSES.map((status) => ({ value: status, label: `As ${status}` }))
 	];
 </script>
 
-<svelte:head><title>Server selector | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.selector.serverSelectorLunaConsole')}</title></svelte:head>
 
 <PageHeader
-	title="Server selector"
+	title={t('web.selector.serverSelector')}
 	count={`${selectorState?.placed ?? 0}`}
-	description="The chest players open with /servers. cluster.json is the source of truth; applying regenerates servers.yml and reloads the proxy."
+	description={t('web.selector.theChestPlayersOpenWith')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="selector" />
 
 		<Dropdown
-			label="Actions"
+			label={t('web.selector.actions')}
 			items={[
-				{ label: 'Import from servers.yml…', icon: 'download', action: () => {
+				{ label: t('web.selector.importFromServersYml2'), icon: 'download', action: () => {
 						importOpen = true;
 					} },
-				{ label: 'View generated YAML…', icon: 'file', action: showYaml },
-				{ label: 'Rebuild item sprites', icon: 'cube', action: extractAssets },
+				{ label: t('web.selector.viewGeneratedYaml'), icon: 'file', action: showYaml },
+				{ label: t('web.selector.rebuildItemSprites'), icon: 'cube', action: extractAssets },
 				{
-					label: 'Discard changes',
-					icon: 'rotate',
-					danger: true,
-					disabled: !dirty,
-					hint: dirty ? undefined : 'nothing has been changed',
+					label: t('web.selector.discardChanges'), icon: 'rotate', danger: true, disabled: !dirty, hint: dirty ? undefined : 'nothing has been changed',
 					action: () => {
 						draft = JSON.parse(pristine);
 					}
@@ -482,11 +479,11 @@
 			variant="primary"
 			icon="cloudArrowUp"
 			disabled={!!busy || errors.length > 0}
-			title={errors.length > 0 ? 'fix the errors below first — the proxy would refuse the reload' : undefined}
+			title={errors.length > 0 ? 'fix the errors below first; the proxy would refuse the reload' : undefined}
 			loading={busy === 'apply'}
 			onclick={applyToProxy}
 		>
-			Apply to proxy
+			{t('web.selector.applyToProxy')}
 		</Btn>
 	{/snippet}
 </PageHeader>
@@ -495,8 +492,8 @@
 	<div class="banner">
 		<Icon name="triangleExclamation" style="solid" />
 		<span>
-			Minecraft's item textures are not extracted yet, so items show as tiles.
-			<button class="link" onclick={extractAssets}>Extract them now</button> — one download of the {assets.wanted} client.
+			{t('web.selector.minecraftSItemTextures')}
+			<button class="link" onclick={extractAssets}>{t('web.selector.extractThemNow')}</button>; one download of the {assets.wanted} client.
 		</span>
 	</div>
 {/if}
@@ -505,9 +502,9 @@
 	<div class="banner">
 		<Icon name="circleInfo" style="solid" />
 		<span>
-			cluster.json has no selector yet.
-			<button class="link" onclick={() => (importOpen = true)}>Import the existing servers.yml</button> to adopt what the
-			proxy runs today.
+			{t('web.selector.clusterJsonHasNo')}
+			<button class="link" onclick={() => (importOpen = true)}>{t('web.selector.importTheExistingServers')}</button> to adopt what the
+			{t('web.selector.proxyRunsToday')}
 		</span>
 	</div>
 {/if}
@@ -533,7 +530,7 @@
 
 <div class="layout">
 	<div class="left">
-		<Panel title="Preview" description="Hover an item for its tooltip; drag to move it.">
+		<Panel title={t('web.selector.preview')} description={t('web.selector.hoverAnItemForIts')}>
 			{#snippet actions()}
 				<div class="zoom">
 					<Icon name="magnifyingGlassPlus" style="solid" />
@@ -544,7 +541,7 @@
 						step={5}
 						unit="%"
 						width="11rem"
-						label="GUI size"
+						label={t('web.selector.guiSize')}
 						onchange={setGuiScale}
 					/>
 				</div>
@@ -562,7 +559,7 @@
 						{index + 1}
 					</Btn>
 				{/each}
-				<Btn variant="link" onclick={() => (page = maxPage + 1)}>+ page</Btn>
+				<Btn variant="link" onclick={() => (page = maxPage + 1)}>{t('web.selector.page')}</Btn>
 			</div>
 
 			<div class="chestwrap">
@@ -590,7 +587,7 @@
 			</div>
 		</Panel>
 
-		<Panel title="Not in the grid" count={`${unplaced.length}`} description="Drag one onto a slot to place it.">
+		<Panel title={t('web.selector.notInTheGrid')} count={`${unplaced.length}`} description={t('web.selector.dragOneOntoASlot')}>
 			<div class="palette">
 				{#each unplaced as [name, server] (name)}
 					<div
@@ -627,7 +624,7 @@
 						</Btn>
 					</div>
 				{:else}
-					<p class="dim">every server is on the grid</p>
+					<p class="dim">{t('web.selector.everyServerIsOn')}</p>
 				{/each}
 			</div>
 		</Panel>
@@ -637,8 +634,8 @@
 		<Panel flush>
 			<Tabs
 				tabs={[
-					{ id: 'item', label: selectedName ? `Item — ${selectedName}` : 'Item' },
-					{ id: 'global', label: 'Global' }
+					{ id: 'item', label: selectedName ? `Item; ${selectedName}` : 'Item' },
+					{ id: 'global', label: t('web.selector.global') }
 				]}
 				bind:active={tab}
 			/>
@@ -647,20 +644,20 @@
 				{#if tab === 'item'}
 					{#if selectedName && selectedServer && draft}
 						<MiniMessageInput
-							label="Display name"
+							label={t('web.selector.displayName')}
 							value={selectedServer.serverDisplay ?? ''}
-							hint="Shown in the item's title, in chat and on the tab list."
+							hint={t('web.selector.shownInTheItemS')}
 							onchange={(next) => editServer(selectedName, (server) => (server.serverDisplay = next))}
 						/>
 
 						<ColorPicker
-							label="Accent colour"
+							label={t('web.selector.accentColour')}
 							value={selectedServer.accentColor ?? ''}
 							onchange={(next) => editServer(selectedName, (server) => (server.accentColor = next))}
 						/>
 
 						<div class="field">
-							<span class="lbl">Material</span>
+							<span class="lbl">{t('web.selector.material')}</span>
 							<Select
 								value={materialKey(selectedServer.serverIcon) || 'STONE'}
 								options={materialOptions}
@@ -670,13 +667,13 @@
 						</div>
 
 						<div class="field">
-							<span class="lbl">Material per status</span>
+							<span class="lbl">{t('web.selector.materialPerStatus')}</span>
 							{#each SELECTOR_STATUSES as status (status)}
 								<div class="statusrow">
 									<span class="statuslabel">{status}</span>
 									<Select
 										value={materialKey(selectedServer.serverStatusIcons?.[status]) || ''}
-										options={[{ value: '', label: '(inherit)' }, ...materialOptions]}
+										options={[{ value: '', label: t('web.selector.inherit') }, ...materialOptions]}
 										width="100%"
 										onchange={(next) =>
 											editServer(selectedName, (server) => {
@@ -694,7 +691,7 @@
 						</div>
 
 						<div class="field">
-							<span class="lbl">Enchantment glint</span>
+							<span class="lbl">{t('web.selector.enchantmentGlint')}</span>
 							<Toggle
 								checked={selectedServer.selector?.glint === true}
 								onchange={(checked) =>
@@ -705,20 +702,16 @@
 						</div>
 
 						<!--
-							One field, not a row per line: the lines are a paragraph an admin
-							writes and re-orders, and a control per line made moving one a
-							retype. A blank line is a blank lore line, which is how the
-							templates space their blocks — so only an empty field is no
-							description at all.
+							{t('web.selector.oneFieldNotA')}
 						-->
 						<div class="field">
 							<MiniMessageInput
-								label="Description"
+								label={t('web.selector.description')}
 								value={(selectedServer.description ?? []).join('\n')}
 								multiline
 								rows={6}
 								baseColor="#aaaaaa"
-								hint="One line per lore line."
+								hint={t('web.selector.oneLinePerLoreLine')}
 								onchange={(next) =>
 									editServer(selectedName, (server) => {
 										server.description = next === '' ? [] : next.split('\n');
@@ -727,10 +720,10 @@
 						</div>
 
 						<div class="field">
-							<span class="lbl">Permission</span>
+							<span class="lbl">{t('web.selector.permission')}</span>
 							<input
 								class="input"
-								placeholder="(everyone)"
+								placeholder={t('web.selector.everyone')}
 								value={selectedServer.selector?.permission ?? ''}
 								oninput={(event) => {
 									const next = (event.currentTarget as HTMLInputElement).value;
@@ -739,13 +732,13 @@
 									});
 								}}
 							/>
-							<span class="hint">Players without it see the item as NOP.</span>
+							<span class="hint">{t('web.selector.playersWithoutItSee')}</span>
 						</div>
 
 						<MiniMessageInput
-							label="Connect message"
+							label={t('web.selector.connectMessage')}
 							value={selectedServer.selector?.connectMessage ?? ''}
-							hint="Blank uses the global connecting message."
+							hint={t('web.selector.blankUsesTheGlobalConnecting')}
 							italicDefault={false}
 							onchange={(next) =>
 								editServer(selectedName, (server) => {
@@ -754,7 +747,7 @@
 						/>
 
 						<div class="field">
-							<span class="lbl">Conditional overrides</span>
+							<span class="lbl">{t('web.selector.conditionalOverrides')}</span>
 							{#each selectedServer.selector?.conditional ?? [] as rule, index (index)}
 								<div class="rule">
 									<ConditionBuilder
@@ -770,7 +763,7 @@
 									<div class="ruleitem">
 										<Select
 											value={materialKey(rule.material) || ''}
-											options={[{ value: '', label: '(keep material)' }, ...materialOptions]}
+											options={[{ value: '', label: t('web.selector.keepMaterial') }, ...materialOptions]}
 											width="100%"
 											onchange={(next) =>
 												editServer(selectedName, (server) => {
@@ -781,7 +774,7 @@
 										/>
 										<Btn
 											variant="icon"
-											title="Remove this rule"
+											title={t('web.selector.removeThisRule')}
 											onclick={() =>
 												editServer(selectedName, (server) => {
 													const rules = [...(server.selector?.conditional ?? [])];
@@ -810,19 +803,19 @@
 						{#if selectedServer.selector?.template}
 							<p class="note">
 								<Icon name="lock" style="solid" /> This server carries a raw per-server template block. It is kept as-is
-								and not editable here: the plugin treats one as a replacement for the global template, not a merge.
+								{t('web.selector.andNotEditableHere')}
 							</p>
 						{/if}
 
 						<Btn variant="danger" icon="upload" onclick={() => unplace(selectedName)}>
-							Remove from the grid
+							{t('web.selector.removeFromTheGrid')}
 						</Btn>
 					{:else}
-						<p class="dim">Pick an item in the chest to edit it.</p>
+						<p class="dim">{t('web.selector.pickAnItemIn')}</p>
 					{/if}
 				{:else if draft}
 					<div class="field">
-						<span class="lbl">Selector enabled</span>
+						<span class="lbl">{t('web.selector.selectorEnabled')}</span>
 						<Toggle
 							checked={draft.global.enabled !== false}
 							onchange={(checked) => edit((next) => (next.global.enabled = checked))}
@@ -830,16 +823,16 @@
 					</div>
 
 					<MiniMessageInput
-						label="GUI title"
+						label={t('web.selector.guiTitle')}
 						value={draft.global.title ?? ''}
 						italicDefault={false}
 						onchange={(next) => edit((updated) => (updated.global.title = next))}
 					/>
 
 					<MiniMessageInput
-						label="Item name template"
+						label={t('web.selector.itemNameTemplate')}
 						value={draft.global.template?.name ?? ''}
-						hint="%server_display% is the server's own name; %server_status_icon% its state."
+						hint={t('web.selector.serverDisplayIsTheServer')}
 						onchange={(next) =>
 							edit((updated) => {
 								updated.global.template = { ...(updated.global.template ?? {}), name: next };
@@ -847,9 +840,9 @@
 					/>
 
 					<MiniMessageInput
-						label="Body line"
+						label={t('web.selector.bodyLine')}
 						value={draft.global.template?.bodyLine ?? ''}
-						hint="Every description line is wrapped in this; %line% is the line."
+						hint={t('web.selector.everyDescriptionLineIsWrapped')}
 						onchange={(next) =>
 							edit((updated) => {
 								updated.global.template = { ...(updated.global.template ?? {}), bodyLine: next };
@@ -857,7 +850,7 @@
 					/>
 
 					<div class="field">
-						<span class="lbl">Status icons</span>
+						<span class="lbl">{t('web.selector.statusIcons')}</span>
 						{#each SELECTOR_STATUSES as status (status)}
 							<div class="statusrow">
 								<span class="statuslabel">{status}</span>
@@ -876,7 +869,7 @@
 					</div>
 
 					<div class="field">
-						<span class="lbl">Messages</span>
+						<span class="lbl">{t('web.selector.messages')}</span>
 						{#each [['opening', 'Opening'], ['offline', 'Offline'], ['maint', 'Maintenance'], ['noPermission', 'No permission'], ['connecting', 'Connecting'], ['notFound', 'Not found'], ['playerOnly', 'Player only']] as [key, label] (key)}
 							<MiniMessageInput
 								label={label}
@@ -895,20 +888,20 @@
 	</div>
 </div>
 
-<Modal title="Generated servers.yml" bind:open={yamlOpen} wide>
+<Modal title={t('web.selector.generatedServersYml')} bind:open={yamlOpen} wide>
 	<pre class="yaml">{yamlText}</pre>
 </Modal>
 
-<Modal title="Import from servers.yml" bind:open={importOpen}>
+<Modal title={t('web.selector.importFromServersYml')} bind:open={importOpen}>
 	<p>
 		Reads the proxy's current <code class="inline">servers.yml</code> into cluster.json. It only saves when regenerating
-		the file reproduces the same configuration, so the next apply cannot change what players see.
+		{t('web.selector.theFileReproducesThe')}
 	</p>
 
 	{#if importReport}
 		<p class={importReport.equal ? 'ok' : 'bad'}>
 			{importReport.equal
-				? `Round-trip check passed — ${importReport.imported.length} server(s) imported.`
+				? `Round-trip check passed; ${importReport.imported.length} server(s) imported.`
 				: `Round-trip check failed on ${importReport.diff.length} path(s).`}
 		</p>
 
@@ -922,14 +915,14 @@
 	{/if}
 
 	{#snippet footer()}
-		<Btn onclick={() => runImport(false)} loading={busy === 'import'}>Import</Btn>
+		<Btn onclick={() => runImport(false)} loading={busy === 'import'}>{t('web.selector.import')}</Btn>
 		{#if importReport && !importReport.equal}
-			<Btn variant="danger" onclick={() => runImport(true)}>Import anyway</Btn>
+			<Btn variant="danger" onclick={() => runImport(true)}>{t('web.selector.importAnyway')}</Btn>
 		{/if}
 	{/snippet}
 </Modal>
 
-<Modal title="Applying the selector" bind:open={applyOpen}>
+<Modal title={t('web.selector.applyingTheSelector')} bind:open={applyOpen}>
 	<ProgressTree root={applyJob?.progress ?? null} state={applyJob?.state} />
 </Modal>
 

@@ -1,7 +1,7 @@
 /**
  * Bridge mirror of core/respackinfo. Every function here reads something only
- * the daemon's machine has — the packs directory, the proxy's config, the web
- * server's access log, the proxy's own HTTP API — so all of them are RPCs.
+ * the daemon's machine has; the packs directory, the proxy's config, the web
+ * server's access log, the proxy's own HTTP API; so all of them are RPCs.
  */
 
 import type * as core from "../../core/respackinfo";

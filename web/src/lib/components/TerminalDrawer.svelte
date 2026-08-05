@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 	import Dropdown from './Dropdown.svelte';
 	import ShellGlyph from './ShellGlyph.svelte';
@@ -20,7 +21,7 @@
 		name: string;
 	}
 
-	/** status bar height, in px — the drawer's bottom edge sits on top of it */
+	/** status bar height, in px; the drawer's bottom edge sits on top of it */
 	const STATUSBAR_H = 28;
 	const MIN_HEIGHT = 160;
 
@@ -66,7 +67,7 @@
 
 	/**
 	 * The grip sits inside the drawer rather than on its edge, so resizing has to
-	 * preserve the pointer's offset from the top edge — otherwise the drawer jumps
+	 * preserve the pointer's offset from the top edge; otherwise the drawer jumps
 	 * up by the grip row's height on the first move.
 	 */
 	function onPointerMove(event: PointerEvent): void {
@@ -92,31 +93,31 @@
 				<path d="M3 9.5H13" />
 			</svg>
 		</span>
-		<button class="tool close" title="Close terminal" onclick={onclose}>
+		<button class="tool close" title={t('web.terminal.closeTerminal')} onclick={onclose}>
 			<Icon name="close" size="0.875rem" />
 		</button>
 	</div>
 
 	<div class="hd">
-		<span class="title"><ShellGlyph size="1.125rem" /> Terminal</span>
+		<span class="title"><ShellGlyph size="1.125rem" /> {t('web.layout.terminal')}</span>
 		<span class="spacer"></span>
 		<Dropdown
-			label="Actions"
+			label={t('web.common.actions')}
 			items={[
-				{ label: 'New tab', icon: 'plus', action: addTab },
-				{ label: 'Close tab', icon: 'close', action: () => closeTab(active) },
+				{ label: t('web.terminal.newTab'), icon: 'plus', action: addTab },
+				{ label: t('web.terminal.closeTab'), icon: 'close', action: () => closeTab(active) },
 				{ divider: true, label: '' },
-				{ label: 'Close all tabs', icon: 'trash', danger: true, action: onclose }
+				{ label: t('web.terminal.closeAllTabs'), icon: 'trash', danger: true, action: onclose }
 			]}
 		/>
 		<button
 			class="tool"
-			title="Open the console in a new window"
+			title={t('web.terminal.openNewWindow')}
 			onclick={() => window.open('/instances', '_blank')}
 		>
 			<Icon name="expand" size="1rem" />
 		</button>
-		<button class="tool" title="Preferences">
+		<button class="tool" title={t('web.table.preferences')}>
 			<Icon name="gear" size="1rem" style="solid" />
 		</button>
 	</div>
@@ -132,7 +133,7 @@
 				>
 					{tab.name}
 				</button>
-				<button class="x" title="Close tab" onclick={(event) => closeTab(tab.id, event)}>
+				<button class="x" title={t('web.terminal.closeTab')} onclick={(event) => closeTab(tab.id, event)}>
 					<Icon name="close" size="0.75rem" />
 				</button>
 			</div>

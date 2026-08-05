@@ -4,6 +4,7 @@ import { loadCluster } from "../../client/core/config";
 import { ProgressReporter } from "../../client/core/progress";
 import * as selector from "../../client/core/selector";
 import type { SelectorIssue } from "../../client/core/selector";
+import { t } from "../../shared/i18n";
 
 /** One line per validation issue, errors first. */
 function printIssues(issues: SelectorIssue[]): void {
@@ -14,13 +15,15 @@ function printIssues(issues: SelectorIssue[]): void {
 	const rows = [...issues]
 		.sort((left, right) => (left.level === right.level ? 0 : left.level === "error" ? -1 : 1))
 		.map((issue) => [
-			issue.level === "error" ? `${Sym.bad} ${pc.red("error")}` : `${Sym.warn} ${pc.yellow("warn")}`,
+			issue.level === "error"
+				? `${Sym.bad} ${pc.red(t("cli.level.error"))}`
+				: `${Sym.warn} ${pc.yellow(t("cli.level.warn"))}`,
 			pc.dim(issue.path),
 			issue.message,
 		]);
 
 	console.log();
-	printTable(rows, { head: ["", "where", "problem"] });
+	printTable(rows, { head: ["", t("cli.head.where"), t("cli.head.problem")] });
 }
 
 function printDiff(diff: string[]): void {
@@ -29,20 +32,20 @@ function printDiff(diff: string[]): void {
 	}
 
 	console.log();
-	info("differences between the file and what luna would generate:");
+	info(t("cli.selector.diffHeading"));
 
 	for (const line of diff.slice(0, 40)) {
 		console.log(`  ${pc.dim("·")} ${line}`);
 	}
 
 	if (diff.length > 40) {
-		console.log(`  ${pc.dim(`… and ${diff.length - 40} more`)}`);
+		console.log(`  ${pc.dim(t("cli.selector.diffMore", { count: diff.length - 40 }))}`);
 	}
 }
 
 command({
 	path: ["selector", "status"],
-	desc: "Show the server selector: placement, validation and drift from servers.yml",
+	desc: t("cli.selector.status.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
@@ -60,32 +63,43 @@ command({
 			.map(([name, server]) => [
 				pc.bold(name),
 				`${server.selector?.page}:${String(server.selector?.slot).padStart(2, " ")}`,
-				server.serverIcon ?? pc.dim("(by status)"),
+				server.serverIcon ?? pc.dim(t("cli.selector.status.byStatus")),
 				server.accentColor ? pc.dim(server.accentColor) : pc.dim("—"),
-				`${(server.description ?? []).length} line(s)`,
+				t("cli.selector.status.lines", { count: (server.description ?? []).length }),
 				pc.dim(server.hostName),
 			]);
 
 		console.log();
-		printTable(rows, { head: ["server", "page:slot", "material", "accent", "description", "host"] });
+		printTable(rows, {
+			head: [
+				t("cli.head.server"),
+				t("cli.head.pageSlot"),
+				t("cli.head.material"),
+				t("cli.head.accent"),
+				t("cli.head.description"),
+				t("cli.head.host"),
+			],
+		});
 
 		console.log();
 		info(
-			`${state.placed} server(s) across ${state.pages} page(s) · ` +
-				(state.configured ? pc.green("configured in cluster.json") : pc.yellow("not configured — run luna selector migrate")),
+			`${t("cli.selector.status.placement", { placed: state.placed, pages: state.pages })} · ` +
+				(state.configured
+					? pc.green(t("cli.selector.status.configured"))
+					: pc.yellow(t("cli.selector.status.notConfigured"))),
 		);
 
 		if (!state.fileExists) {
-			warn(`no servers.yml yet — apply will create it`);
+			warn(t("cli.selector.status.noFile"));
 		} else if (state.drift) {
-			warn(`servers.yml differs from cluster.json (${state.driftPaths.length} path(s)) — apply to bring it in line`);
+			warn(t("cli.selector.status.drift", { count: state.driftPaths.length }));
 			printDiff(state.driftPaths);
 		} else {
-			ok("servers.yml matches cluster.json");
+			ok(t("cli.selector.status.matches"));
 		}
 
 		if (!state.proxyReachable) {
-			warn("the proxy's HTTP API did not answer — apply can write the file but not reload it");
+			warn(t("cli.selector.status.proxyUnreachable"));
 		}
 
 		printIssues(state.issues);
@@ -94,7 +108,7 @@ command({
 
 command({
 	path: ["selector", "check"],
-	desc: "Validate the selector the way the proxy would before a reload",
+	desc: t("cli.selector.check.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
@@ -104,16 +118,20 @@ command({
 		printIssues(issues);
 
 		if (errors.length > 0) {
-			throw new Bail(`${errors.length} error(s) — the proxy would refuse to reload`);
+			throw new Bail(t("cli.selector.check.wouldRefuse", { count: errors.length }));
 		}
 
-		ok(issues.length ? `no errors, ${issues.length} warning(s)` : "no issues");
+		ok(
+			issues.length
+				? t("cli.selector.check.warningsOnly", { count: issues.length })
+				: t("cli.selector.check.noIssues"),
+		);
 	},
 });
 
 command({
 	path: ["selector", "preview"],
-	desc: "Print the servers.yml luna would generate, without writing it",
+	desc: t("cli.selector.preview.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
@@ -124,11 +142,11 @@ command({
 
 command({
 	path: ["selector", "migrate"],
-	desc: "Import the existing servers.yml into cluster.json (one-time)",
+	desc: t("cli.selector.migrate.desc"),
 	opts: [
-		{ flag: "--dry-run", desc: "report what would be imported, saving nothing" },
-		{ flag: "--force", desc: "save even when the round-trip check finds differences" },
-		{ flag: "--yes", desc: "skip the confirmation" },
+		{ flag: "--dry-run", desc: t("cli.selector.migrate.optDryRun") },
+		{ flag: "--force", desc: t("cli.selector.migrate.optForce") },
+		{ flag: "--yes", desc: t("cli.common.optYes") },
 	],
 
 	handler: async (_args, opts) => {
@@ -136,12 +154,10 @@ command({
 
 		if (!opts["dry-run"] && !opts.yes) {
 			const { confirm, isCancel } = await import("@clack/prompts");
-			const sure = await confirm({
-				message: "Import servers.yml into cluster.json? This rewrites the selector metadata of every matching instance.",
-			});
+			const sure = await confirm({ message: t("cli.selector.migrate.confirm") });
 
 			if (isCancel(sure) || !sure) {
-				info("aborted");
+				info(t("cli.common.aborted"));
 
 				return;
 			}
@@ -156,35 +172,40 @@ command({
 			warn(message);
 		}
 
-		info(`${report.imported.length} instance(s): ${report.imported.join(", ") || pc.dim("none")}`);
+		info(
+			t("cli.selector.migrate.imported", {
+				count: report.imported.length,
+				names: report.imported.join(", ") || pc.dim(t("cli.common.none")),
+			}),
+		);
 
 		if (report.equal) {
-			ok("round-trip check passed — regenerating reproduces the current configuration");
+			ok(t("cli.selector.migrate.roundTripOk"));
 		} else {
-			fail(`round-trip check failed on ${report.diff.length} path(s)`);
+			fail(t("cli.selector.migrate.roundTripFailed", { count: report.diff.length }));
 			printDiff(report.diff);
 		}
 
 		if (report.saved) {
-			ok("cluster.json updated");
+			ok(t("cli.selector.migrate.saved"));
 
 			return;
 		}
 
 		if (opts["dry-run"]) {
-			info("dry run — nothing saved");
+			info(t("cli.selector.migrate.dryRun"));
 
 			return;
 		}
 
-		throw new Bail("nothing saved — re-run with --force to import anyway");
+		throw new Bail(t("cli.selector.migrate.nothingSaved"));
 	},
 });
 
 command({
 	path: ["selector", "apply"],
-	desc: "Generate servers.yml from cluster.json and reload the proxy",
-	opts: [{ flag: "--yes", desc: "skip the confirmation" }],
+	desc: t("cli.selector.apply.desc"),
+	opts: [{ flag: "--yes", desc: t("cli.common.optYes") }],
 
 	handler: async (_args, opts) => {
 		const cfg = await loadCluster();
@@ -194,23 +215,23 @@ command({
 		if (errors.length > 0) {
 			printIssues(state.issues);
 
-			throw new Bail(`${errors.length} error(s) — fix them before applying`);
+			throw new Bail(t("cli.selector.apply.fixFirst", { count: errors.length }));
 		}
 
 		if (!opts.yes) {
 			const { confirm, isCancel } = await import("@clack/prompts");
 			const sure = await confirm({
-				message: `Write servers.yml (${state.placed} server(s)) and reload the live proxy?`,
+				message: t("cli.selector.apply.confirm", { count: state.placed }),
 			});
 
 			if (isCancel(sure) || !sure) {
-				info("aborted");
+				info(t("cli.common.aborted"));
 
 				return;
 			}
 		}
 
-		const progress = new ProgressReporter("apply selector");
+		const progress = new ProgressReporter(t("cli.selector.apply.progressName"));
 		const view = new ProgressView(progress).start();
 
 		try {
@@ -218,12 +239,12 @@ command({
 
 			view.stop();
 
-			ok(`servers.yml written (${result.placed} server(s))`);
+			ok(t("cli.selector.apply.written", { count: result.placed }));
 
 			if (result.proxyReloaded) {
-				ok("proxy reloaded — backends pick the new layout up on their next heartbeat");
+				ok(t("cli.selector.apply.reloaded"));
 			} else {
-				warn("the proxy did not reload — run /lunacoreproxy reload there, or restart it");
+				warn(t("cli.selector.apply.notReloaded"));
 			}
 
 			if (result.reloadOutput) {

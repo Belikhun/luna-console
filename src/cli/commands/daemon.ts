@@ -17,6 +17,7 @@ import {
 	type HealthSample,
 	type UpgradeCheck,
 } from "../../client/daemon";
+import { t } from "../../shared/i18n";
 
 /** Milliseconds → compact "3d 4h" / "2h 5m" / "3m 12s" uptime. */
 function uptimeText(sinceMs: number): string {
@@ -69,12 +70,17 @@ function printHealth(health: HealthSample): void {
 	info(`cpu       ${health.cpuPct}% (load ${health.load1.toFixed(2)} ${health.load5.toFixed(2)} ${health.load15.toFixed(2)})`);
 	info(`memory    ${health.memUsedMb} / ${health.memTotalMb} MB (${memPct})`);
 	info(`disk      ${gb(health.diskUsedBytes)} / ${gb(health.diskTotalBytes)} (${diskPct})`);
-	info(`inst mem  ${health.instancesRssMb} MB resident across ${Object.keys(health.instanceRssMb).length} instance(s)`);
+	info(
+		`inst mem  ${t("cli.daemon.instMem", {
+			mb: health.instancesRssMb,
+			count: Object.keys(health.instanceRssMb).length,
+		})}`,
+	);
 }
 
 command({
 	path: ["daemon", "run"],
-	desc: "Run the luna daemon in the foreground (primary or follower, per its config)",
+	desc: t("cli.daemon.run.desc"),
 
 	handler: async () => {
 		const { runDaemon } = await import("../../daemon/index");
@@ -85,15 +91,20 @@ command({
 
 command({
 	path: ["daemon", "status"],
-	desc: "Show the daemon this host's clients are talking to",
+	desc: t("cli.daemon.status.desc"),
 
 	handler: async () => {
 		try {
 			await ensureConnected();
 		} catch (err) {
 			if (err instanceof DaemonUnavailable) {
-				fail("no daemon is running on this host");
-				info(`start one with ${pc.cyan("luna daemon run")} or install the service: ${pc.cyan("luna daemon service install")}`);
+				fail(t("cli.daemon.status.noDaemon"));
+				info(
+					t("cli.daemon.status.startHint", {
+						run: pc.cyan("luna daemon run"),
+						install: pc.cyan("luna daemon service install"),
+					}),
+				);
 				process.exitCode = 1;
 
 				return;
@@ -104,10 +115,12 @@ command({
 
 		const d = daemonInfo();
 
-		ok(`daemon "${d.name}" — ${d.mode}`);
-		info(`version   ${d.version}${d.buildAt ? ` (built ${new Date(d.buildAt).toLocaleString()})` : ""}`);
+		ok(`daemon "${d.name}" · ${d.mode}`);
+		info(
+			`version   ${d.version}${d.buildAt ? ` ${t("cli.daemon.status.builtAt", { date: new Date(d.buildAt).toLocaleString() })}` : ""}`,
+		);
 		info(`root      ${d.root}`);
-		info(`pid       ${d.pid} (up ${uptimeText(d.startedAt)})`);
+		info(`pid       ${d.pid} (${t("cli.daemon.status.up", { uptime: uptimeText(d.startedAt) })})`);
 		info(`protocol  ${d.protocol} · ${d.platform}`);
 
 		if (d.listen) {
@@ -125,8 +138,11 @@ command({
 
 		if (check?.offer) {
 			warn(
-				`update    ${check.offer.version} available from the ${check.offer.origin} — ` +
-					`${pc.cyan("luna daemon upgrade")}`,
+				`update    ${t("cli.daemon.status.updateAvailable", {
+					version: check.offer.version,
+					origin: check.offer.origin,
+					command: pc.cyan("luna daemon upgrade"),
+				})}`,
 			);
 		}
 	},
@@ -134,7 +150,7 @@ command({
 
 command({
 	path: ["daemon", "list"],
-	desc: "List every daemon in the cluster with live state",
+	desc: t("cli.daemon.list.desc"),
 
 	handler: async () => {
 		const rows = await listDaemons();
@@ -149,33 +165,35 @@ command({
 				pc.bold(row.name),
 				row.mode,
 				row.host ?? pc.dim("—"),
-				row.instances.length ? row.instances.join(", ") : pc.dim("none"),
+				row.instances.length ? row.instances.join(", ") : pc.dim(t("cli.common.none")),
 				health ? `${health.cpuPct}%` : pc.dim("—"),
 				health ? pctCell(health.memUsedMb, health.memTotalMb) : pc.dim("—"),
 				health ? pctCell(health.diskUsedBytes, health.diskTotalBytes) : pc.dim("—"),
 				row.latencyMs === null ? pc.dim("—") : `${row.latencyMs}ms`,
-				row.outdated ? pc.yellow(`${row.version} (old)`) : (row.version ?? pc.dim("—")),
+				row.outdated
+					? pc.yellow(`${row.version} ${t("cli.daemon.list.oldTag")}`)
+					: (row.version ?? pc.dim("—")),
 				row.online
-					? pc.green("online")
+					? pc.green(t("cli.daemon.list.online"))
 					: row.lastSeen
 						? new Date(row.lastSeen).toLocaleString()
-						: pc.dim("never"),
+						: pc.dim(t("cli.daemon.list.never")),
 			]);
 		}
 
 		printTable(table, {
 			head: [
 				"",
-				"name",
-				"mode",
-				"host",
-				"instances",
+				t("cli.head.name"),
+				t("cli.head.mode"),
+				t("cli.head.host"),
+				t("cli.head.instances"),
 				"cpu",
 				"mem",
-				"disk",
-				"latency",
-				"version",
-				"last seen",
+				t("cli.head.disk"),
+				t("cli.head.latency"),
+				t("cli.head.version"),
+				t("cli.head.lastSeen"),
 			],
 		});
 	},
@@ -183,7 +201,7 @@ command({
 
 command({
 	path: ["daemon", "show"],
-	desc: "Health, checks and instance memory of one daemon",
+	desc: t("cli.daemon.show.desc"),
 	args: [
 		{
 			name: "name",
@@ -197,21 +215,25 @@ command({
 		const detail = await daemonDetail(name);
 
 		if (!detail) {
-			throw new Bail(`unknown daemon: ${name}`);
+			throw new Bail(t("cli.daemon.unknown", { name }));
 		}
 
 		const { row } = detail;
 
 		if (row.online) {
-			ok(`daemon "${row.name}" — ${row.mode}, online`);
+			ok(`daemon "${row.name}" · ${row.mode}, ${t("cli.daemon.list.online")}`);
 		} else {
-			fail(`daemon "${row.name}" — ${row.mode}, offline`);
+			fail(`daemon "${row.name}" · ${row.mode}, ${t("cli.daemon.show.offline")}`);
 		}
 
-		info(`version   ${row.version ?? pc.dim("—")}${row.outdated ? pc.yellow(" — behind the primary") : ""}`);
+		info(
+			`version   ${row.version ?? pc.dim("—")}${row.outdated ? pc.yellow(` ${t("cli.daemon.show.behindPrimary")}`) : ""}`,
+		);
 		info(`host      ${row.host ?? pc.dim("—")}${row.addresses.length ? ` (${row.addresses.join(", ")})` : ""}`);
 		info(`root      ${row.root ?? pc.dim("—")}`);
-		info(`instances ${row.instances.length ? row.instances.join(", ") : pc.dim("none")}`);
+		info(
+			`instances ${row.instances.length ? row.instances.join(", ") : pc.dim(t("cli.common.none"))}`,
+		);
 
 		if (row.latencyMs !== null) {
 			info(`latency   ${row.latencyMs}ms`);
@@ -230,7 +252,7 @@ command({
 					check.name,
 					pc.dim(check.detail),
 				]),
-				{ head: ["", "check", "detail"] },
+				{ head: ["", t("cli.head.check"), t("cli.head.detail")] },
 			);
 		}
 
@@ -245,7 +267,7 @@ command({
 					row.health?.states[instance] ?? pc.dim("?"),
 					`${mb} MB`,
 				]),
-				{ head: ["instance", "state", "resident"] },
+				{ head: [t("cli.head.instance"), t("cli.head.state"), t("cli.head.resident")] },
 			);
 		}
 	},
@@ -267,7 +289,15 @@ function printOffers(check: UpgradeCheck): void {
 				mb(offer.size),
 				pc.dim(offer.origin),
 			]),
-			{ head: ["", "channel", "version", "size", "source"] },
+			{
+				head: [
+					"",
+					t("cli.head.channel"),
+					t("cli.head.version"),
+					t("cli.head.size"),
+					t("cli.head.source"),
+				],
+			},
 		);
 	}
 
@@ -278,7 +308,7 @@ function printOffers(check: UpgradeCheck): void {
 
 command({
 	path: ["daemon", "upgrade"],
-	desc: "Upgrade a daemon — from this primary's binary, or the GitHub release",
+	desc: t("cli.daemon.upgrade.desc"),
 	args: [
 		{
 			name: "name",
@@ -287,44 +317,54 @@ command({
 		},
 	],
 	opts: [
-		{ flag: "--check", desc: "report what each channel offers without upgrading" },
-		{ flag: "--force", desc: "upgrade even when the build matches or jobs are running" },
+		{ flag: "--check", desc: t("cli.daemon.upgrade.optCheck") },
+		{ flag: "--force", desc: t("cli.daemon.upgrade.optForce") },
 	],
 
 	handler: async (args, opts) => {
 		// no name means "this host's daemon", which is the common case for the
-		// primary — a follower is always addressed by name from the primary
+		// primary; a follower is always addressed by name from the primary
 		const name = args[0] ?? (await ensureConnected()).name;
 		const rows = await listDaemons();
 		const row = rows.find((entry) => entry.name === name);
 
 		if (!row) {
-			throw new Bail(`unknown daemon: ${name}`);
+			throw new Bail(t("cli.daemon.unknown", { name }));
 		}
 
 		if (!row.online) {
-			throw new Bail(`daemon "${name}" is not connected`);
+			throw new Bail(t("cli.daemon.upgrade.notConnected", { name }));
 		}
 
 		if (opts.check) {
 			const check = await checkDaemonUpgrade(name, true);
 
-			info(`${name} runs ${check.current} (${check.platform})`);
+			info(t("cli.daemon.upgrade.runs", { name, version: check.current, platform: check.platform }));
 			printOffers(check);
 
 			if (check.offer) {
-				ok(`${check.offer.version} available from the ${check.offer.origin}`);
+				ok(
+					t("cli.daemon.upgrade.available", {
+						version: check.offer.version,
+						origin: check.offer.origin,
+					}),
+				);
 			} else if (check.offers.length > 0) {
-				ok("up to date");
+				ok(t("cli.daemon.upgrade.upToDate"));
 			} else {
 				// "up to date" would be a lie when nothing answered at all
-				warn("no upgrade source could be reached");
+				warn(t("cli.daemon.upgrade.noSource"));
 			}
 
 			return;
 		}
 
-		info(`upgrading ${name} (${row.version ?? "unknown build"})…`);
+		info(
+			t("cli.daemon.upgrade.upgrading", {
+				name,
+				version: row.version ?? t("cli.daemon.upgrade.unknownBuild"),
+			}),
+		);
 
 		let result;
 
@@ -342,14 +382,16 @@ command({
 			throw new Bail(err instanceof Error ? err.message : String(err));
 		}
 
-		ok(`${name}: ${result.from} → ${result.to} ${pc.dim(`(from the ${result.origin})`)}`);
-		info("it exits now; the service manager restarts it on the new build");
+		ok(
+			`${name}: ${result.from} → ${result.to} ${pc.dim(t("cli.daemon.upgrade.fromOrigin", { origin: result.origin }))}`,
+		);
+		info(t("cli.daemon.upgrade.exitNote"));
 	},
 });
 
 command({
 	path: ["daemon", "remove"],
-	desc: "Remove a follower daemon's registration",
+	desc: t("cli.daemon.remove.desc"),
 	args: [
 		{
 			name: "name",
@@ -371,14 +413,14 @@ command({
 		const cfg = await loadCluster();
 
 		if (!cfg.daemons?.[name]) {
-			throw new Bail(`unknown daemon: ${name}`);
+			throw new Bail(t("cli.daemon.unknown", { name }));
 		}
 
 		const rows = await listDaemons();
 		const live = rows.find((row) => row.name === name);
 
 		if (live?.online) {
-			throw new Bail(`daemon "${name}" is currently connected — stop it first`);
+			throw new Bail(t("cli.daemon.remove.stillConnected", { name }));
 		}
 
 		const owned = Object.entries(cfg.instances)
@@ -386,22 +428,20 @@ command({
 			.map(([instName]) => instName);
 
 		if (owned.length > 0) {
-			throw new Bail(
-				`daemon "${name}" still owns ${owned.join(", ")} — reassign or delete those instances first`,
-			);
+			throw new Bail(t("cli.daemon.remove.ownsInstances", { name, names: owned.join(", ") }));
 		}
 
 		delete cfg.daemons[name];
 		await saveCluster(cfg);
 
-		ok(`removed daemon registration "${name}"`);
+		ok(t("cli.daemon.remove.done", { name }));
 	},
 });
 
 command({
 	path: ["daemon", "token"],
-	desc: "Show this machine's cluster token",
-	opts: [{ flag: "--new", desc: "generate a fresh token instead of showing the current one" }],
+	desc: t("cli.daemon.token.desc"),
+	opts: [{ flag: "--new", desc: t("cli.daemon.token.optNew") }],
 
 	handler: async (_args, opts) => {
 		if (opts.new) {
@@ -413,8 +453,8 @@ command({
 			// and doing it silently here would cut off every follower mid-sentence
 			console.log(Buffer.from(bytes).toString("base64url"));
 
-			info(`set as ${pc.cyan("token")} in every daemon's config (primary and followers)`);
-			warn("nothing adopts this until you write it — followers stay on the old token meanwhile");
+			info(t("cli.daemon.token.setHint", { key: pc.cyan("token") }));
+			warn(t("cli.daemon.token.adoptNote"));
 
 			return;
 		}
@@ -424,13 +464,13 @@ command({
 		if (!token) {
 			throw new Bail(
 				from
-					? `no token configured in ${from} — generate one with "luna daemon token --new"`
-					: 'no daemon config on this machine — generate a token with "luna daemon token --new"',
+					? t("cli.daemon.token.notConfigured", { file: from })
+					: t("cli.daemon.token.noConfig"),
 			);
 		}
 
 		console.log(token);
-		info(`from ${pc.dim(from!)} — every follower needs this same value`);
+		info(t("cli.daemon.token.fromFile", { file: pc.dim(from!) }));
 	},
 });
 
@@ -487,10 +527,10 @@ export function unitFile(
 
 command({
 	path: ["daemon", "service", "install"],
-	desc: "Write a systemd unit so the daemon runs 24/7",
+	desc: t("cli.daemon.service.desc"),
 	opts: [
-		{ flag: "--user", desc: "install as a user service (no root needed)" },
-		{ flag: "--config", desc: "daemon config file the unit should point at", value: true },
+		{ flag: "--user", desc: t("cli.daemon.service.optUser") },
+		{ flag: "--config", desc: t("cli.daemon.service.optConfig"), value: true },
 	],
 
 	handler: async (_args, opts) => {
@@ -510,17 +550,26 @@ command({
 			await mkdir(dirname(path), { recursive: true });
 			await writeFile(path, unit);
 		} catch (err) {
-			warn(`could not write ${path}: ${err instanceof Error ? err.message : String(err)}`);
-			info("write it yourself with the following content:");
+			warn(
+				t("cli.daemon.service.writeFailed", {
+					path,
+					error: err instanceof Error ? err.message : String(err),
+				}),
+			);
+			info(t("cli.daemon.service.manualHint"));
 			console.log(`\n${pc.dim(`# ${path}`)}\n${unit}`);
 
 			return;
 		}
 
-		ok(`wrote ${path}`);
+		ok(t("cli.daemon.service.wrote", { path }));
 
 		const ctl = userScope ? "systemctl --user" : "sudo systemctl";
 
-		info(`enable + start it with: ${pc.cyan(`${ctl} daemon-reload && ${ctl} enable --now luna-daemon`)}`);
+		info(
+			t("cli.daemon.service.enableHint", {
+				command: pc.cyan(`${ctl} daemon-reload && ${ctl} enable --now luna-daemon`),
+			}),
+		);
 	},
 });

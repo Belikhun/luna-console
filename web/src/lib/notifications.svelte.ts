@@ -36,7 +36,7 @@ export interface NotificationInit {
 	closeable?: boolean;
 	/** 0-100 turns the loading spinner row into a determinate bar */
 	progress?: number | null;
-	/** a job's tasks, one bar segment each — null renders the plain bar */
+	/** a job's tasks, one bar segment each; null renders the plain bar */
 	segments?: NotificationSegment[] | null;
 	/** action buttons rendered on the card */
 	actions?: NotificationAction[];
@@ -62,7 +62,7 @@ export interface NotificationHandle {
 	readonly closed: boolean;
 }
 
-/** Levels that never dismiss themselves — problems and in-flight work. */
+/** Levels that never dismiss themselves; problems and in-flight work. */
 export const KEEP_LEVELS: NotificationLevel[] = ['warning', 'error', 'loading'];
 
 /** Default lifetime of a self-dismissing notification. */
@@ -191,7 +191,7 @@ class NotificationStore {
 		this.items = [];
 	}
 
-	/** A live handle to one notification — safe to keep after it has closed. */
+	/** A live handle to one notification; safe to keep after it has closed. */
 	handle(id: number): NotificationHandle {
 		const store = this;
 
@@ -243,7 +243,7 @@ class NotificationStore {
 					item.actions = values.actions;
 				}
 
-				// content changed — restart the countdown with the new level's policy
+				// content changed; restart the countdown with the new level's policy
 				store.applyDefaultAutoclose(id);
 
 				return this;
@@ -264,7 +264,7 @@ class NotificationStore {
 
 export const Notifications = new NotificationStore();
 
-/** Shorthand raisers — `Notify.loading(...)` returns a handle to settle later. */
+/** Shorthand raisers; `Notify.loading(...)` returns a handle to settle later. */
 export const Notify = {
 	info: (message: string, init?: NotificationInit) => Notifications.push('info', message, init),
 

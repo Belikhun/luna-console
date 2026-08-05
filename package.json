@@ -4,6 +4,7 @@
   "module": "src/cli/index.ts",
   "type": "module",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "dev": "bun run src/cli/index.ts",
     "build": "bun run scripts/genversion.ts && bun build --compile --minify src/cli/index.ts --outfile dist/luna",

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
@@ -10,7 +11,7 @@
 	import PickGrid from '$lib/components/PickGrid.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 
-	/** Create a schedule — same form shape as the instance launch wizard. */
+	/** Create a schedule; same form shape as the instance launch wizard. */
 
 	let name = $state('');
 	let action = $state('restart');
@@ -44,14 +45,14 @@
 
 	const triggerText = $derived.by(() => {
 		if (kind === 'at') {
-			return at ? `once at ${at.replace('T', ' ')}` : 'once at …';
+			return at ? t('web.schedules.onceAt', { time: at.replace('T', ' ') }) : t('web.scheduleNew.onceAtEllipsis');
 		}
 
 		if (kind === 'cron') {
 			return `cron(${cron})`;
 		}
 
-		return `every ${rate} min`;
+		return t('web.schedules.everyMin', { minutes: rate });
 	});
 
 	async function create(): Promise<void> {
@@ -64,7 +65,7 @@
 					? { kind: 'cron', expr: cron }
 					: { kind: 'rate', minutes: Number(rate) };
 
-		const note = Notify.loading(`Creating schedule ${name}…`);
+		const note = Notify.loading(t('web.scheduleNew.creating', { name }));
 
 		try {
 			await post('/schedules', {
@@ -78,8 +79,8 @@
 
 			note.set({
 				level: 'success',
-				message: `Schedule ${name} created`,
-				detail: enabled ? '' : 'Created paused — enable it from the Schedules page.',
+				message: t('web.scheduleNew.created', { name }),
+				detail: enabled ? '' : t('web.scheduleNew.createdPaused'),
 				closeable: true
 			});
 
@@ -87,7 +88,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: `Could not create ${name}`,
+				message: t('web.scheduleNew.createFailed', { name }),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -98,83 +99,81 @@
 </script>
 
 <Wizard
-	title="Create a schedule"
-	windowTitle="Create schedule"
-	description="Start, stop or restart instances on a fixed time, a cron expression or a rate — runs fire from the luna daemon, 24/7"
-	submitLabel="Create schedule"
+	title={t('web.scheduleNew.title')}
+	windowTitle={t('web.schedules.create')}
+	description={t('web.schedules.pageDescription')}
+	submitLabel={t('web.schedules.create')}
 	disabled={!name || !instances.size || (kind === 'at' && !at)}
 	loading={creating}
 	onsubmit={create}
 >
 	{#snippet summary()}
-		{name || '(name)'} · {action} · {triggerText} · {instances.size} instance(s)
-		{#if maxRuns}· stops after {maxRuns} run(s){/if}
+		{name || t('web.scheduleNew.namePlaceholder')} · {action} · {triggerText} · {t('web.scheduleNew.instanceCount', { count: instances.size })}
+		{#if maxRuns}· {t('web.scheduleNew.stopsAfter', { count: maxRuns })}{/if}
 	{/snippet}
 
-	<Panel title="Name & action">
+	<Panel title={t('web.scheduleNew.nameAction')}>
 		<label class="field">
-			<span class="lbl">Schedule name</span>
+			<span class="lbl">{t('web.scheduleNew.scheduleName')}</span>
 			<input
 				class="input"
 				bind:value={name}
-				placeholder="e.g. nightly survival restart"
+				placeholder={t('web.scheduleNew.namePlaceholderHint')}
 				disabled={creating}
 			/>
 		</label>
 		<div class="field">
-			<span class="lbl">Action</span>
+			<span class="lbl">{t('web.schedules.colAction')}</span>
 			<Select
 				bind:value={action}
 				width="100%"
 				options={[
-					{ value: 'start', label: 'Start' },
-					{ value: 'stop', label: 'Stop' },
-					{ value: 'restart', label: 'Restart' }
+					{ value: 'start', label: t('web.scheduleModal.start') },
+					{ value: 'stop', label: t('web.scheduleModal.stop') },
+					{ value: 'restart', label: t('web.scheduleModal.restart') }
 				]}
 			/>
 		</div>
 	</Panel>
 
 	<Panel
-		title="Trigger"
-		description="One-time schedules disable themselves after firing; recurring ones keep going until paused or their run cap is reached"
+		title={t('web.schedules.colTrigger')}
+		description={t('web.scheduleNew.triggerDescription')}
 	>
 		<div class="field">
-			<span class="lbl">Schedule type</span>
+			<span class="lbl">{t('web.scheduleNew.scheduleType')}</span>
 			<Select
 				bind:value={kind}
 				width="100%"
 				options={[
-					{ value: 'at', label: 'One-time — fixed date and time' },
-					{ value: 'cron', label: 'Recurring — cron expression' },
-					{ value: 'rate', label: 'Recurring — fixed rate' }
+					{ value: 'at', label: t('web.scheduleNew.oneTime') },
+					{ value: 'cron', label: t('web.scheduleNew.recurringCron') },
+					{ value: 'rate', label: t('web.scheduleNew.recurringRate') }
 				]}
 			/>
 		</div>
 		{#if kind === 'at'}
 			<label class="field">
-				<span class="lbl">Run at</span>
+				<span class="lbl">{t('web.scheduleNew.runAt')}</span>
 				<input class="input" type="datetime-local" bind:value={at} disabled={creating} />
 			</label>
 		{:else if kind === 'cron'}
 			<label class="field">
-				<span class="lbl">Cron expression</span>
-				<span class="hint">
-					minute hour day-of-month month day-of-week — e.g. "30 4 * * *" is daily 04:30
-				</span>
+				<span class="lbl">{t('web.scheduleNew.cronExpression')}</span>
+				<span class="hint">{t('web.scheduleNew.cronHint')}</span>
 				<input class="input mono" bind:value={cron} disabled={creating} />
 			</label>
 		{:else}
 			<label class="field">
-				<span class="lbl">Every N minutes</span>
+				<span class="lbl">{t('web.scheduleNew.everyNMinutes')}</span>
 				<input class="input" type="number" min="1" bind:value={rate} disabled={creating} />
 			</label>
 		{/if}
 		{#if kind !== 'at'}
 			<FormGrid cols={2}>
 				<label class="field">
-					<span class="lbl">Stop after N runs</span>
-					<span class="hint">Blank repeats forever; the schedule pauses itself when done</span>
+					<span class="lbl">{t('web.scheduleNew.stopAfterNRuns')}</span>
+					<span class="hint">{t('web.scheduleNew.maxRunsHint')}</span>
 					<input
 						class="input"
 						type="number"
@@ -189,17 +188,17 @@
 		<label class="reg">
 			<Checkbox
 				checked={enabled}
-				label="Enabled immediately"
+				label={t('web.scheduleNew.enabledImmediately')}
 				onchange={(value) => (enabled = value)}
 			/>
-			Enabled immediately — untick to create it paused
+			{t('web.scheduleNew.enabledNote')}
 		</label>
 	</Panel>
 
 	<Panel
-		title="Instances"
+		title={t('web.nav.instancesList')}
 		count={instances.size}
-		description="The action runs against every selected instance, in one pass"
+		description={t('web.scheduleNew.instancesDescription')}
 	>
 		<PickGrid
 			items={instanceNames}

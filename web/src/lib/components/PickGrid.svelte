@@ -2,7 +2,7 @@
 	import Checkbox from './Checkbox.svelte';
 
 	/**
-	 * A bordered grid of checkbox picks over a list of names — the wizards'
+	 * A bordered grid of checkbox picks over a list of names; the wizards'
 	 * "which instances / which plugins" selector. Selection stays in the
 	 * caller's Set; this only renders it and reports toggles.
 	 */

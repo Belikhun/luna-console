@@ -7,7 +7,7 @@ import { SSE_HEADERS, closeQuietly, errorMessage } from '$lib/server/http';
 /**
  * How often the snapshot is rebuilt while the instance is settled, and while it
  * is moving. Building one parses a boot session on the instance's own host, so
- * the idle rate is deliberately slow — a settled server's addons do not change
+ * the idle rate is deliberately slow; a settled server's addons do not change
  * on their own. A transition is the one time the answer changes second to
  * second, which is exactly when someone is watching.
  */
@@ -24,7 +24,7 @@ const MOVING = new Set(['starting', 'stopping', 'restarting', 'unknown']);
  * GET → SSE stream of everything this instance loads: plugins or mods with
  * their runtime state, and the world's data packs.
  *
- * A frame is the whole snapshot rather than a delta — it is small, and a client
+ * A frame is the whole snapshot rather than a delta; it is small, and a client
  * that reconnects then needs no replay to be correct. Frames are sent only when
  * the payload actually changes, so an idle instance costs one comment every
  * `KEEPALIVE_MS` instead of a redraw every tick.
@@ -75,7 +75,7 @@ export async function GET({ params, request }) {
 				try {
 					snapshot = await sharedAddonSnapshot(name);
 				} catch (err) {
-					// A build can fail transiently — a follower mid-restart refuses the
+					// A build can fail transiently; a follower mid-restart refuses the
 					// call. Report it and keep the stream open rather than dropping the
 					// viewer at the exact moment the state is most interesting.
 					if (!send(`event: error\ndata: ${JSON.stringify({ error: errorMessage(err) })}\n\n`)) {

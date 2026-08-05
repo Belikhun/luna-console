@@ -1,5 +1,5 @@
 /**
- * Bridge mirror of core/services/luna — LunaCore's HTTP API is reachable from
+ * Bridge mirror of core/services/luna; LunaCore's HTTP API is reachable from
  * the proxy's host, so every call goes through the daemon. The SSE stream is
  * proxied through the daemon's /luna/stream passthrough.
  */

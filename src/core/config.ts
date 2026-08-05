@@ -2,11 +2,12 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import type { ClusterConfig, InstanceConfig, PluginFamily, PluginsLock, Software } from "./types";
+import { t } from "../shared/i18n";
 
 /**
  * Locate the cluster root: the nearest ancestor of the working directory that
  * holds a `cluster.json`, or the directory containing this tool. Bails out of
- * the process when neither exists — nothing else in `core/` can run without it.
+ * the process when neither exists; nothing else in `core/` can run without it.
  */
 function findRoot(): string {
 	if (process.env.LUNA_ROOT) {
@@ -46,12 +47,12 @@ export function root(): string {
 	return (cachedRoot ??= findRoot());
 }
 
-/** Path of the instance registry — the source of truth for the cluster. */
+/** Path of the instance registry; the source of truth for the cluster. */
 export function clusterPath(): string {
 	return join(root(), "cluster.json");
 }
 
-/** Path of the plugin lockfile — the source of truth for plugin versions. */
+/** Path of the plugin lockfile; the source of truth for plugin versions. */
 export function lockPath(): string {
 	return join(root(), "plugins.lock.json");
 }
@@ -73,7 +74,7 @@ export type SaveFile = "cluster" | "lock" | "env" | "configfiles";
  * Save-through hook for follower daemons: the state files' single writer is the
  * primary, so a follower installs a hook that forwards every save up the
  * cluster link after updating its local copy. Unset (the default) everywhere
- * else — saves are then purely local.
+ * else; saves are then purely local.
  */
 export type SaveHook = (file: SaveFile, data: unknown) => Promise<void>;
 
@@ -219,7 +220,7 @@ export function expandTargets(cfg: ClusterConfig, targets: string[]): string[] {
 		}
 
 		if (!all[target]) {
-			throw new Error(`unknown target: ${target}`);
+			throw new Error(t("core.config.unknownTarget", { target }));
 		}
 
 		out.add(target);

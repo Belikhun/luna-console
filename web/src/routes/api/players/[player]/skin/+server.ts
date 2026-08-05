@@ -11,13 +11,13 @@ import { pushEvent } from '$lib/server/luna';
  * GET → the player's raw skin PNG; POST → change or reset it.
  *
  * The texture URL lives base64-encoded inside the game-profile property LunaCore
- * captured at login, and points at textures.minecraft.net — which sends no CORS
+ * captured at login, and points at textures.minecraft.net; which sends no CORS
  * headers, so the browser could neither read its pixels on a canvas nor cache it
  * per player. Serving it same-origin fixes both.
  *
  * Fetched PNGs are persisted under `<root>/.cache/skins/`, keyed by UUID with
  * the source URL in a sidecar: avatars keep rendering from the disk copy when
- * textures.minecraft.net is unreachable — the console never depends on an
+ * textures.minecraft.net is unreachable; the console never depends on an
  * external renderer or a live internet connection to draw a face.
  */
 
@@ -97,7 +97,7 @@ export async function GET({ params }) {
 	const url = encoded ? textureUrl(encoded) : undefined;
 
 	if (!url) {
-		// no recorded texture — a disk copy from an earlier skin still beats nothing
+		// no recorded texture; a disk copy from an earlier skin still beats nothing
 		const stale = await diskRead(uuid);
 
 		if (stale) {
@@ -153,7 +153,7 @@ interface MineSkinTexture {
 /**
  * Generate signed texture data from raw PNG bytes via MineSkin. Signing can
  * only happen against Mojang's session servers, so this one step is the only
- * part of skin administration that needs the internet — everything the console
+ * part of skin administration that needs the internet; everything the console
  * *renders* stays local.
  */
 async function mineskinUpload(bytes: Buffer, variant: string): Promise<MineSkinTexture> {
@@ -249,7 +249,7 @@ export async function POST({ params, request }) {
 	}
 
 	if (result.ok && result.data) {
-		// the cached PNG is now stale — the next avatar fetch re-reads the profile
+		// the cached PNG is now stale; the next avatar fetch re-reads the profile
 		memory.delete(result.data.uuid);
 		pushEvent('proxy', 'action', `skin ${mode === 'reset' ? 'reset' : 'changed'} for ${params.player}`);
 	}

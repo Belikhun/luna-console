@@ -8,7 +8,7 @@
 	/**
 	 * Live view of a ProgressReporter tree: one row per step, indented by depth,
 	 * each with its own bar and its last message. This is the console's half of the
-	 * long-running-task pattern — the CLI renders the same tree in the terminal.
+	 * long-running-task pattern; the CLI renders the same tree in the terminal.
 	 *
 	 * `state` is the job's, not a node's: it decides whether a step that is still
 	 * short of 100% is waiting its turn or was abandoned when the job failed.

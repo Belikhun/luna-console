@@ -8,7 +8,7 @@ import { errorMessage } from '$lib/server/http';
 
 /**
  * A scope from the request body. `machine` and `instance` are mutually
- * exclusive, and a machine arrives as a *name* — the store keys the primary by
+ * exclusive, and a machine arrives as a *name*; the store keys the primary by
  * `""`, which no UI should have to know.
  */
 async function scopeFrom(body: {
@@ -41,7 +41,7 @@ async function scopeFrom(body: {
 
 /**
  * GET → every variable, plus the machine and instance overrides. Secret values
- * never leave the server — the client gets `secret: true` and an empty value, at
+ * never leave the server; the client gets `secret: true` and an empty value, at
  * every scope, because an override of a secret name is just as sensitive.
  */
 export async function GET() {

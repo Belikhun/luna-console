@@ -1,10 +1,12 @@
+import { t } from "../../shared/i18n";
+
 /**
- * GitHub Releases client — the fallback source for a daemon binary.
+ * GitHub Releases client; the fallback source for a daemon binary.
  *
  * A daemon prefers the primary's own binary (DESIGN.md §4.7): in a development
  * cluster that is the build somebody just made, and going through GitHub for it
  * would mean tagging a release to test a one-line change. GitHub is what answers
- * when no primary can serve one — a fresh follower on a machine that has never
+ * when no primary can serve one; a fresh follower on a machine that has never
  * seen a build, or a primary upgrading itself.
  */
 
@@ -60,7 +62,7 @@ interface GhRelease {
 
 /**
  * Request headers. An unauthenticated caller gets 60 requests an hour per IP,
- * which is plenty for a cached check — `LUNA_GITHUB_TOKEN` is for private repos
+ * which is plenty for a cached check; `LUNA_GITHUB_TOKEN` is for private repos
  * and for CI, not for the rate limit.
  */
 function headers(accept: string): Record<string, string> {
@@ -104,7 +106,7 @@ function pickAsset(assets: GhAsset[], name: string): ReleaseAsset | null {
 
 /**
  * The newest release carrying a binary for `platform`, or null when the repo
- * has none. Pre-releases are skipped unless `prerelease` is set — the daemon
+ * has none. Pre-releases are skipped unless `prerelease` is set; the daemon
  * that asks for them is one an operator deliberately put on that channel.
  *
  * The listing endpoint is used rather than `/releases/latest` so a repo whose
@@ -121,11 +123,11 @@ export async function latestRelease(
 	});
 
 	if (response.status === 404) {
-		throw new Error(`no such release repository: ${repo}`);
+		throw new Error(t("core.services.noRepo", { repo }));
 	}
 
 	if (!response.ok) {
-		throw new Error(`github releases: HTTP ${response.status}`);
+		throw new Error(t("core.services.githubHttp", { status: response.status }));
 	}
 
 	const releases = (await response.json()) as GhRelease[];
@@ -150,8 +152,8 @@ export async function latestRelease(
 }
 
 /**
- * Read a `.sha256` sidecar asset. The format is `sha256sum`'s own —
- * `<hex>  <filename>` — so only the first field is taken.
+ * Read a `.sha256` sidecar asset. The format is `sha256sum`'s own -
+ * `<hex>  <filename>`; so only the first field is taken.
  */
 export async function fetchDigest(asset: ReleaseAsset, signal?: AbortSignal): Promise<string> {
 	const response = await fetch(asset.url, {
@@ -160,21 +162,21 @@ export async function fetchDigest(asset: ReleaseAsset, signal?: AbortSignal): Pr
 	});
 
 	if (!response.ok) {
-		throw new Error(`github digest ${asset.name}: HTTP ${response.status}`);
+		throw new Error(t("core.services.githubDigestHttp", { name: asset.name, status: response.status }));
 	}
 
 	const text = (await response.text()).trim();
 	const hex = text.split(/\s+/)[0] ?? "";
 
 	if (!/^[0-9a-f]{64}$/.test(hex)) {
-		throw new Error(`github digest ${asset.name}: not a sha256`);
+		throw new Error(t("core.services.githubDigestBad", { name: asset.name }));
 	}
 
 	return hex;
 }
 
 /**
- * Compare two release versions ("1.2.3", "1.2.3-rc.1", "1.0.0+abc1234" — the
+ * Compare two release versions ("1.2.3", "1.2.3-rc.1", "1.0.0+abc1234"; the
  * build metadata after "+" is ignored, as semver requires). Returns > 0 when
  * `a` is newer, 0 when they are the same release, < 0 when `a` is older.
  *

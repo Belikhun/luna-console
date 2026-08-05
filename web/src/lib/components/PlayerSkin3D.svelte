@@ -5,14 +5,14 @@
 	import { SKIN_POSES, DEFAULT_POSE, poseById } from './skinposes';
 
 	/**
-	 * Skin preview: the player model held in a **static** pose, NameMC-style —
+	 * Skin preview: the player model held in a **static** pose, NameMC-style -
 	 * walking by default, with the other stances selectable. Nothing animates
 	 * on its own; the model only moves when the viewer drags it, because a
 	 * preview that keeps turning is harder to read than one that stays put.
 	 *
 	 * The texture comes from the console's own skin proxy, so rendering works
 	 * offline once a skin has been cached. When WebGL is unavailable or the
-	 * player has no recorded skin, the flat 2D body composite takes over —
+	 * player has no recorded skin, the flat 2D body composite takes over -
 	 * the panel never comes up empty-handed.
 	 */
 
@@ -23,7 +23,7 @@
 		bust = 0,
 		poses = true
 	}: {
-		/** UUID or username — whatever the caller has */
+		/** UUID or username; whatever the caller has */
 		player: string;
 		/** Canvas size in device pixels */
 		width?: number;

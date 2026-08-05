@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import type { ClusterConfig, LunaSourceConfig, PluginEntry, PluginsLock } from "./types";
+import { t } from "../shared/i18n";
 import { instanceDir, managedInstances, poolDir } from "./config";
 import type { ProgressReporter } from "./progress";
 import { effectiveTargets } from "./families";
@@ -81,13 +82,13 @@ export function poolFileFor(base: string, platform: string): string {
  * `build.gradle.kts`: velocity modules are those suffixed `-velocity` plus a
  * hardcoded set, `-api` modules ship no shadow jar, and the archive base name
  * drops the platform suffix before re-appending the platform. Keep this in step
- * with that file — a rename there silently changes every pooled file name.
+ * with that file; a rename there silently changes every pooled file name.
  */
 export async function listModules(source: Required<LunaSourceConfig>): Promise<LunaModule[]> {
 	const settingsPath = join(source.dir, "settings.gradle.kts");
 
 	if (!existsSync(settingsPath)) {
-		throw new Error(`luna workspace not found: ${source.dir}`);
+		throw new Error(t("core.luna.workspaceMissing", { dir: source.dir }));
 	}
 
 	const settings = await Bun.file(settingsPath).text();
@@ -142,7 +143,7 @@ async function capture(dir: string, cmd: string[]): Promise<string | undefined> 
 /**
  * Identify what a build of this workspace would produce: the declared gradle
  * version plus the commit it is built from. A dirty tree is flagged rather than
- * refused — building work in progress is the normal development case.
+ * refused; building work in progress is the normal development case.
  */
 export async function buildStamp(source: Required<LunaSourceConfig>): Promise<LunaBuildStamp> {
 	const buildScript = join(source.dir, "build.gradle.kts");
@@ -200,7 +201,7 @@ export async function build(
 	const wrapper = join(source.dir, "gradlew");
 
 	if (!existsSync(wrapper)) {
-		throw new Error(`gradle wrapper not found: ${wrapper}`);
+		throw new Error(t("core.luna.wrapperMissing", { path: wrapper }));
 	}
 
 	const tasks = opts.modules?.length
@@ -270,7 +271,7 @@ export interface LunaArtifact {
 /**
  * Hash every shadow jar the last build left in `output/`, restricted to the
  * platforms this cluster deploys. Modules that were never built are simply absent
- * from the result — the caller reports them as not-built.
+ * from the result; the caller reports them as not-built.
  */
 export async function artifacts(source: Required<LunaSourceConfig>): Promise<LunaArtifact[]> {
 	const modules = await listModules(source);
@@ -345,7 +346,7 @@ export interface SyncEntry {
  *
  * A jar whose pooled copy already has the same hash is left alone, so syncing is
  * idempotent and does not churn `pooledAt`. Jars with no lockfile entry are
- * registered as `source: "luna"` with no targets — deliberately not deployed
+ * registered as `source: "luna"` with no targets; deliberately not deployed
  * anywhere until the operator picks targets with `plugins apply`.
  */
 export async function sync(
@@ -390,7 +391,7 @@ export async function sync(
 		if (pooled !== artifact.sha512) {
 			await copyFile(artifact.path, target);
 
-			// content changed — the cached descriptor and log names are stale
+			// content changed; the cached descriptor and log names are stale
 			delete entry.aliases;
 			delete entry.meta;
 		}

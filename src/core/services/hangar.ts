@@ -7,7 +7,7 @@
  * - release channels are free-form per project; an `UNSTABLE`/`HIDE_BY_DEFAULT`
  *   flag marks the honest ones, name heuristics catch the rest
  * - a version's download is per platform, and may be *external* (a bare link
- *   to a releases page, no file, no hash) — those versions are skipped
+ *   to a releases page, no file, no hash); those versions are skipped
  * - hashes are sha256 only; the lockfile sha512 is computed on download
  * - the numeric project id is immutable while slugs can be renamed, so the id
  *   is what the RemoteRef stores; owner + slug are kept for the web URL
@@ -182,7 +182,7 @@ async function getVersions(
 	for (const version of versions) {
 		const download = version.downloads?.[platform];
 
-		// external-only versions have no file and no hash — nothing to install
+		// external-only versions have no file and no hash; nothing to install
 		if (!download?.downloadUrl || !download.fileInfo) {
 			continue;
 		}

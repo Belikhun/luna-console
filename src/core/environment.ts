@@ -1,11 +1,11 @@
 /**
- * Environment manager (DESIGN.md §3.3) — the SSM-Parameter-Store half of the
+ * Environment manager (DESIGN.md §3.3); the SSM-Parameter-Store half of the
  * config-template design: named variables at the cluster root, optionally
  * secret, overridable per machine and per instance. Config templates reference
  * them as `${NAME}`; builtins are computed fresh at resolve time so a port or
  * version change never leaves a stale copy behind.
  *
- * Scopes narrow in one direction only — builtin < global < machine < instance —
+ * Scopes narrow in one direction only; builtin < global < machine < instance -
  * so the value an instance sees is the most specific one defined for it. The
  * machine an instance belongs to is its `daemon` field (absent = the primary),
  * the same key the port ledger is scoped by, which is why resolution needs no
@@ -16,6 +16,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import type { ClusterConfig, InstanceConfig } from "./types";
+import { t } from "../shared/i18n";
 import { managedInstances, notifySave, root } from "./config";
 import { readForwardingSecret } from "./proxy";
 
@@ -56,7 +57,7 @@ export interface EnvironmentStore {
 	instances: Record<string, Record<string, string>>;
 	/**
 	 * Append-only trail of changes, newest last. It lives in the store rather than
-	 * the daemon's event log because that log is in-memory and capped — "when was
+	 * the daemon's event log because that log is in-memory and capped; "when was
 	 * this database password last changed" has to survive a daemon restart.
 	 */
 	history?: EnvChange[];
@@ -65,12 +66,12 @@ export interface EnvironmentStore {
 /** Where a variable's value is defined. Later scopes override earlier ones. */
 export type EnvScope = "builtin" | "global" | "machine" | "instance";
 
-/** Order of precedence, weakest first — the resolution order itself. */
+/** Order of precedence, weakest first; the resolution order itself. */
 export const ENV_SCOPES: EnvScope[] = ["builtin", "global", "machine", "instance"];
 
 /**
  * The machine key an instance's overrides live under: its owning daemon, or `""`
- * for the primary — the same "absent `daemon` field" convention the port ledger
+ * for the primary; the same "absent `daemon` field" convention the port ledger
  * is scoped by (core/ports.ts). Reading it off the instance rather than the
  * running daemon is what lets the primary resolve a follower's values correctly.
  */
@@ -78,12 +79,12 @@ export function machineKeyOf(inst: InstanceConfig): string {
 	return inst.daemon ?? "";
 }
 
-/** Variable names the store accepts — the substitution syntax only sees these. */
+/** Variable names the store accepts; the substitution syntax only sees these. */
 export const ENV_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
 /**
  * Builtins whose value is a credential. They are computed rather than stored, so
- * no `secret` flag can be set on them — this list is what masks them anyway.
+ * no `secret` flag can be set on them; this list is what masks them anyway.
  */
 export const BUILTIN_SECRETS = new Set(["LUNA_FORWARDING_SECRET"]);
 
@@ -101,13 +102,13 @@ function envPath(): string {
 
 /**
  * Where THIS machine reaches the velocity proxy. The proxy always runs on the
- * primary's host, so the default loopback is right there — a follower daemon
+ * primary's host, so the default loopback is right there; a follower daemon
  * injects the primary's address at startup, because a config template applied
  * on a follower must point its instances across the LAN, not at themselves.
  */
 let proxyHost = "127.0.0.1";
 
-/** Injected by the daemon runtime (follower.ts) — never called from core. */
+/** Injected by the daemon runtime (follower.ts); never called from core. */
 export function setProxyHost(host: string): void {
 	proxyHost = host;
 }
@@ -130,7 +131,7 @@ export async function loadEnv(): Promise<EnvironmentStore> {
 
 /**
  * Append a change to the store's trail, dropping the oldest past the cap. Callers
- * still have to `saveEnv` — this only updates the object, so a set that fails a
+ * still have to `saveEnv`; this only updates the object, so a set that fails a
  * later validation leaves no trace of having happened.
  */
 export function recordChange(store: EnvironmentStore, change: Omit<EnvChange, "t">): void {
@@ -150,7 +151,7 @@ export async function saveEnv(store: EnvironmentStore): Promise<void> {
 		sorted.variables[name] = store.variables[name]!;
 	}
 
-	// an empty override map is noise in the file — the scope simply has none
+	// an empty override map is noise in the file; the scope simply has none
 	for (const machine of Object.keys(store.machines).sort()) {
 		if (Object.keys(store.machines[machine]!).length) {
 			sorted.machines[machine] = store.machines[machine]!;
@@ -174,7 +175,7 @@ export async function saveEnv(store: EnvironmentStore): Promise<void> {
 
 /**
  * Which override map a scope writes into. The primary's machine key is `""`,
- * which is a legitimate target — hence the explicit `machine` opt rather than
+ * which is a legitimate target; hence the explicit `machine` opt rather than
  * treating a falsy name as "no scope given".
  */
 export interface ScopeTarget {
@@ -191,15 +192,15 @@ export function setVariable(
 	opts: ScopeTarget & { secret?: boolean; description?: string } = {},
 ): void {
 	if (!ENV_NAME_PATTERN.test(name)) {
-		throw new Error("variable names are ALL_UPPERCASE_WITH_UNDERSCORES");
+		throw new Error(t("core.configfiles.badVarName"));
 	}
 
 	if (name.startsWith("LUNA_")) {
-		throw new Error("LUNA_* names are builtin — they are computed, not stored");
+		throw new Error(t("core.environment.lunaComputed"));
 	}
 
 	if (opts.instance !== undefined && opts.machine !== undefined) {
-		throw new Error("a variable is scoped to an instance or a machine, not both");
+		throw new Error(t("core.configfiles.scopeConflict"));
 	}
 
 	if (opts.instance !== undefined) {
@@ -276,7 +277,7 @@ export function unsetVariable(
  * Read a secret's real value and record that it was read.
  *
  * The console withholds secret values from every listing, so revealing one is a
- * deliberate act worth a trail entry — that is the whole reason this is a
+ * deliberate act worth a trail entry; that is the whole reason this is a
  * function and not just a field the read API stops masking. The CLI needs no
  * equivalent: a shell that can talk to the daemon socket already has the store.
  *
@@ -291,7 +292,7 @@ export function revealVariable(
 		const value = store.instances[scope.instance]?.[name];
 
 		if (value === undefined) {
-			throw new Error(`${name} is not set on instance ${scope.instance}`);
+			throw new Error(t("core.environment.notSetInstance", { name, instance: scope.instance ?? "" }));
 		}
 
 		recordChange(store, { action: "reveal", name, scope: "instance", target: scope.instance });
@@ -303,7 +304,7 @@ export function revealVariable(
 		const value = store.machines[scope.machine]?.[name];
 
 		if (value === undefined) {
-			throw new Error(`${name} is not set on machine ${scope.machine || "(primary)"}`);
+			throw new Error(t("core.environment.notSetMachine", { name, machine: scope.machine || "(primary)" }));
 		}
 
 		recordChange(store, { action: "reveal", name, scope: "machine", target: scope.machine });
@@ -314,7 +315,7 @@ export function revealVariable(
 	const def = store.variables[name];
 
 	if (!def) {
-		throw new Error(`${name} is not defined`);
+		throw new Error(t("core.environment.notDefined", { name }));
 	}
 
 	recordChange(store, { action: "reveal", name, scope: "global" });
@@ -326,7 +327,7 @@ export function revealVariable(
  * Reveal a secret and persist the record of it, in one step the daemon owns.
  *
  * `revealVariable` is the pure half and mutates the store it is handed, which
- * cannot survive a trip over the RPC bridge — so this is the entry point every
+ * cannot survive a trip over the RPC bridge; so this is the entry point every
  * client uses, and the store is loaded and saved on the side that holds it.
  */
 export async function revealAndRecord(
@@ -341,7 +342,7 @@ export async function revealAndRecord(
 	return revealed;
 }
 
-/** Every scope that defines `name`, weakest first — the variable seen as an object. */
+/** Every scope that defines `name`, weakest first; the variable seen as an object. */
 export function scopesOf(
 	store: EnvironmentStore,
 	name: string,
@@ -394,7 +395,7 @@ export async function builtinVars(
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${instance}`);
+		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
 	return {
@@ -433,7 +434,7 @@ export interface ResolvedVar {
 	value: string;
 	/** Scope the winning value came from */
 	scope: EnvScope;
-	/** True when the name is defined as secret globally — masked at every scope */
+	/** True when the name is defined as secret globally; masked at every scope */
 	secret: boolean;
 	description?: string;
 	/** Values this one overrides, weakest first */
@@ -442,7 +443,7 @@ export interface ResolvedVar {
 
 /**
  * Every variable an instance resolves, carrying where each value came from.
- * This is what lets the console show "DB_HOST — machine override on infdun,
+ * This is what lets the console show "DB_HOST; machine override on infdun,
  * shadowing the global value" instead of a flat map that hides the layering.
  */
 export async function resolveDetailed(
@@ -459,8 +460,8 @@ export async function resolveDetailed(
  * Split out because it is **pure**: the store is byte-identical on every machine
  * (the primary is its single writer and every follower mirrors it), so only the
  * builtins are machine-dependent. That lets the client bridge fetch just the
- * builtins from the instance's own daemon — an op that has existed since the
- * first release — and do the layering locally, instead of depending on a newer
+ * builtins from the instance's own daemon; an op that has existed since the
+ * first release; and do the layering locally, instead of depending on a newer
  * op existing on a follower that has not been upgraded yet.
  */
 export function layerScopes(
@@ -472,7 +473,7 @@ export function layerScopes(
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${instance}`);
+		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
 	const layers: Array<{ scope: EnvScope; vars: Record<string, string> }> = [
@@ -520,13 +521,13 @@ export function layerScopes(
 /**
  * Generated per-instance environment file, sourced by `run.sh` before the JVM
  * starts. It lives beside the run script inside the instance directory, is
- * rewritten from the store on every start, and carries secrets — hence 0600.
+ * rewritten from the store on every start, and carries secrets; hence 0600.
  */
 export const ENV_SCRIPT = ".luna-env";
 
 /**
  * Quote a value as a POSIX single-quoted string. Everything is literal inside
- * single quotes except the quote itself, which is closed, escaped and reopened —
+ * single quotes except the quote itself, which is closed, escaped and reopened -
  * so an env value can hold `$`, backticks, spaces or newlines without the shell
  * ever interpreting them.
  */
@@ -541,7 +542,7 @@ function shellQuote(value: string): string {
  */
 export function renderEnvFile(vars: Record<string, string>): string {
 	const lines = [
-		"# Generated by luna — do not edit (rewritten on every start).",
+		"# Generated by luna. Do not edit; it is rewritten on every start.",
 		"# Sourced by run.sh, so every variable reaches the server JVM.",
 		"",
 	];

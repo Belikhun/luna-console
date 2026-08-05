@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
@@ -27,7 +28,7 @@
 	let javaArgs = $state('');
 	let creating = $state(false);
 	let existing: string[] = $state([]);
-	/** the machine the instance will be created on — a daemon name, always set */
+	/** the machine the instance will be created on; a daemon name, always set */
 	let daemon = $state('');
 	let daemons: Array<{ name: string; mode: string; online: boolean }> = $state([]);
 	let primaryName = $state('');
@@ -56,12 +57,12 @@
 		}));
 
 		// the primary is the default target and the only machine guaranteed to be
-		// there — creation on a follower is forwarded over its link
+		// there; creation on a follower is forwarded over its link
 		primaryName = daemons.find((row) => row.mode === 'primary')?.name ?? '';
 		daemon = primaryName;
 
 		// the java profiles and the settings schema both come off any existing
-		// backend's config route — there is no instance yet to read them from
+		// backend's config route; there is no instance yet to read them from
 		const other = existing.find((entry: string) => entry !== 'proxy');
 
 		if (other) {
@@ -85,10 +86,10 @@
 		}
 
 		if (!/^[a-z0-9_-]+$/.test(name)) {
-			return 'lowercase letters, digits, - and _ only';
+			return t('web.launch.nameRule');
 		}
 
-		return existing.includes(name) ? 'an instance with this name already exists' : '';
+		return existing.includes(name) ? t('web.launch.nameTaken') : '';
 	});
 
 	/** Only the settings that differ from the schema default are worth sending. */
@@ -114,7 +115,7 @@
 			.sort((a, b) => (a.mode === 'primary' ? -1 : b.mode === 'primary' ? 1 : 0))
 			.map((row) => ({
 				value: row.name,
-				label: `${row.name} (${row.mode}${row.online ? '' : ', offline'})`,
+				label: `${row.name} (${row.mode}${row.online ? '' : `, ${t('web.launch.offline')}`})`,
 				disabled: !row.online
 			}))
 	);
@@ -127,7 +128,7 @@
 		const target = name;
 
 		const done = await jobFlash({
-			// the shared card wording — the same config an instance page attaching
+			// the shared card wording; the same config an instance page attaching
 			// to a discovered create job renders
 			...createFlashConfig(target),
 
@@ -159,37 +160,37 @@
 </script>
 
 <Wizard
-	title="Launch an instance"
-	windowTitle="Launch instance"
-	description="Creates a Paper server, wires velocity forwarding, allocates a port and deploys wildcard-targeted plugins"
-	submitLabel="Launch instance"
+	title={t('web.launch.title')}
+	windowTitle={t('web.nav.launchInstance')}
+	description={t('web.launch.pageDescription')}
+	submitLabel={t('web.nav.launchInstance')}
 	disabled={!name || !!nameError || !mcVersion}
 	loading={creating}
 	onsubmit={launch}
 >
 	{#snippet summary()}
-		{name || '(name)'} · paper {mcVersion} · {memory} · profile {profile} ·
-		{register ? 'proxied' : 'standalone'}
-		{#if changedCount}· {changedCount} setting(s) changed{/if}
+		{name || t('web.scheduleNew.namePlaceholder')} · paper {mcVersion} · {memory} · {t('web.launch.profileWord')} {profile} ·
+		{register ? t('web.launch.proxied') : t('web.launch.standalone')}
+		{#if changedCount}· {t('web.launch.settingsChanged', { count: changedCount })}{/if}
 	{/snippet}
 
-	<Panel title="Name">
+	<Panel title={t('web.common.name')}>
 		<label class="field">
-			<span class="lbl">Instance name</span>
-			<span class="hint">Also used as the directory name and velocity server id</span>
-			<input class="input" bind:value={name} placeholder="e.g. bedwars" disabled={creating} />
+			<span class="lbl">{t('web.launch.instanceName')}</span>
+			<span class="hint">{t('web.launch.nameHint')}</span>
+			<input class="input" bind:value={name} placeholder={t('web.launch.namePlaceholder')} disabled={creating} />
 			{#if nameError}<span class="err">{nameError}</span>{/if}
 		</label>
 	</Panel>
 
-	<Panel title="Software">
+	<Panel title={t('web.instances.colSoftware')}>
 		<FormGrid cols={2}>
 			<label class="field">
-				<span class="lbl">Server software</span>
-				<input class="input" value="Paper (latest build)" disabled />
+				<span class="lbl">{t('web.launch.serverSoftware')}</span>
+				<input class="input" value={t('web.launch.paperLatest')} disabled />
 			</label>
 			<div class="field">
-				<span class="lbl">Minecraft version</span>
+				<span class="lbl">{t('web.launch.minecraftVersion')}</span>
 				<Select
 					bind:value={mcVersion}
 					width="100%"
@@ -201,10 +202,10 @@
 		</FormGrid>
 	</Panel>
 
-	<Panel title="Resources & network">
+	<Panel title={t('web.launch.resourcesNetwork')}>
 		<FormGrid cols={2}>
 			<div class="field">
-				<span class="lbl">Memory (heap)</span>
+				<span class="lbl">{t('web.instances.memoryHeap')}</span>
 				<Select
 					bind:value={memory}
 					width="100%"
@@ -212,7 +213,7 @@
 				/>
 			</div>
 			<div class="field">
-				<span class="lbl">Java profile</span>
+				<span class="lbl">{t('web.instances.colProfile')}</span>
 				<Select
 					bind:value={profile}
 					width="100%"
@@ -222,22 +223,14 @@
 		</FormGrid>
 		<FormGrid cols={2}>
 			<div class="field">
-				<span class="lbl">Machine</span>
-				<span class="hint">
-					Daemon the instance is created on and runs under — followers mirror the plugin
-					pool from the primary and the proxy routes to them over the LAN. An offline
-					daemon cannot be given work, so it is listed but not selectable.
-				</span>
+				<span class="lbl">{t('web.instances.colMachine')}</span>
+				<span class="hint">{t('web.launch.machineHint')}</span>
 				<Select bind:value={daemon} width="100%" options={daemonOptions} />
 			</div>
 		</FormGrid>
 		<label class="field">
-			<span class="lbl">Extra JVM arguments</span>
-			<span class="hint">
-				Appended after the profile's own flags, so they win where the JVM takes the last
-				value — don't restate something the profile already sets (a second garbage
-				collector will refuse to start). Space separated, flags only.
-			</span>
+			<span class="lbl">{t('web.launch.extraJvmArgs')}</span>
+			<span class="hint">{t('web.launch.jvmArgsHint')}</span>
 			<input
 				class="input mono"
 				bind:value={javaArgs}
@@ -248,18 +241,17 @@
 		<label class="reg">
 			<Checkbox
 				checked={register}
-				label="Register with the velocity proxy"
+				label={t('web.launch.registerLabel')}
 				onchange={(value) => (register = value)}
 			/>
-			Register with the velocity proxy (port auto-allocated, forwarding secret wired, wildcard
-			plugins deployed)
+			{t('web.launch.registerNote')}
 		</label>
 	</Panel>
 
 	<Panel
-		title="Addons"
+		title={t('web.nav.addons')}
 		count={addonGroups.length ? `default + ${addonGroups.length}` : 'default'}
-		description="Addon groups applied to the new instance — the default group always is. The table shows how each plugin lands on this platform and Minecraft version; the packs a group carries are applied as the instance is created."
+		description={t('web.launch.addonsDescription')}
 	>
 		<GroupsField
 			software="paper"
@@ -271,14 +263,14 @@
 	</Panel>
 
 	<Panel
-		title="Server settings"
-		count={changedCount ? `${changedCount} changed` : undefined}
-		description="Written into the new instance's server.properties — every one of these can be changed later"
+		title={t('web.launch.serverSettings')}
+		count={changedCount ? t('web.launch.changedCount', { count: changedCount }) : undefined}
+		description={t('web.launch.settingsDescription')}
 	>
 		{#if schema.length}
 			<SettingsForm {schema} {groups} bind:values={settings} showManaged={false} />
 		{:else}
-			<span class="dim">Loading the settings schema…</span>
+			<span class="dim">{t('web.launch.loadingSchema')}</span>
 		{/if}
 	</Panel>
 

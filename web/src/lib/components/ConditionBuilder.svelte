@@ -2,7 +2,7 @@
 	/**
 	 * The `when:` expression of a conditional rule, as rows instead of syntax.
 	 *
-	 * The structure is deliberately flat — groups of ANDed terms, ORed together —
+	 * The structure is deliberately flat; groups of ANDed terms, ORed together -
 	 * because that is the only shape the plugin evaluates correctly: its splitter
 	 * is not paren-aware, so `(a || b) && c` does not mean what it looks like.
 	 *
@@ -10,6 +10,7 @@
 	 * to raw text and says why.
 	 */
 
+	import { t } from '$lib/i18n.svelte';
 	import Btn from './Btn.svelte';
 	import Icon from './Icon.svelte';
 	import Select from './Select.svelte';
@@ -50,14 +51,14 @@
 	<div class="builder">
 		{#each parsed.clauses as clause, clauseIndex (clauseIndex)}
 			{#if clauseIndex > 0}
-				<p class="joiner">or</p>
+				<p class="joiner">{t('web.conditions.or')}</p>
 			{/if}
 
 			<div class="clause">
 				{#each clause.terms as term, termIndex (termIndex)}
 					<div class="term">
 						{#if termIndex > 0}
-							<span class="and">and</span>
+							<span class="and">{t('web.conditions.and')}</span>
 						{/if}
 
 						<Select
@@ -123,7 +124,7 @@
 
 						<Btn
 							variant="icon"
-							title="Remove this condition"
+							title={t('web.conditions.removeCondition')}
 							onclick={() =>
 								edit((expression) => {
 									expression.clauses[clauseIndex]?.terms.splice(termIndex, 1);
@@ -161,7 +162,7 @@
 	<div class="raw">
 		<input class="input mono" value={value} oninput={(event) => onchange((event.currentTarget as HTMLInputElement).value)} />
 		<p class="hint">
-			This condition uses parentheses or a negated comparison, which the row editor cannot represent — edit it as text.
+			{t('web.conditions.thisConditionUsesParentheses')}
 		</p>
 	</div>
 {/if}

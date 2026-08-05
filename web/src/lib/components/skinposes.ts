@@ -9,7 +9,7 @@ import type { PlayerObject } from 'skinview3d';
  * (through a zero-speed FunctionAnimation), so switching poses is instant and
  * nothing drifts.
  *
- * The numbers follow skinview3d's own animations — the walking pose is one
+ * The numbers follow skinview3d's own animations; the walking pose is one
  * frame of its WalkingAnimation at mid-stride, which is also the stance
  * NameMC renders players in.
  */
@@ -123,7 +123,7 @@ export const SKIN_POSES: SkinPose[] = [
 	}
 ];
 
-/** The pose used when nothing is stored — the stance NameMC renders. */
+/** The pose used when nothing is stored; the stance NameMC renders. */
 export const DEFAULT_POSE = 'walking';
 
 /** Look up a pose by id, falling back to the default. */

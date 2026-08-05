@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import {
 		hasWildcard,
 		respackMatchesServer,
@@ -14,7 +15,7 @@
 	 * The rules are a small language (`*`, `name`, `!name`, exclusions win) and
 	 * writing them by hand is where the mistakes are: `*` plus `survival` reads
 	 * like "only survival" and means "everywhere". So the matrix shows the answer
-	 * — served or not, per backend — and edits the rule list underneath through
+	 *; served or not, per backend; and edits the rule list underneath through
 	 * the same functions the daemon uses to write it (`$shared/packrules`), which
 	 * is why a tick here predicts the proxy exactly.
 	 *
@@ -31,7 +32,7 @@
 		instances: string[];
 		/** The rule list being edited */
 		servers: string[];
-		/** Backends an addon group contributes — cannot be removed here */
+		/** Backends an addon group contributes; cannot be removed here */
 		granted?: string[];
 		/** Backends currently up, for the dim "stopped" note */
 		running?: string[];
@@ -72,12 +73,12 @@
 			<Checkbox
 				checked={wildcard}
 				indeterminate={!wildcard && served.length > 0}
-				label="Every backend"
+				label={t('web.ruleMatrix.everyBackend')}
 				onchange={setAll}
 			/>
 			<span class="alltext">
 				Every backend <code>*</code>
-				<span class="dim">— new instances get the pack automatically</span>
+				<span class="dim">{t('web.ruleMatrix.newInstancesAuto')}</span>
 			</span>
 		</label>
 		<span class="tally dim">{served.length} of {instances.length} served</span>
@@ -96,11 +97,11 @@
 				/>
 				<span class="name">{name}</span>
 				{#if !running.includes(name)}
-					<span class="off dim">stopped</span>
+					<span class="off dim">{t('web.ruleMatrix.stopped')}</span>
 				{/if}
 				<span class="rule mono" class:excluded={ruleFor(name).startsWith('!')}>{ruleFor(name)}</span>
 				{#if locked}
-					<span class="lock dim" title="an addon group grants this backend — edit the group instead">
+					<span class="lock dim" title={t('web.ruleMatrix.grantedByGroup')}>
 						<Icon name="layerGroup" size="0.75rem" />
 					</span>
 				{/if}
@@ -109,7 +110,7 @@
 	</div>
 
 	<div class="result">
-		<span class="dim">Rules</span>
+		<span class="dim">{t('web.ruleMatrix.rules')}</span>
 		<code class="mono">{servers.join(', ') || '—'}</code>
 	</div>
 </div>

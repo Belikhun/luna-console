@@ -2,7 +2,7 @@
  * The game's own font, measured and drawn the way the client does it.
  *
  * Minecraft's font is a set of bitmap sheets, not an outline font: every glyph
- * is a cell of pixels, and how wide it is is not written down anywhere — the
+ * is a cell of pixels, and how wide it is is not written down anywhere; the
  * client scans each cell for its rightmost lit column and takes that plus one.
  * So does this, off the decoded sheet, which is why the daemon ships the sheet
  * definitions and not a width table.
@@ -32,7 +32,7 @@ export interface Glyph {
 	ascent: number;
 	/** Game pixels the cursor moves after drawing it */
 	advance: number;
-	/** What bold costs this glyph — the sheets pay a pixel, unifont half of one */
+	/** What bold costs this glyph; the sheets pay a pixel, unifont half of one */
 	boldOffset: number;
 }
 
@@ -80,7 +80,7 @@ async function decode(path: string): Promise<{ canvas: HTMLCanvasElement; data: 
 /**
  * The client's own measurement: walk the cell's columns from the right and stop
  * at the first that has any lit pixel. A cell with nothing in it is not a glyph
- * at all, so a later provider — or the fallback — gets to answer for it.
+ * at all, so a later provider; or the fallback; gets to answer for it.
  */
 function trimmedWidth(data: ImageData, x0: number, y0: number, cellW: number, cellH: number): number {
 	for (let x = cellW - 1; x >= 0; x--) {
@@ -107,7 +107,7 @@ async function addBitmap(
 	}
 
 	const rows = provider.rows;
-	// a row is characters, not code units — the sheets carry codepoints above the
+	// a row is characters, not code units; the sheets carry codepoints above the
 	// basic plane, and splitting on length would cut those in half
 	const grid = rows.map((row) => Array.from(row));
 	const columns = Math.max(...grid.map((row) => row.length));
@@ -166,8 +166,8 @@ function boundsFor(codepoint: number, overrides: FontUnihexOverride[] | undefine
  *
  * The dump is four bits a character, sixteen rows: `00:` for a blank row of an
  * eight-wide glyph, twice that for a sixteen-wide one. It is drawn at half the
- * resolution it is stored at, which is what lands unifont's own baseline — its
- * fourteenth row — on the same line the `ascii` sheet sits on.
+ * resolution it is stored at, which is what lands unifont's own baseline; its
+ * fourteenth row; on the same line the `ascii` sheet sits on.
  */
 function decodeUnihex(bits: string, codepoint: number, overrides: FontUnihexOverride[] | undefined): Glyph | undefined {
 	const step = bits.length / UNIHEX_ROWS;
@@ -212,7 +212,7 @@ function decodeUnihex(bits: string, codepoint: number, overrides: FontUnihexOver
 		}
 	}
 
-	// a row of zeroes is not a glyph — the client lets the next provider, or the
+	// a row of zeroes is not a glyph; the client lets the next provider, or the
 	// missing-glyph box, answer for that codepoint instead
 	if (right < left) {
 		return undefined;
@@ -400,7 +400,7 @@ async function build(atlas: FontAtlas): Promise<McFont | null> {
 			}
 
 			// a second block wanting the same character joins the request already in
-			// flight rather than starting another — and, crucially, still learns when
+			// flight rather than starting another; and, crucially, still learns when
 			// it lands, which is what makes it repaint
 			for (const codepoint of codepoints) {
 				const existing = inflight.get(codepoint);

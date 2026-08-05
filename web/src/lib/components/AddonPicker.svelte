@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import type { Snippet } from 'svelte';
 	import { api } from '$lib/api';
 	import Icon from './Icon.svelte';
@@ -16,15 +17,15 @@
 	/**
 	 * The provider-search half of every install dialog: the provider tabs, a
 	 * query row (with an optional extra control, e.g. the plugin loader), and a
-	 * results list that always shows *some* state — idle, searching, failed,
+	 * results list that always shows *some* state; idle, searching, failed,
 	 * nothing found, or hits. One project is picked at a time; the caller reads
 	 * the slug (and the id, for providers whose slug alone cannot be looked up).
 	 *
-	 * Searching happens on Enter, on the button, and — debounced — as the query
+	 * Searching happens on Enter, on the button, and; debounced; as the query
 	 * is typed, so the dialog answers without a deliberate second click.
 	 *
 	 * The tabs are the providers hosting this `kind` of addon; whether each is
-	 * usable right now comes from the daemon (`/api/providers`) — CurseForge
+	 * usable right now comes from the daemon (`/api/providers`); CurseForge
 	 * stays greyed with the reason until an API key is configured.
 	 */
 	let {
@@ -33,19 +34,19 @@
 		params = {},
 		selected = $bindable(''),
 		provider = $bindable('modrinth'),
-		placeholder = 'Search by name…',
+		placeholder = t('web.addons.searchByName'),
 		toolbar,
 		onpick
 	}: {
 		/** Console API path answering `{ hits }`, e.g. "/plugins/search" */
 		endpoint: string;
-		/** Addon type being installed — filters which provider tabs appear */
+		/** Addon type being installed; filters which provider tabs appear */
 		kind?: AddonKindType;
 		/** Extra query parameters merged into every request */
 		params?: Record<string, string>;
 		/** Slug of the picked project; empty when nothing is selected */
 		selected?: string;
-		/** Provider being searched (bindable — the caller may preselect one) */
+		/** Provider being searched (bindable; the caller may preselect one) */
 		provider?: string;
 		placeholder?: string;
 		/** Rendered between the field and the Search button */
@@ -74,7 +75,7 @@
 	/** whether a search has completed at least once, to tell idle from empty */
 	let ran = $state(false);
 
-	/** the query the newest request was issued for — older answers are dropped */
+	/** the query the newest request was issued for; older answers are dropped */
 	let inflight = '';
 
 	async function search(): Promise<void> {
@@ -131,7 +132,7 @@
 		return () => clearTimeout(id);
 	});
 
-	/** Switching provider drops the picked project — a slug belongs to one. */
+	/** Switching provider drops the picked project; a slug belongs to one. */
 	function choose(id: string): void {
 		if (provider === id) {
 			return;
@@ -150,7 +151,7 @@
 		onpick?.(hits.find((candidate) => candidate.slug === selected));
 	}
 
-	/** Download counts run to eight digits — abbreviate rather than wrap. */
+	/** Download counts run to eight digits; abbreviate rather than wrap. */
 	function compact(count: number): string {
 		if (count >= 1_000_000) {
 			return `${(count / 1_000_000).toFixed(1)}M`;
@@ -179,7 +180,7 @@
 			>
 				<BrandIcon name={entry.id} size="0.875rem" />
 				{entry.label}
-				{#if !entry.available}<span class="badge">off</span>{/if}
+				{#if !entry.available}<span class="badge">{t('web.addons.off')}</span>{/if}
 			</button>
 		{/each}
 	</div>
@@ -210,8 +211,8 @@
 			<div class="state">
 				<BrandIcon name={current.id} size="1.25rem" />
 				<span class="dim">
-					{current.label} is not available — {current.note ?? 'not connected yet'}. Install from
-					another provider, or upload the file yourself.
+					{current.label} is not available; {current.note ?? 'not connected yet'}. Install from
+					{t('web.addons.anotherProviderOrUpload')}
 				</span>
 			</div>
 		{:else if failed}
@@ -458,7 +459,7 @@
 		flex: none;
 	}
 
-	// two lines of blurb, then clipped — hits stay a scannable fixed height
+	// two lines of blurb, then clipped; hits stay a scannable fixed height
 	.desc {
 		font-size: 0.75rem;
 		line-height: 1.125rem;

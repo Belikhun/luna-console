@@ -3,7 +3,7 @@
  *
  * A route that cannot finish inside one request answers with a job; the page
  * follows it over SSE and renders its ProgressReporter tree. The types are here
- * rather than in `$lib/server/jobs` so both sides share one definition —
+ * rather than in `$lib/server/jobs` so both sides share one definition -
  * `$lib/server` is unreachable from browser code.
  */
 
@@ -23,7 +23,7 @@ export interface JobView {
 	progress: ProgressSnapshot;
 	result: unknown;
 	error: string | null;
-	/** extra facts about the operation, set at start — e.g. the create job's
+	/** extra facts about the operation, set at start; e.g. the create job's
 	 *  target machine, which the provisioning row shows before the instance
 	 *  exists anywhere else */
 	meta?: Record<string, unknown>;
@@ -49,7 +49,7 @@ export function flattenProgress(
 
 /**
  * Follow a job to its end, calling `onUpdate` on every progress flush. Resolves
- * with the settled job, and rejects when it failed or the stream broke — so a
+ * with the settled job, and rejects when it failed or the stream broke; so a
  * caller can `await` it like any other request.
  */
 export function followJob(id: string, onUpdate: (job: JobView) => void): Promise<JobView> {

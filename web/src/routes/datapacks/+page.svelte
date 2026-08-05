@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -65,7 +66,7 @@
 			packs = (await api('/datapacks')).packs;
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error('Could not load data packs', { detail: (err as Error).message });
+			Notify.error(t('web.datapacks.loadFailed'), { detail: (err as Error).message });
 		}
 
 		loading = false;
@@ -74,7 +75,7 @@
 	onMount(() => {
 		void refresh();
 
-		// paper/neoforge instances only — the proxy has no world to deploy into
+		// paper/neoforge instances only; the proxy has no world to deploy into
 		void api('/instances')
 			.then((data) => {
 				instanceNames = data.instances
@@ -98,12 +99,12 @@
 			await fn(note);
 
 			if (note.level === 'loading') {
-				note.set({ level: 'success', message: 'Done', closeable: true });
+				note.set({ level: 'success', message: t('web.datapacks.done'), closeable: true });
 			}
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Operation failed',
+				message: t('web.datapacks.operationFailed'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -125,12 +126,12 @@
 		return (
 			changed
 				.map((action) => `${action.instance}: ${action.file} ${action.action}`)
-				.join('; ') + ' — running servers load it on their next restart.'
+				.join('; ') + '; running servers load it on their next restart.'
 		);
 	}
 
 	const deployAll = (pack?: string) =>
-		run('deploy', 'Deploying data packs…', async (note) => {
+		run('deploy', t('web.datapacks.deploying'), async (note) => {
 			const res = await post('/datapacks/deploy', pack ? { pack } : {});
 
 			note.set({
@@ -142,25 +143,25 @@
 		});
 
 	const checkUpdates = (names?: string[]) =>
-		run('update', 'Checking Modrinth for data pack updates…', async (note) => {
+		run('update', t('web.datapacks.checkingUpdates'), async (note) => {
 			const res = await post('/datapacks/update', { names });
 
 			if (!res.updates.length) {
-				note.set({ level: 'success', message: 'Every data pack is up to date', closeable: true });
+				note.set({ level: 'success', message: t('web.datapacks.everyDataPackIsUp'), closeable: true });
 
 				return;
 			}
 
 			note.set({
 				level: 'info',
-				message: `${res.updates.length} update(s) available`,
+				message: t('web.packs.updatesAvailable', { count: res.updates.length }),
 				detail: res.updates
 					.map((update: any) => `${update.name}: ${update.from ?? '?'} → ${update.to}`)
 					.join('; '),
 				closeable: true,
 				actions: [
 					{
-						label: 'Apply updates',
+						label: t('web.datapacks.applyUpdates'),
 						run: () => void applyUpdates(names)
 					}
 				]
@@ -168,13 +169,13 @@
 		});
 
 	async function applyUpdates(names?: string[]): Promise<void> {
-		await run('update', 'Downloading data pack updates…', async (note) => {
+		await run('update', t('web.datapacks.downloadingUpdates'), async (note) => {
 			const res = await post('/datapacks/update', { names, apply: true });
 
 			note.set({
 				level: 'success',
-				message: `Updated ${res.applied.length} pack(s)`,
-				detail: `${res.deployed} world change(s) — running servers load them on their next restart.`,
+				message: t('web.packs.updatedCount', { count: res.applied.length }),
+				detail: t('web.datapacks.worldChangesMany', { count: res.deployed }),
 				closeable: true
 			});
 		});
@@ -203,7 +204,7 @@
 	}
 
 	const installPack = () =>
-		run('add', `Installing ${addSlug} from ${addProvider}…`, async (note) => {
+		run('add', t('web.catalog.installing', { name: addSlug, provider: addProvider }), async (note) => {
 			const res = await post('/datapacks/add', {
 				slug: addSlug,
 				id: addId || undefined,
@@ -215,8 +216,8 @@
 
 			note.set({
 				level: 'success',
-				message: `Installed ${res.name} ${res.entry.installed?.versionNumber ?? ''}`,
-				detail: `${res.deployed} world change(s) — running servers load it on their next restart.`,
+				message: t('web.packs.installedPack', { key: res.name, version: res.entry.installed?.versionNumber ?? '' }),
+				detail: t('web.datapacks.worldChangesOne', { count: res.deployed }),
 				closeable: true
 			});
 		});
@@ -244,7 +245,7 @@
 	});
 
 	const uploadPack = () =>
-		run('upload', `Uploading ${uploadFile?.name}…`, async (note) => {
+		run('upload', t('web.catalog.uploading', { name: uploadFile?.name ?? '' }), async (note) => {
 			const res = await post('/datapacks', {
 				name: uploadName,
 				data: await fileToBase64(uploadFile!),
@@ -255,8 +256,8 @@
 
 			note.set({
 				level: 'success',
-				message: `Uploaded ${res.name}`,
-				detail: `${res.deployed} world change(s) — running servers load it on their next restart.`,
+				message: t('web.packs.uploadedPack', { key: res.name }),
+				detail: t('web.datapacks.worldChangesOne', { count: res.deployed }),
 				closeable: true
 			});
 		});
@@ -267,7 +268,7 @@
 	let targetsName = $state('');
 	let targetsList: string[] = $state([]);
 
-	/** Instances a group grants the pack being retargeted — shown, never editable. */
+	/** Instances a group grants the pack being retargeted; shown, never editable. */
 	let targetsGranted: string[] = $state([]);
 
 	function openTargets(row: DataPackRow): void {
@@ -278,7 +279,7 @@
 	}
 
 	const saveTargets = () =>
-		run('targets', `Retargeting ${targetsName}…`, async (note) => {
+		run('targets', t('web.datapacks.retargeting', { name: targetsName }), async (note) => {
 			const res = await patch(`/datapacks/${encodeURIComponent(targetsName)}`, {
 				targets: targetsList
 			});
@@ -287,8 +288,8 @@
 
 			note.set({
 				level: 'success',
-				message: `${targetsName} retargeted`,
-				detail: `${res.deployed} world change(s) — running servers load it on their next restart.`,
+				message: t('web.datapacks.retargeted', { name: targetsName }),
+				detail: t('web.datapacks.worldChangesOne', { count: res.deployed }),
 				closeable: true
 			});
 		});
@@ -299,16 +300,16 @@
 	let removeTarget: DataPackRow | null = $state(null);
 
 	const doRemove = () =>
-		run('remove', `Removing ${removeTarget?.name}…`, async (note) => {
+		run('remove', t('web.catalog.removing', { name: removeTarget?.name ?? '' }), async (note) => {
 			const res = await del(`/datapacks/${encodeURIComponent(removeTarget!.name)}`);
 
 			removeOpen = false;
 
 			note.set({
 				level: 'success',
-				message: `Removed ${removeTarget!.name}`,
+				message: t('web.packs.removedOne', { key: removeTarget!.name }),
 				detail: res.deletedFrom.length
-					? `Deleted from ${res.deletedFrom.join(', ')} — running servers unload it on their next restart.`
+					? t('web.datapacks.deletedFrom', { names: res.deletedFrom.join(', ') })
 					: 'No worlds held it.',
 				closeable: true
 			});
@@ -331,17 +332,17 @@
 
 	// -- table ---------------------------------------------------------------------------
 
-	const columns: Column[] = [
-		{ id: 'name', label: 'Pack', sortable: true, minWidth: 160 },
-		{ id: 'state', label: 'State' },
-		{ id: 'targets', label: 'Deploys to' },
-		{ id: 'groups', label: 'Groups' },
-		{ id: 'size', label: 'Size', sortable: true, width: 100, align: 'right' },
-		{ id: 'source', label: 'Source', sortable: true, minWidth: 140 },
-		{ id: 'version', label: 'Version' },
-		{ id: 'mc', label: 'MC versions', hidden: true },
-		{ id: 'auto', label: 'Auto-update', sortable: true }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'name', label: t('web.datapacks.pack2'), sortable: true, minWidth: 160 },
+		{ id: 'state', label: t('web.datapacks.state') },
+		{ id: 'targets', label: t('web.datapacks.deploysTo') },
+		{ id: 'groups', label: t('web.datapacks.groups') },
+		{ id: 'size', label: t('web.datapacks.size'), sortable: true, width: 100, align: 'right' },
+		{ id: 'source', label: t('web.datapacks.source'), sortable: true, minWidth: 140 },
+		{ id: 'version', label: t('web.datapacks.version') },
+		{ id: 'mc', label: t('web.datapacks.mcVersions'), hidden: true },
+		{ id: 'auto', label: t('web.datapacks.autoUpdate'), sortable: true }
+	]);
 
 	function sortValue(row: DataPackRow, col: string): string | number | null {
 		switch (col) {
@@ -365,17 +366,17 @@
 	function rowActions(row: DataPackRow): ContextMenuItem[] {
 		return [
 			{
-				label: 'Deploy to targets',
+				label: t('web.datapacks.deployToTargets'),
 				icon: 'upload',
 				action: () => deployAll(row.name)
 			},
 			{
-				label: 'Edit targets',
+				label: t('web.datapacks.editTargets'),
 				icon: 'sliders',
 				action: () => openTargets(row)
 			},
 			{
-				label: 'Check for update',
+				label: t('web.datapacks.checkForUpdate'),
 				icon: 'download',
 				disabled: !row.entry.remote,
 				hint: !row.entry.remote ? 'not identified with a provider' : undefined,
@@ -384,16 +385,16 @@
 			{
 				label: row.entry.remote ? 'Change provider mapping…' : 'Map to a provider…',
 				icon: 'link',
-				hint: 'record which project this zip came from',
+				hint: t('web.datapacks.recordWhichProjectThisZip'),
 				action: () => openIdentify(row)
 			},
 			{
-				label: 'Manage addon groups',
+				label: t('web.datapacks.manageAddonGroups'),
 				icon: 'layerGroup',
 				action: () => goto('/addons/groups')
 			},
 			{
-				label: row.entry.remote ? `Open on ${row.entry.remote.provider}` : 'Open on provider',
+				label: row.entry.remote ? t('web.catalog.openOn', { provider: row.entry.remote.provider }) : t('web.packs.openOnProvider'),
 				icon: 'externalLink',
 				disabled: !row.url,
 				hint: !row.url ? 'not identified with a provider' : undefined,
@@ -403,7 +404,7 @@
 			},
 			{ separator: true },
 			{
-				label: 'Remove pack',
+				label: t('web.datapacks.removePack'),
 				icon: 'trash',
 				color: 'danger',
 				action: () => {
@@ -415,33 +416,31 @@
 	}
 </script>
 
-<svelte:head><title>Data packs | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.datapacks.dataPacksLunaConsole')}</title></svelte:head>
 
 <PageHeader
-	title="Data packs"
+	title={t('web.datapacks.dataPacks')}
 	count={packs.length}
-	description="A shared pool in <root>/datapacks deployed into each target instance's world — servers load changes on their next restart or /minecraft:reload"
+	description={t('web.datapacks.aSharedPoolInRoot')}
 	info
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="datapacks" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.datapacks.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
 		<Btn icon="download" loading={busy === 'update'} disabled={!!busy} onclick={() => checkUpdates()}>
-			Check updates
+			{t('web.datapacks.checkUpdates')}
 		</Btn>
 		<Btn icon="upload" loading={busy === 'deploy'} disabled={!!busy} onclick={() => deployAll()}>
-			Deploy all
+			{t('web.datapacks.deployAll')}
 		</Btn>
 		<SplitBtn
-			label="Install"
+			label={t('web.datapacks.install')}
 			icon="upload"
 			primary
 			onclick={() => (uploadOpen = true)}
 			menu={ADDON_PROVIDERS.map((entry) => ({
-				label: `Search ${entry.label}`,
-				brand: entry.id,
-				disabled: !entry.available,
-				hint: entry.note,
+				label: t('web.catalog.searchProvider', { provider: entry.label }),
+				brand: entry.id, disabled: !entry.available, hint: entry.note,
 				action: () => openSearch(entry.id)
 			}))}
 		/>
@@ -458,16 +457,16 @@
 		searchValue={(row) =>
 			`${row.name} ${row.entry.source} ${row.effectiveTargets.join(' ')} ` +
 			`${row.groups.join(' ')} ${row.entry.installed?.versionNumber ?? ''}`}
-		searchPlaceholder="Find a data pack"
+		searchPlaceholder={t('web.datapacks.findADataPack')}
 		selectable="single"
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.name}
-		noun="pack"
+		noun={t('web.datapacks.pack')}
 		{sortValue}
 		pageSize={25}
-		emptyTitle="No data packs"
-		emptyText="Install one from Modrinth or upload a zip to get started."
+		emptyTitle={t('web.datapacks.noDataPacks')}
+		emptyText={t('web.datapacks.installOneFromModrinthOr')}
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'name'}
@@ -476,13 +475,13 @@
 				{#if !row.present}
 					<StatusBadge
 						state="failed"
-						label="File missing"
-						detail="the pool zip is gone — reinstall or re-upload the pack"
+						label={t('web.datapacks.fileMissing')}
+						detail="the pool zip is gone; reinstall or re-upload the pack"
 					/>
 				{:else if !row.effectiveTargets.length}
-					<StatusBadge state="stopped" label="Not deployed" detail="no targets — edit them to deploy it" />
+					<StatusBadge state="stopped" label={t('web.datapacks.notDeployed')} detail="no targets; edit them to deploy it" />
 				{:else}
-					<StatusBadge state="ok" label="Pooled" />
+					<StatusBadge state="ok" label={t('web.datapacks.pooled')} />
 				{/if}
 			{:else if col === 'targets'}
 				<span class="dim">{row.effectiveTargets.join(', ') || '–'}</span>
@@ -523,17 +522,17 @@
 />
 
 <!-- install from a provider -->
-<Modal title="Install a data pack" bind:open={addOpen} wide>
+<Modal title={t('web.datapacks.installADataPack')} bind:open={addOpen} wide>
 	<AddonPicker
 		endpoint="/datapacks/search"
 		kind="datapack"
 		bind:selected={addSlug}
 		bind:provider={addProvider}
-		placeholder="Search data packs by name…"
+		placeholder={t('web.datapacks.searchDataPacksByName')}
 		onpick={(hit) => (addId = hit?.project_id ?? '')}
 	/>
 	{#if addSlug}
-		<div class="tgtlbl">Deploy to instances</div>
+		<div class="tgtlbl">{t('web.datapacks.deployToInstances')}</div>
 		<div class="targets">
 			{#each instanceNames as target}
 				<label class="tchk">
@@ -547,13 +546,11 @@
 			{/each}
 		</div>
 		<p class="dim note">
-			The install is gated on every target's Minecraft version — a pack that covers none of them
-			is refused with the newest version it does support. Leave the targets empty to pool the pack
-			for an addon group to place.
+			{t('web.datapacks.theInstallIsGated')}
 		</p>
 	{/if}
 	{#snippet footer()}
-		<Btn onclick={() => (addOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (addOpen = false)}>{t('web.datapacks.cancel')}</Btn>
 		<Btn
 			variant="primary"
 			disabled={!addSlug}
@@ -566,14 +563,14 @@
 </Modal>
 
 <!-- upload from this computer -->
-<Modal title="Upload data pack" bind:open={uploadOpen}>
-	<FileDrop bind:file={uploadFile} accept=".zip" hint="Drop a data pack zip here, or click to browse" />
+<Modal title={t('web.datapacks.uploadDataPack')} bind:open={uploadOpen}>
+	<FileDrop bind:file={uploadFile} accept=".zip" hint={t('web.datapacks.dropADataPackZip')} />
 	<label class="field uploadname">
-		<span class="lbl">Pack name</span>
-		<span class="hint">Uploading under an existing pack's name replaces its file</span>
-		<input class="input" bind:value={uploadName} placeholder="my-pack" />
+		<span class="lbl">{t('web.datapacks.packName')}</span>
+		<span class="hint">{t('web.datapacks.uploadingUnderAnExisting')}</span>
+		<input class="input" bind:value={uploadName} placeholder={t('web.datapacks.myPack')} />
 	</label>
-	<div class="tgtlbl">Deploy to instances</div>
+	<div class="tgtlbl">{t('web.datapacks.deployToInstances')}</div>
 	<div class="targets">
 		{#each instanceNames as target}
 			<label class="tchk">
@@ -587,7 +584,7 @@
 		{/each}
 	</div>
 	{#snippet footer()}
-		<Btn onclick={() => (uploadOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (uploadOpen = false)}>{t('web.datapacks.cancel')}</Btn>
 		<Btn
 			variant="primary"
 			disabled={!uploadFile || !uploadName.trim()}
@@ -615,16 +612,16 @@
 	</div>
 	{#if targetsGranted.length}
 		<p class="dim note">
-			Addon groups already deploy this pack to {targetsGranted.join(', ')} — those worlds keep it
-			whatever is ticked here.
+			Addon groups already deploy this pack to {targetsGranted.join(', ')}; those worlds keep it
+			{t('web.datapacks.whateverIsTickedHere')}
 		</p>
 	{/if}
 	<p class="dim note">
-		Saving deploys immediately: added worlds get the pack, removed worlds lose it.
+		{t('web.datapacks.savingDeploysImmediatelyAdded')}
 	</p>
 	{#snippet footer()}
-		<Btn onclick={() => (targetsOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" loading={busy === 'targets'} onclick={saveTargets}>Save and deploy</Btn>
+		<Btn onclick={() => (targetsOpen = false)}>{t('web.datapacks.cancel')}</Btn>
+		<Btn variant="primary" loading={busy === 'targets'} onclick={saveTargets}>{t('web.datapacks.saveAndDeploy')}</Btn>
 	{/snippet}
 </Modal>
 
@@ -632,11 +629,11 @@
 <Modal title="Remove {removeTarget?.name}?" bind:open={removeOpen}>
 	<p>
 		Removes <b>{removeTarget?.name}</b> from every targeted world and drops it from the pool. This
-		cannot be undone.
+		{t('web.datapacks.cannotBeUndone')}
 	</p>
 	{#snippet footer()}
-		<Btn onclick={() => (removeOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" loading={busy === 'remove'} onclick={doRemove}>Remove</Btn>
+		<Btn onclick={() => (removeOpen = false)}>{t('web.datapacks.cancel')}</Btn>
+		<Btn variant="danger" loading={busy === 'remove'} onclick={doRemove}>{t('web.datapacks.remove')}</Btn>
 	{/snippet}
 </Modal>
 

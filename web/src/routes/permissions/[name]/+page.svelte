@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -26,10 +27,10 @@
 
 	/**
 	 * One LuckPerms group, read like a resource: identity and meta, the full
-	 * node list (inheritance and meta nodes included — this screen hides
+	 * node list (inheritance and meta nodes included; this screen hides
 	 * nothing), and the direct members, each with their own verbs. Structural
 	 * editing lives in the edit wizard; the administration verbs here are the
-	 * ones an operator reaches for while *reading* — add or remove a member,
+	 * ones an operator reaches for while *reading*; add or remove a member,
 	 * drop a single node, clone the group as a starting point, delete it.
 	 */
 
@@ -142,7 +143,7 @@
 	function headerActions(): ContextMenuItem[] {
 		return [
 			{
-				label: 'Add a member…',
+				label: t('web.permGroup.addAMember'),
 				icon: 'userPlus',
 				action: () => {
 					addMemberName = '';
@@ -150,7 +151,7 @@
 				}
 			},
 			{
-				label: 'Clone group…',
+				label: t('web.permGroup.cloneGroup'),
 				icon: 'copy',
 				action: () => {
 					cloneName = '';
@@ -158,13 +159,13 @@
 				}
 			},
 			{
-				label: 'Copy name',
+				label: t('web.permGroup.copyName'),
 				icon: 'clipboard',
 				action: () => void copy(name)
 			},
 			{ separator: true },
 			{
-				label: 'Delete group',
+				label: t('web.permGroup.deleteGroup'),
 				icon: 'trash',
 				color: 'danger',
 				disabled: name === 'default',
@@ -371,32 +372,32 @@
 	// ----------------------------------------------------------------- tables
 
 	const summaryCells: InfoCell[] = $derived([
-		{ label: 'Name', value: name, style: 'mono', copyable: true },
-		{ label: 'Display name', value: displayName || '–' },
-		{ label: 'Weight', value: weight },
-		{ label: 'Prefix', value: prefix || '–', style: prefix ? 'mono' : 'default' },
-		{ label: 'Suffix', value: suffix || '–', style: suffix ? 'mono' : 'default' },
-		{ id: 'parents', label: 'Inherits from', value: parents.join(', ') || '–' },
-		{ label: 'Direct members', value: members.length },
-		{ label: 'Nodes', value: nodes.length }
+		{ label: t('web.permGroup.name'), value: name, style: 'mono', copyable: true },
+		{ label: t('web.permGroup.displayName'), value: displayName || '–' },
+		{ label: t('web.permGroup.weight'), value: weight },
+		{ label: t('web.permGroup.prefix'), value: prefix || '–', style: prefix ? 'mono' : 'default' },
+		{ label: t('web.permGroup.suffix'), value: suffix || '–', style: suffix ? 'mono' : 'default' },
+		{ id: 'parents', label: t('web.permGroup.inheritsFrom'), value: parents.join(', ') || '–' },
+		{ label: t('web.permGroup.directMembers'), value: members.length },
+		{ label: t('web.permGroup.nodes'), value: nodes.length }
 	]);
 
-	const nodeCols: Column[] = [
-		{ id: 'key', label: 'Node', sortable: true, minWidth: 240 },
-		{ id: 'value', label: 'Value', width: 110 },
-		{ id: 'type', label: 'Type', sortable: true, width: 140 },
-		{ id: 'contexts', label: 'Contexts' },
-		{ id: 'expiry', label: 'Expires', sortable: true }
-	];
+	const nodeCols: Column[] = $derived([
+		{ id: 'key', label: t('web.permGroup.node2'), sortable: true, minWidth: 240 },
+		{ id: 'value', label: t('web.permGroup.value'), width: 110 },
+		{ id: 'type', label: t('web.permGroup.type'), sortable: true, width: 140 },
+		{ id: 'contexts', label: t('web.permGroup.contexts') },
+		{ id: 'expiry', label: t('web.permGroup.expires'), sortable: true }
+	]);
 
 	const nodeTypes = $derived([...new Set(nodes.map((node) => node.type))].sort());
 
 	const nodeFilters: TableFilterGroup<PermNode>[] = $derived([
 		{
 			id: 'type',
-			label: 'Filter type',
+			label: t('web.permGroup.filterType'),
 			options: [
-				{ value: 'any', label: 'Any type' },
+				{ value: 'any', label: t('web.permGroup.anyType') },
 				...nodeTypes.map((type) => ({
 					value: type,
 					label: type,
@@ -406,11 +407,11 @@
 		},
 		{
 			id: 'value',
-			label: 'Filter value',
+			label: t('web.permGroup.filterValue'),
 			options: [
-				{ value: 'any', label: 'Granted and negated' },
-				{ value: 'true', label: 'Granted', match: (node: PermNode) => node.value },
-				{ value: 'false', label: 'Negated', match: (node: PermNode) => !node.value }
+				{ value: 'any', label: t('web.permGroup.grantedAndNegated') },
+				{ value: 'true', label: t('web.permGroup.granted'), match: (node: PermNode) => node.value },
+				{ value: 'false', label: t('web.permGroup.negated'), match: (node: PermNode) => !node.value }
 			]
 		}
 	]);
@@ -434,7 +435,7 @@
 	function nodeActions(node: PermNode): ContextMenuItem[] {
 		return [
 			{
-				label: 'Edit node…',
+				label: t('web.permGroup.editNode'),
 				icon: 'pen',
 				action: () => openNodeEditor(node)
 			},
@@ -444,7 +445,7 @@
 				action: () => void flipNode(node)
 			},
 			{
-				label: 'Copy key',
+				label: t('web.permGroup.copyKey'),
 				icon: 'copy',
 				action: () => void copy(node.key)
 			},
@@ -459,7 +460,7 @@
 				: []),
 			{ separator: true },
 			{
-				label: 'Remove node',
+				label: t('web.permGroup.removeNode'),
 				icon: 'trash',
 				color: 'danger',
 				action: () => void removeNode(node)
@@ -498,20 +499,20 @@
 		);
 	}
 
-	const memberCols: Column[] = [
-		{ id: 'username', label: 'Player', sortable: true, minWidth: 180 },
-		{ id: 'uuid', label: 'UUID', width: 300 }
-	];
+	const memberCols: Column[] = $derived([
+		{ id: 'username', label: t('web.permGroup.player'), sortable: true, minWidth: 180 },
+		{ id: 'uuid', label: t('web.permGroup.uuid'), width: 300 }
+	]);
 
 	function memberActions(member: Member): ContextMenuItem[] {
 		return [
 			{
-				label: 'View profile',
+				label: t('web.permGroup.viewProfile'),
 				icon: 'user',
 				action: () => goto(`/players/${member.uuid}`)
 			},
 			{
-				label: 'Copy UUID',
+				label: t('web.permGroup.copyUuid'),
 				icon: 'copy',
 				action: () => void copy(member.uuid)
 			},
@@ -541,51 +542,51 @@
 	title={name}
 	info
 	description={displayName && displayName !== name
-		? `${displayName} — LuckPerms group`
+		? `${displayName}; LuckPerms group`
 		: 'LuckPerms group'}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="permission-group" />
-		<Dropdown label="Actions" disabled={!available || missing} menu={headerActions()} />
+		<Dropdown label={t('web.permGroup.actions')} disabled={!available || missing} menu={headerActions()} />
 		<Btn
 			variant="primary"
 			icon="pen"
 			disabled={!available || missing}
 			onclick={() => goto(`/permissions/${encodeURIComponent(name)}/edit`)}
 		>
-			Edit group
+			{t('web.permGroup.editGroup')}
 		</Btn>
 	{/snippet}
 </PageHeader>
 
 {#if missing}
 	<Flash kind="error">
-		<b>Unknown group:</b> LuckPerms has no group named <code>{name}</code>. It may have been
-		deleted — <a href="/permissions">back to permission groups</a>.
+		<b>{t('web.permGroup.unknownGroup')}</b> {t('web.permGroup.luckpermsHasNoGroup')} <code>{name}</code>. It may have been
+		deleted; <a href="/permissions">{t('web.permGroup.backToPermissionGroups')}</a>.
 	</Flash>
 {:else if !available}
 	<Flash kind="warning">
-		<b>LuckPerms is not answering:</b> {problem}. The proxy may be stopped, LuckPerms may be
-		missing, or LunaCore is running a build without the permissions API.
+		<b>{t('web.permGroup.luckpermsIsNotAnswering')}</b> {problem}. The proxy may be stopped, LuckPerms may be
+		{t('web.permGroup.missingOrLunacoreIs')}
 	</Flash>
 {:else}
-	<OverviewBar title="Group overview">
-		<OverviewCell label="Weight">
+	<OverviewBar title={t('web.permGroup.groupOverview')}>
+		<OverviewCell label={t('web.permGroup.weight')}>
 			{weight}
 		</OverviewCell>
-		<OverviewCell label="Direct members">
+		<OverviewCell label={t('web.permGroup.directMembers')}>
 			{members.length}
 		</OverviewCell>
-		<OverviewCell label="Nodes">
+		<OverviewCell label={t('web.permGroup.nodes')}>
 			{nodes.length}
 		</OverviewCell>
-		<OverviewCell label="Inherits from">
+		<OverviewCell label={t('web.permGroup.inheritsFrom')}>
 			{parents.length ? `${parents.length} group(s)` : '–'}
 		</OverviewCell>
 	</OverviewBar>
 
 	<div class="body">
-		<Panel title="Group summary">
+		<Panel title={t('web.permGroup.groupSummary')}>
 			<InfoGrid cells={summaryCells}>
 				{#snippet custom(cell)}
 					{#if cell.id === 'parents'}
@@ -608,12 +609,12 @@
 
 		<Panel
 			flush
-			title="Permission nodes"
+			title={t('web.permGroup.permissionNodes')}
 			count={nodes.length}
-			description="Everything the group carries — permissions, inheritance, prefix/suffix and weight nodes alike"
+			description={t('web.permGroup.everythingTheGroupCarriesPermissions')}
 		>
 			{#snippet actions()}
-				<Btn icon="plus" onclick={() => openNodeEditor(null)}>Add node</Btn>
+				<Btn icon="plus" onclick={() => openNodeEditor(null)}>{t('web.permGroup.addNode')}</Btn>
 			{/snippet}
 
 			<ResourceTable
@@ -623,15 +624,15 @@
 				getId={nodeId}
 				searchValue={(node) =>
 					`${node.key} ${node.type} ${node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(' ')}`}
-				searchPlaceholder="Find node"
-				noun="node"
+				searchPlaceholder={t('web.permGroup.findNode')}
+				noun={t('web.permGroup.node')}
 				sortValue={nodeSort}
 				filters={nodeFilters}
 				rowActions={nodeActions}
 				rowLabel={(node) => node.key}
 				pageSize={25}
-				emptyTitle="No nodes"
-				emptyText="This group carries nothing yet — open the edit wizard to add permissions."
+				emptyTitle={t('web.permGroup.noNodes')}
+				emptyText={t('web.permGroup.thisGroupCarriesNothingYet')}
 			>
 				{#snippet cell(node, col)}
 					{#if col === 'key'}
@@ -652,7 +653,7 @@
 								{node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(', ')}
 							</span>
 						{:else}
-							<span class="dim">global</span>
+							<span class="dim">{t('web.permGroup.global')}</span>
 						{/if}
 					{:else if col === 'expiry'}
 						{node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : 'never'}
@@ -663,9 +664,9 @@
 
 		<Panel
 			flush
-			title="Members"
+			title={t('web.permGroup.members')}
 			count={members.length}
-			description="Players holding this group directly — members inheriting it through a parent are not listed"
+			description={t('web.permGroup.playersHoldingThisGroupDirectly')}
 		>
 			{#snippet actions()}
 				<Btn
@@ -675,7 +676,7 @@
 						addMemberOpen = true;
 					}}
 				>
-					Add member
+					{t('web.permGroup.addMember')}
 				</Btn>
 			{/snippet}
 
@@ -685,14 +686,14 @@
 				rows={members}
 				getId={(member) => member.uuid}
 				searchValue={(member) => `${member.username} ${member.uuid}`}
-				searchPlaceholder="Find member"
-				noun="member"
+				searchPlaceholder={t('web.permGroup.findMember')}
+				noun={t('web.permGroup.member')}
 				sortValue={(member, col) => (col === 'username' ? member.username.toLowerCase() : null)}
 				rowActions={memberActions}
 				rowLabel={(member) => member.username || member.uuid}
 				pageSize={25}
-				emptyTitle="No direct members"
-				emptyText="Add one here, or from the Permissions tab on a player's profile."
+				emptyTitle={t('web.permGroup.noDirectMembers')}
+				emptyText={t('web.permGroup.addOneHereOrFrom')}
 			>
 				{#snippet cell(member, col)}
 					{#if col === 'username'}
@@ -713,40 +714,38 @@
 
 <Modal title="Add a member to {name}" bind:open={addMemberOpen}>
 	<label class="field">
-		<span class="lbl">Player</span>
-		<span class="hint">Name or UUID — resolved through the player directory, then LuckPerms</span>
-		<input class="input" bind:value={addMemberName} placeholder="e.g. Belikhun" />
+		<span class="lbl">{t('web.permGroup.player')}</span>
+		<span class="hint">{t('web.permGroup.nameOrUuidResolved')}</span>
+		<input class="input" bind:value={addMemberName} placeholder={t('web.permGroup.eGBelikhun')} />
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (addMemberOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!addMemberName.trim()} onclick={doAddMember}>Add member</Btn>
+		<Btn onclick={() => (addMemberOpen = false)}>{t('web.permGroup.cancel')}</Btn>
+		<Btn variant="primary" disabled={!addMemberName.trim()} onclick={doAddMember}>{t('web.permGroup.addMember')}</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="Clone {name}" bind:open={cloneOpen}>
 	<p>
-		Creates a new group with the same weight, display name and every node this group carries —
-		a starting point for a similar role. Members are not copied.
+		{t('web.permGroup.createsANewGroup')}
 	</p>
 	<label class="field">
-		<span class="lbl">New group name</span>
-		<span class="hint">Lowercase; this is the LuckPerms group id</span>
+		<span class="lbl">{t('web.permGroup.newGroupName')}</span>
+		<span class="hint">{t('web.permGroup.lowercaseThisIsThe')}</span>
 		<input class="input" bind:value={cloneName} placeholder="e.g. {name}-2" />
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (cloneOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!cloneName.trim()} onclick={doClone}>Clone</Btn>
+		<Btn onclick={() => (cloneOpen = false)}>{t('web.permGroup.cancel')}</Btn>
+		<Btn variant="primary" disabled={!cloneName.trim()} onclick={doClone}>{t('web.permGroup.clone')}</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="Delete group {name}" bind:open={deleteOpen}>
 	<p>
-		The group is removed from LuckPerms on every server. Players holding it lose the
-		membership; their other groups stay.
+		{t('web.permGroup.theGroupIsRemoved')}
 	</p>
 	{#snippet footer()}
-		<Btn onclick={() => (deleteOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" onclick={doDelete}>Delete</Btn>
+		<Btn onclick={() => (deleteOpen = false)}>{t('web.permGroup.cancel')}</Btn>
+		<Btn variant="danger" onclick={doDelete}>{t('web.permGroup.delete')}</Btn>
 	{/snippet}
 </Modal>
 

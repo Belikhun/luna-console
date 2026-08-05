@@ -4,7 +4,7 @@
  * `document` and `window` at import time, so a static import would break SSR
  * for every page that renders the editor.
  *
- * Only the languages a server config is written in are pulled in — importing
+ * Only the languages a server config is written in are pulled in; importing
  * `monaco-editor` wholesale would add its TypeScript, HTML and CSS language
  * services, several megabytes of worker no config file needs.
  */
@@ -14,7 +14,7 @@
 import * as monaco from 'monaco-editor/editor/editor.api';
 
 // the editor's own contributions: find/replace, folding, bracket matching,
-// comments, multi-cursor — everything that makes it an editor rather than a box.
+// comments, multi-cursor; everything that makes it an editor rather than a box.
 // `editor.main` would pull in all ~90 languages with them, which is the bulk of
 // monaco's weight and none of what a server config needs.
 import 'monaco-editor/features/register.all.js';
@@ -70,7 +70,7 @@ function registerProperties(): void {
 }
 
 /**
- * Load Monaco once and return its API. Repeat calls are cheap — the theme and
+ * Load Monaco once and return its API. Repeat calls are cheap; the theme and
  * the language registrations are idempotent by construction, but doing them
  * twice would still reset an open editor's colours.
  */

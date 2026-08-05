@@ -1,7 +1,7 @@
 // Auto-injected into every `<style lang="scss">` block and into app.scss by the
 // `css.preprocessorOptions.scss.additionalData` hook in vite.config.ts, so no
-// component needs an @use line. Emits no CSS on its own — variables, mixins and
-// functions only — otherwise every component would carry a copy of the output.
+// component needs an @use line. Emits no CSS on its own; variables, mixins and
+// functions only; otherwise every component would carry a copy of the output.
 //
 // Design tokens stay CSS custom properties in app.scss: they are read at runtime
 // (theming, per-instance colours, the `--split-*` chrome offsets) and must not be
@@ -28,7 +28,7 @@ $bp-wide: 68.75rem;
 	min-width: 0;
 }
 
-/// The keyboard focus ring — a 2px link-coloured outer ring.
+/// The keyboard focus ring; a 2px link-coloured outer ring.
 @mixin focus-ring {
 	outline: none;
 	box-shadow: var(--focus-ring);

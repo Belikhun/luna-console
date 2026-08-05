@@ -7,6 +7,7 @@
  */
 
 import { watch, type FSWatcher } from "node:fs";
+import { t } from "../shared/i18n";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -48,7 +49,7 @@ import { buildVersion } from "../version";
  * The forwarding secret rides along so a follower can key paper-global.yml when
  * materializing the instances it owns. It keeps the `proxy/` prefix because
  * `readForwardingSecret` resolves one root-relative path on every machine, so a
- * follower ends up with a `proxy/` directory holding nothing but that file —
+ * follower ends up with a `proxy/` directory holding nothing but that file -
  * which is not a proxy instance. The cluster has exactly one Velocity and it
  * runs on the primary.
  */
@@ -126,16 +127,16 @@ export interface DaemonRow {
 	/** Every non-loopback IPv4 the daemon reported for itself */
 	addresses: string[];
 	online: boolean;
-	/** Build identity, e.g. "1.0.0+6ee20ac" — what an upgrade changes */
+	/** Build identity, e.g. "1.0.0+6ee20ac"; what an upgrade changes */
 	version: string | null;
-	/** Local API revision — what refuses a mismatched client or follower */
+	/** Local API revision; what refuses a mismatched client or follower */
 	protocol: number | null;
 	/** True when this daemon's build is behind the primary's */
 	outdated: boolean;
 	root: string | null;
 	connectedAt: number | null;
 	lastSeen: string | null;
-	/** Age of the last heartbeat, ms — null when the daemon is not connected */
+	/** Age of the last heartbeat, ms; null when the daemon is not connected */
 	lastBeatMs: number | null;
 	/** Heartbeat round-trip, ms */
 	latencyMs: number | null;
@@ -167,7 +168,7 @@ interface HubStream {
 	follower: string;
 	onLine: (line: string) => void;
 	onEnd: (error?: string) => void;
-	/** fires if the follower never answers — a build that predates tunnelling
+	/** fires if the follower never answers; a build that predates tunnelling
 	 *  silently ignores the frame, and silence must not read as an empty log */
 	readyTimer?: ReturnType<typeof setTimeout>;
 }
@@ -214,7 +215,7 @@ async function sendSync(link: FollowerLink): Promise<void> {
 	link.ws.send(JSON.stringify({ t: "sync", files: await syncPayload() }));
 }
 
-/** Debounced broadcast — a save burst becomes one sync frame. */
+/** Debounced broadcast; a save burst becomes one sync frame. */
 function scheduleBroadcast(): void {
 	if (syncTimer) {
 		clearTimeout(syncTimer);
@@ -255,7 +256,7 @@ async function persistRegistration(link: FollowerLink): Promise<void> {
 }
 
 /**
- * Stamp a follower's last-seen time into the registry as it goes away —
+ * Stamp a follower's last-seen time into the registry as it goes away -
  * otherwise an offline daemon reports the moment it *registered* as the last
  * time anyone heard from it, which is the one number that view exists for.
  */
@@ -330,15 +331,15 @@ function pctOf(used: number, total: number): number {
 
 /**
  * Whether the machine still has room to run instances. CPU, memory and the
- * cluster-root filesystem are judged together — any one of them at the pressure
+ * cluster-root filesystem are judged together; any one of them at the pressure
  * threshold is what will actually break a start, so the check names the one
  * that is full instead of averaging them into a meaningless number.
  */
 function resourceCheck(health: HealthSample | undefined): DaemonCheck {
-	const name = "Resource headroom";
+	const name = t("daemon.checks.headroom");
 
 	if (!health) {
-		return { name, ok: undefined, detail: "no health sample yet" };
+		return { name, ok: undefined, detail: t("daemon.checks.noSample") };
 	}
 
 	const memPct = pctOf(health.memUsedMb, health.memTotalMb);
@@ -346,15 +347,15 @@ function resourceCheck(health: HealthSample | undefined): DaemonCheck {
 	const problems: string[] = [];
 
 	if (health.cpuPct >= PRESSURE_PCT) {
-		problems.push(`CPU at ${health.cpuPct}%`);
+		problems.push(t("daemon.checks.cpuAt", { pct: health.cpuPct }));
 	}
 
 	if (memPct >= PRESSURE_PCT) {
-		problems.push(`memory at ${memPct}%`);
+		problems.push(t("daemon.checks.memAt", { pct: memPct }));
 	}
 
 	if (diskPct >= PRESSURE_PCT) {
-		problems.push(`disk at ${diskPct}%`);
+		problems.push(t("daemon.checks.diskAt", { pct: diskPct }));
 	}
 
 	if (problems.length > 0) {
@@ -364,7 +365,7 @@ function resourceCheck(health: HealthSample | undefined): DaemonCheck {
 	return {
 		name,
 		ok: true,
-		detail: `CPU ${health.cpuPct}% · memory ${memPct}% · disk ${diskPct}% · load ${health.load1.toFixed(2)}`,
+		detail: t("daemon.checks.headroomOk", { cpu: health.cpuPct, mem: memPct, disk: diskPct, load: health.load1.toFixed(2) }),
 	};
 }
 
@@ -375,20 +376,20 @@ function resourceCheck(health: HealthSample | undefined): DaemonCheck {
  * A round that found nothing to probe is a **pass**, not an unknown: no instance
  * is unreachable, and a verdict that never resolves reads as a broken check
  * rather than an idle one. Unknown is reserved for a round that genuinely has
- * not happened — no link, or a primary still inside its first probe interval.
+ * not happened; no link, or a primary still inside its first probe interval.
  */
 function reachCheck(
 	round: { at: number; results: ReachResult[] } | undefined,
 	host: string,
 ): DaemonCheck {
-	const name = "Instance reachability";
+	const name = t("daemon.checks.reachability");
 
 	if (!round) {
-		return { name, ok: undefined, detail: "not probed yet" };
+		return { name, ok: undefined, detail: t("daemon.checks.notProbed") };
 	}
 
 	if (round.results.length === 0) {
-		return { name, ok: true, detail: `no running instance to probe on ${host}` };
+		return { name, ok: true, detail: t("daemon.checks.nothingToProbe", { host }) };
 	}
 
 	const failed = round.results.filter((result) => !result.ok);
@@ -397,11 +398,11 @@ function reachCheck(
 		return {
 			name,
 			ok: false,
-			detail: `unreachable: ${failed.map((result) => `${result.instance} (${result.address})`).join(", ")}`,
+			detail: t("daemon.checks.unreachable", { names: failed.map((result) => `${result.instance} (${result.address})`).join(", ") }),
 		};
 	}
 
-	return { name, ok: true, detail: `${round.results.length} port(s) answering on ${host}` };
+	return { name, ok: true, detail: t("daemon.checks.answering", { count: round.results.length, host }) };
 }
 
 /** The health checks for a connected (or missing) follower. */
@@ -409,30 +410,30 @@ function followerChecks(link: FollowerLink | undefined, registered: DaemonRegist
 	if (!link) {
 		return [
 			{
-				name: "Daemon link",
+				name: t("daemon.checks.link"),
 				ok: false,
 				detail: registered?.lastSeen
-					? `not connected — last seen ${new Date(registered.lastSeen).toLocaleString()}`
-					: "never connected",
+					? t("daemon.checks.lastSeen", { time: new Date(registered.lastSeen).toLocaleString() })
+					: t("daemon.checks.neverConnected"),
 			},
-			{ name: "Heartbeat", ok: undefined, detail: "no link" },
-			{ name: "Instance reachability", ok: undefined, detail: "no link" },
-			{ name: "Resource headroom", ok: undefined, detail: "no link" },
+			{ name: t("daemon.checks.heartbeat"), ok: undefined, detail: t("daemon.checks.noLink") },
+			{ name: t("daemon.checks.reachability"), ok: undefined, detail: t("daemon.checks.noLink") },
+			{ name: t("daemon.checks.headroom"), ok: undefined, detail: t("daemon.checks.noLink") },
 		];
 	}
 
 	const beats: DaemonCheck = {
-		name: "Heartbeat",
+		name: t("daemon.checks.heartbeat"),
 		ok: link.missed === 0,
 		detail:
 			link.missed === 0
-				? `${link.latencyMs ?? "?"}ms round-trip · last beat ${agoText(link.lastSeen)} ago`
-				: `${link.missed} missed ping(s) — last beat ${agoText(link.lastSeen)} ago`,
+				? t("daemon.checks.beatOk", { latency: link.latencyMs ?? "?", ago: agoText(link.lastSeen) })
+				: t("daemon.checks.beatMissed", { count: link.missed, ago: agoText(link.lastSeen) }),
 	};
 
 	return [
 		{
-			name: "Daemon link",
+			name: t("daemon.checks.link"),
 			ok: true,
 			detail: `WebSocket from ${link.host} · connected ${agoText(link.connectedAt)} ago`,
 		},
@@ -455,32 +456,32 @@ function primaryChecks(): DaemonCheck[] {
 
 	return [
 		{
-			name: "Daemon link",
+			name: t("daemon.checks.link"),
 			ok: true,
-			detail: `this daemon — local socket ${hubConfig?.socket ?? "?"}`,
+			detail: t("daemon.checks.selfLink", { socket: hubConfig?.socket ?? "?" }),
 		},
 		{
-			name: "Cluster listener",
+			name: t("daemon.checks.listener"),
 			ok: listener ? true : undefined,
 			detail: listener
-				? `accepting followers on ${listener.host}:${listener.port} — ${followers.size} connected`
-				: "no TCP listener configured — this host cannot accept followers",
+				? t("daemon.checks.listenerOn", { host: listener.host, port: listener.port, count: followers.size })
+				: t("daemon.checks.noListener"),
 		},
 		{
-			name: "Cluster token",
+			name: t("daemon.checks.token"),
 			ok: hubConfig?.token ? true : false,
 			detail: hubConfig?.token
-				? "configured — followers must present it"
-				: "not configured — followers cannot authenticate",
+				? t("daemon.checks.tokenConfigured")
+				: t("daemon.checks.tokenMissing"),
 		},
 		reachCheck(selfReach, LOOPBACK),
 		{
-			name: "Fleet build",
+			name: t("daemon.checks.fleetBuild"),
 			ok: outdatedFollowers().length === 0,
 			detail:
 				outdatedFollowers().length === 0
-					? `every connected daemon runs ${buildVersion()}`
-					: `behind this primary: ${outdatedFollowers().join(", ")} — upgrade them`,
+					? t("daemon.checks.fleetCurrent", { version: buildVersion() })
+					: t("daemon.checks.fleetBehind", { names: outdatedFollowers().join(", ") }),
 		},
 		resourceCheck(currentHealth()),
 	];
@@ -497,7 +498,7 @@ async function refreshClusterCache(): Promise<void> {
 	}
 }
 
-/** The registry, from the cache when it is warm — the fleet view polls often. */
+/** The registry, from the cache when it is warm; the fleet view polls often. */
 async function clusterView(): Promise<ClusterConfig> {
 	return cachedCluster ?? (await loadCluster());
 }
@@ -522,7 +523,7 @@ function primaryRow(cfg: ClusterConfig): DaemonRow {
 		root: hubConfig?.root ?? root(),
 		connectedAt: hubStartedAt,
 		lastSeen: new Date().toISOString(),
-		// there is no link to itself to measure — a zero here would read as a
+		// there is no link to itself to measure; a zero here would read as a
 		// suspiciously perfect round-trip rather than "not applicable"
 		lastBeatMs: null,
 		latencyMs: null,
@@ -553,7 +554,7 @@ async function listDaemons(): Promise<DaemonRow[]> {
 			online: !!link,
 			version: link?.version ?? registered?.version ?? null,
 			protocol: link?.protocol ?? null,
-			// a follower one build behind still works — the console flags it so
+			// a follower one build behind still works; the console flags it so
 			// somebody decides, rather than upgrading on its own
 			outdated: !!link?.version && link.version !== buildVersion(),
 			root: link?.root ?? registered?.root ?? null,
@@ -602,7 +603,7 @@ export function followerLink(name: string): FollowerLink | undefined {
 /**
  * Routing predicate installed into the RPC dispatcher: an op whose target
  * instance is owned by a connected follower runs there. The cfg travelling
- * with the call is preferred over the cache — it is always current.
+ * with the call is preferred over the cache; it is always current.
  */
 function resolveRemote(op: string, spec: OpSpec, args: unknown[]): string | undefined {
 	if (spec.instance === undefined) {
@@ -654,7 +655,7 @@ function forwardOp(
 /**
  * Upgrade one daemon in the fleet.
  *
- * A follower is told to pull the binary this primary is running — the fast path
+ * A follower is told to pull the binary this primary is running; the fast path
  * for a development cluster. The primary has no such source, so it upgrades
  * itself from the GitHub release; either way the daemon resolves its own source
  * (DESIGN.md §4.7) and this only decides *where the request runs*.
@@ -667,7 +668,7 @@ async function upgradeDaemon(name: string, force: boolean): Promise<unknown> {
 	}
 
 	if (!followers.has(name)) {
-		throw new Error(`follower "${name}" is not connected`);
+		throw new Error(t("daemon.followerNotConnected", { name }));
 	}
 
 	pushEvent(daemonEventKey(name), "action", "upgrade requested by the primary");
@@ -684,7 +685,7 @@ async function checkDaemonUpgrade(name: string, refresh: boolean): Promise<unkno
 	}
 
 	if (!followers.has(name)) {
-		throw new Error(`follower "${name}" is not connected`);
+		throw new Error(t("daemon.followerNotConnected", { name }));
 	}
 
 	const outcome = await forwardOp(name, "daemon.checkUpgrade", [refresh]);
@@ -736,9 +737,7 @@ function openConsoleStream(
 
 	stream.readyTimer = setTimeout(() => {
 		streams.delete(id);
-		onEnd(
-			`daemon "${daemon}" did not answer the console request — its build may predate console tunnelling`,
-		);
+		onEnd(t("daemon.consoleTimeout", { name: daemon }));
 	}, STREAM_READY_TIMEOUT_MS);
 
 	streams.set(id, stream);
@@ -764,7 +763,7 @@ function openConsoleStream(
  *
  * The ping also carries LunaCore's cards for the instances that follower owns:
  * the plugin only talks to the primary, and its sampler needs them at exactly
- * this cadence. The cluster view is best-effort — a failed read costs the round
+ * this cadence. The cluster view is best-effort; a failed read costs the round
  * its telemetry, never its heartbeat.
  */
 async function pingRound(): Promise<void> {
@@ -775,7 +774,7 @@ async function pingRound(): Promise<void> {
 			link.missed += 1;
 
 			if (link.missed >= MISSED_PINGS_BEFORE_DROP) {
-				log(`follower "${link.name}" missed ${link.missed} heartbeats — dropping the link`);
+				log(t("daemon.log.droppingLink", { name: link.name, count: link.missed }));
 				pushEvent(
 					daemonEventKey(link.name),
 					"error",
@@ -807,7 +806,7 @@ async function pingRound(): Promise<void> {
 /**
  * Running, non-external instances a daemon owns, paired with the port each one
  * listens on. Built from `ownedInstances` rather than `cfg.instances` directly
- * so the proxy — which lives outside that map — is included for the primary.
+ * so the proxy; which lives outside that map; is included for the primary.
  */
 function reachTargets(
 	cfg: ClusterConfig,
@@ -831,7 +830,7 @@ function reachTargets(
  * The status sampler fills them a beat after a daemon comes up, and a
  * follower's ride in on its first heartbeat pong. Probing before then finds no
  * running instance and would report "nothing to probe" about a host that is in
- * fact running servers — a confident pass that is simply wrong. A daemon that
+ * fact running servers; a confident pass that is simply wrong. A daemon that
  * owns nothing has no states to wait for, so it is ready immediately.
  */
 function statesReady(
@@ -861,7 +860,7 @@ async function probeInstances(
  *
  * This confirms more than it discovers, and deliberately so: core already
  * grades an instance "running" only once it answers a status ping on loopback
- * (`getStatus`), so a target here has essentially already proven the point —
+ * (`getStatus`), so a target here has essentially already proven the point -
  * what it catches is the gap between that sample and now. The reason to run it
  * anyway is that the primary is a daemon like any other, and a check that can
  * only ever report "unknown" about the busiest machine in the cluster is worse
@@ -1025,7 +1024,7 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 	link.lastSeen = Date.now();
 
 	if (frame.t === "pong") {
-		// only the outstanding ping's echo measures anything — a late pong from a
+		// only the outstanding ping's echo measures anything; a late pong from a
 		// previous round would time a round-trip that already ended
 		if (link.pending && frame.seq === link.pending.seq) {
 			link.latencyMs = Date.now() - link.pending.at;
@@ -1109,7 +1108,7 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 	if (frame.t === "save" && frame.file && frame.data !== undefined) {
 		// the primary is the single writer: persist, and the root watcher turns the
 		// write into a sync frame every follower (the sender included) picks up.
-		// No recursion — only a follower installs the save-through hook.
+		// No recursion; only a follower installs the save-through hook.
 		if (frame.file === "cluster") {
 			await saveCluster(frame.data as ClusterConfig);
 		} else if (frame.file === "lock") {
@@ -1139,7 +1138,7 @@ export const hubWebSocket: Bun.WebSocketHandler<{ kind: string; name?: string }>
 
 		const link = followers.get(name);
 
-		// only the *current* link's close should deregister — a replaced socket
+		// only the *current* link's close should deregister; a replaced socket
 		// closing later must not tear down its successor
 		if (link && link.ws === ws) {
 			followers.delete(name);

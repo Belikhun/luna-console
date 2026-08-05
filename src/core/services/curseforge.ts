@@ -1,22 +1,23 @@
 /**
  * CurseForge API client (api.curseforge.com), as an addon provider. Serves
- * mods, Bukkit plugins, resource packs and data packs — each a "class" of the
+ * mods, Bukkit plugins, resource packs and data packs; each a "class" of the
  * Minecraft game upstream. Requires an API key (console.curseforge.com), so
  * the provider reports itself unavailable until the daemon injects one
  * (`curseforgeApiKey` in the daemon config, or `LUNA_CURSEFORGE_KEY`).
  *
  * Quirks the mapping absorbs:
  * - a file's `gameVersions` mixes MC versions with loader tags ("Fabric",
- *   "Bukkit") and environment tags ("Client") — real MC versions come from
+ *   "Bukkit") and environment tags ("Client"); real MC versions come from
  *   `sortableGameVersions` entries whose `gameVersion` field is non-empty
  * - hashes are sha1/md5 only; the lockfile sha512 is computed on download
  * - `downloadUrl` is null when the author opted out of API distribution;
  *   those files are skipped rather than reconstructed from the CDN scheme
- * - files carry no clean version number — one is extracted from the display
+ * - files carry no clean version number; one is extracted from the display
  *   name, falling back to the file name
  */
 
 import type { RemoteRef } from "../types";
+import { t } from "../../shared/i18n";
 import { USER_AGENT } from "./download";
 import type {
 	AddonProject,
@@ -63,7 +64,7 @@ export function setApiKey(key?: string): void {
 
 async function api<T>(path: string): Promise<T | undefined> {
 	if (!apiKey) {
-		throw new Error("CurseForge API key not configured");
+		throw new Error(t("core.services.curseforgeNoKey"));
 	}
 
 	const res = await fetch(API + path, {
@@ -161,10 +162,10 @@ function loaderFilter(type: AddonType, loaders: string[]): number | undefined {
 	return undefined;
 }
 
-/** Velocity plugins do not exist on CurseForge — fail with the reason, not silence. */
+/** Velocity plugins do not exist on CurseForge; fail with the reason, not silence. */
 function rejectVelocity(type: AddonType, loaders: string[]): void {
 	if (type === "plugin" && loaders.includes("velocity")) {
-		throw new Error("CurseForge hosts Bukkit/Paper plugins only — no velocity builds");
+		throw new Error(t("core.services.curseforgeNoVelocity"));
 	}
 }
 
@@ -312,7 +313,7 @@ async function getVersions(
 			(file) =>
 				file.isAvailable !== false &&
 				file.exposeAsAlternative !== true &&
-				// null when the author opted out of API distribution — nothing to install
+				// null when the author opted out of API distribution; nothing to install
 				!!file.downloadUrl,
 		)
 		.map((file) => toVersion(ref, type, file));
@@ -328,7 +329,7 @@ export const client: ProviderClient = {
 			? { available: true }
 			: {
 					available: false,
-					reason: "needs an API key — set LUNA_CURSEFORGE_KEY or curseforgeApiKey in the daemon config",
+					reason: t("core.services.curseforgeKeyHint"),
 				},
 
 	search,

@@ -5,18 +5,19 @@
  *
  *  1. **the primary daemon**, which serves the binary it is itself running.
  *     This is what makes a development cluster quick: build on the primary,
- *     `luna daemon upgrade <follower>`, done — no tag, no release, no registry.
- *  2. **the GitHub release**, for everything the primary cannot answer — a
+ *     `luna daemon upgrade <follower>`, done; no tag, no release, no registry.
+ *  2. **the GitHub release**, for everything the primary cannot answer; a
  *     primary upgrading itself, a follower whose primary runs from source, or
  *     a machine that has never seen a build of this project.
  *
  * Applying an upgrade is the same either way: verify the checksum, swap the
  * binary over this daemon's own path and exit so the service manager restarts
- * it. Nothing here touches instances — the daemon does not own the screens they
+ * it. Nothing here touches instances; the daemon does not own the screens they
  * run in, and they outlive it.
  */
 
 import { access, chmod, constants, rename, stat, unlink } from "node:fs/promises";
+import { t } from "../shared/i18n";
 import { dirname } from "node:path";
 
 import {
@@ -52,7 +53,7 @@ export interface UpgradeOffer {
 	buildAt: string;
 	platform: string;
 	size: number;
-	/** null when the source published no checksum — then the size is all we can check */
+	/** null when the source published no checksum; then the size is all we can check */
 	sha256: string | null;
 	/** Where the bytes are fetched from */
 	url: string;
@@ -69,7 +70,7 @@ export interface UpgradeOffer {
 export interface UpgradeCheck {
 	current: string;
 	platform: string;
-	/** What an unforced upgrade would apply — the first newer offer, if any */
+	/** What an unforced upgrade would apply; the first newer offer, if any */
 	offer: UpgradeOffer | null;
 	/** Every offer, primary first, including same-build ones */
 	offers: UpgradeOffer[];
@@ -81,7 +82,7 @@ export interface UpgradeCheck {
 /** How long a GitHub answer is reused. Releases are not a per-minute event. */
 const GITHUB_TTL_MS = 6 * 60 * 60 * 1000;
 
-/** Where a follower fetches the primary's binary from — set when the link starts. */
+/** Where a follower fetches the primary's binary from; set when the link starts. */
 let source: { address: string; token: string } | undefined;
 
 /** Record the primary this daemon upgrades from (called by the follower link). */
@@ -95,13 +96,11 @@ let cached: { meta: BinaryMeta; mtimeMs: number } | undefined;
 /**
  * Describe the binary this daemon is running. Throws when the daemon is a
  * from-source run, where `process.execPath` is the bun interpreter rather than
- * an luna build — serving *that* as an upgrade would replace the toolchain.
+ * an luna build; serving *that* as an upgrade would replace the toolchain.
  */
 export async function localBinaryMeta(): Promise<BinaryMeta> {
 	if (!isCompiledBinary()) {
-		throw new Error(
-			"this daemon runs from source, so it has no binary to serve — build one with `bun run build`",
-		);
+		throw new Error(t("daemon.upgrade.sourceNoBinary"));
 	}
 
 	const path = process.execPath;
@@ -157,7 +156,7 @@ async function remoteMeta(): Promise<BinaryMeta> {
  */
 async function primaryOffer(notes: string[]): Promise<UpgradeOffer | null> {
 	if (!source) {
-		notes.push("primary: this daemon has no primary to upgrade from");
+		notes.push(t("daemon.upgrade.noPrimarySource"));
 
 		return null;
 	}
@@ -173,7 +172,7 @@ async function primaryOffer(notes: string[]): Promise<UpgradeOffer | null> {
 	}
 
 	if (meta.platform !== buildPlatform()) {
-		notes.push(`primary: its binary is ${meta.platform}, this machine is ${buildPlatform()}`);
+		notes.push(t("daemon.upgrade.platformMismatch", { theirs: meta.platform, ours: buildPlatform() }));
 
 		return null;
 	}
@@ -234,7 +233,7 @@ async function githubOffer(notes: string[], refresh: boolean): Promise<UpgradeOf
 	}
 
 	if (!release || !release.asset) {
-		notes.push(`github: no release with a ${assetName(buildPlatform())} asset in ${RELEASE_REPO}`);
+		notes.push(t("daemon.upgrade.noAsset", { asset: assetName(buildPlatform()), repo: RELEASE_REPO }));
 
 		return null;
 	}
@@ -315,7 +314,7 @@ const WATCH_DELAY_MS = 60_000;
 
 /**
  * Keep the upgrade answer warm in the background, on the same cadence the
- * GitHub cache expires at. Nothing is ever applied here — a daemon upgrades
+ * GitHub cache expires at. Nothing is ever applied here; a daemon upgrades
  * because somebody asked it to, never because a release appeared.
  */
 export function ensureUpgradeWatcher(): void {
@@ -358,7 +357,7 @@ async function download(offer: UpgradeOffer): Promise<ArrayBuffer> {
 	const response = await fetch(offer.url, { headers });
 
 	if (!response.ok) {
-		throw new Error(`${offer.origin} refused the binary: HTTP ${response.status}`);
+		throw new Error(t("daemon.upgrade.refused", { origin: offer.origin, status: response.status }));
 	}
 
 	const bytes = await response.arrayBuffer();
@@ -372,12 +371,15 @@ async function download(offer: UpgradeOffer): Promise<ArrayBuffer> {
 
 		if (digest !== offer.sha256) {
 			throw new Error(
-				`checksum mismatch — got ${digest.slice(0, 12)}, expected ${offer.sha256.slice(0, 12)}`,
+				t("daemon.upgrade.checksumMismatch", {
+					got: digest.slice(0, 12),
+					expected: offer.sha256.slice(0, 12),
+				}),
 			);
 		}
 	} else if (offer.size > 0 && bytes.byteLength !== offer.size) {
 		// no published checksum: the size is the only promise the source made
-		throw new Error(`size mismatch — got ${bytes.byteLength} bytes, expected ${offer.size}`);
+		throw new Error(t("daemon.upgrade.sizeMismatch", { got: bytes.byteLength, expected: offer.size }));
 	}
 
 	return bytes;
@@ -401,20 +403,18 @@ export interface UpgradeResult {
  */
 export async function selfUpgrade(force = false): Promise<UpgradeResult> {
 	if (!isCompiledBinary()) {
-		throw new Error(
-			"this daemon runs from source — restart it from the new tree instead of upgrading",
-		);
+		throw new Error(t("daemon.upgrade.sourceNoUpgrade"));
 	}
 
 	const jobs = runningJobs();
 
 	if (jobs > 0 && !force) {
-		throw new Error(`${jobs} job(s) still running — wait for them to settle, or force the upgrade`);
+		throw new Error(t("daemon.upgrade.jobsRunning", { count: jobs }));
 	}
 
 	// Checked before spending a 90 MB download on a swap that cannot land. The
 	// staged file is written *beside* the binary and renamed over it, so what has
-	// to be writable is the directory — a daemon whose binary sits in
+	// to be writable is the directory; a daemon whose binary sits in
 	// /usr/local/bin cannot upgrade itself however the file itself is owned.
 	const binDir = dirname(process.execPath);
 
@@ -422,8 +422,7 @@ export async function selfUpgrade(force = false): Promise<UpgradeResult> {
 		await access(binDir, constants.W_OK);
 	} catch {
 		throw new Error(
-			`cannot replace ${process.execPath}: ${binDir} is not writable by this daemon — ` +
-				`re-run "sudo luna setup" here to move it onto a binary the service account owns`,
+			t("daemon.upgrade.dirNotWritable", { path: process.execPath, dir: binDir }),
 		);
 	}
 
@@ -438,8 +437,8 @@ export async function selfUpgrade(force = false): Promise<UpgradeResult> {
 
 		throw new Error(
 			check.offers.length
-				? `already running ${check.current} — nothing newer on any channel${why}`
-				: `no upgrade source could be reached${why}`,
+				? t("daemon.upgrade.nothingNewer", { version: check.current, why })
+				: t("daemon.upgrade.noSourceWhy", { why }),
 		);
 	}
 
@@ -467,7 +466,7 @@ export async function selfUpgrade(force = false): Promise<UpgradeResult> {
 
 	log(`upgrade: ${current} → ${offer.version}; exiting so the service manager restarts`);
 
-	// answer the caller first — the frame is already queued on the socket, and
+	// answer the caller first; the frame is already queued on the socket, and
 	// exiting inside the handler would drop it
 	setTimeout(() => process.exit(0), 500);
 

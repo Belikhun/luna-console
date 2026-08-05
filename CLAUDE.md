@@ -174,6 +174,35 @@ export interface InstanceConfig {}
   `console.error` only for genuinely unexpected server-side failures.
 - The browser client uses plain `console` for debugging only — no logging framework.
 
+### Every front-facing string is a language key
+- **The text a human reads lives in `src/lang/<code>/{cli,core,daemon,web}.json`**, never inline.
+  `src/shared/i18n.ts` resolves it: `t("cli.ports.check.noIssues")`, `{name}` placeholders filled
+  from the params object, English as the fallback, and the key itself returned when it is unknown
+  (so a gap shows on screen instead of throwing). `en` and `vi` both ship, and a new string means
+  a new entry in **both** — key sets are kept identical, placeholders included.
+- **The CLI and the daemon read `LUNA_LANG`** once, at import. The console has no env: components
+  import `t` from `$lib/i18n.svelte` (never `$shared/i18n` — the wrapper carries the rune that
+  repaints on a switch), the locale is persisted in `localStorage` under `luna:lang`, and the
+  picker sits in the status bar. A Svelte `columns`/`filters`/menu array that holds `t()` calls
+  must be `$derived([…])`, or its labels keep the locale they were first built with.
+- **Schema-like data stores keys, not text.** `SERVER_SETTINGS`/`SETTING_GROUPS` labels and hints,
+  `CATALOG_KINDS`, `REFRESH_INTERVALS`, the search providers' `group` — all hold i18n keys, and the
+  renderer calls `t(spec.label)`. That is what keeps one schema entry serving the CLI table, the
+  launch wizard and the configuration tab in every locale.
+- **Not everything is a message.** Protocol text stays literal: the `[luna]` markers `run.sh`
+  echoes (`lifecycle.ts` matches them with regexes), config keys, file names, screen session names,
+  provider ids. Placeholder glyphs (`pc.dim("—")`, `<span class="dim">–</span>`) are typography, not
+  prose.
+
+### Language of the words themselves
+- **Follow `docs/HUMANIZER.md` for every string and every comment.** It is the same standard for
+  a button label, a flash message and an inline `//` note.
+- **No em or en dashes in prose.** Use a semicolon, a colon, a comma, parentheses, or two
+  sentences. In terminal output the separator convention is ` · `; the `—`/`–` glyph is reserved
+  for "no value" cells.
+- Say what a thing is, plainly: no "seamlessly", no "powerful", no three-item lists padded to
+  sound complete, no sentence that only restates the heading above it.
+
 ### Comments
 - **Never comment obvious logic** — if reading the code already says what it does, a comment
   is noise. No "increment the counter", no restating the line below.
@@ -520,3 +549,7 @@ so a stale server on 8330 can never silently shadow the new one. Only run
 
 Server LAN address is `10.0.0.10`; the console is reachable at
 `http://10.0.0.10:8330` when bound to `0.0.0.0`.
+
+`LUNA_LANG=vi` switches the CLI and the daemon to Vietnamese (`en` is the default and the
+fallback for any key a locale has not translated). The console picks its own locale in the
+status bar and remembers it per browser, so the two are independent.

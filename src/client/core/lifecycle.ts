@@ -1,6 +1,6 @@
 /**
  * Bridge mirror of core/lifecycle. Tracked transitions follow the server log
- * for minutes, so all three run as daemon jobs — the log-derived progress
+ * for minutes, so all three run as daemon jobs; the log-derived progress
  * tree streams back into the caller's reporter.
  */
 

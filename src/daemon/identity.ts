@@ -3,7 +3,7 @@ import type { InstanceConfig } from "../core/types";
 import type { DaemonConfig } from "./config";
 
 /**
- * Which daemon this process is — set once at startup, consulted wherever an
+ * Which daemon this process is; set once at startup, consulted wherever an
  * operation must decide between running locally and forwarding to the
  * instance's owner.
  */
@@ -30,7 +30,7 @@ export function isPrimary(): boolean {
 
 /**
  * This machine's key in the registry's port namespace: a follower is keyed by its
- * own name, the primary by `""` — the same "absent `daemon` field" its instances
+ * own name, the primary by `""`; the same "absent `daemon` field" its instances
  * carry (core/ports.ts).
  */
 export function machineKey(): string {

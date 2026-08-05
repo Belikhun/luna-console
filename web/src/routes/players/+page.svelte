@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -23,7 +24,7 @@
 
 	/**
 	 * The player directory: every player the network has ever recorded, from
-	 * LunaCore's persisted profiles — online or not. The live roster has its own
+	 * LunaCore's persisted profiles; online or not. The live roster has its own
 	 * screen (Online players); this one is for administration: finding a player,
 	 * opening their profile, and bulk moderation across instances.
 	 */
@@ -113,7 +114,7 @@
 	onMount(() => {
 		void refresh();
 
-		// backends the moderation verbs can target — the proxy keeps no lists
+		// backends the moderation verbs can target; the proxy keeps no lists
 		void api('/instances').then((data) => {
 			instances = data.instances
 				.filter((inst: any) => inst.software !== 'velocity' && inst.name !== 'proxy')
@@ -122,36 +123,36 @@
 		});
 	});
 
-	const columns: Column[] = [
-		{ id: 'username', label: 'Player', sortable: true, minWidth: 180 },
-		{ id: 'status', label: 'Status', sortable: true },
-		{ id: 'lastSeen', label: 'Last seen', sortable: true },
-		{ id: 'playtime', label: 'Playtime', sortable: true },
-		{ id: 'sessions', label: 'Sessions', sortable: true, width: 110, align: 'right' },
-		{ id: 'firstSeen', label: 'First seen', sortable: true, hidden: true },
-		{ id: 'mode', label: 'Auth' },
-		{ id: 'client', label: 'Client', hidden: true },
-		{ id: 'address', label: 'Last address', hidden: true },
-		{ id: 'uuid', label: 'UUID', width: 300, hidden: true }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'username', label: t('web.players.player2'), sortable: true, minWidth: 180 },
+		{ id: 'status', label: t('web.players.status'), sortable: true },
+		{ id: 'lastSeen', label: t('web.players.lastSeen'), sortable: true },
+		{ id: 'playtime', label: t('web.players.playtime'), sortable: true },
+		{ id: 'sessions', label: t('web.players.sessions'), sortable: true, width: 110, align: 'right' },
+		{ id: 'firstSeen', label: t('web.players.firstSeen'), sortable: true, hidden: true },
+		{ id: 'mode', label: t('web.players.auth') },
+		{ id: 'client', label: t('web.players.client'), hidden: true },
+		{ id: 'address', label: t('web.players.lastAddress'), hidden: true },
+		{ id: 'uuid', label: t('web.players.uuid'), width: 300, hidden: true }
+	]);
 
 	const onlineCount = $derived(players.filter((player) => player.online).length);
 
 	const filters: TableFilterGroup<Player>[] = $derived([
 		{
 			id: 'status',
-			label: 'Filter status',
+			label: t('web.players.filterStatus'),
 			options: [
-				{ value: 'any', label: 'Any status' },
+				{ value: 'any', label: t('web.players.anyStatus') },
 				{ value: 'online', label: `Online (${onlineCount})`, match: (player: Player) => player.online },
-				{ value: 'offline', label: 'Offline', match: (player: Player) => !player.online }
+				{ value: 'offline', label: t('web.players.offline'), match: (player: Player) => !player.online }
 			]
 		},
 		{
 			id: 'server',
-			label: 'Filter backend',
+			label: t('web.players.filterBackend'),
 			options: [
-				{ value: 'any', label: 'Any backend' },
+				{ value: 'any', label: t('web.players.anyBackend') },
 				...[...new Set(players.map((player) => player.online ? player.server : player.lastServer))]
 					.filter(Boolean)
 					.sort()
@@ -198,14 +199,14 @@
 		moderateOpen = true;
 	}
 
-	/** Verbs over a selection — the Actions dropdown and each row's menu share these. */
+	/** Verbs over a selection; the Actions dropdown and each row's menu share these. */
 	function bulkActions(rows: Player[]): ContextMenuItem[] {
 		const none = rows.length === 0;
 		const anyOnline = rows.some((player) => player.online);
 
 		return [
 			{
-				label: 'Kick from the network',
+				label: t('web.players.kickFromTheNetwork'),
 				icon: 'userSlash',
 				disabled: none || !anyOnline,
 				hint: none ? 'select players first' : anyOnline ? undefined : 'nobody selected is online',
@@ -213,39 +214,39 @@
 			},
 			{ separator: true },
 			{
-				label: 'Add to whitelist…',
+				label: t('web.players.addToWhitelist'),
 				icon: 'userTick',
 				disabled: none,
 				action: () => openModerate('whitelist-add', rows)
 			},
 			{
-				label: 'Remove from whitelist…',
+				label: t('web.players.removeFromWhitelist'),
 				icon: 'userMinus',
 				disabled: none,
 				action: () => openModerate('whitelist-remove', rows)
 			},
 			{
-				label: 'Grant operator…',
+				label: t('web.players.grantOperator'),
 				icon: 'userCog',
 				disabled: none,
 				action: () => openModerate('op', rows)
 			},
 			{
-				label: 'Revoke operator…',
+				label: t('web.players.revokeOperator'),
 				icon: 'userLock',
 				disabled: none,
 				action: () => openModerate('deop', rows)
 			},
 			{ separator: true },
 			{
-				label: 'Ban…',
+				label: t('web.players.ban'),
 				icon: 'gavel',
 				color: 'danger',
 				disabled: none,
 				action: () => openModerate('ban', rows)
 			},
 			{
-				label: 'Pardon…',
+				label: t('web.players.pardon'),
 				icon: 'handshake',
 				disabled: none,
 				action: () => openModerate('pardon', rows)
@@ -260,12 +261,12 @@
 
 		return [
 			{
-				label: 'View profile',
+				label: t('web.players.viewProfile'),
 				icon: 'user',
 				action: () => goto(`/players/${player.uuid}`)
 			},
 			{
-				label: 'Copy UUID',
+				label: t('web.players.copyUuid'),
 				icon: 'copy',
 				action: () => void copy(player.uuid)
 			},
@@ -280,15 +281,15 @@
 		await copyText(text);
 	}
 
-	const ACTION_LABELS: Record<string, string> = {
-		kick: 'Kick',
-		'whitelist-add': 'Add to whitelist',
-		'whitelist-remove': 'Remove from whitelist',
-		op: 'Grant operator',
-		deop: 'Revoke operator',
-		ban: 'Ban',
-		pardon: 'Pardon'
-	};
+	const ACTION_LABELS: Record<string, string> = $derived({
+		kick: t('web.players.actionKick'),
+		'whitelist-add': t('web.players.actionWhitelistAdd'),
+		'whitelist-remove': t('web.players.actionWhitelistRemove'),
+		op: t('web.players.actionOp'),
+		deop: t('web.players.actionDeop'),
+		ban: t('web.players.actionBan'),
+		pardon: t('web.players.actionPardon')
+	});
 
 	const needsInstances = $derived(moderateAction !== 'kick');
 	const needsReason = $derived(['kick', 'ban'].includes(moderateAction));
@@ -297,7 +298,7 @@
 		moderateOpen = false;
 
 		const label = ACTION_LABELS[moderateAction] ?? moderateAction;
-		const note = Notify.loading(`${label}: ${moderateTargets.length} player(s)…`);
+		const note = Notify.loading(t('web.players.applyingTo', { label, count: moderateTargets.length }));
 
 		try {
 			const result = await post('/players/moderate', {
@@ -314,13 +315,13 @@
 			if (failed.length === 0) {
 				note.set({
 					level: 'success',
-					message: `${label} applied to ${moderateTargets.length} player(s)`,
+					message: t('web.players.appliedTo', { label, count: moderateTargets.length }),
 					closeable: true
 				});
 			} else {
 				note.set({
 					level: 'warning',
-					message: `${label}: ${outcomes.length - failed.length}/${outcomes.length} succeeded`,
+					message: t('web.players.partialSucceeded', { label, ok: outcomes.length - failed.length, total: outcomes.length }),
 					detail: failed
 						.map((outcome) => `${outcome.target}${outcome.instance ? ` @ ${outcome.instance}` : ''}: ${outcome.error}`)
 						.join('\n'),
@@ -335,17 +336,17 @@
 	}
 </script>
 
-<svelte:head><title>Players | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.nav.playersList')} | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Players"
+	title={t('web.players.players')}
 	count="{selected.size ? `${selected.size}/` : ''}{players.length}"
 	info
-	description="Everyone the network has ever seen — profiles, playtime and moderation, recorded by LunaCore"
+	description={t('web.players.everyoneTheNetworkHasEver')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players-directory" />
-		<Dropdown label="Actions" disabled={selection.length === 0} menu={bulkActions(selection)} />
+		<Dropdown label={t('web.players.actions')} disabled={selection.length === 0} menu={bulkActions(selection)} />
 		<Btn icon="userPortrait" onclick={() => goto('/players/online')}>Online players</Btn>
 	{/snippet}
 </PageHeader>
@@ -357,19 +358,19 @@
 	</Flash>
 {/if}
 
-<OverviewBar title="Directory overview">
-	<OverviewCell label="Registered players">
+<OverviewBar title={t('web.players.directoryOverview')}>
+	<OverviewCell label={t('web.players.registeredPlayers')}>
 		{total}
 	</OverviewCell>
-	<OverviewCell label="Online now">
+	<OverviewCell label={t('web.players.onlineNow')}>
 		{onlineCount}
 	</OverviewCell>
-	<OverviewCell label="Total playtime">
+	<OverviewCell label={t('web.players.totalPlaytime')}>
 		{players.length
 			? fmtDuration(players.reduce((sum, player) => sum + player.totalPlayMillis, 0))
 			: '–'}
 	</OverviewCell>
-	<OverviewCell label="Sessions recorded">
+	<OverviewCell label={t('web.players.sessionsRecorded')}>
 		{players.reduce((sum, player) => sum + player.sessionCount, 0)}
 	</OverviewCell>
 </OverviewBar>
@@ -384,17 +385,17 @@
 			getId={(player) => player.uuid}
 			searchValue={(player) =>
 				`${player.username} ${player.uuid} ${player.lastServer} ${player.lastAddress} ${player.lastClientVersion}`}
-			searchPlaceholder="Find player by name, backend or UUID"
+			searchPlaceholder={t('web.players.findPlayerByNameBackend')}
 			selectable="multi"
 			bind:selected
 			{rowActions}
 			rowLabel={(player) => player.username}
-			noun="player"
+			noun={t('web.players.player')}
 			{sortValue}
 			{filters}
 			pageSize={25}
-			emptyTitle="No players recorded yet"
-			emptyText="Profiles appear here after the first join once LunaCore's player directory is running on the proxy."
+			emptyTitle={t('web.players.noPlayersRecordedYet')}
+			emptyText={t('web.players.profilesAppearHereAfterThe')}
 		>
 			{#snippet cell(player, col)}
 				{#if col === 'username'}
@@ -405,15 +406,15 @@
 				{:else if col === 'status'}
 					{#if player.online}
 						<span class="status">
-							<StatusBadge state="ok" label="Online" />
+							<StatusBadge state="ok" label={t('web.players.online')} />
 							<a href="/instances/{player.server}" class="dim">{player.server}</a>
 						</span>
 					{:else}
-						<StatusBadge state="stopped" label="Offline" />
+						<StatusBadge state="stopped" label={t('web.players.offline')} />
 					{/if}
 				{:else if col === 'lastSeen'}
 					{#if player.online}
-						<span class="dim">now — on for {fmtDuration(player.sessionMillis)}</span>
+						<span class="dim">now; on for {fmtDuration(player.sessionMillis)}</span>
 					{:else if player.lastSeenAtEpochMillis}
 						<span title={fmtDateTime(player.lastSeenAtEpochMillis)}>
 							{fmtDateTime(player.lastSeenAtEpochMillis)}
@@ -444,15 +445,15 @@
 	</Panel>
 </div>
 
-<Modal title="{ACTION_LABELS[moderateAction] ?? moderateAction}: {moderateTargets.length} player(s)" bind:open={moderateOpen}>
+<Modal title={t('web.players.modalTitle', { label: ACTION_LABELS[moderateAction] ?? moderateAction, count: moderateTargets.length })} bind:open={moderateOpen}>
 	<p class="targets">
 		{moderateTargets.join(', ')}
 	</p>
 
 	{#if needsInstances}
 		<div class="field">
-			<span class="lbl">Instances</span>
-			<span class="hint">The change is applied on each selected instance</span>
+			<span class="lbl">{t('web.nav.instancesList')}</span>
+			<span class="hint">{t('web.players.instancesHint')}</span>
 			<MultiSelect
 				bind:value={moderateInstances}
 				width="100%"
@@ -463,20 +464,20 @@
 
 	{#if needsReason}
 		<label class="field">
-			<span class="lbl">Reason</span>
-			<span class="hint">Optional — recorded in the moderation log{moderateAction === 'ban' ? ' and shown to the player' : ''}</span>
-			<input class="input" bind:value={moderateReason} placeholder="e.g. griefing on survival" />
+			<span class="lbl">{t('web.access.colReason')}</span>
+			<span class="hint">{t('web.players.reasonHint')}{moderateAction === 'ban' ? t('web.players.reasonShown') : ''}</span>
+			<input class="input" bind:value={moderateReason} placeholder={t('web.players.eGGriefingOnSurvival')} />
 		</label>
 	{/if}
 
 	{#snippet footer()}
-		<Btn onclick={() => (moderateOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (moderateOpen = false)}>{t('web.common.cancel')}</Btn>
 		<Btn
 			variant={moderateAction === 'ban' || moderateAction === 'kick' ? 'danger' : 'primary'}
 			disabled={needsInstances && moderateInstances.length === 0}
 			onclick={doModerate}
 		>
-			{ACTION_LABELS[moderateAction] ?? 'Apply'}
+			{ACTION_LABELS[moderateAction] ?? t('web.common.apply')}
 		</Btn>
 	{/snippet}
 </Modal>

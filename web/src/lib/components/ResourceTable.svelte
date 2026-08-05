@@ -1,4 +1,5 @@
 <script lang="ts" generics="T = any">
+	import { t } from '$lib/i18n.svelte';
 	import type { Snippet } from 'svelte';
 	import DataTable from './DataTable.svelte';
 	import SearchInput from './SearchInput.svelte';
@@ -10,12 +11,12 @@
 	/**
 	 * The console's standard resource table (DESIGN.md §5.1): search, optional
 	 * filter groups, pagination, the preferences dialog and a per-row context
-	 * menu, in one component — so a table on a main screen is never *partly* a
+	 * menu, in one component; so a table on a main screen is never *partly* a
 	 * table, and a screen declares its row verbs exactly once.
 	 *
 	 * `rowActions(row)` is the row's context menu; the same function feeds the
 	 * screen's own Actions dropdown in its `PageHeader`, which is where a
-	 * selection's verbs live (DESIGN.md §5.2) — never a second button wedged
+	 * selection's verbs live (DESIGN.md §5.2); never a second button wedged
 	 * beside the search box. `tableId` is required because the preferences it
 	 * persists are per table.
 	 */
@@ -29,7 +30,7 @@
 		cell: cellBody,
 		searchValue,
 		initialSearch = '',
-		searchPlaceholder = 'Find resources',
+		searchPlaceholder = t('web.common.findResources'),
 		searchWidth = '26rem',
 		filters,
 		rowActions,
@@ -44,11 +45,11 @@
 		paging = true,
 		pageSize = 25,
 		maxHeight,
-		emptyTitle = 'No resources to display',
+		emptyTitle = t('web.table.emptyTitle'),
 		emptyText = '',
 		noun = 'resource'
 	}: {
-		/** required — preferences (columns, page size, density) are stored per table */
+		/** required; preferences (columns, page size, density) are stored per table */
 		tableId: string;
 		columns: Column[];
 		rows: T[];
@@ -56,13 +57,13 @@
 		cell: Snippet<[T, string]>;
 		/** searchable text for a row; defaults to the row's own values */
 		searchValue?: (row: T) => string;
-		/** pre-filled query — how a global-search hit lands on a screen whose
+		/** pre-filled query; how a global-search hit lands on a screen whose
 		 *  objects have no detail route of their own */
 		initialSearch?: string;
 		searchPlaceholder?: string;
 		searchWidth?: string;
 		filters?: TableFilterGroup<T>[];
-		/** the row's verbs — its right-click menu, and the screen's Actions dropdown */
+		/** the row's verbs; its right-click menu, and the screen's Actions dropdown */
 		rowActions?: (row: T) => ContextMenuItem[];
 		/** heading of the row's context menu (defaults to its id) */
 		rowLabel?: (row: T) => string;
@@ -72,7 +73,7 @@
 		selected?: Set<string>;
 		sortValue?: (row: T, columnId: string) => string | number | null;
 		onRowClick?: (row: T) => void;
-		/** dimmed rows — de-emphasis only, still selectable */
+		/** dimmed rows; de-emphasis only, still selectable */
 		rowDim?: (row: T) => boolean;
 		/** rows no bulk verb can apply to: dimmed *and* kept out of the selection */
 		rowLocked?: (row: T) => boolean;
@@ -118,7 +119,7 @@
 
 {#snippet clearer()}
 	{#if filtering}
-		<Btn icon="close" onclick={clearAll}>Clear search and filters</Btn>
+		<Btn icon="close" onclick={clearAll}>{t('web.table.clearFilters')}</Btn>
 	{/if}
 {/snippet}
 

@@ -13,7 +13,7 @@ import type { ProviderId } from '$core/types';
  * The provider mapping of one plugin or mod entry (`<plugin>@<family>`).
  *
  * GET grades what the pooled jar could be and writes nothing; POST records the
- * mapping; DELETE drops it. Only the entry changes — the jar is never
+ * mapping; DELETE drops it. Only the entry changes; the jar is never
  * re-downloaded or renamed, because mapping is a statement about a file luna
  * already has.
  */

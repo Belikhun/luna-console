@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -19,7 +20,7 @@
 	/**
 	 * One addon group in full: its three member lists (plugins with per-family
 	 * availability, resource packs with their server rules, data packs with the
-	 * worlds they reach), the instances using it, and the update tools — push
+	 * worlds they reach), the instances using it, and the update tools; push
 	 * the group to every user and restart them now, on a schedule, or not at all.
 	 */
 
@@ -71,7 +72,7 @@
 	const respackMembers = $derived((data?.respacks ?? []).map((entry: any) => entry.key));
 	const datapackMembers = $derived((data?.datapacks ?? []).map((entry: any) => entry.name));
 
-	/** Current membership of every kind — the base a single-kind edit patches. */
+	/** Current membership of every kind; the base a single-kind edit patches. */
 	const membership = $derived<Record<Kind, string[]>>({
 		plugins: pluginMembers,
 		respacks: respackMembers,
@@ -247,7 +248,7 @@
 			await del(`/addons/groups/${name}`);
 
 			Notify.success(`Group ${name} deleted`, {
-				detail: 'Deployed jars and packs stay on the instances until removed.'
+				detail: t('web.groupDetail.deployedJarsAndPacksStay')
 			});
 
 			await goto('/addons/groups');
@@ -257,31 +258,31 @@
 		}
 	}
 
-	const pluginCols: Column[] = [
-		{ id: 'plugin', label: 'Plugin', sortable: true },
-		{ id: 'families', label: 'Families' },
-		{ id: 'versions', label: 'Primary versions' }
-	];
+	const pluginCols: Column[] = $derived([
+		{ id: 'plugin', label: t('web.groupDetail.plugin'), sortable: true },
+		{ id: 'families', label: t('web.groupDetail.families') },
+		{ id: 'versions', label: t('web.groupDetail.primaryVersions') }
+	]);
 
-	const respackCols: Column[] = [
-		{ id: 'key', label: 'Resource pack', sortable: true },
-		{ id: 'state', label: 'State', width: 140 },
-		{ id: 'servers', label: 'Server rules' },
-		{ id: 'version', label: 'Version', width: 120 }
-	];
+	const respackCols: Column[] = $derived([
+		{ id: 'key', label: t('web.groupDetail.resourcePack'), sortable: true },
+		{ id: 'state', label: t('web.groupDetail.state'), width: 140 },
+		{ id: 'servers', label: t('web.groupDetail.serverRules') },
+		{ id: 'version', label: t('web.groupDetail.version'), width: 120 }
+	]);
 
-	const datapackCols: Column[] = [
-		{ id: 'name', label: 'Data pack', sortable: true },
-		{ id: 'state', label: 'State', width: 140 },
-		{ id: 'targets', label: 'Deploys to' },
-		{ id: 'version', label: 'Version', width: 120 }
-	];
+	const datapackCols: Column[] = $derived([
+		{ id: 'name', label: t('web.groupDetail.dataPack'), sortable: true },
+		{ id: 'state', label: t('web.groupDetail.state'), width: 140 },
+		{ id: 'targets', label: t('web.groupDetail.deploysTo') },
+		{ id: 'version', label: t('web.groupDetail.version'), width: 120 }
+	]);
 
 	/** A member row's verbs: leave the group, and go look at the thing itself. */
 	function pluginActions(row: any): ContextMenuItem[] {
 		return [
 			{
-				label: 'Remove from this group',
+				label: t('web.groupDetail.removeFromThisGroup'),
 				icon: 'trash',
 				color: 'danger',
 				disabled: row.locked || !!busy,
@@ -293,7 +294,7 @@
 			},
 			{ separator: true },
 			{
-				label: 'Plugin details',
+				label: t('web.groupDetail.pluginDetails'),
 				icon: 'circleInfo',
 				action: () => goto(`/plugins/${encodeURIComponent(row.plugin)}`)
 			}
@@ -303,7 +304,7 @@
 	function respackActions(row: any): ContextMenuItem[] {
 		return [
 			{
-				label: 'Remove from this group',
+				label: t('web.groupDetail.removeFromThisGroup'),
 				icon: 'trash',
 				color: 'danger',
 				disabled: !!busy,
@@ -314,12 +315,12 @@
 			},
 			{ separator: true },
 			{
-				label: 'Pack details',
+				label: t('web.groupDetail.packDetails'),
 				icon: 'circleInfo',
 				action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
 			},
 			{
-				label: 'Configure pack',
+				label: t('web.groupDetail.configurePack'),
 				icon: 'pen',
 				action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
 			}
@@ -329,7 +330,7 @@
 	function datapackActions(row: any): ContextMenuItem[] {
 		return [
 			{
-				label: 'Remove from this group',
+				label: t('web.groupDetail.removeFromThisGroup'),
 				icon: 'trash',
 				color: 'danger',
 				disabled: !!busy,
@@ -340,18 +341,18 @@
 			},
 			{ separator: true },
 			{
-				label: 'Manage in Data packs',
+				label: t('web.groupDetail.manageInDataPacks'),
 				icon: 'box',
 				action: () => goto(`/datapacks?q=${encodeURIComponent(row.name)}`)
 			}
 		];
 	}
 
-	const instCols: Column[] = [
-		{ id: 'name', label: 'Instance', sortable: true },
-		{ id: 'state', label: 'State', width: 140 },
-		{ id: 'env', label: 'Environment' }
-	];
+	const instCols: Column[] = $derived([
+		{ id: 'name', label: t('web.groupDetail.instance2'), sortable: true },
+		{ id: 'state', label: t('web.groupDetail.state'), width: 140 },
+		{ id: 'env', label: t('web.groupDetail.environment') }
+	]);
 </script>
 
 <svelte:head><title>{name} | Addon groups | Luna Console</title></svelte:head>
@@ -359,7 +360,7 @@
 {#if data}
 	<PageHeader title={name ?? ''} info>
 		{#snippet extra()}
-			{#if data.builtin}<StatusBadge state="ok" label="builtin" />{/if}
+			{#if data.builtin}<StatusBadge state="ok" label={t('web.groupDetail.builtin')} />{/if}
 		{/snippet}
 		{#snippet actions()}
 			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="addon-group" />
@@ -369,7 +370,7 @@
 				disabled={!!busy || !data.instances.length}
 				onclick={syncInstances}
 			>
-				Update instances
+				{t('web.groupDetail.updateInstances')}
 			</Btn>
 			<Btn
 				variant="danger"
@@ -378,18 +379,18 @@
 				title={data.builtin ? 'the default group is built in and cannot be deleted' : undefined}
 				onclick={() => (deleteOpen = true)}
 			>
-				Delete group
+				{t('web.groupDetail.deleteGroup')}
 			</Btn>
 		{/snippet}
 	</PageHeader>
 
-	<Panel title="Group details">
+	<Panel title={t('web.groupDetail.groupDetails')}>
 		<label class="field desc">
-			<span class="lbl">Description</span>
+			<span class="lbl">{t('web.groupDetail.description')}</span>
 			<input
 				class="input"
 				bind:value={description}
-				placeholder="What this set is for"
+				placeholder={t('web.groupDetail.whatThisSetIsFor')}
 				onblur={() => {
 					if (description !== data.description) {
 						void save({});
@@ -399,8 +400,7 @@
 		</label>
 		{#if data.builtin}
 			<p class="dim note">
-				The default group applies to every instance; its baseline plugins are locked and can only
-				be joined by extras.
+				{t('web.groupDetail.theDefaultGroupApplies')}
 			</p>
 		{/if}
 	</Panel>
@@ -408,13 +408,13 @@
 	<div class="gap"></div>
 
 	<Panel
-		title="Plugins in this group"
+		title={t('web.groupDetail.pluginsInThisGroup')}
 		count={data.plugins.length}
-		description="Every family of a member deploys where it fits — paper builds to backends, velocity builds to the proxy, universal to both. Changes deploy to every instance using the group, with the restart choice up to you."
+		description={t('web.groupDetail.everyFamilyOfAMember')}
 		flush
 	>
 		{#snippet actions()}
-			<Btn icon="plus" disabled={!!busy} onclick={() => openAdd('plugins')}>Add a plugin</Btn>
+			<Btn icon="plus" disabled={!!busy} onclick={() => openAdd('plugins')}>{t('web.groupDetail.addAPlugin')}</Btn>
 		{/snippet}
 		<ResourceTable
 			tableId="group-members"
@@ -422,20 +422,20 @@
 			rows={data.plugins}
 			getId={(row) => row.plugin}
 			searchValue={(row) => `${row.plugin} ${row.displayName ?? ''} ${row.source ?? ''}`}
-			searchPlaceholder="Find a member"
+			searchPlaceholder={t('web.groupDetail.findAMember')}
 			searchWidth="20rem"
-			noun="member"
+			noun={t('web.groupDetail.member')}
 			pageSize={25}
 			rowActions={pluginActions}
 			rowLabel={(row) => row.plugin}
-			emptyTitle="No plugins yet"
-			emptyText="Add members with the control above."
+			emptyTitle={t('web.groupDetail.noPluginsYet')}
+			emptyText={t('web.groupDetail.addMembersWithTheControl')}
 		>
 			{#snippet cell(row, col)}
 				{#if col === 'plugin'}
 					<a href="/plugins/{row.plugin}">{row.plugin}</a>
-					{#if row.locked}<StatusBadge state="stopped" label="locked" />{/if}
-					{#if !row.pooled}<StatusBadge state="failed" label="not pooled" />{/if}
+					{#if row.locked}<StatusBadge state="stopped" label={t('web.groupDetail.locked')} />{/if}
+					{#if !row.pooled}<StatusBadge state="failed" label={t('web.groupDetail.notPooled')} />{/if}
 				{:else if col === 'families'}
 					<span class="dim">
 						{row.families.map((family: any) => family.family).join(', ') || '–'}
@@ -455,13 +455,13 @@
 	<div class="gap"></div>
 
 	<Panel
-		title="Resource packs in this group"
+		title={t('web.groupDetail.resourcePacksInThisGroup')}
 		count={data.respacks.length}
-		description="The proxy serves these to players on the group's backends. Membership is written into each pack's server rules, so leaving the group takes exactly those names back out."
+		description={t('web.groupDetail.theProxyServesTheseTo')}
 		flush
 	>
 		{#snippet actions()}
-			<Btn icon="plus" disabled={!!busy} onclick={() => openAdd('respacks')}>Add a pack</Btn>
+			<Btn icon="plus" disabled={!!busy} onclick={() => openAdd('respacks')}>{t('web.groupDetail.addAPack')}</Btn>
 		{/snippet}
 		<ResourceTable
 			tableId="group-respacks"
@@ -469,28 +469,28 @@
 			rows={data.respacks}
 			getId={(row) => row.key}
 			searchValue={(row) => `${row.key} ${row.servers.join(' ')}`}
-			searchPlaceholder="Find a resource pack"
+			searchPlaceholder={t('web.groupDetail.findAResourcePack')}
 			searchWidth="20rem"
-			noun="pack"
+			noun={t('web.groupDetail.pack')}
 			pageSize={25}
 			rowActions={respackActions}
 			rowLabel={(row) => row.key}
-			emptyTitle="No resource packs"
-			emptyText="Add one to serve it on every instance using this group."
+			emptyTitle={t('web.groupDetail.noResourcePacks')}
+			emptyText={t('web.groupDetail.addOneToServeIt')}
 		>
 			{#snippet cell(row, col)}
 				{#if col === 'key'}
 					<a href="/packs?q={encodeURIComponent(row.key)}">{row.key}</a>
 				{:else if col === 'state'}
 					{#if !row.pooled}
-						<StatusBadge state="failed" label="Not pooled" detail="no zip under <root>/packs" />
+						<StatusBadge state="failed" label={t('web.groupDetail.notPooled2')} detail="no zip under <root>/packs" />
 					{:else if row.enabled}
-						<StatusBadge state="ok" label="Enabled" />
+						<StatusBadge state="ok" label={t('web.groupDetail.enabled')} />
 					{:else}
 						<StatusBadge
 							state="stopped"
-							label="Disabled"
-							detail="the pack is registered but switched off — players are not offered it"
+							label={t('web.groupDetail.disabled')}
+							detail="the pack is registered but switched off; players are not offered it"
 						/>
 					{/if}
 				{:else if col === 'servers'}
@@ -508,13 +508,13 @@
 	<div class="gap"></div>
 
 	<Panel
-		title="Data packs in this group"
+		title={t('web.groupDetail.dataPacksInThisGroup')}
 		count={data.datapacks.length}
-		description="Copied into the world of every instance using the group. Servers load them on their next restart (or /minecraft:reload)."
+		description={t('web.groupDetail.copiedIntoTheWorldOf')}
 		flush
 	>
 		{#snippet actions()}
-			<Btn icon="plus" disabled={!!busy} onclick={() => openAdd('datapacks')}>Add a pack</Btn>
+			<Btn icon="plus" disabled={!!busy} onclick={() => openAdd('datapacks')}>{t('web.groupDetail.addAPack')}</Btn>
 		{/snippet}
 		<ResourceTable
 			tableId="group-datapacks"
@@ -522,29 +522,29 @@
 			rows={data.datapacks}
 			getId={(row) => row.name}
 			searchValue={(row) => `${row.name} ${row.targets.join(' ')}`}
-			searchPlaceholder="Find a data pack"
+			searchPlaceholder={t('web.groupDetail.findADataPack')}
 			searchWidth="20rem"
-			noun="pack"
+			noun={t('web.groupDetail.pack')}
 			pageSize={25}
 			rowActions={datapackActions}
 			rowLabel={(row) => row.name}
-			emptyTitle="No data packs"
-			emptyText="Add one to deploy it into every world using this group."
+			emptyTitle={t('web.groupDetail.noDataPacks')}
+			emptyText={t('web.groupDetail.addOneToDeployIt')}
 		>
 			{#snippet cell(row, col)}
 				{#if col === 'name'}
 					<a href="/datapacks?q={encodeURIComponent(row.name)}">{row.name}</a>
 				{:else if col === 'state'}
 					{#if !row.pooled}
-						<StatusBadge state="failed" label="Not pooled" detail="no entry in packs.lock.json" />
+						<StatusBadge state="failed" label={t('web.groupDetail.notPooled2')} detail="no entry in packs.lock.json" />
 					{:else if !row.present}
 						<StatusBadge
 							state="warning"
-							label="File missing"
-							detail="the pool zip is gone — reinstall or re-upload the pack"
+							label={t('web.groupDetail.fileMissing')}
+							detail="the pool zip is gone; reinstall or re-upload the pack"
 						/>
 					{:else}
-						<StatusBadge state="ok" label="Pooled" />
+						<StatusBadge state="ok" label={t('web.groupDetail.pooled')} />
 					{/if}
 				{:else if col === 'targets'}
 					<span class="dim">{row.targets.join(', ') || 'nowhere'}</span>
@@ -558,7 +558,7 @@
 	<div class="gap"></div>
 
 	<Panel
-		title="Instances using this group"
+		title={t('web.groupDetail.instancesUsingThisGroup')}
 		count={data.instances.length}
 		description={data.builtin
 			? 'The default group covers every managed instance'
@@ -571,12 +571,12 @@
 			rows={data.instances}
 			getId={(row) => row.name}
 			searchValue={(row) => row.name}
-			searchPlaceholder="Find an instance"
+			searchPlaceholder={t('web.groupDetail.findAnInstance')}
 			searchWidth="18rem"
-			noun="instance"
+			noun={t('web.groupDetail.instance')}
 			pageSize={15}
-			emptyTitle="Not used by any instance"
-			emptyText="Attach it from an instance's configuration tab, or in the launch wizard."
+			emptyTitle={t('web.groupDetail.notUsedByAnyInstance')}
+			emptyText={t('web.groupDetail.attachItFromAnInstance')}
 		>
 			{#snippet cell(row, col)}
 				{#if col === 'name'}
@@ -603,18 +603,18 @@
 <!-- restart choice for member changes and syncs -->
 <Modal title="Apply to the instances using {name}" bind:open={restartOpen}>
 	<p class="dim intro">
-		The change applies immediately; running servers load it on their next restart. Pick what
+		{t('web.groupDetail.theChangeAppliesImmediately')}
 		happens to <b>{(data?.instances ?? []).map((row: any) => row.name).join(', ') || 'nobody'}</b>:
 	</p>
 	<div class="field">
-		<span class="lbl">Restart</span>
+		<span class="lbl">{t('web.groupDetail.restart')}</span>
 		<Select
 			bind:value={restartMode}
 			width="100%"
 			options={[
-				{ value: 'none', label: 'Do not restart — applies on their next restart' },
-				{ value: 'now', label: 'Restart running instances now' },
-				{ value: 'schedule', label: 'Schedule a restart…' }
+				{ value: 'none', label: t('web.groupDetail.doNotRestartAppliesOn') },
+				{ value: 'now', label: t('web.groupDetail.restartRunningInstancesNow') },
+				{ value: 'schedule', label: t('web.groupDetail.scheduleARestart') }
 			]}
 		/>
 		{#if restartMode === 'schedule'}
@@ -622,7 +622,7 @@
 		{/if}
 	</div>
 	{#snippet footer()}
-		<Btn onclick={() => (restartOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (restartOpen = false)}>{t('web.groupDetail.cancel')}</Btn>
 		<Btn
 			variant="primary"
 			disabled={restartMode === 'schedule' && !restartAt}
@@ -635,12 +635,11 @@
 
 <Modal title="Delete group {name}" bind:open={deleteOpen}>
 	<p>
-		Removes the group from the registry. Instances stop receiving its addons on their next apply;
-		jars and packs already on disk stay until removed.
+		{t('web.groupDetail.removesTheGroupFrom')}
 	</p>
 	{#snippet footer()}
-		<Btn onclick={() => (deleteOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" onclick={remove}>Delete group</Btn>
+		<Btn onclick={() => (deleteOpen = false)}>{t('web.groupDetail.cancel')}</Btn>
+		<Btn variant="danger" onclick={remove}>{t('web.groupDetail.deleteGroup')}</Btn>
 	{/snippet}
 </Modal>
 

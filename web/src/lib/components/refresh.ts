@@ -1,11 +1,11 @@
-/** Auto-refresh intervals offered by RefreshControl. */
+/** Auto-refresh intervals offered by RefreshControl; labels are i18n keys. */
 export const REFRESH_INTERVALS: Array<{ label: string; ms: number }> = [
-	{ label: 'Off', ms: 0 },
-	{ label: '5 seconds', ms: 5_000 },
-	{ label: '10 seconds', ms: 10_000 },
-	{ label: '1 minute', ms: 60_000 },
-	{ label: '5 minutes', ms: 300_000 },
-	{ label: '15 minutes', ms: 900_000 }
+	{ label: 'web.refresh.off', ms: 0 },
+	{ label: 'web.refresh.s5', ms: 5_000 },
+	{ label: 'web.refresh.s10', ms: 10_000 },
+	{ label: 'web.refresh.m1', ms: 60_000 },
+	{ label: 'web.refresh.m5', ms: 300_000 },
+	{ label: 'web.refresh.m15', ms: 900_000 }
 ];
 
 export const DEFAULT_REFRESH_MS = 10_000;

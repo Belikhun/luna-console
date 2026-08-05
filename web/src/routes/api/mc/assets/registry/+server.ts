@@ -11,7 +11,7 @@ import { pinnedMcVersion, registryPath } from '$core/mcassets';
  * Revalidated rather than cached outright. The index is rebuilt whenever the
  * assets are re-extracted or the code that indexes them changes, and a browser
  * that had been told to hold it for an hour went on drawing from the old one
- * long after the rebuild — so the tag is checked every time and the body only
+ * long after the rebuild; so the tag is checked every time and the body only
  * sent when it has actually moved.
  */
 export async function GET({ request }) {

@@ -2,18 +2,19 @@ import { command, Bail } from "../framework";
 import { pc, Sym, ok, warn, info, printTable, fmtBytes, fmtDuration } from "../ui";
 import { instanceNames } from "../completers";
 import * as luna from "../../client/core/services/luna";
+import { t } from "../../shared/i18n";
 
 /** Coloured label for a backend's Luna-reported status. */
 function statusBadge(status: string): string {
 	switch (status) {
 		case "ONLINE":
-			return `${Sym.ok} ${pc.green("online")}`;
+			return `${Sym.ok} ${pc.green(t("cli.net.statusOnline"))}`;
 
 		case "MAINT":
-			return `${Sym.warn} ${pc.yellow("maint")}`;
+			return `${Sym.warn} ${pc.yellow(t("cli.net.statusMaint"))}`;
 
 		default:
-			return `${Sym.off} ${pc.dim("offline")}`;
+			return `${Sym.off} ${pc.dim(t("cli.net.statusOffline"))}`;
 	}
 }
 
@@ -34,26 +35,35 @@ function tps(value: number): string {
 
 /** Colour the health verdict the proxy computes for the whole network. */
 function health(value: string): string {
+	const text =
+		value === "healthy"
+			? t("cli.net.healthHealthy")
+			: value === "degraded"
+				? t("cli.net.healthDegraded")
+				: value;
+
 	switch (value) {
 		case "healthy":
-			return pc.green(value);
+			return pc.green(text);
 
 		case "degraded":
-			return pc.yellow(value);
+			return pc.yellow(text);
 
 		default:
-			return pc.red(value);
+			return pc.red(text);
 	}
 }
 
 /** Bail with the reason the Luna API could not be reached. */
 function bailUnavailable(error: string | undefined): never {
-	throw new Bail(`LunaCore API unavailable: ${error ?? "unknown error"}`);
+	throw new Bail(
+		t("cli.net.apiUnavailable", { error: error ?? t("cli.net.unknownError") }),
+	);
 }
 
 command({
 	path: ["net", "status"],
-	desc: "Network telemetry from LunaCore on the proxy (TPS, CPU, RAM, players)",
+	desc: t("cli.net.status.desc"),
 
 	handler: async () => {
 		const result = await luna.dashboard();
@@ -85,18 +95,32 @@ command({
 
 		console.log();
 		printTable(rows, {
-			head: ["state", "backend", "tps", "cpu", "memory", "players", "uptime", "beat"],
+			head: [
+				t("cli.head.state"),
+				t("cli.head.backend"),
+				"tps",
+				"cpu",
+				t("cli.head.memory"),
+				t("cli.head.players"),
+				t("cli.head.uptime"),
+				t("cli.head.beat"),
+			],
 		});
 
 		const summary = snapshot.summary;
 
 		console.log(
 			pc.dim(
-				`\n  network ${health(snapshot.overallHealth)}${pc.dim("")} — ` +
-					`${snapshot.counts.online}/${snapshot.counts.total} backends up, ` +
-					`${summary.onlinePlayers} players, avg tps ${summary.averageTps.toFixed(2)}, ` +
-					`avg cpu ${summary.averageCpu.toFixed(1)}%, ` +
-					`ram ${fmtBytes(summary.totalRamUsedBytes)} / ${fmtBytes(summary.totalRamMaxBytes)}\n`,
+				`\n  ${t("cli.net.status.summary", {
+					health: health(snapshot.overallHealth),
+					online: snapshot.counts.online,
+					total: snapshot.counts.total,
+					players: summary.onlinePlayers,
+					tps: summary.averageTps.toFixed(2),
+					cpu: summary.averageCpu.toFixed(1),
+					ramUsed: fmtBytes(summary.totalRamUsedBytes),
+					ramMax: fmtBytes(summary.totalRamMaxBytes),
+				})}\n`,
 			),
 		);
 	},
@@ -104,8 +128,8 @@ command({
 
 command({
 	path: ["net", "players"],
-	desc: "Players connected to the network, with session times",
-	opts: [{ flag: "--server", desc: "only this backend", value: true, complete: instanceNames }],
+	desc: t("cli.net.players.desc"),
+	opts: [{ flag: "--server", desc: t("cli.net.optServer"), value: true, complete: instanceNames }],
 
 	handler: async (_args, opts) => {
 		const result = await luna.players(opts.server as string | undefined);
@@ -117,14 +141,14 @@ command({
 		const list = result.data;
 
 		if (!list.players.length) {
-			info("nobody is connected");
+			info(t("cli.net.players.empty"));
 
 			return;
 		}
 
 		const rows = list.players.map((player) => [
 			pc.bold(player.username),
-			player.server || pc.dim("(connecting)"),
+			player.server || pc.dim(t("cli.net.players.connecting")),
 			fmtDuration(player.sessionMillis),
 			`${player.pingMillis}ms`,
 			pc.dim(player.remoteAddress),
@@ -132,20 +156,31 @@ command({
 		]);
 
 		console.log();
-		printTable(rows, { head: ["player", "server", "session", "ping", "address", "uuid"] });
+		printTable(rows, {
+			head: [
+				t("cli.head.player"),
+				t("cli.head.server"),
+				t("cli.head.session"),
+				"ping",
+				t("cli.head.address"),
+				"uuid",
+			],
+		});
 
 		const byServer = Object.entries(list.byServer)
 			.map(([server, count]) => `${server} ${count}`)
 			.sort()
 			.join(", ");
 
-		console.log(pc.dim(`\n  ${list.onlineCount} online — ${byServer}\n`));
+		console.log(
+			pc.dim(`\n  ${t("cli.net.players.online", { count: list.onlineCount })} · ${byServer}\n`),
+		);
 	},
 });
 
 command({
 	path: ["net", "history"],
-	desc: "Recent join, leave and server-switch activity",
+	desc: t("cli.net.history.desc"),
 	args: [{ name: "limit" }],
 
 	handler: async (args) => {
@@ -159,7 +194,7 @@ command({
 		const activity = result.data.activity;
 
 		if (!activity.length) {
-			info("no activity recorded since the proxy started");
+			info(t("cli.net.history.empty"));
 
 			return;
 		}
@@ -169,10 +204,10 @@ command({
 
 			const what =
 				entry.type === "join"
-					? pc.green("joined")
+					? pc.green(t("cli.net.history.joined"))
 					: entry.type === "leave"
-						? pc.red("left")
-						: pc.cyan("switched");
+						? pc.red(t("cli.net.history.left"))
+						: pc.cyan(t("cli.net.history.switched"));
 
 			const where =
 				entry.type === "switch"
@@ -189,14 +224,22 @@ command({
 		});
 
 		console.log();
-		printTable(rows, { head: ["time", "event", "player", "server", "session"] });
+		printTable(rows, {
+			head: [
+				t("cli.head.time"),
+				t("cli.head.event"),
+				t("cli.head.player"),
+				t("cli.head.server"),
+				t("cli.head.session"),
+			],
+		});
 		console.log();
 	},
 });
 
 command({
 	path: ["net", "cmd"],
-	desc: "Run a command on the proxy console and print its reply",
+	desc: t("cli.net.cmd.desc"),
 	args: [{ name: "command", required: true, variadic: true }],
 
 	handler: async (args) => {
@@ -211,22 +254,24 @@ command({
 		}
 
 		if (!result.data.output.length) {
-			info(result.data.handled ? "command ran with no output" : "no such command on the proxy");
+			info(
+				result.data.handled ? t("cli.net.cmd.noOutput") : t("cli.net.cmd.noSuchCommand"),
+			);
 
 			return;
 		}
 
 		if (!result.data.handled) {
-			warn("the proxy did not recognise that command");
+			warn(t("cli.net.cmd.notRecognised"));
 		}
 	},
 });
 
 command({
 	path: ["net", "say"],
-	desc: "Broadcast a MiniMessage-formatted message to players",
+	desc: t("cli.net.say.desc"),
 	args: [{ name: "message", required: true, variadic: true }],
-	opts: [{ flag: "--server", desc: "only this backend", value: true, complete: instanceNames }],
+	opts: [{ flag: "--server", desc: t("cli.net.optServer"), value: true, complete: instanceNames }],
 
 	handler: async (args, opts) => {
 		const result = await luna.broadcast(args.join(" "), opts.server as string | undefined);
@@ -236,17 +281,19 @@ command({
 		}
 
 		ok(
-			`delivered to ${result.data.reached} player(s)` +
-				(result.data.server ? ` on ${result.data.server}` : ""),
+			t("cli.net.say.delivered", { count: result.data.reached }) +
+				(result.data.server
+					? ` ${t("cli.net.say.onServer", { server: result.data.server })}`
+					: ""),
 		);
 	},
 });
 
 command({
 	path: ["net", "kick"],
-	desc: "Disconnect a player from the network",
+	desc: t("cli.net.kick.desc"),
 	args: [{ name: "player", required: true }],
-	opts: [{ flag: "--reason", desc: "message shown to the player", value: true }],
+	opts: [{ flag: "--reason", desc: t("cli.net.kick.optReason"), value: true }],
 
 	handler: async (args, opts) => {
 		const result = await luna.kick(args[0]!, (opts.reason as string) ?? "");
@@ -255,13 +302,13 @@ command({
 			bailUnavailable(result.error);
 		}
 
-		ok(`kicked ${pc.bold(result.data.username)}`);
+		ok(t("cli.net.kick.done", { player: pc.bold(result.data.username) }));
 	},
 });
 
 command({
 	path: ["net", "move"],
-	desc: "Move a player to another backend",
+	desc: t("cli.net.move.desc"),
 	args: [
 		{ name: "player", required: true },
 		{ name: "server", required: true, complete: instanceNames },
@@ -278,13 +325,21 @@ command({
 
 		if (!transfer.successful) {
 			warn(
-				`${transfer.username} was not moved to ${transfer.server}: ` +
-					`${transfer.status}${transfer.reason ? ` — ${transfer.reason}` : ""}`,
+				t("cli.net.move.failed", {
+					player: transfer.username,
+					server: transfer.server,
+					status: `${transfer.status}${transfer.reason ? ` (${transfer.reason})` : ""}`,
+				}),
 			);
 
 			return;
 		}
 
-		ok(`moved ${pc.bold(transfer.username)} to ${pc.bold(transfer.server)}`);
+		ok(
+			t("cli.net.move.done", {
+				player: pc.bold(transfer.username),
+				server: pc.bold(transfer.server),
+			}),
+		);
 	},
 });

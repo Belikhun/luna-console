@@ -2,7 +2,7 @@
  * How Minecraft's own assets describe an item, in the shape both sides use.
  *
  * The daemon builds this out of the client jar and the browser draws from it,
- * so the two must agree on every field — hence one definition rather than a
+ * so the two must agree on every field; hence one definition rather than a
  * copy on each side.
  */
 
@@ -12,11 +12,11 @@ export type ModelDirection = "down" | "up" | "north" | "south" | "west" | "east"
 export interface ModelFace {
 	/** A `#key` into the item's texture map, or an already-resolved path */
 	texture: string;
-	/** [u1, v1, u2, v2] in the texture's own 0–16 space; derived from the box when absent */
+	/** [u1, v1, u2, v2] in the texture's own 0-16 space; derived from the box when absent */
 	uv?: [number, number, number, number];
 	/** 0/90/180/270, rotating the texture within the face */
 	rotation?: number;
-	/** The face takes the item's tint — the grass on a grass block, not its dirt */
+	/** The face takes the item's tint; the grass on a grass block, not its dirt */
 	tinted?: boolean;
 }
 
@@ -27,7 +27,7 @@ export interface ModelElementRotation {
 	rescale?: boolean;
 }
 
-/** One box of a model, in Minecraft's 0–16 model space. */
+/** One box of a model, in Minecraft's 0-16 model space. */
 export interface ModelElement {
 	from: [number, number, number];
 	to: [number, number, number];
@@ -53,7 +53,7 @@ export interface GuiTransform {
  */
 export interface ModelGeometry {
 	elements: ModelElement[];
-	/** `display.gui` — a stair's is not a cube's, which is why it is carried */
+	/** `display.gui`; a stair's is not a cube's, which is why it is carried */
 	gui: GuiTransform;
 	/** `front` means the client lights the model flat instead of as a solid */
 	guiLight: "front" | "side";
@@ -69,7 +69,7 @@ export interface ItemRender {
 	/** model: `#key` → texture path, for the faces to resolve against */
 	textures?: Record<string, string>;
 	/**
-	 * Multiply colour for the tinted faces — the grass on a grass block, the green
+	 * Multiply colour for the tinted faces; the grass on a grass block, the green
 	 * of leaves. Minecraft computes these from the biome at render time; a preview
 	 * only needs the plains value, and without one the texture reads as grey.
 	 */
@@ -81,7 +81,7 @@ export interface ItemRender {
  *
  * A page is a grid of cells, one row of `rows` per grid row and one character
  * per cell. The cell is scaled to `height` game pixels and hung so its top edge
- * sits `ascent` pixels above the baseline — `accented` is a taller sheet than
+ * sits `ascent` pixels above the baseline; `accented` is a taller sheet than
  * `ascii` and lines up with it only because of those two numbers.
  *
  * How wide each glyph actually is is not stated anywhere: the client measures it
@@ -117,7 +117,7 @@ export interface FontUnihexOverride {
  * Unifont is not a sheet but a hex dump: one line per codepoint, sixteen rows of
  * bits, eight or sixteen columns wide. There are a hundred and fourteen thousand
  * of them and the file is nearly eight megabytes, so the browser is never handed
- * the bundle — it asks for the handful of codepoints a preview actually needs.
+ * the bundle; it asks for the handful of codepoints a preview actually needs.
  *
  * The glyphs are drawn at half size: a sixteen-row bitmap becomes eight game
  * pixels tall, which is what puts unifont's own baseline (its fourteenth row) on
@@ -154,7 +154,7 @@ export interface McAssetRegistry {
 	version: string;
 	builtAt: string;
 	items: Record<string, ItemRender>;
-	/** Every distinct geometry, keyed by content — items reference these */
+	/** Every distinct geometry, keyed by content; items reference these */
 	geometries: Record<string, ModelGeometry>;
 	/** The game's own font, so previewed text is set in it rather than near it */
 	font?: FontAtlas;

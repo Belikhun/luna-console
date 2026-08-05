@@ -10,7 +10,7 @@ export type ConfFormat = "properties" | "hocon" | "yaml" | "toml";
 /**
  * Horizontal whitespace only. Plain `\s` matches newlines, so padding written
  * as `\s*` around a separator happily runs off the end of an empty assignment
- * (`server-ip=`) and swallows the line below it — which a get would then report
+ * (`server-ip=`) and swallows the line below it; which a get would then report
  * as the value and a set would overwrite, merging two lines into one.
  */
 const HSPACE = "[^\\S\\r\\n]*";
@@ -42,7 +42,7 @@ function keyRegex(format: ConfFormat, key: string): RegExp {
 
 /**
  * Undo Java's properties escaping. Its writer escapes the separator characters
- * wherever they appear, so Paper writes `level-type=minecraft\:flat` — read back
+ * wherever they appear, so Paper writes `level-type=minecraft\:flat`; read back
  * verbatim that value matches no known level type. Everything after the first
  * separator is literal to a properties reader, so unescaping is all that is
  * needed to get the value the server actually uses.
@@ -136,7 +136,7 @@ export async function setConfValue(
  * Set a properties key, appending the line when the file has no such key yet.
  *
  * Paper only writes out the keys it knows about, and a freshly created instance
- * carries the minimal template until its first boot — so setting e.g.
+ * carries the minimal template until its first boot; so setting e.g.
  * `difficulty` before that has to add the line rather than fail. Appending is
  * safe for properties files only; the other formats are sectioned, where a new
  * line at the end would land in the wrong block.

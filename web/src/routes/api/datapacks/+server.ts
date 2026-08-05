@@ -12,7 +12,7 @@ export async function GET() {
 	const lock = await loadPacksLock();
 	const rows = await listDataPacks(cfg, lock, (await loadLock()).groups);
 
-	// the provider's web page is built here — the browser has no URL scheme
+	// the provider's web page is built here; the browser has no URL scheme
 	const packs = rows.map((row) => ({
 		...row,
 		url: row.entry.remote ? projectUrl(row.entry.remote, 'datapack') : null
@@ -24,7 +24,7 @@ export async function GET() {
 /**
  * POST { name, data, targets? } → upload a pack zip into the pool (new, or
  * replacing an existing pack's file) and deploy it to its targets. `data` is
- * the zip base64-encoded — JSON rather than multipart for the same CSRF
+ * the zip base64-encoded; JSON rather than multipart for the same CSRF
  * reason as the resource pack upload route.
  */
 export async function POST({ request }) {

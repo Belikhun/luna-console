@@ -15,7 +15,7 @@ import type { ProviderId } from '$core/types';
  *
  * GET grades what the zip could be and writes nothing, so the dialog can show
  * the evidence before the operator commits; POST records the mapping; DELETE
- * drops it. The three-step shape is the point — a mapping guessed silently is
+ * drops it. The three-step shape is the point; a mapping guessed silently is
  * how a later "update" turns into a downgrade.
  */
 

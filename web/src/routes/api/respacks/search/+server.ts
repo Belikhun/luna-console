@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { searchProvider } from '$core/services/providers';
 import type { ProviderId } from '$core/types';
 
-/** GET ?q=&provider= — resource pack search for the install dialog. */
+/** GET ?q=&provider=; resource pack search for the install dialog. */
 export async function GET({ url }) {
 	const query = url.searchParams.get('q');
 

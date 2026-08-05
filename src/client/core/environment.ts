@@ -43,7 +43,7 @@ export const resolveVars = call("environment.resolveVars", { cfg: 0 }) as typeof
  *
  * Deliberately **not** a single op: the layering is pure math over a store that
  * is byte-identical on every machine, so only the builtins need the instance's
- * own daemon — and `environment.builtinVars` has existed since the first
+ * own daemon; and `environment.builtinVars` has existed since the first
  * release. Doing it this way keeps the screen working against a follower that
  * has not been upgraded yet, which a newer op would not.
  */
@@ -63,7 +63,7 @@ export const revealAndRecord = call("environment.reveal") as typeof core.revealA
 
 /**
  * Rewrite one instance's `.luna-env` from the store without restarting it. The
- * JVM only reads the file at startup, so this is a staging step — what it buys
+ * JVM only reads the file at startup, so this is a staging step; what it buys
  * is a wrapper loop that picks the new values up on its next crash-restart, and
  * a file the operator can inspect.
  */

@@ -1,3 +1,5 @@
+import { t } from "../../shared/i18n";
+
 /**
  * Shared file helpers for the provider clients: verified downloads and
  * hashing. Every provider publishes a different hash (Modrinth sha512, Hangar
@@ -19,7 +21,7 @@ const HASH_ALGOS = ["sha512", "sha256", "sha1"] as const;
 
 /**
  * Download a file to `dest`, verifying every hash the provider published.
- * Returns the sha512 of what was written — computed locally, so callers can
+ * Returns the sha512 of what was written; computed locally, so callers can
  * record it even when the provider never published one.
  */
 export async function download(
@@ -30,7 +32,7 @@ export async function download(
 	const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
 
 	if (!res.ok) {
-		throw new Error(`download failed: HTTP ${res.status} for ${url}`);
+		throw new Error(t("core.services.downloadFailed", { status: res.status, url }));
 	}
 
 	const buf = new Uint8Array(await res.arrayBuffer());
@@ -47,7 +49,7 @@ export async function download(
 		hasher.update(buf);
 
 		if (hasher.digest("hex") !== want.toLowerCase()) {
-			throw new Error(`${algo} mismatch for ${url}`);
+			throw new Error(t("core.services.hashMismatch", { algo, url }));
 		}
 	}
 
@@ -74,7 +76,7 @@ export async function sha512File(path: string): Promise<string> {
  * Every hash a provider might have published for this file, computed in one
  * read. Identifying a local file against a project means comparing against
  * whichever algorithm its provider happens to publish, and the file is on disk
- * either way — so all three are cheaper than guessing which one is needed.
+ * either way; so all three are cheaper than guessing which one is needed.
  */
 export async function hashesOfFile(path: string): Promise<Required<KnownHashes>> {
 	const buf = new Uint8Array(await Bun.file(path).arrayBuffer());

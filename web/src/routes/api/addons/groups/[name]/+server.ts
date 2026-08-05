@@ -200,7 +200,7 @@ export async function PATCH({ params, request }) {
 /**
  * POST { action: "sync", restart? } → push the group's current membership to
  * every instance using it (jars, pack rules, world data packs), then apply the
- * restart choice — the "update existing instances to the group's state" tool.
+ * restart choice; the "update existing instances to the group's state" tool.
  */
 export async function POST({ params, request }) {
 	const body = await request.json();
@@ -255,7 +255,7 @@ export async function DELETE({ params }) {
 
 	await saveLock(lock);
 
-	// the group's resource pack rules named its instances — take them back out
+	// the group's resource pack rules named its instances; take them back out
 	const packsLock = await loadPacksLock();
 
 	await applyAddonGroups(cfg, packsLock, lock.groups);

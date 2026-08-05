@@ -85,7 +85,7 @@
 				const { completions } = await post('/shell/complete', { words: typed });
 				const cur = typed[typed.length - 1] ?? '';
 
-				// a flag is never suggested inline — it would fight with typing a value
+				// a flag is never suggested inline; it would fight with typing a value
 				const hit = completions.find(
 					(candidate: string) =>
 						candidate.startsWith(cur) && candidate !== cur && !candidate.startsWith('--')
@@ -169,7 +169,7 @@
 			writeCandidates(hits);
 			redraw();
 		} catch {
-			// the completion endpoint is unreachable — leave the line untouched
+			// the completion endpoint is unreachable; leave the line untouched
 		}
 	}
 
@@ -201,7 +201,7 @@
 		}
 
 		if (argv[0] === 'exit') {
-			term.writeln('\x1b[90m(this shell has no exit — close the drawer instead)\x1b[0m');
+			term.writeln('\x1b[90m(this shell has no exit; close the drawer instead)\x1b[0m');
 			prompt();
 
 			return;
@@ -254,7 +254,7 @@
 
 	/**
 	 * Index of the last byte of the escape sequence starting at `start`. CSI
-	 * (`ESC [`) and SS3 (`ESC O`) run until a byte in `@`–`~`; anything else is a
+	 * (`ESC [`) and SS3 (`ESC O`) run until a byte in `@`-`~`; anything else is a
 	 * two-byte sequence.
 	 */
 	function endOfEscape(data: string, start: number): number {
@@ -301,7 +301,7 @@
 
 			if (ch === '\x1b') {
 				// Arrows/Home/End arrive here as full escape sequences *and* through
-				// onKey. Swallow the whole sequence — letting its bytes fall through
+				// onKey. Swallow the whole sequence; letting its bytes fall through
 				// to the printable branch is what typed "[A" into the line.
 				i = endOfEscape(data, i);
 
@@ -525,7 +525,7 @@
 
 		observer.observe(host);
 
-		term.writeln('\x1b[1m\x1b[38;5;135mluna\x1b[0m cluster shell — the CLI, in your browser.');
+		term.writeln('\x1b[1m\x1b[38;5;135mluna\x1b[0m cluster shell; the CLI, in your browser.');
 		term.writeln(
 			'\x1b[90mTab to complete · ghost text = suggestion (→ to accept) · ↑↓ history · ' +
 				'Ctrl+C cancel · try "help"\x1b[0m'

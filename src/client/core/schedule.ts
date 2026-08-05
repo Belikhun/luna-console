@@ -1,7 +1,7 @@
 /**
  * Bridge mirror of core/schedule: trigger math and store edits are pure; the
  * store itself is a state file, read and written through the daemon. The
- * runner (`runDue`) is deliberately absent — only the daemon executes.
+ * runner (`runDue`) is deliberately absent; only the daemon executes.
  */
 
 import type * as core from "../../core/schedule";

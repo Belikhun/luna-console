@@ -1,11 +1,12 @@
 /**
- * The daemon's metrics sampler — ported from the web console's server bridge,
+ * The daemon's metrics sampler; ported from the web console's server bridge,
  * because the daemon is the long-lived 24/7 process now. Holds per-instance
  * metric history, the UI's transient states (starting/stopping), and the latest
  * LunaCore telemetry; everything the instances table and detail pages render.
  */
 
 import { readFile } from "node:fs/promises";
+import { t } from "../shared/i18n";
 
 import { instanceDir, loadCluster, managedInstances } from "../core/config";
 import { instanceAddress } from "../core/ports";
@@ -66,7 +67,7 @@ export interface RemoteSample {
 
 /**
  * Process metrics of an instance owned by another daemon, from that daemon's
- * latest heartbeat — installed by the hub, because only it holds the links.
+ * latest heartbeat; installed by the hub, because only it holds the links.
  * Without this a follower instance's CPU and memory columns are permanently
  * blank: this daemon never walks /proc for a process on another machine.
  */
@@ -99,7 +100,7 @@ function rt(name: string): InstanceRuntime {
  */
 async function readCpuMem(pid: number): Promise<{ total: number; rssMb: number } | undefined> {
 	try {
-		// the comm field can contain spaces and parens — everything after the last
+		// the comm field can contain spaces and parens; everything after the last
 		// ')' is the fixed-layout part, where utime/stime are fields 12 and 13
 		const stat = await readFile(`/proc/${pid}/stat`, "utf8");
 		const parts = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
@@ -141,7 +142,7 @@ function settleTransition(name: string, coreState: CoreStatus["state"]): void {
 
 /**
  * LunaCore's view of every backend, keyed by name. Returns an empty map whenever
- * the plugin or the proxy is unavailable — the sampler's own /proc and ping data is
+ * the plugin or the proxy is unavailable; the sampler's own /proc and ping data is
  * the baseline, and Luna telemetry only enriches it.
  */
 async function fetchLunaBackends(): Promise<Map<string, BackendCard>> {
@@ -186,7 +187,7 @@ export function lunaCardsFor(names: string[]): BackendCard[] {
 /**
  * Install LunaCore telemetry pushed down by the primary (follower side).
  *
- * Only the primary can ask LunaCore anything — the plugin runs on the proxy, on
+ * Only the primary can ask LunaCore anything; the plugin runs on the proxy, on
  * the primary's host, and answers on a secret this machine has no copy of. A
  * follower left to `fetchLunaBackends` therefore samples TPS and heap as
  * permanently absent, which is exactly the two series its instances' monitoring
@@ -203,7 +204,7 @@ async function sampleOnce(): Promise<void> {
 	try {
 		const cfg = await loadCluster();
 
-		// only this daemon's own instances are probed — a follower's screens live
+		// only this daemon's own instances are probed; a follower's screens live
 		// on the follower, and its own sampler keeps their history
 		const insts = managedInstances(cfg);
 		const ownedNames = Object.keys(insts).filter((name) => ownsInstance(insts[name]!));
@@ -212,7 +213,7 @@ async function sampleOnce(): Promise<void> {
 			Promise.all(ownedNames.map((name) => instances.getStatus(cfg, name))),
 			// a follower has no proxy to ask; its cards arrive on the ping instead,
 			// and must be read *after* this await rather than snapshotted before
-			// it — a ping landing mid-sample would otherwise have its telemetry
+			// it; a ping landing mid-sample would otherwise have its telemetry
 			// written straight back out, permanently once the two 5 s timers phase-lock
 			isPrimary() ? fetchLunaBackends().then(installCards) : Promise.resolve(),
 		]);
@@ -406,7 +407,7 @@ function agoText(epochMs: number): string {
  *
  * This is the check the other three cannot make: a backend can hold its screen
  * session, own its port and answer server-list pings while LunaCore has stopped
- * publishing — a broken plugin config, a dead heartbeat thread, a wrong forwarding
+ * publishing; a broken plugin config, a dead heartbeat thread, a wrong forwarding
  * secret. In all of those the server looks healthy from the outside and is invisible
  * to the network.
  *
@@ -425,7 +426,7 @@ function heartbeatCheck(st: CoreStatus): StatusCheck {
 		return {
 			name: "LunaCore API",
 			ok: true,
-			detail: `serving telemetry — ${reporting} backend(s) reporting`,
+			detail: t("daemon.sampler.servingTelemetry", { count: reporting }),
 		};
 	}
 
@@ -437,7 +438,7 @@ function heartbeatCheck(st: CoreStatus): StatusCheck {
 
 	if (!backend.online) {
 		// A booting server has not loaded its plugins yet, so a missing heartbeat is
-		// expected rather than a fault — only a server that is up and quiet is failing.
+		// expected rather than a fault; only a server that is up and quiet is failing.
 		if (st.state !== "running") {
 			return { name, ok: undefined, detail: "waiting for the first heartbeat" };
 		}
@@ -446,8 +447,8 @@ function heartbeatCheck(st: CoreStatus): StatusCheck {
 			name,
 			ok: false,
 			detail: backend.lastHeartbeatEpochMillis
-				? `no heartbeat since ${agoText(backend.lastHeartbeatEpochMillis)} — the plugin has stopped reporting`
-				: "never reported to the proxy — check the LunaCore config",
+				? t("daemon.sampler.noHeartbeatSince", { ago: agoText(backend.lastHeartbeatEpochMillis) })
+				: t("daemon.sampler.neverReported"),
 		};
 	}
 
@@ -503,7 +504,7 @@ export function statusChecks(st: CoreStatus): StatusCheck[] {
 			name: "Server ping",
 			ok: st.players !== undefined,
 			detail: st.players
-				? `responding — ${st.players.online}/${st.players.max} players`
+				? t("daemon.sampler.responding", { online: st.players.online, max: st.players.max })
 				: "not answering server-list pings yet",
 		},
 		heartbeatCheck(st),
@@ -536,7 +537,7 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 		mcVersion: st.inst.mcVersion ?? null,
 		port: st.inst.port,
 		// where this instance actually answers: loopback on the primary's own
-		// machine, the owning follower's LAN host otherwise — never a bare
+		// machine, the owning follower's LAN host otherwise; never a bare
 		// 127.0.0.1 the console then shows for another machine's server
 		address: instanceAddress(cfg, st.inst),
 		memory: st.inst.memory,
@@ -595,7 +596,7 @@ export async function listStatuses(): Promise<Record<string, unknown>> {
 	// ownership-aware: follower-owned instances are probed on their own daemon
 	const statuses = await getAllStatusesRouted(cfg);
 
-	// External servers run on another machine, so luna can only TCP-probe them —
+	// External servers run on another machine, so luna can only TCP-probe them -
 	// LunaCore's heartbeat is the only real telemetry the console has for these.
 	const externals = Object.entries(cfg.instances)
 		.filter(([, inst]) => inst.external)

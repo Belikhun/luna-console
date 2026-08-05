@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -31,14 +32,14 @@
 	 * who actually has it (players + traffic).
 	 *
 	 * Each section comes from a different place and any of them can be
-	 * unavailable — a stopped proxy, an unreadable access log, an older
+	 * unavailable; a stopped proxy, an unreadable access log, an older
 	 * LunaPackLoader. Unavailable is rendered as unavailable, never as zero.
 	 */
 
 	/** How many characters of a digest identify it on screen. */
 	const HASH_CHARS = 16;
 
-	/** ms — under this, "3 seconds ago" is noise and the clocks may disagree anyway */
+	/** ms; under this, "3 seconds ago" is noise and the clocks may disagree anyway */
 	const JUST_NOW_MS = 5_000;
 
 	const key = $derived(page.params.key);
@@ -50,7 +51,7 @@
 	let busy = $state('');
 
 	/**
-	 * Reachability is the daemon's stored answer on every load — measuring it is
+	 * Reachability is the daemon's stored answer on every load; measuring it is
 	 * an outbound request to the public pack host, which is not something a page
 	 * tick should trigger. `retest` asks for a fresh measurement; the daemon also
 	 * re-measures on its own when the proxy logs a failed load.
@@ -66,7 +67,7 @@
 			detail = res.detail;
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error(`Could not load ${key}`, { detail: (err as Error).message });
+			Notify.error(t('web.common.loadFailedNamed', { name: key ?? '' }), { detail: (err as Error).message });
 		}
 
 		loading = false;
@@ -78,7 +79,7 @@
 
 	/** Re-measure the pack URL now, on the operator's say-so. */
 	const retest = () =>
-		run('retest', `Testing ${detail?.url ?? key}…`, async () => {
+		run('retest', t('web.packDetail.testing', { url: detail?.url ?? key }), async () => {
 			await load(true);
 
 			const reach = detail.reachability;
@@ -89,7 +90,7 @@
 
 			return reach.ok
 				? `HTTP ${reach.status} in ${reach.elapsedMs}ms` +
-						(reach.sizeMatches === false ? ' — but the served size differs from the zip on disk' : '')
+						(reach.sizeMatches === false ? '; but the served size differs from the zip on disk' : '')
 				: (reach.problem ?? `HTTP ${reach.status}`);
 		});
 
@@ -98,7 +99,7 @@
 	/** The pack's headline state, as the header badge. */
 	const stateBadge = $derived.by(() => {
 		if (!pack) {
-			return { state: 'unknown', label: 'Loading', detail: undefined };
+			return { state: 'unknown', label: t('web.packDetail.loading'), detail: undefined };
 		}
 
 		// a plugin's runtime registration is a registration: the pack is served,
@@ -108,38 +109,38 @@
 				state: pack.enabled ? 'ok' : 'stopped',
 				label: pack.enabled ? 'Enabled' : 'Disabled',
 				detail:
-					"registered by a plugin at runtime — its priority, rules and enablement are the plugin's"
+					"registered by a plugin at runtime; its priority, rules and enablement are the plugin's"
 			};
 		}
 
 		if (pack.registration === 'unknown') {
 			return {
 				state: 'unknown',
-				label: 'Registration unknown',
+				label: t('web.packDetail.registrationUnknown'),
 				detail:
-					'no definition on disk, and the proxy is not answering — a plugin may register it at runtime'
+					'no definition on disk, and the proxy is not answering; a plugin may register it at runtime'
 			};
 		}
 
 		if (!pack.defFile) {
 			return {
 				state: 'warning',
-				label: 'Unregistered',
-				detail: 'the zip exists but no definition registers it — configure it to serve it'
+				label: t('web.packDetail.unregistered'),
+				detail: t('web.packDetail.theZipExistsButNo')
 			};
 		}
 
 		if (!pack.present) {
 			return {
 				state: 'failed',
-				label: 'File missing',
-				detail: `the definition points at ${pack.filename}, which does not exist`
+				label: t('web.packDetail.fileMissing'),
+				detail: t('web.packDetail.missingFileDetail', { file: pack.filename })
 			};
 		}
 
 		return pack.enabled
-			? { state: 'ok', label: 'Enabled', detail: undefined }
-			: { state: 'stopped', label: 'Disabled', detail: 'the proxy does not offer this pack' };
+			? { state: 'ok', label: t('web.packDetail.enabled'), detail: undefined }
+			: { state: 'stopped', label: t('web.packDetail.disabled'), detail: t('web.packDetail.theProxyDoesNotOffer') };
 	});
 
 	/** Run one pack operation behind a loading flash, then reload the view. */
@@ -157,7 +158,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: `${pending.replace(/…$/, '')} failed`,
+				message: t('web.catalog.opFailed', { operation: pending.replace(/…$/, '') }),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -171,11 +172,11 @@
 		const res = await post('/respacks/reload');
 
 		return res.sent
-			? 'Reload sent to the proxy — the change is live.'
+			? 'Reload sent to the proxy; the change is live.'
 			: 'The proxy is not running; the change applies on its next boot.';
 	}
 
-	const doReload = () => run('reload', 'Reloading packs on the proxy…', sendReload);
+	const doReload = () => run('reload', t('web.packs.reloading'), sendReload);
 
 	/**
 	 * Ask Modrinth whether this pack has a newer version. A named pack is checked
@@ -185,7 +186,7 @@
 	async function checkUpdate(): Promise<void> {
 		busy = 'update';
 
-		const note = Notify.loading(`Checking Modrinth for ${key} updates…`);
+		const note = Notify.loading(t('web.packDetail.checkingUpdates', { key: key ?? '' }));
 
 		try {
 			const res = await post('/respacks/update', { names: [key] });
@@ -202,10 +203,10 @@
 			} else {
 				note.set({
 					level: 'info',
-					message: `${key}: ${update.from ?? '?'} → ${update.to} available`,
-					detail: `Published ${fmtDateTime(Date.parse(update.publishedAt))}.`,
+					message: t('web.packDetail.updateAvailable', { key: key ?? '', from: update.from ?? '?', to: update.to }),
+					detail: t('web.packDetail.published', { date: fmtDateTime(Date.parse(update.publishedAt)) }),
 					closeable: true,
-					actions: [{ label: 'Download it', run: () => void applyUpdate(update) }]
+					actions: [{ label: t('web.packDetail.downloadIt'), run: () => void applyUpdate(update) }]
 				});
 			}
 		} catch (err) {
@@ -228,7 +229,7 @@
 			const res = await post('/respacks/update', { names: [key], apply: true });
 
 			// the zip changed under the same URL, so the stored reachability answer
-			// describes a file that is no longer there — measure the new one
+			// describes a file that is no longer there; measure the new one
 			await load(true);
 
 			return `${key} updated (${res.applied.length} file(s)). ${await sendReload()}`;
@@ -259,31 +260,31 @@
 
 		return [
 			{
-				label: 'Configure pack',
+				label: t('web.packDetail.configurePack'),
 				icon: 'pen',
 				action: () => goto(`/packs/${encodeURIComponent(pack.key)}/configure`)
 			},
 			{
-				label: 'Check for update',
+				label: t('web.packDetail.checkForUpdate'),
 				icon: 'download',
 				disabled: !pack.remote || !!busy,
 				hint: !pack.remote ? 'not identified with a provider' : undefined,
 				action: checkUpdate
 			},
 			{
-				label: 'Test reachability',
+				label: t('web.packDetail.testReachability'),
 				icon: 'rotate',
 				disabled: !detail.url || !pack.present || !!busy,
 				hint: !detail.url || !pack.present ? 'there is no URL to test' : undefined,
 				action: retest
 			},
 			{
-				label: 'Reload on proxy',
+				label: t('web.packDetail.reloadOnProxy'),
 				icon: 'rotate',
 				action: doReload
 			},
 			{
-				label: 'Manage addon groups',
+				label: t('web.packDetail.manageAddonGroups'),
 				icon: 'layerGroup',
 				action: () => goto('/addons/groups')
 			},
@@ -298,7 +299,7 @@
 			},
 			{ separator: true },
 			{
-				label: 'All resource packs',
+				label: t('web.packDetail.allResourcePacks'),
 				icon: 'image',
 				action: () => goto('/packs')
 			}
@@ -315,37 +316,37 @@
 		const manifest = detail.manifest;
 
 		return [
-			{ label: 'Display name', value: pack.name },
-			{ label: 'Registry key', value: pack.key, style: 'mono' },
-			{ label: 'Zip file', value: pack.filename, copyable: true, style: 'mono' },
-			{ label: 'Size on disk', value: pack.present ? fmtBytes(pack.sizeBytes) : null },
+			{ label: t('web.packDetail.displayName'), value: pack.name },
+			{ label: t('web.packDetail.registryKey'), value: pack.key, style: 'mono' },
+			{ label: t('web.packDetail.zipFile'), value: pack.filename, copyable: true, style: 'mono' },
+			{ label: t('web.packDetail.sizeOnDisk'), value: pack.present ? fmtBytes(pack.sizeBytes) : null },
 			{
-				label: 'Unpacked',
+				label: t('web.packDetail.unpacked'),
 				value: manifest.readable
 					? `${fmtBytes(manifest.uncompressedBytes)} in ${manifest.entries} file(s)`
 					: null
 			},
-			{ label: 'Pack format', value: manifest.packFormat ?? null },
-			{ label: 'Supported formats', value: manifest.supportedFormats ?? null },
-			{ label: 'Namespaces', value: manifest.namespaces.join(', ') || null },
-			{ label: 'Modified', value: detail.modifiedAt ? fmtDateTime(detail.modifiedAt) : null },
-			{ id: 'source', label: 'Source' },
-			{ label: 'Version', value: pack.versionNumber ?? null, style: 'mono' },
+			{ label: t('web.packDetail.packFormat'), value: manifest.packFormat ?? null },
+			{ label: t('web.packDetail.supportedFormats'), value: manifest.supportedFormats ?? null },
+			{ label: t('web.packDetail.namespaces'), value: manifest.namespaces.join(', ') || null },
+			{ label: t('web.packDetail.modified'), value: detail.modifiedAt ? fmtDateTime(detail.modifiedAt) : null },
+			{ id: 'source', label: t('web.packDetail.source') },
+			{ label: t('web.packDetail.version'), value: pack.versionNumber ?? null, style: 'mono' },
 			{
-				label: 'Auto-update',
+				label: t('web.packDetail.autoUpdate'),
 				value: pack.remote ? `${pack.autoUpdate ? 'on' : 'off'} (${pack.channel ?? 'release'})` : null
 			},
-			{ id: 'groups', label: 'Addon groups' },
+			{ id: 'groups', label: t('web.packDetail.addonGroups') },
 			{
-				label: 'sha512',
+				label: t('web.packDetail.sha512'),
 				value: detail.sha512 ? `${detail.sha512.slice(0, HASH_CHARS)}…` : null,
 				style: 'mono',
 				help: detail.modifiedSinceInstall
-					? 'differs from the version recorded in packs.lock.json — the file was replaced by hand'
+					? 'differs from the version recorded in packs.lock.json; the file was replaced by hand'
 					: undefined
 			},
 			{
-				label: 'Description',
+				label: t('web.packDetail.description'),
 				value: manifest.description ?? null,
 				colSpan: 2
 			}
@@ -362,22 +363,22 @@
 
 		return [
 			{
-				label: 'Base URL',
+				label: t('web.packDetail.baseUrl'),
 				value: serve.builtIn ? 'built-in (proxy-local HTTP server)' : serve.baseUrl || null,
 				style: 'mono'
 			},
-			{ id: 'url', label: 'Pack URL' },
-			{ id: 'reach', label: 'Reachable', colSpan: 2 },
-			{ id: 'failures', label: 'Failed loads' },
+			{ id: 'url', label: t('web.packDetail.packUrl') },
+			{ id: 'reach', label: t('web.packDetail.reachable'), colSpan: 2 },
+			{ id: 'failures', label: t('web.packDetail.failedLoads') },
 			{
-				label: 'Served from',
+				label: t('web.packDetail.servedFrom'),
 				value: serve.packPath || null,
 				style: 'mono',
 				help: serve.managedPath
 					? undefined
 					: 'the proxy reads packs from somewhere other than the directory luna manages'
 			},
-			{ id: 'resolved', label: 'On the proxy', colSpan: 2 },
+			{ id: 'resolved', label: t('web.packDetail.onTheProxy'), colSpan: 2 },
 			{ label:
 				'Proxy sha1',
 				value: resolved?.sha1 ? `${resolved.sha1.slice(0, HASH_CHARS)}…` : null,
@@ -385,14 +386,14 @@
 				colSpan: 2
 			},
 			{
-				label: 'Proxy size',
+				label: t('web.packDetail.proxySize'),
 				value: resolved?.sizeBytes ? fmtBytes(resolved.sizeBytes) : null
 			}
 		];
 	});
 
 	/**
-	 * The provider's own name, as the providers list spells it — "Modrinth", not
+	 * The provider's own name, as the providers list spells it; "Modrinth", not
 	 * the `modrinth` key the lockfile stores. A pack that came from nowhere in
 	 * particular says so in the same voice.
 	 */
@@ -433,12 +434,12 @@
 
 	// -- backends --------------------------------------------------------------------
 
-	const instanceCols: Column[] = [
-		{ id: 'name', label: 'Backend', sortable: true },
-		{ id: 'served', label: 'Gets the pack', width: 170 },
-		{ id: 'why', label: 'Why' },
-		{ id: 'state', label: 'Instance', width: 120 }
-	];
+	const instanceCols: Column[] = $derived([
+		{ id: 'name', label: t('web.packDetail.backend'), sortable: true },
+		{ id: 'served', label: t('web.packDetail.getsThePack'), width: 170 },
+		{ id: 'why', label: t('web.packDetail.why') },
+		{ id: 'state', label: t('web.packDetail.instance'), width: 120 }
+	]);
 
 	const servedCount = $derived(detail?.instances.filter((row: any) => row.served).length ?? 0);
 
@@ -451,12 +452,12 @@
 				label: row.matched ? `Stop serving on ${row.name}` : `Serve on ${row.name}`,
 				icon: row.matched ? 'toggleOff' : 'toggleOn',
 				disabled: !!busy || locked,
-				hint: locked ? 'an addon group grants this backend — edit the group instead' : undefined,
+				hint: locked ? 'an addon group grants this backend; edit the group instead' : undefined,
 				action: () => setInstance(row.name, !row.matched)
 			},
 			{ separator: true },
 			{
-				label: 'Open instance',
+				label: t('web.packDetail.openInstance'),
 				icon: 'server',
 				action: () => goto(`/instances/${row.name}?tab=respacks`)
 			}
@@ -465,14 +466,14 @@
 
 	// -- players ----------------------------------------------------------------------
 
-	const holderCols: Column[] = [
-		{ id: 'username', label: 'Player', sortable: true },
-		{ id: 'server', label: 'On backend', sortable: true },
-		{ id: 'state', label: 'This pack', width: 150 },
-		{ id: 'failure', label: 'Last failure' }
-	];
+	const holderCols: Column[] = $derived([
+		{ id: 'username', label: t('web.packDetail.player'), sortable: true },
+		{ id: 'server', label: t('web.packDetail.onBackend'), sortable: true },
+		{ id: 'state', label: t('web.packDetail.thisPack'), width: 150 },
+		{ id: 'failure', label: t('web.packDetail.lastFailure') }
+	]);
 
-	/** Holders first — the answer to "who has it" should not need scrolling. */
+	/** Holders first; the answer to "who has it" should not need scrolling. */
 	const holderRows = $derived.by(() => {
 		const players = detail?.holders.players ?? [];
 
@@ -485,13 +486,13 @@
 
 	// -- traffic ------------------------------------------------------------------------
 
-	const trafficCols: Column[] = [
-		{ id: 'at', label: 'When', width: 190 },
-		{ id: 'ip', label: 'Client', width: 150 },
-		{ id: 'status', label: 'Status', width: 90 },
-		{ id: 'bytes', label: 'Sent', width: 110, align: 'right' },
-		{ id: 'ua', label: 'User agent' }
-	];
+	const trafficCols: Column[] = $derived([
+		{ id: 'at', label: t('web.packDetail.when'), width: 190 },
+		{ id: 'ip', label: t('web.packDetail.client'), width: 150 },
+		{ id: 'status', label: t('web.packDetail.status'), width: 90 },
+		{ id: 'bytes', label: t('web.packDetail.sent'), width: 110, align: 'right' },
+		{ id: 'ua', label: t('web.packDetail.userAgent') }
+	]);
 
 	/**
 	 * Newest first: the recent list is read from the top. The rows carry an
@@ -513,7 +514,7 @@
 	);
 
 	const tabs = $derived([
-		{ id: 'overview', label: 'Overview' },
+		{ id: 'overview', label: t('web.packDetail.overview') },
 		{ id: 'backends', label: `Backends (${detail?.instances.length ?? 0})` },
 		{
 			id: 'players',
@@ -531,10 +532,10 @@
 {#if detail}
 	<PageHeader title={pack.key} info>
 		{#snippet extra()}
-			<span class="crumb dim">resource pack on <a href="/packs">the proxy</a></span>
+			<span class="crumb dim">{t('web.packDetail.resourcePackOn')} <a href="/packs">{t('web.packDetail.theProxy')}</a></span>
 			<StatusBadge state={stateBadge.state} label={stateBadge.label} detail={stateBadge.detail} />
 			{#if pack.required}
-				<StatusBadge state="warning" label="Required" detail="players cannot decline this pack" />
+				<StatusBadge state="warning" label={t('web.packDetail.required')} detail="players cannot decline this pack" />
 			{/if}
 		{/snippet}
 		{#snippet actions()}
@@ -544,9 +545,9 @@
 				{loading}
 				storageKey="respack-detail"
 			/>
-			<Dropdown label="Actions" menu={packActions} />
+			<Dropdown label={t('web.packDetail.actions')} menu={packActions} />
 			<Btn icon="rotate" loading={busy === 'reload'} disabled={!!busy} onclick={doReload}>
-				Reload on proxy
+				{t('web.packDetail.reloadOnProxy')}
 			</Btn>
 			<Btn
 				variant="primary"
@@ -559,17 +560,17 @@
 	</PageHeader>
 
 	<OverviewBar>
-		<OverviewCell label="Backends served">
+		<OverviewCell label={t('web.packDetail.backendsServed')}>
 			{servedCount} of {detail.instances.length}
 			<span class="dim">· priority {pack.priority}</span>
 		</OverviewCell>
-		<OverviewCell label="Size">
+		<OverviewCell label={t('web.packDetail.size')}>
 			{pack.present ? fmtBytes(pack.sizeBytes) : '—'}
 			{#if detail.manifest.readable}
 				<span class="dim">· {detail.manifest.entries} files</span>
 			{/if}
 		</OverviewCell>
-		<OverviewCell label="Reachable">
+		<OverviewCell label={t('web.packDetail.reachable')}>
 			{#if detail.reachability.ok}
 				<StatusBadge
 					state="ok"
@@ -585,23 +586,23 @@
 					detail={detail.reachability.problem}
 				/>
 			{:else}
-				<StatusBadge state="unknown" label="Not checked" detail={detail.reachability.problem} />
+				<StatusBadge state="unknown" label={t('web.packDetail.notChecked')} detail={detail.reachability.problem} />
 			{/if}
 		</OverviewCell>
-		<OverviewCell label="Holding it now">
+		<OverviewCell label={t('web.packDetail.holdingItNow')}>
 			{#if detail.holders.available}
 				{detail.holders.loaded} of {detail.holders.online}
-				<span class="dim">online</span>
+				<span class="dim">{t('web.packDetail.online')}</span>
 			{:else}
-				<StatusBadge state="unknown" label="Unavailable" detail={detail.holders.problem} />
+				<StatusBadge state="unknown" label={t('web.packDetail.unavailable')} detail={detail.holders.problem} />
 			{/if}
 		</OverviewCell>
-		<OverviewCell label="Downloads">
+		<OverviewCell label={t('web.packDetail.downloads')}>
 			{#if detail.traffic.available}
 				{detail.traffic.requests}
 				<span class="dim">· {fmtBytes(detail.traffic.bytes)}</span>
 			{:else}
-				<StatusBadge state="unknown" label="Unavailable" detail={detail.traffic.problem} />
+				<StatusBadge state="unknown" label={t('web.packDetail.unavailable')} detail={detail.traffic.problem} />
 			{/if}
 		</OverviewCell>
 	</OverviewBar>
@@ -611,7 +612,7 @@
 	<div class="tabbody">
 		{#if tab === 'overview'}
 			<div class="stack">
-				<Panel title="Pack" description="What the zip is and what it declares about itself">
+				<Panel title={t('web.packDetail.pack')} description={t('web.packDetail.whatTheZipIsAnd')}>
 					<div class="withicon">
 						{#if detail.manifest.icon}
 							<img class="icon" src={detail.manifest.icon} alt="{pack.key} pack icon" />
@@ -647,7 +648,7 @@
 					{/if}
 				</Panel>
 
-				<Panel title="Delivery" description="Where clients fetch the pack from, and what the proxy resolved">
+				<Panel title={t('web.packDetail.delivery')} description={t('web.packDetail.whereClientsFetchThePack')}>
 					<InfoGrid cells={deliveryCells}>
 						{#snippet custom(cell)}
 							{#if cell.id === 'url'}
@@ -669,12 +670,12 @@
 										{#if detail.reachability.sizeMatches === false}
 											<StatusBadge
 												state="warning"
-												label="size differs"
+												label={t('web.packDetail.sizeDiffers')}
 												detail="the URL serves {fmtBytes(
 													detail.reachability.contentLength ?? 0
 												)}, the zip on disk is {fmtBytes(
 													pack.sizeBytes
-												)} — the published copy is stale"
+												)}; the published copy is stale"
 											/>
 										{/if}
 									{:else if detail.reachability.checked}
@@ -688,7 +689,7 @@
 									{:else}
 										<StatusBadge
 											state="unknown"
-											label="Not testable"
+											label={t('web.packDetail.notTestable')}
 											detail={detail.reachability.problem}
 										/>
 									{/if}
@@ -711,7 +712,7 @@
 								{#if !detail.failures.available}
 									<span class="dim">{detail.failures.problem}</span>
 								{:else if !detail.failures.failures.length}
-									<span class="dim">none in the live log</span>
+									<span class="dim">{t('web.packDetail.noneInTheLive')}</span>
 								{:else}
 									{@const last = detail.failures.failures.at(-1)}
 									<StatusBadge
@@ -722,7 +723,7 @@
 											.reverse()
 											.map(
 												(entry: any) =>
-													`${fmtDateTime(entry.at)} — ${entry.player}: ${entry.status}`
+													`${fmtDateTime(entry.at)}; ${entry.player}: ${entry.status}`
 											)}
 									/>
 									<span class="dim">last {last.player}: {last.status}</span>
@@ -731,21 +732,21 @@
 								{#if !detail.resolution.available}
 									<StatusBadge
 										state="unknown"
-										label="Unavailable"
+										label={t('web.packDetail.unavailable')}
 										detail={detail.resolution.problem}
 									/>
 								{:else if !detail.resolution.resolved}
 									<StatusBadge
 										state="warning"
-										label="Not in the running catalog"
-										detail="the proxy has not loaded this definition — reload it"
+										label={t('web.packDetail.notInTheRunningCatalog')}
+										detail="the proxy has not loaded this definition; reload it"
 									/>
 								{:else if detail.resolution.resolved.available}
-									<StatusBadge state="ok" label="Resolved and serving" />
+									<StatusBadge state="ok" label={t('web.packDetail.resolvedAndServing')} />
 								{:else}
 									<StatusBadge
 										state="failed"
-										label="Resolved, unavailable"
+										label={t('web.packDetail.resolvedUnavailable')}
 										detail={detail.resolution.resolved.unavailableReason}
 									/>
 								{/if}
@@ -753,9 +754,7 @@
 						{/snippet}
 					</InfoGrid>
 					<p class="dim note">
-						Reachability is measured once and kept — testing it is a request to the public pack
-						host, not something a page refresh should send. luna re-measures on its own when the
-						proxy logs a player failing to load this pack.
+						{t('web.packDetail.reachabilityIsMeasuredOnce')}
 					</p>
 					{#if detail.resolution.report}
 						<p class="dim note">
@@ -773,9 +772,9 @@
 			</div>
 		{:else if tab === 'backends'}
 			<Panel
-				title="Backends"
+				title={t('web.packDetail.backends')}
 				count={detail.instances.length}
-				description="Who the server rules reach — ticking a backend rewrites the rules and reloads the proxy"
+				description={t('web.packDetail.whoTheServerRulesReach')}
 				flush
 			>
 				<DataTable
@@ -791,23 +790,23 @@
 							<a href="/instances/{row.name}?tab=respacks">{row.name}</a>
 						{:else if col === 'served'}
 							{#if row.served}
-								<StatusBadge state="ok" label="Yes" />
+								<StatusBadge state="ok" label={t('web.packDetail.yes')} />
 							{:else if row.matched}
 								<StatusBadge
 									state="stopped"
-									label="Would, if enabled"
+									label={t('web.packDetail.wouldIfEnabled')}
 									detail="the rules match this backend, but the pack itself is disabled"
 								/>
 							{:else}
-								<span class="dim">no</span>
+								<span class="dim">{t('web.packDetail.no')}</span>
 							{/if}
 						{:else if col === 'why'}
 							{#if row.granted}
-								<span class="dim">granted by an addon group</span>
+								<span class="dim">{t('web.packDetail.grantedByAnAddon')}</span>
 							{:else if row.matched}
 								<span class="mono">{pack.servers.join(', ')}</span>
 							{:else}
-								<span class="dim">no rule matches</span>
+								<span class="dim">{t('web.packDetail.noRuleMatches')}</span>
 							{/if}
 						{:else if col === 'state'}
 							<StatusBadge
@@ -819,19 +818,18 @@
 				</DataTable>
 			</Panel>
 			<p class="dim note">
-				A rule change reaches players on their next join or server switch; the proxy resends packs
-				when a player crosses into a backend whose set differs.
+				{t('web.packDetail.aRuleChangeReaches')}
 			</p>
 		{:else if tab === 'players'}
 			{#if !detail.holders.available}
-				<Panel title="Players">
+				<Panel title={t('web.packDetail.players')}>
 					<p class="dim empty">{detail.holders.problem}</p>
 				</Panel>
 			{:else}
 				<Panel
-					title="Players online"
+					title={t('web.packDetail.playersOnline')}
 					count={detail.holders.online}
-					description="What each connected player's client has done with this pack"
+					description={t('web.packDetail.whatEachConnectedPlayerS')}
 					flush
 				>
 					<DataTable
@@ -851,15 +849,15 @@
 								{/if}
 							{:else if col === 'state'}
 								{#if row.loaded}
-									<StatusBadge state="ok" label="Loaded" />
+									<StatusBadge state="ok" label={t('web.packDetail.loaded')} />
 								{:else if row.pending}
 									<StatusBadge
 										state="pending"
-										label="Sent"
+										label={t('web.packDetail.sent')}
 										detail="the client was offered the pack and has not answered yet"
 									/>
 								{:else}
-									<span class="dim">not loaded</span>
+									<span class="dim">{t('web.packDetail.notLoaded')}</span>
 								{/if}
 							{:else if col === 'failure'}
 								{#if row.lastFailure}
@@ -874,30 +872,30 @@
 			{/if}
 		{:else if tab === 'traffic'}
 			{#if !detail.traffic.available}
-				<Panel title="Traffic">
+				<Panel title={t('web.packDetail.traffic')}>
 					<p class="dim empty">{detail.traffic.problem}</p>
 				</Panel>
 			{:else}
 				<Panel
-					title="Downloads"
-					description="GET requests for this pack's zip, as the web server in front of the packs directory logged them"
+					title={t('web.packDetail.downloads')}
+					description={t('web.packDetail.getRequestsForThisPack')}
 				>
 					<div class="stats">
 						<div class="stat">
 							<span class="sv">{detail.traffic.requests}</span>
-							<span class="sl dim">downloads</span>
+							<span class="sl dim">{t('web.packDetail.downloads')}</span>
 						</div>
 						<div class="stat">
 							<span class="sv">{fmtBytes(detail.traffic.bytes)}</span>
-							<span class="sl dim">served</span>
+							<span class="sl dim">{t('web.packDetail.served')}</span>
 						</div>
 						<div class="stat">
 							<span class="sv">{detail.traffic.uniqueClients}</span>
-							<span class="sl dim">distinct clients</span>
+							<span class="sl dim">{t('web.packDetail.distinctClients')}</span>
 						</div>
 						<div class="stat">
 							<span class="sv">{detail.traffic.completed}</span>
-							<span class="sl dim">completed</span>
+							<span class="sl dim">{t('web.packDetail.completed')}</span>
 						</div>
 						{#if detail.traffic.missing}
 							<div class="stat">
@@ -909,12 +907,12 @@
 							<span class="sv">
 								{detail.traffic.lastAt ? fmtDateTime(detail.traffic.lastAt) : '—'}
 							</span>
-							<span class="sl dim">last download</span>
+							<span class="sl dim">{t('web.packDetail.lastDownload')}</span>
 						</div>
 					</div>
 
 					{#if dailyPoints.length > 1}
-						<Sparkline points={dailyPoints} label="Downloads per day" />
+						<Sparkline points={dailyPoints} label={t('web.packDetail.downloadsPerDay')} />
 					{/if}
 
 					<p class="dim note">
@@ -922,13 +920,13 @@
 							{fmtDateTime(detail.traffic.windowFrom)} to {fmtDateTime(
 								detail.traffic.windowTo
 							)}{/if}. Clients cache packs by hash, so a quiet log means players already have
-						this one — not that nobody uses it.
+						{t('web.packDetail.thisOneNotThat')}
 					</p>
 				</Panel>
 
 				<div class="gap"></div>
 
-				<Panel title="Recent requests" count={trafficRows.length} flush>
+				<Panel title={t('web.packDetail.recentRequests')} count={trafficRows.length} flush>
 					<DataTable columns={trafficCols} rows={trafficRows} getId={(row) => row.id}>
 						{#snippet cell(row, col)}
 							{#if col === 'at'}

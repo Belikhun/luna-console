@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -44,7 +45,7 @@
 	 *
 	 * `config` is deliberately absent: it is a form, and reloading it under the
 	 * user would discard whatever they were typing. It is also why the tab data
-	 * rides the refresh control's cadence rather than the fast header poll —
+	 * rides the refresh control's cadence rather than the fast header poll -
 	 * a plugin report scans the instance's jars and its boot session, which is
 	 * not something to do every four seconds.
 	 */
@@ -57,7 +58,7 @@
 
 	const LOG_FOLLOW_KEY = 'luna.logs.follow';
 
-	/** Shared by the log tail and the addon stream — both are EventSources. */
+	/** Shared by the log tail and the addon stream; both are EventSources. */
 	const LOG_LIVE_LABEL = {
 		off: '',
 		connecting: 'connecting…',
@@ -74,7 +75,7 @@
 	let tab = $state('details');
 
 	// a mod loader keeps its addons in mods/, so the tab is called what the
-	// operator will look for — the rows and the API behind them are the same
+	// operator will look for; the rows and the API behind them are the same
 	const addonLabel = $derived(inst?.software === 'neoforge' ? 'Mods' : 'Plugins');
 
 	let cfgData: any = $state(null);
@@ -103,7 +104,7 @@
 
 	/**
 	 * Every variable this instance resolves, with the scope that won. Builtins are
-	 * in here too — they are computed per instance, so this is the only screen that
+	 * in here too; they are computed per instance, so this is the only screen that
 	 * can show them at all.
 	 */
 	interface EnvVar {
@@ -130,7 +131,7 @@
 	let logFollow = $state(false);
 	/**
 	 * Streamed lines; null when the snapshot is what is shown. They outlive the
-	 * stream that produced them — see `setLogFollow`.
+	 * stream that produced them; see `setLogFollow`.
 	 */
 	let logStream: string[] | null = $state(null);
 	let logLive: 'off' | 'connecting' | 'live' | 'reconnecting' = $state('off');
@@ -138,11 +139,11 @@
 
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
-	/** name of the primary daemon — the machine an ownerless instance runs on */
+	/** name of the primary daemon; the machine an ownerless instance runs on */
 	let hostName = $state('');
 
 	/**
-	 * Re-read the page. `tabData` also reloads whatever the open tab is showing —
+	 * Re-read the page. `tabData` also reloads whatever the open tab is showing -
 	 * what the refresh control asks for, so the plugins table and the charts are
 	 * as current as the header above them; the fast poll leaves them alone.
 	 */
@@ -164,13 +165,13 @@
 
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error(`Could not load ${name}`, { detail: (err as Error).message });
+			Notify.error(t('web.common.loadFailedNamed', { name }), { detail: (err as Error).message });
 		} finally {
 			loading = false;
 		}
 
-		// an operation already in flight for this instance — started elsewhere, or
-		// before a reload — gets its flash card raised here; attached jobs dedupe,
+		// an operation already in flight for this instance; started elsewhere, or
+		// before a reload; gets its flash card raised here; attached jobs dedupe,
 		// so re-checking on every poll is safe
 		try {
 			const running = await api(`/jobs?target=${encodeURIComponent(name)}&state=running`);
@@ -179,14 +180,14 @@
 				attachInstanceJobFlash(job);
 			}
 		} catch {
-			// job discovery is best-effort — the page itself already refreshed
+			// job discovery is best-effort; the page itself already refreshed
 		}
 	}
 
 	/**
 	 * Whether the addon stream is the authority for the tabs it feeds. Read
 	 * through a call rather than inline, so a check after an await is not
-	 * narrowed away — the stream connecting mid-request is the case it exists for.
+	 * narrowed away; the stream connecting mid-request is the case it exists for.
 	 */
 	function addonStreamOwnsView(): boolean {
 		return addonLive === 'live';
@@ -202,7 +203,7 @@
 			sessionComplete: snapshot.sessionComplete
 		};
 
-		// absent for software with no world of its own — leave the tab as it was
+		// absent for software with no world of its own; leave the tab as it was
 		if (snapshot.datapacks) {
 			instDatapacks = snapshot.datapacks.rows;
 			datapackWorld = snapshot.datapacks.world;
@@ -213,7 +214,7 @@
 	async function loadTab(which: string): Promise<void> {
 		// The stream owns both of these tabs whenever it is up; this fetch is the
 		// fallback for the moment before it connects, and for a browser that
-		// cannot keep it open. The state is re-checked after the await too — the
+		// cannot keep it open. The state is re-checked after the await too; the
 		// stream can go live mid-request, and a late snapshot must not paint an
 		// older state over a newer frame.
 		if (which === 'plugins' && !addonStreamOwnsView()) {
@@ -254,7 +255,7 @@
 		}
 
 		// While following, the stream is the body of the view, and a refresh tick
-		// re-reading it would fetch lines nobody looks at — except the first time,
+		// re-reading it would fetch lines nobody looks at; except the first time,
 		// because the archive list shown beside the log comes with the snapshot.
 		//
 		// This deliberately never touches `logStream`. Auto-refresh runs every ten
@@ -316,7 +317,7 @@
 	 *
 	 * Turning it *off* deliberately does nothing to the view. The usual way it
 	 * happens is the reader scrolling back to look at something, so the lines
-	 * they scrolled to have to stay exactly where they are — re-reading the
+	 * they scrolled to have to stay exactly where they are; re-reading the
 	 * snapshot here would swap the whole body of the view and throw them back to
 	 * the top of the log, which is the opposite of what scrolling up asked for.
 	 * The lines the stream left behind stay on screen until something the reader
@@ -336,7 +337,7 @@
 	}
 
 	/**
-	 * Scrolling back through the log turns following off — otherwise the next
+	 * Scrolling back through the log turns following off; otherwise the next
 	 * streamed line would yank the view away from whatever is being read. Our
 	 * own pin lands at the bottom, so it never trips this.
 	 */
@@ -352,13 +353,13 @@
 
 	/**
 	 * Following is a real stream, not a poll: the daemon already tails the
-	 * instance's latest.log on its own host and pipes it as SSE — the same
+	 * instance's latest.log on its own host and pipes it as SSE; the same
 	 * stream the live console reads. Browser streaming here is always SSE and
 	 * never a WebSocket (DESIGN.md §4); the WebSockets in luna are the
 	 * daemon-to-daemon links, and a follower-owned instance's tail is tunnelled
 	 * over one before reaching this EventSource.
 	 *
-	 * The stream owns the view while it is open — it opens with the daemon's own
+	 * The stream owns the view while it is open; it opens with the daemon's own
 	 * backlog and grows from there, so there is no snapshot to splice it onto and
 	 * no chance of showing a line twice.
 	 *
@@ -388,7 +389,7 @@
 			// A line can arrive between the reader scrolling away and this effect
 			// tearing the stream down a tick later. Taking it would pin the view
 			// back to the bottom, and trimming to `keep` would drop lines off the
-			// top — both of them moving the text the reader just scrolled to.
+			// top; both of them moving the text the reader just scrolled to.
 			if (!followingLog()) {
 				return;
 			}
@@ -409,7 +410,7 @@
 	 * them, so leaving the logs tab drops them and coming back starts from a
 	 * fresh snapshot.
 	 *
-	 * This is keyed on the tab alone — turning following off is not a dependency,
+	 * This is keyed on the tab alone; turning following off is not a dependency,
 	 * which is the whole point: that is the one case where the lines have to stay.
 	 */
 	$effect(() => {
@@ -424,7 +425,7 @@
 	});
 
 	/**
-	 * Addon state is live for as long as the page is open — the distribution bars
+	 * Addon state is live for as long as the page is open; the distribution bars
 	 * in the summary sit above the tabs, so this is not something a tab can own.
 	 *
 	 * It has to be a stream rather than the page's poll: the interesting window
@@ -538,7 +539,7 @@
 		note.set({
 			level: 'success',
 			message: `${name}: ${result.from ?? '?'} → ${result.to}`,
-			detail: `Paper build ${result.build}. Restart the instance to run it.`,
+			detail: t('web.instanceDetail.paperBuildRestart', { build: result.build }),
 			progress: null,
 			closeable: true
 		});
@@ -552,7 +553,7 @@
 		versionConflict = [];
 		versionJob = null;
 
-		const note = Notify.loading(`Saving configuration for ${name}…`);
+		const note = Notify.loading(t('web.instanceDetail.savingConfig', { name: name ?? '' }));
 
 		try {
 			const body: any = {
@@ -581,8 +582,8 @@
 
 				note.set({
 					level: 'warning',
-					message: `${res.incompatible.length} plugin(s) are incompatible with ${cfgVersion}`,
-					detail: 'Review the conflict below before forcing the version change.',
+					message: t('web.instanceDetail.incompatiblePlugins', { count: res.incompatible.length, version: cfgVersion }),
+					detail: t('web.instanceDetail.reviewTheConflictBelowBefore'),
 					closeable: true
 				});
 
@@ -593,14 +594,14 @@
 
 			note.set({
 				level: 'success',
-				message: `Saved: ${res.changed.join(', ') || 'no changes'}`,
+				message: t('web.instanceDetail.savedChanges', { changes: res.changed.join(', ') || t('web.instanceDetail.noChanges') }),
 				detail: res.changed.length ? 'Applies on the next restart.' : '',
 				closeable: true
 			});
 
 			// a version change downloads a jar, so the route handed back a job to watch
 			if (res.job) {
-				await trackVersionJob(res.job, Notify.loading(`Downloading paper ${cfgVersion}…`));
+				await trackVersionJob(res.job, Notify.loading(t('web.instanceDetail.downloadingPaper', { version: cfgVersion })));
 			} else {
 				await refresh();
 				await loadTab('config');
@@ -608,7 +609,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: `Could not save ${name}`,
+				message: t('web.instanceDetail.saveFailed', { name: name ?? '' }),
 				detail: (err as Error).message,
 				progress: null,
 				closeable: true
@@ -660,7 +661,7 @@
 
 			note.set({
 				level: 'success',
-				message: `Deployed plugins to ${name} — ${changed} change(s)`,
+				message: `Deployed plugins to ${name}; ${changed} change(s)`,
 				detail: res.needRestart?.length ? 'Restart the instance to load them.' : '',
 				closeable: true
 			});
@@ -686,7 +687,7 @@
 
 			note.set({
 				level: 'success',
-				message: `Deployed data packs to ${name} — ${changed} change(s)`,
+				message: `Deployed data packs to ${name}; ${changed} change(s)`,
 				detail: changed ? 'The server loads them on its next restart (or /minecraft:reload).' : '',
 				closeable: true
 			});
@@ -711,7 +712,7 @@
 
 			note.set({
 				level: 'success',
-				message: `Adopted ${res.name} — it now deploys from the pool`,
+				message: `Adopted ${res.name}; it now deploys from the pool`,
 				closeable: true
 			});
 
@@ -736,7 +737,7 @@
 			note.set({
 				level: 'success',
 				message: `${pack} no longer targets ${name}`,
-				detail: 'The server unloads it on its next restart.',
+				detail: t('web.instanceDetail.theServerUnloadsItOn'),
 				closeable: true
 			});
 
@@ -764,7 +765,7 @@
 				level: 'success',
 				message: `${key} ${enabled ? 'enabled' : 'disabled'}`,
 				detail: reload.sent
-					? 'Reload sent to the proxy — the change is live.'
+					? 'Reload sent to the proxy; the change is live.'
 					: 'The proxy is not running; the change applies on its next boot.',
 				closeable: true
 			});
@@ -782,7 +783,7 @@
 
 	/**
 	 * Serve, or stop serving, one pack on *this* instance. The pack's server
-	 * rules are the only place that can say so, so the route rewrites them —
+	 * rules are the only place that can say so, so the route rewrites them -
 	 * which is why disabling here does not touch the pack's global enabled flag
 	 * and does not affect any other backend.
 	 */
@@ -806,7 +807,7 @@
 						? `An addon group grants ${name}; the exclusion overrides it, but leaving the group is cleaner. `
 						: '') +
 					(res.reloaded
-						? 'Reload sent to the proxy — players get the change on their next join or switch.'
+						? 'Reload sent to the proxy; players get the change on their next join or switch.'
 						: 'The proxy is not running; the change applies on its next boot.'),
 				closeable: true
 			});
@@ -858,33 +859,33 @@
 		}
 
 		return [
-			{ id: 'state', label: 'Instance state' },
-			{ label: 'Software', value: `${inst.software} ${inst.mcVersion ?? ''}` },
-			{ label: 'Ping version', value: inst.pingVersion },
-			{ label: 'Game address', value: inst.address, copyable: true, style: 'mono' },
-			{ label: 'Memory (heap)', value: inst.memory },
-			{ label: 'Java profile', value: inst.profile },
+			{ id: 'state', label: t('web.instanceDetail.instanceState') },
+			{ label: t('web.instanceDetail.software'), value: `${inst.software} ${inst.mcVersion ?? ''}` },
+			{ label: t('web.instanceDetail.pingVersion'), value: inst.pingVersion },
+			{ label: t('web.instanceDetail.gameAddress'), value: inst.address, copyable: true, style: 'mono' },
+			{ label: t('web.instanceDetail.memoryHeap'), value: inst.memory },
+			{ label: t('web.instanceDetail.javaProfile'), value: inst.profile },
 			{
-				label: 'Machine',
+				label: t('web.instanceDetail.machine'),
 				value: inst.daemon ?? (hostName || 'primary'),
 				href:
 					(inst.daemon ?? hostName)
 						? `/machines/${inst.daemon ?? hostName}`
 						: undefined
 			},
-			{ label: 'Java PID', value: inst.javaPid },
-			{ id: 'cpu', label: 'CPU utilization' },
-			{ id: 'rss', label: 'Resident memory' },
+			{ label: t('web.instanceDetail.javaPid'), value: inst.javaPid },
+			{ id: 'cpu', label: t('web.instanceDetail.cpuUtilization') },
+			{ id: 'rss', label: t('web.instanceDetail.residentMemory') },
 			// heartbeat-only figures: the server's own tick rate and heap, which the
 			// host-side /proc sampling above cannot see
-			{ id: 'tps', label: 'Tick rate' },
-			{ id: 'heap', label: 'JVM heap' },
-			{ label: 'Uptime', value: fmtDuration(inst.uptimeMs) },
+			{ id: 'tps', label: t('web.instanceDetail.tickRate') },
+			{ id: 'heap', label: t('web.instanceDetail.jvmHeap') },
+			{ label: t('web.instanceDetail.uptime'), value: fmtDuration(inst.uptimeMs) },
 			{
-				label: 'Players',
+				label: t('web.instanceDetail.players'),
 				value: inst.players ? `${inst.players.online}/${inst.players.max}` : null
 			},
-			{ label: 'Directory', value: inst.dir, copyable: true, style: 'mono' }
+			{ label: t('web.instanceDetail.directory'), value: inst.dir, copyable: true, style: 'mono' }
 		];
 	});
 
@@ -894,13 +895,13 @@
 		}
 
 		// the plugin allocations are bound on the same machine as the game port, so
-		// they are shown at that machine's host too — a follower's voice-chat port
+		// they are shown at that machine's host too; a follower's voice-chat port
 		// answers on the LAN, never on the console's own loopback
 		const host = (inst.address ?? '').split(':')[0] ?? '';
 
 		return [
 			{
-				label: 'Game port (tcp)',
+				label: t('web.instanceDetail.gamePortTcp'),
 				value: inst.address,
 				copyable: true,
 				style: 'mono'
@@ -927,42 +928,42 @@
 
 		const priority =
 			inst.proxy?.priority !== undefined
-				? [{ label: 'Try-list priority', value: String(inst.proxy.priority) }]
+				? [{ label: t('web.instanceDetail.tryListPriority'), value: String(inst.proxy.priority) }]
 				: [];
 
 		const forcedHosts = inst.proxy?.forcedHosts?.length
-			? [{ label: 'Forced hosts', value: inst.proxy.forcedHosts.join(', ') }]
+			? [{ label: t('web.instanceDetail.forcedHosts'), value: inst.proxy.forcedHosts.join(', ') }]
 			: [];
 
 		return [
-			{ label: 'Registered in velocity', value: registered },
+			{ label: t('web.instanceDetail.registeredInVelocity'), value: registered },
 			...priority,
 			...forcedHosts
 		];
 	});
 
-	const pluginCols: Column[] = [
-		{ id: 'name', label: 'Plugin', sortable: true },
-		{ id: 'state', label: 'State', sortable: true, width: 130 },
-		{ id: 'version', label: 'Version' },
-		{ id: 'alerts', label: 'Alerts', sortable: true, width: 230 },
-		{ id: 'origin', label: 'From', sortable: true },
-		{ id: 'source', label: 'Source', sortable: true, minWidth: 140 },
-		{ id: 'auto', label: 'Auto-update', hidden: true },
-		{ id: 'assign', label: 'Assignment', hidden: true }
-	];
+	const pluginCols: Column[] = $derived([
+		{ id: 'name', label: t('web.instanceDetail.plugin2'), sortable: true },
+		{ id: 'state', label: t('web.instanceDetail.state'), sortable: true, width: 130 },
+		{ id: 'version', label: t('web.instanceDetail.version') },
+		{ id: 'alerts', label: t('web.instanceDetail.alerts'), sortable: true, width: 230 },
+		{ id: 'origin', label: t('web.instanceDetail.from'), sortable: true },
+		{ id: 'source', label: t('web.instanceDetail.source'), sortable: true, minWidth: 140 },
+		{ id: 'auto', label: t('web.instanceDetail.autoUpdate'), hidden: true },
+		{ id: 'assign', label: t('web.instanceDetail.assignment'), hidden: true }
+	]);
 
 	/**
-	 * Badge look of each addon phase. "Disabled" is not a phase — it is the
+	 * Badge look of each addon phase. "Disabled" is not a phase; it is the
 	 * per-instance override, and it says why the log has nothing to report rather
 	 * than what the log saw, so it is shown in place of the phase.
 	 */
 	const PLUGIN_STATE_BADGE: Record<string, { state: string; label: string }> = {
-		running: { state: 'running', label: 'Running' },
-		loading: { state: 'loading', label: 'Loading' },
-		errored: { state: 'failed', label: 'Errored' },
-		unknown: { state: 'unknown', label: 'Unknown' },
-		disabled: { state: 'stopped', label: 'Disabled' }
+		running: { state: 'running', label: t('web.instanceDetail.running') },
+		loading: { state: 'loading', label: t('web.instanceDetail.loading') },
+		errored: { state: 'failed', label: t('web.instanceDetail.errored') },
+		unknown: { state: 'unknown', label: t('web.instanceDetail.unknown') },
+		disabled: { state: 'stopped', label: t('web.instanceDetail.disabled') }
 	};
 
 	/**
@@ -977,19 +978,19 @@
 			instPlugins.filter((plugin) => !plugin.disabled && plugin.state === state).length;
 
 		return [
-			{ key: 'running', label: 'running', count: by('running'), color: 'var(--success)' },
-			{ key: 'loading', label: 'loading', count: by('loading'), color: 'var(--warning)' },
-			{ key: 'errored', label: 'errored', count: by('errored'), color: 'var(--error)' },
-			{ key: 'unknown', label: 'unknown', count: by('unknown'), color: 'var(--bg-track)' },
+			{ key: 'running', label: t('web.instanceDetail.running2'), count: by('running'), color: 'var(--success)' },
+			{ key: 'loading', label: t('web.instanceDetail.loading2'), count: by('loading'), color: 'var(--warning)' },
+			{ key: 'errored', label: t('web.instanceDetail.errored2'), count: by('errored'), color: 'var(--error)' },
+			{ key: 'unknown', label: t('web.instanceDetail.unknown2'), count: by('unknown'), color: 'var(--bg-track)' },
 			{
 				key: 'disabled',
-				label: 'disabled',
+				label: t('web.instanceDetail.disabled2'),
 				count: instPlugins.filter((plugin) => plugin.disabled).length,
 				color: 'var(--text-disabled)'
 			},
 			{
 				key: 'unmanaged',
-				label: 'unmanaged',
+				label: t('web.instanceDetail.unmanaged'),
 				count: instUnmanaged.length,
 				color: 'var(--link)'
 			}
@@ -999,7 +1000,7 @@
 	const addonTotal = $derived(addonSegments.reduce((sum, segment) => sum + segment.count, 0));
 
 	/**
-	 * Which bucket one data pack falls in — the same order the tab's own badges
+	 * Which bucket one data pack falls in; the same order the tab's own badges
 	 * decide in, so the bar and the table never disagree.
 	 *
 	 * An if-chain rather than one predicate per bucket: the conditions genuinely
@@ -1032,21 +1033,21 @@
 			instDatapacks.filter((row) => datapackBucket(row) === bucket).length;
 
 		return [
-			{ key: 'insync', label: 'in sync', count: count('insync'), color: 'var(--success)' },
-			{ key: 'stale', label: 'stale', count: count('stale'), color: 'var(--warning)' },
+			{ key: 'insync', label: t('web.instanceDetail.inSync2'), count: count('insync'), color: 'var(--success)' },
+			{ key: 'stale', label: t('web.instanceDetail.stale2'), count: count('stale'), color: 'var(--warning)' },
 			{
 				key: 'missing',
-				label: 'not deployed',
+				label: t('web.instanceDetail.notDeployed2'),
 				count: count('missing'),
 				color: 'var(--error)'
 			},
 			{
 				key: 'untargeted',
-				label: 'untargeted',
+				label: t('web.instanceDetail.untargeted2'),
 				count: count('untargeted'),
 				color: 'var(--text-disabled)'
 			},
-			{ key: 'unmanaged', label: 'unmanaged', count: count('unmanaged'), color: 'var(--link)' }
+			{ key: 'unmanaged', label: t('web.instanceDetail.unmanaged'), count: count('unmanaged'), color: 'var(--link)' }
 		];
 	});
 
@@ -1058,18 +1059,18 @@
 	function pluginActions(plugin: any): ContextMenuItem[] {
 		return [
 			{
-				label: 'Open on this instance',
+				label: t('web.instanceDetail.openOnThisInstance'),
 				icon: 'circleInfo',
 				action: () => goto(`/instances/${name}/plugins/${plugin.plugin}`)
 			},
 			{
-				label: 'Open the plugin',
+				label: t('web.instanceDetail.openThePlugin'),
 				icon: 'plug',
 				action: () => goto(`/plugins/${encodeURIComponent(plugin.plugin)}`)
 			},
 			{ separator: true },
 			{
-				label: 'Copy version',
+				label: t('web.instanceDetail.copyVersion'),
 				icon: 'copy',
 				disabled: !plugin.version,
 				action: () => navigator.clipboard?.writeText(plugin.version ?? '')
@@ -1077,26 +1078,26 @@
 		];
 	}
 
-	const datapackCols: Column[] = [
-		{ id: 'file', label: 'Data pack', sortable: true },
-		{ id: 'state', label: 'State', width: 150 },
-		{ id: 'version', label: 'Version' },
-		{ id: 'size', label: 'Size', width: 100, align: 'right' },
-		{ id: 'source', label: 'Source', minWidth: 140 }
-	];
+	const datapackCols: Column[] = $derived([
+		{ id: 'file', label: t('web.instanceDetail.dataPack2'), sortable: true },
+		{ id: 'state', label: t('web.instanceDetail.state'), width: 150 },
+		{ id: 'version', label: t('web.instanceDetail.version') },
+		{ id: 'size', label: t('web.instanceDetail.size'), width: 100, align: 'right' },
+		{ id: 'source', label: t('web.instanceDetail.source'), minWidth: 140 }
+	]);
 
 	/** A data pack row's verbs on this instance. */
 	function datapackActions(row: any): ContextMenuItem[] {
 		return [
 			{
-				label: 'Manage in the pool',
+				label: t('web.instanceDetail.manageInThePool'),
 				icon: 'box',
 				disabled: !row.managed,
-				hint: !row.managed ? 'not a pooled pack yet — adopt it first' : undefined,
+				hint: !row.managed ? 'not a pooled pack yet; adopt it first' : undefined,
 				action: () => goto(`/datapacks?q=${encodeURIComponent(row.name ?? '')}`)
 			},
 			{
-				label: 'Adopt into the pool',
+				label: t('web.instanceDetail.adoptIntoThePool'),
 				icon: 'inboxIn',
 				disabled: row.managed,
 				hint: row.managed ? 'already pooled' : undefined,
@@ -1104,28 +1105,28 @@
 			},
 			{ separator: true },
 			{
-				label: 'Remove from this instance',
+				label: t('web.instanceDetail.removeFromThisInstance'),
 				icon: 'trash',
 				color: 'danger',
 				disabled: !row.managed || !row.targeted,
 				hint: !row.managed
-					? 'unmanaged file — delete it from the world by hand, or adopt it first'
+					? 'unmanaged file; delete it from the world by hand, or adopt it first'
 					: !row.targeted
-						? 'not targeted here — a deploy already removes it'
+						? 'not targeted here; a deploy already removes it'
 						: undefined,
 				action: () => removeDatapackHere(row.name)
 			}
 		];
 	}
 
-	const respackCols: Column[] = [
-		{ id: 'name', label: 'Resource pack', sortable: true },
-		{ id: 'applies', label: 'On this server', width: 150 },
-		{ id: 'state', label: 'State', width: 130 },
-		{ id: 'priority', label: 'Priority', width: 90, align: 'right' },
-		{ id: 'servers', label: 'Server rules' },
-		{ id: 'version', label: 'Version' }
-	];
+	const respackCols: Column[] = $derived([
+		{ id: 'name', label: t('web.instanceDetail.resourcePack'), sortable: true },
+		{ id: 'applies', label: t('web.instanceDetail.onThisServer'), width: 150 },
+		{ id: 'state', label: t('web.instanceDetail.state'), width: 130 },
+		{ id: 'priority', label: t('web.instanceDetail.priority'), width: 90, align: 'right' },
+		{ id: 'servers', label: t('web.instanceDetail.serverRules') },
+		{ id: 'version', label: t('web.instanceDetail.version') }
+	]);
 
 	/** Whether this instance is in a pack's rule set right now. */
 	function respackHere(row: any): boolean {
@@ -1144,18 +1145,18 @@
 				disabled: !!respackBusy || (granted && here),
 				hint:
 					granted && here
-						? `granted by addon group ${row.groups.join(', ')} — edit the group instead`
+						? `granted by addon group ${row.groups.join(', ')}; edit the group instead`
 						: undefined,
 				action: () => setRespackHere(row.key, !here)
 			},
 			{ separator: true },
 			{
-				label: 'Pack details',
+				label: t('web.instanceDetail.packDetails'),
 				icon: 'circleInfo',
 				action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
 			},
 			{
-				label: 'Configure pack',
+				label: t('web.instanceDetail.configurePack'),
 				icon: 'pen',
 				action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
 			},
@@ -1165,7 +1166,7 @@
 				action: () => setRespackEnabled(row.key, !row.enabled)
 			},
 			{
-				label: 'Manage in Resource packs',
+				label: t('web.instanceDetail.manageInResourcePacks'),
 				icon: 'image',
 				action: () => goto(`/packs?q=${encodeURIComponent(row.key)}`)
 			}
@@ -1174,30 +1175,30 @@
 
 	// -- environment ---------------------------------------------------------------
 
-	const envCols: Column[] = [
-		{ id: 'name', label: 'Variable', sortable: true, width: 240 },
-		{ id: 'value', label: 'Value on this instance' },
-		{ id: 'source', label: 'Source', sortable: true, width: 120 },
-		{ id: 'shadowed', label: 'Shadows' }
-	];
+	const envCols: Column[] = $derived([
+		{ id: 'name', label: t('web.instanceDetail.variable2'), sortable: true, width: 240 },
+		{ id: 'value', label: t('web.instanceDetail.valueOnThisInstance') },
+		{ id: 'source', label: t('web.instanceDetail.source'), sortable: true, width: 120 },
+		{ id: 'shadowed', label: t('web.instanceDetail.shadows') }
+	]);
 
-	const envFilters: TableFilterGroup<EnvVar>[] = [
+	const envFilters: TableFilterGroup<EnvVar>[] = $derived([
 		{
 			id: 'source',
-			label: 'Filter source scope',
+			label: t('web.instanceDetail.filterSourceScope'),
 			options: [
-				{ value: 'any', label: 'Any source' },
-				{ value: 'instance', label: 'This instance only', match: (row) => row.scope === 'instance' },
-				{ value: 'machine', label: 'From its machine', match: (row) => row.scope === 'machine' },
-				{ value: 'global', label: 'Cluster-wide', match: (row) => row.scope === 'global' },
-				{ value: 'builtin', label: 'Builtin', match: (row) => row.scope === 'builtin' }
+				{ value: 'any', label: t('web.instanceDetail.anySource') },
+				{ value: 'instance', label: t('web.instanceDetail.thisInstanceOnly'), match: (row) => row.scope === 'instance' },
+				{ value: 'machine', label: t('web.instanceDetail.fromItsMachine'), match: (row) => row.scope === 'machine' },
+				{ value: 'global', label: t('web.instanceDetail.clusterWide'), match: (row) => row.scope === 'global' },
+				{ value: 'builtin', label: t('web.instanceDetail.builtin'), match: (row) => row.scope === 'builtin' }
 			]
 		}
-	];
+	]);
 
 	/**
 	 * Reveal one secret for this instance. The scope that won decides where the
-	 * value lives, so that is the scope the reveal asks for — a builtin secret
+	 * value lives, so that is the scope the reveal asks for; a builtin secret
 	 * (the forwarding secret) is computed and has nothing to reveal.
 	 */
 	async function revealEnv(row: EnvVar): Promise<void> {
@@ -1225,7 +1226,7 @@
 
 		return [
 			{
-				label: 'Open variable details',
+				label: t('web.instanceDetail.openVariableDetails'),
 				icon: 'circleInfo',
 				disabled: builtin,
 				action: () => goto(`/environment/${encodeURIComponent(row.name)}`)
@@ -1246,7 +1247,7 @@
 					envRevealed[row.name] !== undefined ? hideEnv(row.name) : revealEnv(row)
 			},
 			{
-				label: 'Copy value',
+				label: t('web.instanceDetail.copyValue'),
 				icon: 'copy',
 				disabled: row.secret && envRevealed[row.name] === undefined,
 				action: () => navigator.clipboard?.writeText(envRevealed[row.name] ?? row.value)
@@ -1254,15 +1255,15 @@
 		];
 	}
 
-	const eventCols: Column[] = [
-		{ id: 'time', label: 'Time', width: 190 },
-		{ id: 'kind', label: 'Type', width: 120 },
-		{ id: 'message', label: 'Event' }
-	];
-	const propCols: Column[] = [
-		{ id: 'key', label: 'Property', width: 300 },
-		{ id: 'value', label: 'Value' }
-	];
+	const eventCols: Column[] = $derived([
+		{ id: 'time', label: t('web.instanceDetail.time'), width: 190 },
+		{ id: 'kind', label: t('web.instanceDetail.type'), width: 120 },
+		{ id: 'message', label: t('web.instanceDetail.event2') }
+	]);
+	const propCols: Column[] = $derived([
+		{ id: 'key', label: t('web.instanceDetail.property2'), width: 300 },
+		{ id: 'value', label: t('web.instanceDetail.value') }
+	]);
 </script>
 
 <svelte:head><title>{name} | Luna Console</title></svelte:head>
@@ -1277,32 +1278,26 @@
 				{loading}
 				storageKey="instance"
 			/>
-			<Btn onclick={() => goto(`/instances/${name}/console`)}>Connect</Btn>
+			<Btn onclick={() => goto(`/instances/${name}/console`)}>{t('web.instanceDetail.connect')}</Btn>
 			<Dropdown
-				label="Instance state"
+				label={t('web.instanceDetail.instanceState')}
 				items={[
 					{
-						label: 'Start instance',
-						icon: 'play',
+						label: t('web.instanceDetail.startInstance'), icon: 'play',
 						disabled: inst.state !== 'stopped',
 						action: () => stateAction('start')
 					},
 					{
-						label: 'Stop instance',
-						icon: 'stop',
-						disabled: !isUp,
+						label: t('web.instanceDetail.stopInstance'), icon: 'stop', disabled: !isUp,
 						action: () => stateAction('stop')
 					},
 					{
-						label: 'Restart instance',
-						icon: 'rotate',
-						disabled: !isUp,
+						label: t('web.instanceDetail.restartInstance'), icon: 'rotate', disabled: !isUp,
 						action: () => stateAction('restart')
 					},
 					{ divider: true, label: '' },
 					{
-						label: 'Schedule an action…',
-						icon: 'clock',
+						label: t('web.instanceDetail.scheduleAnAction'), icon: 'clock',
 						action: () => {
 							scheduleOpen = true;
 						}
@@ -1310,24 +1305,20 @@
 				]}
 			/>
 			<Dropdown
-				label="Actions"
+				label={t('web.instanceDetail.actions')}
 				items={[
 					{
-						label: 'Serial console',
-						icon: 'code',
+						label: t('web.instanceDetail.serialConsole'), icon: 'code',
 						action: () => goto(`/instances/${name}/console`)
 					},
 					{
-						label: 'Config files',
-						icon: 'fileCode',
+						label: t('web.instanceDetail.configFiles'), icon: 'fileCode',
 						action: () => goto(`/instances/${name}/files`)
 					},
-					{ label: 'Deploy plugins here', icon: 'upload', action: () => deployPlugins() },
+					{ label: t('web.instanceDetail.deployPluginsHere'), icon: 'upload', action: () => deployPlugins() },
 					{ divider: true, label: '' },
 					{
-						label: 'Delete instance',
-						icon: 'trash',
-						danger: true,
+						label: t('web.instanceDetail.deleteInstance'), icon: 'trash', danger: true,
 						disabled: inst.state !== 'stopped' || name === 'proxy',
 						action: () => {
 							deleteOpen = true;
@@ -1338,8 +1329,8 @@
 		{/snippet}
 	</PageHeader>
 
-	<OverviewBar title="Instance overview">
-		<OverviewCell label="Status">
+	<OverviewBar title={t('web.instanceDetail.instanceOverview')}>
+		<OverviewCell label={t('web.instanceDetail.status')}>
 			<StatusBadge state={inst.state} />
 		</OverviewCell>
 		<OverviewCell
@@ -1348,7 +1339,7 @@
 			progressColor={checksPassed === inst.checks.length ? 'var(--success)' : 'var(--warning)'}
 		>
 			{#if inst.state === 'stopped'}
-				<span class="dim">instance stopped</span>
+				<span class="dim">{t('web.instanceDetail.instanceStopped')}</span>
 			{:else}
 				<span style="color:var(--success)">{checksPassed} passed</span>
 				<span class="dim">|</span>
@@ -1363,43 +1354,42 @@
 		{#if datapackTotal > 0}
 			<OverviewCell label="Data packs ({datapackTotal})" segments={datapackSegments} />
 		{/if}
-		<OverviewCell label="Software">
+		<OverviewCell label={t('web.instanceDetail.software')}>
 			{inst.software} {inst.mcVersion ?? ''}
 		</OverviewCell>
-		<OverviewCell label="Players">
+		<OverviewCell label={t('web.instanceDetail.players')}>
 			{inst.players ? `${inst.players.online} / ${inst.players.max}` : '–'}
 		</OverviewCell>
-		<OverviewCell label="Uptime">
+		<OverviewCell label={t('web.instanceDetail.uptime')}>
 			{fmtDuration(inst.uptimeMs)}
 		</OverviewCell>
 	</OverviewBar>
 
 	<Tabs
 		tabs={[
-			{ id: 'details', label: 'Details' },
-			{ id: 'checks', label: 'Status and alarms' },
-			{ id: 'monitoring', label: 'Monitoring' },
+			{ id: 'details', label: t('web.instanceDetail.details') },
+			{ id: 'checks', label: t('web.instanceDetail.statusAndAlarms') },
+			{ id: 'monitoring', label: t('web.instanceDetail.monitoring') },
 			{ id: 'plugins', label: addonLabel },
-			// the proxy has no world for data packs, and resource packs are ITS
-			// catalog — the per-backend view only makes sense on a backend
+			// the proxy has no world, so the world-scoped tabs do not apply to it
 			...(inst.software === 'velocity'
 				? []
 				: [
-						{ id: 'datapacks', label: 'Data packs' },
-						{ id: 'respacks', label: 'Resource packs' },
-						{ id: 'access', label: 'Players & access' }
+						{ id: 'datapacks', label: t('web.instanceDetail.dataPacks') },
+						{ id: 'respacks', label: t('web.instanceDetail.resourcePacks') },
+						{ id: 'access', label: t('web.instanceDetail.playersAccess') }
 					]),
-			{ id: 'network', label: 'Networking' },
-			{ id: 'environment', label: 'Environment' },
-			{ id: 'logs', label: 'Logs' },
-			{ id: 'config', label: 'Configuration' }
+			{ id: 'network', label: t('web.instanceDetail.networking') },
+			{ id: 'environment', label: t('web.instanceDetail.environment') },
+			{ id: 'logs', label: t('web.instanceDetail.logs') },
+			{ id: 'config', label: t('web.instanceDetail.configuration') }
 		]}
 		bind:active={tab}
 	/>
 
 	<div class="tabbody">
 		{#if tab === 'details'}
-			<Panel title="Instance summary">
+			<Panel title={t('web.instanceDetail.instanceSummary')}>
 				<InfoGrid cells={summaryCells}>
 					{#snippet custom(cell)}
 						{#if cell.id === 'state'}
@@ -1425,7 +1415,7 @@
 							{/if}
 						{:else if cell.id === 'tps'}
 							{#if inst.tps == null}
-								<span class="dim" title="LunaCore is not reporting for this instance">–</span>
+								<span class="dim" title={t('web.instanceDetail.lunacoreIsNotReportingFor')}>–</span>
 							{:else}
 								<!-- an explicit tone: color="auto" reads a full bar as danger, which is
 								     backwards for TPS, where full is healthy -->
@@ -1457,13 +1447,13 @@
 			</Panel>
 			<div class="gap"></div>
 			<Panel
-				title="Launch command"
-				description="Generated from cluster.json (profile + memory) on every start"
+				title={t('web.instanceDetail.launchCommand')}
+				description={t('web.instanceDetail.generatedFromClusterJsonProfile')}
 			>
 				<code class="cmd mono">{inst.javaCommand}</code>
 			</Panel>
 		{:else if tab === 'checks'}
-			<Panel title="Status checks">
+			<Panel title={t('web.instanceDetail.statusChecks')}>
 				{#each inst.checks as check}
 					<div class="checkrow">
 						<StatusBadge
@@ -1476,9 +1466,9 @@
 			</Panel>
 			<div class="gap"></div>
 			<Panel
-				title="Events"
+				title={t('web.instanceDetail.events')}
 				count={metrics.events.length}
-				description="State transitions and actions recorded this console session"
+				description={t('web.instanceDetail.stateTransitionsAndActionsRecorded')}
 				flush
 			>
 				<ResourceTable
@@ -1487,11 +1477,11 @@
 					rows={metrics.events}
 					getId={(event) => String(event.t) + event.message}
 					searchValue={(event) => `${event.kind} ${event.message}`}
-					searchPlaceholder="Find an event"
+					searchPlaceholder={t('web.instanceDetail.findAnEvent')}
 					searchWidth="20rem"
-					noun="event"
+					noun={t('web.instanceDetail.event')}
 					pageSize={20}
-					emptyTitle="No recorded events this session"
+					emptyTitle={t('web.instanceDetail.noRecordedEventsThisSession')}
 					maxHeight="40vh"
 				>
 					{#snippet cell(event, col)}
@@ -1514,23 +1504,23 @@
 			</Panel>
 		{:else if tab === 'monitoring'}
 			<div class="charts">
-				<Sparkline points={cpuPoints} label="CPU utilization" unit="%" color="#42b4ff" />
-				<Sparkline points={memPoints} label="Memory (RSS)" unit=" MB" color="#bf7edb" />
+				<Sparkline points={cpuPoints} label={t('web.instanceDetail.cpuUtilization')} unit="%" color="#42b4ff" />
+				<Sparkline points={memPoints} label={t('web.instanceDetail.memoryRss')} unit=" MB" color="#bf7edb" />
 				<Sparkline
 					points={playerPoints}
-					label="Players online"
+					label={t('web.instanceDetail.playersOnline')}
 					color="#2bb534"
 					maxY={playerMax}
 				/>
 				{#if hasHeartbeatSeries}
-					<Sparkline points={tpsPoints} label="Tick rate" unit=" TPS" color="#e0ca57" maxY={20} />
-					<Sparkline points={heapPoints} label="JVM heap" unit=" MB" color="#ff9d5c" />
+					<Sparkline points={tpsPoints} label={t('web.instanceDetail.tickRate')} unit=" TPS" color="#e0ca57" maxY={20} />
+					<Sparkline points={heapPoints} label={t('web.instanceDetail.jvmHeap')} unit=" MB" color="#ff9d5c" />
 				{/if}
 			</div>
 			<p class="dim note">
-				Sampled every 5s by the luna daemon (last hour kept in memory).
+				{t('web.instanceDetail.sampledEvery5sBy')}
 				{#if hasHeartbeatSeries}
-					Tick rate and heap come from LunaCore's heartbeat.
+					{t('web.instanceDetail.tickRateAndHeap')}
 				{/if}
 			</p>
 		{:else if tab === 'plugins'}
@@ -1540,8 +1530,8 @@
 					{#if addonLive !== 'off'}
 						<span class="live {addonLive}">{LOG_LIVE_LABEL[addonLive]}</span>
 					{/if}
-					<Btn icon="sync" onclick={() => loadTab('plugins')}>Refresh</Btn>
-					<Btn icon="upload" onclick={deployPlugins}>Deploy to this instance</Btn>
+					<Btn icon="sync" onclick={() => loadTab('plugins')}>{t('web.instanceDetail.refresh')}</Btn>
+					<Btn icon="upload" onclick={deployPlugins}>{t('web.instanceDetail.deployToThisInstance')}</Btn>
 				{/snippet}
 				<ResourceTable
 					tableId="instance-plugins"
@@ -1550,16 +1540,15 @@
 					getId={(plugin) => plugin.plugin}
 					searchValue={(plugin) =>
 						`${plugin.plugin} ${plugin.displayName ?? ''} ${plugin.state} ${plugin.version ?? ''} ${plugin.source} ${(plugin.groups ?? []).join(' ')}`}
-					searchPlaceholder="Find an addon on this instance"
+					searchPlaceholder={t('web.instanceDetail.findAnAddonOnThis')}
 					rowActions={pluginActions}
 					rowLabel={(plugin) => plugin.plugin}
-					noun="plugin"
+					noun={t('web.instanceDetail.plugin')}
 					pageSize={25}
 					rowDim={(plugin) => plugin.disabled}
 					sortValue={(plugin, col) =>
 						col === 'alerts'
-							? plugin.errors * 1000 + plugin.warnings
-							: ((plugin as any)[
+							? plugin.errors * 1000 + plugin.warnings : ((plugin as any)[
 									col === 'auto' ? 'autoUpdate' : col === 'name' ? 'plugin' : col
 								] ?? '')}
 					onRowClick={(plugin) => goto(`/instances/${name}/plugins/${plugin.plugin}`)}
@@ -1577,8 +1566,7 @@
 							{/if}
 						{:else if col === 'state'}
 							{@const badge =
-							(plugin.disabled
-								? PLUGIN_STATE_BADGE.disabled
+							(plugin.disabled ? PLUGIN_STATE_BADGE.disabled
 								: PLUGIN_STATE_BADGE[plugin.state]) ?? PLUGIN_STATE_BADGE.unknown}
 							<StatusBadge state={badge.state} label={badge.label} />
 						{:else if col === 'version'}
@@ -1589,9 +1577,9 @@
 							{#if plugin.origin === 'group'}
 								<span class="dim">{plugin.groups.join(', ')}</span>
 							{:else if plugin.origin === 'manual'}
-								<span class="manual">manual</span>
+								<span class="manual">{t('web.instanceDetail.manual')}</span>
 							{:else}
-								<span class="dim">explicit</span>
+								<span class="dim">{t('web.instanceDetail.explicit')}</span>
 							{/if}
 						{:else if col === 'source'}
 							<BrandLink source={plugin.source} short />
@@ -1608,8 +1596,7 @@
 			</Panel>
 			{#if !pluginTotals.sessionComplete}
 				<p class="dim note">
-					The boot lines of this session have rotated out of the log window, so plugins with no
-					later log activity read as Unknown.
+					{t('web.instanceDetail.theBootLinesOf')}
 				</p>
 			{/if}
 		{:else if tab === 'datapacks'}
@@ -1622,9 +1609,9 @@
 					{#if addonLive !== 'off'}
 						<span class="live {addonLive}">{LOG_LIVE_LABEL[addonLive]}</span>
 					{/if}
-					<Btn icon="sync" onclick={() => loadTab('datapacks')}>Refresh</Btn>
-					<Btn icon="box" onclick={() => goto('/datapacks')}>Manage pool</Btn>
-					<Btn icon="upload" onclick={deployDatapacks}>Deploy to this instance</Btn>
+					<Btn icon="sync" onclick={() => loadTab('datapacks')}>{t('web.instanceDetail.refresh')}</Btn>
+					<Btn icon="box" onclick={() => goto('/datapacks')}>{t('web.instanceDetail.managePool')}</Btn>
+					<Btn icon="upload" onclick={deployDatapacks}>{t('web.instanceDetail.deployToThisInstance')}</Btn>
 				{/snippet}
 				<ResourceTable
 					tableId="instance-datapacks"
@@ -1632,42 +1619,42 @@
 					rows={instDatapacks}
 					getId={(row) => row.file}
 					searchValue={(row) => `${row.file} ${row.name ?? ''} ${row.source ?? ''}`}
-					searchPlaceholder="Find a data pack in this world"
+					searchPlaceholder={t('web.instanceDetail.findADataPackIn')}
 					rowActions={datapackActions}
 					rowLabel={(row) => row.file}
-					noun="data pack"
+					noun={t('web.instanceDetail.dataPack')}
 					pageSize={25}
 					rowDim={(row) => row.managed && !row.targeted}
-					emptyTitle="No data packs"
-					emptyText="Deploy pooled packs here, or drop zips into the world's datapacks folder."
+					emptyTitle={t('web.instanceDetail.noDataPacks')}
+					emptyText={t('web.instanceDetail.deployPooledPacksHereOr')}
 				>
 					{#snippet cell(row, col)}
 						{#if col === 'file'}
 							<span class="mono">{row.file}</span>
 							{#if !row.managed}
-								<span class="manual">unmanaged</span>
+								<span class="manual">{t('web.instanceDetail.unmanaged')}</span>
 							{/if}
 						{:else if col === 'state'}
 							{#if !row.present}
 								<StatusBadge
 									state="warning"
-									label="Not deployed"
-									detail="targeted here but missing from the world — deploy to copy it in"
+									label={t('web.instanceDetail.notDeployed')}
+									detail="targeted here but missing from the world; deploy to copy it in"
 								/>
 							{:else if row.stale}
 								<StatusBadge
 									state="warning"
-									label="Stale"
-									detail="the world's copy differs from the pool — deploy to update it"
+									label={t('web.instanceDetail.stale')}
+									detail="the world's copy differs from the pool; deploy to update it"
 								/>
 							{:else if row.managed && !row.targeted}
 								<StatusBadge
 									state="stopped"
-									label="Untargeted"
-									detail="still in the world but no longer targeted — a deploy removes it"
+									label={t('web.instanceDetail.untargeted')}
+									detail="still in the world but no longer targeted; a deploy removes it"
 								/>
 							{:else}
-								<StatusBadge state="ok" label="In sync" />
+								<StatusBadge state="ok" label={t('web.instanceDetail.inSync')} />
 							{/if}
 						{:else if col === 'version'}
 							<span class="mono">{row.versionNumber ?? '–'}</span>
@@ -1684,18 +1671,18 @@
 				</ResourceTable>
 			</Panel>
 			<p class="dim note">
-				A running server loads data pack changes on its next restart (or /minecraft:reload).
+				{t('web.instanceDetail.aRunningServerLoads')}
 			</p>
 		{:else if tab === 'respacks'}
 			<Panel
-				title="Resource packs"
+				title={t('web.instanceDetail.resourcePacks')}
 				count={instRespacks.length}
-				description="Every pack in the proxy's catalog, and whether {name} is in its rules — serving one here rewrites that pack's rules and reloads the proxy"
+				description="Every pack in the proxy's catalog, and whether {name} is in its rules; serving one here rewrites that pack's rules and reloads the proxy"
 				flush
 			>
 				{#snippet actions()}
-					<Btn icon="sync" onclick={() => loadTab('respacks')}>Refresh</Btn>
-					<Btn icon="image" onclick={() => goto('/packs')}>Manage packs</Btn>
+					<Btn icon="sync" onclick={() => loadTab('respacks')}>{t('web.instanceDetail.refresh')}</Btn>
+					<Btn icon="image" onclick={() => goto('/packs')}>{t('web.instanceDetail.managePacks')}</Btn>
 				{/snippet}
 				<ResourceTable
 					tableId="instance-respacks"
@@ -1703,10 +1690,10 @@
 					rows={instRespacks}
 					getId={(row) => row.key}
 					searchValue={(row) => `${row.key} ${row.name} ${row.servers.join(' ')}`}
-					searchPlaceholder="Find a resource pack"
+					searchPlaceholder={t('web.instanceDetail.findAResourcePack')}
 					rowActions={respackActions}
 					rowLabel={(row) => row.key}
-					noun="pack"
+					noun={t('web.instanceDetail.pack')}
 					pageSize={25}
 					rowDim={(row) => !row.matched.includes(name ?? '')}
 					sortValue={(row, col) =>
@@ -1715,8 +1702,8 @@
 								? 0
 								: 1
 							: ((row as any)[col === 'name' ? 'key' : col] ?? '')}
-					emptyTitle="No resource packs"
-					emptyText="The proxy's pack catalog is empty — add packs on the Resource packs screen."
+					emptyTitle={t('web.instanceDetail.noResourcePacks')}
+					emptyText={t('web.instanceDetail.theProxySPackCatalog')}
 				>
 					{#snippet cell(row, col)}
 						{#if col === 'name'}
@@ -1726,21 +1713,21 @@
 							{/if}
 						{:else if col === 'applies'}
 							{#if respackHere(row) && row.enabled}
-								<StatusBadge state="ok" label="Applies" />
+								<StatusBadge state="ok" label={t('web.instanceDetail.applies')} />
 							{:else if respackHere(row)}
 								<StatusBadge
 									state="stopped"
-									label="Would apply"
+									label={t('web.instanceDetail.wouldApply')}
 									detail="the server rules match, but the pack is disabled"
 								/>
 							{:else}
-								<span class="dim">no</span>
+								<span class="dim">{t('web.instanceDetail.no')}</span>
 							{/if}
 						{:else if col === 'state'}
 							{#if row.enabled}
-								<StatusBadge state="ok" label="Enabled" />
+								<StatusBadge state="ok" label={t('web.instanceDetail.enabled')} />
 							{:else}
-								<StatusBadge state="stopped" label="Disabled" />
+								<StatusBadge state="stopped" label={t('web.instanceDetail.disabled')} />
 							{/if}
 						{:else if col === 'priority'}
 							{row.priority}
@@ -1756,34 +1743,34 @@
 				</ResourceTable>
 			</Panel>
 			<p class="dim note">
-				Resource packs are served by the proxy: players get every enabled pack whose server rules
+				{t('web.instanceDetail.resourcePacksAreServed')}
 				match <b>{name}</b>, stacked by priority.
 			</p>
 		{:else if tab === 'access'}
 			<AccessLists instance={name ?? ''} />
 		{:else if tab === 'network'}
-			<Panel title="Ports">
+			<Panel title={t('web.instanceDetail.ports')}>
 				<InfoGrid cells={portCells} />
 			</Panel>
 			<div class="gap"></div>
-			<Panel title="Proxy registration">
+			<Panel title={t('web.instanceDetail.proxyRegistration')}>
 				<InfoGrid cells={proxyCells} />
 			</Panel>
 		{:else if tab === 'environment'}
 			<Panel
-				title="Environment"
+				title={t('web.instanceDetail.environment')}
 				count={envVars.length}
-				description="Every variable this instance exports into its JVM at startup, and what config files substitute as $&lbrace;NAME&rbrace;. The source column is the layer that won: builtin < global < machine < instance."
+				description={t('web.instanceDetail.everyVariableThisInstanceExports')}
 				flush
 			>
 				{#snippet actions()}
-					<Btn icon="key" href="/environment">All variables</Btn>
+					<Btn icon="key" href="/environment">{t('web.instanceDetail.allVariables')}</Btn>
 					<Btn
 						variant="primary"
 						icon="plus"
 						href="/environment/new?instance={encodeURIComponent(name ?? '')}"
 					>
-						Add an override
+						{t('web.instanceDetail.addAnOverride')}
 					</Btn>
 				{/snippet}
 
@@ -1795,12 +1782,12 @@
 					getId={(row) => row.name}
 					searchValue={(row) =>
 						`${row.name} ${row.secret ? 'secret' : row.value} ${row.scope} ${row.description}`}
-					searchPlaceholder="Find a variable"
+					searchPlaceholder={t('web.instanceDetail.findAVariable')}
 					rowActions={envActions}
 					rowLabel={(row) => row.name}
-					noun="variable"
-					emptyTitle="Nothing resolved"
-					emptyText="This instance resolves no variables — not even builtins, which means it could not be read."
+					noun={t('web.instanceDetail.variable')}
+					emptyTitle={t('web.instanceDetail.nothingResolved')}
+					emptyText={t('web.instanceDetail.thisInstanceResolvesNoVariables')}
 				>
 					{#snippet cell(row, col)}
 						{#if col === 'name'}
@@ -1816,14 +1803,14 @@
 								<span class="mono">{row.value || '(empty)'}</span>
 							{:else if envRevealed[row.name] !== undefined}
 								<span class="mono">{envRevealed[row.name] || '(empty)'}</span>
-								<button class="peek" onclick={() => hideEnv(row.name)}>hide</button>
+								<button class="peek" onclick={() => hideEnv(row.name)}>{t('web.instanceDetail.hide')}</button>
 							{:else}
-								<StatusBadge state="warning" label="secret" />
+								<StatusBadge state="warning" label={t('web.instanceDetail.secret')} />
 								<span class="dim">••••••••</span>
 								{#if row.scope !== 'builtin'}
 									<button
 										class="peek"
-										title="Reveal this value — the read is recorded"
+										title={t('web.instanceDetail.revealThisValueTheRead')}
 										onclick={() => revealEnv(row)}
 									>
 										reveal
@@ -1847,7 +1834,7 @@
 				</ResourceTable>
 			</Panel>
 		{:else if tab === 'logs'}
-			<Panel title="latest.log" flush>
+			<Panel title={t('web.instanceDetail.latestLog')} flush>
 				{#snippet actions()}
 					<Select
 						value={String(logLines)}
@@ -1865,7 +1852,7 @@
 					<label class="follow">
 						<Toggle
 							checked={logFollow}
-							label="Follow the log"
+							label={t('web.instanceDetail.followTheLog')}
 							onchange={(value) => setLogFollow(value)}
 						/>
 						Follow
@@ -1876,12 +1863,12 @@
 					<Btn
 						icon="sync"
 						disabled={logFollow}
-						title={logFollow ? 'Following — the log re-reads itself' : ''}
+						title={logFollow ? 'Following; the log re-reads itself' : ''}
 						onclick={() => showLogSnapshot()}
 					>
 						Refresh
 					</Btn>
-					<Btn icon="code" onclick={() => goto(`/instances/${name}/console`)}>Live console</Btn>
+					<Btn icon="code" onclick={() => goto(`/instances/${name}/console`)}>{t('web.instanceDetail.liveConsole')}</Btn>
 				{/snippet}
 				<pre
 					class="logview mono"
@@ -1891,7 +1878,7 @@
 			</Panel>
 			{#if logData.archives.length}
 				<div class="gap"></div>
-				<Panel title="Archived logs" count={logData.archives.length}>
+				<Panel title={t('web.instanceDetail.archivedLogs')} count={logData.archives.length}>
 					{#each logData.archives as archive}
 						<div class="checkrow">
 							<span class="mono">{archive.file}</span>
@@ -1903,80 +1890,76 @@
 		{:else if tab === 'config'}
 			{#if cfgData}
 				<Panel
-					title="Instance configuration"
-					description="Memory, profile and JVM flags apply on the next restart"
+					title={t('web.instanceDetail.instanceConfiguration')}
+					description={t('web.instanceDetail.memoryProfileAndJvmFlags')}
 				>
 					<div class="cfg">
 						<label class="field">
-							<span class="lbl">Memory (heap)</span>
-							<span class="hint">-Xms/-Xmx, e.g. 2G</span>
+							<span class="lbl">{t('web.instanceDetail.memoryHeap')}</span>
+							<span class="hint">{t('web.instanceDetail.xmsXmxEG')}</span>
 							<input class="input" bind:value={cfgMemory} />
 						</label>
 						<div class="field">
-							<span class="lbl">Java profile</span>
-							<span class="hint">JVM flag set from cluster.json</span>
+							<span class="lbl">{t('web.instanceDetail.javaProfile')}</span>
+							<span class="hint">{t('web.instanceDetail.jvmFlagSetFrom')}</span>
 							<Select
 								bind:value={cfgProfile}
 								width="100%"
 								options={cfgData.profiles.map((entry: string) => ({
-									value: entry,
-									label: entry
+									value: entry, label: entry
 								}))}
 							/>
 						</div>
 						<label class="field">
-							<span class="lbl">Extra JVM arguments</span>
+							<span class="lbl">{t('web.instanceDetail.extraJvmArguments')}</span>
 							<span class="hint">
-								Appended after the profile's flags — see the resolved command on the Details
-								tab. Space separated, flags only; -Xmx/-Xms come from the memory field above.
+								{t('web.instanceDetail.appendedAfterTheProfile')}
 							</span>
-							<input class="input mono" bind:value={cfgJavaArgs} placeholder="(none)" />
+							<input class="input mono" bind:value={cfgJavaArgs} placeholder={t('web.instanceDetail.none')} />
 						</label>
 						{#if inst.software === 'paper'}
 							<div class="field">
-								<span class="lbl">Minecraft version</span>
+								<span class="lbl">{t('web.instanceDetail.minecraftVersion')}</span>
 								<span class="hint">
-									Downloads the latest Paper build for the chosen version (instance must be
-									stopped). Plugin compatibility is checked first.
+									{t('web.instanceDetail.downloadsTheLatestPaper')}
 								</span>
 								<Select
 									bind:value={cfgVersion}
 									width="100%"
 									options={paperVersions.map((version: string) => ({
-										value: version,
-										label: version
+										value: version, label: version
 									}))}
 								/>
 							</div>
 						{/if}
 						{#if versionConflict.length}
 							<Flash kind="error">
-								<b>Version change blocked — incompatible plugins:</b><br />
+								<b>{t('web.instanceDetail.versionChangeBlockedIncompatible')}</b><br />
 								{#each versionConflict as conflict}
 									· {conflict.plugin} {conflict.version} (supports {conflict.gameVersions?.join(
 										', '
 									)})<br />
 								{/each}
 								<div class="conflict-actions">
-									<Btn variant="danger" onclick={forceVersion}>Force anyway</Btn>
-									<Btn onclick={() => (versionConflict = [])}>Cancel</Btn>
+									<Btn variant="danger" onclick={forceVersion}>{t('web.instanceDetail.forceAnyway')}</Btn>
+									<Btn onclick={() => (versionConflict = [])}>{t('web.instanceDetail.cancel')}</Btn>
 								</div>
 							</Flash>
 						{/if}
-						<Btn variant="primary" loading={saving} onclick={saveConfig}>Save changes</Btn>
+						<Btn variant="primary" loading={saving} onclick={saveConfig}>{t('web.instanceDetail.saveChanges')}</Btn>
 					</div>
 				</Panel>
 				{#if versionJob}
 					<div class="gap"></div>
-					<Panel title="Version change" description="Live from the same reporter the CLI renders">
+					<Panel title={t('web.instanceDetail.versionChange')} description={t('web.instanceDetail.liveFromTheSameReporter')}>
 						<ProgressTree root={versionJob.progress} state={versionJob.state} />
 					</Panel>
 				{/if}
 				<div class="gap"></div>
 				<Panel
-					title="Addon groups"
+					title={t('web.instanceDetail.addonGroups')}
 					count={groupsDirty ? 'unsaved' : undefined}
-					description="Groups applied to this instance (default always is) — saving pushes their plugins, resource pack rules and data packs immediately; a running server loads them on restart"
+					description={t('web.instanceDetail.groupsAppliedToThisInstance')}
 				>
 					<GroupsField
 						software={cfgData.software}
@@ -1987,9 +1970,9 @@
 				</Panel>
 				<div class="gap"></div>
 				<Panel
-					title="Server settings"
+					title={t('web.instanceDetail.serverSettings')}
 					count={settingEditCount ? `${settingEditCount} unsaved` : undefined}
-					description="server.properties, applied on the next restart — Save changes above writes them"
+					description={t('web.instanceDetail.serverPropertiesAppliedOnThe')}
 				>
 					<SettingsForm
 						schema={cfgData.schema}
@@ -1999,8 +1982,8 @@
 				</Panel>
 				<div class="gap"></div>
 				<Panel
-					title="server.properties"
-					description="Every key on disk, including the ones with no field above"
+					title={t('web.instanceDetail.serverProperties')}
+					description={t('web.instanceDetail.everyKeyOnDiskIncluding')}
 					flush
 				>
 					<ResourceTable
@@ -2012,9 +1995,9 @@
 						}))}
 						getId={(row) => row.key}
 						searchValue={(row) => `${row.key} ${row.value}`}
-						searchPlaceholder="Find a property"
+						searchPlaceholder={t('web.instanceDetail.findAProperty')}
 						searchWidth="20rem"
-						noun="property"
+						noun={t('web.instanceDetail.property')}
 						paging={false}
 						maxHeight="20rem"
 					>

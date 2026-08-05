@@ -6,6 +6,7 @@
  */
 
 import { join, normalize } from "node:path";
+import { t } from "../shared/i18n";
 import { existsSync } from "node:fs";
 
 import { loadCluster, managedInstances, instanceDir, poolDir } from "../core/config";
@@ -21,7 +22,7 @@ import { tailFollow, type TailHandle } from "./tail";
 import { localBinaryMeta, localBinaryPath } from "./upgrade";
 import { BUILD_AT, COMMIT, VERSION, buildPlatform, buildVersion } from "../version";
 
-/** Local API protocol revision — clients refuse to talk across a mismatch. */
+/** Local API protocol revision; clients refuse to talk across a mismatch. */
 export const PROTOCOL_VERSION = 3;
 
 /** How often the fleet health stream emits. Matches the heartbeat cadence. */
@@ -63,7 +64,7 @@ function errorResponse(message: string, status: number): Response {
 const CONSOLE_TAIL_LINES = 100;
 
 /**
- * The hub's console tunnel to a follower, injected by installHub — the server
+ * The hub's console tunnel to a follower, injected by installHub; the server
  * module cannot import the hub (the hub imports this module), and a follower
  * daemon has no tunnel to offer at all.
  */
@@ -85,7 +86,7 @@ export function setRemoteConsole(tunnel: RemoteConsole): void {
 	remoteConsole = tunnel;
 }
 
-/** SSE stream of an instance's live console — a tail of its latest.log. */
+/** SSE stream of an instance's live console; a tail of its latest.log. */
 function consoleStream(logPath: string): Response {
 	let tail: TailHandle | undefined;
 
@@ -118,7 +119,7 @@ function consoleStream(logPath: string): Response {
 
 /**
  * SSE stream of a follower-owned instance's console, piped through the hub's
- * cluster-link tunnel — the log lives on the follower's disk, so its daemon
+ * cluster-link tunnel; the log lives on the follower's disk, so its daemon
  * tails it and the lines cross the WebSocket as stream frames.
  */
 function remoteConsoleStream(daemon: string, instance: string): Response {
@@ -278,7 +279,7 @@ async function handleJobStart(request: Request): Promise<Response> {
 }
 
 /**
- * GET /files/binary[/meta] — the binary this daemon is running, for follower
+ * GET /files/binary[/meta]; the binary this daemon is running, for follower
  * self-upgrade. Deliberately gated on the token alone and never on the protocol
  * version: a follower whose protocol no longer matches is exactly the one that
  * needs a new build (DESIGN.md §4.7).
@@ -305,9 +306,9 @@ async function handleBinary(metaOnly: boolean): Promise<Response> {
 	});
 }
 
-/** GET /files/pool/<file> — jar streaming for follower pool mirroring. */
+/** GET /files/pool/<file>; jar streaming for follower pool mirroring. */
 async function handlePoolFile(subpath: string): Promise<Response> {
-	// the pool has one flat level plus versions/ — refuse anything that escapes
+	// the pool has one flat level plus versions/; refuse anything that escapes
 	const clean = normalize(subpath);
 
 	if (clean.startsWith("..") || clean.startsWith("/") || !clean.endsWith(".jar")) {
@@ -323,9 +324,9 @@ async function handlePoolFile(subpath: string): Promise<Response> {
 	return new Response(Bun.file(path));
 }
 
-/** GET /files/datapacks/<file> — zip streaming for follower datapack mirroring. */
+/** GET /files/datapacks/<file>; zip streaming for follower datapack mirroring. */
 async function handleDatapackFile(subpath: string): Promise<Response> {
-	// the pool is one flat level of zips — refuse anything that escapes
+	// the pool is one flat level of zips; refuse anything that escapes
 	const clean = normalize(subpath);
 
 	if (clean.startsWith("..") || clean.includes("/") || !clean.endsWith(".zip")) {
@@ -444,14 +445,14 @@ export function buildHandler(
 				return errorResponse("unknown instance", 404);
 			}
 
-			// the log lives on the owner's disk — a follower instance streams
+			// the log lives on the owner's disk; a follower instance streams
 			// through the hub's cluster-link tunnel instead of a local tail
 			if (!ownsInstance(inst)) {
 				const owner = inst.daemon ?? "?";
 
 				if (!remoteConsole || !remoteConsole.connected(owner)) {
 					return errorResponse(
-						`daemon "${owner}" is not connected — its console is unreachable`,
+						t("daemon.consoleUnreachable", { name: owner }),
 						502,
 					);
 				}

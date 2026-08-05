@@ -1,8 +1,8 @@
 /**
  * Registry of long-running console operations.
  *
- * A route that cannot answer inside one request — creating an instance, changing
- * a Minecraft version — starts a job instead of blocking: it gets a
+ * A route that cannot answer inside one request; creating an instance, changing
+ * a Minecraft version; starts a job instead of blocking: it gets a
  * ProgressReporter tree, returns the job id, and the client watches the tree
  * move over SSE. The work itself lives in core; this only holds its progress and
  * its outcome.
@@ -24,7 +24,7 @@ interface JobEntry {
 
 /**
  * How often subscribers are told about progress. A jar download reports per
- * chunk — hundreds of times — and none of those frames are worth their own
+ * chunk; hundreds of times; and none of those frames are worth their own
  * SSE message.
  */
 const FLUSH_MS = 120;
@@ -151,7 +151,7 @@ export function getJob(id: string): JobView | undefined {
 }
 
 /**
- * Every job still in the registry, newest last, optionally filtered by kind —
+ * Every job still in the registry, newest last, optionally filtered by kind -
  * how the instances list knows a name is mid-provision or mid-delete.
  */
 export function listJobs(kind?: string): JobView[] {

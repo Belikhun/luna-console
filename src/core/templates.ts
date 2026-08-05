@@ -1,10 +1,10 @@
 /**
- * Config templates (DESIGN.md §3.3) — the task-definition half of the design:
+ * Config templates (DESIGN.md §3.3); the task-definition half of the design:
  * per-build `config` ops on a lockfile entry, applied whenever the plugin
  * deploys to an instance. `set` ops are surgical single-key edits through
  * confedit (line-preserving, per the state invariants); `write` ops bootstrap
- * a whole file only when it does not exist. Ops that cannot apply yet — the
- * plugin has not booted and generated its config, or a `${VAR}` is undefined —
+ * a whole file only when it does not exist. Ops that cannot apply yet; the
+ * plugin has not booted and generated its config, or a `${VAR}` is undefined -
  * report `pending` and converge on the next apply.
  */
 
@@ -97,7 +97,7 @@ async function applyOps(
 			}
 
 			if (!existsSync(path)) {
-				// the plugin has not generated its config yet — first boot will, and
+				// the plugin has not generated its config yet; first boot will, and
 				// the next deploy or `env apply` converges it
 				results.push({ plugin, instance, file: op.file, key, outcome: "pending-file" });
 
@@ -130,7 +130,7 @@ async function applyOps(
 }
 
 /**
- * Apply every config template that reaches `instance` — all entries whose
+ * Apply every config template that reaches `instance`; all entries whose
  * effective targets include it and that carry ops. `plugin` narrows to one
  * entry key.
  */

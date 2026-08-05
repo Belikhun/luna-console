@@ -1,7 +1,7 @@
 /**
  * Bridge mirror of core/addons: applying a group's pack membership writes pack
  * definitions, talks to the proxy console and copies into instance worlds, so
- * it runs as a daemon job — with the data pack deploy routed to each owner.
+ * it runs as a daemon job; with the data pack deploy routed to each owner.
  *
  * Adoption splits in two for the same reason the daemon does: reading and
  * renaming an instance's own files happens on the machine that holds them,

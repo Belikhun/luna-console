@@ -21,7 +21,7 @@ const RUNNERS = {
 type Action = keyof typeof RUNNERS;
 
 /**
- * The tracked ops are new — a follower daemon on an older build answers them
+ * The tracked ops are new; a follower daemon on an older build answers them
  * with "unknown operation". Rather than failing the user's start, the plain
  * lifecycle ops (which every build has) run instead; only the log-derived
  * phase reporting is lost. Drop this once the whole fleet is on a tracked
@@ -35,7 +35,7 @@ async function untrackedFallback(
 ): Promise<unknown> {
 	reporter.say(
 		'warn',
-		`the daemon owning ${name} predates transition tracking — running the plain ${action}`
+		`the daemon owning ${name} predates transition tracking; running the plain ${action}`
 	);
 
 	if (action === 'start') {
@@ -62,7 +62,7 @@ async function untrackedFallback(
 }
 
 /**
- * POST { action: "start" | "stop" | "restart" } — every action runs as a job
+ * POST { action: "start" | "stop" | "restart" }; every action runs as a job
  * whose progress tree is derived from the server's own log (JVM bootstrap,
  * plugins, world prep on the way up; plugin disable and world saves on the way
  * down), so the client renders the transition live instead of polling blind.
@@ -83,7 +83,7 @@ export async function POST({ params, request }) {
 	}
 
 	// the sampler's transient state is what every *other* console client sees
-	// while the job runs; a start needs none — the session itself reads "starting"
+	// while the job runs; a start needs none; the session itself reads "starting"
 	if (action === 'start') {
 		clearTransition(name);
 	} else {
@@ -116,7 +116,7 @@ export async function POST({ params, request }) {
 		} finally {
 			// the job outlives nothing: the tracked ops only return once the real
 			// end state is confirmed, so the transient state has no business
-			// surviving them either — and the sampler cannot settle it for an
+			// surviving them either; and the sampler cannot settle it for an
 			// instance owned by another machine
 			clearTransition(name);
 		}

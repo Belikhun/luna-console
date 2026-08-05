@@ -5,7 +5,7 @@ export * from "../shared/selector";
 /**
  * Server software luna can launch. A `neoforge` instance keeps its addons in
  * `mods/` rather than `plugins/` (see `addonDirOf`), and only `neoforge`-family
- * builds ever land there — the two ecosystems never cross.
+ * builds ever land there; the two ecosystems never cross.
  */
 export type Software = "paper" | "velocity" | "neoforge";
 
@@ -86,9 +86,9 @@ export interface DaemonRegistration {
 	root?: string;
 	/** Daemon binary version last seen */
 	version?: string;
-	/** ISO 8601 — first registration */
+	/** ISO 8601; first registration */
 	addedAt?: string;
-	/** ISO 8601 — last time the follower was connected */
+	/** ISO 8601; last time the follower was connected */
 	lastSeen?: string;
 }
 
@@ -112,9 +112,9 @@ export interface PortPoolOverride {
 
 /**
  * A named range of ports, addressed by id. The id is the whole mapping: a
- * consumer asks for a pool by name — instance provisioning takes the game port
+ * consumer asks for a pool by name; instance provisioning takes the game port
  * from `game`, a plugin's port spec (`PortBindingSpec.pool`) names the pool its
- * per-instance port comes from — and the pool answers with a number on the
+ * per-instance port comes from; and the pool answers with a number on the
  * machine the consumer lands on. Provisioning acquires from a pool and the
  * number stays on the instance until it is deleted, so a pool's free set is
  * derived from the registry rather than tracked separately (DESIGN.md §2.7).
@@ -124,11 +124,11 @@ export interface PortPoolOverride {
  * taken on the host that binds it and two hosts may hand out the same range.
  */
 export interface PortPool {
-	/** Pool id, unique across the cluster — what a consumer asks for */
+	/** Pool id, unique across the cluster; what a consumer asks for */
 	id: string;
 	/** What the pool is for, shown in the console */
 	label?: string;
-	/** `both` reserves the number for either protocol — use it for pools whose
+	/** `both` reserves the number for either protocol; use it for pools whose
 	 *  consumers bind tcp and udp on the same port */
 	protocol: "tcp" | "udp" | "both";
 	/** Range every machine hands out, unless it overrides */
@@ -192,7 +192,7 @@ export interface PluginMeta {
 	description?: string;
 	authors?: string[];
 	website?: string;
-	/** Bukkit `api-version` — the oldest MC API the plugin targets */
+	/** Bukkit `api-version`; the oldest MC API the plugin targets */
 	apiVersion?: string;
 }
 
@@ -212,7 +212,7 @@ export interface ConfigOp {
 }
 
 /**
- * A named set of *addons* — plugins, resource packs and data packs — applied to
+ * A named set of *addons*; plugins, resource packs and data packs; applied to
  * instances as a unit. Membership is by name, never by file: a plugin name
  * (`PluginEntry.plugin`) covers every family build of it, a resource pack key
  * covers its zip + definition, a data pack name covers its pooled zip.

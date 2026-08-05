@@ -12,15 +12,16 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import LunaMark from '$lib/components/LunaMark.svelte';
 	import { fmtBytes } from '$lib/format';
+	import { LANGUAGES, currentLanguage, switchLanguage, t } from '$lib/i18n.svelte';
 	import { tooltip } from '$lib/tooltip.svelte';
 
 	let { children } = $props();
 
-	/** host vitals are cheap but not free — poll them slowly */
+	/** host vitals are cheap but not free; poll them slowly */
 	const HOST_POLL_MS = 60_000;
 
 	interface HostInfo {
-		/** the local daemon's name — the machine this console is attached to */
+		/** the local daemon's name; the machine this console is attached to */
 		name: string;
 		root: string;
 		disk: { totalBytes: number; usedBytes: number; freeBytes: number; mount: string } | null;
@@ -39,7 +40,7 @@
 					host = await res.json();
 				}
 			} catch {
-				// chrome-only decoration — a failed poll just leaves the last value
+				// chrome-only decoration; a failed poll just leaves the last value
 			}
 		};
 
@@ -57,60 +58,60 @@
 	let shellHeight = $state(320);
 	let navCollapsed = $state(false);
 
-	const nav = [
+	const nav = $derived([
 		{
-			section: 'Instances',
+			section: t('web.nav.instances'),
 			items: [
-				{ label: 'Instances', href: '/instances', icon: 'server' },
-				{ label: 'Server selector', href: '/instances/selector', icon: 'grid' },
-				{ label: 'Launch instance', href: '/instances/launch', icon: 'rocket' }
+				{ label: t('web.nav.instancesList'), href: '/instances', icon: 'server' },
+				{ label: t('web.nav.serverSelector'), href: '/instances/selector', icon: 'grid' },
+				{ label: t('web.nav.launchInstance'), href: '/instances/launch', icon: 'rocket' }
 			]
 		},
 		{
-			section: 'Players',
+			section: t('web.nav.players'),
 			items: [
-				{ label: 'Players', href: '/players', icon: 'users' },
-				{ label: 'Online players', href: '/players/online', icon: 'userPortrait' },
-				{ label: 'Permission groups', href: '/permissions', icon: 'key' }
+				{ label: t('web.nav.playersList'), href: '/players', icon: 'users' },
+				{ label: t('web.nav.onlinePlayers'), href: '/players/online', icon: 'userPortrait' },
+				{ label: t('web.nav.permissionGroups'), href: '/permissions', icon: 'key' }
 			]
 		},
 		{
-			section: 'Addons',
+			section: t('web.nav.addons'),
 			items: [
-				{ label: 'Plugins', href: '/plugins', icon: 'plug' },
-				{ label: 'Mods', href: '/mods', icon: 'puzzle' },
-				{ label: 'Resource packs', href: '/packs', icon: 'image' },
-				{ label: 'Data packs', href: '/datapacks', icon: 'box' },
-				{ label: 'Addon groups', href: '/addons/groups', icon: 'layerGroup' }
+				{ label: t('web.nav.plugins'), href: '/plugins', icon: 'plug' },
+				{ label: t('web.nav.mods'), href: '/mods', icon: 'puzzle' },
+				{ label: t('web.nav.resourcePacks'), href: '/packs', icon: 'image' },
+				{ label: t('web.nav.dataPacks'), href: '/datapacks', icon: 'box' },
+				{ label: t('web.nav.addonGroups'), href: '/addons/groups', icon: 'layerGroup' }
 			]
 		},
 		{
-			section: 'Network & Proxy',
+			section: t('web.nav.networkProxy'),
 			items: [
-				{ label: 'Ports', href: '/network', icon: 'sitemap' },
-				{ label: 'Proxy routing', href: '/proxy', icon: 'route' }
+				{ label: t('web.nav.ports'), href: '/network', icon: 'sitemap' },
+				{ label: t('web.nav.proxyRouting'), href: '/proxy', icon: 'route' }
 			]
 		},
 		{
-			section: 'Automation',
+			section: t('web.nav.automation'),
 			items: [
-				{ label: 'Schedules', href: '/schedules', icon: 'clock' },
-				{ label: 'Environment', href: '/environment', icon: 'key' }
+				{ label: t('web.nav.schedules'), href: '/schedules', icon: 'clock' },
+				{ label: t('web.nav.environment'), href: '/environment', icon: 'key' }
 			]
 		},
 		{
-			section: 'Maintenance',
-			items: [{ label: 'Cleanup', href: '/cleanup', icon: 'broom' }]
+			section: t('web.nav.maintenance'),
+			items: [{ label: t('web.nav.cleanup'), href: '/cleanup', icon: 'broom' }]
 		},
 		{
-			section: 'Cluster',
-			items: [{ label: 'Machines', href: '/machines', icon: 'hardDrive' }]
+			section: t('web.nav.cluster'),
+			items: [{ label: t('web.nav.machines'), href: '/machines', icon: 'hardDrive' }]
 		},
 		{
-			section: 'Development',
-			items: [{ label: 'Components', href: '/gallery', icon: 'shapes' }]
+			section: t('web.nav.development'),
+			items: [{ label: t('web.nav.components'), href: '/gallery', icon: 'shapes' }]
 		}
-	];
+	]);
 
 	const crumbs = $derived.by(() => {
 		const parts = page.url.pathname.split('/').filter(Boolean);
@@ -161,7 +162,12 @@
 				<span
 					class="disk"
 					use:tooltip={{
-						content: `${fmtBytes(disk.usedBytes)} used of ${fmtBytes(disk.totalBytes)} on ${disk.mount} · ${fmtBytes(disk.freeBytes)} free`,
+						content: t('web.layout.diskTooltip', {
+							used: fmtBytes(disk.usedBytes),
+							total: fmtBytes(disk.totalBytes),
+							mount: disk.mount,
+							free: fmtBytes(disk.freeBytes)
+						}),
 						position: 'bottom'
 					}}
 				>
@@ -172,7 +178,7 @@
 						value={disk.usedBytes}
 						max={disk.totalBytes}
 						color="auto"
-						right="{fmtBytes(disk.freeBytes)} free"
+						right={t('web.layout.diskFree', { free: fmtBytes(disk.freeBytes) })}
 					/>
 				</span>
 				<span class="regdiv"></span>
@@ -202,12 +208,12 @@
 			<button
 				class="collapse"
 				onclick={() => (navCollapsed = !navCollapsed)}
-				title={navCollapsed ? 'Expand' : 'Collapse'}
+				title={navCollapsed ? t('web.layout.expand') : t('web.layout.collapse')}
 			>
 				<Icon name={navCollapsed ? 'rightFromLine' : 'leftFromLine'} size="0.875rem" style="solid" />
 			</button>
 			{#if !navCollapsed}
-				<div class="navhead"><a href="/instances">Minecraft Cluster</a></div>
+				<div class="navhead"><a href="/instances">{t('web.layout.navTitle')}</a></div>
 				{#each nav as group, gi}
 					{#if gi > 0}<hr />{/if}
 					<div class="group">
@@ -235,11 +241,23 @@
 
 	<footer class="statusbar">
 		<button class="shellbtn" onclick={() => (shellOpen = !shellOpen)}>
-			<ShellGlyph size="0.8125rem" /> Terminal
+			<ShellGlyph size="0.8125rem" /> {t('web.layout.terminal')}
 		</button>
 		<span class="statusdiv"></span>
 		<span class="spacer"></span>
-		<span class="dim">luna console — part of luna network by <a href="https://github.com/belikhun" target="_blank">belikhun</a></span>
+		<label class="langpick">
+			<Icon name="globe" size="0.75rem" style="solid" />
+			<select
+				value={currentLanguage()}
+				onchange={(event) => switchLanguage(event.currentTarget.value as 'en' | 'vi')}
+			>
+				{#each LANGUAGES as lang}
+					<option value={lang.code}>{lang.label}</option>
+				{/each}
+			</select>
+		</label>
+		<span class="statusdiv"></span>
+		<span class="dim">{t('web.layout.footer')} <a href="https://github.com/belikhun" target="_blank">belikhun</a></span>
 	</footer>
 
 	<TooltipHost />
@@ -364,7 +382,7 @@
 	}
 
 	// side nav: panel background, 1px chrome rule on the right, 28px rows inset
-	// 20px/8px, hr groups, and an active item that is simply blue and bold —
+	// 20px/8px, hr groups, and an active item that is simply blue and bold -
 	// there is no rail or fill behind it
 	.sidenav {
 		width: var(--nav-w);
@@ -498,5 +516,31 @@
 		width: 0.1rem;
 		height: 1rem;
 		background: var(--border);
+	}
+
+	// the locale picker sits in the status bar chrome, styled as quiet text
+	.langpick {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		color: var(--text);
+		font-size: 0.6875rem;
+
+		select {
+			background: transparent;
+			border: none;
+			color: var(--text);
+			font-size: 0.6875rem;
+			cursor: pointer;
+
+			&:hover {
+				color: var(--link);
+			}
+
+			option {
+				background: var(--bg-panel);
+				color: var(--text);
+			}
+		}
 	}
 </style>

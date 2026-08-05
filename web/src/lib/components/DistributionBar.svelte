@@ -6,7 +6,7 @@
 	 * their counts, with an optional legend underneath.
 	 *
 	 * Segments carrying a zero count are dropped rather than rendered at zero
-	 * width — a legend listing every state an addon could theoretically be in is
+	 * width; a legend listing every state an addon could theoretically be in is
 	 * noise next to a bar that shows the two it actually is.
 	 */
 	let {
@@ -69,7 +69,7 @@
 		transition: width 0.4s ease;
 
 		// hairline between neighbouring slices, so two similar tones still read as
-		// two — drawn inside the slice to avoid widening the track
+		// two; drawn inside the slice to avoid widening the track
 		& + .slice {
 			box-shadow: inset 0.1rem 0 0 var(--bg-panel);
 		}

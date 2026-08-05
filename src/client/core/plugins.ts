@@ -34,7 +34,7 @@ export type {
 
 export const scan = call("plugins.scan", { cfg: 0, lock: 1 }) as typeof core.scan;
 export const getVersionsForEntry = call("plugins.getVersionsForEntry") as typeof core.getVersionsForEntry;
-// one provider round trip per entry — a job, so its progress reaches the caller
+// one provider round trip per entry; a job, so its progress reaches the caller
 export const checkUpdates = jobCall("plugins.checkUpdates", {
 	cfg: 0,
 	lock: 1,

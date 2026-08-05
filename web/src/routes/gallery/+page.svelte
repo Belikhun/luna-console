@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
@@ -32,7 +33,7 @@
 	import { tooltip } from '$lib/tooltip.svelte';
 
 	/**
-	 * Component gallery — every UI component on one page, in every notable
+	 * Component gallery; every UI component on one page, in every notable
 	 * state, for eyeballing changes and debugging. Dev/debug surface only: it
 	 * talks to no APIs and mutates nothing.
 	 */
@@ -56,24 +57,24 @@
 	let menuButton: HTMLSpanElement | undefined = $state();
 
 	const MENU_ITEMS: ContextMenuItem[] = [
-		{ label: 'Manage', header: true },
-		{ label: 'Start', icon: 'play', color: 'success', action: () => {} },
-		{ label: 'Stop', icon: 'stop', disabled: true },
+		{ label: t('web.gallery.manage'), header: true },
+		{ label: t('web.gallery.start'), icon: 'play', color: 'success', action: () => {} },
+		{ label: t('web.gallery.stop'), icon: 'stop', disabled: true },
 		{
-			label: 'Open',
+			label: t('web.gallery.open'),
 			icon: 'arrowUpRightFromSquare',
 			submenu: [
-				{ label: 'Details', icon: 'circleInfo', action: () => {} },
-				{ label: 'Logs', icon: 'scroll', action: () => {} }
+				{ label: t('web.gallery.details'), icon: 'circleInfo', action: () => {} },
+				{ label: t('web.gallery.logs'), icon: 'scroll', action: () => {} }
 			]
 		},
 		{ separator: true },
 		{
-			label: 'Slow action (2s)',
+			label: t('web.gallery.slowAction2s'),
 			icon: 'hourglassClock',
 			action: () => new Promise((resolve) => setTimeout(resolve, 2000))
 		},
-		{ label: 'Delete', icon: 'trash', color: 'danger', action: () => {} }
+		{ label: t('web.gallery.delete'), icon: 'trash', color: 'danger', action: () => {} }
 	];
 
 	// ----- sample data -----
@@ -94,12 +95,12 @@
 	const ICON_WEIGHTS = ['thin', 'light', 'regular', 'solid'] as const;
 
 	const CELLS: InfoCell[] = [
-		{ label: 'Plain value', value: 'some value' },
-		{ label: 'Copyable', value: '127.0.0.1:25565', copyable: true, style: 'mono' },
-		{ label: 'With help', value: 'hover the icon', help: 'Explains what this field means.' },
-		{ label: 'Empty', value: null },
-		{ label: 'Heading style', value: '42', style: 'heading' },
-		{ label: 'Code style', value: 'java -jar server.jar --nogui', style: 'code', colSpan: 3 }
+		{ label: t('web.gallery.plainValue'), value: 'some value' },
+		{ label: t('web.gallery.copyable'), value: '127.0.0.1:25565', copyable: true, style: 'mono' },
+		{ label: t('web.gallery.withHelp'), value: 'hover the icon', help: 'Explains what this field means.' },
+		{ label: t('web.gallery.empty'), value: null },
+		{ label: t('web.gallery.headingStyle'), value: '42', style: 'heading' },
+		{ label: t('web.gallery.codeStyle'), value: 'java -jar server.jar --nogui', style: 'code', colSpan: 3 }
 	];
 
 	interface DemoRow {
@@ -117,24 +118,24 @@
 		{ name: 'echo', state: 'stopped', kind: 'paper', cpu: 0, port: 32564 },
 		{ name: 'foxtrot', state: 'running', kind: 'velocity', cpu: 33, port: 25566 }
 	];
-	const COLUMNS: Column[] = [
-		{ id: 'name', label: 'Name', sortable: true },
-		{ id: 'state', label: 'State', sortable: true },
-		{ id: 'kind', label: 'Kind', sortable: true },
-		{ id: 'cpu', label: 'CPU', sortable: true },
-		{ id: 'port', label: 'Port', sortable: true, align: 'right' }
-	];
-	const FILTERS: TableFilterGroup<DemoRow>[] = [
+	const COLUMNS: Column[] = $derived([
+		{ id: 'name', label: t('web.gallery.name'), sortable: true },
+		{ id: 'state', label: t('web.gallery.state'), sortable: true },
+		{ id: 'kind', label: t('web.gallery.kind'), sortable: true },
+		{ id: 'cpu', label: t('web.gallery.cpu'), sortable: true },
+		{ id: 'port', label: t('web.gallery.port'), sortable: true, align: 'right' }
+	]);
+	const FILTERS: TableFilterGroup<DemoRow>[] = $derived([
 		{
 			id: 'state',
-			label: 'Filter state',
+			label: t('web.gallery.filterState'),
 			options: [
-				{ value: 'any', label: 'Any state' },
-				{ value: 'running', label: 'Running', match: (row) => row.state === 'running' },
-				{ value: 'stopped', label: 'Stopped', match: (row) => row.state === 'stopped' }
+				{ value: 'any', label: t('web.gallery.anyState') },
+				{ value: 'running', label: t('web.gallery.running'), match: (row) => row.state === 'running' },
+				{ value: 'stopped', label: t('web.gallery.stopped'), match: (row) => row.state === 'stopped' }
 			]
 		}
-	];
+	]);
 	let tableSelected: Set<string> = $state(new Set(['bravo']));
 
 	// a smooth-ish wave with a little jitter, sampled like the real metric history
@@ -183,7 +184,7 @@
 	const JOB_RUNNING: ProgressSnapshot = node('0', 'Create bedwars', 0.44, 'info', '', [
 		node('0.0', 'Server files', 0.62, 'info', '', [
 			node('0.0.0', 'Validate request', 1, 'okay', 'request looks good'),
-			node('0.0.1', 'Download paper server', 0.58, 'info', 'build 87 — 31.4 / 54.0 MB'),
+			node('0.0.1', 'Download paper server', 0.58, 'info', 'build 87; 31.4 / 54.0 MB'),
 			node('0.0.2', 'Write instance files', 0, 'info', '')
 		]),
 		node('0.1', 'Plugins', 0, 'info', ''),
@@ -218,7 +219,7 @@
 
 			if (pct >= 100) {
 				clearInterval(timer);
-				note.set({ level: 'success', message: 'Slow work finished', closeable: true });
+				note.set({ level: 'success', message: t('web.gallery.slowWorkFinished'), closeable: true });
 			}
 		}, 400);
 	}
@@ -231,136 +232,136 @@
 	}
 </script>
 
-<svelte:head><title>Component gallery | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.gallery.componentGalleryLunaConsole')}</title></svelte:head>
 
 <PageHeader
-	title="Component gallery"
-	description="Every console component in every notable state — a dev surface for eyeballing changes. Talks to no APIs."
+	title={t('web.gallery.componentGallery')}
+	description={t('web.gallery.everyConsoleComponentInEvery')}
 />
 
 <div class="gallery">
-	<Panel title="Buttons">
+	<Panel title={t('web.gallery.buttons')}>
 		<div class="row">
-			<Btn>Normal</Btn>
-			<Btn variant="primary">Primary</Btn>
-			<Btn variant="danger">Danger</Btn>
-			<Btn variant="link">Link</Btn>
-			<Btn variant="tool" icon="sync" title="Tool" />
-			<Btn variant="icon" icon="gear" title="Icon" />
-			<Btn icon="download" caret>Icon + caret</Btn>
-			<Btn loading>Loading</Btn>
-			<Btn disabled>Disabled</Btn>
-			<Btn variant="primary" disabled>Primary disabled</Btn>
+			<Btn>{t('web.gallery.normal')}</Btn>
+			<Btn variant="primary">{t('web.gallery.primary')}</Btn>
+			<Btn variant="danger">{t('web.gallery.danger')}</Btn>
+			<Btn variant="link">{t('web.gallery.link')}</Btn>
+			<Btn variant="tool" icon="sync" title={t('web.gallery.tool')} />
+			<Btn variant="icon" icon="gear" title={t('web.gallery.icon')} />
+			<Btn icon="download" caret>{t('web.gallery.iconCaret')}</Btn>
+			<Btn loading>{t('web.gallery.loading')}</Btn>
+			<Btn disabled>{t('web.gallery.disabled')}</Btn>
+			<Btn variant="primary" disabled>{t('web.gallery.primaryDisabled')}</Btn>
 		</div>
 		<div class="row">
 			<SplitButton
-				label="Launch instance"
+				label={t('web.gallery.launchInstance')}
 				onclick={() => Notify.info('Primary action clicked')}
 				items={[
-					{ label: 'From template', icon: 'copy', action: () => {} },
-					{ label: 'Import', icon: 'download', action: () => {} }
+					{ label: t('web.gallery.fromTemplate'), icon: 'copy', action: () => {} },
+					{ label: t('web.gallery.import'), icon: 'download', action: () => {} }
 				]}
 			/>
 			<SplitButton
-				label="Outline split"
+				label={t('web.gallery.outlineSplit')}
 				primary={false}
 				onclick={() => {}}
-				items={[{ label: 'Item', action: () => {} }]}
+				items={[{ label: t('web.gallery.item'), action: () => {} }]}
 			/>
 			<Dropdown
-				label="Actions"
+				label={t('web.gallery.actions')}
 				items={[
-					{ label: 'Edit', icon: 'pen', action: () => {} },
-					{ label: 'Disabled', icon: 'ban', disabled: true },
+					{ label: t('web.gallery.edit'), icon: 'pen', action: () => {} },
+					{ label: t('web.gallery.disabled'), icon: 'ban', disabled: true },
 					{ divider: true, label: '' },
-					{ label: 'Delete', icon: 'trash', danger: true, action: () => {} }
+					{ label: t('web.gallery.delete'), icon: 'trash', danger: true, action: () => {} }
 				]}
 			/>
-			<Dropdown label="Primary dropdown" primary items={[{ label: 'Item', action: () => {} }]} />
+			<Dropdown label={t('web.gallery.primaryDropdown')} primary items={[{ label: t('web.gallery.item'), action: () => {} }]} />
 		</div>
 	</Panel>
 
-	<Panel title="Inputs & selection controls">
+	<Panel title={t('web.gallery.inputsSelectionControls')}>
 		<div class="row">
-			<SearchInput bind:value={search} placeholder="Find resources" width="18rem" />
+			<SearchInput bind:value={search} placeholder={t('web.gallery.findResources')} width="18rem" />
 			<Select
-				label="Filter state"
+				label={t('web.gallery.filterState')}
 				bind:value={selectValue}
 				width="14rem"
 				options={[
-					{ value: 'any', label: 'Any state' },
-					{ value: 'running', label: 'Running' },
-					{ value: 'stopped', label: 'Stopped' }
+					{ value: 'any', label: t('web.gallery.anyState') },
+					{ value: 'running', label: t('web.gallery.running') },
+					{ value: 'stopped', label: t('web.gallery.stopped') }
 				]}
 			/>
 			<Select
 				bind:value={selectValue}
 				width="12rem"
 				options={[
-					{ value: 'any', label: 'No label variant' },
-					{ value: 'running', label: 'Running' }
+					{ value: 'any', label: t('web.gallery.noLabelVariant') },
+					{ value: 'running', label: t('web.gallery.running') }
 				]}
 			/>
 		</div>
 		<div class="row">
 			<label class="demo-check">
-				<Checkbox checked={checked} label="Checked" onchange={(value) => (checked = value)} />
+				<Checkbox checked={checked} label={t('web.gallery.checked')} onchange={(value) => (checked = value)} />
 				Checkbox
 			</label>
 			<label class="demo-check">
-				<Checkbox indeterminate label="Indeterminate" /> Indeterminate
+				<Checkbox indeterminate label={t('web.gallery.indeterminate')} /> Indeterminate
 			</label>
-			<label class="demo-check"><Checkbox disabled label="Disabled" /> Disabled</label>
+			<label class="demo-check"><Checkbox disabled label={t('web.gallery.disabled')} /> {t('web.gallery.disabled')}</label>
 			<label class="demo-check">
-				<Checkbox checked disabled label="Checked disabled" /> Checked + disabled
+				<Checkbox checked disabled label={t('web.gallery.checkedDisabled')} /> Checked + disabled
 			</label>
 			<label class="demo-check">
-				<Toggle checked={toggled} label="Toggle" onchange={(value) => (toggled = value)} />
+				<Toggle checked={toggled} label={t('web.gallery.toggle')} onchange={(value) => (toggled = value)} />
 				Toggle
 			</label>
-			<label class="demo-check"><Toggle disabled label="Toggle disabled" /> Disabled</label>
+			<label class="demo-check"><Toggle disabled label={t('web.gallery.toggleDisabled')} /> {t('web.gallery.disabled')}</label>
 		</div>
 		<div class="row">
-			<input class="input" style="width: 16rem" placeholder="Bare .input field" />
-			<label class="demo-check"><input type="radio" name="g-radio" checked /> Radio</label>
-			<label class="demo-check"><input type="radio" name="g-radio" /> Radio</label>
+			<input class="input" style="width: 16rem" placeholder={t('web.gallery.bareInputField')} />
+			<label class="demo-check"><input type="radio" name="g-radio" checked /> {t('web.gallery.radio')}</label>
+			<label class="demo-check"><input type="radio" name="g-radio" /> {t('web.gallery.radio')}</label>
 		</div>
 		<div class="cols2">
 			<div class="field">
-				<span class="lbl">Stepped slider</span>
-				<span class="hint">A tick per step, and the range's ends labelled</span>
+				<span class="lbl">{t('web.gallery.steppedSlider')}</span>
+				<span class="hint">{t('web.gallery.aTickPerStep')}</span>
 				<Slider
 					value={sliderStep}
 					min={3}
 					max={32}
 					step={1}
 					unit=" chunks"
-					label="Stepped slider"
+					label={t('web.gallery.steppedSlider')}
 					onchange={(value) => (sliderStep = value)}
 				/>
 			</div>
 			<div class="field">
-				<span class="lbl">Coarse slider</span>
-				<span class="hint">49 steps — the tick scale thins out when the field narrows</span>
+				<span class="lbl">{t('web.gallery.coarseSlider')}</span>
+				<span class="hint">{t('web.gallery.49StepsTheTick')}</span>
 				<Slider
 					value={sliderCoarse}
 					min={10}
 					max={500}
 					step={10}
 					unit="%"
-					label="Coarse slider"
+					label={t('web.gallery.coarseSlider')}
 					onchange={(value) => (sliderCoarse = value)}
 				/>
 			</div>
 			<div class="field">
-				<span class="lbl">Disabled</span>
-				<span class="hint">Managed values render read-only</span>
-				<Slider value={12} min={0} max={64} step={4} disabled label="Disabled slider" />
+				<span class="lbl">{t('web.gallery.disabled')}</span>
+				<span class="hint">{t('web.gallery.managedValuesRenderRead')}</span>
+				<Slider value={12} min={0} max={64} step={4} disabled label={t('web.gallery.disabledSlider')} />
 			</div>
 		</div>
 	</Panel>
 
-	<Panel title="Status badges">
+	<Panel title={t('web.gallery.statusBadges')}>
 		<div class="row">
 			{#each BADGE_STATES as state}
 				<StatusBadge {state} />
@@ -369,45 +370,41 @@
 		<div class="row">
 			<StatusBadge
 				state="passed"
-				label="3/3 checks passed"
+				label={t('web.gallery.33ChecksPassed')}
 				detail={[
 					{
-						state: 'passed',
-						label: 'Process check',
-						detail: 'java process 1980133 inside screen session'
+						state: 'passed', label: t('web.gallery.processCheck'), detail: t('web.gallery.javaProcess1980133InsideScreen')
 					},
-					{ state: 'passed', label: 'Port reachability', detail: 'TCP 127.0.0.1:25565' },
-					{ state: 'passed', label: 'Server ping', detail: 'responding — 0/64 players' }
+					{ state: 'passed', label: t('web.gallery.portReachability'), detail: t('web.gallery.tcp127001') },
+					{ state: 'passed', label: t('web.gallery.serverPing'), detail: t('web.gallery.responding064Players') }
 				]}
 			/>
 			<StatusBadge
 				state="warning"
-				label="1/3 checks failed"
+				label={t('web.gallery.13ChecksFailed')}
 				detail={[
 					{
-						state: 'passed',
-						label: 'Process check',
-						detail: 'java process 1980133 inside screen session'
+						state: 'passed', label: t('web.gallery.processCheck'), detail: t('web.gallery.javaProcess1980133InsideScreen')
 					},
-					{ state: 'failed', label: 'Port reachability', detail: 'TCP 127.0.0.1:25565 refused' },
-					{ state: 'pending', label: 'Server ping', detail: 'waiting for the port check' }
+					{ state: 'failed', label: t('web.gallery.portReachability'), detail: t('web.gallery.tcp1270012') },
+					{ state: 'pending', label: t('web.gallery.serverPing'), detail: t('web.gallery.waitingForThePortCheck') }
 				]}
 			/>
-			<StatusBadge state="warning" label="plain text detail" detail="Single-line detail popover." />
+			<StatusBadge state="warning" label={t('web.gallery.plainTextDetail')} detail="Single-line detail popover." />
 		</div>
 	</Panel>
 
-	<Panel title="Progress & loading">
+	<Panel title={t('web.gallery.progressLoading')}>
 		<div class="cols3">
-			<ProgressBar value={progressDemo} left="Default" />
-			<ProgressBar value={progressDemo} color="success" left="Success" />
-			<ProgressBar value={82} color="auto" left="Auto (warning zone)" />
-			<ProgressBar value={97} color="auto" left="Auto (danger zone)" />
+			<ProgressBar value={progressDemo} left={t('web.gallery.default')} />
+			<ProgressBar value={progressDemo} color="success" left={t('web.gallery.success')} />
+			<ProgressBar value={82} color="auto" left={t('web.gallery.autoWarningZone')} />
+			<ProgressBar value={97} color="auto" left={t('web.gallery.autoDangerZone')} />
 			<ProgressBar compact value={progressDemo} right="{progressDemo}%" />
-			<ProgressBar compact value={64} color="auto" right="1.9 GB" />
+			<ProgressBar compact value={64} color="auto" right={t('web.gallery.19Gb')} />
 		</div>
 		<div class="row">
-			<Btn onclick={() => (progressDemo = (progressDemo + 20) % 120)}>Bump progress</Btn>
+			<Btn onclick={() => (progressDemo = (progressDemo + 20) % 120)}>{t('web.gallery.bumpProgress')}</Btn>
 			<Spinner size="1rem" />
 			<Spinner size="1.5rem" color="var(--primary)" />
 			<Icon name="rotate" spin size="1rem" />
@@ -415,16 +412,16 @@
 	</Panel>
 
 	<Panel
-		title="Progress tree"
-		description="What a long-running task reports back: one row per step of a ProgressReporter tree"
+		title={t('web.gallery.progressTree')}
+		description={t('web.gallery.whatALongRunningTask')}
 	>
-		<h4>Mid-flight</h4>
+		<h4>{t('web.gallery.midFlight')}</h4>
 		<ProgressTree root={JOB_RUNNING} state="running" />
-		<h4>Failed, with the steps that never ran</h4>
+		<h4>{t('web.gallery.failedWithTheSteps')}</h4>
 		<ProgressTree root={JOB_FAILED} state="failed" />
 	</Panel>
 
-	<Panel title="Icons & glyphs">
+	<Panel title={t('web.gallery.iconsGlyphs')}>
 		<div class="row">
 			{#each ICON_WEIGHTS as weight}
 				<span class="demo-check">
@@ -432,48 +429,48 @@
 					{weight}
 				</span>
 			{/each}
-			<span class="demo-check"><ShellGlyph size="1.25rem" /> ShellGlyph</span>
-			<span class="demo-check"><Icon name="sortDown" style="light" /> sort idle</span>
-			<span class="demo-check"><Icon name="sortDown" style="solid" color="var(--link)" /> sort active</span>
+			<span class="demo-check"><ShellGlyph size="1.25rem" /> {t('web.gallery.shellglyph')}</span>
+			<span class="demo-check"><Icon name="sortDown" style="light" /> {t('web.gallery.sortIdle')}</span>
+			<span class="demo-check"><Icon name="sortDown" style="solid" color="var(--link)" /> {t('web.gallery.sortActive')}</span>
 		</div>
 	</Panel>
 
-	<Panel title="Tooltips">
+	<Panel title={t('web.gallery.tooltips')}>
 		<div class="row">
 			<Btn onclick={() => {}} title="">
-				<span use:tooltip={{ content: 'Tooltip on top' }}>top</span>
+				<span use:tooltip={{ content: 'Tooltip on top' }}>{t('web.gallery.top')}</span>
 			</Btn>
 			<Btn onclick={() => {}}>
-				<span use:tooltip={{ content: 'Tooltip below', position: 'bottom' }}>bottom</span>
+				<span use:tooltip={{ content: 'Tooltip below', position: 'bottom' }}>{t('web.gallery.bottom')}</span>
 			</Btn>
 			<Btn onclick={() => {}}>
-				<span use:tooltip={{ content: 'Tooltip left', position: 'left' }}>left</span>
+				<span use:tooltip={{ content: 'Tooltip left', position: 'left' }}>{t('web.gallery.left')}</span>
 			</Btn>
 			<Btn onclick={() => {}}>
-				<span use:tooltip={{ content: 'Tooltip right', position: 'right' }}>right</span>
+				<span use:tooltip={{ content: 'Tooltip right', position: 'right' }}>{t('web.gallery.right')}</span>
 			</Btn>
 			<span
 				class="dim"
 				use:tooltip={{
 					content:
-						'A long tooltip that has quite a lot of text in it, enough to wrap onto several lines inside the card without overflowing.'
+						t('web.gallery.aLongTooltipThat')
 				}}
 			>
-				long content (hover)
+				{t('web.gallery.longContentHover')}
 			</span>
 		</div>
 	</Panel>
 
-	<Panel title="Notifications (flashbar)">
+	<Panel title={t('web.gallery.notificationsFlashbar')}>
 		<div class="row">
 			<Btn onclick={() => Notify.success('The description for luna/admin-password is updated.')}>
 				Success
 			</Btn>
-			<Btn onclick={() => Notify.info('A new console version is available.')}>Info</Btn>
+			<Btn onclick={() => Notify.info('A new console version is available.')}>{t('web.gallery.info')}</Btn>
 			<Btn
 				onclick={() =>
 					Notify.warning('Plugin deploy finished with holdbacks.', {
-						detail: 'grimac-bukkit held back on survival (needs MC 1.21.11).'
+						detail: t('web.gallery.grimacBukkitHeldBackOn')
 					})}
 			>
 				Warning
@@ -482,50 +479,48 @@
 				variant="danger"
 				onclick={() =>
 					Notify.error('Could not stop instance', {
-						detail: 'screen session luna.event did not answer within 60s',
-						closeable: true
+						detail: t('web.gallery.screenSessionLunaEventDid'), closeable: true
 					})}
 			>
 				Error
 			</Btn>
-			<Btn onclick={() => raiseLoading(false)}>Loading</Btn>
-			<Btn onclick={() => raiseLoading(true)}>Loading + progress</Btn>
-			<Btn variant="link" onclick={raiseStack}>Raise 5 (stack)</Btn>
+			<Btn onclick={() => raiseLoading(false)}>{t('web.gallery.loading')}</Btn>
+			<Btn onclick={() => raiseLoading(true)}>{t('web.gallery.loadingProgress')}</Btn>
+			<Btn variant="link" onclick={raiseStack}>{t('web.gallery.raise5Stack')}</Btn>
 		</div>
-		<Flash kind="info">Inline Flash — info. Static, lives in the page flow rather than the flashbar.</Flash>
-		<Flash kind="success">Inline Flash — success.</Flash>
-		<Flash kind="warning">Inline Flash — warning.</Flash>
-		<Flash kind="error" dismiss={() => {}}>Inline Flash — error, dismissable.</Flash>
+		<Flash kind="info">{t('web.gallery.inlineFlashInfoStatic')}</Flash>
+		<Flash kind="success">{t('web.gallery.inlineFlashSuccess')}</Flash>
+		<Flash kind="warning">{t('web.gallery.inlineFlashWarning')}</Flash>
+		<Flash kind="error" dismiss={() => {}}>{t('web.gallery.inlineFlashErrorDismissable')}</Flash>
 	</Panel>
 
-	<Panel title="Menus">
+	<Panel title={t('web.gallery.menus')}>
 		<div class="row">
 			<span bind:this={menuButton}>
 				<Btn onclick={() => menuButton && menu?.openAtElement(menuButton)}>
-					Open context menu
+					{t('web.gallery.openContextMenu')}
 				</Btn>
 			</span>
-			<span class="dim">…or right-click anywhere in this panel</span>
+			<span class="dim">{t('web.gallery.orRightClickAnywhere')}</span>
 		</div>
 		<div
 			class="ctx-zone"
 			role="presentation"
 			oncontextmenu={(event) => {
-				event.preventDefault();
-				menu?.openAt(event.clientX, event.clientY);
+				event.preventDefault(); menu?.openAt(event.clientX, event.clientY);
 			}}
 		>
-			right-click zone (headers, separators, submenu, async spinner row, danger tint)
+			{t('web.gallery.rightClickZoneHeaders')}
 		</div>
 		<ContextMenu bind:this={menu} items={MENU_ITEMS} header="demo-instance" />
 	</Panel>
 
-	<Panel title="Tabs, paging & refresh">
+	<Panel title={t('web.gallery.tabsPagingRefresh')}>
 		<Tabs
 			tabs={[
-				{ id: 'one', label: 'Details' },
-				{ id: 'two', label: 'Monitoring' },
-				{ id: 'three', label: 'Logs' }
+				{ id: 'one', label: t('web.gallery.details') },
+				{ id: 'two', label: t('web.gallery.monitoring') },
+				{ id: 'three', label: t('web.gallery.logs') }
 			]}
 			bind:active={activeTab}
 		/>
@@ -551,26 +546,26 @@
 		</div>
 	</Panel>
 
-	<Panel title="Info grid">
+	<Panel title={t('web.gallery.infoGrid')}>
 		<InfoGrid cells={CELLS} columns={[4, 3, 2]} />
 	</Panel>
 
-	<Panel title="Metric chart">
+	<Panel title={t('web.gallery.metricChart')}>
 		<div class="cols2">
-			<Sparkline points={SPARK_POINTS} label="CPU utilization" unit="%" maxY={100} />
-			<Sparkline points={SPARK_GAPS} label="Tick rate (with gaps)" unit=" TPS" maxY={100} />
-			<Sparkline points={[]} label="No data" unit="%" />
+			<Sparkline points={SPARK_POINTS} label={t('web.gallery.cpuUtilization')} unit="%" maxY={100} />
+			<Sparkline points={SPARK_GAPS} label={t('web.gallery.tickRateWithGaps')} unit=" TPS" maxY={100} />
+			<Sparkline points={[]} label={t('web.gallery.noData')} unit="%" />
 		</div>
 	</Panel>
 
-	<Panel title="Modals">
+	<Panel title={t('web.gallery.modals')}>
 		<div class="row">
-			<Btn onclick={() => (modalOpen = true)}>Open modal</Btn>
-			<Btn onclick={() => (wideModalOpen = true)}>Open wide modal</Btn>
+			<Btn onclick={() => (modalOpen = true)}>{t('web.gallery.openModal')}</Btn>
+			<Btn onclick={() => (wideModalOpen = true)}>{t('web.gallery.openWideModal')}</Btn>
 		</div>
 	</Panel>
 
-	<Panel title="Data table" flush>
+	<Panel title={t('web.gallery.dataTable')} flush>
 		<DataTable
 			tableId="gallery"
 			columns={COLUMNS}
@@ -586,7 +581,7 @@
 			onRowContextMenu={(_row, event) => menu?.openAt(event.clientX, event.clientY)}
 		>
 			{#snippet toolbar()}
-				<SearchInput value="" placeholder="Find demo rows" width="16rem" />
+				<SearchInput value="" placeholder={t('web.gallery.findDemoRows')} width="16rem" />
 			{/snippet}
 			{#snippet cell(row, col)}
 				{#if col === 'name'}
@@ -605,28 +600,28 @@
 	</Panel>
 </div>
 
-<Modal title="Demo modal" bind:open={modalOpen}>
-	<p>Standard modal body. Escape or the overlay closes it.</p>
+<Modal title={t('web.gallery.demoModal')} bind:open={modalOpen}>
+	<p>{t('web.gallery.standardModalBodyEscape')}</p>
 	{#snippet footer()}
-		<Btn variant="link" onclick={() => (modalOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" onclick={() => (modalOpen = false)}>Confirm</Btn>
+		<Btn variant="link" onclick={() => (modalOpen = false)}>{t('web.gallery.cancel')}</Btn>
+		<Btn variant="primary" onclick={() => (modalOpen = false)}>{t('web.gallery.confirm')}</Btn>
 	{/snippet}
 </Modal>
 
-<Modal title="Wide demo modal" bind:open={wideModalOpen} wide>
-	<p>Wide variant, as used by the table preferences dialog.</p>
+<Modal title={t('web.gallery.wideDemoModal')} bind:open={wideModalOpen} wide>
+	<p>{t('web.gallery.wideVariantAsUsed')}</p>
 	<Select
-		label="Select inside a modal"
+		label={t('web.gallery.selectInsideAModal')}
 		value="a"
 		width="16rem"
 		options={[
-			{ value: 'a', label: 'Renders above the modal' },
-			{ value: 'b', label: 'Option B' },
-			{ value: 'c', label: 'Option C' }
+			{ value: 'a', label: t('web.gallery.rendersAboveTheModal') },
+			{ value: 'b', label: t('web.gallery.optionB') },
+			{ value: 'c', label: t('web.gallery.optionC') }
 		]}
 	/>
 	{#snippet footer()}
-		<Btn variant="primary" onclick={() => (wideModalOpen = false)}>Close</Btn>
+		<Btn variant="primary" onclick={() => (wideModalOpen = false)}>{t('web.gallery.close')}</Btn>
 	{/snippet}
 </Modal>
 

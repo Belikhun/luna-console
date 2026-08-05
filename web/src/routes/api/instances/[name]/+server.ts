@@ -51,12 +51,12 @@ export async function DELETE({ params, url }) {
 	const status = cfg.instances[name]!.external ? undefined : await getStatus(cfg, name);
 
 	if (status && status.state !== 'stopped') {
-		throw error(409, `${name} is running — stop it first`);
+		throw error(409, `${name} is running; stop it first`);
 	}
 
 	const purge = url.searchParams.get('purge') === 'true';
 
-	// captured before deregistration wipes it — the deleting row still says
+	// captured before deregistration wipes it; the deleting row still says
 	// which machine the purge is running on
 	const owner = cfg.instances[name]!.daemon ?? null;
 

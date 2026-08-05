@@ -32,7 +32,7 @@ export type {
 	SelectorDraft,
 	SelectorIssue,
 } from "../../shared/selector";
-// pure registry surgery — it mutates the object the caller already holds, so it
+// pure registry surgery; it mutates the object the caller already holds, so it
 // belongs on this side of the socket rather than costing a round trip
 export { applyDraftToCluster } from "../../core/selector";
 export { parseWhen, formatWhen, WHEN_OPERATORS, WHEN_VARIABLES } from "../../shared/selectorwhen";
@@ -40,7 +40,7 @@ export type { WhenExpression, WhenClause, WhenTerm, WhenOperator } from "../../s
 export type { SelectorState, ApplyResult, ImportReport } from "../../core/selector";
 
 // The daemon-side wrappers drop the `primaryName` argument the core functions
-// take — it is the daemon's own identity, which a client cannot know — so these
+// take; it is the daemon's own identity, which a client cannot know; so these
 // are typed by hand rather than off `typeof core.*`.
 
 export const draft = call("selector.draft", { cfg: 0 }) as (cfg: ClusterConfig) => Promise<core.SelectorDraft>;

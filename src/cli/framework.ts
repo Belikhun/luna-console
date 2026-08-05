@@ -1,4 +1,5 @@
 import { pc } from "./ui";
+import { t } from "../shared/i18n";
 
 export interface ArgSpec {
 	name: string;
@@ -93,7 +94,7 @@ export function parseRest(
 		const spec = optSpecs.find((opt) => opt.flag === flag);
 
 		if (!spec) {
-			throw new UsageError(`unknown option ${flag}`);
+			throw new UsageError(t("cli.framework.unknownOption", { flag }));
 		}
 
 		const key = flag.replace(/^--/, "");
@@ -113,7 +114,7 @@ export function parseRest(
 		const next = rest[++i];
 
 		if (next === undefined) {
-			throw new UsageError(`option ${flag} requires a value`);
+			throw new UsageError(t("cli.framework.optionNeedsValue", { flag }));
 		}
 
 		opts[key] = next;
@@ -123,13 +124,13 @@ export function parseRest(
 	const requiredCount = specs.filter((arg) => arg.required).length;
 
 	if (args.length < requiredCount) {
-		throw new UsageError(`missing argument <${specs[args.length]!.name}>`);
+		throw new UsageError(t("cli.framework.missingArgument", { name: specs[args.length]!.name }));
 	}
 
 	const hasVariadic = specs.some((arg) => arg.variadic);
 
 	if (!hasVariadic && args.length > specs.length) {
-		throw new UsageError(`unexpected argument "${args[specs.length]}"`);
+		throw new UsageError(t("cli.framework.unexpectedArgument", { arg: args[specs.length] ?? "" }));
 	}
 
 	return { args, opts };
@@ -154,7 +155,7 @@ export function usageLine(cmd: Command): string {
 
 /** Print grouped help for every visible command, or just one command group. */
 export function printHelp(filter?: string): void {
-	console.log(pc.bold(pc.magenta("\nluna")) + pc.dim(" — minecraft cluster control center\n"));
+	console.log(pc.bold(pc.magenta("\nluna")) + pc.dim(` · ${t("cli.framework.tagline")}\n`));
 
 	const groups = new Map<string, Command[]>();
 
@@ -203,8 +204,8 @@ export async function dispatch(argv: string[]): Promise<void> {
 	const match = resolveCommand(argv);
 
 	if (!match) {
-		console.error(pc.red(`unknown command: ${argv.join(" ")}`));
-		console.error(pc.dim(`run "luna help" for usage`));
+		console.error(pc.red(t("cli.framework.unknownCommand", { command: argv.join(" ") })));
+		console.error(pc.dim(t("cli.framework.helpHint")));
 		process.exit(1);
 	}
 
@@ -214,7 +215,7 @@ export async function dispatch(argv: string[]): Promise<void> {
 		await match.cmd.handler(args, opts);
 	} catch (err) {
 		if (err instanceof UsageError) {
-			console.error(pc.red(`usage error: ${err.message}`));
+			console.error(pc.red(t("cli.framework.usageError", { message: err.message })));
 			console.error(`  ${usageLine(match.cmd)}`);
 			process.exitCode = 1;
 

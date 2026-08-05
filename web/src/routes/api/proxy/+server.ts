@@ -21,7 +21,7 @@ export async function GET() {
 	});
 }
 
-/** POST { reload? } — apply sync (and optionally `velocity reload`) */
+/** POST { reload? }; apply sync (and optionally `velocity reload`) */
 export async function POST({ request }) {
 	const body = await jsonBody(request);
 	const cfg = await loadCluster();

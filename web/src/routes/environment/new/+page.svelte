@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -64,15 +65,15 @@
 		}
 
 		if (!/^[A-Z][A-Z0-9_]*$/.test(varName)) {
-			return 'ALL_UPPERCASE_WITH_UNDERSCORES, starting with a letter';
+			return t('web.envNew.nameRule');
 		}
 
 		if (varName.startsWith('LUNA_')) {
-			return 'LUNA_* names are builtin — they are computed per instance, not stored';
+			return t('web.envNew.lunaReserved');
 		}
 
 		if (!editing && variables.some((row) => row.name === varName) && scope === 'global') {
-			return 'already defined globally — open it from the table to change its value';
+			return t('web.envNew.alreadyGlobal');
 		}
 
 		return '';
@@ -121,19 +122,19 @@
 		loaded = true;
 	});
 
-	/** Where the value lands, in words — the recap and the success note share it. */
+	/** Where the value lands, in words; the recap and the success note share it. */
 	const scopeText = $derived(
 		scope === 'machine'
-			? `every instance on ${machine || '(machine)'}`
+			? t('web.envNew.everyOnMachine', { machine: machine || '(machine)' })
 			: scope === 'instance'
-				? `${instance || '(instance)'} only`
-				: 'every instance in the cluster'
+				? t('web.envNew.instanceOnly', { instance: instance || '(instance)' })
+				: t('web.env.everyInstance')
 	);
 
 	async function submit(): Promise<void> {
 		saving = true;
 
-		const note = Notify.loading(`Saving ${varName}…`);
+		const note = Notify.loading(t('web.envNew.saving', { name: varName }));
 
 		try {
 			await post('/env', {
@@ -147,8 +148,8 @@
 
 			note.set({
 				level: 'success',
-				message: `${varName} saved`,
-				detail: `Applies to ${scopeText}. Instances pick it up on their next start.`,
+				message: t('web.envNew.saved', { name: varName }),
+				detail: t('web.envNew.savedDetail', { scope: scopeText }),
 				closeable: true
 			});
 
@@ -156,7 +157,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: `Could not save ${varName}`,
+				message: t('web.envNew.saveFailed', { name: varName }),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -167,24 +168,24 @@
 </script>
 
 <Wizard
-	title={editing ? `Edit ${editingName}` : 'Define an environment variable'}
-	windowTitle={editing ? `Edit ${editingName}` : 'New environment variable'}
-	description="Variables are exported into every instance's JVM at startup and substituted into config templates as $&lbrace;NAME&rbrace;"
-	submitLabel={editing ? 'Save variable' : 'Define variable'}
+	title={editing ? t('web.envNew.editTitle', { name: editingName }) : t('web.envNew.title')}
+	windowTitle={editing ? t('web.envNew.editTitle', { name: editingName }) : t('web.envNew.windowTitle')}
+	description={t('web.envNew.pageDescription')}
+	submitLabel={editing ? t('web.envNew.saveVariable') : t('web.env.defineVariable')}
 	disabled={!ready || !loaded}
 	loading={saving}
 	onsubmit={submit}
 >
 	{#snippet summary()}
-		{varName || '(name)'} = {secret && scope === 'global'
+		{varName || t('web.scheduleNew.namePlaceholder')} = {secret && scope === 'global'
 			? '••••••••'
-			: value || '(empty)'} · applies to {scopeText}
+			: value || t('web.env.empty')} · {t('web.envNew.appliesTo')} {scopeText}
 	{/snippet}
 
-	<Panel title="Variable" description="The name config files and start-up scripts refer to">
+	<Panel title={t('web.envNew.variable')} description={t('web.envNew.variableDescription')}>
 		<label class="field">
-			<span class="lbl">Name</span>
-			<span class="hint">ALL_UPPERCASE_WITH_UNDERSCORES; LUNA_* is reserved for builtins</span>
+			<span class="lbl">{t('web.common.name')}</span>
+			<span class="hint">{t('web.envNew.nameHint')}</span>
 			<input
 				class="input mono"
 				bind:value={varName}
@@ -194,38 +195,35 @@
 			{#if nameError}<span class="err">{nameError}</span>{/if}
 		</label>
 		<label class="field">
-			<span class="lbl">Value</span>
+			<span class="lbl">{t('web.common.value')}</span>
 			{#if secretBlank}
-				<span class="hint">
-					This variable is secret, so its stored value never leaves the server — enter a new one to
-					replace it, or leave it blank to keep it and change only the fields below.
-				</span>
+				<span class="hint">{t('web.envNew.secretBlankHint')}</span>
 			{/if}
 			<input class="input mono" bind:value placeholder="10.0.0.10" disabled={saving} />
 		</label>
 	</Panel>
 
 	<Panel
-		title="Scope"
-		description="Builtin < global < machine < instance — an instance resolves the narrowest value defined for it"
+		title={t('web.envNew.scope')}
+		description={t('web.envNew.scopeDescription')}
 	>
 		<div class="field">
-			<span class="lbl">This value applies to</span>
+			<span class="lbl">{t('web.envNew.valueAppliesTo')}</span>
 			<Select
 				bind:value={scope}
 				width="100%"
 				options={[
-					{ value: 'global', label: 'Globally — every instance in the cluster' },
-					{ value: 'machine', label: 'One machine — every instance on that host' },
-					{ value: 'instance', label: 'One instance' }
+					{ value: 'global', label: t('web.envNew.globallyLabel') },
+					{ value: 'machine', label: t('web.envNew.machineLabel') },
+					{ value: 'instance', label: t('web.envNew.instanceLabel') }
 				]}
 			/>
 		</div>
 
 		{#if scope === 'machine'}
 			<div class="field">
-				<span class="lbl">Machine</span>
-				<span class="hint">Overrides the global value for every instance this daemon owns</span>
+				<span class="lbl">{t('web.env.machine')}</span>
+				<span class="hint">{t('web.envNew.machineOverrideHint')}</span>
 				<Select
 					bind:value={machine}
 					width="100%"
@@ -239,8 +237,8 @@
 
 		{#if scope === 'instance'}
 			<div class="field">
-				<span class="lbl">Instance</span>
-				<span class="hint">Overrides both the global and the machine value, for this one server</span>
+				<span class="lbl">{t('web.env.instance')}</span>
+				<span class="hint">{t('web.envNew.instanceOverrideHint')}</span>
 				<Select
 					bind:value={instance}
 					width="100%"
@@ -251,38 +249,34 @@
 
 		{#if scope !== 'global' && definition}
 			<p class="shadow dim">
-				Shadows the global value
-				<span class="mono">{definition.secret ? '••••••••' : definition.value || '(empty)'}</span>
-				for {scopeText}.
+				{t('web.envNew.shadowsGlobal')}
+				<span class="mono">{definition.secret ? '••••••••' : definition.value || t('web.env.empty')}</span>
+				{t('web.envNew.forScope', { scope: scopeText })}
 			</p>
 		{:else if scope !== 'global' && varName && !definition}
 			<p class="shadow dim">
-				<StatusBadge state="warning" label="no global value" /> This name is defined only at this
-				scope — instances outside it will not resolve it, and a config file referencing
-				<span class="mono">${'{'}{varName}{'}'}</span> there refuses to render.
+				<StatusBadge state="warning" label={t('web.envNew.noGlobalValue')} /> {t('web.envNew.onlyHereNote')}
+				<span class="mono">${'{'}{varName}{'}'}</span> {t('web.envNew.refusesRender')}
 			</p>
 		{/if}
 	</Panel>
 
 	{#if scope === 'global'}
-		<Panel title="Presentation" description="How the console treats this variable">
+		<Panel title={t('web.envNew.presentation')} description={t('web.envNew.presentationDescription')}>
 			<label class="field">
-				<span class="lbl">Description</span>
+				<span class="lbl">{t('web.env.colDescription')}</span>
 				<input
 					class="input"
 					bind:value={description}
-					placeholder="What reads this"
+					placeholder={t('web.envNew.descriptionPlaceholder')}
 					disabled={saving}
 				/>
 			</label>
 			<label class="check">
-				<Checkbox checked={secret} label="Secret" onchange={(on) => (secret = on)} />
-				Secret — mask the value everywhere in the console, and never send it to a browser
+				<Checkbox checked={secret} label={t('web.env.secret')} onchange={(on) => (secret = on)} />
+				{t('web.envNew.secretNote')}
 			</label>
-			<p class="note dim">
-				A secret is still written into each instance's <span class="mono">.luna-env</span> file (mode
-				0600) — masking is about the console, not about the server.
-			</p>
+			<p class="note dim">{t('web.envNew.secretFileNoteA')} <span class="mono">{t('web.envNew.lunaEnv')}</span> {t('web.envNew.secretFileNoteB')}</p>
 		</Panel>
 	{/if}
 </Wizard>

@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 
 	/** Filter box: magnifier icon inside a rounded input. */
 	let {
 		value = $bindable(''),
-		placeholder = 'Find resources',
+		placeholder = t('web.common.findResources'),
 		width = '30rem',
 		focus = false,
 		onenter
@@ -14,7 +15,7 @@
 		width?: string;
 		/** Take the caret as soon as the box is mounted (a dialog's own field) */
 		focus?: boolean;
-		/** Enter pressed in the field — for boxes that submit rather than filter */
+		/** Enter pressed in the field; for boxes that submit rather than filter */
 		onenter?: () => void;
 	} = $props();
 

@@ -8,7 +8,7 @@ import { errorMessage } from '$lib/server/http';
 
 /**
  * POST { plugin, family, targets?, data } → pool a jar uploaded from the
- * console and deploy it to its targets. `data` is the jar base64-encoded —
+ * console and deploy it to its targets. `data` is the jar base64-encoded -
  * JSON rather than multipart for the same CSRF reason as the pack uploads.
  * Targets may be empty: pooling without deploying is a first-class choice.
  */

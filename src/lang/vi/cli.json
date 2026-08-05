@@ -1,0 +1,1363 @@
+{
+	"framework": {
+		"tagline": "trung tâm điều khiển cụm máy chủ minecraft",
+		"unknownOption": "tùy chọn không xác định: {flag}",
+		"optionNeedsValue": "tùy chọn {flag} cần một giá trị",
+		"missingArgument": "thiếu tham số <{name}>",
+		"unexpectedArgument": "tham số không mong đợi \"{arg}\"",
+		"unknownCommand": "lệnh không xác định: {command}",
+		"helpHint": "chạy \"luna help\" để xem hướng dẫn",
+		"usageError": "lỗi cú pháp: {message}"
+	},
+	"completions": {
+		"desc": "In hook tự hoàn thành lệnh cho shell (bash|zsh|fish)",
+		"unsupportedShell": "shell không được hỗ trợ: {shell}",
+		"installHint": "# cài đặt: luna completions {shell} >> ~/.{target}"
+	},
+	"repl": {
+		"title": "bảng điều khiển tương tác",
+		"hints": "Tab để hoàn thành lệnh · 'help' xem danh sách lệnh · thêm '?' sau lệnh để xem gợi ý · 'exit' để thoát",
+		"bye": "tạm biệt"
+	},
+	"common": {
+		"aborted": "đã hủy",
+		"none": "không có",
+		"optYes": "bỏ qua bước xác nhận"
+	},
+	"level": {
+		"error": "lỗi",
+		"warn": "cảnh báo"
+	},
+	"head": {
+		"where": "vị trí",
+		"problem": "vấn đề",
+		"server": "máy chủ",
+		"pageSlot": "trang:ô",
+		"material": "vật liệu",
+		"accent": "màu nhấn",
+		"description": "mô tả",
+		"host": "host",
+		"port": "cổng",
+		"proto": "giao thức",
+		"machine": "máy",
+		"owner": "chủ sở hữu",
+		"kind": "loại",
+		"pool": "pool",
+		"address": "địa chỉ",
+		"range": "dải",
+		"used": "đã dùng",
+		"next": "kế tiếp",
+		"source": "nguồn",
+		"items": "mục",
+		"size": "dung lượng",
+		"name": "tên",
+		"id": "id",
+		"action": "hành động",
+		"instances": "instance",
+		"trigger": "kích hoạt",
+		"nextRun": "lần chạy tới",
+		"last": "lần cuối",
+		"runs": "số lần chạy",
+		"time": "thời gian",
+		"schedule": "lịch",
+		"outcome": "kết quả",
+		"detail": "chi tiết",
+		"state": "trạng thái",
+		"backend": "backend",
+		"memory": "bộ nhớ",
+		"players": "người chơi",
+		"uptime": "thời gian chạy",
+		"beat": "nhịp",
+		"player": "người chơi",
+		"session": "phiên",
+		"event": "sự kiện",
+		"group": "nhóm",
+		"plugins": "plugin",
+		"respacks": "gói tài nguyên",
+		"datapacks": "gói dữ liệu",
+		"usedBy": "dùng bởi",
+		"addon": "addon",
+		"module": "module",
+		"platform": "nền tảng",
+		"pooledVersion": "bản trong kho",
+		"built": "dựng lúc",
+		"targets": "đích",
+		"drifted": "bị lệch",
+		"value": "giá trị",
+		"scope": "phạm vi",
+		"instance": "instance",
+		"file": "tệp",
+		"placeholders": "biến giữ chỗ",
+		"mode": "chế độ",
+		"disk": "đĩa",
+		"latency": "độ trễ",
+		"version": "phiên bản",
+		"lastSeen": "thấy lần cuối",
+		"check": "kiểm tra",
+		"resident": "bộ nhớ thường trú",
+		"channel": "kênh",
+		"playtime": "giờ chơi",
+		"sessions": "số phiên",
+		"when": "khi nào",
+		"amount": "số tiền",
+		"counterparty": "đối tác",
+		"details": "chi tiết",
+		"weight": "trọng số",
+		"prefix": "tiền tố",
+		"inherits": "kế thừa",
+		"nodes": "node",
+		"members": "thành viên",
+		"software": "phần mềm",
+		"mem": "ram",
+		"auto": "tự động",
+		"family": "họ",
+		"plugin": "plugin",
+		"update": "cập nhật",
+		"supportsMc": "hỗ trợ MC",
+		"runsVersion": "chạy phiên bản",
+		"why": "lý do",
+		"status": "trạng thái",
+		"groups": "nhóm",
+		"logName": "tên trong log",
+		"warn": "cảnh báo",
+		"err": "lỗi",
+		"from": "từ",
+		"pack": "gói",
+		"priority": "ưu tiên",
+		"servers": "máy chủ",
+		"deploysTo": "triển khai tới"
+	},
+	"machines": {
+		"unknown": "không biết máy \"{name}\"; các máy đã biết: {known}"
+	},
+	"proxy": {
+		"sync": {
+			"desc": "Tạo lại phần [servers]/[forced-hosts] của velocity.toml từ cluster.json",
+			"optDryRun": "xem trước, không ghi",
+			"optReload": "chạy velocity reload sau đó nếu proxy đang bật",
+			"inSync": "velocity.toml đã đồng bộ sẵn",
+			"dryRun": "chạy thử: chưa ghi velocity.toml",
+			"updated": "đã cập nhật velocity.toml",
+			"backupNote": "(bản sao lưu: velocity.toml.bak)",
+			"applyHint": "khởi động lại proxy hoặc chạy với --reload để áp dụng",
+			"reloaded": "đã gửi lệnh `velocity reload` tới proxy",
+			"proxyDown": "proxy chưa chạy; cấu hình sẽ áp dụng ở lần khởi động sau"
+		}
+	},
+	"ports": {
+		"badRange": "không đọc được \"{text}\" thành một dải; dùng dạng 32560-32599",
+		"list": {
+			"desc": "Bản đồ cổng toàn cụm (game, plugin, ngoài cụm) kèm máy đang giữ từng cổng",
+			"external": "ngoài cụm",
+			"legend": "{ok} đang mở, {off} chưa mở (đã tắt hoặc lệch cấu hình), {warn} máy không liên lạc được, {dot} ngoài cụm (không kiểm tra)"
+		},
+		"pools": {
+			"desc": "Danh mục pool: thứ gì dùng từng pool, cùng dải và mức dùng trên mỗi máy",
+			"provisionConsumer": "mọi lần tạo instance (cổng game)",
+			"noConsumers": "chưa có gì; một khai báo cổng plugin sẽ trỏ tới pool này bằng `pool`",
+			"consumedBy": "được dùng bởi: {who}",
+			"exhausted": "đã cạn",
+			"sourceOverride": "ghi đè",
+			"sourceDefault": "mặc định",
+			"sourceCatalog": "danh mục",
+			"footer": "id của pool chính là ánh xạ: tạo instance lấy `game`, khai báo cổng của plugin\ntự đặt tên pool; mọi máy đều có mọi pool, chỉ khác dãy số"
+		},
+		"poolSet": {
+			"desc": "Tạo/sửa một pool cho toàn cụm, hoặc ghi đè dải của nó trên một máy",
+			"argRange": "ví dụ 32560-32599",
+			"optMachine": "chỉ ghi đè dải trên máy này",
+			"optProtocol": "tcp | udp | both (mặc định tcp)",
+			"optLabel": "pool này dùng cho việc gì",
+			"optReserve": "các cổng cần giữ lại, phân tách bằng dấu phẩy",
+			"optRemove": "xóa pool (hoặc, kèm --machine, phần ghi đè của máy đó)",
+			"needsRange": "pool mới cần một dải, ví dụ 32560-32599",
+			"badProtocol": "--protocol phải là tcp, udp hoặc both",
+			"overrideNeedsRange": "ghi đè theo máy cần một dải và/hoặc --reserve",
+			"nothingWritten": "chưa ghi gì; sửa lại định nghĩa pool rồi thử lại",
+			"droppedCatalog": "đã xóa pool \"{id}\" khỏi danh mục",
+			"droppedOverride": "pool \"{id}\" không còn bị ghi đè trên {machine}",
+			"updatedEverywhere": "pool \"{id}\" {change} trên mọi máy không có ghi đè",
+			"updatedMachine": "pool \"{id}\" trên {machine} {change}",
+			"changeRange": "giờ cấp dải {range}",
+			"changeUpdated": "đã cập nhật"
+		},
+		"check": {
+			"desc": "Kiểm tra cổng: trùng lặp theo máy, độ phủ pool, lệch cấu hình, velocity.toml",
+			"optFix": "ghi lại cấu hình plugin từ sổ đăng ký",
+			"ensured": "đã đảm bảo {count} cấp phát cổng",
+			"noIssues": "không thấy vấn đề nào về cổng",
+			"fixHint": "sửa lệch cấu hình bằng: {fix} và {sync}"
+		}
+	},
+	"cleanup": {
+		"desc": "Xóa rác (cache, bản cũ, crash report) + lưu trữ log đã xoay vòng về một chỗ",
+		"optDryRun": "chỉ liệt kê những gì sẽ bị xóa",
+		"scanning": "đang quét tìm rác...",
+		"nothing": "không có gì để dọn",
+		"logsLine": "{count} tệp log đã xoay vòng ({size})",
+		"note": "ghi chú: {note}",
+		"totalToFree": "tổng dung lượng giải phóng: {size}",
+		"dryRun": "chạy thử: chưa xóa gì",
+		"confirm": "Tiến hành dọn dẹp?",
+		"cleaning": "đang dọn...",
+		"deleted": "đã xóa {count} mục, giải phóng {size}",
+		"archived": "đã lưu trữ {count} tệp log vào {archives} kho lưu theo tháng"
+	},
+	"plugins": {
+		"sourceManual": "thủ công",
+		"unknown": "không biết plugin: {name}",
+		"upToDate": "mọi thứ đã mới nhất",
+		"checkProgress": "kiểm tra cập nhật",
+		"variantTag": "(biến thể)",
+		"pickTargets": "Triển khai tới những instance nào?",
+		"allPaper": "*paper (mọi instance paper)",
+		"theProxy": "*velocity (proxy)",
+		"holdback": "{name}: {targets} giữ nguyên {version}; {reason}",
+		"pinnedNote": "{name}: {target} ghim ở {version}",
+		"list": {
+			"desc": "Liệt kê các plugin được quản lý, phiên bản và đích",
+			"legend": "{count} addon: {ok} tự cập nhật bật, {off} tắt, +Nv = biến thể/ghim theo instance (xem plugins info)"
+		},
+		"scan": {
+			"desc": "Quét kho + các instance, nhận diện jar trên Modrinth, dựng lại lockfile",
+			"hashing": "đang băm jar và truy vấn Modrinth...",
+			"added": "đã thêm {count} mục vào lockfile",
+			"notOnModrinth": "không có trên modrinth (thủ công)",
+			"lunaPlugin": "plugin luna",
+			"caseMismatches": "tên tệp lệch hoa/thường (những tệp này CHƯA TỪNG nhận cập nhật từ script đồng bộ cũ):",
+			"fixedOnDeploy": "(sẽ sửa ở lần triển khai sau)",
+			"recognized": "{count} tệp trên instance là một bản trong kho mang tên khác (đăng ký bằng: luna instance adopt-addons <instance>)",
+			"unmanaged": "{count} jar chỉ có trên instance, không có trong kho; để nguyên tại chỗ (nhận vào bằng: luna plugins adopt <instance> <jar>)",
+			"removedStale": "đã xóa các mục cũ: {names}"
+		},
+		"check": {
+			"desc": "Hỏi các nhà cung cấp xem có cập nhật không (phân giải phiên bản theo instance)",
+			"applyHint": "áp dụng bằng: {command}"
+		},
+		"update": {
+			"desc": "Tải cập nhật vào kho (rồi chạy plugins deploy)",
+			"optDeploy": "đồng thời triển khai ngay tới các instance",
+			"downloading": "đang tải cập nhật...",
+			"downloadingOne": "đang tải {name}...",
+			"deployHint": "kho đã cập nhật; đẩy tới instance bằng: {command}"
+		},
+		"deploy": {
+			"desc": "Đồng bộ jar trong kho tới các instance theo danh sách đích (sửa cả lệch hoa/thường)",
+			"optPlugin": "chỉ triển khai một plugin",
+			"deploying": "đang triển khai plugin...",
+			"portReserved": "{instance}: cổng {port} giữ cho {key}",
+			"portNote": "(cấu hình xuất hiện sau lần khởi động đầu; chạy lại deploy)",
+			"inSync": "mọi instance đã đồng bộ sẵn",
+			"needRestart": "các instance đang chạy có jar mới (khởi động lại để áp dụng): {names}"
+		},
+		"add": {
+			"desc": "Cài một plugin hoặc mod từ nhà cung cấp (slug, hoặc từ khóa tìm kiếm)",
+			"optTo": "đích: *, *paper, *velocity, *neoforge, hoặc tên",
+			"optPool": "chỉ đưa jar vào kho; chưa triển khai đi đâu",
+			"optVelocity": "cài biến thể velocity",
+			"optNeoforge": "cài mod neoforge (tìm trong mods, không phải plugins)",
+			"optProvider": "cài từ đâu: modrinth (mặc định), curseforge hoặc hangar",
+			"platformConflict": "--velocity và --neoforge là hai nền tảng khác nhau; chọn một",
+			"resolving": "đang tìm \"{query}\" trên {provider}...",
+			"nothingFound": "không tìm thấy gì cho \"{query}\"",
+			"selectMod": "Chọn một mod",
+			"selectPlugin": "Chọn một plugin",
+			"downloads": "{count} lượt tải",
+			"installing": "đang cài {name}...",
+			"pooledOnly": "(đã vào kho; chưa triển khai đi đâu)",
+			"installed": "đã cài {name} {version}",
+			"holdback": "{name}: không cài trên {targets}; {reason}"
+		},
+		"apply": {
+			"desc": "Thêm instance vào danh sách đích của plugin rồi triển khai",
+			"optTo": "các đích cần thêm",
+			"optReplace": "đặt danh sách đích thành đúng --to (ví dụ gộp các tên thành *paper)",
+			"dropped": "không còn là đích: {names}; bản sao của chúng vẫn trên đĩa, xóa bằng \"{command}\"",
+			"saved": "đích của {name}: {targets}"
+		},
+		"remove": {
+			"desc": "Gỡ một plugin khỏi các instance (--from), hoặc khỏi mọi nơi + kho",
+			"optFrom": "chỉ gỡ khỏi các đích này",
+			"confirm": "Gỡ {name} khỏi MỌI instance và cả kho?",
+			"noJars": "(không có jar nào)",
+			"poolDeleted": "đã xóa mục trong kho",
+			"done": "đã gỡ {name} khỏi: {where}",
+			"restartNote": "các instance đang chạy vẫn nạp plugin cho tới khi khởi động lại"
+		},
+		"adopt": {
+			"desc": "Nhận một jar chỉ có trên instance vào kho được quản lý",
+			"done": "đã nhận {name} vào kho",
+			"identifyHint": "nhận diện nó trên modrinth bằng: {command}"
+		},
+		"upload": {
+			"desc": "Đưa một jar từ máy này vào kho (triển khai tới --to, hoặc không đi đâu)",
+			"optName": "tên plugin (mặc định: tên tệp jar)",
+			"optFamily": "paper (mặc định), velocity, universal hoặc neoforge",
+			"optTo": "đích: *, *paper, *velocity, hoặc tên (mặc định: không)",
+			"noSuchFile": "không có tệp: {path}",
+			"badFamily": "--family phải là paper, velocity, universal hoặc neoforge",
+			"pooling": "đang đưa {name} vào kho...",
+			"pooled": "đã đưa {name} vào kho",
+			"notDeployed": "(chưa triển khai đi đâu)"
+		},
+		"info": {
+			"desc": "Xem phiên bản, gán theo instance và yêu cầu của một plugin",
+			"autoUpdate": "tự cập nhật",
+			"on": "bật",
+			"off": "tắt",
+			"primary": "chính",
+			"variant": "biến thể",
+			"unknownMc": "không rõ",
+			"pinned": "đã ghim",
+			"auto": "tự động"
+		},
+		"pin": {
+			"desc": "Ghim instance vào một phiên bản plugin cụ thể (tải nó về làm biến thể)",
+			"optOn": "các đích cần ghim (mặc định: mọi đích của plugin)",
+			"optForce": "vẫn ghim kể cả khi phiên bản không liệt kê bản MC của đích",
+			"pinning": "đang ghim {name} ở {version}...",
+			"done": "đã ghim {name} ở {version} trên: {targets}",
+			"forced": "đã ép dù lệch MC trên: {names}"
+		},
+		"unpin": {
+			"desc": "Bỏ ghim phiên bản (trở lại phân giải tự động theo instance)",
+			"optOn": "chỉ bỏ ghim các đích này",
+			"nothing": "không có gì được ghim",
+			"done": "đã bỏ ghim {name} trên: {targets}",
+			"hint": "chạy {command} để phân giải lại, rồi triển khai"
+		},
+		"compat": {
+			"desc": "Kiểm tra yêu cầu phiên bản máy chủ: một instance (ở bản MC cho trước) chạy được plugin của nó không?",
+			"argMc": "mặc định là phiên bản hiện tại của instance",
+			"noVersion": "không rõ phiên bản MC của instance này; truyền rõ một bản",
+			"noPlugins": "không plugin paper được quản lý nào nhắm tới instance này",
+			"heading": "độ tương thích plugin của {name} trên MC {mc}:",
+			"unknown": "không rõ",
+			"ok": "ổn",
+			"incompatible": "không tương thích",
+			"needDifferent": "{count} plugin cần phiên bản khác; chạy {command} sau khi chuyển",
+			"someUnknown": "(một số yêu cầu chưa rõ; chạy plugins check để bổ sung)",
+			"noneKnown": "không thấy xung khắc nào đã biết"
+		},
+		"enable": {
+			"desc": "Bật tự cập nhật cho plugin",
+			"state": "đã bật"
+		},
+		"disable": {
+			"desc": "Tắt tự cập nhật cho plugin",
+			"state": "đã tắt"
+		},
+		"groupRestart": {
+			"onNextRestart": "các instance dùng {name} sẽ nhận thay đổi ở lần khởi động lại sau",
+			"scheduleName": "khởi động lại sau cập nhật nhóm {name}",
+			"scheduled": "đã lên lịch khởi động lại {time} cho {names}"
+		},
+		"validate": {
+			"desc": "Cách lựa chọn nhóm áp xuống một instance (OK / thiếu phiên bản / bỏ qua)",
+			"optGroups": "các nhóm bổ sung ngoài default, phân tách bằng dấu phẩy",
+			"downloadable": "(tải được)",
+			"fetchHint": "tải các bản tương thích bằng: {command}"
+		},
+		"fetch": {
+			"desc": "Tải một bản tương thích với một phiên bản MC vào kho",
+			"optMc": "phiên bản MC mà bản đó phải hỗ trợ",
+			"needsMc": "bắt buộc có --mc <version>",
+			"resolving": "đang tìm {name} cho MC {mc}...",
+			"pooled": "đã đưa {name} {version} vào kho cho MC {mc}",
+			"alreadyCovers": "{name} {version} vốn đã hỗ trợ MC {mc}"
+		},
+		"config": {
+			"desc": "Xem template cấu hình của một plugin, hoặc áp mọi template lên một instance",
+			"unknownEntry": "không biết mục plugin: {name}",
+			"noTemplate": "{name} không có template cấu hình",
+			"badWhat": "cần \"show <entry>\" hoặc \"apply <instance>\""
+		},
+		"override": {
+			"desc": "Ép thêm, tắt hoặc xóa ghi đè một plugin trên một instance (thắng các nhóm)",
+			"optEnable": "ép thêm plugin, bất kể nhóm",
+			"optDisable": "tắt plugin, kể cả khi một nhóm cung cấp nó",
+			"optClear": "bỏ ghi đè; các nhóm quyết định trở lại",
+			"pickOne": "truyền đúng một trong --enable, --disable hoặc --clear",
+			"cleared": "đã bỏ ghi đè",
+			"forceAdded": "đã ép thêm",
+			"deploying": "{name} {what} trên {instance}; đang triển khai",
+			"clearedOn": "đã bỏ ghi đè {name} trên {instance}",
+			"disabledOn": "đã tắt {name} trên {instance}",
+			"removedJars": "đã xóa khỏi {instance}/plugins: {names}",
+			"loadedNote": "(máy chủ đang chạy vẫn nạp nó cho tới khi khởi động lại)"
+		},
+		"state": {
+			"desc": "Trạng thái chạy của mọi plugin trên một instance, kèm số cảnh báo/lỗi trong log",
+			"reading": "đang đọc phiên khởi động của {name}...",
+			"disabled": "đã tắt",
+			"incompleteSession": "không thấy mốc khởi động trong cửa sổ xoay vòng log; trạng thái nạp ngoài cửa sổ hiển thị là không rõ",
+			"troubled": "{count} plugin báo lỗi; xem bằng: luna logs {name}"
+		},
+		"standardize": {
+			"desc": "Chuyển mọi mục sang cách đặt tên <plugin>@<family> (kho, lockfile, cổng, instance)",
+			"confirm": "Đổi tên jar trong kho + khóa lockfile + cấp phát cổng, triển khai lại mọi nơi và xóa jar tên cũ?",
+			"working": "đang chuẩn hóa tên plugin...",
+			"portKey": "cấp phát cổng {name}",
+			"groupMember": "thành viên nhóm {name}",
+			"summary": "{deployed} thay đổi triển khai, đã xóa {removed} jar tên cũ",
+			"mismatch": "LỆCH ĐỐI CHIẾU: {detail}",
+			"parityOk": "đối chiếu đạt: mọi instance chạy đúng bộ plugin như trước"
+		},
+		"identify": {
+			"desc": "Ánh xạ một plugin/mod sẵn có tới một dự án của nhà cung cấp (để nhận cập nhật)",
+			"optProvider": "nhà cung cấp cần ánh xạ (mặc định modrinth)",
+			"optVersion": "id phiên bản sẽ ghi là đã cài",
+			"optUnidentified": "ghi dự án nhưng không ghi phiên bản",
+			"optAuto": "tự cập nhật: on hoặc off (mặc định chỉ on khi khớp có bằng chứng)",
+			"optYes": "chấp nhận khớp chưa có bằng chứng mà không hỏi",
+			"probing": "đang nhận diện {name} tại {provider}…",
+			"localFile": "tệp cục bộ: {path}",
+			"unproven": "chưa có gì chứng minh đây là phiên bản nào; chạy lại với --version <id>, --unidentified, hoặc --yes",
+			"versionUnknown": "phiên bản không rõ",
+			"checkHint": "kiểm tra bằng: {command}"
+		},
+		"forget": {
+			"desc": "Bỏ ánh xạ nhà cung cấp của một plugin (giữ jar và các bản triển khai)",
+			"done": "{name} không còn ánh xạ tới nhà cung cấp; sẽ không kiểm tra cập nhật nữa"
+		}
+	},
+	"packs": {
+		"unknownProvider": "không biết nhà cung cấp: {name} (cần {known})",
+		"selectRespack": "Chọn một gói tài nguyên",
+		"selectDatapack": "Chọn một gói dữ liệu",
+		"required": "bắt buộc",
+		"optional": "tùy chọn",
+		"enabled": "đang bật",
+		"disabled": "đang tắt",
+		"on": "bật",
+		"off": "tắt",
+		"fileMissing": "thiếu tệp",
+		"registrationUnknown": "đăng ký không rõ",
+		"unregistered": "chưa đăng ký",
+		"reloadHint": "áp dụng trực tiếp bằng: luna packs reload",
+		"checkingProviders": "đang hỏi các nhà cung cấp...",
+		"optChannel": "kênh phát hành: release, beta hoặc alpha",
+		"list": {
+			"desc": "Liệt kê gói tài nguyên (danh mục luna-pack trong <root>/packs)",
+			"empty": "chưa có gói tài nguyên; thêm bằng: luna packs add <slug>",
+			"runtime": "{count} gói do plugin đăng ký lúc chạy: {names}; luna không có định nghĩa cho chúng",
+			"shadowed": "{key}: tệp {file} của bạn đè lên plugin cũng đăng ký gói này; nhả lại bằng: {command}",
+			"dynamicUnknown": "không rõ các đăng ký lúc chạy: {problem}"
+		},
+		"add": {
+			"desc": "Cài một gói tài nguyên từ nhà cung cấp (slug, hoặc từ khóa tìm kiếm)",
+			"optProvider": "cài từ đâu: modrinth (mặc định) hoặc curseforge",
+			"startsDisabled": "gói khởi đầu ở trạng thái tắt; bật bằng: {command}"
+		},
+		"set": {
+			"desc": "Sửa đăng ký của một gói (ưu tiên, bắt buộc, máy chủ, bật/tắt)",
+			"optEnable": "bật gói",
+			"optDisable": "tắt gói",
+			"optPriority": "độ ưu tiên xếp chồng (cao đè lên thấp)",
+			"optRequired": "người chơi không được từ chối gói",
+			"optOptional": "người chơi có thể từ chối gói",
+			"optServers": "các luật phân tách bằng dấu phẩy: tên, *, !tên",
+			"optName": "tên hiển thị",
+			"optAuto": "tự cập nhật: on hoặc off",
+			"optChannel": "kênh cập nhật: release, beta hoặc alpha",
+			"enableConflict": "--enable và --disable loại trừ lẫn nhau",
+			"requiredConflict": "--required và --optional loại trừ lẫn nhau"
+		},
+		"probe": {
+			"project": "dự án: {title} ({slug})",
+			"exact": "nhận diện là {version}; khớp theo {basis}",
+			"likely": "nhiều khả năng là {version}; khớp theo {basis}, không phải hash",
+			"noMatch": "không bản phát hành nào khớp với tệp này",
+			"candidates": "các ứng viên:",
+			"newest": "bản mới nhất: {version}; đây là thứ một ánh xạ không định danh sẽ kéo về"
+		},
+		"identify": {
+			"desc": "Ánh xạ một gói tài nguyên sẵn có tới dự án của nhà cung cấp (để nhận cập nhật)",
+			"noVersionNote": "khi không ghi phiên bản, lần kiểm tra sau sẽ đề nghị bản tương thích mới nhất"
+		},
+		"forget": {
+			"desc": "Bỏ ánh xạ nhà cung cấp của một gói tài nguyên (giữ tệp zip và các luật)"
+		},
+		"takeover": {
+			"desc": "Tiếp quản một gói do plugin đăng ký bằng cách ghi định nghĩa của nó",
+			"wrote": "đã ghi {file} từ đăng ký đang chạy",
+			"detail": "ưu tiên {priority}, {required}, máy chủ {servers}; plugin không còn quyết định những mục này"
+		},
+		"releaseCmd": {
+			"desc": "Trả một gói đã tiếp quản về cho plugin đăng ký nó",
+			"removed": "đã xóa {file}",
+			"dynamicApplies": "đăng ký của chính plugin áp dụng trở lại: ưu tiên {priority}, máy chủ {servers}"
+		},
+		"serve": {
+			"desc": "Phục vụ một gói trên một hoặc nhiều backend (ngừng bằng --off)",
+			"optOff": "ngừng phục vụ gói trên các backend đó",
+			"groupConflict": "{instance} được cấp bởi nhóm addon {groups}; loại trừ sẽ đè lên cấp phát, nhưng gỡ khỏi nhóm thì sạch hơn"
+		},
+		"info": {
+			"desc": "Một gói đầy đủ: nội dung, URL phục vụ, khả năng truy cập, người giữ và lưu lượng",
+			"optRetest": "đo lại URL của gói thay vì dùng kết quả đã lưu",
+			"collecting": "đang thu thập...",
+			"missing": "thiếu",
+			"contents": "nội dung",
+			"contentsLine": "{entries} mục, {size} sau giải nén",
+			"unreadable": "không đọc được",
+			"rules": "luật",
+			"nothing": "không gì cả",
+			"noBaseUrl": "không có URL gốc",
+			"reachable": "truy cập được",
+			"notChecked": "chưa kiểm tra",
+			"sizeDiffers": "kích thước khác trên đĩa",
+			"sizeMatches": "kích thước khớp",
+			"measured": "đo lúc {time}",
+			"stored": "đã lưu",
+			"failedLoads": "lần tải hỏng",
+			"unavailable": "không khả dụng",
+			"failuresInLog": "{count} trong log đang chạy",
+			"lastFailure": "gần nhất {player}: {status}",
+			"noneInLog": "không có trong log đang chạy",
+			"onProxy": "trên proxy",
+			"resolved": "đã phân giải",
+			"notInCatalog": "không có trong danh mục đang chạy; reload proxy",
+			"holders": "người giữ",
+			"holdersLine": "{loaded}/{online} người chơi trực tuyến đã tải",
+			"pending": "{count} đang chờ",
+			"traffic": "lưu lượng",
+			"trafficLine": "{requests} lượt tải, {size}, {clients} client",
+			"lastAt": "gần nhất {time}"
+		},
+		"update": {
+			"desc": "Kiểm tra cập nhật gói tài nguyên từ nhà cung cấp (áp dụng với --apply)",
+			"optApply": "tải các cập nhật thay vì chỉ liệt kê",
+			"upToDate": "mọi gói tài nguyên đã mới nhất"
+		},
+		"remove": {
+			"desc": "Xóa một gói tài nguyên (định nghĩa, zip và mục trong lock)",
+			"optKeepFile": "xóa đăng ký nhưng giữ tệp zip",
+			"nothing": "{name}: không có gì để xóa",
+			"done": "đã xóa {name} {detail}"
+		},
+		"reload": {
+			"desc": "Yêu cầu proxy đang chạy đọc lại thư mục packs (lunapack reload)",
+			"sent": "đã gửi lệnh reload tới proxy",
+			"proxyDown": "proxy chưa chạy; các gói sẽ nạp ở lần khởi động sau"
+		}
+	},
+	"datapacks": {
+		"list": {
+			"desc": "Liệt kê gói dữ liệu trong kho và nơi chúng triển khai",
+			"empty": "chưa có gói dữ liệu; thêm bằng: luna datapacks add <slug> --to <instance>",
+			"nowhere": "chưa đi đâu"
+		},
+		"add": {
+			"desc": "Cài một gói dữ liệu từ nhà cung cấp (slug, hoặc từ khóa tìm kiếm)",
+			"optTo": "đích: *, *paper, hoặc tên instance",
+			"optProvider": "cài từ đâu: modrinth (mặc định), curseforge hoặc smithed",
+			"needsTo": "bắt buộc có --to (thế giới của instance nào sẽ nhận gói)"
+		},
+		"deploy": {
+			"desc": "Đồng bộ gói dữ liệu trong kho vào thế giới của các instance đích",
+			"optPack": "chỉ triển khai một gói",
+			"deploying": "đang triển khai gói dữ liệu...",
+			"inSync": "mọi thế giới đã đồng bộ sẵn",
+			"restartNote": "máy chủ đang chạy nạp thay đổi ở lần khởi động lại sau (hoặc /minecraft:reload)"
+		},
+		"update": {
+			"desc": "Kiểm tra cập nhật gói dữ liệu từ nhà cung cấp (áp dụng với --apply)",
+			"optApply": "tải các cập nhật và triển khai lại",
+			"upToDate": "mọi gói dữ liệu đã mới nhất"
+		},
+		"adopt": {
+			"desc": "Nhận một zip thả tay từ thế giới của instance vào kho",
+			"done": "đã nhận {name} → {file} (đích: {targets})"
+		},
+		"remove": {
+			"desc": "Gỡ một gói dữ liệu khỏi các thế giới (và khỏi kho khi không còn đích nào)",
+			"optFrom": "chỉ gỡ khỏi các instance này",
+			"noWorlds": "không thế giới nào giữ nó",
+			"poolDropped": "đã bỏ mục trong kho",
+			"done": "đã gỡ {name} {detail}"
+		},
+		"identify": {
+			"desc": "Ánh xạ một gói dữ liệu sẵn có tới dự án của nhà cung cấp (để nhận cập nhật)"
+		},
+		"forget": {
+			"desc": "Bỏ ánh xạ nhà cung cấp của một gói dữ liệu (giữ tệp zip và các đích)"
+		}
+	},
+	"addons": {
+		"builtinTag": "(dựng sẵn)",
+		"groups": {
+			"desc": "Liệt kê các nhóm addon và những instance đang dùng chúng"
+		},
+		"group": {
+			"desc": "Xem, tạo hoặc sửa một nhóm addon (rồi áp dụng + tùy chọn khởi động lại)",
+			"optPlugins": "đặt thành viên theo danh sách plugin phân tách bằng dấu phẩy",
+			"optAdd": "thêm plugin, phân tách bằng dấu phẩy",
+			"optRemove": "bỏ plugin, phân tách bằng dấu phẩy",
+			"optRespacks": "đặt các gói tài nguyên thành viên, phân tách bằng dấu phẩy",
+			"optDatapacks": "đặt các gói dữ liệu thành viên, phân tách bằng dấu phẩy",
+			"optDescription": "đặt mô tả",
+			"optDelete": "xóa nhóm",
+			"optRestart": "sau khi thay đổi: \"now\", \"none\" (mặc định), hoặc một mốc giờ",
+			"deleted": "đã xóa nhóm {name}",
+			"deletedNote": "(các tệp đã triển khai vẫn nằm trên đĩa)",
+			"unknown": "không biết nhóm: {name}; truyền --plugins để tạo mới",
+			"noDescription": "không có mô tả",
+			"notInstalled": "chưa cài",
+			"packEnabled": "đang bật",
+			"packDisabled": "đã đăng ký, đang tắt",
+			"packPooled": "trong kho",
+			"notPooled": "không có trong kho",
+			"usedBy": "dùng bởi: {names}",
+			"nobodyYet": "chưa ai dùng",
+			"notPooledPlugin": "\"{name}\" không phải plugin trong kho; nó sẽ bị coi là thiếu cho tới khi được cài",
+			"notRegisteredRespack": "\"{name}\" không phải gói tài nguyên đã đăng ký; cài hoặc tải lên trước đã",
+			"notPooledDatapack": "\"{name}\" không phải gói dữ liệu trong kho; cài hoặc tải lên trước đã",
+			"saved": "đã lưu nhóm {name}: {plugins} plugin, {respacks} gói tài nguyên, {datapacks} gói dữ liệu",
+			"removedStay": "plugin bị bỏ vẫn còn được triển khai; dọn chúng bằng {command}"
+		},
+		"apply": {
+			"desc": "Áp dụng lại các gói của mọi nhóm: ghi lại luật gói và triển khai gói dữ liệu",
+			"progressName": "áp dụng nhóm addon",
+			"respacksRewritten": "đã ghi lại luật gói tài nguyên: {names}",
+			"proxyReloaded": "(đã reload proxy)",
+			"proxyDown": "(proxy đang tắt; sẽ áp dụng ở lần khởi động sau)"
+		}
+	},
+	"instance": {
+		"stateRunning": "đang chạy",
+		"stateStarting": "đang khởi động",
+		"stateStopped": "đã tắt",
+		"stateUnknown": "không rõ",
+		"namesOrAll": "cần tên instance hoặc --all",
+		"notRunning": "{name} chưa chạy",
+		"stopFirst": "{name} đang chạy; dừng nó trước đã",
+		"startHint": "khởi động bằng: {command}",
+		"status": {
+			"desc": "Xem trạng thái mọi instance (hoặc một cái)",
+			"querying": "đang truy vấn các instance...",
+			"playersOnline": "{online}/{max} trực tuyến",
+			"external": "ngoài cụm"
+		},
+		"start": {
+			"desc": "Khởi động instance, hoặc --all (proxy trước)",
+			"optAll": "khởi động mọi instance được quản lý",
+			"started": "{name} đã khởi động trong screen {session}",
+			"alreadyRunning": "{name} vốn đang chạy"
+		},
+		"stop": {
+			"desc": "Dừng nhẹ nhàng instance, hoặc --all (proxy sau cùng)",
+			"optAll": "dừng mọi instance được quản lý",
+			"stopped": "{name} đã dừng",
+			"forced": "{name}: dừng nhẹ nhàng quá hạn, đã gửi SIGTERM",
+			"notRunning": "{name} không chạy"
+		},
+		"restart": {
+			"desc": "Khởi động lại instance, hoặc --all",
+			"optAll": "khởi động lại mọi instance được quản lý",
+			"restarted": "đã khởi động lại {name}"
+		},
+		"console": {
+			"desc": "Gắn vào console của một instance (thoát: Ctrl+A rồi D)",
+			"attaching": "đang gắn vào {session}; thoát bằng {keys}"
+		},
+		"send": {
+			"desc": "Gửi một lệnh console tới instance đang chạy",
+			"sent": "đã gửi {command} tới {name}"
+		},
+		"create": {
+			"desc": "Tạo một instance paper mới và đăng ký nó với proxy",
+			"optVersion": "phiên bản MC (mặc định: bản paper mới nhất)",
+			"optPort": "cổng game (mặc định: tự chọn từ dải)",
+			"optMemory": "dung lượng heap, ví dụ 2G (mặc định 2G)",
+			"optProfile": "profile java (mặc định aikar)",
+			"optSet": "thiết lập máy chủ, ví dụ difficulty=hard,max-players=100 (xem instance settings)",
+			"optJavaArgs": "cờ JVM bổ sung, ví dụ \"-XX:+UseZGC\"",
+			"optGroups": "các nhóm addon ngoài default, phân tách bằng dấu phẩy",
+			"optNoRegister": "không đăng ký trong velocity.toml",
+			"optDaemon": "daemon follower sẽ sở hữu instance",
+			"badSetPair": "--set cần các cặp key=value, nhận được \"{pair}\"",
+			"unknownGroup": "không biết nhóm addon: {name}",
+			"resolvingVersion": "đang tìm bản paper mới nhất...",
+			"phaseFiles": "Tệp máy chủ",
+			"phasePlugins": "Plugin",
+			"phasePacks": "Gói",
+			"phasePorts": "Cấp phát cổng",
+			"phaseProxy": "Đăng ký proxy",
+			"deployingPlugins": "đang triển khai các plugin nhắm wildcard",
+			"pluginsDeployed": "đã triển khai plugin",
+			"pluginCount": "đã triển khai {count} plugin",
+			"applyingPacks": "đang áp dụng các gói của nhóm addon",
+			"packCounts": "{rules} luật gói, {datapacks} gói dữ liệu",
+			"noPacks": "không có gói nào cho instance này",
+			"allocatingPorts": "đang cấp phát cổng plugin",
+			"portsAllocated": "đã cấp phát cổng plugin",
+			"registerSkipped": "bỏ qua: --no-register",
+			"registering": "đang đăng ký trong velocity.toml",
+			"velocityUpdated": "đã cập nhật velocity.toml (reload proxy để áp dụng)",
+			"velocityUpToDate": "velocity.toml đã mới nhất",
+			"created": "đã tạo {name}: paper {version} build {build}, cổng {port}",
+			"jvmFlags": "cờ JVM bổ sung: {flags}"
+		},
+		"adopt": {
+			"desc": "Đăng ký một thư mục máy chủ sẵn có thành instance được quản lý",
+			"optDaemon": "daemon có đĩa chứa thư mục",
+			"optDir": "tên thư mục dưới root của daemon đó (mặc định: trùng tên)",
+			"optPort": "ghi đè cổng game đã dò được",
+			"optMemory": "ghi đè heap đã dò được, ví dụ 8G",
+			"optJava": "ghim một binary java; modpack thường cần JDK cũ hơn",
+			"optDryRun": "hiện những gì dò được, không đăng ký gì",
+			"unknownDaemon": "không biết daemon: {name}; xem `luna daemon list`",
+			"mcVersion": "phiên bản mc",
+			"loader": "loader",
+			"bindAddress": "địa chỉ bind",
+			"emptyValue": "(trống)",
+			"localDaemon": "máy này",
+			"loaderTag": "loader {version}",
+			"adopted": "đã nhận {name}: {software}, cổng {port}, heap {memory}",
+			"onDaemon": "trên {name}",
+			"velocityUpdated": "đã cập nhật velocity.toml; reload proxy để áp dụng",
+			"recognised": "nhận ra {count} addon từ kho",
+			"newlyRegistered": ", {count} vừa được đăng ký",
+			"alreadyRegistered": "(đã đăng ký từ trước)",
+			"unmanaged": "{count} addon để nguyên không quản lý; máy chủ giữ đồ của nó",
+			"andMore": "…và {count} mục nữa"
+		},
+		"adoptAddons": {
+			"desc": "Kiểm tra lại plugin/mod/gói dữ liệu riêng của instance so với kho"
+		},
+		"setVersion": {
+			"desc": "Chuyển instance sang phiên bản MC khác (tải build mới nhất)",
+			"optForce": "vẫn tiếp tục kể cả khi có plugin đã biết là không tương thích",
+			"incompatible": "{plugin} không hỗ trợ MC {mc} (hỗ trợ: {supported})",
+			"abortIncompatible": "đã hủy: {count} plugin không tương thích với {mc}; sửa bằng plugins update/pin sau khi chuyển, hoặc truyền --force",
+			"unknownReqs": "{count} plugin có yêu cầu MC không rõ (jar luna/thủ công; tự kiểm tra)",
+			"downloading": "đang tải {version}...",
+			"jarKept": "jar cũ giữ tại {path}",
+			"updateHint": "tính lại phiên bản plugin cho MC mới: {command}"
+		},
+		"settings": {
+			"desc": "Xem hoặc đổi thiết lập máy chủ của instance (difficulty, max-players, pvp, …)",
+			"defaultValue": "{value} (mặc định)",
+			"blank": "(trống)",
+			"managedByLuna": "luna quản lý",
+			"unknownKey": "\"{key}\" không phải thiết lập máy chủ đã biết; chạy \"luna instance settings {name}\" để xem danh sách",
+			"already": "{name}.{key} vốn là {value}",
+			"keyAdded": "(khóa được thêm mới)",
+			"unset": "chưa đặt",
+			"appliesOnRestart": "áp dụng ở lần khởi động lại sau"
+		},
+		"config": {
+			"desc": "Xem/đặt thiết lập instance (memory, profile, port, javaArgs, hoặc khóa server.properties bất kỳ)",
+			"profileDefault": "(theo profile)",
+			"settingsHint": "thiết lập máy chủ nằm trong server.properties: {command}",
+			"unknownProfile": "không biết profile: {name}",
+			"keyNotFound": "không thấy khóa \"{key}\" trong server.properties",
+			"appliesOnRestart": "(áp dụng ở lần khởi động lại sau)"
+		},
+		"remove": {
+			"desc": "Hủy đăng ký một instance (--purge xóa luôn thư mục của nó)",
+			"optPurge": "XÓA thư mục instance khỏi đĩa",
+			"confirmPurge": "Thật sự XÓA thư mục của {name} (gồm cả thế giới)?",
+			"andPurged": "và đã xóa sạch",
+			"directoryKept": "(giữ lại thư mục)",
+			"velocityUpdated": "đã cập nhật velocity.toml",
+			"deregistered": "đã hủy đăng ký {name}"
+		}
+	},
+	"players": {
+		"unknownList": "không biết danh sách \"{name}\"; chọn một trong: {known}",
+		"notApplied": "thay đổi chưa được áp dụng",
+		"now": "bây giờ",
+		"access": {
+			"desc": "Xem whitelist, operator và các lệnh cấm của một instance",
+			"whitelistLabel": "whitelist",
+			"on": "bật",
+			"off": "tắt",
+			"enforced": "(bắt buộc)",
+			"whitelist": "whitelist",
+			"operators": "operator",
+			"bans": "cấm",
+			"ipBans": "cấm ip",
+			"level": "cấp {level}",
+			"bySource": "bởi {source}, {date}"
+		},
+		"accessAdd": {
+			"desc": "Thêm một người chơi (hoặc IP) vào một danh sách truy cập của instance",
+			"optReason": "lý do cấm",
+			"optLevel": "cấp quyền op (1-4)",
+			"done": "đã thêm {target} vào {list} trên {instance} ({method})"
+		},
+		"accessRemove": {
+			"desc": "Bỏ một người chơi (hoặc IP) khỏi một danh sách truy cập của instance",
+			"done": "đã bỏ {target} khỏi {list} trên {instance} ({method})"
+		},
+		"whitelist": {
+			"desc": "Bật hoặc tắt whitelist của một instance",
+			"badState": "cần \"on\" hoặc \"off\", nhận được \"{value}\"",
+			"done": "whitelist {state} trên {instance} ({method})"
+		},
+		"registered": {
+			"desc": "Danh bạ người chơi: tất cả những ai mạng từng ghi nhận",
+			"optSearch": "lọc theo tên hoặc uuid",
+			"optLimit": "số dòng hiển thị (mặc định 25)",
+			"total": "{count} người chơi trong danh bạ"
+		},
+		"player": {
+			"desc": "Hồ sơ một người chơi: danh tính, giờ chơi, quyền hạn, kiểm duyệt",
+			"onlineOn": "trực tuyến trên {server}",
+			"premium": "tài khoản chính chủ",
+			"offlineMode": "tài khoản offline-mode",
+			"firstSeen": "thấy lần đầu",
+			"chatMessages": "tin nhắn chat",
+			"commands": "lệnh",
+			"moderationEntries": "mục kiểm duyệt",
+			"permissionGroup": "nhóm quyền",
+			"luckpermsUnavailable": "luckperms không khả dụng",
+			"lastAddress": "địa chỉ gần nhất",
+			"client": "client",
+			"playtimeByBackend": "giờ chơi theo backend",
+			"unknownServer": "không rõ",
+			"stints": "{count} phiên"
+		},
+		"skin": {
+			"desc": "Đổi hoặc đặt lại skin của người chơi qua SkinsRestorer",
+			"optName": "sao chép skin của tài khoản Mojang này",
+			"optUrl": "tạo từ URL ảnh công khai (qua MineSkin)",
+			"optVariant": "classic hoặc slim (đi kèm --url)",
+			"optReset": "bỏ skin đã lưu",
+			"pickOne": "truyền một trong --name, --url hoặc --reset",
+			"resetDone": "đã bỏ skin lưu của {player}; skin gốc của họ áp dụng trở lại",
+			"changed": "đã đổi skin của {player}",
+			"storedNote": "(đã lưu; áp dụng ở lần đăng nhập sau)"
+		},
+		"auth": {
+			"desc": "Trạng thái xác thực của một người chơi, theo luna-auth",
+			"notRegistered": "không có; chưa đăng ký",
+			"temporary": "tạm thời, hết hạn {date}",
+			"setByPlayer": "do người chơi đặt",
+			"password": "mật khẩu",
+			"signedIn": "đã đăng nhập",
+			"yes": "có",
+			"no": "không",
+			"accountLock": "khóa tài khoản",
+			"lockedUntil": "khóa tới {date}",
+			"notLocked": "không khóa",
+			"failedAttempts": "số lần thất bại",
+			"lastLogin": "đăng nhập gần nhất",
+			"resumableSession": "phiên nối lại được",
+			"until": "tới {date}"
+		},
+		"vault": {
+			"desc": "Số dư và các giao dịch gần đây của một người chơi, theo LunaVault",
+			"optLimit": "liệt kê bao nhiêu giao dịch (mặc định 10)",
+			"balance": "số dư",
+			"rank": "hạng",
+			"of": "trên {count}",
+			"noAccount": "chưa có tài khoản",
+			"transactions": "giao dịch",
+			"totalReceived": "tổng nhận",
+			"totalSpent": "tổng chi",
+			"lastTransaction": "giao dịch gần nhất",
+			"system": "hệ thống",
+			"showing": "hiển thị {count} trên {total}"
+		},
+		"password": {
+			"desc": "Đặt lại mật khẩu của người chơi, hoặc cấp mật khẩu tạm thời",
+			"optReset": "xóa mật khẩu; người chơi phải /register lại",
+			"optTemporary": "cấp mật khẩu tạm, tự sinh trừ khi có --password",
+			"optPassword": "mật khẩu cần đặt (đi kèm --temporary)",
+			"optMinutes": "mật khẩu tạm dùng được bao lâu (mặc định 1440)",
+			"optUnlock": "gỡ khóa do đăng nhập thất bại nhiều lần",
+			"optLogout": "kết thúc phiên đã xác thực hiện tại",
+			"pickOne": "truyền một trong --reset, --temporary, --unlock hoặc --logout",
+			"temporaryFor": "mật khẩu tạm cho {player}: {password}",
+			"expiresNote": "hết hạn {date}; chỉ mã băm được lưu lại",
+			"applied": "đã áp dụng {action} cho {player}"
+		},
+		"permsGroups": {
+			"desc": "Các nhóm LuckPerms trên toàn mạng, trọng số lớn trước"
+		},
+		"permsGroup": {
+			"desc": "Một nhóm LuckPerms: meta, node và thành viên",
+			"weight": "trọng số {weight}",
+			"suffix": "hậu tố",
+			"inherits": "kế thừa: {names}",
+			"global": "toàn cục"
+		},
+		"permsUser": {
+			"desc": "Dữ liệu LuckPerms của một người chơi: nhóm và node trực tiếp",
+			"primaryGroup": "nhóm chính: {group}",
+			"groups": "các nhóm: {names}",
+			"directNodes": "node trực tiếp"
+		}
+	},
+	"setup": {
+		"desc": "Cài đặt và cấu hình daemon của máy này thành dịch vụ hệ thống (chạy với sudo)",
+		"optMode": "primary hoặc follower (sẽ hỏi nếu bỏ trống)",
+		"optName": "tên daemon, duy nhất trong cụm",
+		"optRoot": "gốc cụm (mặc định {root})",
+		"optUser": "tài khoản mà daemon và các máy chủ của nó chạy dưới",
+		"optToken": "token cụm dùng chung",
+		"optListen": "primary: cổng lắng nghe follower (mặc định {listen})",
+		"optPrimary": "follower: địa chỉ daemon primary, host:port",
+		"optHost": "follower: địa chỉ LAN mà primary định tuyến tới",
+		"optBin": "nơi cài binary (mặc định {path})",
+		"optNoStart": "ghi mọi thứ nhưng để dịch vụ tắt",
+		"optDryRun": "in mọi thay đổi mà không thực hiện gì",
+		"optYes": "lấy giá trị mặc định thay vì hỏi",
+		"userCreateFailed": "không tạo được người dùng \"{name}\": {error}",
+		"uidGidFailed": "không tra được uid/gid của \"{name}\"",
+		"chownFailed": "không chown được {path}: {error}",
+		"wouldWrite": "sẽ ghi {path}",
+		"wrote": "đã ghi {path}",
+		"binaryInPlace": "binary đã ở {path}",
+		"wouldInstall": "sẽ cài {source} → {target}",
+		"ownedBy": "thuộc về {user}",
+		"installed": "đã cài {path}",
+		"noexec": "{bin} không thực thi được ({error}); nếu {root} được mount noexec thì daemon không chạy được binary của chính nó từ đó",
+		"spawnFailed": "spawn thất bại",
+		"wouldRemove": "sẽ xóa {path}",
+		"superseded": "(đã bị thay thế bởi bản trên PATH)",
+		"supersededShort": "(đã bị thay thế)",
+		"removed": "đã xóa {path}",
+		"wouldWirePath": "sẽ thêm {dir} vào PATH trong {path}",
+		"pathSet": "đã đặt PATH trong {path}",
+		"wouldCreateRoot": "sẽ tạo {root} thuộc về {user}",
+		"wouldSeed": "sẽ khởi tạo {path} với một cụm trống",
+		"seeded": "đã khởi tạo {path}",
+		"noInstancesYet": "(chưa có instance nào)",
+		"rootOwned": "gốc cụm {root} thuộc về {user}",
+		"wouldRun": "sẽ chạy {command}",
+		"reloadFailed": "systemctl daemon-reload thất bại: {error}",
+		"systemctlFailed": "{command} thất bại: {error}",
+		"restarted": "{unit} đã khởi động lại trên bản dựng mới",
+		"enabledStarted": "{unit} đã bật và khởi động",
+		"waiting": "đang chờ daemon…",
+		"noAnswer": "daemon không trả lời kịp",
+		"checkHint": "kiểm tra bằng {status} và {journal}",
+		"badConfig": "{path} không phải JSON hợp lệ; bắt đầu từ giá trị mặc định",
+		"reconfiguring": "đang cấu hình lại {name}",
+		"fromFile": "từ {path}",
+		"askMode": "Máy này chạy vai trò gì?",
+		"primaryHint": "sở hữu sổ đăng ký, plugin và lịch chạy; phục vụ bảng điều khiển",
+		"followerHint": "chạy các instance mà primary giao cho nó",
+		"invalidMode": "chế độ không hợp lệ: {mode} (cần primary hoặc follower)",
+		"askName": "Tên daemon (duy nhất trong cụm)",
+		"askRoot": "Gốc cụm",
+		"askUser": "Chạy daemon dưới tài khoản",
+		"askPrimary": "Địa chỉ daemon primary (host:port)",
+		"needsPrimary": "follower cần --primary <host:port>",
+		"askHost": "Địa chỉ LAN mà primary định tuyến tới (trống = tự động)",
+		"askToken": "Token cụm (từ `luna daemon token` trên primary)",
+		"needsToken": "follower cần token cụm; chạy `luna daemon token` trên primary",
+		"notCompiled": "chạy lệnh này từ binary đã biên dịch: `bun run build`, rồi `sudo ./dist/luna setup`",
+		"needsRoot": "luna setup ghi vào /usr/local/bin, /etc và systemd; cần quyền root",
+		"rerunSudo": "chạy lại bằng {command}",
+		"previewHint": "hoặc xem trước các thay đổi với {command}",
+		"binNote": "thuộc về {user}, tự nâng cấp được",
+		"advertising": "quảng bá {host}",
+		"dryRunNote": "chạy thử: mọi thứ bên dưới chưa được ghi",
+		"userExists": "người dùng {name} đã tồn tại",
+		"wouldCreateUser": "sẽ tạo người dùng hệ thống {name} với home tại {root}",
+		"createdUser": "đã tạo người dùng hệ thống {name}",
+		"noSystemd": "máy này không chạy systemd; unit đã được ghi nhưng chưa bật",
+		"startYourself": "tự khởi động daemon: {command}",
+		"inPlace": "mọi thứ đã sẵn sàng",
+		"startHint": "khởi động bằng {command}",
+		"primaryReady": "primary sẵn sàng",
+		"tokenLine": "token cụm: {token}",
+		"tokenNote": "mọi follower cần đúng token này; đừng để nó lọt vào lịch sử shell",
+		"consoleHint": "phục vụ bảng điều khiển bằng {command}",
+		"followerReady": "follower sẵn sàng",
+		"followerListed": "primary giờ sẽ liệt kê nó: {command}",
+		"pathNote": "mở shell mới để {name} có trên PATH, hoặc {command}",
+		"sudoNote": "sudo bỏ qua PATH của bạn; chạy lại trình cài đặt bằng {command}"
+	},
+	"daemon": {
+		"unknown": "không biết daemon: {name}",
+		"instMem": "{mb} MB thường trú trên {count} instance",
+		"run": {
+			"desc": "Chạy daemon luna ở tiền cảnh (primary hoặc follower, theo cấu hình của nó)"
+		},
+		"status": {
+			"desc": "Xem daemon mà các client trên máy này đang nói chuyện cùng",
+			"noDaemon": "không có daemon nào đang chạy trên máy này",
+			"startHint": "khởi động bằng {run} hoặc cài dịch vụ: {install}",
+			"builtAt": "(dựng lúc {date})",
+			"up": "chạy được {uptime}",
+			"updateAvailable": "{version} có sẵn từ {origin}: {command}"
+		},
+		"list": {
+			"desc": "Liệt kê mọi daemon trong cụm kèm trạng thái trực tiếp",
+			"oldTag": "(cũ)",
+			"online": "trực tuyến",
+			"never": "chưa từng"
+		},
+		"show": {
+			"desc": "Sức khỏe, các kiểm tra và bộ nhớ instance của một daemon",
+			"offline": "ngoại tuyến",
+			"behindPrimary": "(cũ hơn primary)"
+		},
+		"upgrade": {
+			"desc": "Nâng cấp một daemon, từ binary của primary hoặc bản phát hành GitHub",
+			"optCheck": "báo cáo từng kênh có gì mà không nâng cấp",
+			"optForce": "vẫn nâng cấp kể cả khi bản dựng trùng hoặc đang có job chạy",
+			"notConnected": "daemon \"{name}\" chưa kết nối",
+			"runs": "{name} đang chạy {version} ({platform})",
+			"available": "{version} có sẵn từ {origin}",
+			"upToDate": "đã mới nhất",
+			"noSource": "không liên lạc được nguồn nâng cấp nào",
+			"upgrading": "đang nâng cấp {name} ({version})…",
+			"unknownBuild": "bản dựng không rõ",
+			"fromOrigin": "(từ {origin})",
+			"exitNote": "nó sẽ thoát ngay; trình quản lý dịch vụ khởi động lại nó trên bản mới"
+		},
+		"remove": {
+			"desc": "Gỡ đăng ký của một daemon follower",
+			"stillConnected": "daemon \"{name}\" đang kết nối; dừng nó trước đã",
+			"ownsInstances": "daemon \"{name}\" vẫn sở hữu {names}; gán lại hoặc xóa các instance đó trước",
+			"done": "đã gỡ đăng ký daemon \"{name}\""
+		},
+		"token": {
+			"desc": "Xem token cụm của máy này",
+			"optNew": "tạo token mới thay vì hiện token hiện tại",
+			"setHint": "đặt làm {key} trong cấu hình của mọi daemon (primary lẫn follower)",
+			"adoptNote": "chưa gì dùng token này cho tới khi bạn ghi nó; các follower vẫn dùng token cũ trong lúc đó",
+			"notConfigured": "chưa cấu hình token trong {file}; tạo mới bằng \"luna daemon token --new\"",
+			"noConfig": "máy này chưa có cấu hình daemon; tạo token bằng \"luna daemon token --new\"",
+			"fromFile": "từ {file}; mọi follower cần đúng giá trị này"
+		},
+		"service": {
+			"desc": "Ghi một unit systemd để daemon chạy 24/7",
+			"optUser": "cài như dịch vụ người dùng (không cần root)",
+			"optConfig": "tệp cấu hình daemon mà unit sẽ trỏ tới",
+			"writeFailed": "không ghi được {path}: {error}",
+			"manualHint": "tự ghi tệp với nội dung sau:",
+			"wrote": "đã ghi {path}",
+			"enableHint": "bật + khởi động bằng: {command}"
+		}
+	},
+	"configs": {
+		"stateMissingVars": "thiếu biến",
+		"stateDrifted": "bị lệch",
+		"stateNotRendered": "chưa kết xuất",
+		"stateInSync": "đồng bộ",
+		"flagManaged": "được quản lý",
+		"flagNotEditable": "không sửa được",
+		"flagRuntime": "runtime",
+		"list": {
+			"desc": "Tệp cấu hình được quản lý: template mà luna kết xuất vào instance ở mỗi lần khởi động",
+			"optInstance": "chỉ các tệp của instance này",
+			"empty": "chưa có tệp cấu hình nào được quản lý; tạo từ trình duyệt tệp của console",
+			"driftWarning": "{count} tệp bị sửa ngoài luna; nhận lại bằng: luna configs readopt <instance> <file>"
+		},
+		"ls": {
+			"desc": "Liệt kê một cấp thư mục của instance"
+		},
+		"show": {
+			"desc": "In một tệp cấu hình (bản template, nếu tệp được quản lý)",
+			"optRendered": "in nội dung trên đĩa thay vì template",
+			"onDiskRender": "bản kết xuất trên đĩa",
+			"template": "template",
+			"placeholders": "biến giữ chỗ: {names}",
+			"missing": "chưa định nghĩa: {names}; sẽ từ chối kết xuất cho tới khi chúng tồn tại",
+			"driftNote": "tệp trên đĩa bị sửa ngoài luna; lần khởi động sau sẽ ghi đè nó"
+		},
+		"manage": {
+			"desc": "Đưa một tệp cấu hình vào quản lý, lấy nội dung hiện tại làm template",
+			"optDescription": "tệp này dùng cho việc gì",
+			"done": "{file} giờ được quản lý trên {instance}",
+			"note": "luna kết xuất nó từ template ở mỗi lần khởi động; sửa nội dung trong console"
+		},
+		"unmanage": {
+			"desc": "Ngừng quản lý một tệp cấu hình, giữ nguyên nó trên đĩa",
+			"notManaged": "{file} không được quản lý trên {instance}",
+			"done": "đã nhả {file}; bản kết xuất cuối vẫn nằm trên đĩa"
+		},
+		"placeholder": {
+			"desc": "Thay một giá trị cứng trong tệp cấu hình bằng một ${ENV_VAR}",
+			"optAll": "thay mọi lần xuất hiện, không chỉ lần đầu",
+			"optInstanceScope": "định nghĩa biến chỉ cho instance này",
+			"optMachine": "định nghĩa biến chỉ cho một máy",
+			"optForce": "chấp nhận thay đổi giá trị hoặc tệp mà bình thường sẽ bị từ chối",
+			"scopeConflict": "--machine và --instance-scope là hai phạm vi khác nhau; chỉ truyền một",
+			"done": "{file}: {count} chỗ giờ đọc {placeholder}",
+			"rewritten": "bản kết xuất khác với nội dung trước đó; tệp đã bị ghi lại (do --force)",
+			"unchanged": "tệp trên đĩa không đổi; giá trị giờ chỉ đơn giản nằm trong môi trường"
+		},
+		"render": {
+			"desc": "Kết xuất các tệp cấu hình được quản lý của một instance từ template",
+			"empty": "{name} không có tệp cấu hình nào được quản lý"
+		},
+		"readopt": {
+			"desc": "Kéo nội dung hiện tại của tệp bị lệch về lại template, giữ các biến giữ chỗ",
+			"done": "đã nhận lại {file} từ đĩa",
+			"kept": "biến giữ chỗ được giữ: {names}",
+			"nowLiteral": "không giá trị giữ chỗ nào khớp với nội dung mới; template giờ là chữ thuần"
+		},
+		"discardDrift": {
+			"desc": "Xóa bản sao .luna-drift nằm cạnh một tệp",
+			"noCopy": "không có bản sao lệch cạnh {file}",
+			"done": "đã xóa bản sao lệch"
+		}
+	},
+	"env": {
+		"scopeConflict": "--instance và --machine là hai phạm vi khác nhau; chỉ truyền một",
+		"unknownInstance": "không biết instance: {name}",
+		"unknownMachine": "không biết máy: {name}",
+		"onInstance": "trên {name}",
+		"onMachine": "trên máy {name}",
+		"scopeBuiltin": "dựng sẵn",
+		"scopeGlobal": "toàn cục",
+		"scopeMachine": "theo máy",
+		"scopeInstance": "theo instance",
+		"list": {
+			"desc": "Liệt kê biến môi trường (nạp khi khởi động, template đọc dưới dạng ${NAME})",
+			"optInstance": "phân giải cho instance này, cho biết giá trị nào thắng",
+			"optMachine": "xem các ghi đè của máy này",
+			"optReveal": "hiện giá trị bí mật thay vì che đi",
+			"overrides": "ghi đè {scopes}",
+			"resolvedFor": "phân giải cho {name}: dựng sẵn < toàn cục < theo máy < theo instance",
+			"noMachineOverrides": "{name} không có ghi đè ở phạm vi máy",
+			"empty": "chưa định nghĩa biến nào; đặt một biến bằng: luna env set NAME value",
+			"builtinsHint": "biến dựng sẵn tính theo từng instance; xem bằng {command}"
+		},
+		"set": {
+			"desc": "Đặt một biến, toàn cục hoặc ghi đè theo máy/instance",
+			"optInstance": "chỉ ghi đè cho instance này",
+			"optMachine": "ghi đè cho mọi instance trên máy này",
+			"optSecret": "che giá trị trên mọi giao diện",
+			"optDescription": "biến này dùng cho việc gì",
+			"done": "đã đặt {name}",
+			"pickupNote": "(các instance nhận giá trị ở lần khởi động sau)"
+		},
+		"unset": {
+			"desc": "Xóa một biến, hoặc ghi đè của một máy/instance",
+			"optInstance": "chỉ xóa ghi đè của instance này",
+			"optMachine": "chỉ xóa ghi đè của máy này",
+			"notSet": "{name} chưa được đặt",
+			"done": "đã xóa {name}",
+			"restartNote": "các instance giữ giá trị cũ cho tới khi khởi động lại"
+		},
+		"inject": {
+			"desc": "Ghi lại .luna-env của một instance từ kho biến (có hiệu lực ở lần khởi động sau)",
+			"wrote": "đã ghi {path}",
+			"applyNote": "JVM đọc tệp này khi khởi động; khởi động lại instance để áp dụng"
+		},
+		"apply": {
+			"desc": "Áp dụng lại mọi template cấu hình và tệp cấu hình được quản lý cho một instance",
+			"templatesInPlace": "{name}: mọi giá trị theo template đã đúng chỗ (đã kiểm tra {count})",
+			"filesUpToDate": "{name}: {count} tệp cấu hình được quản lý đã mới nhất"
+		}
+	},
+	"luna": {
+		"stateInSync": "đồng bộ",
+		"stateNeedsDeploy": "cần triển khai",
+		"stateStalePool": "kho đã cũ",
+		"stateUnregistered": "chưa đăng ký",
+		"stateNotBuilt": "chưa dựng",
+		"ago": "{duration} trước",
+		"modulesSummary": "{count} module: {summary}",
+		"sourceLine": "mã nguồn {dir} @ {version}",
+		"dirtyTag": "(có thay đổi chưa commit)",
+		"allModules": "tất cả module",
+		"building": "đang dựng {label}...",
+		"buildFailed": "gradle build thất bại (mã thoát {code})",
+		"buildSucceeded": "dựng xong trong {duration}",
+		"pooling": "đang đưa artifact vào kho...",
+		"noArtifacts": "không thấy artifact đã dựng; chạy luna luna build trước đã",
+		"registered": "đã đăng ký {name} vào lockfile; gán đích bằng {command}",
+		"poolMatches": "kho đã khớp với các jar vừa dựng",
+		"noTargets": "chưa đặt đích (sẽ không triển khai): {names}",
+		"status": {
+			"desc": "So sánh các jar luna đã dựng với kho và từng instance",
+			"hashing": "đang băm các jar đã dựng, trong kho và đã triển khai...",
+			"stray": "artifact lạc trong output/: {file} (không module gradle nào tạo ra nó)"
+		},
+		"build": {
+			"desc": "Dựng workspace luna-plugins (tất cả module, hoặc các module được nêu tên)",
+			"optSync": "đồng thời chép các jar vừa dựng vào kho",
+			"jarCount": "{count} jar triển khai được trong output/",
+			"dirty": "cây mã nguồn có thay đổi chưa commit; jar được đóng dấu {version}",
+			"poolHint": "đưa kết quả vào kho bằng: {command}"
+		},
+		"sync": {
+			"desc": "Chép các jar luna đã dựng sẵn vào kho và cập nhật lockfile",
+			"pushHint": "đẩy tới các instance bằng: {command}"
+		},
+		"deploy": {
+			"desc": "Dựng các plugin luna, đưa vào kho, rồi đẩy tới các instance đích",
+			"optNoBuild": "triển khai những gì đã có trong output/ mà không dựng lại",
+			"optRestart": "khởi động lại các instance vừa nhận jar mới",
+			"nothing": "không có gì để triển khai; các instance đã chạy đúng các jar này",
+			"leftDown": "{name} đang tắt; giữ nguyên trạng thái tắt",
+			"restarting": "đang khởi động lại {name}...",
+			"forced": "{name} không dừng nhẹ nhàng được; đã buộc dừng",
+			"restarted": "đã khởi động lại {name}"
+		}
+	},
+	"net": {
+		"statusOnline": "trực tuyến",
+		"statusMaint": "bảo trì",
+		"statusOffline": "ngoại tuyến",
+		"healthHealthy": "khỏe mạnh",
+		"healthDegraded": "suy giảm",
+		"apiUnavailable": "không gọi được LunaCore API: {error}",
+		"unknownError": "lỗi không xác định",
+		"optServer": "chỉ backend này",
+		"status": {
+			"desc": "Số liệu mạng từ LunaCore trên proxy (TPS, CPU, RAM, người chơi)",
+			"summary": "mạng {health}: {online}/{total} backend đang chạy, {players} người chơi, tps trung bình {tps}, cpu trung bình {cpu}%, ram {ramUsed} / {ramMax}"
+		},
+		"players": {
+			"desc": "Người chơi đang kết nối vào mạng, kèm thời lượng phiên",
+			"empty": "không có ai đang kết nối",
+			"connecting": "(đang kết nối)",
+			"online": "{count} trực tuyến"
+		},
+		"history": {
+			"desc": "Hoạt động vào, ra và chuyển máy chủ gần đây",
+			"empty": "chưa ghi nhận hoạt động nào từ khi proxy khởi động",
+			"joined": "đã vào",
+			"left": "đã rời",
+			"switched": "đã chuyển"
+		},
+		"cmd": {
+			"desc": "Chạy một lệnh trên console của proxy và in kết quả",
+			"noOutput": "lệnh chạy xong, không có kết quả in ra",
+			"noSuchCommand": "proxy không có lệnh này",
+			"notRecognised": "proxy không nhận ra lệnh đó"
+		},
+		"say": {
+			"desc": "Phát một thông báo định dạng MiniMessage tới người chơi",
+			"delivered": "đã gửi tới {count} người chơi",
+			"onServer": "trên {server}"
+		},
+		"kick": {
+			"desc": "Ngắt kết nối một người chơi khỏi mạng",
+			"optReason": "thông điệp hiển thị cho người chơi",
+			"done": "đã kick {player}"
+		},
+		"move": {
+			"desc": "Chuyển một người chơi sang backend khác",
+			"failed": "{player} không được chuyển tới {server}: {status}",
+			"done": "đã chuyển {player} tới {server}"
+		}
+	},
+	"schedule": {
+		"triggerOnce": "một lần lúc {time}",
+		"triggerEvery": "mỗi {minutes} phút",
+		"unknown": "không biết lịch: {id}",
+		"nextShort": "lần tới {time}",
+		"list": {
+			"desc": "Liệt kê các lịch chạy (bộ chạy nằm trong daemon)",
+			"empty": "chưa có lịch nào; tạo mới bằng: luna schedule create",
+			"neverRan": "chưa chạy lần nào",
+			"runnerNote": "các lần chạy được daemon kích hoạt"
+		},
+		"create": {
+			"desc": "Đặt lịch start/stop/restart cho instance (một lần, cron, hoặc chu kỳ cố định)",
+			"optAction": "start | stop | restart",
+			"optInstances": "các đích, phân tách bằng dấu phẩy (chấp nhận wildcard)",
+			"optAt": "một lần, ví dụ \"2026-08-03 04:00\"",
+			"optCron": "định kỳ, ví dụ \"30 4 * * *\"",
+			"optEvery": "định kỳ, số phút giữa các lần chạy",
+			"optMaxRuns": "dừng sau chừng này lần chạy",
+			"optDisabled": "tạo ở trạng thái tạm dừng",
+			"needsAction": "bắt buộc có --action start|stop|restart",
+			"needsInstances": "bắt buộc có --instances <tên>",
+			"pickOneTrigger": "chọn đúng một trong --at, --cron, --every",
+			"badTime": "không đọc được thời gian \"{time}\"",
+			"nextRun": "lần chạy tới {time}; sẽ kích hoạt khi daemon đang chạy"
+		},
+		"remove": {
+			"desc": "Xóa một lịch (lịch sử của nó vẫn nằm trong nhật ký sự kiện)",
+			"deleted": "đã xóa {name}"
+		},
+		"enable": {
+			"desc": "Chạy lại một lịch",
+			"done": "đã bật",
+			"completed": "{name} đã hoàn thành từ trước; không còn gì để kích hoạt"
+		},
+		"disable": {
+			"desc": "Tạm dừng một lịch",
+			"done": "đã tạm dừng"
+		},
+		"run": {
+			"desc": "Kích hoạt hành động của lịch ngay bây giờ (không tính vào lần chạy theo lịch)",
+			"restarted": "đã khởi động lại ({duration})",
+			"manualRun": "chạy thủ công {action}"
+		},
+		"history": {
+			"desc": "Nhật ký thực thi, mới nhất trước",
+			"empty": "chưa ghi nhận lần thực thi nào"
+		}
+	},
+	"selector": {
+		"diffHeading": "khác biệt giữa tệp hiện có và những gì luna sẽ tạo ra:",
+		"diffMore": "… và {count} dòng nữa",
+		"status": {
+			"desc": "Xem server selector: vị trí đặt, kiểm tra hợp lệ và độ lệch so với servers.yml",
+			"byStatus": "(theo trạng thái)",
+			"lines": "{count} dòng",
+			"placement": "{placed} máy chủ trên {pages} trang",
+			"configured": "đã cấu hình trong cluster.json",
+			"notConfigured": "chưa cấu hình; chạy luna selector migrate",
+			"noFile": "chưa có servers.yml; lệnh apply sẽ tạo nó",
+			"drift": "servers.yml lệch so với cluster.json ({count} đường dẫn); chạy apply để đồng bộ lại",
+			"matches": "servers.yml khớp với cluster.json",
+			"proxyUnreachable": "HTTP API của proxy không phản hồi; apply vẫn ghi được tệp nhưng không reload được"
+		},
+		"check": {
+			"desc": "Kiểm tra selector đúng theo cách proxy sẽ kiểm tra trước khi reload",
+			"wouldRefuse": "{count} lỗi; proxy sẽ từ chối reload",
+			"warningsOnly": "không có lỗi, {count} cảnh báo",
+			"noIssues": "không có vấn đề nào"
+		},
+		"preview": {
+			"desc": "In ra servers.yml mà luna sẽ tạo, không ghi tệp"
+		},
+		"migrate": {
+			"desc": "Nhập servers.yml hiện có vào cluster.json (làm một lần)",
+			"optDryRun": "báo cáo những gì sẽ được nhập, không lưu gì",
+			"optForce": "vẫn lưu kể cả khi bước kiểm tra vòng lặp thấy khác biệt",
+			"confirm": "Nhập servers.yml vào cluster.json? Thao tác này ghi đè metadata selector của mọi instance khớp.",
+			"imported": "{count} instance: {names}",
+			"roundTripOk": "kiểm tra vòng lặp đạt; tạo lại sẽ cho ra đúng cấu hình hiện tại",
+			"roundTripFailed": "kiểm tra vòng lặp thất bại ở {count} đường dẫn",
+			"saved": "đã cập nhật cluster.json",
+			"dryRun": "chạy thử: chưa lưu gì",
+			"nothingSaved": "chưa lưu gì; chạy lại với --force để vẫn nhập"
+		},
+		"apply": {
+			"desc": "Tạo servers.yml từ cluster.json và reload proxy",
+			"fixFirst": "{count} lỗi; sửa xong mới áp dụng được",
+			"confirm": "Ghi servers.yml ({count} máy chủ) và reload proxy đang chạy?",
+			"progressName": "áp dụng selector",
+			"written": "đã ghi servers.yml ({count} máy chủ)",
+			"reloaded": "đã reload proxy; các backend sẽ nhận bố cục mới ở nhịp heartbeat kế tiếp",
+			"notReloaded": "proxy không reload; chạy /lunacoreproxy reload ở đó, hoặc khởi động lại proxy"
+		}
+	},
+	"web": {
+		"desc": "Chạy bảng điều khiển web (ứng dụng SvelteKit trong control/web)",
+		"optPort": "cổng lắng nghe (mặc định 8330)",
+		"optHost": "địa chỉ bind (mặc định 127.0.0.1)",
+		"optDev": "chạy vite dev server thay vì bản dựng production",
+		"followerHost": "máy này chạy daemon follower \"{name}\"; bảng điều khiển web chỉ chạy trên primary",
+		"notFound": "không tìm thấy bảng điều khiển web tại {dir}",
+		"devStarting": "đang khởi động console dev tại {url}",
+		"devHotReload": "(hot reload)",
+		"buildMissing": "thiếu bản dựng production; chạy: cd {dir} && bun run build",
+		"serving": "bảng điều khiển web tại {url}",
+		"stopHint": "(Ctrl+C để dừng)"
+	},
+	"version": {
+		"desc": "Thông tin bản dựng của binary này (và của daemon, nếu daemon trả lời)",
+		"builtLabel": "dựng lúc",
+		"daemonLabel": "daemon",
+		"daemonLine": "{name}: {version}, giao thức {protocol}",
+		"daemonDown": "chưa chạy trên máy này"
+	}
+}

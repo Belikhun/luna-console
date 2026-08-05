@@ -18,13 +18,14 @@ import * as cleanup from "../../client/core/cleanup";
 import { sendCommand, getStatus } from "../../client/core/instances";
 import { ensureConnected } from "../../client/socket";
 import { BUILD_AT, buildPlatform, buildVersion } from "../../version";
+import { t } from "../../shared/i18n";
 
 command({
 	path: ["proxy", "sync"],
-	desc: "Regenerate velocity.toml [servers]/[forced-hosts] from cluster.json",
+	desc: t("cli.proxy.sync.desc"),
 	opts: [
-		{ flag: "--dry-run", desc: "preview without writing" },
-		{ flag: "--reload", desc: "run velocity reload afterwards if the proxy is up" },
+		{ flag: "--dry-run", desc: t("cli.proxy.sync.optDryRun") },
+		{ flag: "--reload", desc: t("cli.proxy.sync.optReload") },
 	],
 
 	handler: async (_args, opts) => {
@@ -38,21 +39,21 @@ command({
 		console.log(pc.dim(`\n${preview}\n`));
 
 		if (!res.changed) {
-			ok("velocity.toml already in sync");
+			ok(t("cli.proxy.sync.inSync"));
 
 			return;
 		}
 
 		if (opts["dry-run"]) {
-			info("dry run — velocity.toml NOT written");
+			info(t("cli.proxy.sync.dryRun"));
 
 			return;
 		}
 
-		ok(`velocity.toml updated ${pc.dim("(backup: velocity.toml.bak)")}`);
+		ok(`${t("cli.proxy.sync.updated")} ${pc.dim(t("cli.proxy.sync.backupNote"))}`);
 
 		if (!opts.reload) {
-			info("restart the proxy or run with --reload to apply");
+			info(t("cli.proxy.sync.applyHint"));
 
 			return;
 		}
@@ -62,16 +63,16 @@ command({
 			status.state !== "stopped" && (await sendCommand(cfg, "proxy", "velocity reload"));
 
 		if (reloaded) {
-			ok("sent `velocity reload` to the proxy");
+			ok(t("cli.proxy.sync.reloaded"));
 		} else {
-			warn("proxy not running — config applies on next start");
+			warn(t("cli.proxy.sync.proxyDown"));
 		}
 	},
 });
 
 /**
  * A machine on the command line. The primary's key in the registry is the empty
- * string — nobody can type that, so it answers to "primary" (and to its own
+ * string. Nobody can type that, so it answers to "primary" (and to its own
  * daemon name, which is what `luna daemon list` shows).
  */
 function machineArg(cfg: ClusterConfig, name: string): string {
@@ -80,7 +81,7 @@ function machineArg(cfg: ClusterConfig, name: string): string {
 
 	if (!known.includes(machine)) {
 		throw new UsageError(
-			`unknown machine "${name}" — known: ${known.map(machineLabel).join(", ")}`,
+			t("cli.machines.unknown", { name, known: known.map(machineLabel).join(", ") }),
 		);
 	}
 
@@ -106,7 +107,7 @@ function parseRange(text: string): [number, number] {
 	const bounds = text.split("-").map((part) => parseInt(part.trim()));
 
 	if (bounds.length !== 2 || bounds.some((bound) => !Number.isFinite(bound))) {
-		throw new UsageError(`could not read "${text}" as a range — use 32560-32599`);
+		throw new UsageError(t("cli.ports.badRange", { text }));
 	}
 
 	return [bounds[0]!, bounds[1]!];
@@ -114,7 +115,7 @@ function parseRange(text: string): [number, number] {
 
 command({
 	path: ["ports", "list"],
-	desc: "Cluster-wide port map (game, plugin, external) with the machine each one binds on",
+	desc: t("cli.ports.list.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
@@ -125,7 +126,7 @@ command({
 
 		printTable(
 			rows.map((row) => [
-				// a port on an unreachable machine is unknown, not free — the states
+				// a port on an unreachable machine is unknown, not free: the states
 				// are distinct and only one of them is a problem. An external server
 				// is never probed at all, so it gets neither.
 				row.kind === "external"
@@ -137,19 +138,29 @@ command({
 							: Sym.off,
 				pc.bold(String(row.port)),
 				row.protocol,
-				row.machine === null ? pc.dim("external") : machineLabel(row.machine),
+				row.machine === null ? pc.dim(t("cli.ports.list.external")) : machineLabel(row.machine),
 				row.owner,
 				row.kind.startsWith("plugin:") ? pc.cyan(row.kind) : pc.dim(row.kind),
 				row.pool ?? pc.dim("—"),
 				pc.dim(row.address),
 			]),
-			{ head: ["", "port", "proto", "machine", "owner", "kind", "pool", "address"] },
+			{
+				head: [
+					"",
+					t("cli.head.port"),
+					t("cli.head.proto"),
+					t("cli.head.machine"),
+					t("cli.head.owner"),
+					t("cli.head.kind"),
+					t("cli.head.pool"),
+					t("cli.head.address"),
+				],
+			},
 		);
 
 		console.log(
 			pc.dim(
-				`\n  ${Sym.ok} bound now, ${Sym.off} not bound (stopped or drift), ` +
-					`${Sym.warn} machine not reachable, ${Sym.dot} external (not probed)\n`,
+				`\n  ${t("cli.ports.list.legend", { ok: Sym.ok, off: Sym.off, warn: Sym.warn, dot: Sym.dot })}\n`,
 			),
 		);
 	},
@@ -157,7 +168,7 @@ command({
 
 command({
 	path: ["ports", "pools"],
-	desc: "The pool catalog: what consumes each pool, and each machine's range and usage",
+	desc: t("cli.ports.pools.desc"),
 	args: [{ name: "machine", complete: async () => await machineNames() }],
 
 	handler: async (args) => {
@@ -176,16 +187,16 @@ command({
 				? wanting
 						.map((consumer) =>
 							consumer.kind === "provision"
-								? "every instance provision (game port)"
+								? t("cli.ports.pools.provisionConsumer")
 								: `${consumer.name} (${consumer.protocol}${consumer.portId ? ` ${consumer.portId}` : ""})`,
 						)
 						.join(", ")
-				: "nothing yet — a plugin port declaration names it with `pool`";
+				: t("cli.ports.pools.noConsumers");
 
 			console.log(
 				`\n  ${pc.bold(pool.id)} ${pool.label ? pc.dim(`— ${pool.label} `) : ""}${pc.dim(`(${pool.protocol})`)}`,
 			);
-			console.log(pc.dim(`  consumed by: ${who}`));
+			console.log(pc.dim(`  ${t("cli.ports.pools.consumedBy", { who })}`));
 
 			printTable(
 				usage
@@ -194,39 +205,42 @@ command({
 						machineLabel(view.machine),
 						`${view.pool.range[0]}-${view.pool.range[1]}`,
 						`${view.used.length}/${view.capacity}`,
-						view.next === null ? pc.yellow("exhausted") : String(view.next),
+						view.next === null ? pc.yellow(t("cli.ports.pools.exhausted")) : String(view.next),
 						view.overridden
-							? pc.cyan("override")
+							? pc.cyan(t("cli.ports.pools.sourceOverride"))
 							: view.inherited
-								? pc.dim("default")
-								: "catalog",
+								? pc.dim(t("cli.ports.pools.sourceDefault"))
+								: t("cli.ports.pools.sourceCatalog"),
 					]),
-				{ head: ["machine", "range", "used", "next", "source"] },
+				{
+					head: [
+						t("cli.head.machine"),
+						t("cli.head.range"),
+						t("cli.head.used"),
+						t("cli.head.next"),
+						t("cli.head.source"),
+					],
+				},
 			);
 		}
 
-		console.log(
-			pc.dim(
-				"\n  the pool id is the mapping: provisioning takes `game`, a plugin's port spec\n" +
-					"  names its pool; every machine serves every pool, only the numbers differ\n",
-			),
-		);
+		console.log(pc.dim(`\n  ${t("cli.ports.pools.footer").split("\n").join("\n  ")}\n`));
 	},
 });
 
 command({
 	path: ["ports", "pool", "set"],
-	desc: "Define/update a pool cluster-wide, or override its range on one machine",
+	desc: t("cli.ports.poolSet.desc"),
 	args: [
 		{ name: "pool", required: true, complete: async () => await poolNames() },
-		{ name: "range", desc: "e.g. 32560-32599" },
+		{ name: "range", desc: t("cli.ports.poolSet.argRange") },
 	],
 	opts: [
-		{ flag: "--machine", desc: "override the range on this machine only", value: true },
-		{ flag: "--protocol", desc: "tcp | udp | both (default tcp)", value: true },
-		{ flag: "--label", desc: "what the pool is for", value: true },
-		{ flag: "--reserve", desc: "comma-separated ports to hold back", value: true },
-		{ flag: "--remove", desc: "drop the pool (or, with --machine, that machine's override)" },
+		{ flag: "--machine", desc: t("cli.ports.poolSet.optMachine"), value: true },
+		{ flag: "--protocol", desc: t("cli.ports.poolSet.optProtocol"), value: true },
+		{ flag: "--label", desc: t("cli.ports.poolSet.optLabel"), value: true },
+		{ flag: "--reserve", desc: t("cli.ports.poolSet.optReserve"), value: true },
+		{ flag: "--remove", desc: t("cli.ports.poolSet.optRemove") },
 	],
 
 	handler: async (args, opts) => {
@@ -244,10 +258,10 @@ command({
 
 		if (opts.remove && machine === undefined) {
 			// dropping the catalog entry reverts a builtin to its default and deletes
-			// a custom pool outright — setPoolCatalog warns if something consumed it
+			// a custom pool outright; setPoolCatalog warns if something consumed it
 		} else {
 			if (!editing && !range) {
-				throw new UsageError("a new pool needs a range, e.g. 32560-32599");
+				throw new UsageError(t("cli.ports.poolSet.needsRange"));
 			}
 
 			const pool: PortPool = editing
@@ -262,7 +276,7 @@ command({
 				const protocol = String(opts.protocol);
 
 				if (protocol !== "tcp" && protocol !== "udp" && protocol !== "both") {
-					throw new UsageError("--protocol must be tcp, udp or both");
+					throw new UsageError(t("cli.ports.poolSet.badProtocol"));
 				}
 
 				pool.protocol = protocol;
@@ -293,7 +307,7 @@ command({
 				delete pool.overrides?.[machine];
 			} else {
 				if (!bounds && reserved === undefined) {
-					throw new UsageError("a machine override needs a range and/or --reserve");
+					throw new UsageError(t("cli.ports.poolSet.overrideNeedsRange"));
 				}
 
 				pool.overrides ??= {};
@@ -314,7 +328,7 @@ command({
 				warn(problem);
 			}
 
-			throw new Bail("nothing written — fix the pool definition and try again");
+			throw new Bail(t("cli.ports.poolSet.nothingWritten"));
 		}
 
 		await saveCluster(cfg);
@@ -322,14 +336,18 @@ command({
 		if (opts.remove) {
 			ok(
 				machine === undefined
-					? `pool "${id}" dropped from the catalog`
-					: `pool "${id}" no longer overridden on ${machineLabel(machine)}`,
+					? t("cli.ports.poolSet.droppedCatalog", { id })
+					: t("cli.ports.poolSet.droppedOverride", { id, machine: machineLabel(machine) }),
 			);
 		} else {
+			const change = range
+				? t("cli.ports.poolSet.changeRange", { range })
+				: t("cli.ports.poolSet.changeUpdated");
+
 			ok(
 				machine === undefined
-					? `pool "${id}" ${range ? `now hands out ${range}` : "updated"} on every machine without an override`
-					: `pool "${id}" on ${machineLabel(machine)} ${range ? `now hands out ${range}` : "updated"}`,
+					? t("cli.ports.poolSet.updatedEverywhere", { id, change })
+					: t("cli.ports.poolSet.updatedMachine", { id, machine: machineLabel(machine), change }),
 			);
 		}
 
@@ -341,8 +359,8 @@ command({
 
 command({
 	path: ["ports", "check"],
-	desc: "Audit ports: per-machine duplicates, pool coverage, config drift, velocity.toml",
-	opts: [{ flag: "--fix", desc: "rewrite plugin configs from the registry" }],
+	desc: t("cli.ports.check.desc"),
+	opts: [{ flag: "--fix", desc: t("cli.ports.check.optFix") }],
 
 	handler: async (_args, opts) => {
 		const cfg = await loadCluster();
@@ -352,14 +370,14 @@ command({
 			const allocations = await ensurePortAllocations(cfg, lock);
 
 			await saveCluster(cfg);
-			ok(`ensured ${allocations.length} port allocation(s)`);
+			ok(t("cli.ports.check.ensured", { count: allocations.length }));
 		}
 
 		// compare against what's actually in velocity.toml on disk
 		const onDisk = await readVelocityServers(cfg);
 		const issues = await auditPorts(cfg, lock, onDisk);
 
-		// an offline machine is not a finding, it is a gap in coverage — said out
+		// an offline machine is not a finding, it is a gap in coverage: said out
 		// loud so "no issues" never means "we only looked at half the cluster",
 		// but not counted as a failure either
 		const unchecked = issues.filter((issue) => issue.kind === "unchecked");
@@ -374,14 +392,17 @@ command({
 		}
 
 		if (!problems.length) {
-			ok("no port issues found");
+			ok(t("cli.ports.check.noIssues"));
 
 			return;
 		}
 
 		if (!opts.fix) {
 			info(
-				`fix drift with: ${pc.cyan("luna ports check --fix")} and ${pc.cyan("luna proxy sync")}`,
+				t("cli.ports.check.fixHint", {
+					fix: pc.cyan("luna ports check --fix"),
+					sync: pc.cyan("luna proxy sync"),
+				}),
 			);
 		}
 
@@ -391,21 +412,21 @@ command({
 
 command({
 	path: ["cleanup"],
-	desc: "Delete junk (cache, old versions, crash reports) + archive rotated logs centrally",
+	desc: t("cli.cleanup.desc"),
 	opts: [
-		{ flag: "--dry-run", desc: "show what would be removed" },
-		{ flag: "--yes", desc: "skip confirmation" },
+		{ flag: "--dry-run", desc: t("cli.cleanup.optDryRun") },
+		{ flag: "--yes", desc: t("cli.common.optYes") },
 	],
 
 	handler: async (_args, opts) => {
 		const cfg = await loadCluster();
-		const scanSpinner = new Spinner().start("scanning for junk...");
+		const scanSpinner = new Spinner().start(t("cli.cleanup.scanning"));
 		const plan = await cleanup.buildPlan(cfg);
 
 		scanSpinner.stop();
 
 		if (!plan.junk.length && !plan.logs.length) {
-			ok("nothing to clean");
+			ok(t("cli.cleanup.nothing"));
 
 			return;
 		}
@@ -422,68 +443,73 @@ command({
 
 		printTable(
 			[...byKind.entries()].map(([kind, sum]) => [kind, String(sum.count), fmtBytes(sum.bytes)]),
-			{ head: ["kind", "items", "size"] },
+			{ head: [t("cli.head.kind"), t("cli.head.items"), t("cli.head.size")] },
 		);
 
 		const logBytes = plan.logs.reduce((total, log) => total + log.bytes, 0);
 
 		if (plan.logs.length) {
 			console.log(
-				`\n  ${pc.cyan("logs")}: ${plan.logs.length} rotated files (${fmtBytes(logBytes)}) → ` +
+				`\n  ${pc.cyan("logs")}: ${t("cli.cleanup.logsLine", { count: plan.logs.length, size: fmtBytes(logBytes) })} → ` +
 					pc.dim("logs/<instance>/<YYYY-MM>.log.gz"),
 			);
 		}
 
 		for (const note of plan.notes) {
-			console.log(pc.dim(`  note: ${note}`));
+			console.log(pc.dim(`  ${t("cli.cleanup.note", { note })}`));
 		}
 
-		console.log(`\n  total to free: ${pc.bold(pc.green(fmtBytes(plan.totalBytes)))}\n`);
+		console.log(
+			`\n  ${t("cli.cleanup.totalToFree", { size: pc.bold(pc.green(fmtBytes(plan.totalBytes))) })}\n`,
+		);
 
 		if (opts["dry-run"]) {
 			for (const item of plan.junk) {
 				console.log(pc.dim(`  rm ${item.path} (${fmtBytes(item.bytes)})`));
 			}
 
-			info("dry run — nothing deleted");
+			info(t("cli.cleanup.dryRun"));
 
 			return;
 		}
 
 		if (!opts.yes) {
 			const { confirm, isCancel } = await import("@clack/prompts");
-			const sure = await confirm({ message: "Proceed with cleanup?" });
+			const sure = await confirm({ message: t("cli.cleanup.confirm") });
 
 			if (isCancel(sure) || !sure) {
-				info("aborted");
+				info(t("cli.common.aborted"));
 
 				return;
 			}
 		}
 
-		const cleanSpinner = new Spinner().start("cleaning...");
+		const cleanSpinner = new Spinner().start(t("cli.cleanup.cleaning"));
 		const res = await cleanup.execute(plan);
 
 		cleanSpinner.stop();
-		ok(`deleted ${res.deleted} items, freed ${pc.bold(fmtBytes(res.freedBytes))}`);
+		ok(
+			t("cli.cleanup.deleted", {
+				count: res.deleted,
+				size: pc.bold(fmtBytes(res.freedBytes)),
+			}),
+		);
 
 		if (res.archivedLogs) {
-			ok(
-				`archived ${res.archivedLogs} log files into ${res.archives.length} monthly archive(s)`,
-			);
+			ok(t("cli.cleanup.archived", { count: res.archivedLogs, archives: res.archives.length }));
 		}
 	},
 });
 
 command({
 	path: ["version"],
-	desc: "Build identity of this binary (and the daemon, when one answers)",
+	desc: t("cli.version.desc"),
 
 	handler: async () => {
 		console.log(`luna ${buildVersion()} (${buildPlatform()})`);
 
 		if (BUILD_AT) {
-			info(`built     ${new Date(BUILD_AT).toLocaleString()}`);
+			info(`${t("cli.version.builtLabel").padEnd(9)} ${new Date(BUILD_AT).toLocaleString()}`);
 		}
 
 		// the binary and the running daemon are two different builds whenever an
@@ -491,9 +517,11 @@ command({
 		try {
 			const d = await ensureConnected();
 
-			info(`daemon    ${d.name} — ${d.version}, protocol ${d.protocol}`);
+			info(
+				`${t("cli.version.daemonLabel").padEnd(9)} ${t("cli.version.daemonLine", { name: d.name, version: d.version, protocol: d.protocol })}`,
+			);
 		} catch {
-			info(pc.dim("daemon    not running on this host"));
+			info(pc.dim(`${t("cli.version.daemonLabel").padEnd(9)} ${t("cli.version.daemonDown")}`));
 		}
 	},
 });

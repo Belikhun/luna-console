@@ -5,25 +5,24 @@ import { command, Bail } from "../framework";
 import { pc, info, ok } from "../ui";
 import { root } from "../../client/core/config";
 import { ensureConnected } from "../../client/socket";
+import { t } from "../../shared/i18n";
 
 command({
 	path: ["web"],
-	desc: "Start the web console (SvelteKit app in control/web)",
+	desc: t("cli.web.desc"),
 	opts: [
-		{ flag: "--port", desc: "listen port (default 8330)", value: true },
-		{ flag: "--host", desc: "bind address (default 127.0.0.1)", value: true },
-		{ flag: "--dev", desc: "run the vite dev server instead of the production build" },
+		{ flag: "--port", desc: t("cli.web.optPort"), value: true },
+		{ flag: "--host", desc: t("cli.web.optHost"), value: true },
+		{ flag: "--dev", desc: t("cli.web.optDev") },
 	],
 
 	handler: async (_args, opts) => {
-		// the console only runs beside the primary daemon — its backend talks to
+		// the console only runs beside the primary daemon: its backend talks to
 		// the daemon over the same socket the CLI uses
 		const daemon = await ensureConnected();
 
 		if (daemon.mode !== "primary") {
-			throw new Bail(
-				`this host runs the "${daemon.name}" follower daemon — the web console only runs on the primary`,
-			);
+			throw new Bail(t("cli.web.followerHost", { name: daemon.name }));
 		}
 
 		// the console normally lives in the source tree beside the cluster root;
@@ -33,7 +32,7 @@ command({
 		const host = (opts.host as string) ?? "127.0.0.1";
 
 		if (!existsSync(webDir)) {
-			throw new Bail(`web console not found at ${webDir}`);
+			throw new Bail(t("cli.web.notFound", { dir: webDir }));
 		}
 
 		const stdio = {
@@ -45,7 +44,9 @@ command({
 		let proc;
 
 		if (opts.dev) {
-			info(`starting dev console on ${pc.cyan(`http://${host}:${port}`)} ${pc.dim("(hot reload)")}`);
+			info(
+				`${t("cli.web.devStarting", { url: pc.cyan(`http://${host}:${port}`) })} ${pc.dim(t("cli.web.devHotReload"))}`,
+			);
 
 			// --strictPort so a stale server on this port can never shadow the new one
 			proc = Bun.spawn(
@@ -60,15 +61,17 @@ command({
 			const build = join(webDir, "build", "index.js");
 
 			if (!existsSync(build)) {
-				throw new Bail(`production build missing — run: cd ${webDir} && bun run build`);
+				throw new Bail(t("cli.web.buildMissing", { dir: webDir }));
 			}
 
-			ok(`web console on ${pc.cyan(`http://${host}:${port}`)} ${pc.dim("(Ctrl+C to stop)")}`);
+			ok(
+				`${t("cli.web.serving", { url: pc.cyan(`http://${host}:${port}`) })} ${pc.dim(t("cli.web.stopHint"))}`,
+			);
 
 			proc = Bun.spawn(["bun", build], {
 				cwd: webDir,
 				// BODY_SIZE_LIMIT: adapter-node caps request bodies at 512K by
-				// default, which rejects pack uploads — a resource pack zip is
+				// default, which rejects pack uploads; a resource pack zip is
 				// easily tens of MB
 				env: {
 					...process.env,

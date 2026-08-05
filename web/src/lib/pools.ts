@@ -1,4 +1,5 @@
 import type { PortPool, PortPoolOverride } from '$core/types';
+import { t } from '$lib/i18n.svelte';
 
 /**
  * Client-side helpers shared by the pool wizard and the machine screen's pools
@@ -66,13 +67,13 @@ export function consumersLine(
 	const wanting = consumers[poolId] ?? [];
 
 	if (!wanting.length) {
-		return 'nothing yet — a plugin port declaration names this pool to acquire from it';
+		return t('web.pools.noConsumers');
 	}
 
 	return wanting
 		.map((consumer) =>
 			consumer.kind === 'provision'
-				? 'every instance provision (game port)'
+				? t('web.pools.provisionConsumer')
 				: `${consumer.name} (${consumer.protocol}${consumer.portId ? ` · ${consumer.portId}` : ''})`
 		)
 		.join(', ');

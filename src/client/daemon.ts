@@ -1,7 +1,7 @@
 /**
  * Client access to the daemon-native surface: sampler-enriched statuses,
  * metric history, the cluster event log, UI transitions, and the daemons
- * management view. These have no core counterpart — they are the daemon's own.
+ * management view. These have no core counterpart; they are the daemon's own.
  */
 
 import type { ClusterEvent } from "../daemon/events";

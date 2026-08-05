@@ -31,7 +31,7 @@ export async function GET({ params }) {
 	const properties = await readServerProperties(cfg, params.name);
 
 	// the form renders from the schema, so a key Paper has not written yet still
-	// gets a field — showing the default it will boot with
+	// gets a field; showing the default it will boot with
 	const settings = Object.fromEntries(
 		SERVER_SETTINGS.map((spec) => [spec.key, properties[spec.key] ?? spec.fallback])
 	);
@@ -59,7 +59,7 @@ export async function GET({ params }) {
  *
  * Everything except a version change applies immediately and answers with what it
  * touched. A version change downloads a server jar, so it answers with a job the
- * client watches instead — see /api/jobs/[id].
+ * client watches instead; see /api/jobs/[id].
  */
 export async function PATCH({ params, request }) {
 	const body = await request.json();
@@ -109,7 +109,7 @@ export async function PATCH({ params, request }) {
 	}
 
 	if (body.port) {
-		// the port is checked against its own machine's allocations — a clash is the
+		// the port is checked against its own machine's allocations; a clash is the
 		// caller's mistake, so it comes back as a 400 with the reason, not a 500
 		try {
 			await setPort(cfg, name, Number(body.port));
@@ -140,7 +140,7 @@ export async function PATCH({ params, request }) {
 				delete inst.addonGroups;
 			}
 
-			// membership changed — push the union of old and new coverage right away
+			// membership changed; push the union of old and new coverage right away
 			await saveCluster(cfg);
 
 			const actions = await deploy(cfg, lock, { instances: [name] });
@@ -201,7 +201,7 @@ export async function PATCH({ params, request }) {
 			throw error(409, 'stop the instance before changing its version');
 		}
 
-		// server-version gate per DESIGN.md — the client re-sends with forceVersion
+		// server-version gate per DESIGN.md; the client re-sends with forceVersion
 		const incompatible = compatReport(cfg, lock, name, body.mcVersion).filter(
 			(row) => row.status === 'incompatible'
 		);

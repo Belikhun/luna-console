@@ -50,7 +50,7 @@ export async function POST({ params, request }) {
 
 	await saveCluster(cfg);
 
-	// "wanted" must include explicit lockfile targets, not just groups/overrides —
+	// "wanted" must include explicit lockfile targets, not just groups/overrides -
 	// clearing an override on an explicitly targeted plugin re-deploys it
 	const wanted = entriesOf(lock, plugin).some((key) =>
 		effectiveTargets(cfg, lock, key).includes(name),

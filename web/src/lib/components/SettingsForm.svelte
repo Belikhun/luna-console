@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import type { SettingGroup, SettingSpec } from '$core/settings';
 	import FormGrid from './FormGrid.svelte';
 	import Select from './Select.svelte';
@@ -10,7 +11,7 @@
 	 * the launch wizard and the configuration tab offer exactly the same fields
 	 * with the same ranges and choices.
 	 *
-	 * Values are strings throughout — that is what a properties file holds, and
+	 * Values are strings throughout; that is what a properties file holds, and
 	 * keeping them strings means nothing has to be coerced on the way back.
 	 */
 	let {
@@ -34,7 +35,7 @@
 
 	/**
 	 * Whether a spec's slider can honestly represent the current value. A value from
-	 * outside the schema's range — an older config with a view distance of 48 — would
+	 * outside the schema's range; an older config with a view distance of 48; would
 	 * be clamped by the slider's own thumb and read as something it is not, so those
 	 * fall back to the number box.
 	 */
@@ -58,8 +59,8 @@
 	{#if specs.length}
 		<div class="group">
 			<div class="ghead">
-				<h3>{group.label}</h3>
-				<span class="dim">{group.hint}</span>
+				<h3>{t(group.label)}</h3>
+				<span class="dim">{t(group.hint)}</span>
 			</div>
 			<FormGrid>
 				{#each specs as spec (spec.key)}
@@ -68,46 +69,46 @@
 							<Toggle
 								checked={values[spec.key] === 'true'}
 								disabled={!!spec.managed}
-								label={spec.label}
+								label={t(spec.label)}
 								onchange={(on) => set(spec.key, on ? 'true' : 'false')}
 							/>
 							<div class="text">
-								<span class="lbl">{spec.label}</span>
-								<span class="hint">{spec.managed ?? spec.hint ?? spec.key}</span>
+								<span class="lbl">{t(spec.label)}</span>
+								<span class="hint">{spec.managed ? t(spec.managed) : spec.hint ? t(spec.hint) : spec.key}</span>
 							</div>
 						</div>
 					{:else if sliderFits(spec)}
 						<div class="field">
-							<span class="lbl">{spec.label}</span>
-							<span class="hint">{spec.hint ?? spec.key}</span>
+							<span class="lbl">{t(spec.label)}</span>
+							<span class="hint">{spec.hint ? t(spec.hint) : spec.key}</span>
 							<Slider
 								value={Number(values[spec.key] ?? spec.fallback)}
 								min={spec.min ?? 0}
 								max={spec.max ?? 100}
 								step={spec.step ?? 1}
 								unit={spec.unit ?? ''}
-								label={spec.label}
+								label={t(spec.label)}
 								onchange={(next) => set(spec.key, String(next))}
 							/>
 						</div>
 					{:else if spec.type === 'choice'}
 						<div class="field">
-							<span class="lbl">{spec.label}</span>
-							<span class="hint">{spec.managed ?? spec.hint ?? spec.key}</span>
+							<span class="lbl">{t(spec.label)}</span>
+							<span class="hint">{spec.managed ? t(spec.managed) : spec.hint ? t(spec.hint) : spec.key}</span>
 							<Select
 								value={values[spec.key] ?? spec.fallback}
 								width="100%"
 								options={(spec.choices ?? []).map((choice) => ({
 									value: choice.value,
-									label: choice.label
+									label: t(choice.label)
 								}))}
 								onchange={(value) => set(spec.key, value)}
 							/>
 						</div>
 					{:else}
 						<label class="field">
-							<span class="lbl">{spec.label}</span>
-							<span class="hint">{spec.managed ?? spec.hint ?? spec.key}</span>
+							<span class="lbl">{t(spec.label)}</span>
+							<span class="hint">{spec.managed ? t(spec.managed) : spec.hint ? t(spec.hint) : spec.key}</span>
 							<input
 								class="input"
 								type={spec.type === 'number' ? 'number' : 'text'}

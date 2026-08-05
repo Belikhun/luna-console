@@ -1,5 +1,5 @@
 /**
- * `sudo luna setup` — the machine installer.
+ * `sudo luna setup` is the machine installer.
  *
  * Everything a host needs to run a daemon 24/7, in one root-owned pass: a
  * service account, the cluster root, the single binary inside it, PATH wiring
@@ -34,9 +34,10 @@ import { unitFile, UNIT_NAME, UNIT_PATH } from "./daemon";
 import { DEFAULT_CLUSTER_PORT } from "../../daemon/config";
 import { starterCluster } from "../../shared/bootstrap";
 import { isCompiledBinary } from "../../version";
+import { t } from "../../shared/i18n";
 
 /**
- * The one binary, under the service account's home — which `createUser` sets to
+ * The one binary, under the service account's home, which `createUser` sets to
  * the cluster root.
  *
  * A self-upgrade stages `<path>.new` beside the binary and renames it into
@@ -61,7 +62,7 @@ const RC_CLOSE = "# <<< luna <<<";
 /** Interactive non-login shells never read /etc/profile.d, so rc files matter too. */
 const RC_FILES = [".bashrc", ".zshrc"];
 
-/** The daemon config the unit points at — first candidate in the probe order. */
+/** The daemon config the unit points at; first candidate in the probe order. */
 const CONFIG_PATH = "/etc/luna/daemon.json";
 
 /** Default service account, when the invoking user is root itself. */
@@ -127,7 +128,7 @@ async function createUser(name: string, home: string): Promise<void> {
 	]);
 
 	if (result.code !== 0) {
-		throw new Bail(`could not create user "${name}": ${result.out}`);
+		throw new Bail(t("cli.setup.userCreateFailed", { name, error: result.out }));
 	}
 }
 
@@ -137,7 +138,7 @@ async function uidGid(name: string): Promise<{ uid: number; gid: number }> {
 	const gid = await run(["id", "-g", name]);
 
 	if (uid.code !== 0 || gid.code !== 0) {
-		throw new Bail(`could not resolve uid/gid for "${name}"`);
+		throw new Bail(t("cli.setup.uidGidFailed", { name }));
 	}
 
 	return { uid: Number(uid.out), gid: Number(gid.out) };
@@ -148,7 +149,7 @@ async function chownTree(path: string, uid: number, gid: number): Promise<void> 
 	const result = await run(["chown", "-R", `${uid}:${gid}`, path]);
 
 	if (result.code !== 0) {
-		throw new Bail(`could not chown ${path}: ${result.out}`);
+		throw new Bail(t("cli.setup.chownFailed", { path, error: result.out }));
 	}
 }
 
@@ -161,7 +162,9 @@ async function place(
 	owner?: { uid: number; gid: number },
 ): Promise<void> {
 	if (plan.dryRun) {
-		info(`would write ${pc.cyan(path)} ${pc.dim(`(${content.length} bytes, mode ${mode.toString(8)})`)}`);
+		info(
+			`${t("cli.setup.wouldWrite", { path: pc.cyan(path) })} ${pc.dim(`(${content.length} bytes, mode ${mode.toString(8)})`)}`,
+		);
 
 		return;
 	}
@@ -174,7 +177,7 @@ async function place(
 		await chown(path, owner.uid, owner.gid);
 	}
 
-	ok(`wrote ${path}`);
+	ok(t("cli.setup.wrote", { path }));
 }
 
 /**
@@ -183,7 +186,7 @@ async function place(
  * Copied to a staging file and renamed into place rather than written over:
  * on a re-run the destination is a *running* daemon's executable, and writing
  * into that is ETXTBSY. The rename is atomic and the running process keeps the
- * inode it started from — the same swap a self-upgrade does.
+ * inode it started from, the same swap a self-upgrade does.
  */
 async function installBinary(
 	plan: Plan,
@@ -193,14 +196,14 @@ async function installBinary(
 	const source = process.execPath;
 
 	if (resolve(source) === resolve(target)) {
-		info(`binary already at ${target}`);
+		info(t("cli.setup.binaryInPlace", { path: target }));
 
 		return;
 	}
 
 	if (plan.dryRun) {
 		info(
-			`would install ${pc.cyan(source)} → ${pc.cyan(target)}${owner ? pc.dim(` (owned by ${plan.user})`) : ""}`,
+			`${t("cli.setup.wouldInstall", { source: pc.cyan(source), target: pc.cyan(target) })}${owner ? pc.dim(` (${t("cli.setup.ownedBy", { user: plan.user })})`) : ""}`,
 		);
 
 		return;
@@ -227,7 +230,9 @@ async function installBinary(
 
 	const size = ((await stat(target)).size / 1024 / 1024).toFixed(1);
 
-	ok(`installed ${target} ${pc.dim(`(${size} MB${owner ? `, owned by ${plan.user}` : ""})`)}`);
+	ok(
+		`${t("cli.setup.installed", { path: target })} ${pc.dim(`(${size} MB${owner ? `, ${t("cli.setup.ownedBy", { user: plan.user })}` : ""})`)}`,
+	);
 }
 
 /**
@@ -259,8 +264,11 @@ async function installDaemonBinary(plan: Plan, owner: { uid: number; gid: number
 
 	if (probe.code !== 0) {
 		throw new Bail(
-			`${plan.bin} will not execute (${probe.out || "spawn failed"}) — if ${plan.root} ` +
-				`is mounted noexec the daemon cannot run its own binary from there`,
+			t("cli.setup.noexec", {
+				bin: plan.bin,
+				error: probe.out || t("cli.setup.spawnFailed"),
+				root: plan.root,
+			}),
 		);
 	}
 }
@@ -272,14 +280,16 @@ async function removeLegacyBinary(plan: Plan): Promise<void> {
 	}
 
 	if (plan.dryRun) {
-		info(`would remove ${pc.cyan(LEGACY_BIN)} ${pc.dim("(superseded by the one on PATH)")}`);
+		info(
+			`${t("cli.setup.wouldRemove", { path: pc.cyan(LEGACY_BIN) })} ${pc.dim(t("cli.setup.superseded"))}`,
+		);
 
 		return;
 	}
 
 	await unlink(LEGACY_BIN);
 
-	ok(`removed ${LEGACY_BIN} ${pc.dim("(superseded)")}`);
+	ok(`${t("cli.setup.removed", { path: LEGACY_BIN })} ${pc.dim(t("cli.setup.supersededShort"))}`);
 }
 
 /**
@@ -314,7 +324,7 @@ async function rewriteBlock(path: string, block: string): Promise<boolean> {
  *
  * Two places, because they cover different shells: `/etc/profile.d` is read by
  * *login* shells of every account, and the rc files by *interactive non-login*
- * ones — which is what a terminal emulator or a tmux pane usually starts, and
+ * ones, which is what a terminal emulator or a tmux pane usually starts, and
  * which would otherwise never see the change. Only the human who invoked sudo
  * gets rc edits; the service account has no login shell to read them.
  */
@@ -341,20 +351,20 @@ async function wirePath(plan: Plan): Promise<void> {
 	for (const name of RC_FILES) {
 		const path = join(homeDir, name);
 
-		// only files the user already keeps — creating a .zshrc for someone who
+		// only files the user already keeps: creating a .zshrc for someone who
 		// does not run zsh is litter, and /etc/profile.d already covers login
 		if (!existsSync(path)) {
 			continue;
 		}
 
 		if (plan.dryRun) {
-			info(`would put ${pc.cyan(dir)} on PATH in ${pc.cyan(path)}`);
+			info(t("cli.setup.wouldWirePath", { dir: pc.cyan(dir), path: pc.cyan(path) }));
 
 			continue;
 		}
 
 		if (await rewriteBlock(path, block)) {
-			ok(`PATH set in ${path}`);
+			ok(t("cli.setup.pathSet", { path }));
 		}
 	}
 }
@@ -362,16 +372,16 @@ async function wirePath(plan: Plan): Promise<void> {
 /**
  * Make sure the cluster root exists and belongs to the service account. A
  * primary also needs a registry to start at all, so an empty one is seeded when
- * the directory has none — a follower's arrives over the cluster link.
+ * the directory has none; a follower's arrives over the cluster link.
  */
 async function prepareRoot(plan: Plan, owner: { uid: number; gid: number }): Promise<void> {
 	const registry = join(plan.root, "cluster.json");
 
 	if (plan.dryRun) {
-		info(`would create ${pc.cyan(plan.root)} owned by ${plan.user}`);
+		info(t("cli.setup.wouldCreateRoot", { root: pc.cyan(plan.root), user: plan.user }));
 
 		if (plan.mode === "primary" && !existsSync(registry)) {
-			info(`would seed ${pc.cyan(registry)} with an empty cluster`);
+			info(t("cli.setup.wouldSeed", { path: pc.cyan(registry) }));
 		}
 
 		return;
@@ -382,12 +392,12 @@ async function prepareRoot(plan: Plan, owner: { uid: number; gid: number }): Pro
 	if (plan.mode === "primary" && !existsSync(registry)) {
 		await writeFile(registry, JSON.stringify(starterCluster(), null, "\t") + "\n");
 
-		ok(`seeded ${registry} ${pc.dim("(no instances yet)")}`);
+		ok(`${t("cli.setup.seeded", { path: registry })} ${pc.dim(t("cli.setup.noInstancesYet"))}`);
 	}
 
 	await chownTree(plan.root, owner.uid, owner.gid);
 
-	ok(`cluster root ${plan.root} owned by ${plan.user}`);
+	ok(t("cli.setup.rootOwned", { root: plan.root, user: plan.user }));
 }
 
 /** The daemon config the unit points at, with only the keys this mode uses. */
@@ -430,7 +440,7 @@ async function serviceActive(): Promise<boolean> {
  */
 async function reloadUnits(plan: Plan): Promise<void> {
 	if (plan.dryRun) {
-		info(`would run ${pc.cyan("systemctl daemon-reload")}`);
+		info(t("cli.setup.wouldRun", { command: pc.cyan("systemctl daemon-reload") }));
 
 		return;
 	}
@@ -438,7 +448,7 @@ async function reloadUnits(plan: Plan): Promise<void> {
 	const reload = await run(["systemctl", "daemon-reload"]);
 
 	if (reload.code !== 0) {
-		throw new Bail(`systemctl daemon-reload failed: ${reload.out}`);
+		throw new Bail(t("cli.setup.reloadFailed", { error: reload.out }));
 	}
 }
 
@@ -447,14 +457,14 @@ async function reloadUnits(plan: Plan): Promise<void> {
  *
  * A service that was already running is *restarted*, not left alone: the whole
  * point of a re-run is that the binary or the config changed, and
- * `enable --now` is a no-op on something already active — it would leave the
+ * `enable --now` is a no-op on something already active. It would leave the
  * old build serving.
  */
 async function enableService(plan: Plan, wasActive: boolean): Promise<void> {
 	const verb = wasActive ? "restart" : "enable --now";
 
 	if (plan.dryRun) {
-		info(`would run ${pc.cyan(`systemctl ${verb} ${UNIT_NAME}`)}`);
+		info(t("cli.setup.wouldRun", { command: pc.cyan(`systemctl ${verb} ${UNIT_NAME}`) }));
 
 		return;
 	}
@@ -464,24 +474,35 @@ async function enableService(plan: Plan, wasActive: boolean): Promise<void> {
 	const enable = await run(["systemctl", "enable", UNIT_NAME]);
 
 	if (enable.code !== 0) {
-		throw new Bail(`systemctl enable ${UNIT_NAME} failed: ${enable.out}`);
+		throw new Bail(
+			t("cli.setup.systemctlFailed", { command: `systemctl enable ${UNIT_NAME}`, error: enable.out }),
+		);
 	}
 
 	const start = await run(["systemctl", wasActive ? "restart" : "start", UNIT_NAME]);
 
 	if (start.code !== 0) {
-		throw new Bail(`systemctl ${wasActive ? "restart" : "start"} ${UNIT_NAME} failed: ${start.out}`);
+		throw new Bail(
+			t("cli.setup.systemctlFailed", {
+				command: `systemctl ${wasActive ? "restart" : "start"} ${UNIT_NAME}`,
+				error: start.out,
+			}),
+		);
 	}
 
-	ok(wasActive ? `${UNIT_NAME} restarted on the new build` : `${UNIT_NAME} enabled and started`);
+	ok(
+		wasActive
+			? t("cli.setup.restarted", { unit: UNIT_NAME })
+			: t("cli.setup.enabledStarted", { unit: UNIT_NAME }),
+	);
 }
 
 /**
  * Wait for the daemon to answer. A unit that starts and immediately dies is the
- * failure this catches — systemd reports the start as successful either way.
+ * failure this catches; systemd reports the start as successful either way.
  */
 async function verify(plan: Plan): Promise<void> {
-	const spinner = new Spinner().start("waiting for the daemon…");
+	const spinner = new Spinner().start(t("cli.setup.waiting"));
 	const deadline = Date.now() + VERIFY_TIMEOUT_MS;
 
 	while (Date.now() < deadline) {
@@ -502,8 +523,13 @@ async function verify(plan: Plan): Promise<void> {
 
 	spinner.stop();
 
-	warn("the daemon did not answer in time");
-	info(`check it with ${pc.cyan(`systemctl status ${UNIT_NAME}`)} and ${pc.cyan(`journalctl -u ${UNIT_NAME} -n 50`)}`);
+	warn(t("cli.setup.noAnswer"));
+	info(
+		t("cli.setup.checkHint", {
+			status: pc.cyan(`systemctl status ${UNIT_NAME}`),
+			journal: pc.cyan(`journalctl -u ${UNIT_NAME} -n 50`),
+		}),
+	);
 }
 
 /** Prompt for a value, falling back to the default when not on a terminal. */
@@ -520,7 +546,7 @@ async function ask(
 	const answer = await text({ message, initialValue: initial, defaultValue: initial });
 
 	if (isCancel(answer)) {
-		throw new Bail("aborted");
+		throw new Bail(t("cli.common.aborted"));
 	}
 
 	return String(answer || initial);
@@ -562,7 +588,7 @@ async function existingSetup(): Promise<{
 				config.listen = `${saved.listen.host ?? "0.0.0.0"}:${saved.listen.port ?? DEFAULT_CLUSTER_PORT}`;
 			}
 		} catch {
-			warn(`${CONFIG_PATH} is not valid JSON — starting from defaults`);
+			warn(t("cli.setup.badConfig", { path: CONFIG_PATH }));
 		}
 	}
 
@@ -579,7 +605,9 @@ async function buildPlan(opts: Record<string, string | boolean>): Promise<Plan> 
 	const previous = await existingSetup();
 
 	if (previous.config.name) {
-		info(`reconfiguring ${pc.bold(previous.config.name)} ${pc.dim(`(from ${CONFIG_PATH})`)}`);
+		info(
+			`${t("cli.setup.reconfiguring", { name: pc.bold(previous.config.name) })} ${pc.dim(`(${t("cli.setup.fromFile", { path: CONFIG_PATH })})`)}`,
+		);
 	}
 
 	let mode = (opts.mode as string) ?? previous.config.mode ?? "";
@@ -587,23 +615,23 @@ async function buildPlan(opts: Record<string, string | boolean>): Promise<Plan> 
 	if (!mode && interactive) {
 		const { select, isCancel } = await import("@clack/prompts");
 		const picked = await select({
-			message: "What does this machine run?",
+			message: t("cli.setup.askMode"),
 			options: [
 				{
 					value: "primary",
 					label: "primary",
-					hint: "owns the registry, plugins and schedules; serves the console",
+					hint: t("cli.setup.primaryHint"),
 				},
 				{
 					value: "follower",
 					label: "follower",
-					hint: "runs the instances the primary assigns to it",
+					hint: t("cli.setup.followerHint"),
 				},
 			],
 		});
 
 		if (isCancel(picked)) {
-			throw new Bail("aborted");
+			throw new Bail(t("cli.common.aborted"));
 		}
 
 		mode = String(picked);
@@ -612,23 +640,23 @@ async function buildPlan(opts: Record<string, string | boolean>): Promise<Plan> 
 	mode ||= "primary";
 
 	if (mode !== "primary" && mode !== "follower") {
-		throw new Bail(`invalid mode: ${mode} (expected primary or follower)`);
+		throw new Bail(t("cli.setup.invalidMode", { mode }));
 	}
 
 	const shortHost = hostname().split(".")[0]?.toLowerCase().replace(/[^a-z0-9_-]/g, "-") || "luna";
 
 	const name =
 		(opts.name as string) ??
-		(await ask("Daemon name (unique in the cluster)", previous.config.name ?? shortHost, interactive));
+		(await ask(t("cli.setup.askName"), previous.config.name ?? shortHost, interactive));
 
 	const root =
 		(opts.root as string) ??
-		(await ask("Cluster root", previous.config.root ?? DEFAULT_ROOT, interactive));
+		(await ask(t("cli.setup.askRoot"), previous.config.root ?? DEFAULT_ROOT, interactive));
 
 	// SUDO_USER is who invoked sudo, which is almost always the right owner on a
 	// personal machine; a bare root shell gets the system account instead
 	const suggestedUser = previous.user || process.env.SUDO_USER || DEFAULT_USER;
-	const user = (opts.user as string) ?? (await ask("Run the daemon as", suggestedUser, interactive));
+	const user = (opts.user as string) ?? (await ask(t("cli.setup.askUser"), suggestedUser, interactive));
 
 	let token = (opts.token as string) ?? previous.config.token;
 	let primary: string | undefined;
@@ -639,33 +667,32 @@ async function buildPlan(opts: Record<string, string | boolean>): Promise<Plan> 
 		primary =
 			(opts.primary as string) ??
 			(await ask(
-				"Primary daemon address (host:port)",
+				t("cli.setup.askPrimary"),
 				previous.config.primary ?? `10.0.0.10:${DEFAULT_CLUSTER_PORT}`,
 				interactive,
 			));
 
 		if (!primary) {
-			throw new Bail("a follower needs --primary <host:port>");
+			throw new Bail(t("cli.setup.needsPrimary"));
 		}
 
 		host =
 			(opts.host as string) ??
 			(interactive
-				? await ask("LAN address the primary routes to (blank = auto)", previous.config.host ?? "", true)
+				? await ask(t("cli.setup.askHost"), previous.config.host ?? "", true)
 				: previous.config.host);
 
-		token =
-			token ?? (await ask("Cluster token (from `luna daemon token` on the primary)", "", interactive));
+		token = token ?? (await ask(t("cli.setup.askToken"), "", interactive));
 
 		if (!token) {
-			throw new Bail("a follower needs the cluster token — run `luna daemon token` on the primary");
+			throw new Bail(t("cli.setup.needsToken"));
 		}
 	} else {
 		listen = (opts.listen as string) ?? previous.config.listen ?? `0.0.0.0:${DEFAULT_CLUSTER_PORT}`;
 
 		if (!token) {
 			// a primary without a token cannot accept followers, and generating one
-			// costs nothing — an operator who wants none can clear it in the config
+			// costs nothing; an operator who wants none can clear it in the config
 			const bytes = new Uint8Array(32);
 
 			crypto.getRandomValues(bytes);
@@ -691,37 +718,35 @@ async function buildPlan(opts: Record<string, string | boolean>): Promise<Plan> 
 
 command({
 	path: ["setup"],
-	desc: "Install and configure this machine's daemon as a system service (run with sudo)",
+	desc: t("cli.setup.desc"),
 	opts: [
-		{ flag: "--mode", desc: "primary or follower (asked when omitted)", value: true },
-		{ flag: "--name", desc: "daemon name, unique across the cluster", value: true },
-		{ flag: "--root", desc: `cluster root (default ${DEFAULT_ROOT})`, value: true },
-		{ flag: "--user", desc: "account the daemon and its servers run as", value: true },
-		{ flag: "--token", desc: "shared cluster token", value: true },
-		{ flag: "--listen", desc: `primary: follower listener (default 0.0.0.0:${DEFAULT_CLUSTER_PORT})`, value: true },
-		{ flag: "--primary", desc: "follower: primary daemon address, host:port", value: true },
-		{ flag: "--host", desc: "follower: LAN address the primary routes to", value: true },
-		{ flag: "--bin", desc: `where to install the binary (default <root>/${BIN_DIR}/luna)`, value: true },
-		{ flag: "--no-start", desc: "write everything but leave the service stopped" },
-		{ flag: "--dry-run", desc: "print every change without making one" },
-		{ flag: "--yes", desc: "take the defaults instead of prompting" },
+		{ flag: "--mode", desc: t("cli.setup.optMode"), value: true },
+		{ flag: "--name", desc: t("cli.setup.optName"), value: true },
+		{ flag: "--root", desc: t("cli.setup.optRoot", { root: DEFAULT_ROOT }), value: true },
+		{ flag: "--user", desc: t("cli.setup.optUser"), value: true },
+		{ flag: "--token", desc: t("cli.setup.optToken"), value: true },
+		{ flag: "--listen", desc: t("cli.setup.optListen", { listen: `0.0.0.0:${DEFAULT_CLUSTER_PORT}` }), value: true },
+		{ flag: "--primary", desc: t("cli.setup.optPrimary"), value: true },
+		{ flag: "--host", desc: t("cli.setup.optHost"), value: true },
+		{ flag: "--bin", desc: t("cli.setup.optBin", { path: `<root>/${BIN_DIR}/luna` }), value: true },
+		{ flag: "--no-start", desc: t("cli.setup.optNoStart") },
+		{ flag: "--dry-run", desc: t("cli.setup.optDryRun") },
+		{ flag: "--yes", desc: t("cli.setup.optYes") },
 	],
 
 	handler: async (_args, opts) => {
 		// a from-source run would point ExecStart at the bun interpreter, and the
 		// service would start "luna" by starting bun with no script
 		if (!isCompiledBinary()) {
-			throw new Bail(
-				"run this from the compiled binary — `bun run build`, then `sudo ./dist/luna setup`",
-			);
+			throw new Bail(t("cli.setup.notCompiled"));
 		}
 
 		const root = process.getuid?.() === 0;
 
 		if (!root && !opts["dry-run"]) {
-			fail("luna setup writes to /usr/local/bin, /etc and systemd — it needs root");
-			info(`re-run it as ${pc.cyan(`sudo ${process.execPath} setup`)}`);
-			info(`or preview the changes with ${pc.cyan("luna setup --dry-run")}`);
+			fail(t("cli.setup.needsRoot"));
+			info(t("cli.setup.rerunSudo", { command: pc.cyan(`sudo ${process.execPath} setup`) }));
+			info(t("cli.setup.previewHint", { command: pc.cyan("luna setup --dry-run") }));
 
 			process.exitCode = 1;
 
@@ -738,12 +763,14 @@ command({
 		info(`${pc.bold(plan.mode)} daemon ${pc.bold(plan.name)}`);
 		info(`root      ${plan.root}`);
 		info(`user      ${plan.user}`);
-		info(`binary    ${plan.bin} ${pc.dim(`(owned by ${plan.user}, self-upgradable)`)}`);
+		info(`binary    ${plan.bin} ${pc.dim(`(${t("cli.setup.binNote", { user: plan.user })})`)}`);
 		info(`config    ${CONFIG_PATH}`);
 		info(`unit      ${UNIT_PATH}`);
 
 		if (plan.mode === "follower") {
-			info(`primary   ${plan.primary}${plan.host ? ` (advertising ${plan.host})` : ""}`);
+			info(
+				`primary   ${plan.primary}${plan.host ? ` (${t("cli.setup.advertising", { host: plan.host })})` : ""}`,
+			);
 		} else {
 			info(`listener  ${plan.listen}`);
 		}
@@ -751,19 +778,19 @@ command({
 		console.log("");
 
 		if (plan.dryRun) {
-			warn("dry run — nothing below is written");
+			warn(t("cli.setup.dryRunNote"));
 		}
 
 		// -- account ------------------------------------------------------------
 		let owner = { uid: 0, gid: 0 };
 
 		if (await userExists(plan.user)) {
-			info(`user ${plan.user} exists`);
+			info(t("cli.setup.userExists", { name: plan.user }));
 		} else if (plan.dryRun) {
-			info(`would create system user ${pc.cyan(plan.user)} homed at ${plan.root}`);
+			info(t("cli.setup.wouldCreateUser", { name: pc.cyan(plan.user), root: plan.root }));
 		} else {
 			await createUser(plan.user, plan.root);
-			ok(`created system user ${plan.user}`);
+			ok(t("cli.setup.createdUser", { name: plan.user }));
 		}
 
 		if (!plan.dryRun) {
@@ -783,8 +810,8 @@ command({
 
 		// -- service ----------------------------------------------------------------
 		if (!hasSystemd()) {
-			warn("this machine is not running systemd — the unit was written but not enabled");
-			info(`start the daemon yourself: ${pc.cyan(`${plan.bin} daemon run`)}`);
+			warn(t("cli.setup.noSystemd"));
+			info(t("cli.setup.startYourself", { command: pc.cyan(`${plan.bin} daemon run`) }));
 
 			return;
 		}
@@ -792,8 +819,10 @@ command({
 		await reloadUnits(plan);
 
 		if (!plan.start) {
-			ok("everything is in place");
-			info(`start it with ${pc.cyan(`systemctl enable --now ${UNIT_NAME}`)}`);
+			ok(t("cli.setup.inPlace"));
+			info(
+				t("cli.setup.startHint", { command: pc.cyan(`systemctl enable --now ${UNIT_NAME}`) }),
+			);
 
 			return;
 		}
@@ -809,20 +838,25 @@ command({
 		console.log("");
 
 		if (plan.mode === "primary") {
-			ok("primary ready");
-			info(`cluster token: ${pc.cyan(plan.token ?? "(none)")}`);
-			info("every follower needs that same token — keep it out of shell history");
-			info(`serve the console with ${pc.cyan("luna web --host 0.0.0.0")}`);
+			ok(t("cli.setup.primaryReady"));
+			info(t("cli.setup.tokenLine", { token: pc.cyan(plan.token ?? `(${t("cli.common.none")})`) }));
+			info(t("cli.setup.tokenNote"));
+			info(t("cli.setup.consoleHint", { command: pc.cyan("luna web --host 0.0.0.0") }));
 		} else {
-			ok("follower ready");
-			info(`the primary should now list it: ${pc.cyan("luna daemon list")}`);
+			ok(t("cli.setup.followerReady"));
+			info(t("cli.setup.followerListed", { command: pc.cyan("luna daemon list") }));
 		}
 
 		console.log("");
-		info(`open a new shell for ${pc.cyan("luna")} to be on your PATH, or ${pc.cyan(`source ${PROFILE_PATH}`)}`);
+		info(
+			t("cli.setup.pathNote", {
+				name: pc.cyan("luna"),
+				command: pc.cyan(`source ${PROFILE_PATH}`),
+			}),
+		);
 
 		// sudo resets PATH to its own secure_path, which will not contain the
-		// cluster root — so the next privileged run needs the absolute path
-		warn(`sudo ignores your PATH — re-run this installer as ${pc.cyan(`sudo ${plan.bin} setup`)}`);
+		// cluster root, so the next privileged run needs the absolute path
+		warn(t("cli.setup.sudoNote", { command: pc.cyan(`sudo ${plan.bin} setup`) }));
 	},
 });

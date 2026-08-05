@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
@@ -18,7 +19,7 @@
 	 * Environment manager: the variables every instance's JVM inherits at startup
 	 * and config files substitute as ${NAME}.
 	 *
-	 * One row per *value*, not per name — a variable with a machine override and an
+	 * One row per *value*, not per name; a variable with a machine override and an
 	 * instance override is three rows, each carrying the source scope it comes from.
 	 * That is deliberate: the question this screen answers is "what values exist and
 	 * where do they apply", and hiding the narrower ones in a second table made the
@@ -29,7 +30,7 @@
 	type Scope = 'global' | 'machine' | 'instance';
 
 	interface ValueRow {
-		/** `<scope>:<target>:<name>` — unique per value, not per variable */
+		/** `<scope>:<target>:<name>`; unique per value, not per variable */
 		id: string;
 		name: string;
 		scope: Scope;
@@ -91,7 +92,7 @@
 
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error('Could not load the environment', { detail: (err as Error).message });
+			Notify.error(t('web.env.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
 		}
@@ -142,24 +143,26 @@
 
 		const warning =
 			row.scope === 'global' && narrower.length
-				? `\n\n${narrower.length} narrower value(s) of this name stay behind and keep applying where they are defined.`
+				? `\n\n${t('web.env.narrowerStay', { count: narrower.length })}`
 				: '';
 
 		const where =
-			row.scope === 'global' ? 'from every instance in the cluster' : `from ${row.scope} ${row.target}`;
+			row.scope === 'global'
+				? t('web.env.fromEverywhere')
+				: t('web.env.fromScope', { scope: row.scope, target: row.target ?? '' });
 
-		if (!confirm(`Remove ${row.name} ${where}?${warning}`)) {
+		if (!confirm(`${t('web.env.removeConfirm', { name: row.name, where })}${warning}`)) {
 			return;
 		}
 
 		try {
 			await del(`/env?name=${encodeURIComponent(row.name)}${scopeQuery(row)}`);
-			Notify.success(`${row.name} removed ${where}`, {
-				detail: 'Instances keep the old value until they restart.'
+			Notify.success(t('web.env.removed', { name: row.name, where }), {
+				detail: t('web.env.restartNote')
 			});
 			await refresh();
 		} catch (err) {
-			Notify.error(`Could not remove ${row.name}`, { detail: (err as Error).message });
+			Notify.error(t('web.env.removeFailed', { name: row.name }), { detail: (err as Error).message });
 		}
 	}
 
@@ -177,7 +180,7 @@
 
 			revealed = { ...revealed, [row.id]: result.value };
 		} catch (err) {
-			Notify.error(`Could not reveal ${row.name}`, { detail: (err as Error).message });
+			Notify.error(t('web.env.revealFailed', { name: row.name }), { detail: (err as Error).message });
 		}
 	}
 
@@ -188,63 +191,63 @@
 		revealed = next;
 	}
 
-	const columns: Column[] = [
-		{ id: 'name', label: 'Name', sortable: true, width: 230 },
-		{ id: 'value', label: 'Value' },
-		{ id: 'source', label: 'Source', sortable: true, width: 120 },
-		{ id: 'target', label: 'Applies to', sortable: true, width: 190 },
-		{ id: 'description', label: 'Description' }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'name', label: t('web.common.name'), sortable: true, width: 230 },
+		{ id: 'value', label: t('web.common.value') },
+		{ id: 'source', label: t('web.env.colSource'), sortable: true, width: 120 },
+		{ id: 'target', label: t('web.env.colTarget'), sortable: true, width: 190 },
+		{ id: 'description', label: t('web.env.colDescription') }
+	]);
 
-	const filters: TableFilterGroup<ValueRow>[] = [
+	const filters: TableFilterGroup<ValueRow>[] = $derived([
 		{
 			id: 'source',
-			label: 'Filter source scope',
+			label: t('web.env.filterScope'),
 			options: [
-				{ value: 'any', label: 'Any source' },
-				{ value: 'global', label: 'Global', match: (row) => row.scope === 'global' },
-				{ value: 'machine', label: 'Machine', match: (row) => row.scope === 'machine' },
-				{ value: 'instance', label: 'Instance', match: (row) => row.scope === 'instance' },
+				{ value: 'any', label: t('web.catalog.anySource') },
+				{ value: 'global', label: t('web.env.global'), match: (row) => row.scope === 'global' },
+				{ value: 'machine', label: t('web.env.machine'), match: (row) => row.scope === 'machine' },
+				{ value: 'instance', label: t('web.env.instance'), match: (row) => row.scope === 'instance' },
 				{
 					value: 'override',
-					label: 'Overrides only',
+					label: t('web.env.overridesOnly'),
 					match: (row) => row.scope !== 'global'
 				}
 			]
 		},
 		{
 			id: 'kind',
-			label: 'Filter kind',
+			label: t('web.env.filterKind'),
 			options: [
-				{ value: 'any', label: 'Any kind' },
-				{ value: 'secret', label: 'Secret', match: (row) => row.secret },
-				{ value: 'plain', label: 'Plain', match: (row) => !row.secret }
+				{ value: 'any', label: t('web.env.anyKind') },
+				{ value: 'secret', label: t('web.env.secret'), match: (row) => row.secret },
+				{ value: 'plain', label: t('web.env.plain'), match: (row) => !row.secret }
 			]
 		}
-	];
+	]);
 
 	function rowActions(row: ValueRow): ContextMenuItem[] {
 		return [
-			{ label: 'Open details', icon: 'circleInfo', action: () => goto(detailHref(row)) },
-			{ label: 'Edit this value', icon: 'pen', action: () => goto(editHref(row)) },
+			{ label: t('web.env.openDetails'), icon: 'circleInfo', action: () => goto(detailHref(row)) },
+			{ label: t('web.env.editValue'), icon: 'pen', action: () => goto(editHref(row)) },
 			{
-				label: 'Add an override',
+				label: t('web.env.addOverride'),
 				icon: 'layerGroup',
 				action: () => goto(`/environment/new?name=${encodeURIComponent(row.name)}`)
 			},
 			{
-				label: revealed[row.id] !== undefined ? 'Hide value' : 'Reveal value',
+				label: revealed[row.id] !== undefined ? t('web.env.hideValue') : t('web.env.revealValue'),
 				icon: revealed[row.id] !== undefined ? 'eyeSlash' : 'eye',
 				disabled: !row.secret,
 				action: () => (revealed[row.id] !== undefined ? hide(row.id) : reveal(row))
 			},
 			{
-				label: 'Copy name',
+				label: t('web.env.copyName'),
 				icon: 'copy',
 				action: () => navigator.clipboard?.writeText(row.name)
 			},
 			{
-				label: 'Copy value',
+				label: t('web.env.copyValue'),
 				icon: 'copy',
 				// a secret's value only reaches the browser once it has been revealed
 				disabled: row.secret && revealed[row.id] === undefined,
@@ -252,7 +255,7 @@
 			},
 			{ separator: true },
 			{
-				label: row.scope === 'global' ? 'Remove variable' : 'Remove this override',
+				label: row.scope === 'global' ? t('web.env.removeVariable') : t('web.env.removeOverride'),
 				icon: 'trash',
 				color: 'danger',
 				action: () => remove(row)
@@ -263,22 +266,22 @@
 	/** The row the header's Actions dropdown acts on. */
 	const one = $derived(rows.find((row) => selected.has(row.id)));
 
-	/** Distinct variable names, for the header count — rows outnumber them. */
+	/** Distinct variable names, for the header count; rows outnumber them. */
 	const nameCount = $derived(new Set(rows.map((row) => row.name)).size);
 </script>
 
-<svelte:head><title>Environment | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.nav.environment')} | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Environment"
+	title={t('web.nav.environment')}
 	count={nameCount}
-	description="Variables exported into every instance's JVM at startup and substituted into config files as $&lbrace;NAME&rbrace;. One row per value: the source column is the scope it comes from, and a narrower scope wins — builtin < global < machine < instance. Builtins like LUNA_PORT are computed per instance and appear on each instance's own screen."
+	description={t('web.env.pageDescription')}
 	info
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="environment" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
-		<Btn variant="primary" icon="key" href="/environment/new">Define variable</Btn>
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Btn variant="primary" icon="key" href="/environment/new">{t('web.env.defineVariable')}</Btn>
 	{/snippet}
 </PageHeader>
 
@@ -292,34 +295,34 @@
 		getId={(row) => row.id}
 		searchValue={(row) =>
 			`${row.name} ${row.secret ? 'secret' : row.value} ${row.scope} ${row.target ?? ''} ${row.description}`}
-		searchPlaceholder="Find a value"
+		searchPlaceholder={t('web.env.searchPlaceholder')}
 		selectable="single"
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => `${row.name} (${row.scope})`}
-		noun="value"
+		noun={t('web.env.noun')}
 		onRowClick={(row) => goto(detailHref(row))}
-		emptyTitle="No variables defined"
-		emptyText="Define DB_HOST, an API token or a shared port — instances export them at startup and config files reference them as ${'${NAME}'}."
+		emptyTitle={t('web.env.emptyTitle')}
+		emptyText={t('web.env.emptyText')}
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'name'}
 				<a class="mono" href={detailHref(row)}><b>{row.name}</b></a>
 			{:else if col === 'value'}
 				{#if !row.secret}
-					<span class="mono">{row.value || '(empty)'}</span>
+					<span class="mono">{row.value || t('web.env.empty')}</span>
 				{:else if revealed[row.id] !== undefined}
-					<span class="mono">{revealed[row.id] || '(empty)'}</span>
-					<button class="peek" onclick={() => hide(row.id)} title="Hide again">hide</button>
+					<span class="mono">{revealed[row.id] || t('web.env.empty')}</span>
+					<button class="peek" onclick={() => hide(row.id)} title={t('web.env.hideAgain')}>{t('web.env.hide')}</button>
 				{:else}
-					<StatusBadge state="warning" label="secret" />
+					<StatusBadge state="warning" label={t('web.env.secretBadge')} />
 					<span class="dim">••••••••</span>
 					<button
 						class="peek"
 						onclick={() => reveal(row)}
-						title="Reveal this value — the read is recorded"
+						title={t('web.env.revealTitle')}
 					>
-						reveal
+						{t('web.env.reveal')}
 					</button>
 				{/if}
 			{:else if col === 'source'}
@@ -330,11 +333,11 @@
 				{:else if row.scope === 'machine'}
 					<a href="/machines/{row.target}">{row.target}</a>
 				{:else}
-					<span class="dim">every instance</span>
+					<span class="dim">{t('web.env.everyInstance')}</span>
 				{/if}
 			{:else if col === 'description'}
 				{#if row.shadows !== null}
-					<span class="dim">shadows <span class="mono">{row.shadows || '(empty)'}</span></span>
+					<span class="dim">{t('web.env.shadows')} <span class="mono">{row.shadows || t('web.env.empty')}</span></span>
 				{:else}
 					<span class="dim">{row.description || '–'}</span>
 				{/if}

@@ -23,7 +23,7 @@
 		}
 	}
 
-	/** Only a click on the backdrop itself dismisses — not one inside the dialog. */
+	/** Only a click on the backdrop itself dismisses; not one inside the dialog. */
 	function onOverlayClick(event: MouseEvent): void {
 		if (event.target === event.currentTarget) {
 			open = false;

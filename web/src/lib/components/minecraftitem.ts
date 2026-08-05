@@ -1,8 +1,8 @@
 /**
  * Turning a Minecraft model into the flat quads an inventory slot shows.
  *
- * The client does not draw a hardcoded cube. It renders the item's *model* —
- * every box in it, with that box's own faces, UVs and rotation — through the
+ * The client does not draw a hardcoded cube. It renders the item's *model* -
+ * every box in it, with that box's own faces, UVs and rotation; through the
  * transform the model itself declares under `display.gui`. That is why a stair
  * is not a cube seen from the same angle (its gui rotation is 135°, not 225°)
  * and why a slab, a torch or an anvil come out the right shape at all.
@@ -10,9 +10,9 @@
  * This module does the geometry; the canvas work lives in `MinecraftItem`.
  * It follows the same three steps the client does:
  *
- *   1. take each element's corners in the model's own 0–16 space,
+ *   1. take each element's corners in the model's own 0-16 space,
  *   2. push them through the element rotation and then `display.gui`
- *      (translate, then rotate, then scale — the client's own order),
+ *      (translate, then rotate, then scale; the client's own order),
  *   3. project orthographically, since the GUI has no perspective at all.
  *
  * Face brightness is computed from the two lights the client sets up for items
@@ -56,8 +56,8 @@ function dot(left: Vec3, right: Vec3): number {
  * soft light from up-and-to-the-left over a bright ambient, fitted to hit those
  * three values exactly.
  *
- * Fitting rather than tabulating is what lets a rotated element — a lever, a
- * rail, an open trapdoor — shade continuously instead of snapping to whichever
+ * Fitting rather than tabulating is what lets a rotated element; a lever, a
+ * rail, an open trapdoor; shade continuously instead of snapping to whichever
  * axis it is nearest.
  */
 const AMBIENT = 0.6593;
@@ -185,7 +185,7 @@ function applyElementRotation(point: Vec3, rotation: ModelElementRotation): Vec3
 	const angle = rotation.angle * DEG;
 	const cos = Math.cos(angle);
 	const sin = Math.sin(angle);
-	// `rescale` stretches the element so a 45° face still meets its neighbours —
+	// `rescale` stretches the element so a 45° face still meets its neighbours -
 	// what makes a rail or a lever look continuous instead of pinched
 	const scale = rotation.rescale ? 1 / Math.cos(Math.abs(angle)) : 1;
 
@@ -268,7 +268,7 @@ function guiRotationMatrix(degrees: Vec3): Matrix3 {
 
 /** One textured parallelogram, ready for the canvas. */
 export interface ItemQuad {
-	/** `#key` or a texture path — the caller resolves and loads it */
+	/** `#key` or a texture path; the caller resolves and loads it */
 	texture: string;
 	/** The face takes the item's tint colour */
 	tinted: boolean;
@@ -278,15 +278,15 @@ export interface ItemQuad {
 	u: Vec2;
 	/** Screen vector along the UV's v axis */
 	v: Vec2;
-	/** The source rectangle in the texture's own 0–16 space, always positive */
+	/** The source rectangle in the texture's own 0-16 space, always positive */
 	uv: [number, number, number, number];
-	/** 0–1 brightness multiplier */
+	/** 0-1 brightness multiplier */
 	shade: number;
 	/** Larger is nearer the viewer; quads are returned far-to-near */
 	depth: number;
 }
 
-/** An element with no thickness is a plane — both of its sides are meant to show. */
+/** An element with no thickness is a plane; both of its sides are meant to show. */
 function isSolid(element: ModelElement): boolean {
 	return (
 		Math.abs(element.to[0] - element.from[0]) > 1e-6
@@ -298,8 +298,8 @@ function isSolid(element: ModelElement): boolean {
 /**
  * Project a model into the quads an inventory slot draws, back to front.
  *
- * Coordinates come back in *slot pixels* — the 16×16 box the client gives an
- * item — with the origin at the slot's centre and y pointing down, so the
+ * Coordinates come back in *slot pixels*; the 16×16 box the client gives an
+ * item; with the origin at the slot's centre and y pointing down, so the
  * caller only has to scale them to whatever size it is drawing at.
  *
  * @param geometry the model's boxes and its `display.gui` transform
@@ -310,7 +310,7 @@ export function buildQuads(geometry: ModelGeometry): ItemQuad[] {
 	const matrix = guiRotationMatrix(gui.rotation);
 	const quads: ItemQuad[] = [];
 
-	/** Model space is 0–16 around a block centred on 8; the slot is 16 across. */
+	/** Model space is 0-16 around a block centred on 8; the slot is 16 across. */
 	const project = (point: Vec3): { screen: Vec2; depth: number } => {
 		const scaled: Vec3 = [
 			(point[0] / 16 - 0.5) * gui.scale[0],

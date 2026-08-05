@@ -1,6 +1,6 @@
 /**
  * Bridge mirror of core/admin. Creating an instance and switching its version
- * are jobs — their progress trees stream back into the caller's reporter.
+ * are jobs; their progress trees stream back into the caller's reporter.
  */
 
 import type * as core from "../../core/admin";

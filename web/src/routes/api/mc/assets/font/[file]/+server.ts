@@ -5,7 +5,7 @@ import { loadCluster } from '$core/config';
 import { pinnedMcVersion, unihexPath } from '$core/mcassets';
 import { unihexGlyphs } from '$lib/server/unihex';
 
-/** How many codepoints one request may ask about — a tooltip needs a dozen. */
+/** How many codepoints one request may ask about; a tooltip needs a dozen. */
 const LIMIT = 512;
 
 /**

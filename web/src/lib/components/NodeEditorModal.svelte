@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import Modal from './Modal.svelte';
 	import Btn from './Btn.svelte';
 	import Select from './Select.svelte';
@@ -7,7 +8,7 @@
 
 	/**
 	 * Create or edit one LuckPerms node: key, grant/negate, context pairs and
-	 * expiry. The modal only collects the node — the caller applies it (and,
+	 * expiry. The modal only collects the node; the caller applies it (and,
 	 * when editing, removes the original first), because group and user nodes
 	 * go to different endpoints.
 	 */
@@ -27,10 +28,10 @@
 	} = $props();
 
 	const EXPIRY_UNITS = [
-		{ value: '0', label: 'Permanent' },
-		{ value: '60', label: 'Minutes' },
-		{ value: '3600', label: 'Hours' },
-		{ value: '86400', label: 'Days' }
+		{ value: '0', label: t('web.nodeEditor.permanent') },
+		{ value: '60', label: t('web.nodeEditor.minutes') },
+		{ value: '3600', label: t('web.nodeEditor.hours') },
+		{ value: '86400', label: t('web.nodeEditor.days') }
 	];
 
 	let key = $state('');
@@ -97,40 +98,40 @@
 	}
 </script>
 
-<Modal title={node ? 'Edit node' : 'Add node'} bind:open>
+<Modal title={node ? t('web.nodeEditor.editNode') : t('web.nodeEditor.addNode')} bind:open>
 	<label class="field">
-		<span class="lbl">Node key</span>
-		<span class="hint">e.g. <code>minecraft.command.gamemode</code>, or <code>group.&lt;name&gt;</code> for inheritance</span>
-		<input class="input mono" bind:value={key} placeholder="permission.node.key" />
+		<span class="lbl">{t('web.nodeEditor.nodeKey')}</span>
+		<span class="hint">e.g. <code>{t('web.nodeEditor.minecraftCommandGamemode')}</code>{t('web.nodeEditor.or')} <code>group.&lt;name&gt;</code> {t('web.nodeEditor.forInheritance')}</span>
+		<input class="input mono" bind:value={key} placeholder={t('web.nodeEditor.permissionNodeKey')} />
 	</label>
 
 	<div class="field">
-		<span class="lbl">Value</span>
+		<span class="lbl">{t('web.nodeEditor.value')}</span>
 		<label class="grant">
 			<Toggle checked={grant} onchange={(checked) => (grant = checked)} />
-			<span>{grant ? 'Granted — the permission is given' : 'Negated — the permission is explicitly denied'}</span>
+			<span>{grant ? 'Granted; the permission is given' : 'Negated; the permission is explicitly denied'}</span>
 		</label>
 	</div>
 
 	<div class="field">
-		<span class="lbl">Contexts</span>
-		<span class="hint">The node only applies where every pair matches — no pairs means everywhere</span>
+		<span class="lbl">{t('web.nodeEditor.contexts')}</span>
+		<span class="hint">{t('web.nodeEditor.theNodeOnlyApplies')}</span>
 		{#each contexts as pair, index}
 			<div class="ctxrow">
-				<input class="input mono ctxkey" bind:value={pair.key} placeholder="key" />
+				<input class="input mono ctxkey" bind:value={pair.key} placeholder={t('web.nodeEditor.key')} />
 				<span class="dim">=</span>
-				<input class="input mono ctxval" bind:value={pair.value} placeholder="value" />
-				<Btn variant="icon" icon="close" title="Remove context" onclick={() => removeContext(index)} />
+				<input class="input mono ctxval" bind:value={pair.value} placeholder={t('web.nodeEditor.value')} />
+				<Btn variant="icon" icon="close" title={t('web.nodeEditor.removeContext')} onclick={() => removeContext(index)} />
 			</div>
 		{/each}
 		<div class="ctxadd">
-			<Btn icon="plus" onclick={() => addContext()}>Add context</Btn>
+			<Btn icon="plus" onclick={() => addContext()}>{t('web.nodeEditor.addContext')}</Btn>
 			{#if servers.length > 0 && !contexts.some((pair) => pair.key === 'server')}
 				<Select
 					value=""
 					width="13rem"
 					options={[
-						{ value: '', label: 'Limit to a server…' },
+						{ value: '', label: t('web.nodeEditor.limitToServer') },
 						...servers.map((server) => ({ value: server, label: `server=${server}` }))
 					]}
 					onchange={(value) => {
@@ -144,7 +145,7 @@
 	</div>
 
 	<div class="field">
-		<span class="lbl">Expiry</span>
+		<span class="lbl">{t('web.nodeEditor.expiry')}</span>
 		<div class="expiry">
 			<Select bind:value={expiryUnit} width="9rem" options={EXPIRY_UNITS} />
 			{#if expiryUnit !== '0'}
@@ -154,9 +155,9 @@
 	</div>
 
 	{#snippet footer()}
-		<Btn onclick={() => (open = false)}>Cancel</Btn>
+		<Btn onclick={() => (open = false)}>{t('web.common.cancel')}</Btn>
 		<Btn variant="primary" disabled={!valid} onclick={submit}>
-			{node ? 'Save node' : 'Add node'}
+			{node ? t('web.nodeEditor.saveNode') : t('web.nodeEditor.addNode')}
 		</Btn>
 	{/snippet}
 </Modal>

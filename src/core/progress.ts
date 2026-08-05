@@ -6,7 +6,7 @@
  * progress in [0, 1]; a parent's roll-up is its own progress (worth
  * `progressWeight` of the total) plus the weighted average of its children.
  * Every report bubbles to the root, so one listener at the root sees the whole
- * tree move — that is what the CLI renderer and the console's SSE job stream
+ * tree move; that is what the CLI renderer and the console's SSE job stream
  * subscribe to.
  */
 
@@ -16,8 +16,8 @@ export type ProgressStatus = "okay" | "info" | "warn" | "error";
 const DEFAULT_PROGRESS_WEIGHT = 0.1;
 
 /**
- * How close to 1 counts as finished. Weights rarely divide cleanly — three
- * children weighted 1/6/2 sum to 0.9999999999999999 — and a node a float's
+ * How close to 1 counts as finished. Weights rarely divide cleanly; three
+ * children weighted 1/6/2 sum to 0.9999999999999999; and a node a float's
  * width short of 1 would render as still running forever.
  */
 const ROLLUP_EPSILON = 1e-9;
@@ -177,7 +177,7 @@ export class ProgressReporter {
 	}
 
 	/**
-	 * Force this node's roll-up to 1 regardless of its children — for a step that
+	 * Force this node's roll-up to 1 regardless of its children; for a step that
 	 * turned out to have nothing to do, whose children will never report.
 	 */
 	settle(): this {

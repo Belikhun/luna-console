@@ -9,7 +9,7 @@ import { SSE_HEADERS } from '$lib/server/http';
 /**
  * GET → SSE stream of the instance's live console, piped through from the
  * daemon (which tails latest.log on the instance's own host). The body is
- * forwarded untouched — re-framing the events would only add a place to drop
+ * forwarded untouched; re-framing the events would only add a place to drop
  * one.
  */
 export async function GET({ params, request }) {

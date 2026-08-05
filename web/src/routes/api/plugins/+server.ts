@@ -7,7 +7,7 @@ import { projectUrl } from '$core/services/providers';
 
 /**
  * GET ?kind=plugins|mods → the addon universe grouped by identity: one row per
- * addon, its family builds nested — the list view never shows loaders, the info
+ * addon, its family builds nested; the list view never shows loaders, the info
  * view unpacks the families.
  *
  * `kind` splits the two screens. It is a filter on the *builds*, not on the

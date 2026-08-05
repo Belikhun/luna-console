@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onDestroy } from 'svelte';
 	import { claimMenu, releaseMenu } from './contextmenu';
 	import Icon from './Icon.svelte';
@@ -13,7 +14,7 @@
 		value = $bindable([]),
 		options,
 		width = '15rem',
-		placeholder = 'Nothing selected',
+		placeholder = t('web.common.nothingSelected'),
 		onchange
 	}: {
 		/** caption notched into the field's top border */
@@ -46,7 +47,7 @@
 			.map((entry) => options.find((option) => option.value === entry)?.label ?? entry)
 			.join(', ');
 
-		return `${value.length} selected — ${names}`;
+		return `${value.length} selected; ${names}`;
 	});
 
 	/**
@@ -123,7 +124,7 @@
 		if (event.key === 'Escape' && open) {
 			open = false;
 
-			// an open list swallows the Escape — a surrounding modal must not close too
+			// an open list swallows the Escape; a surrounding modal must not close too
 			event.preventDefault();
 		}
 	}

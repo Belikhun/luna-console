@@ -6,7 +6,7 @@
 
 	/**
 	 * One cell in an OverviewBar: bold label, value line, and optionally a bar
-	 * above it — either a single `progress` fill or a `segments` distribution.
+	 * above it; either a single `progress` fill or a `segments` distribution.
 	 * Passing `segments` wins; a cell has room for one bar.
 	 */
 	let {

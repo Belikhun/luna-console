@@ -1,11 +1,12 @@
 import { existsSync } from "node:fs";
+import { t } from "../shared/i18n";
 
 import { socketCandidates } from "../shared/sockpath";
 
 /**
  * Daemon discovery and transport for every client (CLI and web console). The
  * daemon is found by probing the well-known socket paths; the handshake caches
- * its /info answer — most importantly the cluster root, which is what keeps the
+ * its /info answer; most importantly the cluster root, which is what keeps the
  * bridge's path helpers synchronous.
  */
 
@@ -13,7 +14,7 @@ export interface DaemonInfo {
 	name: string;
 	mode: "primary" | "follower";
 	root: string;
-	/** local API revision — a mismatch is refused */
+	/** local API revision; a mismatch is refused */
 	protocol: number;
 	/** build identity, e.g. "1.0.0+6ee20ac" */
 	version: string;
@@ -34,10 +35,7 @@ let connection: { socket: string; info: DaemonInfo } | undefined;
 /** The friendly bail-out every command shows when no daemon answers. */
 export class DaemonUnavailable extends Error {
 	constructor() {
-		super(
-			"luna daemon is not running on this host — start it with `luna daemon run`, " +
-				"or install the service: `luna daemon service install`",
-		);
+		super(t("daemon.clientUnavailable"));
 	}
 }
 
@@ -69,8 +67,7 @@ export async function ensureConnected(): Promise<DaemonInfo> {
 
 			if (info.protocol !== CLIENT_PROTOCOL) {
 				throw new Error(
-					`daemon protocol ${info.protocol} does not match this binary (${CLIENT_PROTOCOL}) — ` +
-						"restart the daemon from the same build",
+					t("daemon.protocolSkew", { daemon: info.protocol, client: CLIENT_PROTOCOL }),
 				);
 			}
 

@@ -4,6 +4,6 @@ export interface DistributionSegment {
 	key: string;
 	label?: string;
 	count: number;
-	/** Any CSS colour — pass a design token, e.g. "var(--success)" */
+	/** Any CSS colour; pass a design token, e.g. "var(--success)" */
 	color: string;
 }

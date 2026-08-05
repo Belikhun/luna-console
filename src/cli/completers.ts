@@ -25,7 +25,7 @@ export async function pluginNames(): Promise<string[]> {
 }
 
 /**
- * Daemon names a per-machine value can be scoped to. Names, not keys — the
+ * Daemon names a per-machine value can be scoped to. Names, not keys: the
  * primary answers to its own name here, and `machineKeyFor` converts.
  */
 export async function machineNames(): Promise<string[]> {

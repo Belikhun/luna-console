@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import type { ContextMenuItem } from './contextmenu';
@@ -7,7 +8,7 @@
 	 * Split button: one pill whose left half runs the default action and whose
 	 * right half opens a menu of the alternatives. Use it where one verb is the
 	 * obvious one and the others are variants of it (install → upload a file,
-	 * or fetch it from a provider) — a plain Dropdown would hide the common
+	 * or fetch it from a provider); a plain Dropdown would hide the common
 	 * case behind a click.
 	 */
 	let {
@@ -28,7 +29,7 @@
 		disabled?: boolean;
 		loading?: boolean;
 		title?: string;
-		/** the default action — the left half */
+		/** the default action; the left half */
 		onclick: () => void;
 	} = $props();
 
@@ -67,7 +68,7 @@
 		class="more"
 		class:open
 		{disabled}
-		aria-label="{label} — more options"
+		aria-label={t('web.splitBtn.moreOptions', { label })}
 		onpointerdown={(event) => event.stopPropagation()}
 		onclick={toggle}
 	>

@@ -1,3 +1,5 @@
+import { t } from "../../shared/i18n";
+
 /** PaperMC download API client (Fill v3, falling back to legacy v2). */
 
 const UA = "belikhun/luna-control";
@@ -14,7 +16,7 @@ export interface BuildInfo {
 
 /**
  * Newest build from Fill v3. The download map is keyed by artifact name, and
- * only Paper labels the server jar `server:default` — Velocity's key differs
+ * only Paper labels the server jar `server:default`; Velocity's key differs
  * per release, so fall back to whichever artifact comes first.
  */
 async function fillLatestBuild(
@@ -85,7 +87,7 @@ export async function latestBuild(project: PaperProject, version: string): Promi
 		(await fillLatestBuild(project, version)) ?? (await legacyLatestBuild(project, version));
 
 	if (!info) {
-		throw new Error(`no ${project} build found for version ${version}`);
+		throw new Error(t("core.services.noBuild", { project, version }));
 	}
 
 	return info;
@@ -118,7 +120,7 @@ export async function listVersions(project: PaperProject): Promise<string[]> {
 	});
 
 	if (!legacy.ok) {
-		throw new Error(`cannot list ${project} versions`);
+		throw new Error(t("core.services.cannotListVersions", { project }));
 	}
 
 	const data: any = await legacy.json();
@@ -132,7 +134,7 @@ export type DownloadProgress = (received: number, total?: number) => void;
 /**
  * Download a build to `dest`, verifying its sha256 when the API published one.
  * The body is consumed chunk by chunk so `onProgress` can report a server jar
- * arriving — it is the slowest step of creating an instance by far.
+ * arriving; it is the slowest step of creating an instance by far.
  */
 export async function downloadBuild(
 	info: BuildInfo,
@@ -142,7 +144,7 @@ export async function downloadBuild(
 	const res = await fetch(info.url, { headers: { "User-Agent": UA } });
 
 	if (!res.ok) {
-		throw new Error(`download failed: HTTP ${res.status} for ${info.url}`);
+		throw new Error(t("core.services.downloadFailed", { status: res.status, url: info.url }));
 	}
 
 	const length = Number(res.headers.get("content-length") ?? 0);
@@ -160,7 +162,7 @@ export async function downloadBuild(
 	}
 
 	if (hasher && hasher.digest("hex") !== info.sha256) {
-		throw new Error("sha256 mismatch on downloaded server jar");
+		throw new Error(t("core.services.jarHashMismatch"));
 	}
 
 	const buf = new Uint8Array(received);

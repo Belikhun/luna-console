@@ -1,13 +1,14 @@
 /**
  * A minimal zip32 reader: the central directory, and one entry at a time.
  *
- * It exists because the things luna needs to look inside — a resource pack, a
- * Minecraft client jar — are read for a handful of small files each, and pulling
+ * It exists because the things luna needs to look inside; a resource pack, a
+ * Minecraft client jar; are read for a handful of small files each, and pulling
  * in an archive library to do that would be heavier than the reader itself.
  * Zip64 archives are rejected rather than half-read.
  */
 
 import { inflateRawSync } from "node:zlib";
+import { t } from "../../shared/i18n";
 
 /** End-of-central-directory signature, and the largest tail it can hide in. */
 const EOCD_SIGNATURE = 0x06054b50;
@@ -35,7 +36,7 @@ export async function readZipEntries(path: string): Promise<ZipEntry[]> {
 	const size = file.size;
 
 	if (size < 22) {
-		throw new Error("not a zip file (too short)");
+		throw new Error(t("core.services.zipTooShort"));
 	}
 
 	const tailSize = Math.min(size, EOCD_MAX_TAIL);
@@ -52,7 +53,7 @@ export async function readZipEntries(path: string): Promise<ZipEntry[]> {
 	}
 
 	if (eocd < 0) {
-		throw new Error("not a zip file (no end-of-central-directory record)");
+		throw new Error(t("core.services.zipNoEocd"));
 	}
 
 	const count = tail.readUInt16LE(eocd + 10);
@@ -60,7 +61,7 @@ export async function readZipEntries(path: string): Promise<ZipEntry[]> {
 	const directoryOffset = tail.readUInt32LE(eocd + 16);
 
 	if (directoryOffset === ZIP64_MARKER || directorySize === ZIP64_MARKER) {
-		throw new Error("zip64 archives are not supported");
+		throw new Error(t("core.services.zip64Unsupported"));
 	}
 
 	const directory = Buffer.from(

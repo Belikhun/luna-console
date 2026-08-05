@@ -1,4 +1,4 @@
-/** Bridge mirror of core/services/papermc — Fill API calls run in the daemon. */
+/** Bridge mirror of core/services/papermc; Fill API calls run in the daemon. */
 
 import type * as core from "../../../core/services/papermc";
 

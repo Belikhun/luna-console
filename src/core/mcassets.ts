@@ -4,7 +4,7 @@
  *
  * Everything here comes from Mojang's published client jar for one pinned
  * version: the container background, every item texture, and the block models
- * themselves — the boxes, faces and UVs the client renders, not an assumption
+ * themselves; the boxes, faces and UVs the client renders, not an assumption
  * that every block is a cube. The jar is fetched once, the handful of
  * directories that matter are extracted, and a registry maps each item id to
  * what the browser needs to draw it.
@@ -36,6 +36,7 @@ import type {
 } from "../shared/mcassets";
 import { MC_REGISTRY_FORMAT } from "../shared/mcassets";
 import type { ClusterConfig } from "./types";
+import { t } from "../shared/i18n";
 
 export * from "../shared/mcassets";
 
@@ -142,7 +143,7 @@ interface VersionDownload {
 	version: string;
 	url: string;
 	sha1?: string;
-	/** Where the objects that are not in the jar — unifont — are listed */
+	/** Where the objects that are not in the jar; unifont; are listed */
 	assetIndexUrl?: string;
 }
 
@@ -154,12 +155,12 @@ async function resolveClientJarUrl(version: string): Promise<VersionDownload> {
 
 	const versions = manifest.versions ?? [];
 	// a cluster can run a version Mojang has withdrawn, or a fork whose number
-	// never appeared in the manifest at all — fall back rather than fail
+	// never appeared in the manifest at all; fall back rather than fail
 	const entry = versions.find((candidate) => candidate.id === version)
 		?? versions.find((candidate) => candidate.id === manifest.latest?.release);
 
 	if (!entry) {
-		throw new Error(`Mojang's manifest has neither ${version} nor a latest release`);
+		throw new Error(t("core.mcassets.manifestMissing", { version }));
 	}
 
 	const detail = (await (await fetch(entry.url)).json()) as {
@@ -170,7 +171,7 @@ async function resolveClientJarUrl(version: string): Promise<VersionDownload> {
 	const url = detail.downloads?.client?.url;
 
 	if (!url) {
-		throw new Error(`version ${entry.id} publishes no client download`);
+		throw new Error(t("core.mcassets.noClientDownload", { version: entry.id }));
 	}
 
 	return {
@@ -192,8 +193,8 @@ interface AssetObject {
 /**
  * Fetch the parts of the font that are not in the client jar.
  *
- * Unifont — the fallback that covers every codepoint the bitmap sheets do not,
- * box drawing characters included — is published as an asset object rather than
+ * Unifont; the fallback that covers every codepoint the bitmap sheets do not,
+ * box drawing characters included; is published as an asset object rather than
  * packed into the jar, and the jar is left carrying a stub `include/unifont.json`
  * that declares no providers at all. Extracting only the jar therefore yields a
  * font that silently cannot draw a `▍`, which is exactly the character a selector
@@ -206,7 +207,7 @@ interface AssetObject {
  */
 async function ensureFontObjects(version: string, indexUrl: string | undefined, reporter: ProgressReporter): Promise<void> {
 	// the index alone is half a megabyte, and this runs on every registry rebuild
-	// — one already-extracted bundle is proof enough that the fetch happened
+	//; one already-extracted bundle is proof enough that the fetch happened
 	if (existsSync(join(assetsDir(version), "font", "unifont.hex"))) {
 		return;
 	}
@@ -214,7 +215,7 @@ async function ensureFontObjects(version: string, indexUrl: string | undefined, 
 	const url = indexUrl ?? (await resolveClientJarUrl(version)).assetIndexUrl;
 
 	if (!url) {
-		reporter.say("warn", "this version publishes no asset index — unifont will be missing");
+		reporter.say("warn", t("core.mcassets.noAssetIndex"));
 
 		return;
 	}
@@ -428,7 +429,7 @@ interface ResolvedModel {
  *
  * A child's textures win over its parent's, and a value like `#all` is a
  * reference to another key in the same map, which is how `cube_all` gives one
- * texture to all six faces. `elements` are not merged — the nearest model that
+ * texture to all six faces. `elements` are not merged; the nearest model that
  * declares any replaces its parent's outright, which is how a stair stops being
  * the cube it descends from.
  */
@@ -527,7 +528,7 @@ function intern(table: Record<string, ModelGeometry>, geometry: ModelGeometry): 
 /**
  * The texture map an item's faces need, flattened.
  *
- * Only the keys the geometry actually names are kept — a model's texture map
+ * Only the keys the geometry actually names are kept; a model's texture map
  * carries entries for faces it does not have, and `particle`, which nothing in
  * an inventory ever draws.
  */
@@ -555,8 +556,8 @@ function faceTextures(elements: ModelElement[], textures: Record<string, string>
 /**
  * Find the model an item definition points at.
  *
- * A definition is a small tree — a plain `model`, or a `select` / `condition` /
- * `range_dispatch` with cases — and every branch of it is a different look for
+ * A definition is a small tree; a plain `model`, or a `select` / `condition` /
+ * `range_dispatch` with cases; and every branch of it is a different look for
  * the same item. A preview only needs one, so this takes the first model it
  * finds in document order.
  */
@@ -701,13 +702,13 @@ function parseSizeOverrides(value: unknown): FontUnihexOverride[] | undefined {
  * Flatten the game's font definition into the sheets a browser can draw from.
  *
  * `default.json` is mostly references to other files, and the order they resolve
- * to is the order the client asks them for a glyph — first one that has it wins,
+ * to is the order the client asks them for a glyph; first one that has it wins,
  * which is why the list is kept flat and in sequence rather than keyed by page.
  *
  * A `unihex` provider is kept as a pointer rather than as glyphs: the bundle
  * behind it is eight megabytes and a hundred and fourteen thousand characters,
  * so the browser asks for the few codepoints a preview actually reaches for.
- * `ttf` providers are dropped outright — nothing in a selector uses them.
+ * `ttf` providers are dropped outright; nothing in a selector uses them.
  */
 async function buildFont(version: string, reference = "default", depth = 0): Promise<FontProvider[]> {
 	if (depth > 4) {
@@ -772,7 +773,7 @@ async function buildFont(version: string, reference = "default", depth = 0): Pro
  * Decide how each item is drawn.
  *
  * Newer jars describe items in `assets/minecraft/items/*.json`, which point at a
- * model that for a block item lives under `models/block/` — `models/item/` has
+ * model that for a block item lives under `models/block/`; `models/item/` has
  * no entry for it at all. Older jars only have `models/item/`. Both layouts are
  * accepted, because the pinned version is whatever the cluster happens to run.
  */
@@ -867,7 +868,7 @@ async function buildRegistry(version: string, reporter: ProgressReporter): Promi
  * Make sure the pinned version's assets are on disk, downloading them if not.
  *
  * The registry is derived from the extracted files, so a change to how items are
- * indexed only invalidates the registry — the jar behind it is still the same
+ * indexed only invalidates the registry; the jar behind it is still the same
  * jar, and re-fetching thirty megabytes to re-read files already on disk would
  * be silly. A stale `format` therefore rebuilds the index in place.
  *
@@ -881,7 +882,7 @@ export async function ensureMcAssets(
 	const wantedVersion = opts.version ?? pinnedMcVersion(cfg);
 
 	if (!wantedVersion) {
-		throw new Error("no instance declares a Minecraft version, so there is nothing to pin assets to");
+		throw new Error(t("core.mcassets.noVersionAnywhere"));
 	}
 
 	const progress = opts.reporter ?? new ProgressReporter("minecraft assets");
@@ -891,7 +892,7 @@ export async function ensureMcAssets(
 		const current = await assetState(cfg);
 
 		if (current.present) {
-			progress.complete(`assets for ${wantedVersion} already extracted`);
+			progress.complete(t("core.mcassets.alreadyExtracted", { version: wantedVersion }));
 
 			return current;
 		}
@@ -900,11 +901,11 @@ export async function ensureMcAssets(
 		const indexing = progress.child("Item registry", 1);
 
 		await ensureFontObjects(wantedVersion, undefined, fonts);
-		fonts.complete("font assets present");
+		fonts.complete(t("core.mcassets.fontsPresent"));
 
 		const rebuilt = await buildRegistry(wantedVersion, indexing);
 		await Bun.write(registryPath(wantedVersion), JSON.stringify(rebuilt));
-		indexing.complete(`${Object.keys(rebuilt.items).length} item(s) re-indexed`);
+		indexing.complete(t("core.mcassets.reindexed", { count: Object.keys(rebuilt.items).length }));
 
 		return await assetState(cfg);
 	}
@@ -918,7 +919,7 @@ export async function ensureMcAssets(
 	const target = await resolveClientJarUrl(wantedVersion);
 
 	if (target.version !== wantedVersion) {
-		locating.say("warn", `${wantedVersion} is not in the manifest — using ${target.version}`);
+		locating.say("warn", t("core.mcassets.notInManifest", { wanted: wantedVersion, using: target.version }));
 	} else {
 		locating.complete(target.version);
 	}
@@ -954,7 +955,7 @@ export async function ensureMcAssets(
 		}
 	}
 
-	extracting.complete(`${written} file(s) extracted`);
+	extracting.complete(t("core.mcassets.extracted", { count: written }));
 	await rm(jarPath, { force: true });
 
 	await fonts.task({ start: "fetching unifont", done: "font assets present" }, async () => {
@@ -963,7 +964,7 @@ export async function ensureMcAssets(
 
 	const registry = await buildRegistry(version, indexing);
 	await Bun.write(registryPath(version), JSON.stringify(registry));
-	indexing.complete(`${Object.keys(registry.items).length} item(s) indexed`);
+	indexing.complete(t("core.mcassets.indexed", { count: Object.keys(registry.items).length }));
 
 	return await assetState(cfg);
 }

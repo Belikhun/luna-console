@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { goto } from '$app/navigation';
 	import Icon from './Icon.svelte';
 	import Spinner from './Spinner.svelte';
@@ -182,7 +183,7 @@
 	<input
 		bind:this={input}
 		bind:value={query}
-		placeholder="Search"
+		placeholder={t('web.common.search')}
 		aria-label="Search the console"
 		autocomplete="off"
 		onfocus={onFocus}
@@ -196,7 +197,7 @@
 			{#if loading}
 				<div class="note"><Spinner size="0.875rem" /> Loading resources…</div>
 			{:else if hits.length === 0}
-				<div class="note">No matches for “{query.trim()}”</div>
+				<div class="note">{t('web.search.noMatches', { query: query.trim() })}</div>
 			{:else}
 				<!-- keyed by position, deliberately: providers are an open registry, and
 				     two distinct objects legitimately share group + label + href (the
@@ -205,7 +206,7 @@
 				     crash waiting for whoever adds the next provider. -->
 				{#each hits as hit, i (i)}
 					{#if i === 0 || hits[i - 1]?.group !== hit.group}
-						<div class="ghead">{hit.group}</div>
+						<div class="ghead">{t(hit.group)}</div>
 					{/if}
 					<button
 						class="hit"

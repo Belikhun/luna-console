@@ -9,7 +9,7 @@ export interface NodeSpec {
 	contexts: Record<string, string>;
 }
 
-/** The shape the editor accepts for pre-filling — matches the API's node rows. */
+/** The shape the editor accepts for pre-filling; matches the API's node rows. */
 export interface EditableNode {
 	key: string;
 	value: boolean;

@@ -2,13 +2,13 @@
  * Data pack management: a shared pool of zips in `<root>/datapacks` deployed
  * into each target instance's world (`<instance>/<level-name>/datapacks/`),
  * with Modrinth as the install/update source and `packs.lock.json` as the
- * source of truth for what deploys where — the world directories are derived,
+ * source of truth for what deploys where; the world directories are derived,
  * same as plugin folders. Unlike plugins there are no per-instance variants:
  * a data pack has one pooled build, and installs are gated on every target's
  * MC version up front.
  *
  * A server only reads its world's datapacks folder at boot (or `/reload`), so
- * deploy reports whether each copy changed anything — the caller decides
+ * deploy reports whether each copy changed anything; the caller decides
  * whether a restart is worth it.
  */
 
@@ -39,6 +39,7 @@ import {
 import type { AddonProject, AddonVersion, AddonVersionFile } from "./services/providers";
 import { getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
 import type { AddonGroup, ClusterConfig, InstanceConfig, ProviderId } from "./types";
+import { t } from "../shared/i18n";
 
 /** The addon groups a pack operation resolves membership against. */
 export type AddonGroups = Record<string, AddonGroup> | undefined;
@@ -50,7 +51,7 @@ export function datapacksDir(): string {
 
 /**
  * The world directory data packs load from, resolved through the instance's
- * own `level-name` — a renamed world (survival, lobby) moves the folder with it.
+ * own `level-name`; a renamed world (survival, lobby) moves the folder with it.
  */
 export async function worldDatapacksDir(inst: InstanceConfig): Promise<string> {
 	const dir = instanceDir(inst);
@@ -61,7 +62,7 @@ export async function worldDatapacksDir(inst: InstanceConfig): Promise<string> {
 
 		level = props["level-name"]?.trim() || "world";
 	} catch {
-		// a fresh instance has no properties yet — vanilla defaults to "world"
+		// a fresh instance has no properties yet; vanilla defaults to "world"
 	}
 
 	return join(dir, level, "datapacks");
@@ -79,7 +80,7 @@ function worldInstances(cfg: ClusterConfig): Record<string, InstanceConfig> {
 /**
  * Every instance a data pack deploys to: its own targets, expanded, united
  * with the instances its addon groups grant it. The proxy and unknown names
- * drop out — only a server with a world can load a data pack.
+ * drop out; only a server with a world can load a data pack.
  */
 export function datapackTargets(
 	cfg: ClusterConfig,
@@ -113,7 +114,7 @@ export interface DataPackRow {
 	effectiveTargets: string[];
 	/** Addon groups carrying this pack */
 	groups: string[];
-	/** Instances the groups contribute — the rest come from `entry.targets` */
+	/** Instances the groups contribute; the rest come from `entry.targets` */
 	granted: string[];
 }
 
@@ -160,7 +161,7 @@ export interface InstanceDataPackRow {
 	versionNumber?: string;
 	source?: string;
 	autoUpdate?: boolean;
-	/** The world's copy differs from the pool — a deploy is pending */
+	/** The world's copy differs from the pool; a deploy is pending */
 	stale: boolean;
 }
 
@@ -168,7 +169,7 @@ export interface InstanceDataPackRow {
  * What one instance's world actually holds: managed packs (present, missing or
  * stale against the pool) and unmanaged zips someone dropped in by hand, listed
  * so they can be adopted into the pool rather than silently ignored.
- * Runs on the instance's owner — the world is on that machine's disk.
+ * Runs on the instance's owner; the world is on that machine's disk.
  */
 export async function instanceDataPackReport(
 	cfg: ClusterConfig,
@@ -179,7 +180,7 @@ export async function instanceDataPackReport(
 	const inst = worldInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`${instance} has no world to hold data packs`);
+		throw new Error(t("core.datapacks.noWorld", { name: instance }));
 	}
 
 	const dir = await worldDatapacksDir(inst);
@@ -225,7 +226,7 @@ export async function instanceDataPackReport(
 		});
 	}
 
-	// targeted here but not in the world yet — a deploy away
+	// targeted here but not in the world yet; a deploy away
 	for (const [name, entry] of Object.entries(lock.datapacks)) {
 		if (seen.has(entry.file) || !datapackTargets(cfg, name, entry, groups).includes(instance)) {
 			continue;
@@ -259,7 +260,7 @@ export interface DataPackDeployAction {
 /**
  * Sync target instances' worlds from the pool: copy missing packs, replace
  * stale ones, and remove a managed pack's file where the lock no longer
- * targets it (only files the lock knows are ever touched — hand-dropped zips
+ * targets it (only files the lock knows are ever touched; hand-dropped zips
  * stay). Servers pick changes up on their next restart or `/reload`.
  */
 export async function deployDataPacks(
@@ -315,7 +316,7 @@ export async function deployDataPacks(
 						instance,
 						file: entry.file,
 						action: "error",
-						detail: "pool file missing — reinstall or re-upload the pack",
+						detail: t("core.datapacks.poolFileMissing"),
 					});
 
 					continue;
@@ -327,7 +328,7 @@ export async function deployDataPacks(
 					continue;
 				}
 
-				node?.info(0.5, `copying ${entry.file}`);
+				node?.info(0.5, t("core.datapacks.copying", { file: entry.file }));
 				await copyFile(poolPath, destPath);
 				actions.push({ instance, file: entry.file, action: there ? "updated" : "installed" });
 			}
@@ -364,7 +365,7 @@ function requiredMcVersions(cfg: ClusterConfig, targets: string[]): string[] {
  * Install a data pack from a provider: the newest version covering every
  * target's MC version (channel-gated, falling back through beta/alpha for
  * projects without releases), pooled and recorded. Deploying is the caller's
- * follow-up — routing to follower-owned targets happens at the daemon layer.
+ * follow-up; routing to follower-owned targets happens at the daemon layer.
  */
 export async function installDataPackFromProvider(
 	cfg: ClusterConfig,
@@ -398,7 +399,11 @@ export async function installDataPackFromProvider(
 			: "";
 
 		throw new Error(
-			`no version of ${project.slug} covers MC ${required.join(", ") || "any"}${newest}`,
+			t("core.datapacks.noVersionForMc", {
+				slug: project.slug,
+				mc: required.join(", ") || "any",
+				newest,
+			}),
 		);
 	}
 
@@ -466,13 +471,13 @@ export async function checkDataPackUpdates(
 		}
 
 		if (entry.source === "manual" || !entry.remote) {
-			skipped.push({ name, reason: "not identified with a provider" });
+			skipped.push({ name, reason: t("core.plugins.skipUnidentified") });
 
 			continue;
 		}
 
 		if (!entry.autoUpdate && !names?.includes(name)) {
-			skipped.push({ name, reason: "auto-update disabled" });
+			skipped.push({ name, reason: t("core.plugins.skipAutoOff") });
 
 			continue;
 		}
@@ -515,7 +520,7 @@ export async function applyDataPackUpdate(lock: PacksLock, update: DataPackUpdat
 	const entry = lock.datapacks[update.name];
 
 	if (!entry) {
-		throw new Error(`unknown data pack: ${update.name}`);
+		throw new Error(t("core.datapacks.unknown", { name: update.name }));
 	}
 
 	const sha512 = await download(update.url, join(datapacksDir(), entry.file), update.hashes ?? {});
@@ -574,13 +579,13 @@ export async function adoptDataPack(
 	const inst = worldInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`${instance} has no world to hold data packs`);
+		throw new Error(t("core.datapacks.noWorld", { name: instance }));
 	}
 
 	const src = join(await worldDatapacksDir(inst), fileName);
 
 	if (!existsSync(src)) {
-		throw new Error(`${fileName} not found in ${instance}'s world`);
+		throw new Error(t("core.datapacks.fileNotInWorld", { file: fileName, name: instance }));
 	}
 
 	const name = packKeyFrom(fileName);
@@ -611,7 +616,7 @@ export async function adoptDataPack(
 
 /**
  * Delete one pack's file from the given instances' worlds on this machine.
- * Pure file removal — no lock mutation — so a routed removal can run this
+ * Pure file removal; no lock mutation; so a routed removal can run this
  * slice on each owner and finalize the entry once, on the caller's side.
  */
 export async function removeDataPackFiles(
@@ -623,7 +628,7 @@ export async function removeDataPackFiles(
 	const entry = lock.datapacks[name];
 
 	if (!entry) {
-		throw new Error(`unknown data pack: ${name}`);
+		throw new Error(t("core.datapacks.unknown", { name }));
 	}
 
 	const worlds = worldInstances(cfg);
@@ -649,8 +654,8 @@ export async function removeDataPackFiles(
 
 /**
  * Settle a pack's lock entry after its files were removed from `removed`
- * targets: trim the target list, or — when nothing is left, or the removal
- * was unscoped — drop the pool zip and the entry itself.
+ * targets: trim the target list, or; when nothing is left, or the removal
+ * was unscoped; drop the pool zip and the entry itself.
  */
 export async function finalizeDataPackRemoval(
 	cfg: ClusterConfig,
@@ -663,7 +668,7 @@ export async function finalizeDataPackRemoval(
 	const entry = lock.datapacks[name];
 
 	if (!entry) {
-		throw new Error(`unknown data pack: ${name}`);
+		throw new Error(t("core.datapacks.unknown", { name }));
 	}
 
 	const remaining = datapackTargets(cfg, name, entry, groups).filter(
@@ -689,7 +694,7 @@ export async function finalizeDataPackRemoval(
 
 /**
  * Remove a data pack from targets (and their worlds); with no targets left the
- * pool zip and lock entry go too. This reaches worlds on this machine only —
+ * pool zip and lock entry go too. This reaches worlds on this machine only -
  * the daemon layer wraps it to route follower-owned targets to their owner.
  */
 export async function removeDataPack(
@@ -702,7 +707,7 @@ export async function removeDataPack(
 	const entry = lock.datapacks[name];
 
 	if (!entry) {
-		throw new Error(`unknown data pack: ${name}`);
+		throw new Error(t("core.datapacks.unknown", { name }));
 	}
 
 	const worlds = worldInstances(cfg);
@@ -746,16 +751,16 @@ export interface DataPackIdentityProbe extends IdentityProbe {
 	zip: string;
 }
 
-/** The pooled zip a mapping identifies — never a world's own copy of it. */
+/** The pooled zip a mapping identifies; never a world's own copy of it. */
 function dataPackZipOf(lock: PacksLock, name: string): DataPackEntry {
 	const entry = lock.datapacks[name];
 
 	if (!entry) {
-		throw new Error(`unknown data pack: ${name}`);
+		throw new Error(t("core.datapacks.unknown", { name }));
 	}
 
 	if (!existsSync(join(datapacksDir(), entry.file))) {
-		throw new Error(`${name}: ${entry.file} is not in the pool, so it cannot be identified`);
+		throw new Error(t("core.plugins.notInPool", { name, file: entry.file }));
 	}
 
 	return entry;

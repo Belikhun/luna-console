@@ -1,8 +1,8 @@
 /**
  * What an item in the selector looks like for a given status.
  *
- * This is a port of the plugin's own assembly — material resolution order,
- * template merging, the way a description line is wrapped in `body-line` — so
+ * This is a port of the plugin's own assembly; material resolution order,
+ * template merging, the way a description line is wrapped in `body-line`; so
  * that the editor's preview and the game agree. Where the plugin's rules are
  * surprising, the comment says so; the surprising ones are exactly what makes a
  * hand-written config hard to reason about and an editor worth having.
@@ -23,7 +23,7 @@ import { evaluateWhen, type WhenContext } from "./selectorwhen";
  * What a backend last reported, as far as the console knows it.
  *
  * Everything is optional because a preview is routinely asked for a server that
- * is not running, or for a status it is not in — an admin flipping through all
+ * is not running, or for a status it is not in; an admin flipping through all
  * four to see how each looks. A field nobody has reported is not zero, it is
  * unknown, and the difference matters: a tooltip that reads `0/0 người chơi` and
  * `đã chạy 0s` shows the admin a card no player will ever see.
@@ -72,7 +72,7 @@ function resolveTemplate(template: SelectorTemplate | undefined, status: Selecto
 		return base;
 	}
 
-	// a by-status block overrides field by field — and only these four fields;
+	// a by-status block overrides field by field; and only these four fields;
 	// `material` is never overridable this way
 	return {
 		name: override.name ?? base.name,
@@ -112,7 +112,7 @@ function formatNumber(value: number | undefined, digits: number): string {
 	return (value ?? 0).toFixed(digits);
 }
 
-/** `Formatters.compactDuration` — `3h 51m 36s`, the unit dropped when it is zero. */
+/** `Formatters.compactDuration`; `3h 51m 36s`, the unit dropped when it is zero. */
 export function compactDuration(millis: number): string {
 	let total = Math.max(1, Math.floor(millis / 1000));
 
@@ -145,7 +145,7 @@ export function compactDuration(millis: number): string {
 	return parts.join(" ");
 }
 
-/** `Formatters.duration` — the same span spelled out, in the plugin's Vietnamese. */
+/** `Formatters.duration`; the same span spelled out, in the plugin's Vietnamese. */
 export function longDuration(millis: number): string {
 	const total = Math.max(0, Math.floor(millis / 1000));
 	const days = Math.floor(total / 86400);
@@ -191,7 +191,7 @@ function seedOf(name: string): number {
  * A preview exists to show what a card will look like, and a card is mostly its
  * numbers: how long they are decides where the line ends and whether the name's
  * padding still lines up. Zeroes make every one of them the shortest it can be,
- * so an offline server — or a status being simulated — is drawn from a plausible
+ * so an offline server; or a status being simulated; is drawn from a plausible
  * sample instead, derived from the name so it does not shuffle on every repaint.
  */
 function sampleMetrics(name: string): Required<Omit<PreviewMetrics, "version" | "software" | "motd">> {

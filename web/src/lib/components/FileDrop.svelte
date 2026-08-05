@@ -1,17 +1,18 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 
 	/**
 	 * File picker with drag & drop: click to browse, or drop a file onto the
-	 * zone. Holds exactly one file — a second pick replaces the first.
+	 * zone. Holds exactly one file; a second pick replaces the first.
 	 */
 	let {
 		file = $bindable(null),
 		accept = '',
-		hint = 'Drop a file here, or click to browse'
+		hint = t('web.common.dropFile')
 	}: {
 		file?: File | null;
-		/** input `accept` filter, e.g. ".zip" — also applied to dropped files */
+		/** input `accept` filter, e.g. ".zip"; also applied to dropped files */
 		accept?: string;
 		hint?: string;
 	} = $props();

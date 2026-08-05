@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 
 	/** vloom-style paging bar: ‹ 1 … 4 5 6 … 20 › with windowing. */
@@ -64,7 +65,7 @@
 </script>
 
 <div class="paging">
-	<button class="nav" disabled={page <= 1} onclick={() => go(page - 1)} aria-label="Previous page">
+	<button class="nav" disabled={page <= 1} onclick={() => go(page - 1)} aria-label={t('web.table.previousPage')}>
 		<Icon name="arrowLeft" size="0.875rem" />
 	</button>
 	{#each items as item, i (i)}
@@ -74,7 +75,7 @@
 			<button class="pg" class:active={item === page} onclick={() => go(item)}>{item}</button>
 		{/if}
 	{/each}
-	<button class="nav" disabled={page >= max} onclick={() => go(page + 1)} aria-label="Next page">
+	<button class="nav" disabled={page >= max} onclick={() => go(page + 1)} aria-label={t('web.table.nextPage')}>
 		<Icon name="arrowRight" size="0.875rem" />
 	</button>
 </div>

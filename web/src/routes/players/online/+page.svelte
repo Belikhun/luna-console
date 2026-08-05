@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -54,7 +55,7 @@
 		sessionMillis: number;
 	}
 
-	/** Latency bands, in ms — the same thresholds the proxy's own tab list uses. */
+	/** Latency bands, in ms; the same thresholds the proxy's own tab list uses. */
 	const PING_FAIR = 120;
 	const PING_POOR = 250;
 
@@ -125,24 +126,24 @@
 		return () => stream.close();
 	});
 
-	const columns: Column[] = [
-		{ id: 'username', label: 'Player', sortable: true, minWidth: 180 },
-		{ id: 'server', label: 'Backend', sortable: true },
-		{ id: 'session', label: 'Session', sortable: true },
-		{ id: 'ping', label: 'Ping', sortable: true, width: 110, align: 'right' },
-		{ id: 'client', label: 'Client', sortable: true },
-		{ id: 'mode', label: 'Auth' },
-		{ id: 'address', label: 'Address', hidden: true },
-		{ id: 'host', label: 'Connected via', hidden: true },
-		{ id: 'uuid', label: 'UUID', width: 300, hidden: true }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'username', label: t('web.playersOnline.player2'), sortable: true, minWidth: 180 },
+		{ id: 'server', label: t('web.playersOnline.backend'), sortable: true },
+		{ id: 'session', label: t('web.playersOnline.session'), sortable: true },
+		{ id: 'ping', label: t('web.playersOnline.ping'), sortable: true, width: 110, align: 'right' },
+		{ id: 'client', label: t('web.playersOnline.client'), sortable: true },
+		{ id: 'mode', label: t('web.playersOnline.auth') },
+		{ id: 'address', label: t('web.playersOnline.address'), hidden: true },
+		{ id: 'host', label: t('web.playersOnline.connectedVia'), hidden: true },
+		{ id: 'uuid', label: t('web.playersOnline.uuid'), width: 300, hidden: true }
+	]);
 
 	const filters: TableFilterGroup<Player>[] = $derived([
 		{
 			id: 'server',
-			label: 'Filter backend',
+			label: t('web.playersOnline.filterBackend'),
 			options: [
-				{ value: 'any', label: 'Any backend' },
+				{ value: 'any', label: t('web.playersOnline.anyBackend') },
 				...Object.keys(byServer)
 					.sort()
 					.map((name) => ({
@@ -154,9 +155,9 @@
 		},
 		{
 			id: 'ping',
-			label: 'Filter latency',
+			label: t('web.playersOnline.filterLatency'),
 			options: [
-				{ value: 'any', label: 'Any latency' },
+				{ value: 'any', label: t('web.playersOnline.anyLatency') },
 				{ value: 'good', label: `Under ${PING_FAIR} ms`, match: (player) => player.pingMillis < PING_FAIR },
 				{
 					value: 'poor',
@@ -318,11 +319,11 @@
 		broadcastText = '';
 	}
 
-	/** A player's verbs — the row menu and the toolbar's Actions button. */
+	/** A player's verbs; the row menu and the toolbar's Actions button. */
 	function rowActions(player: Player): ContextMenuItem[] {
 		return [
 			{
-				label: 'View profile',
+				label: t('web.playersOnline.viewProfile'),
 				icon: 'user',
 				action: () => goto(`/players/${player.uuid}`)
 			},
@@ -333,7 +334,7 @@
 			},
 			{ separator: true },
 			{
-				label: 'Send a message',
+				label: t('web.playersOnline.sendAMessage'),
 				icon: 'paperPlane',
 				action: () => {
 					selected = new Set([player.uuid]);
@@ -341,7 +342,7 @@
 				}
 			},
 			{
-				label: 'Move to another backend',
+				label: t('web.playersOnline.moveToAnotherBackend'),
 				icon: 'rightLeft',
 				action: () => {
 					selected = new Set([player.uuid]);
@@ -349,13 +350,13 @@
 				}
 			},
 			{
-				label: 'Copy UUID',
+				label: t('web.playersOnline.copyUuid'),
 				icon: 'copy',
 				action: () => void copy(player.uuid)
 			},
 			{ separator: true },
 			{
-				label: 'Disconnect player',
+				label: t('web.playersOnline.disconnectPlayer'),
 				icon: 'userSlash',
 				color: 'danger',
 				action: () => {
@@ -373,46 +374,46 @@
 		await copyText(text);
 	}
 
-	const activityCols: Column[] = [
-		{ id: 'time', label: 'Time', width: 170, sortable: true },
-		{ id: 'type', label: 'Event', width: 120 },
-		{ id: 'username', label: 'Player', sortable: true },
-		{ id: 'where', label: 'Backend' },
-		{ id: 'session', label: 'Session length' }
-	];
+	const activityCols: Column[] = $derived([
+		{ id: 'time', label: t('web.playersOnline.time'), width: 170, sortable: true },
+		{ id: 'type', label: t('web.playersOnline.event2'), width: 120 },
+		{ id: 'username', label: t('web.playersOnline.player2'), sortable: true },
+		{ id: 'where', label: t('web.playersOnline.backend') },
+		{ id: 'session', label: t('web.playersOnline.sessionLength') }
+	]);
 </script>
 
-<svelte:head><title>Online players | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.playersOnline.onlinePlayersLunaConsole')}</title></svelte:head>
 
-<PageHeader title="Online players" count="{selected.size ? `${selected.size}/` : ''}{players.length}" info>
+<PageHeader title={t('web.playersOnline.onlinePlayers')} count="{selected.size ? `${selected.size}/` : ''}{players.length}" info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
-		<Btn icon="bullhorn" onclick={() => (broadcastOpen = true)}>Broadcast</Btn>
+		<Dropdown label={t('web.playersOnline.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Btn icon="bullhorn" onclick={() => (broadcastOpen = true)}>{t('web.playersOnline.broadcast')}</Btn>
 	{/snippet}
 </PageHeader>
 
 {#if !available}
 	<Flash kind="warning">
-		<b>LunaCore is not answering:</b> {problem}. The proxy may be stopped, or running a
-		build without the players API.
+		<b>{t('web.playersOnline.lunacoreIsNotAnswering')}</b> {problem}. The proxy may be stopped, or running a
+		{t('web.playersOnline.buildWithoutThePlayers')}
 	</Flash>
 {/if}
 
-<OverviewBar title="Network overview">
-	<OverviewCell label="Online now">
+<OverviewBar title={t('web.playersOnline.networkOverview')}>
+	<OverviewCell label={t('web.playersOnline.onlineNow')}>
 		{players.length}
 	</OverviewCell>
-	<OverviewCell label="Backends occupied">
+	<OverviewCell label={t('web.playersOnline.backendsOccupied')}>
 		{Object.keys(byServer).length || '–'}
 	</OverviewCell>
-	<OverviewCell label="Average ping">
+	<OverviewCell label={t('web.playersOnline.averagePing')}>
 		{players.length ? `${averagePing} ms` : '–'}
 	</OverviewCell>
-	<OverviewCell label="Longest session">
+	<OverviewCell label={t('web.playersOnline.longestSession')}>
 		{players.length ? fmtDuration(longestSession) : '–'}
 	</OverviewCell>
-	<OverviewCell label="Joins in the last hour">
+	<OverviewCell label={t('web.playersOnline.joinsInTheLastHour')}>
 		{recentJoins}
 	</OverviewCell>
 </OverviewBar>
@@ -427,17 +428,17 @@
 			getId={(player) => player.uuid}
 			searchValue={(player) =>
 				`${player.username} ${player.server} ${player.uuid} ${player.clientVersion} ${player.remoteAddress} ${player.virtualHost}`}
-			searchPlaceholder="Find player by name, backend or UUID"
+			searchPlaceholder={t('web.playersOnline.findPlayerByNameBackend')}
 			selectable="single"
 			bind:selected
 			{rowActions}
 			rowLabel={(player) => player.username}
-			noun="player"
+			noun={t('web.playersOnline.player')}
 			{sortValue}
 			{filters}
 			pageSize={25}
-			emptyTitle="Nobody is online"
-			emptyText="Joins appear here as they happen — the page listens to LunaCore rather than waiting for the next poll."
+			emptyTitle={t('web.playersOnline.nobodyIsOnline')}
+			emptyText={t('web.playersOnline.joinsAppearHereAsThey')}
 		>
 			{#snippet cell(player, col)}
 				{#if col === 'username'}
@@ -472,9 +473,9 @@
 	</Panel>
 
 	<Panel
-		title="Recent activity"
+		title={t('web.playersOnline.recentActivity')}
 		count={activity.length}
-		description="Joins, leaves and backend switches as the proxy saw them, newest first"
+		description={t('web.playersOnline.joinsLeavesAndBackendSwitches')}
 		flush
 	>
 		<ResourceTable
@@ -483,15 +484,15 @@
 			rows={activity}
 			getId={(event) => `${event.atEpochMillis}-${event.uuid}-${event.type}`}
 			searchValue={(event) => `${event.username} ${event.server ?? ''} ${event.type}`}
-			searchPlaceholder="Find activity"
+			searchPlaceholder={t('web.playersOnline.findActivity')}
 			searchWidth="20rem"
-			noun="event"
+			noun={t('web.playersOnline.event')}
 			pageSize={20}
 			sortValue={(event, col) =>
 				col === 'time' ? event.atEpochMillis : col === 'username' ? event.username : null}
 			maxHeight="32rem"
-			emptyTitle="No activity recorded"
-			emptyText="LunaCore keeps this log in memory, so it starts empty after a proxy restart."
+			emptyTitle={t('web.playersOnline.noActivityRecorded')}
+			emptyText={t('web.playersOnline.lunacoreKeepsThisLogIn')}
 		>
 			{#snippet cell(event, col)}
 				{#if col === 'time'}
@@ -523,37 +524,36 @@
 </div>
 
 <Modal title="Disconnect {one?.username ?? 'player'}" bind:open={kickOpen}>
-	<p>They are removed from the network immediately and can reconnect straight away.</p>
+	<p>{t('web.playersOnline.theyAreRemovedFrom')}</p>
 	<label class="field">
-		<span class="lbl">Reason shown to the player</span>
-		<span class="hint">Optional — LunaCore sends its own default when this is blank</span>
-		<input class="input" bind:value={kickReason} placeholder="e.g. restarting the lobby" />
+		<span class="lbl">{t('web.playersOnline.reasonShownToThe')}</span>
+		<span class="hint">{t('web.playersOnline.optionalLunacoreSendsIts')}</span>
+		<input class="input" bind:value={kickReason} placeholder={t('web.playersOnline.eGRestartingTheLobby')} />
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (kickOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" onclick={doKick}>Disconnect</Btn>
+		<Btn onclick={() => (kickOpen = false)}>{t('web.playersOnline.cancel')}</Btn>
+		<Btn variant="danger" onclick={doKick}>{t('web.playersOnline.disconnect')}</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="Message {one?.username ?? 'player'}" bind:open={messageOpen}>
 	<label class="field">
-		<span class="lbl">Message</span>
-		<span class="hint">Delivered in chat, visible only to them</span>
-		<input class="input" bind:value={messageText} placeholder="Type a message" />
+		<span class="lbl">{t('web.playersOnline.message')}</span>
+		<span class="hint">{t('web.playersOnline.deliveredInChatVisible')}</span>
+		<input class="input" bind:value={messageText} placeholder={t('web.playersOnline.typeAMessage')} />
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (messageOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!messageText.trim()} onclick={doMessage}>Send</Btn>
+		<Btn onclick={() => (messageOpen = false)}>{t('web.playersOnline.cancel')}</Btn>
+		<Btn variant="primary" disabled={!messageText.trim()} onclick={doMessage}>{t('web.playersOnline.send')}</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="Move {one?.username ?? 'player'}" bind:open={transferOpen}>
 	<p>
-		The proxy moves them to another backend without a reconnect. A backend that is down
-		refuses the transfer and they stay where they are.
+		{t('web.playersOnline.theProxyMovesThem')}
 	</p>
 	<div class="field">
-		<span class="lbl">Destination backend</span>
+		<span class="lbl">{t('web.playersOnline.destinationBackend')}</span>
 		<Select
 			bind:value={transferTo}
 			width="100%"
@@ -563,31 +563,31 @@
 		/>
 	</div>
 	{#snippet footer()}
-		<Btn onclick={() => (transferOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!transferTo} onclick={doTransfer}>Move</Btn>
+		<Btn onclick={() => (transferOpen = false)}>{t('web.playersOnline.cancel')}</Btn>
+		<Btn variant="primary" disabled={!transferTo} onclick={doTransfer}>{t('web.playersOnline.move')}</Btn>
 	{/snippet}
 </Modal>
 
-<Modal title="Broadcast a message" bind:open={broadcastOpen}>
+<Modal title={t('web.playersOnline.broadcastAMessage')} bind:open={broadcastOpen}>
 	<label class="field">
-		<span class="lbl">Message</span>
-		<span class="hint">Sent to everyone on the network, or on one backend</span>
-		<input class="input" bind:value={broadcastText} placeholder="Type a message" />
+		<span class="lbl">{t('web.playersOnline.message')}</span>
+		<span class="hint">{t('web.playersOnline.sentToEveryoneOn')}</span>
+		<input class="input" bind:value={broadcastText} placeholder={t('web.playersOnline.typeAMessage')} />
 	</label>
 	<div class="field">
-		<span class="lbl">Audience</span>
+		<span class="lbl">{t('web.playersOnline.audience')}</span>
 		<Select
 			bind:value={broadcastServer}
 			width="100%"
 			options={[
-				{ value: '', label: 'Everyone on the network' },
+				{ value: '', label: t('web.playersOnline.everyoneOnTheNetwork') },
 				...servers.map((name) => ({ value: name, label: `Only ${name}` }))
 			]}
 		/>
 	</div>
 	{#snippet footer()}
-		<Btn onclick={() => (broadcastOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!broadcastText.trim()} onclick={doBroadcast}>Broadcast</Btn>
+		<Btn onclick={() => (broadcastOpen = false)}>{t('web.playersOnline.cancel')}</Btn>
+		<Btn variant="primary" disabled={!broadcastText.trim()} onclick={doBroadcast}>{t('web.playersOnline.broadcast')}</Btn>
 	{/snippet}
 </Modal>
 

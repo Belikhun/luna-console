@@ -20,7 +20,7 @@
 		max?: number;
 		/** caption on the left of the track (or before it when compact) */
 		left?: string;
-		/** caption on the right — defaults to the rounded percentage */
+		/** caption on the right; defaults to the rounded percentage */
 		right?: string | null;
 		color?: 'accent' | 'success' | 'warning' | 'danger' | 'auto';
 		/** percentage of the track flagged as the danger region */
@@ -32,7 +32,7 @@
 
 	const pct = $derived(Math.max(0, Math.min(100, max > 0 ? (value / max) * 100 : 0)));
 
-	// 'auto' picks the tone from how full the bar is — the same thresholds the
+	// 'auto' picks the tone from how full the bar is; the same thresholds the
 	// dashboard uses for disk and heap gauges
 	const tone = $derived(
 		color !== 'auto'

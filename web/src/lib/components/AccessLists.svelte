@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { api, post } from '$lib/api';
 	import Panel from './Panel.svelte';
@@ -18,7 +19,7 @@
 	 *
 	 * Changes go to the daemon, which uses the running server's console when the
 	 * instance is up (so vanilla persists the files itself) and edits the JSON
-	 * directly when it is stopped — the state note above the lists says which.
+	 * directly when it is stopped; the state note above the lists says which.
 	 */
 
 	let { instance }: { instance: string } = $props();
@@ -95,7 +96,7 @@
 		target: string,
 		reason = ''
 	): Promise<void> {
-		const note = Notify.loading(`${action === 'add' ? 'Adding' : 'Removing'} ${target}…`);
+		const note = Notify.loading(t(action === 'add' ? 'web.access.adding' : 'web.access.removing', { target }));
 
 		try {
 			const result = await post(`/instances/${instance}/access`, {
@@ -107,12 +108,12 @@
 			});
 
 			if (!result.ok) {
-				throw new Error(result.result?.error ?? 'the change was not applied');
+				throw new Error(result.result?.error ?? t('web.access.notApplied'));
 			}
 
 			note.set({
 				level: 'success',
-				message: `${target} ${action === 'add' ? 'added to' : 'removed from'} ${list} (${result.result.method})`,
+				message: t(action === 'add' ? 'web.access.addedTo' : 'web.access.removedFrom', { target, list, method: result.result.method }),
 				closeable: true
 			});
 
@@ -120,7 +121,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: `Change to ${list} failed`,
+				message: t('web.access.changeFailed', { list }),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -128,14 +129,14 @@
 	}
 
 	async function toggleWhitelist(enabled: boolean): Promise<void> {
-		const note = Notify.loading(`Turning the whitelist ${enabled ? 'on' : 'off'}…`);
+		const note = Notify.loading(t(enabled ? 'web.access.turningOn' : 'web.access.turningOff'));
 
 		try {
 			await post(`/instances/${instance}/access`, { kind: 'whitelist', enabled });
 
 			note.set({
 				level: 'success',
-				message: `Whitelist is now ${enabled ? 'on' : 'off'}`,
+				message: t(enabled ? 'web.access.nowOn' : 'web.access.nowOff'),
 				closeable: true
 			});
 
@@ -143,7 +144,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Whitelist toggle failed',
+				message: t('web.access.toggleFailed'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -162,31 +163,31 @@
 		addReason = '';
 	}
 
-	const whitelistCols: Column[] = [
-		{ id: 'name', label: 'Player', sortable: true },
+	const whitelistCols: Column[] = $derived([
+		{ id: 'name', label: t('web.access.colPlayer'), sortable: true },
 		{ id: 'uuid', label: 'UUID' }
-	];
+	]);
 
-	const opCols: Column[] = [
-		{ id: 'name', label: 'Player', sortable: true },
-		{ id: 'level', label: 'Level', width: 90, align: 'right' },
+	const opCols: Column[] = $derived([
+		{ id: 'name', label: t('web.access.colPlayer'), sortable: true },
+		{ id: 'level', label: t('web.access.colLevel'), width: 90, align: 'right' },
 		{ id: 'uuid', label: 'UUID' }
-	];
+	]);
 
-	const banCols: Column[] = [
-		{ id: 'name', label: 'Player', sortable: true },
-		{ id: 'created', label: 'Banned', sortable: true },
-		{ id: 'source', label: 'By' },
-		{ id: 'expires', label: 'Expires' },
-		{ id: 'reason', label: 'Reason' }
-	];
+	const banCols: Column[] = $derived([
+		{ id: 'name', label: t('web.access.colPlayer'), sortable: true },
+		{ id: 'created', label: t('web.access.colBanned'), sortable: true },
+		{ id: 'source', label: t('web.access.colBy') },
+		{ id: 'expires', label: t('web.access.colExpires') },
+		{ id: 'reason', label: t('web.access.colReason') }
+	]);
 
-	const ipBanCols: Column[] = [
-		{ id: 'ip', label: 'Address', sortable: true },
-		{ id: 'created', label: 'Banned', sortable: true },
-		{ id: 'source', label: 'By' },
-		{ id: 'reason', label: 'Reason' }
-	];
+	const ipBanCols: Column[] = $derived([
+		{ id: 'ip', label: t('web.access.colAddress'), sortable: true },
+		{ id: 'created', label: t('web.access.colBanned'), sortable: true },
+		{ id: 'source', label: t('web.access.colBy') },
+		{ id: 'reason', label: t('web.access.colReason') }
+	]);
 
 	function removeAction(list: string, target: string, label: string): ContextMenuItem[] {
 		return [
@@ -201,28 +202,28 @@
 </script>
 
 {#if problem}
-	<Flash kind="error"><b>Access lists unavailable:</b> {problem}</Flash>
+	<Flash kind="error"><b>{t('web.access.unavailable')}</b> {problem}</Flash>
 {:else if loaded}
 	<Panel
-		title="Whitelist"
+		title={t('web.access.whitelist')}
 		count={whitelist.length}
 		description={instState === 'running'
-			? 'The server is running — changes are applied live through its console'
-			: 'The server is stopped — changes are written straight into its files'}
+			? t('web.access.liveNote')
+			: t('web.access.stoppedNote')}
 		flush
 	>
 		{#snippet actions()}
 			<span class="wl">
 				<Toggle
 					checked={whitelistEnabled}
-					label="Whitelist enabled"
+					label={t('web.access.whitelistEnabled')}
 					onchange={(checked) => void toggleWhitelist(checked)}
 				/>
 				<span class="wl-label">
-					{whitelistEnabled ? 'On — only listed players may join' : 'Off — everyone may join'}
+					{whitelistEnabled ? t('web.access.onNote') : t('web.access.offNote')}
 				</span>
 				{#if whitelistEnabled && enforceWhitelist}
-					<StatusBadge state="warning" label="enforced" />
+					<StatusBadge state="warning" label={t('web.access.enforced')} />
 				{/if}
 			</span>
 		{/snippet}
@@ -231,17 +232,17 @@
 			<Select
 				bind:value={addList}
 				options={[
-					{ value: 'whitelist', label: 'Whitelist' },
-					{ value: 'ops', label: 'Operators' },
-					{ value: 'bans', label: 'Player bans' },
-					{ value: 'ban-ips', label: 'IP bans' }
+					{ value: 'whitelist', label: t('web.access.whitelist') },
+					{ value: 'ops', label: t('web.access.operators') },
+					{ value: 'bans', label: t('web.access.playerBans') },
+					{ value: 'ban-ips', label: t('web.access.ipBans') }
 				]}
 				width="11rem"
 			/>
 			<input
 				class="input target"
 				bind:value={addTarget}
-				placeholder={addList === 'ban-ips' ? 'IP address' : 'Player name'}
+				placeholder={addList === 'ban-ips' ? t('web.access.ipAddress') : t('web.access.playerName')}
 				onkeydown={(event) => {
 					if (event.key === 'Enter') {
 						doAdd();
@@ -249,9 +250,9 @@
 				}}
 			/>
 			{#if addList === 'bans' || addList === 'ban-ips'}
-				<input class="input reason" bind:value={addReason} placeholder="Reason (optional)" />
+				<input class="input reason" bind:value={addReason} placeholder={t('web.access.reasonOptional')} />
 			{/if}
-			<Btn variant="primary" icon="plus" disabled={!addTarget.trim()} onclick={doAdd}>Add</Btn>
+			<Btn variant="primary" icon="plus" disabled={!addTarget.trim()} onclick={doAdd}>{t('web.common.add')}</Btn>
 		</div>
 
 		<DataTable
@@ -259,12 +260,12 @@
 			columns={whitelistCols}
 			rows={whitelist}
 			getId={(entry) => entry.uuid || entry.name}
-			rowActions={(entry) => removeAction('whitelist', entry.name, 'Remove from whitelist')}
+			rowActions={(entry) => removeAction('whitelist', entry.name, t('web.access.removeFromWhitelist'))}
 			rowLabel={(entry) => entry.name}
-			emptyTitle="The whitelist is empty"
+			emptyTitle={t('web.access.whitelistEmpty')}
 			emptyText={whitelistEnabled
-				? 'The whitelist is ON with nobody listed — no one can join this instance.'
-				: 'Names added here only matter once the whitelist is turned on.'}
+				? t('web.access.whitelistEmptyOn')
+				: t('web.access.whitelistEmptyOff')}
 		>
 			{#snippet cell(entry, col)}
 				{#if col === 'name'}
@@ -278,16 +279,16 @@
 
 	<div class="gap"></div>
 
-	<Panel title="Operators" count={ops.length} flush>
+	<Panel title={t('web.access.operators')} count={ops.length} flush>
 		<DataTable
 			tableId="access-ops"
 			columns={opCols}
 			rows={ops}
 			getId={(entry) => entry.uuid || entry.name}
-			rowActions={(entry) => removeAction('ops', entry.name, 'Revoke operator')}
+			rowActions={(entry) => removeAction('ops', entry.name, t('web.access.revokeOperator'))}
 			rowLabel={(entry) => entry.name}
-			emptyTitle="No operators"
-			emptyText="Operators can run every server command in-game; grant it sparingly."
+			emptyTitle={t('web.access.noOperators')}
+			emptyText={t('web.access.operatorsHint')}
 		>
 			{#snippet cell(entry, col)}
 				{#if col === 'name'}
@@ -303,16 +304,16 @@
 
 	<div class="gap"></div>
 
-	<Panel title="Player bans" count={bans.length} flush>
+	<Panel title={t('web.access.playerBans')} count={bans.length} flush>
 		<DataTable
 			tableId="access-bans"
 			columns={banCols}
 			rows={bans}
 			getId={(entry) => entry.uuid || entry.name}
-			rowActions={(entry) => removeAction('bans', entry.name, 'Pardon player')}
+			rowActions={(entry) => removeAction('bans', entry.name, t('web.access.pardonPlayer'))}
 			rowLabel={(entry) => entry.name}
-			emptyTitle="Nobody is banned"
-			emptyText="Bans issued through luna or in-game both land in this list."
+			emptyTitle={t('web.access.noBans')}
+			emptyText={t('web.access.bansHint')}
 		>
 			{#snippet cell(entry, col)}
 				{#if col === 'name'}
@@ -322,7 +323,7 @@
 				{:else if col === 'source'}
 					{entry.source}
 				{:else if col === 'expires'}
-					{entry.expires === 'forever' ? 'never' : entry.expires}
+					{entry.expires === 'forever' ? t('web.access.never') : entry.expires}
 				{:else if col === 'reason'}
 					{entry.reason || '–'}
 				{/if}
@@ -332,16 +333,16 @@
 
 	<div class="gap"></div>
 
-	<Panel title="IP bans" count={ipBans.length} flush>
+	<Panel title={t('web.access.ipBans')} count={ipBans.length} flush>
 		<DataTable
 			tableId="access-ipbans"
 			columns={ipBanCols}
 			rows={ipBans}
 			getId={(entry) => entry.ip}
-			rowActions={(entry) => removeAction('ban-ips', entry.ip, 'Pardon address')}
+			rowActions={(entry) => removeAction('ban-ips', entry.ip, t('web.access.pardonAddress'))}
 			rowLabel={(entry) => entry.ip}
-			emptyTitle="No IP bans"
-			emptyText="An IP ban blocks every account connecting from the address."
+			emptyTitle={t('web.access.noIpBans')}
+			emptyText={t('web.access.ipBansHint')}
 		>
 			{#snippet cell(entry, col)}
 				{#if col === 'ip'}

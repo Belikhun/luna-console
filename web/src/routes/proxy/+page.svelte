@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { api, post } from '$lib/api';
@@ -29,11 +30,11 @@
 	let loading = $state(false);
 	let lastUpdated: number | null = $state(null);
 
-	const columns: Column[] = [
-		{ id: 'server', label: 'Server', width: 180 },
-		{ id: 'address', label: 'Address', width: 220 },
-		{ id: 'state', label: 'State' }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'server', label: t('web.proxy.colServer'), width: 180 },
+		{ id: 'address', label: t('web.proxy.colAddress'), width: 220 },
+		{ id: 'state', label: t('web.proxy.colState') }
+	]);
 
 	const rows = $derived.by(() => {
 		if (!data) {
@@ -68,7 +69,7 @@
 
 		const entries = Object.entries(data.forcedHosts as Record<string, string[]>);
 
-		return entries.map(([host, servers]) => `${host} → ${servers}`).join(' · ') || '(none)';
+		return entries.map(([host, servers]) => `${host} → ${servers}`).join(' · ') || t('web.proxy.none');
 	});
 
 	async function refresh(): Promise<void> {
@@ -78,7 +79,7 @@
 			data = await api('/proxy');
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error('Could not load the proxy routing', { detail: (err as Error).message });
+			Notify.error(t('web.proxy.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
 		}
@@ -94,20 +95,20 @@
 
 		return [
 			{
-				label: `Open ${row.server}`,
+				label: t('web.cleanup.openInstance', { name: row.server }),
 				icon: 'server',
 				disabled: !known,
 				action: () => goto(`/instances/${row.server}`)
 			},
 			{
-				label: 'Edit its proxy registration',
+				label: t('web.proxy.editRegistration'),
 				icon: 'route',
 				disabled: !known,
 				action: () => goto(`/instances/${row.server}?tab=network`)
 			},
 			{ separator: true },
 			{
-				label: 'Copy address',
+				label: t('web.proxy.copyAddress'),
 				icon: 'copy',
 				disabled: !target,
 				action: () => navigator.clipboard?.writeText(target)
@@ -118,15 +119,15 @@
 	async function apply(): Promise<void> {
 		busy = true;
 
-		const note = Notify.loading('Writing velocity.toml…');
+		const note = Notify.loading(t('web.proxy.writing'));
 
 		try {
 			const res = await post('/proxy', { reload });
 
 			note.set({
 				level: 'success',
-				message: `velocity.toml ${res.changed ? 'updated' : 'already in sync'}`,
-				detail: res.reloaded ? 'Proxy reloaded.' : '',
+				message: t(res.changed ? 'web.proxy.updated' : 'web.proxy.alreadySync'),
+				detail: res.reloaded ? t('web.proxy.reloaded') : '',
 				closeable: true
 			});
 
@@ -134,7 +135,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Could not apply proxy configuration',
+				message: t('web.proxy.applyFailed'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -149,38 +150,36 @@
 	const one = $derived(rows.find((row: any) => selected.has(row.server)));
 </script>
 
-<svelte:head><title>Proxy routing | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.nav.proxyRouting')} | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Proxy routing"
-	description="velocity.toml [servers] and [forced-hosts] are generated from cluster.json — review and apply"
+	title={t('web.nav.proxyRouting')}
+	description={t('web.proxy.pageDescription')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="proxy" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
 		<label class="reload">
 			<Checkbox
 				checked={reload}
-				label="Run velocity reload after apply"
+				label={t('web.proxy.reloadAfter')}
 				onchange={(value) => (reload = value)}
 			/>
-			Run <code class="inline">velocity reload</code> after apply
+			{t('web.proxy.runWord')} <code class="inline">{t('web.proxy.velocityReload')}</code> {t('web.proxy.afterApply')}
 		</label>
-		<Btn variant="primary" loading={busy} disabled={!data} onclick={apply}>Sync velocity.toml</Btn>
+		<Btn variant="primary" loading={busy} disabled={!data} onclick={apply}>{t('web.proxy.sync')}</Btn>
 	{/snippet}
 </PageHeader>
 
 {#if data}
 	{#if data.changed}
-		<Flash kind="warning">
-			velocity.toml differs from cluster.json — review the changes below and apply.
-		</Flash>
+		<Flash kind="warning">{t('web.proxy.differs')}</Flash>
 	{:else}
-		<Flash kind="success">velocity.toml matches the instance registry.</Flash>
+		<Flash kind="success">{t('web.proxy.matches')}</Flash>
 	{/if}
 
 	<div class="cols">
-		<Panel title="Registered servers" flush>
+		<Panel title={t('web.proxy.registeredServers')} flush>
 			<ResourceTable
 				tableId="proxy-routes"
 				initialSearch={page.url.searchParams.get('q') ?? ''}
@@ -188,15 +187,15 @@
 				{rows}
 				getId={(row) => row.server}
 				searchValue={(row) => `${row.server} ${row.address} ${row.to ?? ''} ${row.state}`}
-				searchPlaceholder="Find a server"
+				searchPlaceholder={t('web.proxy.findServer')}
 				searchWidth="18rem"
 				selectable="single"
 				bind:selected
 				{rowActions}
 				rowLabel={(row) => row.server}
-				noun="route"
+				noun={t('web.proxy.noun')}
 				pageSize={15}
-				emptyTitle="No servers registered"
+				emptyTitle={t('web.proxy.emptyTitle')}
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'server'}
@@ -204,22 +203,22 @@
 					{:else if col === 'address'}
 						<span class="mono">{row.address || '–'}</span>
 					{:else if row.state === 'sync'}
-						<span class="ok">in sync</span>
+						<span class="ok">{t('web.proxy.inSync')}</span>
 					{:else if row.state === 'change'}
 						<span class="warn">→ {row.to}</span>
 					{:else if row.state === 'add'}
-						<span class="ok">will be added ({row.to})</span>
+						<span class="ok">{t('web.proxy.willBeAdded', { address: row.to ?? '' })}</span>
 					{:else}
-						<span class="err">not in registry (will be removed)</span>
+						<span class="err">{t('web.proxy.willBeRemoved')}</span>
 					{/if}
 				{/snippet}
 			</ResourceTable>
 			<div class="meta dim">
-				try order: {data.tryList.join(' → ') || '(empty)'}<br />
-				forced hosts: {forcedHostsLabel}
+				{t('web.proxy.tryOrder')} {data.tryList.join(' → ') || t('web.proxy.emptyList')}<br />
+				{t('web.proxy.forcedHosts')} {forcedHostsLabel}
 			</div>
 		</Panel>
-		<Panel title="Generated TOML sections" flush>
+		<Panel title={t('web.proxy.generatedToml')} flush>
 			<pre class="code mono">{data.preview}</pre>
 		</Panel>
 	</div>

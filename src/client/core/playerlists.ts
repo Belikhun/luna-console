@@ -1,5 +1,5 @@
 /**
- * Bridge mirror of core/playerlists — the access-list files live in the
+ * Bridge mirror of core/playerlists; the access-list files live in the
  * instance directory, so reads and writes run on the daemon that owns the
  * instance; the RPC layer routes each call there.
  */

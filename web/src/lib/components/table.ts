@@ -82,14 +82,14 @@ export function loadPrefs(tableId: string | undefined): TablePrefs {
 			return { ...DEFAULT_PREFS, ...parsed, widths: sanitizeWidths(parsed.widths) };
 		}
 	} catch {
-		// unreadable or corrupt entry — fall back to the defaults
+		// unreadable or corrupt entry; fall back to the defaults
 	}
 
 	return { ...DEFAULT_PREFS };
 }
 
 // stored widths feed the table's own width, so a corrupt entry would break the
-// layout rather than just look wrong — anything not a usable length is dropped
+// layout rather than just look wrong; anything not a usable length is dropped
 function sanitizeWidths(stored: unknown): Record<string, number> {
 	if (!stored || typeof stored !== 'object') {
 		return {};

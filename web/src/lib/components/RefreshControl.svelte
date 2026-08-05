@@ -4,9 +4,10 @@
 	import Icon from './Icon.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import { REFRESH_INTERVALS, formatLastUpdated, loadInterval, saveInterval } from './refresh';
+	import { t } from '$lib/i18n.svelte';
 
 	/**
-	 * Refresh control: "Last updated <timestamp>" beside a split button —
+	 * Refresh control: "Last updated <timestamp>" beside a split button -
 	 * the round segment refreshes now, the caret segment picks the auto-refresh
 	 * interval (Off, 5 seconds … 15 minutes). The chosen interval is remembered
 	 * per storage key, and the timer restarts whenever it changes.
@@ -37,7 +38,7 @@
 	let tick = $state(0);
 
 	const label = $derived(
-		REFRESH_INTERVALS.find((interval) => interval.ms === intervalMs)?.label ?? 'Off'
+		t(REFRESH_INTERVALS.find((interval) => interval.ms === intervalMs)?.label ?? 'web.refresh.off')
 	);
 
 	const stamp = $derived.by(() => {
@@ -85,14 +86,14 @@
 
 <div class="rc">
 	<span class="stamp">
-		<span class="lbl">Last updated</span>
+		<span class="lbl">{t('web.refresh.lastUpdated')}</span>
 		<span class="when">{stamp}</span>
 	</span>
 	<div class="split">
 		<button
 			class="seg now"
-			title="Refresh now"
-			aria-label="Refresh now"
+			title={t('web.refresh.refreshNow')}
+			aria-label={t('web.refresh.refreshNow')}
 			disabled={loading}
 			onclick={() => void onrefresh()}
 		>
@@ -102,8 +103,8 @@
 			bind:this={caretEl}
 			class="seg caret"
 			class:open={menuOpen}
-			title="Auto refresh: {label}"
-			aria-label="Auto refresh interval"
+			title={t('web.refresh.autoRefresh', { label })}
+			aria-label={t('web.refresh.autoRefreshInterval')}
 			onclick={toggleMenu}
 		>
 			<Icon name="caretDown" size="0.75rem" />
@@ -114,7 +115,7 @@
 		minWidth="11rem"
 		onclose={() => (menuOpen = false)}
 		items={REFRESH_INTERVALS.map((interval) => ({
-			label: interval.label,
+			label: t(interval.label),
 			icon: interval.ms === intervalMs ? 'check' : undefined,
 			action: () => pick(interval.ms)
 		}))}

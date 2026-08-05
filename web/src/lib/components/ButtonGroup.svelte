@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	/** vloom ScreenUtils.buttonGroup(): joins child buttons into one pill —
+	/** vloom ScreenUtils.buttonGroup(): joins child buttons into one pill -
 	 *  inner corners squared, thin separators between segments. */
 	let { children }: { children: Snippet } = $props();
 </script>
@@ -17,7 +17,7 @@
 		isolation: isolate;
 
 		// Squared inner corners, outer pill shape kept. The segments are Btn/SplitButton
-		// instances, so every selector has to reach through :global — and a segment is
+		// instances, so every selector has to reach through :global; and a segment is
 		// either the child itself or a .btn inside it.
 		> :global(*:not(:first-child)),
 		> :global(*:not(:first-child) .btn),

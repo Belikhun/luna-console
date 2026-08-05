@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, put } from '$lib/api';
@@ -123,7 +124,7 @@
 			drafts = (data.catalog as PortPool[]).map((pool) => toDraft(pool, builtinIds));
 			loaded = true;
 		} catch (err) {
-			Notify.error('Could not load the pool catalog', { detail: (err as Error).message });
+			Notify.error(t('web.poolsPage.loadFailed'), { detail: (err as Error).message });
 		}
 	}
 
@@ -193,7 +194,7 @@
 				pools: poolsPayload(drafts.map(toPool), defaults)
 			});
 
-			Notify.success('Port pools saved', {
+			Notify.success(t('web.poolsPage.saved'), {
 				detail: res.warnings?.length ? res.warnings.join(' · ') : '',
 				closeable: !!res.warnings?.length
 			});
@@ -208,10 +209,10 @@
 </script>
 
 <Wizard
-	title="Port pools"
-	windowTitle="Port pools"
-	description="Named ranges the cluster hands ports out of. The id is the whole mapping: provisioning takes the game port from “game”, and a plugin's port declaration names the pool its per-instance port comes from — so a pool defined here is available on every machine, and a provision can land anywhere. Machines that need different numbers override just the range."
-	submitLabel="Save pools"
+	title={t('web.poolsPage.portPools')}
+	windowTitle={t('web.poolsPage.portPools')}
+	description={t('web.poolsPage.namedRangesTheClusterHands')}
+	submitLabel={t('web.poolsPage.savePools')}
 	disabled={!loaded || invalid}
 	loading={saving}
 	onsubmit={save}
@@ -236,53 +237,53 @@
 						onclick={() => revert(index)}
 					/>
 				{:else}
-					<Btn variant="tool" icon="trash" title="Remove this pool" onclick={() => removePool(index)} />
+					<Btn variant="tool" icon="trash" title={t('web.poolsPage.removeThisPool')} onclick={() => removePool(index)} />
 				{/if}
 			{/snippet}
 
 			<div class="pool-grid">
 				<label class="field">
-					<span class="lbl">Id</span>
+					<span class="lbl">{t('web.poolsPage.id')}</span>
 					<input
 						class="input mono"
 						bind:value={draft.id}
-						placeholder="e.g. webhooks"
+						placeholder={t('web.poolsPage.eGWebhooks')}
 						disabled={draft.builtin}
-						title={draft.builtin ? 'consumers ask for this id — it cannot be renamed' : undefined}
+						title={draft.builtin ? 'consumers ask for this id; it cannot be renamed' : undefined}
 					/>
 				</label>
 				<label class="field">
-					<span class="lbl">Label</span>
-					<input class="input" bind:value={draft.label} placeholder="What the pool is for" />
+					<span class="lbl">{t('web.poolsPage.label')}</span>
+					<input class="input" bind:value={draft.label} placeholder={t('web.poolsPage.whatThePoolIsFor')} />
 				</label>
 				<div class="field">
-					<span class="lbl">Protocol</span>
+					<span class="lbl">{t('web.poolsPage.protocol')}</span>
 					<Select
 						bind:value={draft.protocol}
 						width="100%"
 						options={[
-							{ value: 'tcp', label: 'tcp' },
-							{ value: 'udp', label: 'udp' },
-							{ value: 'both', label: 'both' }
+							{ value: 'tcp', label: t('web.poolsPage.tcp') },
+							{ value: 'udp', label: t('web.poolsPage.udp') },
+							{ value: 'both', label: t('web.poolsPage.both') }
 						]}
 					/>
 				</div>
 				<label class="field">
-					<span class="lbl">From</span>
+					<span class="lbl">{t('web.poolsPage.from')}</span>
 					<input class="input mono" bind:value={draft.from} placeholder="32560" />
 				</label>
 				<label class="field">
-					<span class="lbl">To</span>
+					<span class="lbl">{t('web.poolsPage.to')}</span>
 					<input class="input mono" bind:value={draft.to} placeholder="32599" />
 				</label>
 				<label class="field">
-					<span class="lbl">Held back</span>
-					<input class="input mono" bind:value={draft.reserved} placeholder="none" />
+					<span class="lbl">{t('web.poolsPage.heldBack')}</span>
+					<input class="input mono" bind:value={draft.reserved} placeholder={t('web.poolsPage.none')} />
 				</label>
 			</div>
 
 			<div class="overrides">
-				<span class="oh">Per-machine ranges — blank inherits {draft.from || '…'}–{draft.to || '…'}</span>
+				<span class="oh">Per-machine ranges; blank inherits {draft.from || '…'}-{draft.to || '…'}</span>
 				{#each machines as entry (entry.machine)}
 					{@const override = draft.overrides[entry.machine]!}
 					<div class="orow">
@@ -302,7 +303,7 @@
 	{/each}
 
 	<div>
-		<Btn icon="plus" onclick={addPool}>Add a pool</Btn>
+		<Btn icon="plus" onclick={addPool}>{t('web.poolsPage.addAPool')}</Btn>
 	</div>
 </Wizard>
 

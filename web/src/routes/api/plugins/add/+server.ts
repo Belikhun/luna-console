@@ -8,7 +8,7 @@ import { errorMessage } from '$lib/server/http';
 import type { ProviderId } from '$core/types';
 
 /**
- * POST { slug, family, targets, provider?, id? } — `id` is the provider's
+ * POST { slug, family, targets, provider?, id? }; `id` is the provider's
  * project id when the picker knows it (some providers cannot look a project
  * up by slug alone).
  */

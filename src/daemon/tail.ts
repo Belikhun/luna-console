@@ -1,5 +1,5 @@
 /**
- * Follow one log file line by line — the daemon's half of a live console.
+ * Follow one log file line by line; the daemon's half of a live console.
  * `tail -F` rather than `-f`: the server rotates latest.log, and tail has to
  * follow the new file by name instead of holding the old descriptor open.
  * Used directly by the local SSE console and, on a follower, to feed console

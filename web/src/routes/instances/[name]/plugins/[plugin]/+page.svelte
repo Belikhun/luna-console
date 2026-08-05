@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -16,7 +17,7 @@
 
 	/**
 	 * One plugin on one instance: what build it runs, how it got here, whether
-	 * the server actually loaded it — and every log line of the current boot
+	 * the server actually loaded it; and every log line of the current boot
 	 * session the plugin wrote, with the warn/error tallies.
 	 */
 
@@ -49,11 +50,11 @@
 
 	/** Addon phases, plus the override that explains an absent one. */
 	const STATE_BADGE: Record<string, { state: string; label: string }> = {
-		running: { state: 'running', label: 'Running' },
-		loading: { state: 'loading', label: 'Loading' },
-		errored: { state: 'failed', label: 'Errored' },
-		unknown: { state: 'unknown', label: 'Unknown' },
-		disabled: { state: 'stopped', label: 'Disabled' }
+		running: { state: 'running', label: t('web.instancePlugin.running') },
+		loading: { state: 'loading', label: t('web.instancePlugin.loading') },
+		errored: { state: 'failed', label: t('web.instancePlugin.errored') },
+		unknown: { state: 'unknown', label: t('web.instancePlugin.unknown') },
+		disabled: { state: 'stopped', label: t('web.instancePlugin.disabled') }
 	};
 
 	const badge = $derived.by(() => {
@@ -79,7 +80,7 @@
 				level: 'success',
 				message: `${plugin}: ${label.toLowerCase()} done`,
 				detail: result.removed?.length
-					? `Removed ${result.removed.join(', ')} — a running server keeps it loaded until restart.`
+					? `Removed ${result.removed.join(', ')}; a running server keeps it loaded until restart.`
 					: result.deployed
 						? `${result.deployed} deploy change(s).`
 						: '',
@@ -107,16 +108,16 @@
 		const row = data.row;
 
 		return [
-			{ id: 'state', label: 'Runtime state' },
-			{ label: 'Display name', value: row.displayName },
-			{ label: 'Family', value: row.family },
-			{ label: 'Version', value: row.version ?? '?', style: 'mono' },
+			{ id: 'state', label: t('web.instancePlugin.runtimeState') },
+			{ label: t('web.instancePlugin.displayName'), value: row.displayName },
+			{ label: t('web.instancePlugin.family'), value: row.family },
+			{ label: t('web.instancePlugin.version'), value: row.version ?? '?', style: 'mono' },
 			{
-				label: 'Assignment',
+				label: t('web.instancePlugin.assignment'),
 				value: row.pinned ? 'pinned' : row.variant ? 'variant (auto)' : 'primary'
 			},
 			{
-				label: 'From',
+				label: t('web.instancePlugin.from'),
 				value:
 					row.origin === 'group'
 						? `group: ${row.groups.join(', ')}`
@@ -124,12 +125,12 @@
 							? 'manually added'
 							: 'explicit target'
 			},
-			{ id: 'source', label: 'Source' },
-			{ label: 'Update channel', value: data.channel },
-			{ label: 'Jar file', value: row.file, copyable: true, style: 'mono' },
-			{ label: 'Log names', value: data.aliases.join(', ') },
-			{ label: 'Authors', value: data.meta?.authors?.join(', ') ?? null },
-			{ label: 'Description', value: data.meta?.description ?? null, colSpan: 2 }
+			{ id: 'source', label: t('web.instancePlugin.source') },
+			{ label: t('web.instancePlugin.updateChannel'), value: data.channel },
+			{ label: t('web.instancePlugin.jarFile'), value: row.file, copyable: true, style: 'mono' },
+			{ label: t('web.instancePlugin.logNames'), value: data.aliases.join(', ') },
+			{ label: t('web.instancePlugin.authors'), value: data.meta?.authors?.join(', ') ?? null },
+			{ label: t('web.instancePlugin.description'), value: data.meta?.description ?? null, colSpan: 2 }
 		];
 	});
 
@@ -152,12 +153,12 @@
 {#if data}
 	<PageHeader title={plugin ?? ''} info>
 		{#snippet extra()}
-			<span class="crumb dim">on <a href="/instances/{instance}?tab=plugins">{instance}</a></span>
+			<span class="crumb dim">{t('web.instancePlugin.on')} <a href="/instances/{instance}?tab=plugins">{instance}</a></span>
 			<StatusBadge state={badge.state} label={badge.label} />
 		{/snippet}
 		{#snippet actions()}
 			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="instance-plugin" />
-			<Btn icon="circleInfo" onclick={() => goto(`/plugins/${plugin}`)}>Plugin details</Btn>
+			<Btn icon="circleInfo" onclick={() => goto(`/plugins/${plugin}`)}>{t('web.instancePlugin.pluginDetails')}</Btn>
 			{#if data.row.disabled}
 				<Btn
 					variant="primary"
@@ -178,7 +179,7 @@
 		{/snippet}
 	</PageHeader>
 
-	<Panel title="Plugin on this instance">
+	<Panel title={t('web.instancePlugin.pluginOnThisInstance')}>
 		<InfoGrid cells={infoCells}>
 			{#snippet custom(cell)}
 				{#if cell.id === 'state'}
@@ -193,28 +194,27 @@
 	<div class="gap"></div>
 
 	<Panel
-		title="Log activity this session"
+		title={t('web.instancePlugin.logActivityThisSession')}
 		count={data.log.lines.length}
-		description="Every line of the current boot session attributed to this plugin's log names"
+		description={t('web.instancePlugin.everyLineOfTheCurrent')}
 		flush
 	>
 		{#snippet actions()}
 			<Alerts warnings={data.log.warnings} errors={data.log.errors} />
-			<Btn icon="code" onclick={() => goto(`/instances/${instance}/console`)}>Live console</Btn>
+			<Btn icon="code" onclick={() => goto(`/instances/${instance}/console`)}>{t('web.instancePlugin.liveConsole')}</Btn>
 		{/snippet}
 		{#if data.log.lines.length}
 			<pre class="logview mono">{#each data.log.lines as line, index (index)}<span
 					class="line {lineSeverity(line)}">{line}
 </span>{/each}</pre>
 		{:else}
-			<p class="dim empty">Nothing logged by this plugin in the current session.</p>
+			<p class="dim empty">{t('web.instancePlugin.nothingLoggedByThis')}</p>
 		{/if}
 	</Panel>
 
 	{#if !data.sessionComplete}
 		<p class="dim note">
-			The boot lines of this session have rotated out of the log window — early activity may be
-			missing from the list above.
+			{t('web.instancePlugin.theBootLinesOf')}
 		</p>
 	{/if}
 {/if}

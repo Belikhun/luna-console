@@ -1,5 +1,5 @@
 /**
- * The flash-card wrapper for long-running jobs — the console's one way to run
+ * The flash-card wrapper for long-running jobs; the console's one way to run
  * an operation behind a live notification card. It raises a loading card,
  * starts the job, mirrors the ProgressReporter tree into the card (percent
  * bar + the deepest step still in flight as the "current task" line), and
@@ -19,7 +19,7 @@ import {
 } from '$lib/notifications.svelte';
 
 /**
- * Job ids this browser has already raised a card for — what stops a page that
+ * Job ids this browser has already raised a card for; what stops a page that
  * discovers in-flight work (an instance detail opened mid-start) from raising
  * a second card next to the one the initiating flow is still updating.
  */
@@ -34,7 +34,7 @@ const flashListeners = new Set<JobFlashListener>();
 
 /**
  * Subscribe to every flash-tracked job's lifecycle. This is how a screen stays
- * current for work it did not start itself — a create finishing after the
+ * current for work it did not start itself; a create finishing after the
  * launch page navigated away, a "Start now" clicked on a card. Returns the
  * unsubscribe function.
  */
@@ -55,9 +55,9 @@ function emitJobFlash(event: JobFlashEvent, job: JobView): void {
 export interface JobFlashConfig {
 	/** headline while the job runs, e.g. "Starting lobby…" */
 	title: string;
-	/** kick the job off — a route answering `{ job }` */
+	/** kick the job off; a route answering `{ job }` */
 	start: () => Promise<{ job: JobView }>;
-	/** called once the job is accepted — the place to navigate away */
+	/** called once the job is accepted; the place to navigate away */
 	started?: (job: JobView) => void;
 	/** card content once the job finishes (message, detail, action buttons) */
 	success?: (result: unknown) => NotificationInit;
@@ -65,13 +65,13 @@ export interface JobFlashConfig {
 	failure?: (error: string) => NotificationInit;
 }
 
-/** One step as the card's task line reads it: "Name — message". */
+/** One step as the card's task line reads it: "Name; message". */
 function describeStep(node: ProgressSnapshot): string {
-	return node.message ? `${node.name} — ${node.message}` : node.name;
+	return node.message ? `${node.name}; ${node.message}` : node.name;
 }
 
 /**
- * The deepest step still in flight, as "Name — message". Work runs top to
+ * The deepest step still in flight, as "Name; message". Work runs top to
  * bottom, so descending into the first unfinished child at every level lands
  * on what the operation is doing right now.
  */
@@ -98,7 +98,7 @@ export function activeStep(root: ProgressSnapshot | null | undefined): string {
 		return label;
 	}
 
-	// every step is done but the job has not settled yet — a tracked start sits
+	// every step is done but the job has not settled yet; a tracked start sits
 	// here while it confirms the server answers pings. The card must not go
 	// blank at 100%, so the last step stays on screen until success replaces it.
 	const last = root.children.at(-1);
@@ -109,7 +109,7 @@ export function activeStep(root: ProgressSnapshot | null | undefined): string {
 /**
  * A job's tasks are the root's direct children (a create's "Server files",
  * "Plugins", …); each becomes one coloured segment of the card's bar. A tree
- * with no children — a single-step job — is its own lone segment.
+ * with no children; a single-step job; is its own lone segment.
  */
 function taskSegments(root: ProgressSnapshot): NotificationSegment[] {
 	const tasks = root.children.length > 0 ? root.children : [root];
@@ -189,7 +189,7 @@ async function followIntoCard(
 
 /**
  * Run a job behind a live flash card. Resolves with the settled job, or
- * undefined when it failed — the failure is already on the card, so callers
+ * undefined when it failed; the failure is already on the card, so callers
  * only branch, never re-report.
  */
 export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefined> {
@@ -224,7 +224,7 @@ export async function jobFlash(config: JobFlashConfig): Promise<JobView | undefi
 }
 
 /**
- * Raise a card for a job that is already running — how a page shows work it
+ * Raise a card for a job that is already running; how a page shows work it
  * discovers rather than starts. A job this browser has flashed before is
  * skipped, so revisiting a page never duplicates a live card.
  */

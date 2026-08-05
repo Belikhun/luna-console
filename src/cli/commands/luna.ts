@@ -7,24 +7,25 @@ import { ProgressReporter } from "../../client/core/progress";
 import type { LunaState, LunaStatusRow } from "../../client/core/luna";
 import type { LunaSourceConfig } from "../../client/core/types";
 import { runDeploy } from "./plugins";
+import { t } from "../../shared/i18n";
 
 /** Coloured label for how far a module has travelled from source to instances. */
 function stateBadge(state: LunaState): string {
 	switch (state) {
 		case "in-sync":
-			return `${Sym.ok} ${pc.green("in sync")}`;
+			return `${Sym.ok} ${pc.green(t("cli.luna.stateInSync"))}`;
 
 		case "needs-deploy":
-			return `${Sym.warn} ${pc.yellow("needs deploy")}`;
+			return `${Sym.warn} ${pc.yellow(t("cli.luna.stateNeedsDeploy"))}`;
 
 		case "stale-pool":
-			return `${Sym.warn} ${pc.yellow("stale pool")}`;
+			return `${Sym.warn} ${pc.yellow(t("cli.luna.stateStalePool"))}`;
 
 		case "unregistered":
-			return `${Sym.off} ${pc.dim("unregistered")}`;
+			return `${Sym.off} ${pc.dim(t("cli.luna.stateUnregistered"))}`;
 
 		default:
-			return `${Sym.off} ${pc.dim("not built")}`;
+			return `${Sym.off} ${pc.dim(t("cli.luna.stateNotBuilt"))}`;
 	}
 }
 
@@ -34,8 +35,8 @@ function age(builtAt: Date | string | undefined): string {
 		return pc.dim("—");
 	}
 
-	// dates cross the daemon socket as ISO strings — normalize before math
-	return pc.dim(`${fmtDuration(Date.now() - new Date(builtAt).getTime())} ago`);
+	// dates cross the daemon socket as ISO strings; normalize before math
+	return pc.dim(t("cli.luna.ago", { duration: fmtDuration(Date.now() - new Date(builtAt).getTime()) }));
 }
 
 /** Render the status table plus its one-line summary. */
@@ -46,13 +47,21 @@ function printStatus(rows: LunaStatusRow[], stamp: luna.LunaBuildStamp, dir: str
 		row.platform === "velocity" ? pc.cyan(row.platform) : row.platform,
 		row.pooledVersion ?? pc.dim("—"),
 		age(row.builtAt),
-		row.targets.length ? row.targets.join(",") : pc.red("(none)"),
+		row.targets.length ? row.targets.join(",") : pc.red(`(${t("cli.common.none")})`),
 		row.drifted.length ? pc.yellow(row.drifted.join(",")) : pc.dim("—"),
 	]);
 
 	console.log();
 	printTable(table, {
-		head: ["state", "module", "platform", "pooled version", "built", "targets", "drifted"],
+		head: [
+			t("cli.head.state"),
+			t("cli.head.module"),
+			t("cli.head.platform"),
+			t("cli.head.pooledVersion"),
+			t("cli.head.built"),
+			t("cli.head.targets"),
+			t("cli.head.drifted"),
+		],
 	});
 
 	const counts = new Map<LunaState, number>();
@@ -68,9 +77,9 @@ function printStatus(rows: LunaStatusRow[], stamp: luna.LunaBuildStamp, dir: str
 
 	console.log(
 		pc.dim(
-			`\n  ${rows.length} modules — ${summary}` +
-				`\n  source ${dir} @ ${luna.stampVersion(stamp)}` +
-				(stamp.dirty ? pc.yellow(" (uncommitted changes)") : "") +
+			`\n  ${t("cli.luna.modulesSummary", { count: rows.length, summary })}` +
+				`\n  ${t("cli.luna.sourceLine", { dir, version: luna.stampVersion(stamp) })}` +
+				(stamp.dirty ? pc.yellow(` ${t("cli.luna.dirtyTag")}`) : "") +
 				"\n",
 		),
 	);
@@ -78,13 +87,13 @@ function printStatus(rows: LunaStatusRow[], stamp: luna.LunaBuildStamp, dir: str
 
 command({
 	path: ["luna", "status"],
-	desc: "Compare built luna jars against the pool and every instance",
+	desc: t("cli.luna.status.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
 		const source = luna.lunaSource(cfg);
-		const spin = new Spinner().start("hashing built, pooled and deployed jars...");
+		const spin = new Spinner().start(t("cli.luna.status.hashing"));
 
 		const rows = await luna.status(cfg, lock, source);
 		const stamp = await luna.buildStamp(source);
@@ -94,22 +103,23 @@ command({
 		printStatus(rows, stamp, source.dir);
 
 		for (const file of stray) {
-			warn(`stray artifact in output/: ${file} (no gradle module produces it)`);
+			warn(t("cli.luna.status.stray", { file }));
 		}
 	},
 });
 
 /**
- * Run the gradle build, showing the task it is on. Gradle's own progress lines are
- * kept out of the spinner label — only `> Task :x:y` lines advance it — and the
- * tail of the log is printed on failure, since that is where the compiler error is.
+ * Run the gradle build, showing the task it is on. Gradle's own progress lines
+ * are kept out of the spinner label (only `> Task :x:y` lines advance it), and
+ * the tail of the log is printed on failure, since that is where the compiler
+ * error is.
  */
 async function runBuild(
 	source: Required<LunaSourceConfig>,
 	modules: string[] | undefined,
 ): Promise<luna.BuildResult> {
-	const label = modules?.length ? modules.join(", ") : "all modules";
-	const spin = new Spinner().start(`building ${label}...`);
+	const label = modules?.length ? modules.join(", ") : t("cli.luna.allModules");
+	const spin = new Spinner().start(t("cli.luna.building", { label }));
 
 	// the build runs in the daemon; gradle's output lines arrive as progress
 	// messages, and only `> Task :x:y` lines advance the spinner label
@@ -119,7 +129,7 @@ async function runBuild(
 		const task = /^> Task (\S+)/.exec(update.message ?? "");
 
 		if (task) {
-			spin.update(`building ${label} ${pc.dim(task[1]!)}`);
+			spin.update(`${t("cli.luna.building", { label })} ${pc.dim(task[1]!)}`);
 		}
 	});
 
@@ -132,10 +142,10 @@ async function runBuild(
 			console.error(pc.dim(line));
 		}
 
-		throw new Bail(`gradle build failed (exit ${result.exitCode})`);
+		throw new Bail(t("cli.luna.buildFailed", { code: result.exitCode ?? -1 }));
 	}
 
-	ok(`build succeeded in ${fmtDuration(result.tookMs)}`);
+	ok(t("cli.luna.buildSucceeded", { duration: fmtDuration(result.tookMs) }));
 
 	return result;
 }
@@ -147,7 +157,7 @@ async function runSync(
 	modules: string[] | undefined,
 ): Promise<luna.SyncEntry[]> {
 	const lock = await loadLock();
-	const spin = new Spinner().start("pooling artifacts...");
+	const spin = new Spinner().start(t("cli.luna.pooling"));
 
 	const all = await luna.artifacts(source);
 	const built = modules?.length
@@ -160,15 +170,17 @@ async function runSync(
 	spin.stop();
 
 	if (built.length === 0) {
-		warn("no built artifacts found — run luna luna build first");
+		warn(t("cli.luna.noArtifacts"));
 
 		return results;
 	}
 
 	for (const entry of results.filter((entry) => entry.action === "registered")) {
 		info(
-			`registered ${pc.bold(entry.name)} in the lockfile — ` +
-				`assign targets with ${pc.cyan(`luna plugins apply ${entry.name} --to <targets>`)}`,
+			t("cli.luna.registered", {
+				name: pc.bold(entry.name),
+				command: pc.cyan(`luna plugins apply ${entry.name} --to <targets>`),
+			}),
 		);
 	}
 
@@ -179,14 +191,14 @@ async function runSync(
 	}
 
 	if (!moved.length) {
-		ok("pool already matches the built jars");
+		ok(t("cli.luna.poolMatches"));
 	}
 
 	const unassigned = results.filter((entry) => entry.unassigned);
 
 	if (unassigned.length) {
 		warn(
-			`no targets set (will not deploy): ${unassigned.map((entry) => entry.name).join(", ")}`,
+			t("cli.luna.noTargets", { names: unassigned.map((entry) => entry.name).join(", ") }),
 		);
 	}
 
@@ -195,9 +207,9 @@ async function runSync(
 
 command({
 	path: ["luna", "build"],
-	desc: "Build the luna-plugins workspace (all modules, or the ones named)",
+	desc: t("cli.luna.build.desc"),
 	args: [{ name: "module", variadic: true, complete: lunaModules }],
-	opts: [{ flag: "--sync", desc: "also copy the built jars into the pool" }],
+	opts: [{ flag: "--sync", desc: t("cli.luna.build.optSync") }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
@@ -207,23 +219,25 @@ command({
 		const artifacts = await luna.artifacts(source);
 		const total = artifacts.reduce((sum, artifact) => sum + artifact.sizeBytes, 0);
 
-		info(`${artifacts.length} deployable jars in output/ ${pc.dim(`(${fmtBytes(total)})`)}`);
+		info(
+			`${t("cli.luna.build.jarCount", { count: artifacts.length })} ${pc.dim(`(${fmtBytes(total)})`)}`,
+		);
 
 		if (result.stamp.dirty) {
-			warn(`source tree has uncommitted changes — jars stamped ${luna.stampVersion(result.stamp)}`);
+			warn(t("cli.luna.build.dirty", { version: luna.stampVersion(result.stamp) }));
 		}
 
 		if (opts.sync) {
 			await runSync(source, result.stamp, args);
 		} else {
-			info(`pool the result with: ${pc.cyan("luna luna deploy")}`);
+			info(t("cli.luna.build.poolHint", { command: pc.cyan("luna luna deploy") }));
 		}
 	},
 });
 
 command({
 	path: ["luna", "sync"],
-	desc: "Copy already-built luna jars into the pool and update the lockfile",
+	desc: t("cli.luna.sync.desc"),
 	args: [{ name: "module", variadic: true, complete: lunaModules }],
 
 	handler: async (args) => {
@@ -232,17 +246,17 @@ command({
 
 		await runSync(source, await luna.buildStamp(source), args);
 
-		info(`push to instances with: ${pc.cyan("luna plugins deploy")}`);
+		info(t("cli.luna.sync.pushHint", { command: pc.cyan("luna plugins deploy") }));
 	},
 });
 
 command({
 	path: ["luna", "deploy"],
-	desc: "Build luna plugins, pool them, and push to their target instances",
+	desc: t("cli.luna.deploy.desc"),
 	args: [{ name: "module", variadic: true, complete: lunaModules }],
 	opts: [
-		{ flag: "--no-build", desc: "deploy what is already in output/ without rebuilding" },
-		{ flag: "--restart", desc: "restart the instances that received a new jar" },
+		{ flag: "--no-build", desc: t("cli.luna.deploy.optNoBuild") },
+		{ flag: "--restart", desc: t("cli.luna.deploy.optRestart") },
 	],
 
 	handler: async (args, opts) => {
@@ -258,7 +272,7 @@ command({
 		const changed = synced.filter((entry) => entry.action !== "unchanged" && !entry.unassigned);
 
 		if (!changed.length) {
-			ok("nothing to deploy — instances already run these jars");
+			ok(t("cli.luna.deploy.nothing"));
 
 			return;
 		}
@@ -292,23 +306,23 @@ command({
 
 		for (const name of order) {
 			if (statuses.find((status) => status.name === name)?.state === "stopped") {
-				info(`${name} is stopped — leaving it down`);
+				info(t("cli.luna.deploy.leftDown", { name }));
 
 				continue;
 			}
 
-			const spin = new Spinner().start(`restarting ${name}...`);
+			const spin = new Spinner().start(t("cli.luna.deploy.restarting", { name }));
 			const stopped = await instances.stopInstance(cfg, name);
 
 			if (stopped.outcome === "forced") {
 				spin.stop();
-				fail(`${name} did not stop gracefully — forced`);
+				fail(t("cli.luna.deploy.forced", { name }));
 			} else {
 				spin.stop();
 			}
 
 			await instances.startInstance(cfg, name);
-			ok(`${pc.bold(name)} restarted`);
+			ok(t("cli.luna.deploy.restarted", { name: pc.bold(name) }));
 		}
 	},
 });

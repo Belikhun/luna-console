@@ -127,7 +127,7 @@ export async function DELETE({ url }) {
 
 	await saveLock(lock);
 
-	// the group's resource pack rules named its instances — take them back out
+	// the group's resource pack rules named its instances; take them back out
 	const packsLock = await loadPacksLock();
 
 	await applyAddonGroups(cfg, packsLock, lock.groups);

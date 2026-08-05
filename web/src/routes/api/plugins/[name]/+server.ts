@@ -130,7 +130,7 @@ export async function PATCH({ params, request }) {
 	return json({ ok: true });
 }
 
-/** DELETE ?from=a,b — remove from targets (or everywhere) */
+/** DELETE ?from=a,b; remove from targets (or everywhere) */
 export async function DELETE({ params, url }) {
 	const cfg = await loadCluster();
 	const lock = await loadLock();

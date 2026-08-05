@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import Modal from './Modal.svelte';
 	import Btn from './Btn.svelte';
 	import MultiSelect from './MultiSelect.svelte';
@@ -14,7 +15,7 @@
 		description,
 		selectLabel,
 		options,
-		confirmLabel = 'Add',
+		confirmLabel = t('web.common.add'),
 		busy = false,
 		onconfirm
 	}: {
@@ -55,7 +56,7 @@
 		options={options.map((option) => ({ value: option, label: option }))}
 	/>
 	{#snippet footer()}
-		<Btn onclick={() => (open = false)}>Cancel</Btn>
+		<Btn onclick={() => (open = false)}>{t('web.common.cancel')}</Btn>
 		<Btn variant="primary" loading={busy} disabled={!selected.length} onclick={confirm}>
 			{confirmLabel}{selected.length ? ` (${selected.length})` : ''}
 		</Btn>

@@ -1,5 +1,5 @@
 /**
- * `luna configs …` — the terminal half of the config-file editor. Browsing,
+ * `luna configs …` is the terminal half of the config-file editor. Browsing,
  * reading and rendering are all here; the editing itself is the console's job
  * (monaco), because a whole-file template is not something to paste at a prompt.
  */
@@ -23,13 +23,14 @@ import {
 import { listDaemons } from "../../client/daemon";
 import { machineKeyFor } from "../../shared/machines";
 import type { ClusterConfig } from "../../core/types";
+import { t } from "../../shared/i18n";
 
 /** Load the registry and fail loudly on an instance nobody manages. */
 async function requireInstance(name: string): Promise<ClusterConfig> {
 	const cfg = await loadCluster();
 
 	if (!managedInstances(cfg)[name]) {
-		throw new UsageError(`unknown instance: ${name}`);
+		throw new UsageError(t("cli.env.unknownInstance", { name }));
 	}
 
 	return cfg;
@@ -50,9 +51,9 @@ function fmtSize(bytes: number): string {
 
 command({
 	path: ["configs"],
-	desc: "Managed config files — templates luna renders into instances on every start",
+	desc: t("cli.configs.list.desc"),
 	opts: [
-		{ flag: "--instance", desc: "only this instance's files", value: true, complete: instanceNames },
+		{ flag: "--instance", desc: t("cli.configs.list.optInstance"), value: true, complete: instanceNames },
 	],
 
 	handler: async (_args, opts) => {
@@ -66,43 +67,50 @@ command({
 		const rows = await managedFileReport(cfg, instance);
 
 		if (!rows.length) {
-			info("no managed config files — create one from the console's file browser");
+			info(t("cli.configs.list.empty"));
 
 			return;
 		}
 
 		const table = rows.map((row) => {
 			const state = row.missing.length
-				? pc.red("missing vars")
+				? pc.red(t("cli.configs.stateMissingVars"))
 				: row.drifted
-					? pc.yellow("drifted")
+					? pc.yellow(t("cli.configs.stateDrifted"))
 					: row.absent
-						? pc.dim("not rendered")
-						: pc.green("in sync");
+						? pc.dim(t("cli.configs.stateNotRendered"))
+						: pc.green(t("cli.configs.stateInSync"));
 
 			return [
 				pc.bold(row.instance),
 				row.path,
-				row.placeholders.length ? row.placeholders.join(", ") : pc.dim("none"),
+				row.placeholders.length ? row.placeholders.join(", ") : pc.dim(t("cli.common.none")),
 				state,
 			];
 		});
 
 		console.log();
-		printTable(table, { head: ["instance", "file", "placeholders", "state"] });
+		printTable(table, {
+			head: [
+				t("cli.head.instance"),
+				t("cli.head.file"),
+				t("cli.head.placeholders"),
+				t("cli.head.state"),
+			],
+		});
 		console.log();
 
 		const drifted = rows.filter((row) => row.drifted).length;
 
 		if (drifted) {
-			warn(`${drifted} file(s) changed outside luna — re-adopt with: luna configs readopt <instance> <file>`);
+			warn(t("cli.configs.list.driftWarning", { count: drifted }));
 		}
 	},
 });
 
 command({
 	path: ["configs", "ls"],
-	desc: "List one level of an instance's directory",
+	desc: t("cli.configs.ls.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "path" },
@@ -116,10 +124,10 @@ command({
 		const rows = listing.entries.map((entry) => {
 			const name = entry.kind === "dir" ? pc.blue(`${entry.name}/`) : entry.name;
 			const flags = [
-				entry.managed ? pc.cyan("managed") : "",
-				entry.drifted ? pc.yellow("drifted") : "",
-				entry.kind === "file" && !entry.editable ? pc.dim("not editable") : "",
-				entry.noise ? pc.dim("runtime") : "",
+				entry.managed ? pc.cyan(t("cli.configs.flagManaged")) : "",
+				entry.drifted ? pc.yellow(t("cli.configs.stateDrifted")) : "",
+				entry.kind === "file" && !entry.editable ? pc.dim(t("cli.configs.flagNotEditable")) : "",
+				entry.noise ? pc.dim(t("cli.configs.flagRuntime")) : "",
 			].filter(Boolean);
 
 			return [
@@ -131,19 +139,19 @@ command({
 
 		console.log();
 		info(`${pc.bold(instance)}${listing.path ? `/${listing.path}` : ""}`);
-		printTable(rows, { head: ["name", "size", ""] });
+		printTable(rows, { head: [t("cli.head.name"), t("cli.head.size"), ""] });
 		console.log();
 	},
 });
 
 command({
 	path: ["configs", "show"],
-	desc: "Print a config file (the template, when it is managed)",
+	desc: t("cli.configs.show.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "file", required: true },
 	],
-	opts: [{ flag: "--rendered", desc: "print what is on disk rather than the template" }],
+	opts: [{ flag: "--rendered", desc: t("cli.configs.show.optRendered") }],
 
 	handler: async (args, opts) => {
 		const instance = args[0]!;
@@ -154,20 +162,22 @@ command({
 
 		if (file.managed) {
 			info(
-				`${pc.bold(file.path)} ${pc.cyan("managed")}` +
-					(opts.rendered ? pc.dim(" — on-disk render") : pc.dim(" — template")),
+				`${pc.bold(file.path)} ${pc.cyan(t("cli.configs.flagManaged"))}` +
+					(opts.rendered
+						? pc.dim(` · ${t("cli.configs.show.onDiskRender")}`)
+						: pc.dim(` · ${t("cli.configs.show.template")}`)),
 			);
 
 			if (file.placeholders.length) {
-				info(`placeholders: ${file.placeholders.join(", ")}`);
+				info(t("cli.configs.show.placeholders", { names: file.placeholders.join(", ") }));
 			}
 
 			if (file.missing.length) {
-				warn(`undefined: ${file.missing.join(", ")} — rendering is refused until they exist`);
+				warn(t("cli.configs.show.missing", { names: file.missing.join(", ") }));
 			}
 
 			if (file.drifted) {
-				warn("the file on disk was changed outside luna — the next start overwrites it");
+				warn(t("cli.configs.show.driftNote"));
 			}
 		}
 
@@ -178,12 +188,12 @@ command({
 
 command({
 	path: ["configs", "manage"],
-	desc: "Take a config file under management, adopting its current text as the template",
+	desc: t("cli.configs.manage.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "file", required: true },
 	],
-	opts: [{ flag: "--description", desc: "what this file is for", value: true }],
+	opts: [{ flag: "--description", desc: t("cli.configs.manage.optDescription"), value: true }],
 
 	handler: async (args, opts) => {
 		const instance = args[0]!;
@@ -193,14 +203,14 @@ command({
 			description: opts.description as string | undefined,
 		});
 
-		ok(`${pc.bold(args[1]!)} is now managed on ${pc.bold(instance)}`);
-		info("luna renders it from the template on every start — edit it in the console");
+		ok(t("cli.configs.manage.done", { file: pc.bold(args[1]!), instance: pc.bold(instance) }));
+		info(t("cli.configs.manage.note"));
 	},
 });
 
 command({
 	path: ["configs", "unmanage"],
-	desc: "Stop managing a config file, leaving it on disk as it is",
+	desc: t("cli.configs.unmanage.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "file", required: true },
@@ -211,16 +221,16 @@ command({
 		const cfg = await requireInstance(instance);
 
 		if (!(await unmanageFile(cfg, instance, args[1]!))) {
-			throw new Bail(`${args[1]} is not managed on ${instance}`);
+			throw new Bail(t("cli.configs.unmanage.notManaged", { file: args[1] ?? "", instance }));
 		}
 
-		ok(`${pc.bold(args[1]!)} released — the last render stays on disk`);
+		ok(t("cli.configs.unmanage.done", { file: pc.bold(args[1]!) }));
 	},
 });
 
 command({
 	path: ["configs", "placeholder"],
-	desc: "Replace a literal value in a config file with an ${ENV_VAR}",
+	desc: t("cli.configs.placeholder.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "file", required: true },
@@ -228,12 +238,12 @@ command({
 		{ name: "value", required: true, variadic: true },
 	],
 	opts: [
-		{ flag: "--all", desc: "replace every occurrence, not just the first" },
-		{ flag: "--instance-scope", desc: "define the variable for this instance only" },
-		{ flag: "--machine", desc: "define the variable for one machine only", value: true, complete: machineNames },
-		{ flag: "--secret", desc: "mask the value in every UI" },
-		{ flag: "--description", desc: "what the variable is for", value: true },
-		{ flag: "--force", desc: "accept a value or file change that would otherwise be refused" },
+		{ flag: "--all", desc: t("cli.configs.placeholder.optAll") },
+		{ flag: "--instance-scope", desc: t("cli.configs.placeholder.optInstanceScope") },
+		{ flag: "--machine", desc: t("cli.configs.placeholder.optMachine"), value: true, complete: machineNames },
+		{ flag: "--secret", desc: t("cli.env.set.optSecret") },
+		{ flag: "--description", desc: t("cli.env.set.optDescription"), value: true },
+		{ flag: "--force", desc: t("cli.configs.placeholder.optForce") },
 	],
 
 	handler: async (args, opts) => {
@@ -242,7 +252,7 @@ command({
 		const machine = opts.machine as string | undefined;
 
 		if (machine && opts["instance-scope"]) {
-			throw new UsageError("--machine and --instance-scope are different scopes; pass one");
+			throw new UsageError(t("cli.configs.placeholder.scopeConflict"));
 		}
 
 		let machineKey: string | undefined;
@@ -251,7 +261,7 @@ command({
 			machineKey = machineKeyFor(await listDaemons(), machine);
 
 			if (machineKey === undefined) {
-				throw new UsageError(`unknown machine: ${machine}`);
+				throw new UsageError(t("cli.env.unknownMachine", { name: machine }));
 			}
 		}
 
@@ -267,21 +277,24 @@ command({
 		});
 
 		ok(
-			`${pc.bold(file)}: ${result.replaced} occurrence(s) now read ` +
-				`${pc.cyan(`\${${result.name}}`)} ${pc.dim(`(${result.scope} scope)`)}`,
+			`${t("cli.configs.placeholder.done", {
+				file: pc.bold(file),
+				count: result.replaced,
+				placeholder: pc.cyan(`\${${result.name}}`),
+			})} ${pc.dim(`(${result.scope} scope)`)}`,
 		);
 
 		if (result.changedFile) {
-			warn("the rendered file differs from what was there — it was rewritten (forced)");
+			warn(t("cli.configs.placeholder.rewritten"));
 		} else {
-			info("the file on disk is unchanged — the value simply lives in the environment now");
+			info(t("cli.configs.placeholder.unchanged"));
 		}
 	},
 });
 
 command({
 	path: ["configs", "render"],
-	desc: "Render an instance's managed config files from their templates",
+	desc: t("cli.configs.render.desc"),
 	args: [{ name: "instance", required: true, complete: instanceNames }],
 
 	handler: async (args) => {
@@ -296,13 +309,13 @@ command({
 			view.stop();
 
 			if (!results.length) {
-				info(`${instance} has no managed config files`);
+				info(t("cli.configs.render.empty", { name: instance }));
 
 				return;
 			}
 
 			for (const result of results) {
-				const line = `${result.path} ${result.outcome}${result.detail ? pc.dim(` — ${result.detail}`) : ""}`;
+				const line = `${result.path} ${result.outcome}${result.detail ? pc.dim(` · ${result.detail}`) : ""}`;
 
 				if (result.outcome === "written") {
 					ok(line);
@@ -322,7 +335,7 @@ command({
 
 command({
 	path: ["configs", "readopt"],
-	desc: "Pull a drifted file's current text back into its template, keeping placeholders",
+	desc: t("cli.configs.readopt.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "file", required: true },
@@ -333,19 +346,19 @@ command({
 		const cfg = await requireInstance(instance);
 		const result = await readoptFile(cfg, instance, args[1]!);
 
-		ok(`${pc.bold(result.path)} re-adopted from disk`);
+		ok(t("cli.configs.readopt.done", { file: pc.bold(result.path) }));
 
 		if (result.kept.length) {
-			info(`placeholders kept: ${result.kept.join(", ")}`);
+			info(t("cli.configs.readopt.kept", { names: result.kept.join(", ") }));
 		} else {
-			warn("no placeholder values matched the new text — the template is now literal");
+			warn(t("cli.configs.readopt.nowLiteral"));
 		}
 	},
 });
 
 command({
 	path: ["configs", "discard-drift"],
-	desc: "Delete the .luna-drift copy kept beside a file",
+	desc: t("cli.configs.discardDrift.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "file", required: true },
@@ -356,9 +369,9 @@ command({
 		const cfg = await requireInstance(instance);
 
 		if (!(await discardDrift(cfg, instance, args[1]!))) {
-			throw new Bail(`no drift copy beside ${args[1]}`);
+			throw new Bail(t("cli.configs.discardDrift.noCopy", { file: args[1] ?? "" }));
 		}
 
-		ok("drift copy removed");
+		ok(t("cli.configs.discardDrift.done"));
 	},
 });

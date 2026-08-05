@@ -1,13 +1,13 @@
 /**
  * Pack state: `packs.lock.json` in the cluster root is the source of truth for
  * where every resource pack and data pack came from (Modrinth provenance,
- * installed version, update channel) — the files on disk are derived, exactly
+ * installed version, update channel); the files on disk are derived, exactly
  * like the plugin lockfile. Resource pack *behaviour* (priority, required,
  * server rules) is NOT here: those live in the per-pack `.yml` definitions
  * under `<root>/packs`, which the luna-pack proxy plugin owns and reads.
  *
  * The lock is synced to followers like the other state files, but its single
- * writer is the primary — pack operations run there (the web console is
+ * writer is the primary; pack operations run there (the web console is
  * primary-only), and a data pack deploy forwarded to a follower carries the
  * lock as an argument rather than reading the mirror.
  */
@@ -17,6 +17,7 @@ import { join } from "node:path";
 
 import { root } from "./config";
 import type { ProviderId, RemoteRef } from "./types";
+import { t } from "../shared/i18n";
 
 export type PackSource = ProviderId | "manual";
 
@@ -29,7 +30,7 @@ export interface PackInstall {
 	sha512: string;
 	/** MC versions the build supports, as the provider declares them */
 	gameVersions?: string[];
-	/** Publish date of the installed version — updates must be newer than this */
+	/** Publish date of the installed version; updates must be newer than this */
 	publishedAt?: string;
 }
 
@@ -53,7 +54,7 @@ export interface PackEntry {
 	servers?: string[];
 	/**
 	 * Resource packs only: this pack's definition was written by luna over a
-	 * *runtime* registration — a plugin registers the same pack through
+	 * *runtime* registration; a plugin registers the same pack through
 	 * luna-pack's dynamic API, and luna-pack prefers the file.
 	 *
 	 * It has to be recorded rather than observed. luna-pack's HTTP catalog
@@ -79,7 +80,7 @@ export interface PacksLock {
 	datapacks: Record<string, DataPackEntry>;
 }
 
-/** Path of the pack lockfile — the source of truth for pack provenance. */
+/** Path of the pack lockfile; the source of truth for pack provenance. */
 export function packsLockPath(): string {
 	return join(root(), "packs.lock.json");
 }
@@ -129,7 +130,7 @@ export function packKeyFrom(name: string): string {
 		.slice(0, 64);
 
 	if (!PACK_KEY_PATTERN.test(key)) {
-		throw new Error(`cannot derive a pack name from "${name}"`);
+		throw new Error(t("core.packslock.badName", { name }));
 	}
 
 	return key;
@@ -150,7 +151,7 @@ export function decodePackZip(dataBase64: string): Uint8Array {
 		(buf[2] === 0x03 || buf[2] === 0x05);
 
 	if (!isZip) {
-		throw new Error("the uploaded file is not a zip archive");
+		throw new Error(t("core.packslock.notAZip"));
 	}
 
 	return buf;

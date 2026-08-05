@@ -8,7 +8,7 @@
 	 * scales with its container and still lines up with the texture's own grid.
 	 *
 	 * The chest also publishes `--gui-px`, one Minecraft pixel in CSS terms, so
-	 * anything drawn inside it — the title, an item tooltip — is sized off the
+	 * anything drawn inside it; the title, an item tooltip; is sized off the
 	 * game's own grid instead of a fixed rem value that would drift out of scale
 	 * the moment the panel resized.
 	 */
@@ -21,7 +21,7 @@
 	interface Props {
 		/** 45 entries; a null slot is empty */
 		slots: Array<InventorySlot | null>;
-		/** Multiplier on the chest's full size — 1 is a GUI as wide as it may be */
+		/** Multiplier on the chest's full size; 1 is a GUI as wide as it may be */
 		scale?: number;
 		selected?: number | null;
 		/** Slots the plugin decorates when nothing else occupies them */
@@ -155,7 +155,7 @@
 	});
 
 	// the card is placed against the viewport, so anything that moves the chest
-	// within it has to re-place it — and the page scrolls a panel, not the window
+	// within it has to re-place it; and the page scrolls a panel, not the window
 	$effect(() => {
 		const bump = (): void => {
 			resized += 1;
@@ -226,7 +226,7 @@
 			class:border={showBorder && !slot && isBorder(index)}
 			style={cellStyle(index)}
 			draggable={!!slot}
-			aria-label={slot ? `${slot.name} — page ${slot.page}, slot ${index}` : `slot ${index}`}
+			aria-label={slot ? `${slot.name}; page ${slot.page}, slot ${index}` : `slot ${index}`}
 			onclick={() => onselect?.(index)}
 			onmouseenter={() => enter(index)}
 			onmouseleave={() => leave(index)}
@@ -292,8 +292,8 @@
 	.chest {
 		position: relative;
 		// the scale is the GUI's own zoom, the way the game's is: it changes how big
-		// a Minecraft pixel is and nothing else, so the whole chest — slots, title,
-		// the tooltip hanging off it — resizes together and stays in proportion
+		// a Minecraft pixel is and nothing else, so the whole chest; slots, title,
+		// the tooltip hanging off it; resizes together and stays in proportion
 		width: calc(100% * var(--chest-scale));
 		max-width: calc(40rem * var(--chest-scale));
 		aspect-ratio: var(--chest-ratio);
@@ -309,7 +309,7 @@
 		// The sheet is larger than the chest drawn on it, and the rest is
 		// transparent padding that would throw every slot's position off. Painting
 		// it as a background crops it to the element for free, so the chest no
-		// longer needs `overflow: hidden` — which would otherwise eat any tooltip
+		// longer needs `overflow: hidden`; which would otherwise eat any tooltip
 		// hanging past its edge.
 		background-image: var(--chest-bg);
 		background-size: var(--sheet-w) var(--sheet-h);

@@ -4,7 +4,7 @@
 	import { toMenuItems, type Item } from './menu';
 	import type { ContextMenuItem } from './contextmenu';
 
-	/** Button dropdown — the trigger is a pill button, the panel is the shared
+	/** Button dropdown; the trigger is a pill button, the panel is the shared
 	 *  ContextMenu so button menus and right-click menus match. */
 	let {
 		label,
@@ -15,7 +15,7 @@
 	}: {
 		label: string;
 		items?: Item[];
-		/** full ContextMenu model, for callers that need submenus or headers —
+		/** full ContextMenu model, for callers that need submenus or headers -
 		 *  takes precedence over the flat `items` list */
 		menu?: ContextMenuItem[];
 		primary?: boolean;

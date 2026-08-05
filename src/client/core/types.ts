@@ -1,3 +1,3 @@
-/** Bridge mirror of core/types — shared shapes, nothing executable. */
+/** Bridge mirror of core/types; shared shapes, nothing executable. */
 
 export * from "../../core/types";

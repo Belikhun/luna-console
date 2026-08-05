@@ -56,12 +56,12 @@ export async function POST({ params, request }) {
 			}
 		} catch (err) {
 			failures += 1;
-			outcomes.push(`${name}: failed — ${err instanceof Error ? err.message : err}`);
+			outcomes.push(`${name}: failed; ${err instanceof Error ? err.message : err}`);
 		}
 	}
 
 	const outcome = failures === 0 ? 'ok' : 'error';
-	const detail = `manual run — ${schedule.action}: ${outcomes.join(' · ')}`;
+	const detail = `manual run; ${schedule.action}: ${outcomes.join(' · ')}`;
 
 	recordEvent(store, schedule, outcome, detail);
 	await saveSchedules(store);

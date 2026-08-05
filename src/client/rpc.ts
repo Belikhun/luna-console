@@ -6,7 +6,7 @@ import { dfetch, followSse } from "./socket";
 
 /**
  * The client half of the RPC bridge: functions built here mirror core
- * signatures exactly — arguments travel to the daemon as JSON, and because the
+ * signatures exactly; arguments travel to the daemon as JSON, and because the
  * daemon echoes back any cfg/lock argument the core function mutated, the
  * caller's own objects are synced in place afterwards, exactly as if the call
  * had run locally.

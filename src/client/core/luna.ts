@@ -1,6 +1,6 @@
 /**
  * Bridge mirror of core/luna: workspace math is pure; gradle builds, artifact
- * scans and pool syncs run in the daemon. Builds are jobs — gradle's output
+ * scans and pool syncs run in the daemon. Builds are jobs; gradle's output
  * lines ride the progress stream.
  */
 

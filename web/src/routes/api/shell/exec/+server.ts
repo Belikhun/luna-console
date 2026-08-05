@@ -22,7 +22,7 @@ function parseArgv(raw: string | null): string[] {
 
 	// commands that attach to a screen session need a real TTY, which SSE is not
 	if (INTERACTIVE_COMMANDS.has(argv[0]!)) {
-		throw error(400, `"${argv[0]}" is interactive — use the instance Console tab instead`);
+		throw error(400, `"${argv[0]}" is interactive; use the instance Console tab instead`);
 	}
 
 	return argv;

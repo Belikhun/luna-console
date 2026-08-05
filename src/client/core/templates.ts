@@ -1,4 +1,4 @@
-/** Bridge mirror of core/templates — config ops apply on the instance's daemon. */
+/** Bridge mirror of core/templates; config ops apply on the instance's daemon. */
 
 import type * as core from "../../core/templates";
 

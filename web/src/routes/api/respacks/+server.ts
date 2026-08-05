@@ -18,7 +18,7 @@ export async function GET() {
 	const lock = await loadPacksLock();
 	const { rows, dynamic } = await listResourcePacksLive(cfg, lock, (await loadLock()).groups);
 
-	// the provider's web page is built here — the browser has no URL scheme
+	// the provider's web page is built here; the browser has no URL scheme
 	const packs = rows.map((row) => ({
 		...row,
 		url: row.remote ? projectUrl(row.remote, 'resourcepack') : null
@@ -31,7 +31,7 @@ export async function GET() {
  * POST { name, data } → upload a pack zip (new, or replacing an existing
  * pack's file). `data` is the zip base64-encoded: JSON rather than multipart
  * because SvelteKit's CSRF check rejects form posts when the served origin is
- * ambiguous (the console answers on several addresses), and JSON is exempt —
+ * ambiguous (the console answers on several addresses), and JSON is exempt -
  * a plain form cannot send it cross-site.
  */
 export async function POST({ request }) {

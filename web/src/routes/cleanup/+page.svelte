@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
@@ -21,20 +22,20 @@
 	let lastUpdated: number | null = $state(null);
 	let confirmOpen = $state(false);
 
-	const columns: Column[] = [
-		{ id: 'instance', label: 'Instance', sortable: true, width: 140 },
-		{ id: 'kind', label: 'Kind', sortable: true, width: 140 },
-		{ id: 'path', label: 'Path' },
-		{ id: 'size', label: 'Size', sortable: true, width: 180 }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'instance', label: t('web.env.instance'), sortable: true, width: 140 },
+		{ id: 'kind', label: t('web.cleanup.colKind'), sortable: true, width: 140 },
+		{ id: 'path', label: t('web.cleanup.colPath') },
+		{ id: 'size', label: t('web.cleanup.colSize'), sortable: true, width: 180 }
+	]);
 
 	/** The junk kinds actually present, so the filter never offers an empty one. */
 	const junkFilters: TableFilterGroup<any>[] = $derived([
 		{
 			id: 'kind',
-			label: 'Filter kind',
+			label: t('web.env.filterKind'),
 			options: [
-				{ value: 'any', label: 'Any kind' },
+				{ value: 'any', label: t('web.env.anyKind') },
 				...[...new Set(((plan?.junk ?? []) as any[]).map((item) => item.kind as string))]
 					.sort()
 					.map((kind) => ({
@@ -49,12 +50,12 @@
 	function junkActions(item: any): ContextMenuItem[] {
 		return [
 			{
-				label: 'Copy path',
+				label: t('web.cleanup.copyPath'),
 				icon: 'copy',
 				action: () => navigator.clipboard?.writeText(item.path)
 			},
 			{
-				label: `Open ${item.instance}`,
+				label: t('web.cleanup.openInstance', { name: item.instance }),
 				icon: 'server',
 				disabled: !item.instance || item.instance === '—',
 				action: () => goto(`/instances/${item.instance}`)
@@ -99,24 +100,24 @@
 		plan ? Math.max(1, ...plan.junk.map((item: any) => item.bytes)) : 1
 	);
 
-	/** junk + logs — plan.totalBytes only counts deletions, logs are archived */
+	/** junk + logs; plan.totalBytes only counts deletions, logs are archived */
 	const planTotal = $derived(Math.max(1, (plan?.totalBytes ?? 0) + logBytes));
 
-	const share = (bytes: number): string => `${Math.round((bytes / planTotal) * 100)}% of plan`;
+	const share = (bytes: number): string => t('web.cleanup.ofPlan', { percent: Math.round((bytes / planTotal) * 100) });
 
 	async function execute(): Promise<void> {
 		confirmOpen = false;
 		busy = true;
 
-		const note = Notify.loading('Deleting junk and archiving logs…');
+		const note = Notify.loading(t('web.cleanup.working'));
 
 		try {
 			const res = await post('/cleanup');
 
 			note.set({
 				level: 'success',
-				message: `Freed ${fmtBytes(res.freedBytes)} across ${res.deleted} items`,
-				detail: `Archived ${res.archivedLogs} log files into ${res.archives.length} monthly archive(s).`,
+				message: t('web.cleanup.freed', { size: fmtBytes(res.freedBytes), count: res.deleted }),
+				detail: t('web.cleanup.archived', { count: res.archivedLogs, archives: res.archives.length }),
 				closeable: true
 			});
 
@@ -124,7 +125,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Cleanup failed',
+				message: t('web.cleanup.failed'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -139,15 +140,15 @@
 	const one = $derived((plan?.junk ?? []).find((row: any) => selected.has(row.path)));
 </script>
 
-<svelte:head><title>Cleanup | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.nav.cleanup')} | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Cleanup"
-	description="Caches, stale Paper versions, leftovers and rotated logs — worlds, configs and plugins are never touched"
+	title={t('web.nav.cleanup')}
+	description={t('web.cleanup.pageDescription')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="cleanup" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? junkActions(one) : []} />
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? junkActions(one) : []} />
 		<Btn
 			variant="primary"
 			icon="broom"
@@ -155,7 +156,7 @@
 			disabled={!plan || (plan.junk.length === 0 && plan.logs.length === 0)}
 			onclick={() => (confirmOpen = true)}
 		>
-			Run cleanup
+			{t('web.cleanup.run')}
 		</Btn>
 	{/snippet}
 </PageHeader>
@@ -165,42 +166,42 @@
 		{#each byKind as [kind, totals]}
 			<div class="card">
 				<div class="num">{fmtBytes(totals.bytes)}</div>
-				<div class="dim">{kind} · {totals.count} item(s)</div>
+				<div class="dim">{kind} · {t('web.cleanup.itemCount', { count: totals.count })}</div>
 				<ProgressBar value={totals.bytes} max={planTotal} right={share(totals.bytes)} />
 			</div>
 		{/each}
 		<div class="card">
 			<div class="num">{plan.logs.length}</div>
-			<div class="dim">rotated logs ({fmtBytes(logBytes)}) → monthly archives</div>
+			<div class="dim">{t('web.cleanup.rotatedLogs', { size: fmtBytes(logBytes) })}</div>
 			<ProgressBar value={logBytes} max={planTotal} color="success" right={share(logBytes)} />
 		</div>
 		<div class="card">
 			<div class="num total">{fmtBytes(plan.totalBytes)}</div>
-			<div class="dim">total to free</div>
+			<div class="dim">{t('web.cleanup.totalToFree')}</div>
 		</div>
 	</div>
 
 	{#each plan.notes as note}
-		<p class="dim note">note: {note}</p>
+		<p class="dim note">{t('web.cleanup.note')} {note}</p>
 	{/each}
 
-	<Panel title="Planned deletions" count={plan.junk.length} flush>
+	<Panel title={t('web.cleanup.plannedDeletions')} count={plan.junk.length} flush>
 		<ResourceTable
 			tableId="cleanup-junk"
 			{columns}
 			rows={plan.junk}
 			getId={(item) => item.path}
 			searchValue={(item) => `${item.instance} ${item.kind} ${item.path}`}
-			searchPlaceholder="Find a path"
+			searchPlaceholder={t('web.cleanup.findPath')}
 			filters={junkFilters}
 			selectable="single"
 			bind:selected
 			rowActions={junkActions}
 			rowLabel={(item) => item.path}
-			noun="entry"
+			noun={t('web.cleanup.noun')}
 			sortValue={(item, col) => (col === 'size' ? item.bytes : (item as any)[col])}
 			maxHeight="46vh"
-			emptyTitle="Nothing to delete"
+			emptyTitle={t('web.cleanup.nothingToDelete')}
 		>
 			{#snippet cell(item, col)}
 				{#if col === 'instance'}
@@ -222,16 +223,14 @@
 	</Panel>
 {/if}
 
-<Modal title="Run cleanup" bind:open={confirmOpen}>
+<Modal title={t('web.cleanup.run')} bind:open={confirmOpen}>
 	<p>
-		Deletes caches, stale Paper versions and leftovers ({plan
-			? fmtBytes(plan.totalBytes)
-			: ''}), and merges rotated logs into
+		{t('web.cleanup.confirmBody', { size: plan ? fmtBytes(plan.totalBytes) : '' })}
 		<code class="inline">logs/&lt;instance&gt;/&lt;YYYY-MM&gt;.log.gz</code>.
 	</p>
 	{#snippet footer()}
-		<Btn onclick={() => (confirmOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" onclick={execute}>Clean up</Btn>
+		<Btn onclick={() => (confirmOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn variant="primary" onclick={execute}>{t('web.cleanup.confirmAction')}</Btn>
 	{/snippet}
 </Modal>
 

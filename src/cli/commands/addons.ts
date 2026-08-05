@@ -22,6 +22,7 @@ import { applyAddonGroups } from "../../client/core/addons";
 import { loadPacksLock, savePacksLock } from "../../client/core/packslock";
 import { listResourcePacks } from "../../client/core/respacks";
 import { applyGroupRestart, runDeploy } from "./plugins";
+import { t } from "../../shared/i18n";
 
 /** Group names for shell completion. */
 async function groupNames(): Promise<string[]> {
@@ -46,7 +47,7 @@ export async function runAddonApply(instances?: string[]): Promise<void> {
 	const lock = await loadLock();
 	const packs = await loadPacksLock();
 
-	const progress = new ProgressReporter("apply addon groups");
+	const progress = new ProgressReporter(t("cli.addons.apply.progressName"));
 	const view = new ProgressView(progress).start();
 
 	const result = await applyAddonGroups(cfg, packs, lock.groups, {
@@ -59,8 +60,12 @@ export async function runAddonApply(instances?: string[]): Promise<void> {
 
 	if (result.respacks.length) {
 		ok(
-			`resource pack rules rewritten: ${result.respacks.join(", ")} ` +
-				pc.dim(result.reloaded ? "(proxy reloaded)" : "(proxy down — applies on its next boot)"),
+			`${t("cli.addons.apply.respacksRewritten", { names: result.respacks.join(", ") })} ` +
+				pc.dim(
+					result.reloaded
+						? t("cli.addons.apply.proxyReloaded")
+						: t("cli.addons.apply.proxyDown"),
+				),
 		);
 	}
 
@@ -79,14 +84,14 @@ export async function runAddonApply(instances?: string[]): Promise<void> {
 
 command({
 	path: ["addons", "groups"],
-	desc: "List addon groups and the instances using them",
+	desc: t("cli.addons.groups.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
 
 		const rows = Object.entries(lock.groups ?? {}).map(([name, group]) => [
-			pc.bold(name) + (group.builtin ? pc.dim(" (builtin)") : ""),
+			pc.bold(name) + (group.builtin ? pc.dim(` ${t("cli.addons.builtinTag")}`) : ""),
 			String(group.plugins.length),
 			String(group.respacks?.length ?? 0),
 			String(group.datapacks?.length ?? 0),
@@ -95,24 +100,33 @@ command({
 		]);
 
 		console.log();
-		printTable(rows, { head: ["group", "plugins", "respacks", "datapacks", "used by", ""] });
+		printTable(rows, {
+			head: [
+				t("cli.head.group"),
+				t("cli.head.plugins"),
+				t("cli.head.respacks"),
+				t("cli.head.datapacks"),
+				t("cli.head.usedBy"),
+				"",
+			],
+		});
 		console.log();
 	},
 });
 
 command({
 	path: ["addons", "group"],
-	desc: "Show, create or edit an addon group (then apply it + optional restart)",
+	desc: t("cli.addons.group.desc"),
 	args: [{ name: "name", required: true, complete: groupNames }],
 	opts: [
-		{ flag: "--plugins", desc: "set membership to this comma-separated plugin list", value: true },
-		{ flag: "--add", desc: "add plugin(s), comma-separated", value: true },
-		{ flag: "--remove", desc: "remove plugin(s), comma-separated", value: true },
-		{ flag: "--respacks", desc: "set the resource pack members, comma-separated", value: true },
-		{ flag: "--datapacks", desc: "set the data pack members, comma-separated", value: true },
-		{ flag: "--description", desc: "set the description", value: true },
-		{ flag: "--delete", desc: "delete the group" },
-		{ flag: "--restart", desc: 'after a change: "now", "none" (default), or a time', value: true },
+		{ flag: "--plugins", desc: t("cli.addons.group.optPlugins"), value: true },
+		{ flag: "--add", desc: t("cli.addons.group.optAdd"), value: true },
+		{ flag: "--remove", desc: t("cli.addons.group.optRemove"), value: true },
+		{ flag: "--respacks", desc: t("cli.addons.group.optRespacks"), value: true },
+		{ flag: "--datapacks", desc: t("cli.addons.group.optDatapacks"), value: true },
+		{ flag: "--description", desc: t("cli.addons.group.optDescription"), value: true },
+		{ flag: "--delete", desc: t("cli.addons.group.optDelete") },
+		{ flag: "--restart", desc: t("cli.addons.group.optRestart"), value: true },
 	],
 
 	handler: async (args, opts) => {
@@ -124,7 +138,9 @@ command({
 		if (opts.delete) {
 			deleteGroup(lock, name);
 			await saveLock(lock);
-			ok(`group ${pc.bold(name)} deleted ${pc.dim("(deployed files stay on disk)")}`);
+			ok(
+				`${t("cli.addons.group.deleted", { name: pc.bold(name) })} ${pc.dim(t("cli.addons.group.deletedNote"))}`,
+			);
 
 			await runAddonApply();
 
@@ -141,26 +157,26 @@ command({
 
 		if (!editing) {
 			if (!existing) {
-				throw new UsageError(`unknown group: ${name} — pass --plugins to create it`);
+				throw new UsageError(t("cli.addons.group.unknown", { name }));
 			}
 
 			console.log();
 			info(
-				`${pc.bold(name)}${existing.builtin ? pc.dim(" (builtin)") : ""} — ` +
-					`${existing.description ?? pc.dim("no description")}`,
+				`${pc.bold(name)}${existing.builtin ? pc.dim(` ${t("cli.addons.builtinTag")}`) : ""} · ` +
+					`${existing.description ?? pc.dim(t("cli.addons.group.noDescription"))}`,
 			);
 
 			const rows = existing.plugins.map((plugin) => {
 				const keys = entriesOf(lock, plugin);
 				const families = keys.map((key) => familyOf(lock.plugins[key]!)).join(", ");
 
-				return ["plugin", plugin, families || pc.red("not installed")];
+				return ["plugin", plugin, families || pc.red(t("cli.addons.group.notInstalled"))];
 			});
 
 			const packs = await loadPacksLock();
 
-			// a hand-registered pack has a yml but no lock entry, so the catalog —
-			// not the lockfile — is what says whether it exists
+			// a hand-registered pack has a yml but no lock entry, so the catalog,
+			// not the lockfile, is what says whether it exists
 			const respackRows = await listResourcePacks(cfg, packs, lock.groups);
 
 			for (const key of existing.respacks ?? []) {
@@ -170,8 +186,12 @@ command({
 					"respack",
 					key,
 					row
-						? pc.dim(row.enabled ? "enabled" : "registered, disabled")
-						: pc.red("not pooled"),
+						? pc.dim(
+								row.enabled
+									? t("cli.addons.group.packEnabled")
+									: t("cli.addons.group.packDisabled"),
+							)
+						: pc.red(t("cli.addons.group.notPooled")),
 				]);
 			}
 
@@ -179,13 +199,19 @@ command({
 				rows.push([
 					"datapack",
 					key,
-					packs.datapacks[key] ? pc.dim("pooled") : pc.red("not pooled"),
+					packs.datapacks[key]
+						? pc.dim(t("cli.addons.group.packPooled"))
+						: pc.red(t("cli.addons.group.notPooled")),
 				]);
 			}
 
-			printTable(rows, { head: ["kind", "addon", ""] });
+			printTable(rows, { head: [t("cli.head.kind"), t("cli.head.addon"), ""] });
 
-			info(`used by: ${groupInstances(cfg, name).join(", ") || pc.dim("nobody yet")}`);
+			info(
+				t("cli.addons.group.usedBy", {
+					names: groupInstances(cfg, name).join(", ") || pc.dim(t("cli.addons.group.nobodyYet")),
+				}),
+			);
 			console.log();
 
 			return;
@@ -208,7 +234,7 @@ command({
 
 		for (const plugin of members) {
 			if (!known.has(plugin)) {
-				warn(`"${plugin}" is not a pooled plugin — it validates as missing until installed`);
+				warn(t("cli.addons.group.notPooledPlugin", { name: plugin }));
 			}
 		}
 
@@ -218,13 +244,13 @@ command({
 
 		for (const key of respackMembers ?? []) {
 			if (!packs.resourcepacks[key]) {
-				warn(`"${key}" is not a registered resource pack — install or upload it first`);
+				warn(t("cli.addons.group.notRegisteredRespack", { name: key }));
 			}
 		}
 
 		for (const key of datapackMembers ?? []) {
 			if (!packs.datapacks[key]) {
-				warn(`"${key}" is not a pooled data pack — install or upload it first`);
+				warn(t("cli.addons.group.notPooledDatapack", { name: key }));
 			}
 		}
 
@@ -249,16 +275,21 @@ command({
 		const afterPacks = [...(after.respacks ?? []), ...(after.datapacks ?? [])].join(",");
 
 		ok(
-			`group ${pc.bold(name)} saved — ${after.plugins.length} plugin(s), ` +
-				`${after.respacks?.length ?? 0} resource pack(s), ${after.datapacks?.length ?? 0} data pack(s)` +
+			t("cli.addons.group.saved", {
+				name: pc.bold(name),
+				plugins: after.plugins.length,
+				respacks: after.respacks?.length ?? 0,
+				datapacks: after.datapacks?.length ?? 0,
+			}) +
 				(added.length ? pc.green(` +${added.join(",")}`) : "") +
 				(removed.length ? pc.red(` -${removed.join(",")}`) : ""),
 		);
 
 		if (removed.length) {
 			info(
-				`removed plugins stay deployed — clean them with ` +
-					pc.cyan("plugins remove <name> --from <inst>"),
+				t("cli.addons.group.removedStay", {
+					command: pc.cyan("plugins remove <name> --from <inst>"),
+				}),
 			);
 		}
 
@@ -282,7 +313,7 @@ command({
 
 command({
 	path: ["addons", "apply"],
-	desc: "Re-apply every group's packs: rewrite pack rules and deploy data packs",
+	desc: t("cli.addons.apply.desc"),
 	args: [{ name: "instance", variadic: true, complete: instanceNames }],
 
 	handler: async (args) => {

@@ -1,5 +1,5 @@
 /**
- * Resource pack and data pack commands — thin over the client bridge, same as
+ * Resource pack and data pack commands, thin over the client bridge, same as
  * every other command file. Resource packs are the luna-pack proxy plugin's
  * catalog under `<root>/packs`; data packs are a pool under `<root>/datapacks`
  * deployed into instance worlds.
@@ -16,6 +16,7 @@ import * as respackinfo from "../../client/core/respackinfo";
 import * as respacks from "../../client/core/respacks";
 import * as providers from "../../client/core/services/providers";
 import type { ProviderId } from "../../client/core/types";
+import { t } from "../../shared/i18n";
 
 /** The addon groups pack membership resolves against (plugins.lock.json). */
 async function addonGroups(): Promise<Awaited<ReturnType<typeof loadLock>>["groups"]> {
@@ -46,7 +47,7 @@ export function parseProvider(value: string | undefined): ProviderId {
 
 	if (!(providers.PROVIDER_IDS as string[]).includes(provider)) {
 		throw new UsageError(
-			`unknown provider: ${provider} (expected ${providers.PROVIDER_IDS.join(", ")})`,
+			t("cli.packs.unknownProvider", { name: provider, known: providers.PROVIDER_IDS.join(", ") }),
 		);
 	}
 
@@ -60,7 +61,7 @@ async function resolveProject(
 	provider: ProviderId,
 ): Promise<providers.AddonProject | undefined> {
 	const label = providers.PROVIDER_IDS.includes(provider) ? provider : "provider";
-	const spin = new Spinner().start(`resolving "${query}" on ${label}...`);
+	const spin = new Spinner().start(t("cli.plugins.add.resolving", { query, provider: label }));
 
 	let project = await providers.getProject(provider, query, type);
 
@@ -73,23 +74,23 @@ async function resolveProject(
 	const hits = await providers.searchProvider(provider, query, type);
 
 	if (!hits.length) {
-		throw new Bail(`nothing found for "${query}"`);
+		throw new Bail(t("cli.plugins.add.nothingFound", { query }));
 	}
 
 	const { select, isCancel } = await import("@clack/prompts");
 
 	const picked = await select({
-		message: `Select a ${type === "datapack" ? "data pack" : "resource pack"}`,
+		message: type === "datapack" ? t("cli.packs.selectDatapack") : t("cli.packs.selectRespack"),
 		options: hits.map((hit) => ({
-			// smithed slugs are only known after a project lookup — pick by id
+			// smithed slugs are only known after a project lookup, so pick by id
 			value: hit.project_id,
 			label: hit.title,
-			hint: `${hit.downloads.toLocaleString()} downloads — ${hit.description.slice(0, 60)}`,
+			hint: `${t("cli.plugins.add.downloads", { count: hit.downloads.toLocaleString() })} · ${hit.description.slice(0, 60)}`,
 		})),
 	});
 
 	if (isCancel(picked)) {
-		info("aborted");
+		info(t("cli.common.aborted"));
 
 		return undefined;
 	}
@@ -101,7 +102,7 @@ async function resolveProject(
 
 command({
 	path: ["packs"],
-	desc: "List resource packs (luna-pack catalog in <root>/packs)",
+	desc: t("cli.packs.list.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
@@ -113,7 +114,7 @@ command({
 		);
 
 		if (!rows.length) {
-			info("no resource packs — add one with: luna packs add <slug>");
+			info(t("cli.packs.list.empty"));
 
 			return;
 		}
@@ -122,15 +123,26 @@ command({
 			row.enabled ? pc.green(Sym.ok) : pc.dim("○"),
 			pc.bold(row.key),
 			registrationCell(row),
-			row.required ? "required" : "",
+			row.required ? t("cli.packs.required") : "",
 			row.servers.join(","),
-			row.present ? fmtBytes(row.sizeBytes) : pc.red("file missing"),
+			row.present ? fmtBytes(row.sizeBytes) : pc.red(t("cli.packs.fileMissing")),
 			row.registration === "dynamic" ? pc.magenta("plugin") : row.source,
 			row.versionNumber ?? "",
 		]);
 
 		console.log();
-		printTable(table, { head: ["", "pack", "priority", "", "servers", "size", "source", "version"] });
+		printTable(table, {
+			head: [
+				"",
+				t("cli.head.pack"),
+				t("cli.head.priority"),
+				"",
+				t("cli.head.servers"),
+				t("cli.head.size"),
+				t("cli.head.source"),
+				t("cli.head.version"),
+			],
+		});
 		console.log();
 
 		const runtime = rows.filter((row) => row.registration === "dynamic");
@@ -138,21 +150,25 @@ command({
 
 		if (runtime.length) {
 			info(
-				`${runtime.length} pack(s) registered by a plugin at runtime: ${runtime
-					.map((row) => row.key)
-					.join(", ")} — luna has no definition for them`,
+				t("cli.packs.list.runtime", {
+					count: runtime.length,
+					names: runtime.map((row) => row.key).join(", "),
+				}),
 			);
 		}
 
 		for (const row of shadowed) {
 			warn(
-				`${row.key}: your ${row.defFile} overrides the plugin that also registers it — ` +
-					`release it with: luna packs release ${row.key}`,
+				t("cli.packs.list.shadowed", {
+					key: row.key,
+					file: row.defFile ?? "",
+					command: `luna packs release ${row.key}`,
+				}),
 			);
 		}
 
 		if (!dynamic.available) {
-			info(`runtime registrations unknown: ${dynamic.problem}`);
+			info(t("cli.packs.list.dynamicUnknown", { problem: dynamic.problem ?? "" }));
 		}
 	},
 });
@@ -170,18 +186,20 @@ function registrationCell(row: respacks.RespackRow): string {
 		return String(row.priority);
 	}
 
-	return row.registration === "unknown" ? pc.dim("registration unknown") : pc.yellow("unregistered");
+	return row.registration === "unknown"
+		? pc.dim(t("cli.packs.registrationUnknown"))
+		: pc.yellow(t("cli.packs.unregistered"));
 }
 
 command({
 	path: ["packs", "add"],
-	desc: "Install a resource pack from a provider (slug, or search query)",
+	desc: t("cli.packs.add.desc"),
 	args: [{ name: "slug-or-query", required: true, variadic: true }],
 	opts: [
-		{ flag: "--channel", desc: "release channel: release, beta or alpha", value: true },
+		{ flag: "--channel", desc: t("cli.packs.optChannel"), value: true },
 		{
 			flag: "--provider",
-			desc: "where to install from: modrinth (default) or curseforge",
+			desc: t("cli.packs.add.optProvider"),
 			value: true,
 			complete: async () => ["modrinth", "curseforge"],
 		},
@@ -197,7 +215,7 @@ command({
 			return;
 		}
 
-		const spin = new Spinner().start(`installing ${project.title}...`);
+		const spin = new Spinner().start(t("cli.plugins.add.installing", { name: project.title }));
 		const row = await respacks.installResourcePackFromProvider(cfg, lock, provider, project, {
 			channel: opts.channel as PackChannel | undefined,
 		});
@@ -205,34 +223,39 @@ command({
 		await savePacksLock(lock);
 		spin.stop();
 
-		ok(`installed ${pc.bold(row.key)} ${pc.green(row.versionNumber ?? "")} ${pc.dim(`(${fmtBytes(row.sizeBytes)})`)}`);
-		info(`the pack starts disabled — enable it with: luna packs set ${row.key} --enable`);
+		ok(
+			`${t("cli.plugins.add.installed", {
+				name: pc.bold(row.key),
+				version: pc.green(row.versionNumber ?? ""),
+			})} ${pc.dim(`(${fmtBytes(row.sizeBytes)})`)}`,
+		);
+		info(t("cli.packs.add.startsDisabled", { command: `luna packs set ${row.key} --enable` }));
 	},
 });
 
 command({
 	path: ["packs", "set"],
-	desc: "Edit a pack's registration (priority, required, servers, enabled)",
+	desc: t("cli.packs.set.desc"),
 	args: [{ name: "pack", required: true, complete: respackKeys }],
 	opts: [
-		{ flag: "--enable", desc: "enable the pack" },
-		{ flag: "--disable", desc: "disable the pack" },
-		{ flag: "--priority", desc: "stacking priority (higher applies over lower)", value: true },
-		{ flag: "--required", desc: "players cannot decline the pack" },
-		{ flag: "--optional", desc: "players may decline the pack" },
-		{ flag: "--servers", desc: "comma-separated rules: names, *, !name", value: true },
-		{ flag: "--name", desc: "display name", value: true },
-		{ flag: "--auto", desc: "auto-update: on or off", value: true },
-		{ flag: "--channel", desc: "update channel: release, beta or alpha", value: true },
+		{ flag: "--enable", desc: t("cli.packs.set.optEnable") },
+		{ flag: "--disable", desc: t("cli.packs.set.optDisable") },
+		{ flag: "--priority", desc: t("cli.packs.set.optPriority"), value: true },
+		{ flag: "--required", desc: t("cli.packs.set.optRequired") },
+		{ flag: "--optional", desc: t("cli.packs.set.optOptional") },
+		{ flag: "--servers", desc: t("cli.packs.set.optServers"), value: true },
+		{ flag: "--name", desc: t("cli.packs.set.optName"), value: true },
+		{ flag: "--auto", desc: t("cli.packs.set.optAuto"), value: true },
+		{ flag: "--channel", desc: t("cli.packs.set.optChannel"), value: true },
 	],
 
 	handler: async (args, opts) => {
 		if (opts.enable && opts.disable) {
-			throw new UsageError("--enable and --disable are mutually exclusive");
+			throw new UsageError(t("cli.packs.set.enableConflict"));
 		}
 
 		if (opts.required && opts.optional) {
-			throw new UsageError("--required and --optional are mutually exclusive");
+			throw new UsageError(t("cli.packs.set.requiredConflict"));
 		}
 
 		const cfg = await loadCluster();
@@ -273,10 +296,10 @@ command({
 		await savePacksLock(lock);
 
 		ok(
-			`${pc.bold(row.key)}: ${row.enabled ? pc.green("enabled") : pc.dim("disabled")}, ` +
-				`priority ${row.priority}, ${row.required ? "required" : "optional"}, servers ${row.servers.join(",")}`,
+			`${pc.bold(row.key)}: ${row.enabled ? pc.green(t("cli.packs.enabled")) : pc.dim(t("cli.packs.disabled"))}, ` +
+				`${t("cli.head.priority")} ${row.priority}, ${row.required ? t("cli.packs.required") : t("cli.packs.optional")}, ${t("cli.head.servers")} ${row.servers.join(",")}`,
 		);
-		info("apply live with: luna packs reload");
+		info(t("cli.packs.reloadHint"));
 	},
 });
 
@@ -292,22 +315,32 @@ export function printProbe(probe: {
 	newest?: { versionNumber: string };
 	project: { title: string; slug: string };
 }): void {
-	info(`project: ${pc.bold(probe.project.title)} (${probe.project.slug})`);
+	info(t("cli.packs.probe.project", { title: pc.bold(probe.project.title), slug: probe.project.slug }));
 
 	if (probe.confidence === "exact" && probe.best) {
-		ok(`identified as ${pc.green(probe.best.versionNumber)} — ${probe.best.basis} matches`);
+		ok(
+			t("cli.packs.probe.exact", {
+				version: pc.green(probe.best.versionNumber),
+				basis: probe.best.basis,
+			}),
+		);
 
 		return;
 	}
 
 	if (probe.confidence === "likely" && probe.best) {
-		warn(`probably ${pc.yellow(probe.best.versionNumber)} — matched by ${probe.best.basis}, not a hash`);
+		warn(
+			t("cli.packs.probe.likely", {
+				version: pc.yellow(probe.best.versionNumber),
+				basis: probe.best.basis,
+			}),
+		);
 	} else {
-		warn("no published version matches this file");
+		warn(t("cli.packs.probe.noMatch"));
 	}
 
 	if (probe.matches.length > 1) {
-		info("candidates:");
+		info(t("cli.packs.probe.candidates"));
 
 		for (const match of probe.matches) {
 			console.log(`   ${match.versionNumber}  ${pc.dim(match.versionId)}  ${pc.dim(match.basis)}`);
@@ -315,23 +348,23 @@ export function printProbe(probe: {
 	}
 
 	if (probe.newest) {
-		info(`newest release: ${probe.newest.versionNumber} — what an unidentified mapping would pull`);
+		info(t("cli.packs.probe.newest", { version: probe.newest.versionNumber }));
 	}
 }
 
 command({
 	path: ["packs", "identify"],
-	desc: "Map an existing resource pack to a provider project (so updates apply)",
+	desc: t("cli.packs.identify.desc"),
 	args: [
 		{ name: "pack", required: true, complete: respackKeys },
 		{ name: "slug-or-id", required: true },
 	],
 	opts: [
-		{ flag: "--provider", desc: "provider to map against (default modrinth)", value: true },
-		{ flag: "--version", desc: "version id to record as installed", value: true },
-		{ flag: "--unidentified", desc: "record the project but no version" },
-		{ flag: "--auto", desc: "auto-update: on or off (default on only for a proven match)", value: true },
-		{ flag: "--yes", desc: "accept an unproven match without asking" },
+		{ flag: "--provider", desc: t("cli.plugins.identify.optProvider"), value: true },
+		{ flag: "--version", desc: t("cli.plugins.identify.optVersion"), value: true },
+		{ flag: "--unidentified", desc: t("cli.plugins.identify.optUnidentified") },
+		{ flag: "--auto", desc: t("cli.plugins.identify.optAuto"), value: true },
+		{ flag: "--yes", desc: t("cli.plugins.identify.optYes") },
 	],
 
 	handler: async (args, opts) => {
@@ -340,7 +373,7 @@ command({
 		const key = args[0]!;
 		const provider = parseProvider(opts.provider as string | undefined);
 
-		const spin = new Spinner().start(`identifying ${key} at ${provider}…`);
+		const spin = new Spinner().start(t("cli.plugins.identify.probing", { name: key, provider }));
 		const probe = await respacks.probeRespackIdentity(cfg, lock, key, provider, args[1]!);
 
 		spin.stop();
@@ -349,9 +382,7 @@ command({
 		// an unproven match is a guess about what the server is running, so it is
 		// the operator's call and never a default
 		if (probe.confidence !== "exact" && !opts.version && !opts.unidentified && !opts.yes) {
-			throw new Bail(
-				"nothing proved which version this is — re-run with --version <id>, --unidentified, or --yes",
-			);
+			throw new Bail(t("cli.plugins.identify.unproven"));
 		}
 
 		const { row, match } = await respacks.identifyResourcePack(cfg, lock, key, {
@@ -366,19 +397,19 @@ command({
 
 		ok(
 			`${pc.bold(row.key)} → ${provider}:${probe.project.slug} ` +
-				`${match ? pc.green(match.versionNumber) : pc.dim("version unknown")}, ` +
-				`auto-update ${row.autoUpdate ? pc.green("on") : pc.dim("off")}`,
+				`${match ? pc.green(match.versionNumber) : pc.dim(t("cli.plugins.identify.versionUnknown"))}, ` +
+				`${t("cli.plugins.info.autoUpdate")} ${row.autoUpdate ? pc.green(t("cli.plugins.info.on")) : pc.dim(t("cli.plugins.info.off"))}`,
 		);
 
 		if (!match) {
-			info("with no version recorded, the next check offers the newest compatible release");
+			info(t("cli.packs.identify.noVersionNote"));
 		}
 	},
 });
 
 command({
 	path: ["packs", "forget"],
-	desc: "Drop a resource pack's provider mapping (keeps the zip and its rules)",
+	desc: t("cli.packs.forget.desc"),
 	args: [{ name: "pack", required: true, complete: respackKeys }],
 
 	handler: async (args) => {
@@ -388,13 +419,13 @@ command({
 
 		await savePacksLock(lock);
 
-		ok(`${pc.bold(row.key)} is no longer mapped to a provider — updates will not be checked`);
+		ok(t("cli.plugins.forget.done", { name: pc.bold(row.key) }));
 	},
 });
 
 command({
 	path: ["packs", "takeover"],
-	desc: "Take over a plugin-registered pack by writing its definition",
+	desc: t("cli.packs.takeover.desc"),
 	args: [{ name: "pack", required: true, complete: respackKeys }],
 
 	handler: async (args) => {
@@ -404,18 +435,21 @@ command({
 
 		await savePacksLock(lock);
 
-		ok(`wrote ${pc.bold(`${row.key}.yml`)} from the running registration`);
+		ok(t("cli.packs.takeover.wrote", { file: pc.bold(`${row.key}.yml`) }));
 		info(
-			`priority ${from.priority}, ${from.required ? "required" : "optional"}, ` +
-				`servers ${from.servers.join(",")} — the plugin no longer decides these`,
+			t("cli.packs.takeover.detail", {
+				priority: from.priority,
+				required: from.required ? t("cli.packs.required") : t("cli.packs.optional"),
+				servers: from.servers.join(","),
+			}),
 		);
-		info("apply live with: luna packs reload");
+		info(t("cli.packs.reloadHint"));
 	},
 });
 
 command({
 	path: ["packs", "release"],
-	desc: "Give a taken-over pack back to the plugin that registers it",
+	desc: t("cli.packs.releaseCmd.desc"),
 	args: [{ name: "pack", required: true, complete: respackKeys }],
 
 	handler: async (args) => {
@@ -425,27 +459,29 @@ command({
 
 		await savePacksLock(lock);
 
-		ok(`removed ${pc.bold(removed)}`);
+		ok(t("cli.packs.releaseCmd.removed", { file: pc.bold(removed) }));
 
 		if (dynamic) {
 			info(
-				`the plugin's own registration applies again: priority ${dynamic.priority}, ` +
-					`servers ${dynamic.servers.join(",")}`,
+				t("cli.packs.releaseCmd.dynamicApplies", {
+					priority: dynamic.priority,
+					servers: dynamic.servers.join(","),
+				}),
 			);
 		}
 
-		info("apply live with: luna packs reload");
+		info(t("cli.packs.reloadHint"));
 	},
 });
 
 command({
 	path: ["packs", "serve"],
-	desc: "Serve a pack on one or more backends (stop serving with --off)",
+	desc: t("cli.packs.serve.desc"),
 	args: [
 		{ name: "pack", required: true, complete: respackKeys },
 		{ name: "instance", required: true, variadic: true, complete: instanceNames },
 	],
-	opts: [{ flag: "--off", desc: "stop serving the pack on those backends" }],
+	opts: [{ flag: "--off", desc: t("cli.packs.serve.optOff") }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
@@ -464,33 +500,35 @@ command({
 			);
 
 			ok(
-				`${pc.bold(key)} ${on ? pc.green("on") : pc.dim("off")} ${instance} ` +
-					pc.dim(`(servers ${pack.servers.join(",")})`),
+				`${pc.bold(key)} ${on ? pc.green(t("cli.packs.on")) : pc.dim(t("cli.packs.off"))} ${instance} ` +
+					pc.dim(`(${t("cli.head.servers")} ${pack.servers.join(",")})`),
 			);
 
 			if (groupConflict) {
 				warn(
-					`${instance} is granted by addon group(s) ${pack.groups.join(", ")} — ` +
-						"the exclusion overrides the grant, but removing it from the group is cleaner",
+					t("cli.packs.serve.groupConflict", {
+						instance,
+						groups: pack.groups.join(", "),
+					}),
 				);
 			}
 		}
 
 		await savePacksLock(lock);
-		info("apply live with: luna packs reload");
+		info(t("cli.packs.reloadHint"));
 	},
 });
 
 command({
 	path: ["packs", "info"],
-	desc: "One pack in full: contents, serve URL, reachability, holders and traffic",
+	desc: t("cli.packs.info.desc"),
 	args: [{ name: "pack", required: true, complete: respackKeys }],
-	opts: [{ flag: "--retest", desc: "re-measure the pack URL instead of using the stored answer" }],
+	opts: [{ flag: "--retest", desc: t("cli.packs.info.optRetest") }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const lock = await loadPacksLock();
-		const spin = new Spinner().start("collecting...");
+		const spin = new Spinner().start(t("cli.packs.info.collecting"));
 
 		const detail = await respackinfo.resourcePackDetail(cfg, lock, args[0]!, await addonGroups(), {
 			retest: !!opts.retest,
@@ -502,72 +540,90 @@ command({
 
 		console.log();
 		console.log(
-			`  ${pc.bold(pack.key)} ${pc.dim(pack.name)} — ` +
-				`${pack.enabled ? pc.green("enabled") : pc.dim("disabled")}, priority ${pack.priority}, ` +
-				`${pack.required ? "required" : "optional"}`,
+			`  ${pc.bold(pack.key)} ${pc.dim(pack.name)} · ` +
+				`${pack.enabled ? pc.green(t("cli.packs.enabled")) : pc.dim(t("cli.packs.disabled"))}, ${t("cli.head.priority")} ${pack.priority}, ` +
+				`${pack.required ? t("cli.packs.required") : t("cli.packs.optional")}`,
 		);
 		console.log();
 
 		printTable(
 			[
-				["file", `${pack.filename} ${pack.present ? pc.dim(fmtBytes(pack.sizeBytes)) : pc.red("missing")}`],
 				[
-					"contents",
-					manifest.readable
-						? `${manifest.entries} entries, ${fmtBytes(manifest.uncompressedBytes)} unpacked` +
-							`${manifest.packFormat ? pc.dim(` — pack_format ${manifest.packFormat}`) : ""}`
-						: pc.yellow(manifest.problem ?? "unreadable"),
+					t("cli.head.file"),
+					`${pack.filename} ${pack.present ? pc.dim(fmtBytes(pack.sizeBytes)) : pc.red(t("cli.packs.info.missing"))}`,
 				],
-				["description", manifest.description ?? pc.dim("—")],
-				["rules", `${pack.servers.join(",") || pc.yellow("unregistered")} ${pc.dim(`→ ${pack.matched.join(",") || "nothing"}`)}`],
-				["url", detail.url ?? pc.yellow(detail.serve.problem ?? "no base URL")],
 				[
-					"reachable",
+					t("cli.packs.info.contents"),
+					manifest.readable
+						? t("cli.packs.info.contentsLine", {
+								entries: manifest.entries,
+								size: fmtBytes(manifest.uncompressedBytes),
+							}) + `${manifest.packFormat ? pc.dim(` · pack_format ${manifest.packFormat}`) : ""}`
+						: pc.yellow(manifest.problem ?? t("cli.packs.info.unreadable")),
+				],
+				[t("cli.head.description"), manifest.description ?? pc.dim("—")],
+				[
+					t("cli.packs.info.rules"),
+					`${pack.servers.join(",") || pc.yellow(t("cli.packs.unregistered"))} ${pc.dim(`→ ${pack.matched.join(",") || t("cli.packs.info.nothing")}`)}`,
+				],
+				["url", detail.url ?? pc.yellow(detail.serve.problem ?? t("cli.packs.info.noBaseUrl"))],
+				[
+					t("cli.packs.info.reachable"),
 					!reachability.checked
-						? pc.dim(reachability.problem ?? "not checked")
+						? pc.dim(reachability.problem ?? t("cli.packs.info.notChecked"))
 						: (reachability.ok
-								? `${pc.green(`HTTP ${reachability.status}`)} ${pc.dim(`${reachability.elapsedMs}ms, ${reachability.sizeMatches === false ? pc.yellow("size differs from disk") : "size matches"}`)}`
+								? `${pc.green(`HTTP ${reachability.status}`)} ${pc.dim(`${reachability.elapsedMs}ms, ${reachability.sizeMatches === false ? pc.yellow(t("cli.packs.info.sizeDiffers")) : t("cli.packs.info.sizeMatches")}`)}`
 								: pc.red(reachability.problem ?? `HTTP ${reachability.status}`)) +
 							pc.dim(
 								reachability.at
-									? ` — measured ${new Date(reachability.at).toLocaleTimeString()}` +
-										(reachability.cached ? " (stored)" : ` (${reachability.trigger})`)
+									? ` · ${t("cli.packs.info.measured", { time: new Date(reachability.at).toLocaleTimeString() })}` +
+										(reachability.cached ? ` (${t("cli.packs.info.stored")})` : ` (${reachability.trigger})`)
 									: "",
 							),
 				],
 				[
-					"failed loads",
+					t("cli.packs.info.failedLoads"),
 					!failures.available
-						? pc.dim(failures.problem ?? "unavailable")
+						? pc.dim(failures.problem ?? t("cli.packs.info.unavailable"))
 						: failures.failures.length
-							? pc.yellow(`${failures.failures.length} in the live log`) +
+							? pc.yellow(t("cli.packs.info.failuresInLog", { count: failures.failures.length })) +
 								pc.dim(
-									` — last ${failures.failures.at(-1)!.player}: ${failures.failures.at(-1)!.status}`,
+									` · ${t("cli.packs.info.lastFailure", {
+										player: failures.failures.at(-1)!.player,
+										status: failures.failures.at(-1)!.status,
+									})}`,
 								)
-							: pc.dim("none in the live log"),
+							: pc.dim(t("cli.packs.info.noneInLog")),
 				],
 				[
-					"on the proxy",
+					t("cli.packs.info.onProxy"),
 					!resolution.available
-						? pc.dim(resolution.problem ?? "unavailable")
+						? pc.dim(resolution.problem ?? t("cli.packs.info.unavailable"))
 						: resolution.resolved
 							? resolution.resolved.available
-								? `${pc.green("resolved")} ${pc.dim(`sha1 ${resolution.resolved.sha1.slice(0, 12)}`)}`
-								: pc.red(resolution.resolved.unavailableReason || "unavailable")
-							: pc.yellow("not in the running catalog — reload the proxy"),
+								? `${pc.green(t("cli.packs.info.resolved"))} ${pc.dim(`sha1 ${resolution.resolved.sha1.slice(0, 12)}`)}`
+								: pc.red(resolution.resolved.unavailableReason || t("cli.packs.info.unavailable"))
+							: pc.yellow(t("cli.packs.info.notInCatalog")),
 				],
 				[
-					"holders",
+					t("cli.packs.info.holders"),
 					!holders.available
-						? pc.dim(holders.problem ?? "unavailable")
-						: `${holders.loaded}/${holders.online} online player(s) loaded${holders.pending ? pc.dim(`, ${holders.pending} pending`) : ""}`,
+						? pc.dim(holders.problem ?? t("cli.packs.info.unavailable"))
+						: t("cli.packs.info.holdersLine", { loaded: holders.loaded, online: holders.online }) +
+							(holders.pending
+								? pc.dim(`, ${t("cli.packs.info.pending", { count: holders.pending })}`)
+								: ""),
 				],
 				[
-					"traffic",
+					t("cli.packs.info.traffic"),
 					!traffic.available
-						? pc.dim(traffic.problem ?? "unavailable")
-						: `${traffic.requests} download(s), ${fmtBytes(traffic.bytes)}, ${traffic.uniqueClients} client(s)` +
-							`${traffic.lastAt ? pc.dim(` — last ${new Date(traffic.lastAt).toLocaleString()}`) : ""}`,
+						? pc.dim(traffic.problem ?? t("cli.packs.info.unavailable"))
+						: t("cli.packs.info.trafficLine", {
+								requests: traffic.requests,
+								size: fmtBytes(traffic.bytes),
+								clients: traffic.uniqueClients,
+							}) +
+							`${traffic.lastAt ? pc.dim(` · ${t("cli.packs.info.lastAt", { time: new Date(traffic.lastAt).toLocaleString() })}`) : ""}`,
 				],
 			],
 			{ head: ["", ""] },
@@ -578,13 +634,13 @@ command({
 
 command({
 	path: ["packs", "update"],
-	desc: "Check resource packs for provider updates (apply with --apply)",
+	desc: t("cli.packs.update.desc"),
 	args: [{ name: "pack", variadic: true, complete: respackKeys }],
-	opts: [{ flag: "--apply", desc: "download the updates instead of listing them" }],
+	opts: [{ flag: "--apply", desc: t("cli.packs.update.optApply") }],
 
 	handler: async (args, opts) => {
 		const lock = await loadPacksLock();
-		const spin = new Spinner().start("checking providers...");
+		const spin = new Spinner().start(t("cli.packs.checkingProviders"));
 		const { updates, skipped } = await respacks.checkResourcePackUpdates(
 			lock,
 			args.length ? args : undefined,
@@ -597,7 +653,7 @@ command({
 		}
 
 		if (!updates.length) {
-			ok("every resource pack is up to date");
+			ok(t("cli.packs.update.upToDate"));
 
 			return;
 		}
@@ -607,7 +663,11 @@ command({
 		}
 
 		if (!opts.apply) {
-			info(`apply with: luna packs update${args.length ? ` ${args.join(" ")}` : ""} --apply`);
+			info(
+				t("cli.plugins.check.applyHint", {
+					command: `luna packs update${args.length ? ` ${args.join(" ")}` : ""} --apply`,
+				}),
+			);
 
 			return;
 		}
@@ -618,15 +678,15 @@ command({
 		}
 
 		await savePacksLock(lock);
-		info("apply live with: luna packs reload");
+		info(t("cli.packs.reloadHint"));
 	},
 });
 
 command({
 	path: ["packs", "remove"],
-	desc: "Remove a resource pack (definition, zip and lock entry)",
+	desc: t("cli.packs.remove.desc"),
 	args: [{ name: "pack", required: true, complete: respackKeys }],
-	opts: [{ flag: "--keep-file", desc: "remove the registration but keep the zip" }],
+	opts: [{ flag: "--keep-file", desc: t("cli.packs.remove.optKeepFile") }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
@@ -644,27 +704,27 @@ command({
 		}
 
 		if (!removed.length) {
-			warn(`${args[0]}: nothing to remove`);
+			warn(t("cli.packs.remove.nothing", { name: args[0] ?? "" }));
 
 			return;
 		}
 
-		ok(`removed ${args[0]} ${pc.dim(`(${removed.join(", ")})`)}`);
-		info("apply live with: luna packs reload");
+		ok(t("cli.packs.remove.done", { name: args[0] ?? "", detail: pc.dim(`(${removed.join(", ")})`) }));
+		info(t("cli.packs.reloadHint"));
 	},
 });
 
 command({
 	path: ["packs", "reload"],
-	desc: "Ask the running proxy to re-read the packs directory (lunapack reload)",
+	desc: t("cli.packs.reload.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
 
 		if (await respacks.reloadResourcePacks(cfg)) {
-			ok("reload sent to the proxy");
+			ok(t("cli.packs.reload.sent"));
 		} else {
-			warn("the proxy is not running — packs load on its next boot");
+			warn(t("cli.packs.reload.proxyDown"));
 		}
 	},
 });
@@ -673,7 +733,7 @@ command({
 
 command({
 	path: ["datapacks"],
-	desc: "List pooled data packs and where they deploy",
+	desc: t("cli.datapacks.list.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
@@ -681,41 +741,45 @@ command({
 		const rows = await datapacks.listDataPacks(cfg, lock, await addonGroups());
 
 		if (!rows.length) {
-			info("no data packs — add one with: luna datapacks add <slug> --to <instance>");
+			info(t("cli.datapacks.list.empty"));
 
 			return;
 		}
 
 		const table = rows.map((row) => [
 			pc.bold(row.name),
-			row.present ? fmtBytes(row.sizeBytes) : pc.red("file missing"),
+			row.present ? fmtBytes(row.sizeBytes) : pc.red(t("cli.packs.fileMissing")),
 			row.entry.source,
 			row.entry.installed?.versionNumber ?? "",
-			row.entry.autoUpdate ? "auto" : "",
-			row.effectiveTargets.join(",") || pc.dim("nowhere"),
+			row.entry.autoUpdate ? t("cli.head.auto") : "",
+			row.effectiveTargets.join(",") || pc.dim(t("cli.datapacks.list.nowhere")),
 		]);
 
 		console.log();
-		printTable(table, { head: ["pack", "size", "source", "version", "", "deploys to"] });
+		printTable(table, {
+			head: [
+				t("cli.head.pack"),
+				t("cli.head.size"),
+				t("cli.head.source"),
+				t("cli.head.version"),
+				"",
+				t("cli.head.deploysTo"),
+			],
+		});
 		console.log();
 	},
 });
 
 command({
 	path: ["datapacks", "add"],
-	desc: "Install a data pack from a provider (slug, or search query)",
+	desc: t("cli.datapacks.add.desc"),
 	args: [{ name: "slug-or-query", required: true, variadic: true }],
 	opts: [
-		{
-			flag: "--to",
-			desc: "targets: *, *paper, or instance names",
-			value: true,
-			complete: targetSelectors,
-		},
-		{ flag: "--channel", desc: "release channel: release, beta or alpha", value: true },
+		{ flag: "--to", desc: t("cli.datapacks.add.optTo"), value: true, complete: targetSelectors },
+		{ flag: "--channel", desc: t("cli.packs.optChannel"), value: true },
 		{
 			flag: "--provider",
-			desc: "where to install from: modrinth (default), curseforge or smithed",
+			desc: t("cli.datapacks.add.optProvider"),
 			value: true,
 			complete: async () => ["modrinth", "curseforge", "smithed"],
 		},
@@ -723,7 +787,7 @@ command({
 
 	handler: async (args, opts) => {
 		if (!opts.to) {
-			throw new UsageError("--to is required (which instances' worlds get the pack)");
+			throw new UsageError(t("cli.datapacks.add.needsTo"));
 		}
 
 		const cfg = await loadCluster();
@@ -736,7 +800,7 @@ command({
 		}
 
 		const targets = String(opts.to).split(",").map((target) => target.trim()).filter(Boolean);
-		const spin = new Spinner().start(`installing ${project.title}...`);
+		const spin = new Spinner().start(t("cli.plugins.add.installing", { name: project.title }));
 		const res = await datapacks.installDataPackFromProvider(cfg, lock, provider, project, targets, {
 			channel: opts.channel as PackChannel | undefined,
 		});
@@ -744,7 +808,12 @@ command({
 		await savePacksLock(lock);
 		spin.stop();
 
-		ok(`installed ${pc.bold(res.name)} ${pc.green(res.entry.installed?.versionNumber ?? "")}`);
+		ok(
+			t("cli.plugins.add.installed", {
+				name: pc.bold(res.name),
+				version: pc.green(res.entry.installed?.versionNumber ?? ""),
+			}),
+		);
 
 		await runDatapackDeploy(undefined, res.name);
 	},
@@ -754,7 +823,7 @@ command({
 async function runDatapackDeploy(instances: string[] | undefined, pack?: string): Promise<void> {
 	const cfg = await loadCluster();
 	const lock = await loadPacksLock();
-	const spin = new Spinner().start("deploying data packs...");
+	const spin = new Spinner().start(t("cli.datapacks.deploy.deploying"));
 	const actions = await datapacks.deployDataPacks(cfg, lock, {
 		instances,
 		pack,
@@ -777,19 +846,19 @@ async function runDatapackDeploy(instances: string[] | undefined, pack?: string)
 	}
 
 	if (!changed.length) {
-		ok("every world already in sync");
+		ok(t("cli.datapacks.deploy.inSync"));
 
 		return;
 	}
 
-	info("running servers load the change on their next restart (or /minecraft:reload)");
+	info(t("cli.datapacks.deploy.restartNote"));
 }
 
 command({
 	path: ["datapacks", "deploy"],
-	desc: "Sync pooled data packs into target instances' worlds",
+	desc: t("cli.datapacks.deploy.desc"),
 	args: [{ name: "instance", variadic: true, complete: instanceNames }],
-	opts: [{ flag: "--pack", desc: "deploy a single pack", value: true, complete: datapackNames }],
+	opts: [{ flag: "--pack", desc: t("cli.datapacks.deploy.optPack"), value: true, complete: datapackNames }],
 
 	handler: async (args, opts) => {
 		await runDatapackDeploy(args.length ? args : undefined, opts.pack as string | undefined);
@@ -798,14 +867,14 @@ command({
 
 command({
 	path: ["datapacks", "update"],
-	desc: "Check data packs for provider updates (apply with --apply)",
+	desc: t("cli.datapacks.update.desc"),
 	args: [{ name: "pack", variadic: true, complete: datapackNames }],
-	opts: [{ flag: "--apply", desc: "download the updates and redeploy" }],
+	opts: [{ flag: "--apply", desc: t("cli.datapacks.update.optApply") }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const lock = await loadPacksLock();
-		const spin = new Spinner().start("checking providers...");
+		const spin = new Spinner().start(t("cli.packs.checkingProviders"));
 		const { updates, skipped } = await datapacks.checkDataPackUpdates(
 			cfg,
 			lock,
@@ -820,7 +889,7 @@ command({
 		}
 
 		if (!updates.length) {
-			ok("every data pack is up to date");
+			ok(t("cli.datapacks.update.upToDate"));
 
 			return;
 		}
@@ -830,7 +899,11 @@ command({
 		}
 
 		if (!opts.apply) {
-			info(`apply with: luna datapacks update${args.length ? ` ${args.join(" ")}` : ""} --apply`);
+			info(
+				t("cli.plugins.check.applyHint", {
+					command: `luna datapacks update${args.length ? ` ${args.join(" ")}` : ""} --apply`,
+				}),
+			);
 
 			return;
 		}
@@ -850,7 +923,7 @@ command({
 
 command({
 	path: ["datapacks", "adopt"],
-	desc: "Adopt a hand-dropped zip from an instance's world into the pool",
+	desc: t("cli.datapacks.adopt.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "file", required: true },
@@ -863,21 +936,22 @@ command({
 
 		await savePacksLock(lock);
 
-		ok(`adopted ${pc.bold(res.name)} ${Sym.arrow} datapacks/${res.entry.file} (targets: ${args[0]})`);
+		ok(
+			t("cli.datapacks.adopt.done", {
+				name: pc.bold(res.name),
+				file: `datapacks/${res.entry.file}`,
+				targets: args[0] ?? "",
+			}),
+		);
 	},
 });
 
 command({
 	path: ["datapacks", "remove"],
-	desc: "Remove a data pack from worlds (and the pool when nothing targets it)",
+	desc: t("cli.datapacks.remove.desc"),
 	args: [{ name: "pack", required: true, complete: datapackNames }],
 	opts: [
-		{
-			flag: "--from",
-			desc: "only remove from these instances",
-			value: true,
-			complete: targetSelectors,
-		},
+		{ flag: "--from", desc: t("cli.datapacks.remove.optFrom"), value: true, complete: targetSelectors },
 	],
 
 	handler: async (args, opts) => {
@@ -897,25 +971,34 @@ command({
 			await saveLock(groups);
 		}
 
-		const where = res.deletedFrom.length ? res.deletedFrom.join(", ") : "no worlds held it";
+		const where = res.deletedFrom.length
+			? res.deletedFrom.join(", ")
+			: t("cli.datapacks.remove.noWorlds");
 
-		ok(`removed ${pc.bold(args[0]!)} ${pc.dim(`(${where}${res.entryRemoved ? "; pool entry dropped" : ""})`)}`);
+		ok(
+			t("cli.datapacks.remove.done", {
+				name: pc.bold(args[0]!),
+				detail: pc.dim(
+					`(${where}${res.entryRemoved ? `; ${t("cli.datapacks.remove.poolDropped")}` : ""})`,
+				),
+			}),
+		);
 	},
 });
 
 command({
 	path: ["datapacks", "identify"],
-	desc: "Map an existing data pack to a provider project (so updates apply)",
+	desc: t("cli.datapacks.identify.desc"),
 	args: [
 		{ name: "pack", required: true, complete: datapackNames },
 		{ name: "slug-or-id", required: true },
 	],
 	opts: [
-		{ flag: "--provider", desc: "provider to map against (default modrinth)", value: true },
-		{ flag: "--version", desc: "version id to record as installed", value: true },
-		{ flag: "--unidentified", desc: "record the project but no version" },
-		{ flag: "--auto", desc: "auto-update: on or off (default on only for a proven match)", value: true },
-		{ flag: "--yes", desc: "accept an unproven match without asking" },
+		{ flag: "--provider", desc: t("cli.plugins.identify.optProvider"), value: true },
+		{ flag: "--version", desc: t("cli.plugins.identify.optVersion"), value: true },
+		{ flag: "--unidentified", desc: t("cli.plugins.identify.optUnidentified") },
+		{ flag: "--auto", desc: t("cli.plugins.identify.optAuto"), value: true },
+		{ flag: "--yes", desc: t("cli.plugins.identify.optYes") },
 	],
 
 	handler: async (args, opts) => {
@@ -924,16 +1007,14 @@ command({
 		const name = args[0]!;
 		const provider = parseProvider(opts.provider as string | undefined);
 
-		const spin = new Spinner().start(`identifying ${name} at ${provider}…`);
+		const spin = new Spinner().start(t("cli.plugins.identify.probing", { name, provider }));
 		const probe = await datapacks.probeDataPackIdentity(lock, name, provider, args[1]!);
 
 		spin.stop();
 		printProbe(probe);
 
 		if (probe.confidence !== "exact" && !opts.version && !opts.unidentified && !opts.yes) {
-			throw new Bail(
-				"nothing proved which version this is — re-run with --version <id>, --unidentified, or --yes",
-			);
+			throw new Bail(t("cli.plugins.identify.unproven"));
 		}
 
 		const { entry, match } = await datapacks.identifyDataPack(cfg, lock, name, {
@@ -948,15 +1029,15 @@ command({
 
 		ok(
 			`${pc.bold(name)} → ${provider}:${probe.project.slug} ` +
-				`${match ? pc.green(match.versionNumber) : pc.dim("version unknown")}, ` +
-				`auto-update ${entry.autoUpdate ? pc.green("on") : pc.dim("off")}`,
+				`${match ? pc.green(match.versionNumber) : pc.dim(t("cli.plugins.identify.versionUnknown"))}, ` +
+				`${t("cli.plugins.info.autoUpdate")} ${entry.autoUpdate ? pc.green(t("cli.plugins.info.on")) : pc.dim(t("cli.plugins.info.off"))}`,
 		);
 	},
 });
 
 command({
 	path: ["datapacks", "forget"],
-	desc: "Drop a data pack's provider mapping (keeps the zip and its targets)",
+	desc: t("cli.datapacks.forget.desc"),
 	args: [{ name: "pack", required: true, complete: datapackNames }],
 
 	handler: async (args) => {
@@ -965,6 +1046,6 @@ command({
 		await datapacks.forgetDataPackIdentity(lock, args[0]!);
 		await savePacksLock(lock);
 
-		ok(`${pc.bold(args[0]!)} is no longer mapped to a provider — updates will not be checked`);
+		ok(t("cli.plugins.forget.done", { name: pc.bold(args[0]!) }));
 	},
 });

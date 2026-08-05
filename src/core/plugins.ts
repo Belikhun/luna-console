@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
 
 import type { ClusterConfig, InstanceConfig, PluginEntry, PluginFamily, PluginsLock, ProviderId } from "./types";
+import { t } from "../shared/i18n";
 import type { AddonDir } from "./config";
 import { addonDirForFamily, addonDirOf, expandTargets, instanceDir, managedInstances, poolDir } from "./config";
 import { carriesMcRequirement, effectiveTargets, familyMatches, familyOf, pluginNameOf } from "./families";
@@ -30,7 +31,7 @@ import {
 } from "./identify";
 
 /**
- * Loader facets a family's builds are published under — a paper server also
+ * Loader facets a family's builds are published under; a paper server also
  * loads bukkit/spigot jars, a mod loader accepts only its own. A universal
  * jar is a paper build that happens to carry a velocity descriptor too, so the
  * paper facets are what find it.
@@ -76,7 +77,7 @@ const STANDARDIZED = /^(.+)@(paper|velocity|universal|neoforge)$/;
 
 /**
  * The (name, family) a pool jar declares through its own file name. Undefined
- * for a jar that predates the standardized scheme — the caller then guesses.
+ * for a jar that predates the standardized scheme; the caller then guesses.
  */
 export function identityFromFile(file: string): { plugin: string; family: PluginFamily } | undefined {
 	const match = entryNameFor(file).match(STANDARDIZED);
@@ -138,8 +139,8 @@ export interface ScanReport {
  * "Ours" is deliberately narrow: the instance's copy has to be byte-identical
  * to a pooled build, or carry the standardized `<addon>@<family>.jar` name that
  * only a luna deploy writes. A server that was adopted with its own jars keeps
- * them — a name that merely happens to collide never pulls a stranger's file
- * under management (DESIGN.md — adoption leaves the directory alone).
+ * them; a name that merely happens to collide never pulls a stranger's file
+ * under management (DESIGN.md: adoption leaves the directory alone).
  */
 export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanReport> {
 	const report: ScanReport = {
@@ -186,7 +187,7 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 		}
 	}
 
-	// instance/file pairs claimed by a lockfile entry — everything left over is
+	// instance/file pairs claimed by a lockfile entry; everything left over is
 	// the instance's own business and gets reported, never adopted
 	const claimed = new Set<string>();
 
@@ -230,12 +231,12 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 		if (hashChanged && !isNew) {
 			report.updatedHash.push(name);
 
-			// jar content moved — the cached descriptor and log names are stale
+			// jar content moved; the cached descriptor and log names are stale
 			delete entry.aliases;
 			delete entry.meta;
 		}
 
-		// Identify on Modrinth by hash — the one provider that can answer "what
+		// Identify on Modrinth by hash: the one provider that can answer "what
 		// is this jar". Skip luna, skip entries another provider owns, and skip
 		// when the hash is unchanged and already identified with a channel.
 		const needsLookup =
@@ -273,7 +274,7 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 					!version.loaders.some((loader) => PAPER_LOADERS.includes(loader));
 
 				// a hash identification outranks a name guess, never the file name's
-				// own declaration — a standardized jar already said what it is
+				// own declaration; a standardized jar already said what it is
 				if (velocityOnly && isNew && !identity) {
 					entry.family = "velocity";
 				}
@@ -320,7 +321,7 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 
 		for (const hit of found.values()) {
 			// a copy sitting in the other kind's directory is not this build's
-			// deployment — leave it to whichever entry actually owns that side
+			// deployment; leave it to whichever entry actually owns that side
 			if (hit.dir !== dir) {
 				continue;
 			}
@@ -380,8 +381,8 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 		pruneVariants(name, entry);
 	}
 
-	// Unmanaged: everything no entry claimed. These are the instance's own —
-	// adopted with the server, hand-dropped, or shipped by a modpack — and scan
+	// Unmanaged: everything no entry claimed. These are the instance's own,
+	// adopted with the server, hand-dropped, or shipped by a modpack, and scan
 	// only ever reports them.
 	for (const hit of instJars) {
 		if (claimed.has(`${hit.instance}/${hit.dir}/${hit.actual}`)) {
@@ -448,7 +449,7 @@ export interface EntryResolution {
  * Per-target version resolution: each target independently gets the newest
  * acceptable version compatible with ITS MC version (older backends may
  * resolve to an older plugin version than newer ones). Pinned targets are
- * left alone. `targets` overrides the entry's own resolution — callers with a
+ * left alone. `targets` overrides the entry's own resolution; callers with a
  * lockfile pass `effectiveTargets` so group coverage resolves too.
  */
 export function resolveEntry(
@@ -479,7 +480,7 @@ export function resolveEntry(
 			continue;
 		}
 
-		// Builds that land on a game server carry an MC-version requirement — a
+		// Builds that land on a game server carry an MC-version requirement; a
 		// paper plugin and a neoforge mod alike; velocity builds are
 		// version-independent. Universal jars count when they land on a backend.
 		const required =
@@ -495,7 +496,7 @@ export function resolveEntry(
 			holdbacks.push({
 				targets: [target],
 				current: assignedVersion(entry, target),
-				reason: `no ${channel}-channel version supports MC ${required.join("/") || "?"}`,
+				reason: t("core.plugins.noChannelVersionForMc", { channel, mc: required.join("/") || "?" }),
 			});
 
 			continue;
@@ -559,7 +560,7 @@ export interface UpdateCandidate {
  * explicit `plugins update <name>` still works on a pinned-back plugin.
  *
  * One provider round trip per entry, so it reports live: the entries that cost a
- * query are counted first and each one reports twice — once as its request goes
+ * query are counted first and each one reports twice: once as its request goes
  * out, once with what came back.
  */
 export async function checkUpdates(
@@ -576,7 +577,7 @@ export async function checkUpdates(
 	const progress = opts.reporter;
 
 	// classified up front so the progress denominator counts only the entries
-	// that actually reach a provider — the skips are free
+	// that actually reach a provider; the skips are free
 	const queryable: Array<[string, PluginEntry]> = [];
 
 	for (const [name, entry] of Object.entries(lock.plugins)) {
@@ -585,19 +586,19 @@ export async function checkUpdates(
 		}
 
 		if (entry.source === "luna") {
-			skipped.push({ name, reason: "luna plugin (custom deployment)" });
+			skipped.push({ name, reason: t("core.plugins.skipLuna") });
 
 			continue;
 		}
 
 		if (entry.source === "manual" || !entry.remote) {
-			skipped.push({ name, reason: "not identified with a provider" });
+			skipped.push({ name, reason: t("core.plugins.skipUnidentified") });
 
 			continue;
 		}
 
 		if (!entry.autoUpdate && !names?.includes(name)) {
-			skipped.push({ name, reason: "auto-update disabled" });
+			skipped.push({ name, reason: t("core.plugins.skipAutoOff") });
 
 			continue;
 		}
@@ -608,8 +609,8 @@ export async function checkUpdates(
 	if (!queryable.length) {
 		progress?.complete(
 			skipped.length
-				? `nothing to check — ${skipped.length} entr(ies) skipped`
-				: "nothing to check",
+				? t("core.plugins.nothingToCheckSkipped", { count: skipped.length })
+				: t("core.plugins.nothingToCheck"),
 		);
 
 		return { candidates, skipped };
@@ -618,7 +619,7 @@ export async function checkUpdates(
 	let checked = 0;
 
 	for (const [name, entry] of queryable) {
-		progress?.info(checked / queryable.length, `${name} — asking ${entry.remote!.provider}`);
+		progress?.info(checked / queryable.length, t("core.plugins.asking", { name, provider: entry.remote!.provider }));
 
 		const versions = await remoteVersions(entry);
 
@@ -654,7 +655,7 @@ export async function checkUpdates(
 
 		checked += 1;
 
-		// what came back, per entry — the reason a check that finds nothing still
+		// what came back, per entry: the reason a check that finds nothing still
 		// reads as work having happened
 		const outcome = pendingGroups.length
 			? `${pendingGroups.map((group) => group.version.version_number).join(", ")} available`
@@ -665,7 +666,7 @@ export async function checkUpdates(
 		progress?.report(
 			checked / queryable.length,
 			resolution.holdbacks.length && !pendingGroups.length ? "warn" : "okay",
-			`${name} — ${outcome}`,
+			`${name}: ${outcome}`,
 		);
 	}
 
@@ -673,8 +674,8 @@ export async function checkUpdates(
 
 	progress?.complete(
 		updatable
-			? `${checked} checked — ${updatable} with updates`
-			: `${checked} checked — everything up to date`,
+			? t("core.plugins.checkedUpdates", { checked, updatable })
+			: t("core.plugins.checkedUpToDate", { checked }),
 	);
 
 	return { candidates, skipped };
@@ -780,11 +781,11 @@ export async function pinVersion(
 	const entry = lock.plugins[name];
 
 	if (!entry) {
-		throw new Error(`unknown plugin: ${name}`);
+		throw new Error(t("core.plugins.unknown", { name }));
 	}
 
 	if (!entry.remote) {
-		throw new Error(`${name} has no provider — pinning needs provider version metadata`);
+		throw new Error(t("core.plugins.pinNeedsProvider", { name }));
 	}
 
 	const versions = await remoteVersions(entry);
@@ -793,7 +794,7 @@ export async function pinVersion(
 	);
 
 	if (!version) {
-		throw new Error(`version "${versionSpec}" not found for ${name}`);
+		throw new Error(t("core.plugins.versionNotFound", { version: versionSpec, name }));
 	}
 
 	const insts = managedInstances(cfg);
@@ -801,7 +802,7 @@ export async function pinVersion(
 	const expanded = expandTargets(cfg, targets).filter((target) => entryTargets.includes(target));
 
 	if (!expanded.length) {
-		throw new Error(`none of [${targets.join(",")}] are targets of ${name}`);
+		throw new Error(t("core.plugins.notTargets", { targets: targets.join(","), name }));
 	}
 
 	const incompatible = expanded.filter((target) => {
@@ -814,15 +815,19 @@ export async function pinVersion(
 		return version.game_versions.length > 0 && !coversMc(version.game_versions, inst.mcVersion);
 	});
 
-	// server-version gate per DESIGN.md — an explicit --force is the only way past it
+	// server-version gate per DESIGN.md; an explicit --force is the only way past it
 	if (incompatible.length && !force) {
 		const detail = incompatible
 			.map((target) => `${target} (MC ${insts[target]?.mcVersion})`)
 			.join(", ");
 
 		throw new Error(
-			`${name} ${version.version_number} supports [${version.game_versions.join(", ")}] — ` +
-				`incompatible with: ${detail} (use --force to pin anyway)`,
+			t("core.plugins.pinIncompatible", {
+				name,
+				version: version.version_number,
+				supported: version.game_versions.join(", "),
+				detail,
+			}),
 		);
 	}
 
@@ -858,7 +863,7 @@ export async function pinVersion(
 
 /**
  * Make sure the pool holds a build of `name` that supports `mcVersion`,
- * downloading one from the entry's provider when it does not — the "download
+ * downloading one from the entry's provider when it does not; the "download
  * compatible version" action behind a group-validation warning. Returns the
  * version that now covers the MC version.
  */
@@ -870,7 +875,7 @@ export async function ensureVariantForMc(
 	const entry = lock.plugins[name];
 
 	if (!entry) {
-		throw new Error(`unknown plugin: ${name}`);
+		throw new Error(t("core.plugins.unknown", { name }));
 	}
 
 	if (coversMc(entry.installed?.gameVersions, mcVersion)) {
@@ -886,14 +891,14 @@ export async function ensureVariantForMc(
 	}
 
 	if (!entry.remote) {
-		throw new Error(`${name} has no provider metadata — pool a compatible build manually`);
+		throw new Error(t("core.plugins.noProviderMeta", { name }));
 	}
 
 	const versions = await remoteVersions(entry);
 	const { best } = pickCompatible(versions, [mcVersion], { channel: entry.channel ?? "release" });
 
 	if (!best) {
-		throw new Error(`no ${entry.channel ?? "release"}-channel build of ${name} supports MC ${mcVersion}`);
+		throw new Error(t("core.plugins.noBuildForMc", { channel: entry.channel ?? "release", name, mc: mcVersion }));
 	}
 
 	const file = primaryFile(best);
@@ -925,7 +930,7 @@ export function unpinVersion(
 	const entry = lock.plugins[name];
 
 	if (!entry) {
-		throw new Error(`unknown plugin: ${name}`);
+		throw new Error(t("core.plugins.unknown", { name }));
 	}
 
 	if (!entry.pins) {
@@ -1054,7 +1059,7 @@ export async function deploy(
 			// The assigned build may not fit this backend's MC version (a fresh
 			// instance on an old MC, before `plugins update` has resolved it). When a
 			// pooled variant fits, deploy that and record the assignment so the choice
-			// is stable — and so pruneVariants keeps the jar.
+			// is stable, and so pruneVariants keeps the jar.
 			const inst = insts[target];
 			const mc = inst && carriesMcRequirement(inst.software) ? inst.mcVersion : undefined;
 
@@ -1103,7 +1108,7 @@ export async function deploy(
 				continue;
 			}
 
-			// `mods/` on a mod loader, `plugins/` everywhere else — effectiveTargets
+			// `mods/` on a mod loader, `plugins/` everywhere else; effectiveTargets
 			// already guaranteed the build belongs in whichever one this is
 			const addonDir = instanceAddonDir(inst);
 
@@ -1118,7 +1123,7 @@ export async function deploy(
 					instance: target,
 					file: entry.file,
 					action: "missing-variant",
-					detail: `version ${resolved.missing} not pooled — run plugins update`,
+					detail: t("core.plugins.variantNotPooled", { version: resolved.missing }),
 				});
 
 				continue;
@@ -1207,7 +1212,7 @@ export async function deploy(
 
 /**
  * The resolution for an install with no targets: the plugin is being *pooled*,
- * not deployed, so no instance constrains the choice — take the newest build on
+ * not deployed, so no instance constrains the choice: take the newest build on
  * the channel as the pool primary. When the plugin later lands on an instance
  * (an explicit target, or an addon group), the per-instance resolution fetches
  * a fitting build for it exactly as it does for every other entry.
@@ -1219,7 +1224,7 @@ function poolOnlyResolution(entry: PluginEntry, versions: AddonVersion[]): Entry
 	if (!best) {
 		return {
 			groups: [],
-			holdbacks: [{ targets: [], reason: `no ${channel}-channel version published` }],
+			holdbacks: [{ targets: [], reason: t("core.plugins.noChannelVersion", { channel }) }],
 			pinned: [],
 		};
 	}
@@ -1285,7 +1290,11 @@ export async function installFromProvider(
 			.join("; ");
 
 		throw new Error(
-			`no installable version of ${project.slug} (${family}): ${reasons || "no versions found"}`,
+			t("core.plugins.noInstallable", {
+				slug: project.slug,
+				family,
+				reasons: reasons || t("core.plugins.noVersionsFound"),
+			}),
 		);
 	}
 
@@ -1302,7 +1311,7 @@ export async function installFromProvider(
 
 /** How an uploaded jar is identified and where it should land. */
 export interface JarUpload {
-	/** Plugin name — the identity half of the entry key */
+	/** Plugin name, the identity half of the entry key */
 	plugin: string;
 	/** Platform the build runs on; decides the entry key's family suffix */
 	family: PluginFamily;
@@ -1314,7 +1323,7 @@ export interface JarUpload {
 
 /**
  * Decode an uploaded jar. A jar is a zip, so the magic check is the same one
- * the pack uploads use — enough to reject a wrong file picked by mistake
+ * the pack uploads use; enough to reject a wrong file picked by mistake
  * before it lands in the pool under a name something else will try to load.
  */
 function decodeJar(dataBase64: string): Uint8Array {
@@ -1322,7 +1331,7 @@ function decodeJar(dataBase64: string): Uint8Array {
 	const isZip = buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03;
 
 	if (!isZip) {
-		throw new Error("the uploaded file is not a jar");
+		throw new Error(t("core.plugins.notAJar"));
 	}
 
 	return buf;
@@ -1330,7 +1339,7 @@ function decodeJar(dataBase64: string): Uint8Array {
 
 /**
  * Pool a jar uploaded from the console, under the standardized
- * `<plugin>@<family>` scheme with manual provenance — the same shape `scan`
+ * `<plugin>@<family>` scheme with manual provenance, the same shape `scan`
  * and `adopt` produce, so everything downstream (deploy, groups, drift) treats
  * it like any other entry. Uploading over an existing entry replaces its file
  * and drops the version identity it no longer has.
@@ -1343,7 +1352,7 @@ export async function uploadJar(
 	const plugin = opts.plugin.trim().toLowerCase();
 
 	if (!/^[a-z0-9][a-z0-9_-]*$/.test(plugin)) {
-		throw new Error("plugin name must be lowercase alphanumeric with - or _");
+		throw new Error(t("core.plugins.badPluginName"));
 	}
 
 	const targets = opts.targets ?? [];
@@ -1385,14 +1394,14 @@ export async function uploadJar(
 }
 
 /**
- * Adopt an instance-only jar into the common pool — the explicit way an addon
+ * Adopt an instance-only jar into the common pool: the explicit way an addon
  * a server brought with it becomes managed. Nothing else does this: a scan
  * reports unmanaged jars and leaves them where they are, because a server that
  * was adopted with its own plugins or modpack is working and rewriting its
  * directory is how that stops being true.
  *
  * The jar keeps its file name so the instance's existing copy *is* the
- * deployment — no rename, no second jar the server would load twice.
+ * deployment; no rename, no second jar the server would load twice.
  */
 export async function adopt(
 	cfg: ClusterConfig,
@@ -1403,14 +1412,14 @@ export async function adopt(
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${instance}`);
+		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
 	const dir = addonDirOf(inst.software);
 	const src = join(instanceDir(inst), dir, jarName);
 
 	if (!existsSync(src)) {
-		throw new Error(`${jarName} not found in ${instance}/${dir}`);
+		throw new Error(t("core.plugins.jarNotFound", { jar: jarName, path: `${instance}/${dir}` }));
 	}
 
 	await copyFile(src, join(poolDir(), jarName));
@@ -1444,7 +1453,7 @@ export async function removePlugin(
 	const entry = lock.plugins[name];
 
 	if (!entry) {
-		throw new Error(`unknown plugin: ${name}`);
+		throw new Error(t("core.plugins.unknown", { name }));
 	}
 
 	const insts = managedInstances(cfg);
@@ -1525,14 +1534,14 @@ export interface PluginIdentityProbe extends IdentityProbe {
 }
 
 /**
- * The pooled file of an entry, which is what a mapping has to identify — not the
+ * The pooled file of an entry, which is what a mapping has to identify, not the
  * copies in the instance directories, which deploy may not have caught up with.
  */
 function poolFileOf(name: string, entry: PluginEntry): string {
 	const path = join(poolDir(), entry.file);
 
 	if (!existsSync(path)) {
-		throw new Error(`${name}: ${entry.file} is not in the pool, so it cannot be identified`);
+		throw new Error(t("core.plugins.notInPool", { name, file: entry.file }));
 	}
 
 	return path;
@@ -1543,13 +1552,13 @@ function mappable(lock: PluginsLock, name: string): PluginEntry {
 	const entry = lock.plugins[name];
 
 	if (!entry) {
-		throw new Error(`unknown plugin: ${name}`);
+		throw new Error(t("core.plugins.unknown", { name }));
 	}
 
 	// an in-house jar has no upstream project: its provenance is the gradle
 	// workspace, and pointing it at a provider would make `update` fight `luna sync`
 	if (entry.source === "luna") {
-		throw new Error(`${name} is an in-house build — its source is the luna workspace`);
+		throw new Error(t("core.plugins.inHouseIdentify", { name }));
 	}
 
 	return entry;
@@ -1630,11 +1639,11 @@ export async function forgetPluginIdentity(
 	const entry = lock.plugins[name];
 
 	if (!entry) {
-		throw new Error(`unknown plugin: ${name}`);
+		throw new Error(t("core.plugins.unknown", { name }));
 	}
 
 	if (entry.source === "luna") {
-		throw new Error(`${name} is an in-house build, not a provider mapping`);
+		throw new Error(t("core.plugins.inHouseForget", { name }));
 	}
 
 	entry.source = "manual";

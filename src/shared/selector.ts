@@ -2,7 +2,7 @@
  * The server-selector model: what the LunaCore proxy plugin renders as the
  * `/servers` chest GUI, expressed as luna data rather than as YAML.
  *
- * This lives in shared because all three sides need it — the daemon generates
+ * This lives in shared because all three sides need it; the daemon generates
  * `servers.yml` from it, the CLI validates it, and the console's editor
  * validates the draft in the browser while the admin types. The shapes mirror
  * `VelocityServerSelectorConfig` field for field; where they differ, the comment
@@ -13,12 +13,12 @@ export type SelectorStatus = "ONLINE" | "OFFLINE" | "MAINT" | "NOP";
 
 export const SELECTOR_STATUSES: readonly SelectorStatus[] = ["ONLINE", "OFFLINE", "MAINT", "NOP"];
 
-/** Slots the plugin lets a server occupy — row 6 is its own hardcoded footer. */
+/** Slots the plugin lets a server occupy; row 6 is its own hardcoded footer. */
 export const SELECTOR_PAGE_SIZE = 45;
 
 /**
  * The placeholders the plugin resolves. Anything else is reported as a warning,
- * or as an error when `diagnostics.unknownPlaceholderAsError` is set — which is
+ * or as an error when `diagnostics.unknownPlaceholderAsError` is set; which is
  * why the editor checks them rather than letting a typo reach a reload.
  */
 export const KNOWN_PLACEHOLDERS: readonly string[] = [
@@ -65,7 +65,7 @@ export interface SelectorConditionalRule {
 	glint?: boolean;
 	description?: string[];
 	/**
-	 * Raw per-rule template override. The editor never writes this — it is carried
+	 * Raw per-rule template override. The editor never writes this; it is carried
 	 * through untouched so importing a hand-written file loses nothing.
 	 */
 	template?: Record<string, unknown>;
@@ -75,7 +75,7 @@ export interface SelectorConditionalRule {
 export interface InstanceSelectorEntry {
 	/** 1-based page, as the plugin's config counts them */
 	page: number;
-	/** 0–44 inside the 5-row server grid */
+	/** 0-44 inside the 5-row server grid */
 	slot: number;
 	/** Tri-state: absent leaves the item's vanilla glint alone */
 	glint?: boolean;
@@ -87,7 +87,7 @@ export interface InstanceSelectorEntry {
 	/**
 	 * Raw per-server template block, round-tripped only. The plugin treats one of
 	 * these as a *replacement* for the global template rather than a merge, so a
-	 * partial block silently wipes the global header and footer — the editor
+	 * partial block silently wipes the global header and footer; the editor
 	 * refuses to author them for that reason.
 	 */
 	template?: Record<string, unknown>;
@@ -147,7 +147,7 @@ export interface SelectorServerDraft {
 	serverStatusIcons?: Partial<Record<SelectorStatus, string>>;
 	description?: string[];
 	selector?: InstanceSelectorEntry;
-	/** Derived from the owning daemon — `server-info.host-name` on disk */
+	/** Derived from the owning daemon; `server-info.host-name` on disk */
 	hostName: string;
 	software: string;
 	mcVersion?: string;
@@ -162,7 +162,7 @@ export interface SelectorDraft {
 
 export interface SelectorIssue {
 	level: "error" | "warning";
-	/** Dotted path into the draft, e.g. `servers.survival.slot` — the editor
+	/** Dotted path into the draft, e.g. `servers.survival.slot`; the editor
 	 *  turns this into a link to the offending field */
 	path: string;
 	message: string;

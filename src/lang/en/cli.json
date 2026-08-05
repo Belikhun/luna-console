@@ -1,0 +1,1363 @@
+{
+	"framework": {
+		"tagline": "minecraft cluster control center",
+		"unknownOption": "unknown option {flag}",
+		"optionNeedsValue": "option {flag} requires a value",
+		"missingArgument": "missing argument <{name}>",
+		"unexpectedArgument": "unexpected argument \"{arg}\"",
+		"unknownCommand": "unknown command: {command}",
+		"helpHint": "run \"luna help\" for usage",
+		"usageError": "usage error: {message}"
+	},
+	"completions": {
+		"desc": "Print shell completion hook (bash|zsh|fish)",
+		"unsupportedShell": "unsupported shell: {shell}",
+		"installHint": "# install: luna completions {shell} >> ~/.{target}"
+	},
+	"repl": {
+		"title": "interactive console",
+		"hints": "Tab to complete · 'help' for commands · '?' after a command for hints · 'exit' to leave",
+		"bye": "bye"
+	},
+	"common": {
+		"aborted": "aborted",
+		"none": "none",
+		"optYes": "skip the confirmation"
+	},
+	"level": {
+		"error": "error",
+		"warn": "warn"
+	},
+	"head": {
+		"where": "where",
+		"problem": "problem",
+		"server": "server",
+		"pageSlot": "page:slot",
+		"material": "material",
+		"accent": "accent",
+		"description": "description",
+		"host": "host",
+		"port": "port",
+		"proto": "proto",
+		"machine": "machine",
+		"owner": "owner",
+		"kind": "kind",
+		"pool": "pool",
+		"address": "address",
+		"range": "range",
+		"used": "used",
+		"next": "next",
+		"source": "source",
+		"items": "items",
+		"size": "size",
+		"name": "name",
+		"id": "id",
+		"action": "action",
+		"instances": "instances",
+		"trigger": "trigger",
+		"nextRun": "next run",
+		"last": "last",
+		"runs": "runs",
+		"time": "time",
+		"schedule": "schedule",
+		"outcome": "outcome",
+		"detail": "detail",
+		"state": "state",
+		"backend": "backend",
+		"memory": "memory",
+		"players": "players",
+		"uptime": "uptime",
+		"beat": "beat",
+		"player": "player",
+		"session": "session",
+		"event": "event",
+		"group": "group",
+		"plugins": "plugins",
+		"respacks": "respacks",
+		"datapacks": "datapacks",
+		"usedBy": "used by",
+		"addon": "addon",
+		"module": "module",
+		"platform": "platform",
+		"pooledVersion": "pooled version",
+		"built": "built",
+		"targets": "targets",
+		"drifted": "drifted",
+		"value": "value",
+		"scope": "scope",
+		"instance": "instance",
+		"file": "file",
+		"placeholders": "placeholders",
+		"mode": "mode",
+		"disk": "disk",
+		"latency": "latency",
+		"version": "version",
+		"lastSeen": "last seen",
+		"check": "check",
+		"resident": "resident",
+		"channel": "channel",
+		"playtime": "playtime",
+		"sessions": "sessions",
+		"when": "when",
+		"amount": "amount",
+		"counterparty": "counterparty",
+		"details": "details",
+		"weight": "weight",
+		"prefix": "prefix",
+		"inherits": "inherits",
+		"nodes": "nodes",
+		"members": "members",
+		"software": "software",
+		"mem": "mem",
+		"auto": "auto",
+		"family": "family",
+		"plugin": "plugin",
+		"update": "update",
+		"supportsMc": "supports MC",
+		"runsVersion": "runs version",
+		"why": "why",
+		"status": "status",
+		"groups": "groups",
+		"logName": "log name",
+		"warn": "warn",
+		"err": "err",
+		"from": "from",
+		"pack": "pack",
+		"priority": "priority",
+		"servers": "servers",
+		"deploysTo": "deploys to"
+	},
+	"machines": {
+		"unknown": "unknown machine \"{name}\"; known machines: {known}"
+	},
+	"proxy": {
+		"sync": {
+			"desc": "Regenerate velocity.toml [servers]/[forced-hosts] from cluster.json",
+			"optDryRun": "preview without writing",
+			"optReload": "run velocity reload afterwards if the proxy is up",
+			"inSync": "velocity.toml already in sync",
+			"dryRun": "dry run: velocity.toml not written",
+			"updated": "velocity.toml updated",
+			"backupNote": "(backup: velocity.toml.bak)",
+			"applyHint": "restart the proxy or run with --reload to apply",
+			"reloaded": "sent `velocity reload` to the proxy",
+			"proxyDown": "proxy not running; the config applies on next start"
+		}
+	},
+	"ports": {
+		"badRange": "could not read \"{text}\" as a range; use a shape like 32560-32599",
+		"list": {
+			"desc": "Cluster-wide port map (game, plugin, external) with the machine each one binds on",
+			"external": "external",
+			"legend": "{ok} bound now, {off} not bound (stopped or drift), {warn} machine not reachable, {dot} external (not probed)"
+		},
+		"pools": {
+			"desc": "The pool catalog: what consumes each pool, and each machine's range and usage",
+			"provisionConsumer": "every instance provision (game port)",
+			"noConsumers": "nothing yet; a plugin port declaration names it with `pool`",
+			"consumedBy": "consumed by: {who}",
+			"exhausted": "exhausted",
+			"sourceOverride": "override",
+			"sourceDefault": "default",
+			"sourceCatalog": "catalog",
+			"footer": "the pool id is the mapping: provisioning takes `game`, a plugin's port spec\nnames its pool; every machine serves every pool, only the numbers differ"
+		},
+		"poolSet": {
+			"desc": "Define/update a pool cluster-wide, or override its range on one machine",
+			"argRange": "e.g. 32560-32599",
+			"optMachine": "override the range on this machine only",
+			"optProtocol": "tcp | udp | both (default tcp)",
+			"optLabel": "what the pool is for",
+			"optReserve": "comma-separated ports to hold back",
+			"optRemove": "drop the pool (or, with --machine, that machine's override)",
+			"needsRange": "a new pool needs a range, e.g. 32560-32599",
+			"badProtocol": "--protocol must be tcp, udp or both",
+			"overrideNeedsRange": "a machine override needs a range and/or --reserve",
+			"nothingWritten": "nothing written; fix the pool definition and try again",
+			"droppedCatalog": "pool \"{id}\" dropped from the catalog",
+			"droppedOverride": "pool \"{id}\" no longer overridden on {machine}",
+			"updatedEverywhere": "pool \"{id}\" {change} on every machine without an override",
+			"updatedMachine": "pool \"{id}\" on {machine} {change}",
+			"changeRange": "now hands out {range}",
+			"changeUpdated": "updated"
+		},
+		"check": {
+			"desc": "Audit ports: per-machine duplicates, pool coverage, config drift, velocity.toml",
+			"optFix": "rewrite plugin configs from the registry",
+			"ensured": "ensured {count} port allocation(s)",
+			"noIssues": "no port issues found",
+			"fixHint": "fix drift with: {fix} and {sync}"
+		}
+	},
+	"cleanup": {
+		"desc": "Delete junk (cache, old versions, crash reports) + archive rotated logs centrally",
+		"optDryRun": "show what would be removed",
+		"scanning": "scanning for junk...",
+		"nothing": "nothing to clean",
+		"logsLine": "{count} rotated files ({size})",
+		"note": "note: {note}",
+		"totalToFree": "total to free: {size}",
+		"dryRun": "dry run: nothing deleted",
+		"confirm": "Proceed with cleanup?",
+		"cleaning": "cleaning...",
+		"deleted": "deleted {count} items, freed {size}",
+		"archived": "archived {count} log files into {archives} monthly archive(s)"
+	},
+	"plugins": {
+		"sourceManual": "manual",
+		"unknown": "unknown plugin: {name}",
+		"upToDate": "everything is up to date",
+		"checkProgress": "check for updates",
+		"variantTag": "(variant)",
+		"pickTargets": "Deploy to which instances?",
+		"allPaper": "*paper (all paper instances)",
+		"theProxy": "*velocity (the proxy)",
+		"holdback": "{name}: {targets} stays on {version}; {reason}",
+		"pinnedNote": "{name}: {target} pinned to {version}",
+		"list": {
+			"desc": "List managed plugins, versions and targets",
+			"legend": "{count} addons: {ok} auto-update on, {off} off, +Nv = per-instance variants/pins (see plugins info)"
+		},
+		"scan": {
+			"desc": "Scan pool + instances, identify jars on Modrinth, rebuild lockfile",
+			"hashing": "hashing jars and querying Modrinth...",
+			"added": "added {count} lockfile entries",
+			"notOnModrinth": "not on modrinth (manual)",
+			"lunaPlugin": "luna plugin",
+			"caseMismatches": "filename case mismatches (these NEVER received updates from the old sync script):",
+			"fixedOnDeploy": "(fixed on next deploy)",
+			"recognized": "{count} instance file(s) are a pooled build under another name (register with: luna instance adopt-addons <instance>)",
+			"unmanaged": "{count} instance-only jars not in the pool; left where they are (adopt with: luna plugins adopt <instance> <jar>)",
+			"removedStale": "removed stale entries: {names}"
+		},
+		"check": {
+			"desc": "Check providers for updates (per-instance version resolution)",
+			"applyHint": "apply with: {command}"
+		},
+		"update": {
+			"desc": "Download updates into the pool (then run plugins deploy)",
+			"optDeploy": "also deploy to instances immediately",
+			"downloading": "downloading updates...",
+			"downloadingOne": "downloading {name}...",
+			"deployHint": "pool updated; push to instances with: {command}"
+		},
+		"deploy": {
+			"desc": "Sync pool jars to instances per target lists (fixes case mismatches)",
+			"optPlugin": "deploy a single plugin",
+			"deploying": "deploying plugins...",
+			"portReserved": "{instance}: port {port} reserved for {key}",
+			"portNote": "(config appears after first boot; rerun deploy)",
+			"inSync": "all instances already in sync",
+			"needRestart": "running instances with updated jars (restart to apply): {names}"
+		},
+		"add": {
+			"desc": "Install a plugin or mod from a provider (slug, or search query)",
+			"optTo": "targets: *, *paper, *velocity, *neoforge, or names",
+			"optPool": "pool the jar only; deploy it nowhere yet",
+			"optVelocity": "install the velocity variant",
+			"optNeoforge": "install the neoforge mod (searches mods, not plugins)",
+			"optProvider": "where to install from: modrinth (default), curseforge or hangar",
+			"platformConflict": "--velocity and --neoforge are different platforms; pick one",
+			"resolving": "resolving \"{query}\" on {provider}...",
+			"nothingFound": "nothing found for \"{query}\"",
+			"selectMod": "Select a mod",
+			"selectPlugin": "Select a plugin",
+			"downloads": "{count} downloads",
+			"installing": "installing {name}...",
+			"pooledOnly": "(pooled; not deployed anywhere yet)",
+			"installed": "installed {name} {version}",
+			"holdback": "{name}: not installed on {targets}; {reason}"
+		},
+		"apply": {
+			"desc": "Add instances to a plugin's targets and deploy",
+			"optTo": "targets to add",
+			"optReplace": "set the target list to exactly --to (e.g. collapse names into *paper)",
+			"dropped": "no longer targeted: {names}; their copies stay on disk, remove them with \"{command}\"",
+			"saved": "{name} targets: {targets}"
+		},
+		"remove": {
+			"desc": "Remove a plugin from instances (--from), or everywhere + pool",
+			"optFrom": "only remove from these targets",
+			"confirm": "Remove {name} from ALL instances and the pool?",
+			"noJars": "(no jars present)",
+			"poolDeleted": "pool entry deleted",
+			"done": "removed {name} from: {where}",
+			"restartNote": "running instances keep the plugin loaded until restart"
+		},
+		"adopt": {
+			"desc": "Adopt an instance-only jar into the managed pool",
+			"done": "adopted {name} into the pool",
+			"identifyHint": "identify it on modrinth with: {command}"
+		},
+		"upload": {
+			"desc": "Pool a jar from this machine (deploys to --to, or nowhere)",
+			"optName": "plugin name (default: the jar's basename)",
+			"optFamily": "paper (default), velocity, universal or neoforge",
+			"optTo": "targets: *, *paper, *velocity, or names (default: none)",
+			"noSuchFile": "no such file: {path}",
+			"badFamily": "--family must be paper, velocity, universal or neoforge",
+			"pooling": "pooling {name}...",
+			"pooled": "pooled {name}",
+			"notDeployed": "(not deployed anywhere yet)"
+		},
+		"info": {
+			"desc": "Show a plugin's versions, per-instance assignments and requirements",
+			"autoUpdate": "auto-update",
+			"on": "on",
+			"off": "off",
+			"primary": "primary",
+			"variant": "variant",
+			"unknownMc": "unknown",
+			"pinned": "pinned",
+			"auto": "auto"
+		},
+		"pin": {
+			"desc": "Pin instance(s) to a specific plugin version (downloads it as a variant)",
+			"optOn": "targets to pin (default: all of the plugin's targets)",
+			"optForce": "pin even if the version doesn't list the target's MC version",
+			"pinning": "pinning {name} to {version}...",
+			"done": "{name} pinned to {version} on: {targets}",
+			"forced": "forced despite MC mismatch on: {names}"
+		},
+		"unpin": {
+			"desc": "Remove version pins (back to automatic per-instance resolution)",
+			"optOn": "only unpin these targets",
+			"nothing": "nothing was pinned",
+			"done": "unpinned {name} on: {targets}",
+			"hint": "run {command} to re-resolve, then deploy"
+		},
+		"compat": {
+			"desc": "Server-version requirement check: can an instance (at a given MC version) run its plugins?",
+			"argMc": "defaults to the instance's current version",
+			"noVersion": "no MC version known for this instance; pass one explicitly",
+			"noPlugins": "no managed paper plugins target this instance",
+			"heading": "plugin compatibility for {name} on MC {mc}:",
+			"unknown": "unknown",
+			"ok": "ok",
+			"incompatible": "incompatible",
+			"needDifferent": "{count} plugin(s) need a different version; run {command} after switching",
+			"someUnknown": "(some requirements unknown; run plugins check to backfill)",
+			"noneKnown": "no known incompatibilities"
+		},
+		"enable": {
+			"desc": "Enable auto-update for plugin(s)",
+			"state": "enabled"
+		},
+		"disable": {
+			"desc": "Disable auto-update for plugin(s)",
+			"state": "disabled"
+		},
+		"groupRestart": {
+			"onNextRestart": "instances using {name} pick the change up on their next restart",
+			"scheduleName": "group {name} update reboot",
+			"scheduled": "restart scheduled {time} for {names}"
+		},
+		"validate": {
+			"desc": "How a group selection lands on an instance (OK / no version / skipped)",
+			"optGroups": "extra groups beside default, comma-separated",
+			"downloadable": "(downloadable)",
+			"fetchHint": "fetch compatible builds with: {command}"
+		},
+		"fetch": {
+			"desc": "Download a build compatible with an MC version into the pool",
+			"optMc": "MC version the build must support",
+			"needsMc": "--mc <version> is required",
+			"resolving": "resolving {name} for MC {mc}...",
+			"pooled": "{name} {version} pooled for MC {mc}",
+			"alreadyCovers": "{name} {version} already covers MC {mc}"
+		},
+		"config": {
+			"desc": "Show a plugin's config template, or apply all templates to an instance",
+			"unknownEntry": "unknown plugin entry: {name}",
+			"noTemplate": "{name} has no config template",
+			"badWhat": "expected \"show <entry>\" or \"apply <instance>\""
+		},
+		"override": {
+			"desc": "Force-add, disable or clear a plugin on one instance (wins over its groups)",
+			"optEnable": "force-add the plugin, regardless of groups",
+			"optDisable": "disable the plugin, even when a group provides it",
+			"optClear": "drop the override; groups decide again",
+			"pickOne": "pass exactly one of --enable, --disable or --clear",
+			"cleared": "override cleared",
+			"forceAdded": "force-added",
+			"deploying": "{name} {what} on {instance}; deploying",
+			"clearedOn": "{name} override cleared on {instance}",
+			"disabledOn": "{name} disabled on {instance}",
+			"removedJars": "removed from {instance}/plugins: {names}",
+			"loadedNote": "(a running server keeps it loaded until restart)"
+		},
+		"state": {
+			"desc": "Runtime state of every plugin on an instance, with log warn/error counts",
+			"reading": "reading {name}'s boot session...",
+			"disabled": "disabled",
+			"incompleteSession": "boot marker not found within the log-rotation window; load states past the window read as unknown",
+			"troubled": "{count} plugin(s) reported errors; inspect with: luna logs {name}"
+		},
+		"standardize": {
+			"desc": "Migrate every entry to the <plugin>@<family> naming scheme (pool, lockfile, ports, instances)",
+			"confirm": "Rename pool jars + lockfile keys + port allocations, redeploy everywhere and remove the old-name jars?",
+			"working": "standardizing plugin naming...",
+			"portKey": "port allocation {name}",
+			"groupMember": "group member {name}",
+			"summary": "{deployed} deploy change(s), {removed} old jar(s) removed",
+			"mismatch": "PARITY MISMATCH: {detail}",
+			"parityOk": "parity verified: every instance runs the same plugin set as before"
+		},
+		"identify": {
+			"desc": "Map an existing plugin/mod to a provider project (so updates apply)",
+			"optProvider": "provider to map against (default modrinth)",
+			"optVersion": "version id to record as installed",
+			"optUnidentified": "record the project but no version",
+			"optAuto": "auto-update: on or off (default on only for a proven match)",
+			"optYes": "accept an unproven match without asking",
+			"probing": "identifying {name} at {provider}…",
+			"localFile": "local file: {path}",
+			"unproven": "nothing proved which version this is; re-run with --version <id>, --unidentified, or --yes",
+			"versionUnknown": "version unknown",
+			"checkHint": "check it with: {command}"
+		},
+		"forget": {
+			"desc": "Drop a plugin's provider mapping (keeps the jar and its deployments)",
+			"done": "{name} is no longer mapped to a provider; updates will not be checked"
+		}
+	},
+	"packs": {
+		"unknownProvider": "unknown provider: {name} (expected {known})",
+		"selectRespack": "Select a resource pack",
+		"selectDatapack": "Select a data pack",
+		"required": "required",
+		"optional": "optional",
+		"enabled": "enabled",
+		"disabled": "disabled",
+		"on": "on",
+		"off": "off",
+		"fileMissing": "file missing",
+		"registrationUnknown": "registration unknown",
+		"unregistered": "unregistered",
+		"reloadHint": "apply live with: luna packs reload",
+		"checkingProviders": "checking providers...",
+		"optChannel": "release channel: release, beta or alpha",
+		"list": {
+			"desc": "List resource packs (luna-pack catalog in <root>/packs)",
+			"empty": "no resource packs; add one with: luna packs add <slug>",
+			"runtime": "{count} pack(s) registered by a plugin at runtime: {names}; luna has no definition for them",
+			"shadowed": "{key}: your {file} overrides the plugin that also registers it; release it with: {command}",
+			"dynamicUnknown": "runtime registrations unknown: {problem}"
+		},
+		"add": {
+			"desc": "Install a resource pack from a provider (slug, or search query)",
+			"optProvider": "where to install from: modrinth (default) or curseforge",
+			"startsDisabled": "the pack starts disabled; enable it with: {command}"
+		},
+		"set": {
+			"desc": "Edit a pack's registration (priority, required, servers, enabled)",
+			"optEnable": "enable the pack",
+			"optDisable": "disable the pack",
+			"optPriority": "stacking priority (higher applies over lower)",
+			"optRequired": "players cannot decline the pack",
+			"optOptional": "players may decline the pack",
+			"optServers": "comma-separated rules: names, *, !name",
+			"optName": "display name",
+			"optAuto": "auto-update: on or off",
+			"optChannel": "update channel: release, beta or alpha",
+			"enableConflict": "--enable and --disable are mutually exclusive",
+			"requiredConflict": "--required and --optional are mutually exclusive"
+		},
+		"probe": {
+			"project": "project: {title} ({slug})",
+			"exact": "identified as {version}; {basis} matches",
+			"likely": "probably {version}; matched by {basis}, not a hash",
+			"noMatch": "no published version matches this file",
+			"candidates": "candidates:",
+			"newest": "newest release: {version}; what an unidentified mapping would pull"
+		},
+		"identify": {
+			"desc": "Map an existing resource pack to a provider project (so updates apply)",
+			"noVersionNote": "with no version recorded, the next check offers the newest compatible release"
+		},
+		"forget": {
+			"desc": "Drop a resource pack's provider mapping (keeps the zip and its rules)"
+		},
+		"takeover": {
+			"desc": "Take over a plugin-registered pack by writing its definition",
+			"wrote": "wrote {file} from the running registration",
+			"detail": "priority {priority}, {required}, servers {servers}; the plugin no longer decides these"
+		},
+		"releaseCmd": {
+			"desc": "Give a taken-over pack back to the plugin that registers it",
+			"removed": "removed {file}",
+			"dynamicApplies": "the plugin's own registration applies again: priority {priority}, servers {servers}"
+		},
+		"serve": {
+			"desc": "Serve a pack on one or more backends (stop serving with --off)",
+			"optOff": "stop serving the pack on those backends",
+			"groupConflict": "{instance} is granted by addon group(s) {groups}; the exclusion overrides the grant, but removing it from the group is cleaner"
+		},
+		"info": {
+			"desc": "One pack in full: contents, serve URL, reachability, holders and traffic",
+			"optRetest": "re-measure the pack URL instead of using the stored answer",
+			"collecting": "collecting...",
+			"missing": "missing",
+			"contents": "contents",
+			"contentsLine": "{entries} entries, {size} unpacked",
+			"unreadable": "unreadable",
+			"rules": "rules",
+			"nothing": "nothing",
+			"noBaseUrl": "no base URL",
+			"reachable": "reachable",
+			"notChecked": "not checked",
+			"sizeDiffers": "size differs from disk",
+			"sizeMatches": "size matches",
+			"measured": "measured {time}",
+			"stored": "stored",
+			"failedLoads": "failed loads",
+			"unavailable": "unavailable",
+			"failuresInLog": "{count} in the live log",
+			"lastFailure": "last {player}: {status}",
+			"noneInLog": "none in the live log",
+			"onProxy": "on the proxy",
+			"resolved": "resolved",
+			"notInCatalog": "not in the running catalog; reload the proxy",
+			"holders": "holders",
+			"holdersLine": "{loaded}/{online} online player(s) loaded",
+			"pending": "{count} pending",
+			"traffic": "traffic",
+			"trafficLine": "{requests} download(s), {size}, {clients} client(s)",
+			"lastAt": "last {time}"
+		},
+		"update": {
+			"desc": "Check resource packs for provider updates (apply with --apply)",
+			"optApply": "download the updates instead of listing them",
+			"upToDate": "every resource pack is up to date"
+		},
+		"remove": {
+			"desc": "Remove a resource pack (definition, zip and lock entry)",
+			"optKeepFile": "remove the registration but keep the zip",
+			"nothing": "{name}: nothing to remove",
+			"done": "removed {name} {detail}"
+		},
+		"reload": {
+			"desc": "Ask the running proxy to re-read the packs directory (lunapack reload)",
+			"sent": "reload sent to the proxy",
+			"proxyDown": "the proxy is not running; packs load on its next boot"
+		}
+	},
+	"datapacks": {
+		"list": {
+			"desc": "List pooled data packs and where they deploy",
+			"empty": "no data packs; add one with: luna datapacks add <slug> --to <instance>",
+			"nowhere": "nowhere"
+		},
+		"add": {
+			"desc": "Install a data pack from a provider (slug, or search query)",
+			"optTo": "targets: *, *paper, or instance names",
+			"optProvider": "where to install from: modrinth (default), curseforge or smithed",
+			"needsTo": "--to is required (which instances' worlds get the pack)"
+		},
+		"deploy": {
+			"desc": "Sync pooled data packs into target instances' worlds",
+			"optPack": "deploy a single pack",
+			"deploying": "deploying data packs...",
+			"inSync": "every world already in sync",
+			"restartNote": "running servers load the change on their next restart (or /minecraft:reload)"
+		},
+		"update": {
+			"desc": "Check data packs for provider updates (apply with --apply)",
+			"optApply": "download the updates and redeploy",
+			"upToDate": "every data pack is up to date"
+		},
+		"adopt": {
+			"desc": "Adopt a hand-dropped zip from an instance's world into the pool",
+			"done": "adopted {name} → {file} (targets: {targets})"
+		},
+		"remove": {
+			"desc": "Remove a data pack from worlds (and the pool when nothing targets it)",
+			"optFrom": "only remove from these instances",
+			"noWorlds": "no worlds held it",
+			"poolDropped": "pool entry dropped",
+			"done": "removed {name} {detail}"
+		},
+		"identify": {
+			"desc": "Map an existing data pack to a provider project (so updates apply)"
+		},
+		"forget": {
+			"desc": "Drop a data pack's provider mapping (keeps the zip and its targets)"
+		}
+	},
+	"addons": {
+		"builtinTag": "(builtin)",
+		"groups": {
+			"desc": "List addon groups and the instances using them"
+		},
+		"group": {
+			"desc": "Show, create or edit an addon group (then apply it + optional restart)",
+			"optPlugins": "set membership to this comma-separated plugin list",
+			"optAdd": "add plugin(s), comma-separated",
+			"optRemove": "remove plugin(s), comma-separated",
+			"optRespacks": "set the resource pack members, comma-separated",
+			"optDatapacks": "set the data pack members, comma-separated",
+			"optDescription": "set the description",
+			"optDelete": "delete the group",
+			"optRestart": "after a change: \"now\", \"none\" (default), or a time",
+			"deleted": "group {name} deleted",
+			"deletedNote": "(deployed files stay on disk)",
+			"unknown": "unknown group: {name}; pass --plugins to create it",
+			"noDescription": "no description",
+			"notInstalled": "not installed",
+			"packEnabled": "enabled",
+			"packDisabled": "registered, disabled",
+			"packPooled": "pooled",
+			"notPooled": "not pooled",
+			"usedBy": "used by: {names}",
+			"nobodyYet": "nobody yet",
+			"notPooledPlugin": "\"{name}\" is not a pooled plugin; it validates as missing until installed",
+			"notRegisteredRespack": "\"{name}\" is not a registered resource pack; install or upload it first",
+			"notPooledDatapack": "\"{name}\" is not a pooled data pack; install or upload it first",
+			"saved": "group {name} saved: {plugins} plugin(s), {respacks} resource pack(s), {datapacks} data pack(s)",
+			"removedStay": "removed plugins stay deployed; clean them with {command}"
+		},
+		"apply": {
+			"desc": "Re-apply every group's packs: rewrite pack rules and deploy data packs",
+			"progressName": "apply addon groups",
+			"respacksRewritten": "resource pack rules rewritten: {names}",
+			"proxyReloaded": "(proxy reloaded)",
+			"proxyDown": "(proxy down; applies on its next boot)"
+		}
+	},
+	"instance": {
+		"stateRunning": "running",
+		"stateStarting": "starting",
+		"stateStopped": "stopped",
+		"stateUnknown": "unknown",
+		"namesOrAll": "give instance name(s) or --all",
+		"notRunning": "{name} is not running",
+		"stopFirst": "{name} is running; stop it first",
+		"startHint": "start it with: {command}",
+		"status": {
+			"desc": "Show status of all instances (or one)",
+			"querying": "querying instances...",
+			"playersOnline": "{online}/{max} online",
+			"external": "external"
+		},
+		"start": {
+			"desc": "Start instance(s), or --all (proxy first)",
+			"optAll": "start every managed instance",
+			"started": "{name} started in screen {session}",
+			"alreadyRunning": "{name} already running"
+		},
+		"stop": {
+			"desc": "Gracefully stop instance(s), or --all (proxy last)",
+			"optAll": "stop every managed instance",
+			"stopped": "{name} stopped",
+			"forced": "{name}: graceful stop timed out, sent SIGTERM",
+			"notRunning": "{name} not running"
+		},
+		"restart": {
+			"desc": "Restart instance(s), or --all",
+			"optAll": "restart every managed instance",
+			"restarted": "{name} restarted"
+		},
+		"console": {
+			"desc": "Attach to an instance console (detach: Ctrl+A then D)",
+			"attaching": "attaching to {session}; detach with {keys}"
+		},
+		"send": {
+			"desc": "Send a console command to a running instance",
+			"sent": "sent {command} to {name}"
+		},
+		"create": {
+			"desc": "Create a new paper instance and register it with the proxy",
+			"optVersion": "MC version (default: latest paper release)",
+			"optPort": "game port (default: auto from range)",
+			"optMemory": "heap size, e.g. 2G (default 2G)",
+			"optProfile": "java profile (default aikar)",
+			"optSet": "server settings, e.g. difficulty=hard,max-players=100 (see instance settings)",
+			"optJavaArgs": "extra JVM flags, e.g. \"-XX:+UseZGC\"",
+			"optGroups": "addon groups beside default, comma-separated",
+			"optNoRegister": "don't register in velocity.toml",
+			"optDaemon": "follower daemon that will own the instance",
+			"badSetPair": "--set expects key=value pairs, got \"{pair}\"",
+			"unknownGroup": "unknown addon group: {name}",
+			"resolvingVersion": "resolving latest paper version...",
+			"phaseFiles": "Server files",
+			"phasePlugins": "Plugins",
+			"phasePacks": "Packs",
+			"phasePorts": "Port allocations",
+			"phaseProxy": "Proxy registration",
+			"deployingPlugins": "deploying wildcard-targeted plugins",
+			"pluginsDeployed": "plugins deployed",
+			"pluginCount": "{count} plugin(s) deployed",
+			"applyingPacks": "applying addon group packs",
+			"packCounts": "{rules} pack rule(s), {datapacks} data pack(s)",
+			"noPacks": "no packs for this instance",
+			"allocatingPorts": "allocating plugin ports",
+			"portsAllocated": "plugin ports allocated",
+			"registerSkipped": "skipped: --no-register",
+			"registering": "registering in velocity.toml",
+			"velocityUpdated": "velocity.toml updated (reload the proxy to apply)",
+			"velocityUpToDate": "velocity.toml already up to date",
+			"created": "created {name}: paper {version} build {build}, port {port}",
+			"jvmFlags": "extra JVM flags: {flags}"
+		},
+		"adopt": {
+			"desc": "Register a server directory that already exists as a managed instance",
+			"optDaemon": "daemon whose disk holds the directory",
+			"optDir": "directory name under that daemon's root (default: the name)",
+			"optPort": "override the detected game port",
+			"optMemory": "override the detected heap size, e.g. 8G",
+			"optJava": "pin a java binary; modpacks often need an older JDK",
+			"optDryRun": "show what was detected, registering nothing",
+			"unknownDaemon": "unknown daemon: {name}; see `luna daemon list`",
+			"mcVersion": "mc version",
+			"loader": "loader",
+			"bindAddress": "bind address",
+			"emptyValue": "(empty)",
+			"localDaemon": "local",
+			"loaderTag": "loader {version}",
+			"adopted": "adopted {name}: {software}, port {port}, {memory} heap",
+			"onDaemon": "on {name}",
+			"velocityUpdated": "velocity.toml updated; reload the proxy to apply",
+			"recognised": "{count} addon(s) recognised from the pool",
+			"newlyRegistered": ", {count} newly registered",
+			"alreadyRegistered": "(already registered)",
+			"unmanaged": "{count} addon(s) left unmanaged; the server keeps its own",
+			"andMore": "…and {count} more"
+		},
+		"adoptAddons": {
+			"desc": "Re-check an instance's own plugins/mods/data packs against the pool"
+		},
+		"setVersion": {
+			"desc": "Switch an instance to a different MC version (downloads latest build)",
+			"optForce": "proceed even with known-incompatible plugins",
+			"incompatible": "{plugin} does not support MC {mc} (supports: {supported})",
+			"abortIncompatible": "aborted: {count} plugin(s) incompatible with {mc}; fix with plugins update/pin after switching, or pass --force",
+			"unknownReqs": "{count} plugin(s) have unknown MC requirements (luna/manual jars; verify manually)",
+			"downloading": "downloading {version}...",
+			"jarKept": "old jar kept at {path}",
+			"updateHint": "re-resolve plugin versions for the new MC: {command}"
+		},
+		"settings": {
+			"desc": "Show or change an instance's server settings (difficulty, max-players, pvp, …)",
+			"defaultValue": "{value} (default)",
+			"blank": "(blank)",
+			"managedByLuna": "managed by luna",
+			"unknownKey": "\"{key}\" is not a known server setting; run \"luna instance settings {name}\" for the list",
+			"already": "{name}.{key} already {value}",
+			"keyAdded": "(key added)",
+			"unset": "unset",
+			"appliesOnRestart": "applies on next restart"
+		},
+		"config": {
+			"desc": "Get/set instance settings (memory, profile, port, javaArgs, or any server.properties key)",
+			"profileDefault": "(profile default)",
+			"settingsHint": "server settings live in server.properties: {command}",
+			"unknownProfile": "unknown profile: {name}",
+			"keyNotFound": "key \"{key}\" not found in server.properties",
+			"appliesOnRestart": "(applies on next restart)"
+		},
+		"remove": {
+			"desc": "Deregister an instance (--purge also deletes its directory)",
+			"optPurge": "DELETE the instance directory from disk",
+			"confirmPurge": "Really DELETE {name}'s directory (worlds included)?",
+			"andPurged": "and purged",
+			"directoryKept": "(directory kept)",
+			"velocityUpdated": "velocity.toml updated",
+			"deregistered": "{name} deregistered"
+		}
+	},
+	"players": {
+		"unknownList": "unknown list \"{name}\"; one of: {known}",
+		"notApplied": "the change was not applied",
+		"now": "now",
+		"access": {
+			"desc": "Show an instance's whitelist, operators and bans",
+			"whitelistLabel": "whitelist",
+			"on": "on",
+			"off": "off",
+			"enforced": "(enforced)",
+			"whitelist": "whitelist",
+			"operators": "operators",
+			"bans": "bans",
+			"ipBans": "ip bans",
+			"level": "level {level}",
+			"bySource": "by {source}, {date}"
+		},
+		"accessAdd": {
+			"desc": "Add a player (or IP) to one of an instance's access lists",
+			"optReason": "ban reason",
+			"optLevel": "op permission level (1-4)",
+			"done": "{target} added to {list} on {instance} ({method})"
+		},
+		"accessRemove": {
+			"desc": "Remove a player (or IP) from one of an instance's access lists",
+			"done": "{target} removed from {list} on {instance} ({method})"
+		},
+		"whitelist": {
+			"desc": "Turn an instance's whitelist on or off",
+			"badState": "expected \"on\" or \"off\", got \"{value}\"",
+			"done": "whitelist {state} on {instance} ({method})"
+		},
+		"registered": {
+			"desc": "The player directory: everyone the network has ever recorded",
+			"optSearch": "filter by name or uuid",
+			"optLimit": "rows to show (default 25)",
+			"total": "{count} player(s) in the directory"
+		},
+		"player": {
+			"desc": "One player's profile: identity, playtime, permissions, moderation",
+			"onlineOn": "online on {server}",
+			"premium": "premium account",
+			"offlineMode": "offline-mode account",
+			"firstSeen": "first seen",
+			"chatMessages": "chat messages",
+			"commands": "commands",
+			"moderationEntries": "moderation entries",
+			"permissionGroup": "permission group",
+			"luckpermsUnavailable": "luckperms unavailable",
+			"lastAddress": "last address",
+			"client": "client",
+			"playtimeByBackend": "playtime by backend",
+			"unknownServer": "unknown",
+			"stints": "{count} session(s)"
+		},
+		"skin": {
+			"desc": "Change or reset a player's skin through SkinsRestorer",
+			"optName": "mirror this Mojang account's skin",
+			"optUrl": "generate from a public image URL (via MineSkin)",
+			"optVariant": "classic or slim (with --url)",
+			"optReset": "drop the stored skin",
+			"pickOne": "pass one of --name, --url or --reset",
+			"resetDone": "{player}'s stored skin dropped; their own skin applies again",
+			"changed": "{player}'s skin changed",
+			"storedNote": "(stored; applies on next login)"
+		},
+		"auth": {
+			"desc": "A player's authentication state, as luna-auth holds it",
+			"notRegistered": "none; not registered",
+			"temporary": "temporary, expires {date}",
+			"setByPlayer": "set by the player",
+			"password": "password",
+			"signedIn": "signed in",
+			"yes": "yes",
+			"no": "no",
+			"accountLock": "account lock",
+			"lockedUntil": "locked until {date}",
+			"notLocked": "not locked",
+			"failedAttempts": "failed attempts",
+			"lastLogin": "last login",
+			"resumableSession": "resumable session",
+			"until": "until {date}"
+		},
+		"vault": {
+			"desc": "A player's balance and recent transactions, as LunaVault holds them",
+			"optLimit": "how many transactions to list (default 10)",
+			"balance": "balance",
+			"rank": "rank",
+			"of": "of {count}",
+			"noAccount": "no account",
+			"transactions": "transactions",
+			"totalReceived": "total received",
+			"totalSpent": "total spent",
+			"lastTransaction": "last transaction",
+			"system": "system",
+			"showing": "showing {count} of {total}"
+		},
+		"password": {
+			"desc": "Reset a player's password, or issue a temporary one",
+			"optReset": "clear the password; the player must /register again",
+			"optTemporary": "issue a temporary password, generated unless --password is given",
+			"optPassword": "the password to set (with --temporary)",
+			"optMinutes": "how long a temporary password lasts (default 1440)",
+			"optUnlock": "clear a lockout from failed attempts",
+			"optLogout": "end the current authenticated session",
+			"pickOne": "pass one of --reset, --temporary, --unlock or --logout",
+			"temporaryFor": "temporary password for {player}: {password}",
+			"expiresNote": "expires {date}; only its hash is stored",
+			"applied": "{action} applied to {player}"
+		},
+		"permsGroups": {
+			"desc": "LuckPerms groups across the network, heaviest weight first"
+		},
+		"permsGroup": {
+			"desc": "One LuckPerms group: meta, nodes and members",
+			"weight": "weight {weight}",
+			"suffix": "suffix",
+			"inherits": "inherits: {names}",
+			"global": "global"
+		},
+		"permsUser": {
+			"desc": "One player's LuckPerms data: groups and direct nodes",
+			"primaryGroup": "primary group: {group}",
+			"groups": "groups: {names}",
+			"directNodes": "direct nodes"
+		}
+	},
+	"setup": {
+		"desc": "Install and configure this machine's daemon as a system service (run with sudo)",
+		"optMode": "primary or follower (asked when omitted)",
+		"optName": "daemon name, unique across the cluster",
+		"optRoot": "cluster root (default {root})",
+		"optUser": "account the daemon and its servers run as",
+		"optToken": "shared cluster token",
+		"optListen": "primary: follower listener (default {listen})",
+		"optPrimary": "follower: primary daemon address, host:port",
+		"optHost": "follower: LAN address the primary routes to",
+		"optBin": "where to install the binary (default {path})",
+		"optNoStart": "write everything but leave the service stopped",
+		"optDryRun": "print every change without making one",
+		"optYes": "take the defaults instead of prompting",
+		"userCreateFailed": "could not create user \"{name}\": {error}",
+		"uidGidFailed": "could not resolve uid/gid for \"{name}\"",
+		"chownFailed": "could not chown {path}: {error}",
+		"wouldWrite": "would write {path}",
+		"wrote": "wrote {path}",
+		"binaryInPlace": "binary already at {path}",
+		"wouldInstall": "would install {source} → {target}",
+		"ownedBy": "owned by {user}",
+		"installed": "installed {path}",
+		"noexec": "{bin} will not execute ({error}); if {root} is mounted noexec the daemon cannot run its own binary from there",
+		"spawnFailed": "spawn failed",
+		"wouldRemove": "would remove {path}",
+		"superseded": "(superseded by the one on PATH)",
+		"supersededShort": "(superseded)",
+		"removed": "removed {path}",
+		"wouldWirePath": "would put {dir} on PATH in {path}",
+		"pathSet": "PATH set in {path}",
+		"wouldCreateRoot": "would create {root} owned by {user}",
+		"wouldSeed": "would seed {path} with an empty cluster",
+		"seeded": "seeded {path}",
+		"noInstancesYet": "(no instances yet)",
+		"rootOwned": "cluster root {root} owned by {user}",
+		"wouldRun": "would run {command}",
+		"reloadFailed": "systemctl daemon-reload failed: {error}",
+		"systemctlFailed": "{command} failed: {error}",
+		"restarted": "{unit} restarted on the new build",
+		"enabledStarted": "{unit} enabled and started",
+		"waiting": "waiting for the daemon…",
+		"noAnswer": "the daemon did not answer in time",
+		"checkHint": "check it with {status} and {journal}",
+		"badConfig": "{path} is not valid JSON; starting from defaults",
+		"reconfiguring": "reconfiguring {name}",
+		"fromFile": "from {path}",
+		"askMode": "What does this machine run?",
+		"primaryHint": "owns the registry, plugins and schedules; serves the console",
+		"followerHint": "runs the instances the primary assigns to it",
+		"invalidMode": "invalid mode: {mode} (expected primary or follower)",
+		"askName": "Daemon name (unique in the cluster)",
+		"askRoot": "Cluster root",
+		"askUser": "Run the daemon as",
+		"askPrimary": "Primary daemon address (host:port)",
+		"needsPrimary": "a follower needs --primary <host:port>",
+		"askHost": "LAN address the primary routes to (blank = auto)",
+		"askToken": "Cluster token (from `luna daemon token` on the primary)",
+		"needsToken": "a follower needs the cluster token; run `luna daemon token` on the primary",
+		"notCompiled": "run this from the compiled binary: `bun run build`, then `sudo ./dist/luna setup`",
+		"needsRoot": "luna setup writes to /usr/local/bin, /etc and systemd; it needs root",
+		"rerunSudo": "re-run it as {command}",
+		"previewHint": "or preview the changes with {command}",
+		"binNote": "owned by {user}, self-upgradable",
+		"advertising": "advertising {host}",
+		"dryRunNote": "dry run: nothing below is written",
+		"userExists": "user {name} exists",
+		"wouldCreateUser": "would create system user {name} homed at {root}",
+		"createdUser": "created system user {name}",
+		"noSystemd": "this machine is not running systemd; the unit was written but not enabled",
+		"startYourself": "start the daemon yourself: {command}",
+		"inPlace": "everything is in place",
+		"startHint": "start it with {command}",
+		"primaryReady": "primary ready",
+		"tokenLine": "cluster token: {token}",
+		"tokenNote": "every follower needs that same token; keep it out of shell history",
+		"consoleHint": "serve the console with {command}",
+		"followerReady": "follower ready",
+		"followerListed": "the primary should now list it: {command}",
+		"pathNote": "open a new shell for {name} to be on your PATH, or {command}",
+		"sudoNote": "sudo ignores your PATH; re-run this installer as {command}"
+	},
+	"daemon": {
+		"unknown": "unknown daemon: {name}",
+		"instMem": "{mb} MB resident across {count} instance(s)",
+		"run": {
+			"desc": "Run the luna daemon in the foreground (primary or follower, per its config)"
+		},
+		"status": {
+			"desc": "Show the daemon this host's clients are talking to",
+			"noDaemon": "no daemon is running on this host",
+			"startHint": "start one with {run} or install the service: {install}",
+			"builtAt": "(built {date})",
+			"up": "up {uptime}",
+			"updateAvailable": "{version} available from the {origin}: {command}"
+		},
+		"list": {
+			"desc": "List every daemon in the cluster with live state",
+			"oldTag": "(old)",
+			"online": "online",
+			"never": "never"
+		},
+		"show": {
+			"desc": "Health, checks and instance memory of one daemon",
+			"offline": "offline",
+			"behindPrimary": "(behind the primary)"
+		},
+		"upgrade": {
+			"desc": "Upgrade a daemon, from this primary's binary or the GitHub release",
+			"optCheck": "report what each channel offers without upgrading",
+			"optForce": "upgrade even when the build matches or jobs are running",
+			"notConnected": "daemon \"{name}\" is not connected",
+			"runs": "{name} runs {version} ({platform})",
+			"available": "{version} available from the {origin}",
+			"upToDate": "up to date",
+			"noSource": "no upgrade source could be reached",
+			"upgrading": "upgrading {name} ({version})…",
+			"unknownBuild": "unknown build",
+			"fromOrigin": "(from the {origin})",
+			"exitNote": "it exits now; the service manager restarts it on the new build"
+		},
+		"remove": {
+			"desc": "Remove a follower daemon's registration",
+			"stillConnected": "daemon \"{name}\" is currently connected; stop it first",
+			"ownsInstances": "daemon \"{name}\" still owns {names}; reassign or delete those instances first",
+			"done": "removed daemon registration \"{name}\""
+		},
+		"token": {
+			"desc": "Show this machine's cluster token",
+			"optNew": "generate a fresh token instead of showing the current one",
+			"setHint": "set as {key} in every daemon's config (primary and followers)",
+			"adoptNote": "nothing adopts this until you write it; followers stay on the old token meanwhile",
+			"notConfigured": "no token configured in {file}; generate one with \"luna daemon token --new\"",
+			"noConfig": "no daemon config on this machine; generate a token with \"luna daemon token --new\"",
+			"fromFile": "from {file}; every follower needs this same value"
+		},
+		"service": {
+			"desc": "Write a systemd unit so the daemon runs 24/7",
+			"optUser": "install as a user service (no root needed)",
+			"optConfig": "daemon config file the unit should point at",
+			"writeFailed": "could not write {path}: {error}",
+			"manualHint": "write it yourself with the following content:",
+			"wrote": "wrote {path}",
+			"enableHint": "enable + start it with: {command}"
+		}
+	},
+	"configs": {
+		"stateMissingVars": "missing vars",
+		"stateDrifted": "drifted",
+		"stateNotRendered": "not rendered",
+		"stateInSync": "in sync",
+		"flagManaged": "managed",
+		"flagNotEditable": "not editable",
+		"flagRuntime": "runtime",
+		"list": {
+			"desc": "Managed config files: templates luna renders into instances on every start",
+			"optInstance": "only this instance's files",
+			"empty": "no managed config files; create one from the console's file browser",
+			"driftWarning": "{count} file(s) changed outside luna; re-adopt with: luna configs readopt <instance> <file>"
+		},
+		"ls": {
+			"desc": "List one level of an instance's directory"
+		},
+		"show": {
+			"desc": "Print a config file (the template, when it is managed)",
+			"optRendered": "print what is on disk rather than the template",
+			"onDiskRender": "on-disk render",
+			"template": "template",
+			"placeholders": "placeholders: {names}",
+			"missing": "undefined: {names}; rendering is refused until they exist",
+			"driftNote": "the file on disk was changed outside luna; the next start overwrites it"
+		},
+		"manage": {
+			"desc": "Take a config file under management, adopting its current text as the template",
+			"optDescription": "what this file is for",
+			"done": "{file} is now managed on {instance}",
+			"note": "luna renders it from the template on every start; edit it in the console"
+		},
+		"unmanage": {
+			"desc": "Stop managing a config file, leaving it on disk as it is",
+			"notManaged": "{file} is not managed on {instance}",
+			"done": "{file} released; the last render stays on disk"
+		},
+		"placeholder": {
+			"desc": "Replace a literal value in a config file with an ${ENV_VAR}",
+			"optAll": "replace every occurrence, not just the first",
+			"optInstanceScope": "define the variable for this instance only",
+			"optMachine": "define the variable for one machine only",
+			"optForce": "accept a value or file change that would otherwise be refused",
+			"scopeConflict": "--machine and --instance-scope are different scopes; pass one",
+			"done": "{file}: {count} occurrence(s) now read {placeholder}",
+			"rewritten": "the rendered file differs from what was there; it was rewritten (forced)",
+			"unchanged": "the file on disk is unchanged; the value simply lives in the environment now"
+		},
+		"render": {
+			"desc": "Render an instance's managed config files from their templates",
+			"empty": "{name} has no managed config files"
+		},
+		"readopt": {
+			"desc": "Pull a drifted file's current text back into its template, keeping placeholders",
+			"done": "{file} re-adopted from disk",
+			"kept": "placeholders kept: {names}",
+			"nowLiteral": "no placeholder values matched the new text; the template is now literal"
+		},
+		"discardDrift": {
+			"desc": "Delete the .luna-drift copy kept beside a file",
+			"noCopy": "no drift copy beside {file}",
+			"done": "drift copy removed"
+		}
+	},
+	"env": {
+		"scopeConflict": "--instance and --machine are different scopes; pass one",
+		"unknownInstance": "unknown instance: {name}",
+		"unknownMachine": "unknown machine: {name}",
+		"onInstance": "on {name}",
+		"onMachine": "on machine {name}",
+		"scopeBuiltin": "builtin",
+		"scopeGlobal": "global",
+		"scopeMachine": "machine",
+		"scopeInstance": "instance",
+		"list": {
+			"desc": "List environment variables (injected at startup, and read by templates as ${NAME})",
+			"optInstance": "resolve for this instance, showing what wins",
+			"optMachine": "show this machine's overrides",
+			"optReveal": "show secret values instead of masking them",
+			"overrides": "overrides {scopes}",
+			"resolvedFor": "resolved for {name}: builtin < global < machine < instance",
+			"noMachineOverrides": "{name} has no machine-scoped overrides",
+			"empty": "no variables defined; set one with: luna env set NAME value",
+			"builtinsHint": "builtins are per-instance; see them with {command}"
+		},
+		"set": {
+			"desc": "Set a variable, globally or as a machine/instance override",
+			"optInstance": "override for this instance only",
+			"optMachine": "override for every instance on this machine",
+			"optSecret": "mask the value in every UI",
+			"optDescription": "what the variable is for",
+			"done": "{name} set",
+			"pickupNote": "(instances pick it up on their next start)"
+		},
+		"unset": {
+			"desc": "Remove a variable, or one machine's/instance's override",
+			"optInstance": "remove this instance's override only",
+			"optMachine": "remove this machine's override only",
+			"notSet": "{name} is not set",
+			"done": "{name} removed",
+			"restartNote": "instances keep the old value until they restart"
+		},
+		"inject": {
+			"desc": "Rewrite an instance's .luna-env from the store (takes effect on its next start)",
+			"wrote": "wrote {path}",
+			"applyNote": "the JVM reads it at startup; restart the instance to apply"
+		},
+		"apply": {
+			"desc": "Re-apply every config template and managed config file to an instance",
+			"templatesInPlace": "{name}: every templated value already in place ({count} checked)",
+			"filesUpToDate": "{name}: {count} managed config file(s) already up to date"
+		}
+	},
+	"luna": {
+		"stateInSync": "in sync",
+		"stateNeedsDeploy": "needs deploy",
+		"stateStalePool": "stale pool",
+		"stateUnregistered": "unregistered",
+		"stateNotBuilt": "not built",
+		"ago": "{duration} ago",
+		"modulesSummary": "{count} modules: {summary}",
+		"sourceLine": "source {dir} @ {version}",
+		"dirtyTag": "(uncommitted changes)",
+		"allModules": "all modules",
+		"building": "building {label}...",
+		"buildFailed": "gradle build failed (exit {code})",
+		"buildSucceeded": "build succeeded in {duration}",
+		"pooling": "pooling artifacts...",
+		"noArtifacts": "no built artifacts found; run luna luna build first",
+		"registered": "registered {name} in the lockfile; assign targets with {command}",
+		"poolMatches": "pool already matches the built jars",
+		"noTargets": "no targets set (will not deploy): {names}",
+		"status": {
+			"desc": "Compare built luna jars against the pool and every instance",
+			"hashing": "hashing built, pooled and deployed jars...",
+			"stray": "stray artifact in output/: {file} (no gradle module produces it)"
+		},
+		"build": {
+			"desc": "Build the luna-plugins workspace (all modules, or the ones named)",
+			"optSync": "also copy the built jars into the pool",
+			"jarCount": "{count} deployable jars in output/",
+			"dirty": "source tree has uncommitted changes; jars stamped {version}",
+			"poolHint": "pool the result with: {command}"
+		},
+		"sync": {
+			"desc": "Copy already-built luna jars into the pool and update the lockfile",
+			"pushHint": "push to instances with: {command}"
+		},
+		"deploy": {
+			"desc": "Build luna plugins, pool them, and push to their target instances",
+			"optNoBuild": "deploy what is already in output/ without rebuilding",
+			"optRestart": "restart the instances that received a new jar",
+			"nothing": "nothing to deploy; instances already run these jars",
+			"leftDown": "{name} is stopped; leaving it down",
+			"restarting": "restarting {name}...",
+			"forced": "{name} did not stop gracefully; forced",
+			"restarted": "{name} restarted"
+		}
+	},
+	"net": {
+		"statusOnline": "online",
+		"statusMaint": "maint",
+		"statusOffline": "offline",
+		"healthHealthy": "healthy",
+		"healthDegraded": "degraded",
+		"apiUnavailable": "LunaCore API unavailable: {error}",
+		"unknownError": "unknown error",
+		"optServer": "only this backend",
+		"status": {
+			"desc": "Network telemetry from LunaCore on the proxy (TPS, CPU, RAM, players)",
+			"summary": "network {health}: {online}/{total} backends up, {players} players, avg tps {tps}, avg cpu {cpu}%, ram {ramUsed} / {ramMax}"
+		},
+		"players": {
+			"desc": "Players connected to the network, with session times",
+			"empty": "nobody is connected",
+			"connecting": "(connecting)",
+			"online": "{count} online"
+		},
+		"history": {
+			"desc": "Recent join, leave and server-switch activity",
+			"empty": "no activity recorded since the proxy started",
+			"joined": "joined",
+			"left": "left",
+			"switched": "switched"
+		},
+		"cmd": {
+			"desc": "Run a command on the proxy console and print its reply",
+			"noOutput": "command ran with no output",
+			"noSuchCommand": "no such command on the proxy",
+			"notRecognised": "the proxy did not recognise that command"
+		},
+		"say": {
+			"desc": "Broadcast a MiniMessage-formatted message to players",
+			"delivered": "delivered to {count} player(s)",
+			"onServer": "on {server}"
+		},
+		"kick": {
+			"desc": "Disconnect a player from the network",
+			"optReason": "message shown to the player",
+			"done": "kicked {player}"
+		},
+		"move": {
+			"desc": "Move a player to another backend",
+			"failed": "{player} was not moved to {server}: {status}",
+			"done": "moved {player} to {server}"
+		}
+	},
+	"schedule": {
+		"triggerOnce": "once at {time}",
+		"triggerEvery": "every {minutes}m",
+		"unknown": "unknown schedule: {id}",
+		"nextShort": "next {time}",
+		"list": {
+			"desc": "List schedules (the runner lives in the web console server)",
+			"empty": "no schedules; create one with: luna schedule create",
+			"neverRan": "never ran",
+			"runnerNote": "runs fire from the daemon"
+		},
+		"create": {
+			"desc": "Schedule an instance start/stop/restart (once, cron, or fixed rate)",
+			"optAction": "start | stop | restart",
+			"optInstances": "targets, comma-separated (wildcards ok)",
+			"optAt": "one-time, e.g. \"2026-08-03 04:00\"",
+			"optCron": "recurring, e.g. \"30 4 * * *\"",
+			"optEvery": "recurring, minutes between runs",
+			"optMaxRuns": "stop after this many runs",
+			"optDisabled": "create paused",
+			"needsAction": "--action start|stop|restart is required",
+			"needsInstances": "--instances <names> is required",
+			"pickOneTrigger": "pick exactly one of --at, --cron, --every",
+			"badTime": "cannot parse time \"{time}\"",
+			"nextRun": "next run {time}; fires while the daemon runs"
+		},
+		"remove": {
+			"desc": "Delete a schedule (its history stays in the event log)",
+			"deleted": "{name} deleted"
+		},
+		"enable": {
+			"desc": "Resume a schedule",
+			"done": "enabled",
+			"completed": "{name} has already completed; nothing left to fire"
+		},
+		"disable": {
+			"desc": "Pause a schedule",
+			"done": "paused"
+		},
+		"run": {
+			"desc": "Fire a schedule's action right now (does not consume a scheduled run)",
+			"restarted": "restarted ({duration})",
+			"manualRun": "manual run of {action}"
+		},
+		"history": {
+			"desc": "Execution log, newest first",
+			"empty": "no executions recorded yet"
+		}
+	},
+	"selector": {
+		"diffHeading": "differences between the file and what luna would generate:",
+		"diffMore": "… and {count} more",
+		"status": {
+			"desc": "Show the server selector: placement, validation and drift from servers.yml",
+			"byStatus": "(by status)",
+			"lines": "{count} line(s)",
+			"placement": "{placed} server(s) across {pages} page(s)",
+			"configured": "configured in cluster.json",
+			"notConfigured": "not configured; run luna selector migrate",
+			"noFile": "no servers.yml yet; apply will create it",
+			"drift": "servers.yml differs from cluster.json ({count} path(s)); apply to bring it in line",
+			"matches": "servers.yml matches cluster.json",
+			"proxyUnreachable": "the proxy's HTTP API did not answer; apply can write the file but not reload it"
+		},
+		"check": {
+			"desc": "Validate the selector the way the proxy would before a reload",
+			"wouldRefuse": "{count} error(s); the proxy would refuse to reload",
+			"warningsOnly": "no errors, {count} warning(s)",
+			"noIssues": "no issues"
+		},
+		"preview": {
+			"desc": "Print the servers.yml luna would generate, without writing it"
+		},
+		"migrate": {
+			"desc": "Import the existing servers.yml into cluster.json (one-time)",
+			"optDryRun": "report what would be imported, saving nothing",
+			"optForce": "save even when the round-trip check finds differences",
+			"confirm": "Import servers.yml into cluster.json? This rewrites the selector metadata of every matching instance.",
+			"imported": "{count} instance(s): {names}",
+			"roundTripOk": "round-trip check passed; regenerating reproduces the current configuration",
+			"roundTripFailed": "round-trip check failed on {count} path(s)",
+			"saved": "cluster.json updated",
+			"dryRun": "dry run: nothing saved",
+			"nothingSaved": "nothing saved; re-run with --force to import anyway"
+		},
+		"apply": {
+			"desc": "Generate servers.yml from cluster.json and reload the proxy",
+			"fixFirst": "{count} error(s); fix them before applying",
+			"confirm": "Write servers.yml ({count} server(s)) and reload the live proxy?",
+			"progressName": "apply selector",
+			"written": "servers.yml written ({count} server(s))",
+			"reloaded": "proxy reloaded; backends pick the new layout up on their next heartbeat",
+			"notReloaded": "the proxy did not reload; run /lunacoreproxy reload there, or restart it"
+		}
+	},
+	"web": {
+		"desc": "Start the web console (SvelteKit app in control/web)",
+		"optPort": "listen port (default 8330)",
+		"optHost": "bind address (default 127.0.0.1)",
+		"optDev": "run the vite dev server instead of the production build",
+		"followerHost": "this host runs the \"{name}\" follower daemon; the web console only runs on the primary",
+		"notFound": "web console not found at {dir}",
+		"devStarting": "starting dev console on {url}",
+		"devHotReload": "(hot reload)",
+		"buildMissing": "production build missing; run: cd {dir} && bun run build",
+		"serving": "web console on {url}",
+		"stopHint": "(Ctrl+C to stop)"
+	},
+	"version": {
+		"desc": "Build identity of this binary (and the daemon, when one answers)",
+		"builtLabel": "built",
+		"daemonLabel": "daemon",
+		"daemonLine": "{name}: {version}, protocol {protocol}",
+		"daemonDown": "not running on this host"
+	}
+}

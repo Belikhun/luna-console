@@ -4,7 +4,7 @@
 	 *
 	 * The font is bitmap sheets rather than outlines, so this draws it the way the
 	 * client draws it: glyph by glyph onto a canvas, at the advances measured off
-	 * the sheets. A web font can only approximate that — every glyph would be the
+	 * the sheets. A web font can only approximate that; every glyph would be the
 	 * wrong width, so every line break and every column in the preview would be
 	 * somewhere the player will not see it.
 	 *
@@ -27,18 +27,18 @@
 		values?: Record<string, string>;
 		/** Item names and lore are deserialized with `<!italic>` */
 		italicDefault?: boolean;
-		/** Colour for text that sets none — lore grey, name white */
+		/** Colour for text that sets none; lore grey, name white */
 		baseColor?: string;
 		/** Mark `%name%` runs instead of substituting them */
 		markPlaceholders?: boolean;
 		knownPlaceholders?: readonly string[];
 		/** Render on one line, collapsing any line breaks */
 		inline?: boolean;
-		/** Draw the game's drop shadow — on for tooltips and chat, off for labels */
+		/** Draw the game's drop shadow; on for tooltips and chat, off for labels */
 		shadow?: boolean;
 		/** Wrap at this many game pixels; unset fits the text to its container */
 		wrap?: number;
-		/** Game pixels between line tops — the font's own is 9, a tooltip's is 10 */
+		/** Game pixels between line tops; the font's own is 9, a tooltip's is 10 */
 		pitch?: number;
 		/** One game pixel, as a CSS length */
 		unit?: string;
@@ -60,7 +60,7 @@
 
 	// The line box is nine pixels with the baseline seven down, which is where the
 	// `ascii` sheet hangs. `accented` is twelve tall hung ten up, so it overshoots
-	// both edges — the padding is what stops it being clipped, and is taken back
+	// both edges; the padding is what stops it being clipped, and is taken back
 	// out with a negative margin so the box still occupies one line in the flow.
 	const LINE = 9;
 	const BASELINE = 7;
@@ -199,8 +199,8 @@
 	}
 
 	/**
-	 * A codepoint no sheet covers — a box character ruling a description line, a
-	 * name in a script the sheets skip — is drawn from the fallback bundle, which
+	 * A codepoint no sheet covers; a box character ruling a description line, a
+	 * name in a script the sheets skip; is drawn from the fallback bundle, which
 	 * is far too large to load up front and is asked for a codepoint at a time.
 	 * The tick is what lays the block out again once the glyphs land.
 	 */
@@ -437,7 +437,7 @@
 	});
 
 	// the probe is one game pixel wide in CSS, which is the only way to find out
-	// what `--gui-px` actually resolved to — a custom property reads back as the
+	// what `--gui-px` actually resolved to; a custom property reads back as the
 	// expression it was written as, not as a length
 	$effect(() => {
 		void observed;
@@ -468,8 +468,8 @@
 			return;
 		}
 
-		// One backing pixel per device pixel. Anything else — an integer scale that
-		// the browser then resamples to fit — is what makes bitmap glyphs come out
+		// One backing pixel per device pixel. Anything else; an integer scale that
+		// the browser then resamples to fit; is what makes bitmap glyphs come out
 		// soft, and at a GUI scale of 3.64 no integer fits.
 		const box = target.getBoundingClientRect();
 

@@ -36,7 +36,7 @@ export interface DiskUsage {
 
 /**
  * Read filesystem usage for the volume holding `path`, via `df`. Returns null
- * when df is unavailable or its output cannot be parsed — callers treat disk
+ * when df is unavailable or its output cannot be parsed; callers treat disk
  * usage as informational and simply omit it.
  */
 export async function diskUsage(path: string): Promise<DiskUsage | null> {
@@ -103,7 +103,7 @@ export async function buildPlan(cfg: ClusterConfig): Promise<CleanupPlan> {
 	for (const [name, inst] of Object.entries(insts)) {
 		const dir = instanceDir(inst);
 
-		// cache/ — keep the current version's vanilla jar (avoids a re-download on
+		// cache/; keep the current version's vanilla jar (avoids a re-download on
 		// next boot), everything else is safe to delete
 		const cache = join(dir, "cache");
 
@@ -128,7 +128,7 @@ export async function buildPlan(cfg: ClusterConfig): Promise<CleanupPlan> {
 			}
 		}
 
-		// versions/ — keep only the entry for the current MC version
+		// versions/; keep only the entry for the current MC version
 		const versions = join(dir, "versions");
 
 		if (existsSync(versions) && inst.mcVersion) {

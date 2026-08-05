@@ -4,9 +4,10 @@
 	 * slider, and Minecraft's sixteen named colours as presets.
 	 *
 	 * The panel is positioned in viewport space, like `Select`, because the places
-	 * this is used — inspector panels, modal bodies — clip their overflow.
+	 * this is used; inspector panels, modal bodies; clip their overflow.
 	 */
 
+	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 	import { NAMED_COLORS } from '$shared/minimessage';
 
@@ -159,7 +160,7 @@
 			}}
 			onpointermove={(event) => event.buttons === 1 && pickFromArea(event)}
 			role="slider"
-			aria-label="Saturation and brightness"
+			aria-label={t('web.colorPicker.saturation')}
 			aria-valuenow={Math.round(hsv.s * 100)}
 			tabindex="0"
 		>
@@ -172,7 +173,7 @@
 			min="0"
 			max="359"
 			value={Math.round(hsv.h)}
-			aria-label="Hue"
+			aria-label={t('web.colorPicker.hue')}
 			oninput={(event) => pick(hsvToHex(Number((event.currentTarget as HTMLInputElement).value), hsv.s || 1, hsv.v || 1))}
 		/>
 

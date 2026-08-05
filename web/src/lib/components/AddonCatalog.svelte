@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -38,7 +39,7 @@
 	import { CATALOG_KINDS } from '$lib/components/addoncatalog';
 
 	/**
-	 * The addon universe of one kind, one row per *identity* — an addon's paper,
+	 * The addon universe of one kind, one row per *identity*; an addon's paper,
 	 * velocity and neoforge builds are one thing here; the info view unpacks them.
 	 *
 	 * Plugins and mods are the same object in the lockfile, told apart only by
@@ -92,7 +93,7 @@
 	const updatesFor = (row: AddonRow) =>
 		updates.filter((candidate) => row.families.some((family) => family.key === candidate.name));
 
-	// a check sweeps the whole lockfile — plugins and mods alike — so the summary
+	// a check sweeps the whole lockfile; plugins and mods alike; so the summary
 	// keeps to the builds this screen is actually showing
 	const catalogKeys = $derived(
 		new Set(addons.flatMap((row) => row.families.map((family) => family.key)))
@@ -111,18 +112,18 @@
 	const filters: TableFilterGroup<AddonRow>[] = $derived([
 		{
 			id: 'source',
-			label: 'Filter source',
+			label: t('web.catalog.filterSource'),
 			options: [
-				{ value: 'any', label: 'Any source' },
+				{ value: 'any', label: t('web.catalog.anySource') },
 				...spec.sources.map((source) => ({
 					value: source,
-					label: `${ADDON_PROVIDERS.find((entry) => entry.id === source)?.label ?? source} managed`,
+					label: t('web.catalog.providerManaged', { provider: ADDON_PROVIDERS.find((entry) => entry.id === source)?.label ?? source }),
 					match: (row: AddonRow) => row.sources.includes(source)
 				})),
-				{ value: 'luna', label: 'Luna in-house', match: (row) => row.sources.includes('luna') },
+				{ value: 'luna', label: t('web.catalog.lunaInHouse'), match: (row) => row.sources.includes('luna') },
 				{
 					value: 'manual',
-					label: 'Manually installed',
+					label: t('web.catalog.manuallyInstalled'),
 					match: (row) => row.sources.includes('manual')
 				}
 			]
@@ -132,12 +133,12 @@
 			? [
 					{
 						id: 'family',
-						label: 'Filter family',
+						label: t('web.catalog.filterFamily'),
 						options: [
-							{ value: 'any', label: 'Any family' },
+							{ value: 'any', label: t('web.catalog.anyFamily') },
 							...spec.families.map((family) => ({
 								value: family,
-								label: `Has a ${family} build`,
+								label: t('web.catalog.hasBuild', { family }),
 								match: (row: AddonRow) =>
 									row.families.some((build) => build.family === family)
 							}))
@@ -147,33 +148,33 @@
 			: []),
 		{
 			id: 'updates',
-			label: 'Filter update policy',
+			label: t('web.catalog.filterPolicy'),
 			options: [
-				{ value: 'any', label: 'Any policy' },
-				{ value: 'auto-off', label: 'Auto-update disabled', match: (row) => !row.autoUpdate },
-				{ value: 'pinned', label: 'Has pinned versions', match: (row) => row.pinned }
+				{ value: 'any', label: t('web.catalog.anyPolicy') },
+				{ value: 'auto-off', label: t('web.catalog.autoOff'), match: (row) => !row.autoUpdate },
+				{ value: 'pinned', label: t('web.catalog.hasPinned'), match: (row) => row.pinned }
 			]
 		}
 	]);
 
 	const columns: Column[] = $derived([
-		{ id: 'name', label: 'Name', sortable: true },
-		{ id: 'source', label: 'Source', sortable: true, minWidth: 140 },
+		{ id: 'name', label: t('web.common.name'), sortable: true },
+		{ id: 'source', label: t('web.catalog.colSource'), sortable: true, minWidth: 140 },
 		...(spec.families.length > 1
-			? [{ id: 'families', label: 'Families', width: 170 }]
+			? [{ id: 'families', label: t('web.catalog.colFamilies'), width: 170 }]
 			: []),
-		{ id: 'version', label: 'Version' },
-		{ id: 'update', label: 'Update' },
-		{ id: 'auto', label: 'Auto-update', sortable: true },
-		{ id: 'targets', label: 'Deploys to' }
+		{ id: 'version', label: t('web.groups.colVersion') },
+		{ id: 'update', label: t('web.catalog.colUpdate') },
+		{ id: 'auto', label: t('web.catalog.colAuto'), sortable: true },
+		{ id: 'targets', label: t('web.catalog.colTargets') }
 	]);
 
 	// The summary dialog's own table. No tableId on purpose: it would grow a
 	// preferences gear opening a second modal on top of this one.
 	const updateColumns: Column[] = $derived([
-		{ id: 'addon', label: 'Name', sortable: true },
-		{ id: 'version', label: 'Update', sortable: true, minWidth: 190 },
-		{ id: 'targets', label: 'Lands on' }
+		{ id: 'addon', label: t('web.common.name'), sortable: true },
+		{ id: 'version', label: t('web.catalog.colUpdate'), sortable: true, minWidth: 190 },
+		{ id: 'targets', label: t('web.catalog.colLandsOn') }
 	]);
 
 	let loading = $state(true);
@@ -224,12 +225,12 @@
 			await fn(note);
 
 			if (note.level === 'loading') {
-				note.set({ level: 'success', message: 'Done', closeable: true });
+				note.set({ level: 'success', message: t('web.common.done'), closeable: true });
 			}
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: `${pending.replace(/…$/, '')} failed`,
+				message: t('web.catalog.opFailed', { operation: pending.replace(/…$/, '') }),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -240,7 +241,7 @@
 
 	/** Deploy every family build of one addon, behind a loading flash. */
 	function deployOne(row: AddonRow): Promise<void> {
-		return run('deploy1', `Deploying ${row.plugin}…`, async (note) => {
+		return run('deploy1', t('web.catalog.deploying', { name: row.plugin }), async (note) => {
 			let changed = 0;
 
 			for (const family of row.families) {
@@ -251,7 +252,7 @@
 
 			note.set({
 				level: 'success',
-				message: `Deployed ${row.plugin} — ${changed} change(s)`,
+				message: t('web.catalog.deployed', { name: row.plugin, count: changed }),
 				closeable: true
 			});
 		});
@@ -263,7 +264,7 @@
 
 		return run(
 			'auto',
-			`${next ? 'Enabling' : 'Disabling'} auto-update for ${row.plugin}…`,
+			t(next ? 'web.catalog.enablingAuto' : 'web.catalog.disablingAuto', { name: row.plugin }),
 			async (note) => {
 				for (const family of row.families) {
 					await patch(`/plugins/${encodeURIComponent(family.key)}`, { autoUpdate: next });
@@ -271,7 +272,7 @@
 
 				note.set({
 					level: 'success',
-					message: `Auto-update ${next ? 'enabled' : 'disabled'} for ${row.plugin}`,
+					message: t(next ? 'web.catalog.autoEnabled' : 'web.catalog.autoDisabled', { name: row.plugin }),
 					closeable: true
 				});
 
@@ -281,7 +282,7 @@
 	}
 
 	/**
-	 * Ask every provider what it has, one entry at a time — a job, so the card
+	 * Ask every provider what it has, one entry at a time; a job, so the card
 	 * reports which addon it is waiting on. The outcome opens the summary dialog,
 	 * which is where the updates are actually chosen.
 	 */
@@ -289,7 +290,7 @@
 		busy = 'check';
 
 		const job = await jobFlash({
-			title: 'Checking providers for updates…',
+			title: t('web.catalog.checking'),
 			start: () => post('/plugins/check'),
 			success: (result) => {
 				const found = (result as { candidates: AddonUpdate[] }).candidates;
@@ -297,11 +298,11 @@
 
 				return {
 					message: pending.length
-						? `${pending.length} build(s) have updates`
-						: 'Everything is up to date',
+						? t('web.catalog.buildsHaveUpdates', { count: pending.length })
+						: t('web.catalog.upToDate'),
 					detail:
 						found.length > pending.length
-							? `${found.length - pending.length} build(s) held back or pinned`
+							? t('web.catalog.heldBackCount', { count: found.length - pending.length })
 							: ''
 				};
 			}
@@ -317,7 +318,7 @@
 		checked = true;
 		updateSel = new Set();
 
-		// nothing to preview when nothing came back — the card already said so
+		// nothing to preview when nothing came back; the card already said so
 		if (pendingUpdates.length || heldBack.length) {
 			updatesOpen = true;
 		}
@@ -329,7 +330,7 @@
 	 * unqualified "Update all" asks for.
 	 */
 	function applyUpdates(names: string[], label: string, flag: string): Promise<void> {
-		return run(flag, `Downloading and deploying ${label}…`, async (note) => {
+		return run(flag, t('web.catalog.downloadingDeploying', { label }), async (note) => {
 			const res = await post('/plugins/update', {
 				names: names.length ? names : undefined,
 				deploy: true
@@ -337,8 +338,8 @@
 
 			note.set({
 				level: 'success',
-				message: `Updated ${res.applied.length} version group(s), deployed ${res.deployed} file(s)`,
-				detail: 'Restart the affected instances to load them.',
+				message: t('web.catalog.updatedSummary', { groups: res.applied.length, files: res.deployed }),
+				detail: t('web.catalog.restartToLoad'),
 				closeable: true
 			});
 
@@ -358,36 +359,37 @@
 	const updateAll = () =>
 		applyUpdates(
 			pendingUpdates.map((candidate) => candidate.name),
-			pendingUpdates.length ? `${pendingUpdates.length} update(s)` : 'updates',
+			pendingUpdates.length ? t('web.catalog.updateCount', { count: pendingUpdates.length }) : t('web.catalog.updatesWord'),
 			'update'
 		);
 
 	const updateSelected = () =>
-		applyUpdates([...updateSel], `${updateSel.size} selected update(s)`, 'update-sel');
+		applyUpdates([...updateSel], t('web.catalog.selectedUpdateCount', { count: updateSel.size }), 'update-sel');
 
 	const deployAll = () =>
-		run('deploy', `Deploying ${spec.plural} to every target…`, async (note) => {
+		run('deploy', t('web.catalog.deployingAll', { plural: t(spec.plural) }), async (note) => {
 			const res = await post('/plugins/deploy', {});
 			const changed = res.actions.filter((action: any) => action.action !== 'unchanged').length;
 
 			note.set({
 				level: 'success',
-				message: `Deploy complete — ${changed} change(s)`,
-				detail: res.needRestart.length ? `Restart to apply: ${res.needRestart.join(', ')}` : '',
+				message: t('web.catalog.deployComplete', { count: changed }),
+				detail: res.needRestart.length ? t('web.catalog.restartToApply', { names: res.needRestart.join(', ') }) : '',
 				closeable: true
 			});
 		});
 
 	const scan = () =>
-		run('scan', 'Scanning addon directories…', async (note) => {
+		run('scan', t('web.catalog.scanning'), async (note) => {
 			const res = await post('/plugins/scan');
 
 			note.set({
 				level: 'success',
-				message: `Scan complete — ${res.report.identified.length} identified`,
-				detail:
-					`${res.report.unmanaged.length} unmanaged instance-only jars left alone, ` +
-					`${res.report.recognized.length} recognised under another name`,
+				message: t('web.catalog.scanComplete', { count: res.report.identified.length }),
+				detail: t('web.catalog.scanDetail', {
+					unmanaged: res.report.unmanaged.length,
+					recognized: res.report.recognized.length
+				}),
 				closeable: true
 			});
 
@@ -395,7 +397,7 @@
 		});
 
 	const installAddon = () =>
-		run('add', `Installing ${addSlug} from ${addProvider}…`, async (note) => {
+		run('add', t('web.catalog.installing', { name: addSlug, provider: addProvider }), async (note) => {
 			const res = await post('/plugins/add', {
 				slug: addSlug,
 				id: addId || undefined,
@@ -406,12 +408,12 @@
 
 			note.set({
 				level: 'success',
-				message: `Installed ${res.name}`,
+				message: t('web.catalog.installed', { name: res.name }),
 				detail: res.groups
 					.map((group: any) =>
 						group.targets.length
 							? `${group.version} → ${group.targets.join(', ')}`
-							: `${group.version} pooled — not deployed anywhere yet`
+							: t('web.catalog.pooledOnly', { version: group.version })
 					)
 					.join('; '),
 				closeable: true
@@ -423,14 +425,14 @@
 		});
 
 	const doRemove = () =>
-		run('remove', `Removing ${removeTarget?.plugin}…`, async (note) => {
+		run('remove', t('web.catalog.removing', { name: removeTarget?.plugin ?? '' }), async (note) => {
 			for (const family of removeTarget!.families) {
 				await del(`/plugins/${encodeURIComponent(family.key)}`);
 			}
 
 			note.set({
 				level: 'success',
-				message: `Removed ${removeTarget!.plugin} (${removeTarget!.families.length} build(s))`,
+				message: t('web.catalog.removed', { name: removeTarget!.plugin, count: removeTarget!.families.length }),
 				closeable: true
 			});
 
@@ -463,7 +465,7 @@
 	});
 
 	// prefill the addon name from the jar, dropping the @family suffix luna's
-	// own pool files carry — but never overwrite an edit
+	// own pool files carry; but never overwrite an edit
 	$effect(() => {
 		if (uploadFile && !uploadName) {
 			uploadName = uploadFile.name
@@ -474,7 +476,7 @@
 	});
 
 	const uploadAddon = () =>
-		run('upload', `Uploading ${uploadFile?.name}…`, async (note) => {
+		run('upload', t('web.catalog.uploading', { name: uploadFile?.name ?? '' }), async (note) => {
 			const res = await post('/plugins/upload', {
 				plugin: uploadName.trim(),
 				family: uploadFamily,
@@ -486,18 +488,18 @@
 
 			note.set({
 				level: 'success',
-				message: `Pooled ${res.name}`,
+				message: t('web.catalog.pooled', { name: res.name }),
 				detail: uploadTargets.length
-					? `${res.deployed} deploy change(s) — a running server loads it on restart.`
-					: 'Not deployed anywhere yet — add it to an instance or an addon group.',
+					? t('web.catalog.uploadDeployed', { count: res.deployed })
+					: t('web.catalog.uploadNotDeployed'),
 				closeable: true
 			});
 
 			await refresh();
 		});
 
-	// Provider mapping. A row here is an addon *identity* — its paper and velocity
-	// builds are separate lock entries with separate files — so a mapping can only
+	// Provider mapping. A row here is an addon *identity*; its paper and velocity
+	// builds are separate lock entries with separate files; so a mapping can only
 	// be made from this screen when there is exactly one build to map; otherwise
 	// the detail screen asks about each one.
 	let identifyOpen = $state(false);
@@ -514,44 +516,44 @@
 		identifyOpen = true;
 	}
 
-	/** An addon's verbs — the row menu and the toolbar's Actions button. */
+	/** An addon's verbs; the row menu and the toolbar's Actions button. */
 	function rowActions(row: AddonRow): ContextMenuItem[] {
 		const linked = row.families.find((family) => family.url);
 		const providerLabel = linked?.remote
 			? (ADDON_PROVIDERS.find((entry) => entry.id === linked.remote!.provider)?.label ??
 				linked.remote.provider)
-			: 'provider';
+			: t('web.catalog.providerWord');
 
 		return [
 			{
-				label: `${spec.label} details`,
+				label: t('web.catalog.details', { label: t(spec.label) }),
 				icon: 'circleInfo',
 				action: () => goto(`/plugins/${row.plugin}`)
 			},
 			{
-				label: 'Deploy to targets',
+				label: t('web.catalog.deployToTargets'),
 				icon: 'upload',
 				action: () => deployOne(row)
 			},
 			{
-				label: row.autoUpdate ? 'Disable auto-update' : 'Enable auto-update',
+				label: row.autoUpdate ? t('web.catalog.disableAuto') : t('web.catalog.enableAuto'),
 				icon: row.autoUpdate ? 'ban' : 'circleCheck',
 				action: () => toggleAutoUpdate(row)
 			},
 			{
-				label: row.families[0]?.remote ? 'Change provider mapping…' : 'Map to a provider…',
+				label: row.families[0]?.remote ? t('web.catalog.changeMapping') : t('web.catalog.mapToProvider'),
 				icon: 'link',
 				disabled: row.families.length !== 1 || row.families[0]?.source === 'luna',
 				hint:
 					row.families[0]?.source === 'luna'
-						? 'in-house build — its source is the luna workspace'
+						? t('web.catalog.inHouseHint')
 						: row.families.length !== 1
-							? `${row.families.length} builds — map each one from the ${spec.noun} details`
-							: 'record which project this file came from',
+							? t('web.catalog.multiBuildHint', { count: row.families.length, noun: t(spec.noun) })
+							: t('web.catalog.mapHint'),
 				action: () => openIdentify(row)
 			},
 			{
-				label: `Open on ${providerLabel}`,
+				label: t('web.catalog.openOn', { provider: providerLabel }),
 				icon: 'externalLink',
 				disabled: !linked,
 				action: () => {
@@ -560,7 +562,7 @@
 			},
 			{ separator: true },
 			{
-				label: `Remove ${spec.noun}`,
+				label: t('web.catalog.removeNoun', { noun: t(spec.noun) }),
 				icon: 'trash',
 				color: 'danger',
 				action: () => {
@@ -577,15 +579,15 @@
 	const one = $derived(addons.find((row: any) => selected.has(row.plugin)));
 </script>
 
-<svelte:head><title>{spec.label} | Luna Console</title></svelte:head>
+<svelte:head><title>{t(spec.label)} | Luna Console</title></svelte:head>
 
-<PageHeader title={spec.label} count={addons.length} info>
+<PageHeader title={t(spec.label)} count={addons.length} info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey={kind} />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
-		<Btn icon="search" loading={busy === 'scan'} disabled={!!busy} onclick={scan}>Scan</Btn>
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Btn icon="search" loading={busy === 'scan'} disabled={!!busy} onclick={scan}>{t('web.catalog.scan')}</Btn>
 		<Btn icon="sync" loading={busy === 'check'} disabled={!!busy} onclick={checkUpdates}>
-			Check updates
+			{t('web.catalog.checkUpdates')}
 		</Btn>
 		<Btn
 			icon="download"
@@ -593,18 +595,18 @@
 			disabled={!!busy || (checked && !updates.length)}
 			onclick={updateAll}
 		>
-			Update all
+			{t('web.catalog.updateAll')}
 		</Btn>
 		<Btn icon="upload" loading={busy === 'deploy'} disabled={!!busy} onclick={deployAll}>
-			Deploy
+			{t('web.catalog.deploy')}
 		</Btn>
 		<SplitBtn
-			label="Install"
+			label={t('web.catalog.install')}
 			icon="upload"
 			primary
 			onclick={() => (uploadOpen = true)}
 			menu={installProviders.map((entry) => ({
-				label: `Search ${entry.label}`,
+				label: t('web.catalog.searchProvider', { provider: entry.label }),
 				brand: entry.id,
 				disabled: !entry.available,
 				hint: entry.note,
@@ -624,12 +626,12 @@
 			`${row.plugin} ${row.displayName} ${row.sources.join(' ')} ${row.families
 				.map((family) => `${family.family} ${family.version ?? ''}`)
 				.join(' ')} ${row.effective.join(' ')} ${row.description ?? ''}`}
-		searchPlaceholder="Find {spec.noun} by name, source or target"
+		searchPlaceholder={t('web.catalog.findPlaceholder', { noun: t(spec.noun) })}
 		selectable="single"
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.plugin}
-		noun={spec.noun}
+		noun={t(spec.noun)}
 		sortValue={(row, col) =>
 			col === 'name'
 				? row.plugin
@@ -641,8 +643,8 @@
 		onRowClick={(row) => goto(`/plugins/${row.plugin}`)}
 		{filters}
 		pageSize={25}
-		emptyTitle="No {spec.plural} in the pool"
-		emptyText={spec.emptyText}
+		emptyTitle={t('web.catalog.emptyTitle', { plural: t(spec.plural) })}
+		emptyText={t(spec.emptyText)}
 	>
 		{#snippet cell(row, col)}
 			{@const pending = updatesFor(row)}
@@ -683,14 +685,14 @@
 						].join(', ')}
 					</span>
 				{:else if checked && row.sources.some((source) => spec.sources.includes(source))}
-					<span class="dim">current</span>
+					<span class="dim">{t('web.catalog.current')}</span>
 				{:else}
 					<span class="dim">–</span>
 				{/if}
 			{:else if col === 'auto'}
 				<StatusBadge
 					state={row.autoUpdate ? 'ok' : 'stopped'}
-					label={row.autoUpdate ? 'On' : 'Off'}
+					label={row.autoUpdate ? t('web.catalog.on') : t('web.catalog.off')}
 				/>
 			{:else if col === 'targets'}
 				<span class="dim">{row.effective.join(', ') || '–'}</span>
@@ -710,14 +712,14 @@
 	onchanged={refresh}
 />
 
-<Modal title="Install a {spec.noun}" bind:open={addOpen} wide>
+<Modal title={t('web.catalog.installTitle', { noun: t(spec.noun) })} bind:open={addOpen} wide>
 	<AddonPicker
 		endpoint="/plugins/search"
 		kind={spec.type}
 		params={{ family: addFamily }}
 		bind:selected={addSlug}
 		bind:provider={addProvider}
-		placeholder="Search {spec.plural} by name…"
+		placeholder={t('web.catalog.searchPlaceholder', { plural: t(spec.plural) })}
 		onpick={(hit) => (addId = hit?.project_id ?? '')}
 	>
 		{#snippet toolbar()}
@@ -733,17 +735,14 @@
 	</AddonPicker>
 	{#if addSlug}
 		<div class="tgt">
-			<div class="tgtlbl">Apply to instances <span class="opt">optional</span></div>
-			<p class="dim tgthint">
-				Leave every box unticked to pool the jar without deploying it — put it in an addon group
-				or on an instance whenever you are ready.
-			</p>
+			<div class="tgtlbl">{t('web.catalog.applyTo')} <span class="opt">{t('web.catalog.optional')}</span></div>
+			<p class="dim tgthint">{t('web.catalog.poolHintLong')}</p>
 			<div class="targets">
 				{#each targetChoices as target}
 					<label class="tchk">
 						<Checkbox
 							checked={addTargets.includes(target)}
-							label="Apply to {target}"
+							label={t('web.catalog.applyToTarget', { target })}
 							onchange={() => (addTargets = toggleTarget(addTargets, target))}
 						/>
 						{target}
@@ -753,32 +752,29 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		<Btn onclick={() => (addOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (addOpen = false)}>{t('web.common.cancel')}</Btn>
 		<Btn variant="primary" disabled={!addSlug} loading={busy === 'add'} onclick={installAddon}>
-			Install
+			{t('web.catalog.install')}
 		</Btn>
 	{/snippet}
 </Modal>
 
 <!-- upload a jar from this computer -->
-<Modal title="Upload a {spec.noun}" bind:open={uploadOpen}>
+<Modal title={t('web.catalog.uploadTitle', { noun: t(spec.noun) })} bind:open={uploadOpen}>
 	<FileDrop
 		bind:file={uploadFile}
 		accept=".jar"
-		hint="Drop a {spec.noun} jar here, or click to browse"
+		hint={t('web.catalog.dropJar', { noun: t(spec.noun) })}
 	/>
 	<label class="field uploadname">
-		<span class="lbl">{spec.label} name</span>
-		<span class="hint">
-			The pool file becomes &lt;name&gt;@&lt;platform&gt;.jar; uploading under an existing name
-			replaces that build
-		</span>
-		<input class="input" bind:value={uploadName} placeholder="my-{spec.noun}" />
+		<span class="lbl">{t('web.catalog.nameLabel', { label: t(spec.label) })}</span>
+		<span class="hint">{t('web.catalog.nameHint')}</span>
+		<input class="input" bind:value={uploadName} placeholder="my-{kind === 'mods' ? 'mod' : 'plugin'}" />
 	</label>
 	{#if spec.families.length > 1}
 		<div class="field">
-			<span class="lbl">Platform</span>
-			<span class="hint">Universal jars load on the backends and the proxy alike</span>
+			<span class="lbl">{t('web.catalog.platform')}</span>
+			<span class="hint">{t('web.catalog.universalHint')}</span>
 			<Select
 				value={uploadFamily}
 				width="12rem"
@@ -788,14 +784,14 @@
 		</div>
 	{/if}
 	<div class="tgt">
-		<div class="tgtlbl">Apply to instances <span class="opt">optional</span></div>
-		<p class="dim tgthint">Leave every box unticked to pool the jar without deploying it.</p>
+		<div class="tgtlbl">{t('web.catalog.applyTo')} <span class="opt">{t('web.catalog.optional')}</span></div>
+		<p class="dim tgthint">{t('web.catalog.poolHintShort')}</p>
 		<div class="targets">
 			{#each targetChoices as target}
 				<label class="tchk">
 					<Checkbox
 						checked={uploadTargets.includes(target)}
-						label="Apply to {target}"
+						label={t('web.catalog.applyToTarget', { target })}
 						onchange={() => (uploadTargets = toggleTarget(uploadTargets, target))}
 					/>
 					{target}
@@ -804,25 +800,22 @@
 		</div>
 	</div>
 	{#snippet footer()}
-		<Btn onclick={() => (uploadOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (uploadOpen = false)}>{t('web.common.cancel')}</Btn>
 		<Btn
 			variant="primary"
 			disabled={!uploadFile || !uploadName.trim()}
 			loading={busy === 'upload'}
 			onclick={uploadAddon}
 		>
-			Upload
+			{t('web.catalog.upload')}
 		</Btn>
 	{/snippet}
 </Modal>
 
 <!-- what the last check found, and where the updates are chosen -->
-<Modal title="Updates available" bind:open={updatesOpen} wide>
+<Modal title={t('web.catalog.updatesAvailable')} bind:open={updatesOpen} wide>
 	{#if pendingUpdates.length}
-		<p class="dim intro">
-			{pendingUpdates.length} build(s) have a newer version. Updating downloads the jar into the
-			pool and deploys it — a running instance keeps the old one loaded until it restarts.
-		</p>
+		<p class="dim intro">{t('web.catalog.updatesIntro', { count: pendingUpdates.length })}</p>
 
 		<DataTable
 			columns={updateColumns}
@@ -832,7 +825,7 @@
 			bind:selected={updateSel}
 			maxHeight="26rem"
 			sortValue={(row, col) => (col === 'addon' ? row.name : (row.groups[0]?.version ?? ''))}
-			emptyTitle="Nothing to update"
+			emptyTitle={t('web.catalog.nothingToUpdate')}
 		>
 			{#snippet cell(row, col)}
 				{#if col === 'addon'}
@@ -848,8 +841,8 @@
 							{#if index > 0}<span class="dim">, </span>{/if}
 							<span class="mono upd">{group.version}</span>
 							{#if !group.isPrimary}
-								<span class="dim" title="pooled beside the primary for older backends">
-									(variant)
+								<span class="dim" title={t('web.catalog.variantHint')}>
+									({t('web.catalog.variant')})
 								</span>
 							{/if}
 						{/each}
@@ -861,26 +854,23 @@
 			{/snippet}
 		</DataTable>
 	{:else}
-		<p class="dim intro">
-			Nothing to download — every build this screen shows already runs the newest version its
-			targets can take.
-		</p>
+		<p class="dim intro">{t('web.catalog.nothingToDownload')}</p>
 	{/if}
 
 	{#if heldBack.length}
 		<div class="held">
-			<div class="tgtlbl">Held back</div>
+			<div class="tgtlbl">{t('web.catalog.heldBack')}</div>
 			{#each heldBack as candidate (candidate.name)}
 				{#each candidate.holdbacks as holdback}
 					<p class="heldrow">
 						<Icon name="triangleExclamation" size="0.75rem" />
-						<span><b>{candidate.plugin}</b> on {holdback.targets.join(', ')} — {holdback.reason}</span>
+						<span><b>{candidate.plugin}</b> {t('web.catalog.onTargets', { targets: holdback.targets.join(', ') })}; {holdback.reason}</span>
 					</p>
 				{/each}
 				{#each candidate.pinned as pin}
 					<p class="heldrow">
 						<Icon name="tag" size="0.75rem" />
-						<span><b>{candidate.plugin}</b> pinned to {pin.version} on {pin.target}</span>
+						<span><b>{candidate.plugin}</b> {t('web.catalog.pinnedTo', { version: pin.version, target: pin.target })}</span>
 					</p>
 				{/each}
 			{/each}
@@ -888,40 +878,39 @@
 	{/if}
 
 	{#snippet footer()}
-		<Btn onclick={() => (updatesOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (updatesOpen = false)}>{t('web.common.cancel')}</Btn>
 		<Btn
 			icon="download"
 			disabled={!updateSel.size || !!busy}
-			title={updateSel.size ? '' : 'tick the builds to update'}
+			title={updateSel.size ? '' : t('web.catalog.tickToUpdate')}
 			loading={busy === 'update-sel'}
 			onclick={updateSelected}
 		>
-			Update selected{updateSel.size ? ` (${updateSel.size})` : ''}
+			{t('web.catalog.updateSelected')}{updateSel.size ? ` (${updateSel.size})` : ''}
 		</Btn>
 		<Btn
 			variant="primary"
 			icon="download"
 			disabled={!pendingUpdates.length || !!busy}
-			title={pendingUpdates.length ? '' : 'nothing to download'}
+			title={pendingUpdates.length ? '' : t('web.catalog.nothingToDownloadShort')}
 			loading={busy === 'update'}
 			onclick={updateAll}
 		>
-			Update all ({pendingUpdates.length})
+			{t('web.catalog.updateAll')} ({pendingUpdates.length})
 		</Btn>
 	{/snippet}
 </Modal>
 
 <!-- remove modal -->
-<Modal title="Remove {removeTarget?.plugin}" bind:open={removeOpen}>
+<Modal title={t('web.catalog.removeTitle', { name: removeTarget?.plugin ?? '' })} bind:open={removeOpen}>
 	<p>
-		Removes every family build ({removeTarget?.families
-			.map((family) => family.family)
-			.join(', ')}) from all target instances and deletes them from the managed pool. Running
-		instances keep them loaded until restart.
+		{t('web.catalog.removeBody', {
+			families: removeTarget?.families.map((family) => family.family).join(', ') ?? ''
+		})}
 	</p>
 	{#snippet footer()}
-		<Btn onclick={() => (removeOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" loading={busy === 'remove'} onclick={doRemove}>Remove everywhere</Btn>
+		<Btn onclick={() => (removeOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn variant="danger" loading={busy === 'remove'} onclick={doRemove}>{t('web.catalog.removeEverywhere')}</Btn>
 	{/snippet}
 </Modal>
 

@@ -1,7 +1,7 @@
 /**
  * The console's one text matcher. Both the resource tables and the global
  * search box run queries through it, so a term that finds a row in a table
- * finds the same object in the search box — and neither can drift into its own
+ * finds the same object in the search box; and neither can drift into its own
  * idea of what "matches" means (DESIGN.md §5.1).
  */
 
@@ -29,7 +29,7 @@ export function matches(haystack: string, query: string): boolean {
 /**
  * How well a haystack answers a query, for ordering hits. Higher is better;
  * 0 means it does not match at all. A prefix beats a word start, which beats a
- * hit buried mid-token — the ranking a jump box needs to put the exact thing
+ * hit buried mid-token; the ranking a jump box needs to put the exact thing
  * you typed at the top.
  */
 export function score(haystack: string, query: string): number {

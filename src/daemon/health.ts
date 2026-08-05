@@ -1,7 +1,7 @@
 /**
  * Per-daemon host health: CPU, memory, disk, load average, the network
  * addresses this machine can be reached on, and the resident size of every
- * instance this daemon owns — sampled on a timer and kept as a rolling history.
+ * instance this daemon owns; sampled on a timer and kept as a rolling history.
  *
  * Both roles run it. The primary samples its own machine; a follower samples
  * its own and its samples ride the heartbeat pong up to the primary, so the
@@ -38,7 +38,7 @@ export interface HealthSample {
 	instancesRssMb: number;
 	/** Instance name → UI state, so the fleet view needs no extra round trip */
 	states: Record<string, string>;
-	/** Round-trip to the primary, ms — stamped by the primary when the pong lands */
+	/** Round-trip to the primary, ms; stamped by the primary when the pong lands */
 	latencyMs?: number;
 }
 

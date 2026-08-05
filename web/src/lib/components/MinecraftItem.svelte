@@ -4,12 +4,12 @@
 	 *
 	 * A generated item is its sprite layers stacked. Anything else is a real
 	 * model: every box the model declares, projected through the transform the
-	 * model itself carries under `display.gui`. That distinction matters — a
+	 * model itself carries under `display.gui`. That distinction matters; a
 	 * slab is not a short cube, a stair is viewed from a different angle than a
 	 * block, and a torch is two crossed planes. `minecraftitem.ts` does that
 	 * geometry; this component loads the textures and paints the result.
 	 *
-	 * Everything is nearest-neighbour — these are 16×16 textures blown up, and any
+	 * Everything is nearest-neighbour; these are 16×16 textures blown up, and any
 	 * smoothing turns them to mush.
 	 */
 
@@ -92,7 +92,7 @@
 		ctx.globalCompositeOperation = 'multiply';
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, out.width, out.height);
-		// multiply painted over the transparent parts too — mask them back out
+		// multiply painted over the transparent parts too; mask them back out
 		ctx.globalCompositeOperation = 'destination-in';
 		ctx.drawImage(image, 0, 0);
 
@@ -121,7 +121,7 @@
 			}
 
 			// the client tints the first layer only: a potion's liquid, a leather
-			// boot's dye, a spawn egg's base — the overlay above it stays as drawn
+			// boot's dye, a spawn egg's base; the overlay above it stays as drawn
 			const source = spec.tint && index === 0 ? shaded(image, multiplyColor(1, spec.tint)) : image;
 
 			// item sprites are square sheets; an animated one stacks its frames
@@ -142,7 +142,7 @@
 		}
 
 		const source = shaded(image, multiplyColor(quad.shade, quad.tinted ? spec.tint : undefined));
-		// the UV is stated in the texture's own 0–16 space, whatever its resolution
+		// the UV is stated in the texture's own 0-16 space, whatever its resolution
 		const texel = image.width / 16;
 		const centre = CANVAS_PX / 2;
 
@@ -206,7 +206,7 @@
 		const spec = render;
 		// read here rather than inside `paint`: the mask is only produced when the
 		// glint is on, and `paint` reads it after an await, where the effect can no
-		// longer see the dependency — turning the switch on would leave the sweep
+		// longer see the dependency; turning the switch on would leave the sweep
 		// unmasked until something else happened to force a repaint
 		const wantsMask = glint;
 
@@ -283,14 +283,14 @@
 	}
 
 	// The enchantment shimmer. In game it is a subtle sweep over the item's own
-	// pixels, so it is kept faint and masked to the silhouette that was painted —
+	// pixels, so it is kept faint and masked to the silhouette that was painted -
 	// a torch is not a square, and an unmasked sweep would say it was.
 	//
 	// The sweep has to *loop*, which is a property of the numbers rather than of
 	// the easing, and two of them decide it.
 	//
 	// The tile is 1.5 items wide and the animation slides it by exactly one tile,
-	// so the last frame is the first frame — no snap. That width is also what
+	// so the last frame is the first frame; no snap. That width is also what
 	// makes the shimmer continuous: consecutive bands sit 1.5 items apart and each
 	// is a bit over an item wide, so one is always crossing and the item never
 	// goes dark waiting for the next pass.
@@ -327,7 +327,7 @@
 	}
 
 	// a percentage background-position is measured against (container − image),
-	// which is half an item width negative here — so -300% is exactly +1.5 item
+	// which is half an item width negative here; so -300% is exactly +1.5 item
 	// widths, one whole tile
 	@keyframes glint {
 		from {

@@ -12,7 +12,7 @@ import { errorMessage } from '$lib/server/http';
 
 /** GET → every schedule plus the execution log, newest first. */
 export async function GET() {
-	// the runner lives in the daemon now — nothing to arm here
+	// the runner lives in the daemon now; nothing to arm here
 	const store = await loadSchedules();
 
 	return json({

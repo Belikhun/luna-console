@@ -7,7 +7,7 @@ import type { SelectorStatus } from '$shared/selector';
 
 /** One drawn slot: which server it is and what its item looks like right now. */
 export interface InventorySlot {
-	/** Instance name — the identity the editor works in */
+	/** Instance name; the identity the editor works in */
 	name: string;
 	/** Resolved material for the status being previewed */
 	item?: string;

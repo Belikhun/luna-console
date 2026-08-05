@@ -2,8 +2,8 @@
  * Addon providers: the upstream platforms luna installs plugins, mods,
  * resource packs and data packs from, behind one normalized surface. Each
  * client (modrinth, curseforge, hangar, smithed) translates its own API into
- * the shapes here; everything above this module — resolution, updates,
- * pinning, the pickers — is provider-blind and keys off the `RemoteRef`
+ * the shapes here; everything above this module; resolution, updates,
+ * pinning, the pickers; is provider-blind and keys off the `RemoteRef`
  * stored in the lockfiles.
  *
  * The loader facet vocabulary is Modrinth's ("paper", "velocity", "neoforge",
@@ -12,6 +12,7 @@
  */
 
 import type { ProviderId, RemoteRef } from "../types";
+import { t } from "../../shared/i18n";
 
 import * as curseforge from "./curseforge";
 import * as hangar from "./hangar";
@@ -112,7 +113,7 @@ export interface ProvidersConfig {
 
 /**
  * Inject provider credentials. Called by the daemon once at startup, from its
- * own config — core never reads the environment itself.
+ * own config; core never reads the environment itself.
  */
 export function configureProviders(config: ProvidersConfig): void {
 	curseforge.setApiKey(config.curseforgeApiKey);
@@ -123,7 +124,7 @@ export function providerFor(id: ProviderId): ProviderClient {
 	const client = REGISTRY[id];
 
 	if (!client) {
-		throw new Error(`unknown provider: ${id}`);
+		throw new Error(t("core.services.unknownProvider", { id }));
 	}
 
 	return client;
@@ -139,7 +140,7 @@ export interface ProviderStatus {
 }
 
 /** Availability of every provider, for the pickers and `/api/providers`.
- *  Async because clients reach it over RPC — the key lives in the daemon. */
+ *  Async because clients reach it over RPC; the key lives in the daemon. */
 export async function providerStatus(): Promise<ProviderStatus[]> {
 	return PROVIDER_IDS.map((id) => {
 		const client = REGISTRY[id];
@@ -175,13 +176,13 @@ function defaultLoaders(type: AddonType, loaders?: string[]): string[] {
 /** Guard: the provider must serve this addon type and be available. */
 function usable(client: ProviderClient, type: AddonType): void {
 	if (!client.types.includes(type)) {
-		throw new Error(`${client.label} does not host ${type}s`);
+		throw new Error(t("core.services.typeUnhosted", { provider: client.label, type }));
 	}
 
 	const state = client.status();
 
 	if (!state.available) {
-		throw new Error(`${client.label} is not available: ${state.reason ?? "unknown"}`);
+		throw new Error(t("core.services.providerUnavailable", { provider: client.label, reason: state.reason ?? "unknown" }));
 	}
 }
 
@@ -253,7 +254,7 @@ export function remoteRefFor(provider: ProviderId, project: AddonProject): Remot
 /**
  * Whether a declared game version covers a required MC version. Exact match,
  * plus prefix coverage for providers (Smithed, some pack authors) that declare
- * "1.21" and mean the whole 1.21.x line — "1.21" covers "1.21.4", "1.2" does
+ * "1.21" and mean the whole 1.21.x line; "1.21" covers "1.21.4", "1.2" does
  * not cover "1.21".
  */
 export function coversMc(gameVersions: string[] | undefined, mcVersion: string): boolean {
@@ -266,7 +267,7 @@ export function coversMc(gameVersions: string[] | undefined, mcVersion: string):
 	);
 }
 
-/** The file to install for a version — the primary file, or the first one published. */
+/** The file to install for a version; the primary file, or the first one published. */
 export function primaryFile(version: AddonVersion): AddonVersionFile {
 	return version.files.find((file) => file.primary) ?? version.files[0]!;
 }

@@ -14,7 +14,7 @@
 		color = 'auto',
 		size = '8.5rem'
 	}: {
-		/** null renders the dial empty with a dash — "not measured", not zero */
+		/** null renders the dial empty with a dash; "not measured", not zero */
 		value: number | null;
 		max?: number;
 		label: string;
@@ -26,7 +26,7 @@
 		size?: string;
 	} = $props();
 
-	/** svg user units — the viewBox is square, so these are its own scale */
+	/** svg user units; the viewBox is square, so these are its own scale */
 	const R = 42;
 	const CIRCUMFERENCE = 2 * Math.PI * R;
 

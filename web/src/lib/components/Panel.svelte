@@ -18,7 +18,7 @@
 		flush?: boolean;
 		/**
 		 * Fill the height the panel is given instead of hugging its content, and
-		 * make the body a flex column so a child can take the remaining space —
+		 * make the body a flex column so a child can take the remaining space -
 		 * for a panel holding a scroller or an editor rather than a document.
 		 * The caller owns the height; this only stops the panel shrinking to fit.
 		 */

@@ -5,18 +5,23 @@ import { loadCluster } from "../../client/core/config";
 import * as playerlists from "../../client/core/playerlists";
 import type { AccessListKind } from "../../client/core/playerlists";
 import * as luna from "../../client/core/services/luna";
+import { t } from "../../shared/i18n";
 
 /** The list names the access commands accept. */
 const LIST_NAMES: AccessListKind[] = ["whitelist", "ops", "bans", "ban-ips"];
 
 /** Bail with the reason the Luna API could not be reached. */
 function bailUnavailable(error: string | undefined): never {
-	throw new Bail(`LunaCore API unavailable: ${error ?? "unknown error"}`);
+	throw new Bail(
+		t("cli.net.apiUnavailable", { error: error ?? t("cli.net.unknownError") }),
+	);
 }
 
 function parseList(raw: string): AccessListKind {
 	if (!LIST_NAMES.includes(raw as AccessListKind)) {
-		throw new UsageError(`unknown list "${raw}" — one of: ${LIST_NAMES.join(", ")}`);
+		throw new UsageError(
+			t("cli.players.unknownList", { name: raw, known: LIST_NAMES.join(", ") }),
+		);
 	}
 
 	return raw as AccessListKind;
@@ -32,7 +37,7 @@ function fmtEpoch(millis: number): string {
 
 command({
 	path: ["access"],
-	desc: "Show an instance's whitelist, operators and bans",
+	desc: t("cli.players.access.desc"),
 	args: [{ name: "instance", required: true, complete: instanceNames }],
 
 	handler: async (args) => {
@@ -41,32 +46,40 @@ command({
 
 		console.log();
 		console.log(
-			`  ${pc.bold(lists.instance)} — ${lists.state}, whitelist ` +
-				(lists.whitelistEnabled ? pc.green("on") : pc.dim("off")) +
-				(lists.enforceWhitelist ? pc.yellow(" (enforced)") : ""),
+			`  ${pc.bold(lists.instance)} · ${lists.state}, ${t("cli.players.access.whitelistLabel")} ` +
+				(lists.whitelistEnabled
+					? pc.green(t("cli.players.access.on"))
+					: pc.dim(t("cli.players.access.off"))) +
+				(lists.enforceWhitelist ? pc.yellow(` ${t("cli.players.access.enforced")}`) : ""),
 		);
 
-		console.log(`\n  ${pc.bold("whitelist")} (${lists.whitelist.length})`);
+		console.log(`\n  ${pc.bold(t("cli.players.access.whitelist"))} (${lists.whitelist.length})`);
 		printTable(lists.whitelist.map((entry) => [entry.name, pc.dim(entry.uuid)]));
 
-		console.log(`\n  ${pc.bold("operators")} (${lists.ops.length})`);
-		printTable(lists.ops.map((entry) => [entry.name, `level ${entry.level}`, pc.dim(entry.uuid)]));
+		console.log(`\n  ${pc.bold(t("cli.players.access.operators"))} (${lists.ops.length})`);
+		printTable(
+			lists.ops.map((entry) => [
+				entry.name,
+				t("cli.players.access.level", { level: entry.level }),
+				pc.dim(entry.uuid),
+			]),
+		);
 
-		console.log(`\n  ${pc.bold("bans")} (${lists.bans.length})`);
+		console.log(`\n  ${pc.bold(t("cli.players.access.bans"))} (${lists.bans.length})`);
 		printTable(
 			lists.bans.map((entry) => [
 				entry.name,
 				entry.reason ?? pc.dim("—"),
-				pc.dim(`by ${entry.source}, ${entry.created}`),
+				pc.dim(t("cli.players.access.bySource", { source: entry.source, date: entry.created })),
 			]),
 		);
 
-		console.log(`\n  ${pc.bold("ip bans")} (${lists.ipBans.length})`);
+		console.log(`\n  ${pc.bold(t("cli.players.access.ipBans"))} (${lists.ipBans.length})`);
 		printTable(
 			lists.ipBans.map((entry) => [
 				entry.ip,
 				entry.reason ?? pc.dim("—"),
-				pc.dim(`by ${entry.source}, ${entry.created}`),
+				pc.dim(t("cli.players.access.bySource", { source: entry.source, date: entry.created })),
 			]),
 		);
 		console.log();
@@ -75,15 +88,15 @@ command({
 
 command({
 	path: ["access", "add"],
-	desc: "Add a player (or IP) to one of an instance's access lists",
+	desc: t("cli.players.accessAdd.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "list", required: true, complete: async () => [...LIST_NAMES] },
 		{ name: "target", required: true },
 	],
 	opts: [
-		{ flag: "--reason", desc: "ban reason", value: true },
-		{ flag: "--level", desc: "op permission level (1-4)", value: true },
+		{ flag: "--reason", desc: t("cli.players.accessAdd.optReason"), value: true },
+		{ flag: "--level", desc: t("cli.players.accessAdd.optLevel"), value: true },
 	],
 
 	handler: async (args, opts) => {
@@ -100,16 +113,23 @@ command({
 		});
 
 		if (!result.ok) {
-			throw new Bail(result.error ?? "the change was not applied");
+			throw new Bail(result.error ?? t("cli.players.notApplied"));
 		}
 
-		ok(`${result.target} added to ${result.list} on ${result.instance} (${result.method})`);
+		ok(
+			t("cli.players.accessAdd.done", {
+				target: result.target,
+				list: result.list,
+				instance: result.instance,
+				method: result.method,
+			}),
+		);
 	},
 });
 
 command({
 	path: ["access", "remove"],
-	desc: "Remove a player (or IP) from one of an instance's access lists",
+	desc: t("cli.players.accessRemove.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "list", required: true, complete: async () => [...LIST_NAMES] },
@@ -128,16 +148,23 @@ command({
 		});
 
 		if (!result.ok) {
-			throw new Bail(result.error ?? "the change was not applied");
+			throw new Bail(result.error ?? t("cli.players.notApplied"));
 		}
 
-		ok(`${result.target} removed from ${result.list} on ${result.instance} (${result.method})`);
+		ok(
+			t("cli.players.accessRemove.done", {
+				target: result.target,
+				list: result.list,
+				instance: result.instance,
+				method: result.method,
+			}),
+		);
 	},
 });
 
 command({
 	path: ["access", "whitelist"],
-	desc: "Turn an instance's whitelist on or off",
+	desc: t("cli.players.whitelist.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "state", required: true, complete: async () => ["on", "off"] },
@@ -147,22 +174,28 @@ command({
 		const wanted = args[1]!;
 
 		if (wanted !== "on" && wanted !== "off") {
-			throw new UsageError(`expected "on" or "off", got "${wanted}"`);
+			throw new UsageError(t("cli.players.whitelist.badState", { value: wanted }));
 		}
 
 		const cfg = await loadCluster();
 		const result = await playerlists.setWhitelistEnabled(cfg, args[0]!, wanted === "on");
 
-		ok(`whitelist ${wanted} on ${result.instance} (${result.method})`);
+		ok(
+			t("cli.players.whitelist.done", {
+				state: wanted,
+				instance: result.instance,
+				method: result.method,
+			}),
+		);
 	},
 });
 
 command({
 	path: ["net", "registered"],
-	desc: "The player directory: everyone the network has ever recorded",
+	desc: t("cli.players.registered.desc"),
 	opts: [
-		{ flag: "--search", desc: "filter by name or uuid", value: true },
-		{ flag: "--limit", desc: "rows to show (default 25)", value: true },
+		{ flag: "--search", desc: t("cli.players.registered.optSearch"), value: true },
+		{ flag: "--limit", desc: t("cli.players.registered.optLimit"), value: true },
 	],
 
 	handler: async (_args, opts) => {
@@ -177,23 +210,34 @@ command({
 		}
 
 		const rows = result.data.players.map((player) => [
-			player.online ? `${Sym.ok} ${pc.green("online")}` : `${Sym.off} ${pc.dim("offline")}`,
+			player.online
+				? `${Sym.ok} ${pc.green(t("cli.net.statusOnline"))}`
+				: `${Sym.off} ${pc.dim(t("cli.net.statusOffline"))}`,
 			pc.bold(player.username),
 			player.online ? player.server : pc.dim(player.lastServer || "—"),
-			player.online ? pc.dim("now") : fmtEpoch(player.lastSeenAtEpochMillis),
+			player.online ? pc.dim(t("cli.players.now")) : fmtEpoch(player.lastSeenAtEpochMillis),
 			fmtDuration(player.totalPlayMillis),
 			String(player.sessionCount),
 		]);
 
 		console.log();
-		printTable(rows, { head: ["state", "player", "backend", "last seen", "playtime", "sessions"] });
-		console.log(pc.dim(`\n  ${result.data.total} player(s) in the directory\n`));
+		printTable(rows, {
+			head: [
+				t("cli.head.state"),
+				t("cli.head.player"),
+				t("cli.head.backend"),
+				t("cli.head.lastSeen"),
+				t("cli.head.playtime"),
+				t("cli.head.sessions"),
+			],
+		});
+		console.log(pc.dim(`\n  ${t("cli.players.registered.total", { count: result.data.total })}\n`));
 	},
 });
 
 command({
 	path: ["net", "player"],
-	desc: "One player's profile: identity, playtime, permissions, moderation",
+	desc: t("cli.players.player.desc"),
 	args: [{ name: "player", required: true }],
 
 	handler: async (args) => {
@@ -208,36 +252,43 @@ command({
 		console.log();
 		console.log(`  ${pc.bold(player.username)} ${pc.dim(player.uuid)}`);
 		console.log(
-			`  ${player.online ? pc.green(`online on ${player.server}`) : pc.dim("offline")}` +
-				` — ${player.onlineMode ? "premium" : "offline-mode"} account`,
+			`  ${
+				player.online
+					? pc.green(t("cli.players.player.onlineOn", { server: player.server }))
+					: pc.dim(t("cli.net.statusOffline"))
+			}` +
+				` · ${player.onlineMode ? t("cli.players.player.premium") : t("cli.players.player.offlineMode")}`,
 		);
 		console.log();
 
 		printTable([
-			["first seen", fmtEpoch(player.firstSeenAtEpochMillis)],
-			["last seen", player.online ? "now" : fmtEpoch(player.lastSeenAtEpochMillis)],
-			["playtime", fmtDuration(player.totalPlayMillis)],
-			["sessions", String(player.sessionCount)],
-			["chat messages", String(player.chatTotal)],
-			["commands", String(player.commandTotal)],
-			["moderation entries", String(player.moderationTotal)],
+			[t("cli.players.player.firstSeen"), fmtEpoch(player.firstSeenAtEpochMillis)],
 			[
-				"permission group",
+				t("cli.head.lastSeen"),
+				player.online ? t("cli.players.now") : fmtEpoch(player.lastSeenAtEpochMillis),
+			],
+			[t("cli.head.playtime"), fmtDuration(player.totalPlayMillis)],
+			[t("cli.head.sessions"), String(player.sessionCount)],
+			[t("cli.players.player.chatMessages"), String(player.chatTotal)],
+			[t("cli.players.player.commands"), String(player.commandTotal)],
+			[t("cli.players.player.moderationEntries"), String(player.moderationTotal)],
+			[
+				t("cli.players.player.permissionGroup"),
 				player.permissions.available
 					? player.permissions.primaryGroupDisplay || player.permissions.primaryGroup || pc.dim("—")
-					: pc.dim("luckperms unavailable"),
+					: pc.dim(t("cli.players.player.luckpermsUnavailable")),
 			],
-			["last address", player.lastAddress || pc.dim("—")],
-			["client", player.lastClientVersion || pc.dim("—")],
+			[t("cli.players.player.lastAddress"), player.lastAddress || pc.dim("—")],
+			[t("cli.players.player.client"), player.lastClientVersion || pc.dim("—")],
 		]);
 
 		if (player.playtimeByServer.length > 0) {
-			console.log(`\n  ${pc.bold("playtime by backend")}`);
+			console.log(`\n  ${pc.bold(t("cli.players.player.playtimeByBackend"))}`);
 			printTable(
 				player.playtimeByServer.map((entry) => [
-					entry.server || "unknown",
+					entry.server || t("cli.players.player.unknownServer"),
 					fmtDuration(entry.playMillis),
-					pc.dim(`${entry.stints} session(s)`),
+					pc.dim(t("cli.players.player.stints", { count: entry.stints })),
 				]),
 			);
 		}
@@ -248,13 +299,13 @@ command({
 
 command({
 	path: ["net", "skin"],
-	desc: "Change or reset a player's skin through SkinsRestorer",
+	desc: t("cli.players.skin.desc"),
 	args: [{ name: "player", required: true }],
 	opts: [
-		{ flag: "--name", desc: "mirror this Mojang account's skin", value: true },
-		{ flag: "--url", desc: "generate from a public image URL (via MineSkin)", value: true },
-		{ flag: "--variant", desc: "classic or slim (with --url)", value: true },
-		{ flag: "--reset", desc: "drop the stored skin" },
+		{ flag: "--name", desc: t("cli.players.skin.optName"), value: true },
+		{ flag: "--url", desc: t("cli.players.skin.optUrl"), value: true },
+		{ flag: "--variant", desc: t("cli.players.skin.optVariant"), value: true },
+		{ flag: "--reset", desc: t("cli.players.skin.optReset") },
 	],
 
 	handler: async (args, opts) => {
@@ -274,7 +325,7 @@ command({
 				actor: "cli",
 			};
 		} else {
-			throw new UsageError("pass one of --name, --url or --reset");
+			throw new UsageError(t("cli.players.skin.pickOne"));
 		}
 
 		const result = await luna.setSkin(player, change);
@@ -284,17 +335,20 @@ command({
 		}
 
 		if (change.mode === "reset") {
-			ok(`${player}'s stored skin dropped — their own skin applies again`);
+			ok(t("cli.players.skin.resetDone", { player }));
 			return;
 		}
 
-		ok(`${player}'s skin changed${result.data.applied ? "" : " (stored; applies on next login)"}`);
+		ok(
+			t("cli.players.skin.changed", { player }) +
+				(result.data.applied ? "" : ` ${t("cli.players.skin.storedNote")}`),
+		);
 	},
 });
 
 command({
 	path: ["net", "auth"],
-	desc: "A player's authentication state, as luna-auth holds it",
+	desc: t("cli.players.auth.desc"),
 	args: [{ name: "player", required: true }],
 
 	handler: async (args) => {
@@ -306,30 +360,37 @@ command({
 
 		const account = result.data;
 		const password = !account.registered
-			? pc.dim("none — not registered")
+			? pc.dim(t("cli.players.auth.notRegistered"))
 			: account.temporaryPassword
-				? pc.yellow(`temporary, expires ${fmtEpoch(account.temporaryPasswordUntilEpochMillis)}`)
-				: "set by the player";
+				? pc.yellow(
+						t("cli.players.auth.temporary", {
+							date: fmtEpoch(account.temporaryPasswordUntilEpochMillis),
+						}),
+					)
+				: t("cli.players.auth.setByPlayer");
 
 		console.log();
 		console.log(`  ${pc.bold(account.username)} ${pc.dim(account.uuid)}`);
 		printTable([
-			["password", password],
-			["signed in", account.authenticated ? `${Sym.ok} yes` : pc.dim("no")],
+			[t("cli.players.auth.password"), password],
 			[
-				"account lock",
-				account.locked
-					? pc.red(`locked until ${fmtEpoch(account.lockedUntilEpochMillis)}`)
-					: pc.dim("not locked"),
+				t("cli.players.auth.signedIn"),
+				account.authenticated ? `${Sym.ok} ${t("cli.players.auth.yes")}` : pc.dim(t("cli.players.auth.no")),
 			],
-			["failed attempts", String(account.failedAttempts)],
-			["last login", fmtEpoch(account.lastLoginAtEpochMillis)],
-			["last address", account.lastIp || pc.dim("—")],
 			[
-				"resumable session",
+				t("cli.players.auth.accountLock"),
+				account.locked
+					? pc.red(t("cli.players.auth.lockedUntil", { date: fmtEpoch(account.lockedUntilEpochMillis) }))
+					: pc.dim(t("cli.players.auth.notLocked")),
+			],
+			[t("cli.players.auth.failedAttempts"), String(account.failedAttempts)],
+			[t("cli.players.auth.lastLogin"), fmtEpoch(account.lastLoginAtEpochMillis)],
+			[t("cli.players.player.lastAddress"), account.lastIp || pc.dim("—")],
+			[
+				t("cli.players.auth.resumableSession"),
 				account.session.hasSession
-					? `until ${fmtEpoch(account.session.expiresAtEpochMillis)}`
-					: pc.dim("none"),
+					? t("cli.players.auth.until", { date: fmtEpoch(account.session.expiresAtEpochMillis) })
+					: pc.dim(t("cli.common.none")),
 			],
 		]);
 		console.log();
@@ -338,9 +399,9 @@ command({
 
 command({
 	path: ["net", "vault"],
-	desc: "A player's balance and recent transactions, as LunaVault holds them",
+	desc: t("cli.players.vault.desc"),
 	args: [{ name: "player", required: true }],
-	opts: [{ flag: "--limit", desc: "how many transactions to list (default 10)", value: true }],
+	opts: [{ flag: "--limit", desc: t("cli.players.vault.optLimit"), value: true }],
 
 	handler: async (args, opts) => {
 		const player = args[0]!;
@@ -360,15 +421,17 @@ command({
 		console.log();
 		console.log(`  ${pc.bold(wallet.username)} ${pc.dim(wallet.uuid)}`);
 		printTable([
-			["balance", pc.bold(wallet.balanceFormatted)],
+			[t("cli.players.vault.balance"), pc.bold(wallet.balanceFormatted)],
 			[
-				"rank",
-				wallet.rank ? `#${wallet.rank} ${pc.dim(`of ${wallet.accountCount}`)}` : pc.dim("no account"),
+				t("cli.players.vault.rank"),
+				wallet.rank
+					? `#${wallet.rank} ${pc.dim(t("cli.players.vault.of", { count: wallet.accountCount }))}`
+					: pc.dim(t("cli.players.vault.noAccount")),
 			],
-			["transactions", String(wallet.summary.transactionCount)],
-			["total received", wallet.summary.receivedFormatted],
-			["total spent", wallet.summary.sentFormatted],
-			["last transaction", fmtEpoch(wallet.summary.lastAtEpochMillis)],
+			[t("cli.players.vault.transactions"), String(wallet.summary.transactionCount)],
+			[t("cli.players.vault.totalReceived"), wallet.summary.receivedFormatted],
+			[t("cli.players.vault.totalSpent"), wallet.summary.sentFormatted],
+			[t("cli.players.vault.lastTransaction"), fmtEpoch(wallet.summary.lastAtEpochMillis)],
 		]);
 
 		if (!history.ok || !history.data || history.data.entries.length === 0) {
@@ -385,14 +448,22 @@ command({
 					: entry.direction === "out"
 						? pc.yellow(`-${entry.amountFormatted}`)
 						: pc.dim(`±${entry.amountFormatted}`),
-				entry.system ? pc.dim("system") : entry.counterpartyName || pc.dim("—"),
+				entry.system ? pc.dim(t("cli.players.vault.system")) : entry.counterpartyName || pc.dim("—"),
 				pc.dim(entry.source || "—"),
 				entry.details || "",
 			]),
-			{ head: ["when", "amount", "counterparty", "source", "details"] },
+			{
+				head: [
+					t("cli.head.when"),
+					t("cli.head.amount"),
+					t("cli.head.counterparty"),
+					t("cli.head.source"),
+					t("cli.head.details"),
+				],
+			},
 		);
 		console.log(
-			`  ${pc.dim(`showing ${history.data.entries.length} of ${history.data.totalCount}`)}`,
+			`  ${pc.dim(t("cli.players.vault.showing", { count: history.data.entries.length, total: history.data.totalCount }))}`,
 		);
 		console.log();
 	},
@@ -400,15 +471,15 @@ command({
 
 command({
 	path: ["net", "password"],
-	desc: "Reset a player's password, or issue a temporary one",
+	desc: t("cli.players.password.desc"),
 	args: [{ name: "player", required: true }],
 	opts: [
-		{ flag: "--reset", desc: "clear the password — the player must /register again" },
-		{ flag: "--temporary", desc: "issue a temporary password, generated unless --password is given" },
-		{ flag: "--password", desc: "the password to set (with --temporary)", value: true },
-		{ flag: "--minutes", desc: "how long a temporary password lasts (default 1440)", value: true },
-		{ flag: "--unlock", desc: "clear a lockout from failed attempts" },
-		{ flag: "--logout", desc: "end the current authenticated session" },
+		{ flag: "--reset", desc: t("cli.players.password.optReset") },
+		{ flag: "--temporary", desc: t("cli.players.password.optTemporary") },
+		{ flag: "--password", desc: t("cli.players.password.optPassword"), value: true },
+		{ flag: "--minutes", desc: t("cli.players.password.optMinutes"), value: true },
+		{ flag: "--unlock", desc: t("cli.players.password.optUnlock") },
+		{ flag: "--logout", desc: t("cli.players.password.optLogout") },
 	],
 
 	handler: async (args, opts) => {
@@ -430,7 +501,7 @@ command({
 		} else if (opts.logout) {
 			change = { action: "logout" as const, actor: "cli" };
 		} else {
-			throw new UsageError("pass one of --reset, --temporary, --unlock or --logout");
+			throw new UsageError(t("cli.players.password.pickOne"));
 		}
 
 		const result = await luna.setAuth(player, change);
@@ -440,22 +511,31 @@ command({
 		}
 
 		if (change.action === "temporary") {
-			// the plaintext exists only in this response — print it plainly, since
+			// the plaintext exists only in this response; print it plainly, since
 			// there is nowhere else it can be read from afterwards
-			ok(`temporary password for ${player}: ${pc.bold(result.data.password ?? "")}`);
+			ok(
+				t("cli.players.password.temporaryFor", {
+					player,
+					password: pc.bold(result.data.password ?? ""),
+				}),
+			);
 			console.log(
-				`  ${pc.dim(`expires ${fmtEpoch(result.data.temporaryPasswordUntilEpochMillis)} — only its hash is stored`)}`,
+				`  ${pc.dim(
+					t("cli.players.password.expiresNote", {
+						date: fmtEpoch(result.data.temporaryPasswordUntilEpochMillis),
+					}),
+				)}`,
 			);
 			return;
 		}
 
-		ok(result.data.message || `${change.action} applied to ${player}`);
+		ok(result.data.message || t("cli.players.password.applied", { action: change.action, player }));
 	},
 });
 
 command({
 	path: ["perms", "groups"],
-	desc: "LuckPerms groups across the network, heaviest weight first",
+	desc: t("cli.players.permsGroups.desc"),
 
 	handler: async () => {
 		const result = await luna.permissionGroups();
@@ -474,14 +554,23 @@ command({
 		]);
 
 		console.log();
-		printTable(rows, { head: ["group", "weight", "prefix", "inherits", "nodes", "members"] });
+		printTable(rows, {
+			head: [
+				t("cli.head.group"),
+				t("cli.head.weight"),
+				t("cli.head.prefix"),
+				t("cli.head.inherits"),
+				t("cli.head.nodes"),
+				t("cli.head.members"),
+			],
+		});
 		console.log();
 	},
 });
 
 command({
 	path: ["perms", "group"],
-	desc: "One LuckPerms group: meta, nodes and members",
+	desc: t("cli.players.permsGroup.desc"),
 	args: [{ name: "group", required: true }],
 
 	handler: async (args) => {
@@ -495,28 +584,31 @@ command({
 
 		console.log();
 		console.log(
-			`  ${pc.bold(group.name)} — weight ${group.weight}` +
+			`  ${pc.bold(group.name)} · ${t("cli.players.permsGroup.weight", { weight: group.weight })}` +
 				(group.displayName && group.displayName !== group.name ? ` (${group.displayName})` : ""),
 		);
 
 		if (group.prefix || group.suffix) {
-			console.log(`  prefix ${group.prefix || pc.dim("—")} · suffix ${group.suffix || pc.dim("—")}`);
+			console.log(
+				`  ${t("cli.head.prefix")} ${group.prefix || pc.dim("—")} · ${t("cli.players.permsGroup.suffix")} ${group.suffix || pc.dim("—")}`,
+			);
 		}
 
 		if (group.parents.length > 0) {
-			console.log(`  inherits: ${group.parents.join(", ")}`);
+			console.log(`  ${t("cli.players.permsGroup.inherits", { names: group.parents.join(", ") })}`);
 		}
 
-		console.log(`\n  ${pc.bold("nodes")} (${group.nodes.length})`);
+		console.log(`\n  ${pc.bold(t("cli.head.nodes"))} (${group.nodes.length})`);
 		printTable(
 			group.nodes.map((node) => [
 				node.key,
 				node.value ? pc.green("true") : pc.red("false"),
-				node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(", ") || pc.dim("global"),
+				node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(", ") ||
+					pc.dim(t("cli.players.permsGroup.global")),
 			]),
 		);
 
-		console.log(`\n  ${pc.bold("members")} (${group.members.length})`);
+		console.log(`\n  ${pc.bold(t("cli.head.members"))} (${group.members.length})`);
 		printTable(group.members.map((member) => [member.username || pc.dim("?"), pc.dim(member.uuid)]));
 		console.log();
 	},
@@ -524,7 +616,7 @@ command({
 
 command({
 	path: ["perms", "user"],
-	desc: "One player's LuckPerms data: groups and direct nodes",
+	desc: t("cli.players.permsUser.desc"),
 	args: [{ name: "player", required: true }],
 
 	handler: async (args) => {
@@ -538,14 +630,17 @@ command({
 
 		console.log();
 		console.log(`  ${pc.bold(user.username || args[0]!)} ${pc.dim(user.uuid)}`);
-		console.log(`  primary group: ${pc.bold(user.primaryGroup)} · groups: ${user.groups.join(", ") || pc.dim("—")}`);
+		console.log(
+			`  ${t("cli.players.permsUser.primaryGroup", { group: pc.bold(user.primaryGroup) })} · ${t("cli.players.permsUser.groups", { names: user.groups.join(", ") || "—" })}`,
+		);
 
-		console.log(`\n  ${pc.bold("direct nodes")} (${user.nodes.length})`);
+		console.log(`\n  ${pc.bold(t("cli.players.permsUser.directNodes"))} (${user.nodes.length})`);
 		printTable(
 			user.nodes.map((node) => [
 				node.key,
 				node.value ? pc.green("true") : pc.red("false"),
-				node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(", ") || pc.dim("global"),
+				node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(", ") ||
+					pc.dim(t("cli.players.permsGroup.global")),
 			]),
 		);
 		console.log();

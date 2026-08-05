@@ -41,8 +41,8 @@ export interface PingResult {
 }
 
 /**
- * Query a server's status handshake. Resolves undefined on any failure —
- * refused connection, timeout, or a response that never completes — so callers
+ * Query a server's status handshake. Resolves undefined on any failure -
+ * refused connection, timeout, or a response that never completes; so callers
  * can treat "not reachable" and "not a Minecraft server" the same way.
  */
 export async function ping(
@@ -106,7 +106,7 @@ export async function ping(
 					buf = merged;
 
 					// The status response is `len · id · strlen · json`, and TCP hands it
-					// over in arbitrary chunks — a read that runs off the end of the buffer
+					// over in arbitrary chunks; a read that runs off the end of the buffer
 					// throws "incomplete" and we wait for the next one.
 					let offset = 0;
 

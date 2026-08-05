@@ -20,7 +20,7 @@
 		px = 6,
 		bust = 0
 	}: {
-		/** UUID or username — whatever the row carries */
+		/** UUID or username; whatever the row carries */
 		player: string;
 		view?: 'face' | 'body';
 		/** Scale: canvas pixels per skin texel */
@@ -53,7 +53,7 @@
 		sh: number;
 		dx: number;
 		dy: number;
-		/** Mirror horizontally — legacy skins reuse the right limb for the left */
+		/** Mirror horizontally; legacy skins reuse the right limb for the left */
 		flip?: boolean;
 		/** Draw through the overlay-cleaning pass */
 		overlay?: boolean;
@@ -148,7 +148,7 @@
 	function bodyLayers(modern: boolean, slim: boolean): Layer[] {
 		const arm = slim ? 3 : 4;
 
-		// both arms hug the torso, which spans texels 4–12
+		// both arms hug the torso, which spans texels 4-12
 		const rightArmX = 4 - arm;
 		const leftArmX = 12;
 

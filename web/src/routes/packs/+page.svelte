@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -77,9 +78,9 @@
 
 	const selRows = $derived(packs.filter((row) => selected.has(row.key)));
 
-	/** "pack" / "3 packs" — how a verb names what it is about to act on. */
+	/** "pack" / "3 packs"; how a verb names what it is about to act on. */
 	function packNoun(rows: PackRow[]): string {
-		return rows.length === 1 ? 'pack' : `${rows.length} packs`;
+		return rows.length === 1 ? t('web.packs.onePack') : t('web.packs.nPacks', { count: rows.length });
 	}
 
 	async function refresh(): Promise<void> {
@@ -92,7 +93,7 @@
 			dynamic = answer.dynamic ?? { available: true };
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error('Could not load resource packs', { detail: (err as Error).message });
+			Notify.error(t('web.packs.loadFailed'), { detail: (err as Error).message });
 		}
 
 		loading = false;
@@ -116,12 +117,12 @@
 			await fn(note);
 
 			if (note.level === 'loading') {
-				note.set({ level: 'success', message: 'Done', closeable: true });
+				note.set({ level: 'success', message: t('web.packs.done'), closeable: true });
 			}
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Operation failed',
+				message: t('web.packs.operationFailed'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -136,13 +137,11 @@
 	async function sendReload(): Promise<string> {
 		const res = await post('/respacks/reload');
 
-		return res.sent
-			? 'Reload sent to the proxy — the change is live.'
-			: 'The proxy is not running; the change applies on its next boot.';
+		return res.sent ? t('web.packs.reloadSent') : t('web.packs.proxyDown');
 	}
 
 	const doReload = () =>
-		run('reload', 'Reloading packs on the proxy…', async (note) => {
+		run('reload', t('web.packs.reloading'), async (note) => {
 			note.set({ level: 'success', message: await sendReload(), closeable: true });
 		});
 
@@ -161,43 +160,45 @@
 	/**
 	 * Take a plugin-registered pack over: luna writes the yml luna-pack prefers,
 	 * copied from what the plugin currently registers, so nothing changes for
-	 * players at the moment of the transfer — only who decides it from now on.
+	 * players at the moment of the transfer; only who decides it from now on.
 	 */
 	const takeOver = (row: PackRow) =>
-		run('takeover', `Taking over ${row.key}…`, async (note) => {
+		run('takeover', t('web.packs.takingOver', { key: row.key }), async (note) => {
 			const answer = await post('/respacks/dynamic', { key: row.key, action: 'takeover' });
 
 			note.set({
 				level: 'success',
-				message: `${row.key} is now luna's to configure`,
+				message: t('web.packs.tookOver', { key: row.key }),
 				detail:
-					`Copied from the running registration: priority ${answer.from.priority}, ` +
-					`${answer.from.required ? 'required' : 'optional'}, servers ${answer.from.servers.join(', ')}. ` +
-					`The plugin keeps rebuilding the zip but no longer decides these. ${await sendReload()}`,
+					t('web.packs.tookOverDetail', {
+						priority: answer.from.priority,
+						required: answer.from.required ? t('web.packs.requiredWord') : t('web.packs.optionalWord'),
+						servers: answer.from.servers.join(', ')
+					}) + ` ${await sendReload()}`,
 				closeable: true
 			});
 		});
 
 	/** Give a taken-over pack back: delete the yml, leaving the plugin in charge. */
 	const releaseBack = (row: PackRow) =>
-		run('release', `Releasing ${row.key}…`, async (note) => {
+		run('release', t('web.packs.releasing', { key: row.key }), async (note) => {
 			const answer = await post('/respacks/dynamic', { key: row.key, action: 'release' });
 
 			note.set({
 				level: 'success',
-				message: `${row.key} is back with its plugin`,
-				detail: `Removed ${answer.removed}. ${await sendReload()}`,
+				message: t('web.packs.released', { key: row.key }),
+				detail: `${t('web.packs.removedFile', { file: answer.removed })} ${await sendReload()}`,
 				closeable: true
 			});
 		});
 
 	/**
-	 * Flip every named pack, then reload the proxy **once** — a selection of six
+	 * Flip every named pack, then reload the proxy **once**; a selection of six
 	 * is one change to the catalog, not six. A pack that refuses is named in the
 	 * detail rather than aborting the rest.
 	 */
 	const setEnabledMany = (rows: PackRow[], enabled: boolean) =>
-		run('enabled', `${enabled ? 'Enabling' : 'Disabling'} ${packNoun(rows)}…`, async (note) => {
+		run('enabled', t(enabled ? 'web.packs.enabling' : 'web.packs.disabling', { what: packNoun(rows) }), async (note) => {
 			const failed: string[] = [];
 
 			for (const row of rows) {
@@ -224,25 +225,25 @@
 		});
 
 	const checkUpdates = (names?: string[]) =>
-		run('update', 'Checking Modrinth for pack updates…', async (note) => {
+		run('update', t('web.packs.checkingUpdates'), async (note) => {
 			const res = await post('/respacks/update', { names });
 
 			if (!res.updates.length) {
-				note.set({ level: 'success', message: 'Every resource pack is up to date', closeable: true });
+				note.set({ level: 'success', message: t('web.packs.everyResourcePackIsUp'), closeable: true });
 
 				return;
 			}
 
 			note.set({
 				level: 'info',
-				message: `${res.updates.length} update(s) available`,
+				message: t('web.packs.updatesAvailable', { count: res.updates.length }),
 				detail: res.updates
 					.map((update: any) => `${update.key}: ${update.from ?? '?'} → ${update.to}`)
 					.join('; '),
 				closeable: true,
 				actions: [
 					{
-						label: 'Apply updates',
+						label: t('web.packs.applyUpdates'),
 						run: () => void applyUpdates(names)
 					}
 				]
@@ -250,12 +251,12 @@
 		});
 
 	async function applyUpdates(names?: string[]): Promise<void> {
-		await run('update', 'Downloading pack updates…', async (note) => {
+		await run('update', t('web.packs.downloadingUpdates'), async (note) => {
 			const res = await post('/respacks/update', { names, apply: true });
 
 			note.set({
 				level: 'success',
-				message: `Updated ${res.applied.length} pack(s)`,
+				message: t('web.packs.updatedCount', { count: res.applied.length }),
 				detail: await sendReload(),
 				closeable: true
 			});
@@ -278,7 +279,7 @@
 	}
 
 	const installPack = () =>
-		run('add', `Installing ${addSlug} from ${addProvider}…`, async (note) => {
+		run('add', t('web.catalog.installing', { name: addSlug, provider: addProvider }), async (note) => {
 			const res = await post('/respacks/add', {
 				slug: addSlug,
 				id: addId || undefined,
@@ -289,8 +290,8 @@
 
 			note.set({
 				level: 'success',
-				message: `Installed ${res.pack.key} ${res.pack.versionNumber ?? ''}`,
-				detail: 'The pack starts disabled — enable it and set its servers, then reload.',
+				message: t('web.packs.installedPack', { key: res.pack.key, version: res.pack.versionNumber ?? '' }),
+				detail: t('web.packs.thePackStartsDisabledEnable'),
 				closeable: true
 			});
 		});
@@ -316,7 +317,7 @@
 	});
 
 	const uploadPack = () =>
-		run('upload', `Uploading ${uploadFile?.name}…`, async (note) => {
+		run('upload', t('web.catalog.uploading', { name: uploadFile?.name ?? '' }), async (note) => {
 			const res = await post('/respacks', {
 				name: uploadName,
 				data: await fileToBase64(uploadFile!)
@@ -326,10 +327,10 @@
 
 			note.set({
 				level: 'success',
-				message: `Uploaded ${res.pack.key}`,
+				message: t('web.packs.uploadedPack', { key: res.pack.key }),
 				detail: res.pack.enabled
 					? await sendReload()
-					: 'The pack starts disabled — enable it and set its servers, then reload.',
+					: 'The pack starts disabled; enable it and set its servers, then reload.',
 				closeable: true
 			});
 		});
@@ -341,7 +342,7 @@
 	let removeKeepFile = $state(false);
 
 	const doRemove = () =>
-		run('remove', `Removing ${packNoun(removeTargets)}…`, async (note) => {
+		run('remove', t('web.packs.removingWhat', { what: packNoun(removeTargets) }), async (note) => {
 			const failed: string[] = [];
 			const gone: string[] = [];
 
@@ -358,7 +359,7 @@
 
 			note.set({
 				level: failed.length === 0 ? 'success' : gone.length ? 'warning' : 'error',
-				message: gone.length === 1 ? `Removed ${gone[0]}` : `Removed ${gone.length} packs`,
+				message: gone.length === 1 ? t('web.packs.removedOne', { key: gone[0] ?? '' }) : t('web.packs.removedMany', { count: gone.length }),
 				detail: [...failed, gone.length ? await sendReload() : ''].filter(Boolean).join(' · '),
 				closeable: true
 			});
@@ -369,19 +370,19 @@
 
 	// -- table ---------------------------------------------------------------------------
 
-	const columns: Column[] = [
-		{ id: 'name', label: 'Pack', sortable: true, minWidth: 160 },
+	const columns: Column[] = $derived([
+		{ id: 'name', label: t('web.packs.pack2'), sortable: true, minWidth: 160 },
 		// the badge plus a registration tag ("plugin", "overrides plugin") needs the room
-		{ id: 'state', label: 'State', sortable: true, minWidth: 240 },
-		{ id: 'priority', label: 'Priority', sortable: true, width: 90, align: 'right' },
-		{ id: 'required', label: 'Required', sortable: true },
-		{ id: 'servers', label: 'Servers' },
-		{ id: 'groups', label: 'Groups' },
-		{ id: 'size', label: 'Size', sortable: true, width: 100, align: 'right' },
-		{ id: 'source', label: 'Source', sortable: true, minWidth: 140 },
-		{ id: 'version', label: 'Version' },
-		{ id: 'auto', label: 'Auto-update', sortable: true }
-	];
+		{ id: 'state', label: t('web.packs.state'), sortable: true, minWidth: 240 },
+		{ id: 'priority', label: t('web.packs.priority'), sortable: true, width: 90, align: 'right' },
+		{ id: 'required', label: t('web.packs.required'), sortable: true },
+		{ id: 'servers', label: t('web.packs.servers') },
+		{ id: 'groups', label: t('web.packs.groups') },
+		{ id: 'size', label: t('web.packs.size'), sortable: true, width: 100, align: 'right' },
+		{ id: 'source', label: t('web.packs.source'), sortable: true, minWidth: 140 },
+		{ id: 'version', label: t('web.packs.version') },
+		{ id: 'auto', label: t('web.packs.autoUpdate'), sortable: true }
+	]);
 
 	function sortValue(row: PackRow, col: string): string | number | null {
 		switch (col) {
@@ -412,7 +413,7 @@
 	}
 
 	/**
-	 * The verbs for a *selection* of packs — one declaration behind both the row's
+	 * The verbs for a *selection* of packs; one declaration behind both the row's
 	 * context menu (a selection of one) and the screen's Actions dropdown. A verb
 	 * that only makes sense for a single pack disables itself with the reason
 	 * instead of the whole menu going dead the moment a second row is ticked, and
@@ -430,14 +431,14 @@
 
 		return [
 			{
-				label: 'Pack details',
+				label: t('web.packs.packDetails'),
 				icon: 'circleInfo',
 				disabled: !only,
 				hint: only ? undefined : oneOnly,
 				action: () => goto(`/packs/${encodeURIComponent(only!.key)}`)
 			},
 			{
-				label: 'Configure pack',
+				label: t('web.packs.configurePack'),
 				icon: 'pen',
 				disabled: !only,
 				hint: only ? undefined : oneOnly,
@@ -445,21 +446,21 @@
 			},
 			{ separator: true },
 			{
-				label: `Enable ${packNoun(toEnable.length ? toEnable : rows)}`,
+				label: t('web.packs.enableWhat', { what: packNoun(toEnable.length ? toEnable : rows) }),
 				icon: 'toggleOn',
 				disabled: toEnable.length === 0,
 				hint: toEnable.length === 0 ? 'already enabled' : undefined,
 				action: () => setEnabledMany(toEnable, true)
 			},
 			{
-				label: `Disable ${packNoun(toDisable.length ? toDisable : rows)}`,
+				label: t('web.packs.disableWhat', { what: packNoun(toDisable.length ? toDisable : rows) }),
 				icon: 'toggleOff',
 				disabled: toDisable.length === 0,
 				hint: toDisable.length === 0 ? 'already disabled' : undefined,
 				action: () => setEnabledMany(toDisable, false)
 			},
 			{
-				label: updTargets.length === 1 ? 'Check for update' : `Check ${updTargets.length} packs for updates`,
+				label: updTargets.length === 1 ? t('web.packs.checkForUpdate') : t('web.packs.checkManyUpdates', { count: updTargets.length }),
 				icon: 'download',
 				disabled: updatable.length === 0,
 				hint: updatable.length === 0 ? 'not identified with a provider' : undefined,
@@ -474,7 +475,7 @@
 				action: () => openIdentify(only!)
 			},
 			{
-				label: 'Take over from its plugin',
+				label: t('web.packs.takeOverFromItsPlugin'),
 				icon: 'handshake',
 				// only a pack a plugin registers can be taken over, and only once
 				disabled: only?.registration !== 'dynamic',
@@ -487,7 +488,7 @@
 				action: () => takeOver(only!)
 			},
 			{
-				label: 'Release back to its plugin',
+				label: t('web.packs.releaseBackToItsPlugin'),
 				icon: 'rotate',
 				disabled: !only?.shadowsDynamic,
 				hint:
@@ -500,12 +501,12 @@
 			},
 			{ separator: true },
 			{
-				label: 'Manage addon groups',
+				label: t('web.packs.manageAddonGroups'),
 				icon: 'layerGroup',
 				action: () => goto('/addons/groups')
 			},
 			{
-				label: only?.remote ? `Open on ${only.remote.provider}` : 'Open on provider',
+				label: only?.remote ? t('web.catalog.openOn', { provider: only.remote.provider }) : t('web.packs.openOnProvider'),
 				icon: 'externalLink',
 				disabled: !only?.url,
 				hint: !only ? oneOnly : !only.url ? 'not identified with a provider' : undefined,
@@ -515,7 +516,7 @@
 			},
 			{ separator: true },
 			{
-				label: `Remove ${packNoun(rows)}`,
+				label: t('web.packs.removeWhat', { what: packNoun(rows) }),
 				icon: 'trash',
 				color: 'danger',
 				action: () => {
@@ -528,7 +529,7 @@
 	}
 
 	/**
-	 * Right-clicking inside a multi-row selection acts on the whole selection —
+	 * Right-clicking inside a multi-row selection acts on the whole selection -
 	 * the highlight is a promise about what the next verb will touch, so the menu
 	 * has to keep it. Outside the selection, DataTable has already moved the
 	 * selection onto this row.
@@ -540,39 +541,37 @@
 	}
 </script>
 
-<svelte:head><title>Resource packs | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.packs.resourcePacksLunaConsole')}</title></svelte:head>
 
 <PageHeader
-	title="Resource packs"
+	title={t('web.packs.resourcePacks')}
 	count="{selected.size ? `${selected.size}/` : ''}{packs.length}"
-	description="Zips in <root>/packs served to players by the luna-pack proxy plugin — priority stacks them, server rules scope them, and a reload applies changes live"
+	description={t('web.packs.zipsInRootPacksServed')}
 	info
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="respacks" />
-		<!-- the selection's verbs are the row's verbs — one declaration, two places
+		<!-- the selection's verbs are the row's verbs; one declaration, two places
 		     to reach it (here and the row's context menu) -->
 		<Dropdown
-			label="Actions"
+			label={t('web.packs.actions')}
 			disabled={selRows.length === 0}
 			menu={selRows.length ? packActions(selRows) : []}
 		/>
 		<Btn icon="download" loading={busy === 'update'} disabled={!!busy} onclick={() => checkUpdates()}>
-			Check updates
+			{t('web.packs.checkUpdates')}
 		</Btn>
 		<Btn icon="rotate" loading={busy === 'reload'} disabled={!!busy} onclick={doReload}>
-			Reload on proxy
+			{t('web.packs.reloadOnProxy')}
 		</Btn>
 		<SplitBtn
-			label="Install"
+			label={t('web.packs.install')}
 			icon="upload"
 			primary
 			onclick={() => (uploadOpen = true)}
 			menu={ADDON_PROVIDERS.map((entry) => ({
-				label: `Search ${entry.label}`,
-				brand: entry.id,
-				disabled: !entry.available,
-				hint: entry.note,
+				label: t('web.catalog.searchProvider', { provider: entry.label }),
+				brand: entry.id, disabled: !entry.available, hint: entry.note,
 				action: () => openSearch(entry.id)
 			}))}
 		/>
@@ -581,7 +580,7 @@
 
 {#if !dynamic.available}
 	<Flash kind="info">
-		The proxy is not answering, so packs that plugins register at runtime cannot be seen — a zip
+		{t('web.packs.theProxyIsNot')}
 		with no definition may still be registered. {dynamic.problem}
 	</Flash>
 	<div class="gap"></div>
@@ -597,17 +596,17 @@
 		searchValue={(row) =>
 			`${row.key} ${row.name} ${row.source} ${row.servers.join(' ')} ` +
 			`${row.groups.join(' ')} ${row.versionNumber ?? ''}`}
-		searchPlaceholder="Find a resource pack"
+		searchPlaceholder={t('web.packs.findAResourcePack')}
 		selectable="multi"
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.key}
-		noun="pack"
+		noun={t('web.packs.pack')}
 		{sortValue}
 		rowDim={(row) => !row.enabled}
 		pageSize={25}
-		emptyTitle="No resource packs"
-		emptyText="Install one from Modrinth or upload a zip to get started."
+		emptyTitle={t('web.packs.noResourcePacks')}
+		emptyText={t('web.packs.installOneFromModrinthOr')}
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'name'}
@@ -620,47 +619,47 @@
 					<StatusBadge
 						state={row.enabled ? 'ok' : 'stopped'}
 						label={row.enabled ? 'Enabled' : 'Disabled'}
-						detail="registered by a plugin at runtime — its priority, rules and enablement are the plugin's, and luna has no definition for it"
+						detail="registered by a plugin at runtime; its priority, rules and enablement are the plugin's, and luna has no definition for it"
 					/>
-					<span class="reg">plugin</span>
+					<span class="reg">{t('web.packs.plugin')}</span>
 				{:else if row.registration === 'unknown'}
 					<StatusBadge
 						state="unknown"
-						label="Registration unknown"
-						detail="no definition on disk, and the proxy is not answering — a plugin may be registering it at runtime"
+						label={t('web.packs.registrationUnknown')}
+						detail="no definition on disk, and the proxy is not answering; a plugin may be registering it at runtime"
 					/>
 				{:else if !row.defFile}
 					<StatusBadge
 						state="warning"
-						label="Unregistered"
-						detail="the zip exists but no definition registers it — configure it to serve it"
+						label={t('web.packs.unregistered')}
+						detail="the zip exists but no definition registers it; configure it to serve it"
 					/>
 				{:else if !row.present}
 					<StatusBadge
 						state="failed"
-						label="File missing"
+						label={t('web.packs.fileMissing')}
 						detail="the definition points at {row.filename}, which does not exist"
 					/>
 				{:else if row.enabled}
-					<StatusBadge state="ok" label="Enabled" />
+					<StatusBadge state="ok" label={t('web.packs.enabled')} />
 				{:else}
-					<StatusBadge state="stopped" label="Disabled" />
+					<StatusBadge state="stopped" label={t('web.packs.disabled')} />
 				{/if}
 				{#if row.shadowsDynamic}
 					<span
 						class="reg warn"
-						title="a plugin also registers this pack; luna-pack uses your definition and ignores the plugin's"
+						title={t('web.packs.aPluginAlsoRegistersThis')}
 					>
-						overrides plugin
+						{t('web.packs.overridesPlugin')}
 					</span>
 				{/if}
 			{:else if col === 'priority'}
 				{row.priority}
 			{:else if col === 'required'}
 				{#if row.required}
-					<StatusBadge state="warning" label="Required" detail="players cannot decline this pack" />
+					<StatusBadge state="warning" label={t('web.packs.required')} detail="players cannot decline this pack" />
 				{:else}
-					<span class="dim">optional</span>
+					<span class="dim">{t('web.packs.optional')}</span>
 				{/if}
 			{:else if col === 'servers'}
 				<span class="mono rules">{row.servers.join(', ') || '–'}</span>
@@ -680,7 +679,7 @@
 				{row.present ? fmtBytes(row.sizeBytes) : '–'}
 			{:else if col === 'source'}
 				{#if (row.registration === 'dynamic' || row.shadowsDynamic) && !row.remote}
-					<span class="dim">plugin</span>
+					<span class="dim">{t('web.packs.plugin')}</span>
 				{:else}
 					<BrandLink source={row.source} short />
 				{/if}
@@ -703,21 +702,21 @@
 />
 
 <!-- install from a provider -->
-<Modal title="Install a resource pack" bind:open={addOpen} wide>
+<Modal title={t('web.packs.installAResourcePack')} bind:open={addOpen} wide>
 	<AddonPicker
 		endpoint="/respacks/search"
 		kind="resourcepack"
 		bind:selected={addSlug}
 		bind:provider={addProvider}
-		placeholder="Search resource packs by name…"
+		placeholder={t('web.packs.searchResourcePacksByName')}
 		onpick={(hit) => (addId = hit?.project_id ?? '')}
 	/>
 	<p class="dim after">
-		The pack is downloaded into <code>&lt;root&gt;/packs</code> and starts disabled — enable it and
-		set its servers, or add it to an addon group.
+		The pack is downloaded into <code>&lt;root&gt;/packs</code> and starts disabled; enable it and
+		{t('web.packs.setItsServersOr')}
 	</p>
 	{#snippet footer()}
-		<Btn onclick={() => (addOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (addOpen = false)}>{t('web.packs.cancel')}</Btn>
 		<Btn variant="primary" disabled={!addSlug} loading={busy === 'add'} onclick={installPack}>
 			Install
 		</Btn>
@@ -725,15 +724,15 @@
 </Modal>
 
 <!-- upload from this computer -->
-<Modal title="Upload resource pack" bind:open={uploadOpen}>
-	<FileDrop bind:file={uploadFile} accept=".zip" hint="Drop a pack zip here, or click to browse" />
+<Modal title={t('web.packs.uploadResourcePack')} bind:open={uploadOpen}>
+	<FileDrop bind:file={uploadFile} accept=".zip" hint={t('web.packs.dropAPackZipHere')} />
 	<label class="field uploadname">
-		<span class="lbl">Pack name</span>
-		<span class="hint">Uploading under an existing pack's name replaces its file</span>
-		<input class="input" bind:value={uploadName} placeholder="my-pack" />
+		<span class="lbl">{t('web.packs.packName')}</span>
+		<span class="hint">{t('web.packs.uploadingUnderAnExisting')}</span>
+		<input class="input" bind:value={uploadName} placeholder={t('web.packs.myPack')} />
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (uploadOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (uploadOpen = false)}>{t('web.packs.cancel')}</Btn>
 		<Btn
 			variant="primary"
 			disabled={!uploadFile || !uploadName.trim()}
@@ -748,18 +747,18 @@
 <!-- remove -->
 <Modal
 	title={removeTargets.length === 1
-		? `Remove ${removeTargets[0]?.key}?`
-		: `Remove ${removeTargets.length} resource packs?`}
+		? t('web.packs.removeTitleOne', { key: removeTargets[0]?.key ?? '' })
+		: t('web.packs.removeTitleMany', { count: removeTargets.length })}
 	bind:open={removeOpen}
 >
 	<p>
-		Removes the registration — the proxy stops serving
+		{t('web.packs.removesTheRegistrationThe')}
 		{#if removeTargets.length === 1}
 			<b>{removeTargets[0]?.key}</b>
 		{:else}
-			these packs
+			{t('web.packs.thesePacks')}
 		{/if}
-		after the next reload.
+		{t('web.packs.afterTheNextReload')}
 	</p>
 	{#if removeTargets.length > 1}
 		<ul class="targets">
@@ -771,14 +770,14 @@
 	<label class="checkrow">
 		<Checkbox
 			checked={removeKeepFile}
-			label="Keep the zip"
+			label={t('web.packs.keepTheZip')}
 			onchange={(value) => (removeKeepFile = value)}
 		/>
-		Keep the zip on disk (only the registration is removed)
+		{t('web.packs.keepTheZipOn')}
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (removeOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" loading={busy === 'remove'} onclick={doRemove}>Remove</Btn>
+		<Btn onclick={() => (removeOpen = false)}>{t('web.packs.cancel')}</Btn>
+		<Btn variant="danger" loading={busy === 'remove'} onclick={doRemove}>{t('web.packs.remove')}</Btn>
 	{/snippet}
 </Modal>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { api, post } from '$lib/api';
@@ -145,7 +146,7 @@
 
 	const placeholder = $derived(
 		canSend
-			? 'Type a server command (e.g. list, say hello) — Enter to send'
+			? 'Type a server command (e.g. list, say hello); Enter to send'
 			: 'instance is stopped'
 	);
 </script>
@@ -153,8 +154,8 @@
 <svelte:head><title>{name} console | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Serial console"
-	description="Live console for {name} — streamed from logs/latest.log, input sent via the screen session"
+	title={t('web.instanceConsole.serialConsole')}
+	description="Live console for {name}; streamed from logs/latest.log, input sent via the screen session"
 >
 	{#snippet extra()}
 		{#if inst}<StatusBadge state={inst.state} />{/if}
@@ -163,12 +164,12 @@
 		<label class="autoscroll">
 			<Checkbox
 				checked={autoscroll}
-				label="Autoscroll"
+				label={t('web.instanceConsole.autoscroll')}
 				onchange={(value) => (autoscroll = value)}
 			/>
 			Autoscroll
 		</label>
-		<Btn href="/instances/{name}">Back to instance</Btn>
+		<Btn href="/instances/{name}">{t('web.instanceConsole.backToInstance')}</Btn>
 	{/snippet}
 </PageHeader>
 
@@ -197,7 +198,7 @@
 			bind:value={cmd}
 			onkeydown={onKey}
 		/>
-		<Btn onclick={send} disabled={!cmd.trim() || !canSend}>Send</Btn>
+		<Btn onclick={send} disabled={!cmd.trim() || !canSend}>{t('web.instanceConsole.send')}</Btn>
 	</div>
 </div>
 

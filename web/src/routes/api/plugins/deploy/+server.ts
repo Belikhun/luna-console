@@ -16,7 +16,7 @@ export async function POST({ request }) {
 	await ensurePortAllocations(cfg, lock);
 	await saveCluster(cfg);
 
-	// deploy may auto-assign an MC-fit variant to an instance — persist it
+	// deploy may auto-assign an MC-fit variant to an instance; persist it
 	await saveLock(lock);
 
 	const changed = actions.filter(

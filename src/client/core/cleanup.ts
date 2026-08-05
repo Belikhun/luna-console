@@ -1,4 +1,4 @@
-/** Bridge mirror of core/cleanup — all disk work, all in the daemon. */
+/** Bridge mirror of core/cleanup; all disk work, all in the daemon. */
 
 import type * as core from "../../core/cleanup";
 

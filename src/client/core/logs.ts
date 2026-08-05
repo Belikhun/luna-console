@@ -1,6 +1,6 @@
 /**
  * Bridge mirror of core/logs. The read runs on the daemon that owns the
- * instance — routed to a follower when the log lives on another machine.
+ * instance; routed to a follower when the log lives on another machine.
  */
 
 import type * as core from "../../core/logs";

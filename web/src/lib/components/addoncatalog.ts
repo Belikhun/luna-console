@@ -1,8 +1,8 @@
 /**
  * Types and per-kind wording for `AddonCatalog.svelte`.
  *
- * Plugins and mods are one model — a lockfile entry whose family decides which
- * directory it deploys into — so the catalog screen is one component rendered
+ * Plugins and mods are one model; a lockfile entry whose family decides which
+ * directory it deploys into; so the catalog screen is one component rendered
  * twice. Everything that genuinely differs between the two lives in this table.
  */
 
@@ -48,7 +48,7 @@ export interface AddonUpdateGroup {
 
 /** A build the provider has something newer for, or something to say about. */
 export interface AddonUpdate {
-	/** Lock entry key, e.g. "luckperms@paper" — what an update call names */
+	/** Lock entry key, e.g. "luckperms@paper"; what an update call names */
 	name: string;
 	/** Addon identity the build belongs to */
 	plugin: string;
@@ -63,9 +63,11 @@ export interface AddonUpdate {
 export interface CatalogKind {
 	/** Screen title, and the noun in "<X> details" */
 	label: string;
-	/** Singular, lowercase — row labels and dialog titles */
+	/** Singular, lowercase; row labels and dialog titles */
+	/** i18n key of the singular noun */
 	noun: string;
-	/** Plural, lowercase — sentences */
+	/** Plural, lowercase; sentences */
+	/** i18n key of the plural noun */
 	plural: string;
 	/** Families a build of this kind can have; a single one hides the picker */
 	families: AddonFamily[];
@@ -75,30 +77,29 @@ export interface CatalogKind {
 	type: 'plugin' | 'mod';
 	/** Provider sources the filter offers, beside luna/manual */
 	sources: string[];
+	/** i18n key of the empty-table text */
 	emptyText: string;
 }
 
 export const CATALOG_KINDS: Record<AddonKind, CatalogKind> = {
 	plugins: {
-		label: 'Plugins',
-		noun: 'plugin',
-		plural: 'plugins',
+		label: 'web.nav.plugins',
+		noun: 'web.catalogKinds.plugin',
+		plural: 'web.catalogKinds.plugins',
 		families: ['paper', 'velocity', 'universal'],
 		wildcards: ['*paper', '*velocity'],
 		type: 'plugin',
 		sources: ['modrinth', 'curseforge', 'hangar'],
-		emptyText: 'Install one from a provider, or run a scan to adopt the jars already on disk.'
+		emptyText: 'web.catalogKinds.pluginsEmpty'
 	},
 	mods: {
-		label: 'Mods',
-		noun: 'mod',
-		plural: 'mods',
+		label: 'web.nav.mods',
+		noun: 'web.catalogKinds.mod',
+		plural: 'web.catalogKinds.mods',
 		families: ['neoforge'],
 		wildcards: ['*neoforge'],
 		type: 'mod',
 		sources: ['modrinth', 'curseforge'],
-		emptyText:
-			'Install one from a provider, or upload a jar. A mod loader instance keeps its own mods — ' +
-			'only the ones luna pooled appear here.'
+		emptyText: 'web.catalogKinds.modsEmpty'
 	}
 };

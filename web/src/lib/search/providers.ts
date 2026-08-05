@@ -2,7 +2,7 @@
  * The global search index (DESIGN.md §5.3).
  *
  * One provider per kind of object in the cluster. Adding a new kind of object
- * to luna means adding a provider here — `GlobalSearch.svelte` never grows
+ * to luna means adding a provider here; `GlobalSearch.svelte` never grows
  * another branch, and nothing in the system stays unfindable because someone
  * forgot to teach the search box about it.
  *
@@ -10,10 +10,12 @@
  * provider that throws contributes nothing rather than emptying the box.
  */
 
+import { t } from '$lib/i18n.svelte';
+
 export interface SearchHit {
 	group: string;
 	label: string;
-	/** the second line — what distinguishes this hit from a similar one */
+	/** the second line; what distinguishes this hit from a similar one */
 	detail: string;
 	href: string;
 	icon: string;
@@ -45,75 +47,75 @@ async function fetchJson<T>(path: string): Promise<T | undefined> {
  * The console's own screens. Everything with a route belongs here, so the box
  * is a navigator as well as an object index.
  */
-const PAGES: SearchHit[] = [
-	{ group: 'Pages', label: 'Instances', detail: 'Cluster instances', href: '/instances', icon: 'server' },
+const pages = (): SearchHit[] => [
+	{ group: 'web.searchGroups.pages', label: t('web.nav.instancesList'), detail: t('web.searchPages.instances'), href: '/instances', icon: 'server' },
 	{
-		group: 'Pages',
-		label: 'Server selector',
-		detail: 'The chest players open with /servers',
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.serverSelector'),
+		detail: t('web.searchPages.selector'),
 		href: '/instances/selector',
 		icon: 'grid'
 	},
 	{
-		group: 'Pages',
-		label: 'Launch instance',
-		detail: 'Create a new backend',
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.launchInstance'),
+		detail: t('web.searchPages.launch'),
 		href: '/instances/launch',
 		icon: 'rocket'
 	},
-	{ group: 'Pages', label: 'Players', detail: 'Every player the network has seen', href: '/players', icon: 'users' },
+	{ group: 'web.searchGroups.pages', label: t('web.nav.playersList'), detail: t('web.searchPages.players'), href: '/players', icon: 'users' },
 	{
-		group: 'Pages',
-		label: 'Online players',
-		detail: 'Who is online right now',
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.onlinePlayers'),
+		detail: t('web.searchPages.online'),
 		href: '/players/online',
 		icon: 'userPortrait'
 	},
 	{
-		group: 'Pages',
-		label: 'Permission groups',
-		detail: 'LuckPerms groups and nodes',
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.permissionGroups'),
+		detail: t('web.searchPages.permissions'),
 		href: '/permissions',
 		icon: 'key'
 	},
-	{ group: 'Pages', label: 'Plugins', detail: 'Plugin pool and updates', href: '/plugins', icon: 'plug' },
-	{ group: 'Pages', label: 'Mods', detail: 'Mod pool for the loader instances', href: '/mods', icon: 'puzzle' },
+	{ group: 'web.searchGroups.pages', label: t('web.nav.plugins'), detail: t('web.searchPages.plugins'), href: '/plugins', icon: 'plug' },
+	{ group: 'web.searchGroups.pages', label: t('web.nav.mods'), detail: t('web.searchPages.mods'), href: '/mods', icon: 'puzzle' },
 	{
-		group: 'Pages',
-		label: 'Addon groups',
-		detail: 'Sets of plugins and packs applied as a unit',
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.addonGroups'),
+		detail: t('web.searchPages.addonGroups'),
 		href: '/addons/groups',
 		icon: 'layerGroup'
 	},
 	{
-		group: 'Pages',
-		label: 'Resource packs',
-		detail: 'Proxy-served resource packs',
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.resourcePacks'),
+		detail: t('web.searchPages.resourcePacks'),
 		href: '/packs',
 		icon: 'image'
 	},
 	{
-		group: 'Pages',
-		label: 'Data packs',
-		detail: 'World data pack pool',
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.dataPacks'),
+		detail: t('web.searchPages.dataPacks'),
 		href: '/datapacks',
 		icon: 'box'
 	},
-	{ group: 'Pages', label: 'Ports', detail: 'Port allocations', href: '/network', icon: 'sitemap' },
-	{ group: 'Pages', label: 'Proxy routing', detail: 'Velocity routes', href: '/proxy', icon: 'route' },
-	{ group: 'Pages', label: 'Schedules', detail: 'Timed instance actions', href: '/schedules', icon: 'clock' },
+	{ group: 'web.searchGroups.pages', label: t('web.nav.ports'), detail: t('web.searchPages.ports'), href: '/network', icon: 'sitemap' },
+	{ group: 'web.searchGroups.pages', label: t('web.nav.proxyRouting'), detail: t('web.searchPages.proxy'), href: '/proxy', icon: 'route' },
+	{ group: 'web.searchGroups.pages', label: t('web.nav.schedules'), detail: t('web.searchPages.schedules'), href: '/schedules', icon: 'clock' },
 	{
-		group: 'Pages',
-		label: 'Environment',
-		detail: 'Template variables',
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.environment'),
+		detail: t('web.searchPages.environment'),
 		href: '/environment',
 		icon: 'key'
 	},
-	{ group: 'Pages', label: 'Cleanup', detail: 'Reclaim disk space', href: '/cleanup', icon: 'broom' },
+	{ group: 'web.searchGroups.pages', label: t('web.nav.cleanup'), detail: t('web.searchPages.cleanup'), href: '/cleanup', icon: 'broom' },
 	{
-		group: 'Pages',
-		label: 'Machines',
-		detail: 'Cluster machines and their daemons',
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.machines'),
+		detail: t('web.searchPages.machines'),
 		href: '/machines',
 		icon: 'hardDrive'
 	}
@@ -129,8 +131,8 @@ function screenHref(path: string, term: string): string {
 }
 
 /**
- * One kind's addons as search hits. Both kinds come from the same endpoint —
- * the lockfile does not separate them — so the kind filter is what makes the
+ * One kind's addons as search hits. Both kinds come from the same endpoint -
+ * the lockfile does not separate them; so the kind filter is what makes the
  * two providers answer with different things.
  */
 async function addonHits(
@@ -157,20 +159,20 @@ async function addonHits(
 
 export const SEARCH_PROVIDERS: SearchProvider[] = [
 	{
-		group: 'Pages',
+		group: 'web.searchGroups.pages',
 		icon: 'file',
-		load: async () => PAGES
+		load: async () => pages()
 	},
 
 	{
-		group: 'Instances',
+		group: 'web.searchGroups.instances',
 		icon: 'server',
 		load: async () => {
 			const body = await fetchJson<{ instances?: any[]; externals?: any[] }>('/api/instances');
 
 			return [
 				...(body?.instances ?? []).map((inst) => ({
-					group: 'Instances',
+					group: 'web.searchGroups.instances',
 					label: String(inst.name),
 					detail: `${inst.software ?? 'instance'} ${inst.mcVersion ?? ''} · ${inst.state ?? 'unknown'}`.replace(
 						/\s+/g,
@@ -180,7 +182,7 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 					icon: 'server'
 				})),
 				...(body?.externals ?? []).map((inst) => ({
-					group: 'Instances',
+					group: 'web.searchGroups.instances',
 					label: String(inst.name),
 					detail: `external · ${inst.external}`,
 					href: '/instances',
@@ -193,25 +195,25 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	// one provider per kind, because a mod and a plugin are different objects to
 	// look for even though the lockfile stores them the same way
 	{
-		group: 'Plugins',
+		group: 'web.searchGroups.plugins',
 		icon: 'plug',
-		load: async () => addonHits('plugins', 'Plugins', 'plug')
+		load: async () => addonHits('plugins', 'web.searchGroups.plugins', 'plug')
 	},
 
 	{
-		group: 'Mods',
+		group: 'web.searchGroups.mods',
 		icon: 'puzzle',
-		load: async () => addonHits('mods', 'Mods', 'puzzle')
+		load: async () => addonHits('mods', 'web.searchGroups.mods', 'puzzle')
 	},
 
 	{
-		group: 'Addon groups',
+		group: 'web.searchGroups.addonGroups',
 		icon: 'layerGroup',
 		load: async () => {
 			const body = await fetchJson<{ groups?: any[] }>('/api/addons/groups');
 
 			return (body?.groups ?? []).map((group) => ({
-				group: 'Addon groups',
+				group: 'web.searchGroups.addonGroups',
 				label: String(group.name),
 				detail:
 					`${group.plugins?.length ?? 0} plugin(s), ${group.respacks?.length ?? 0} resource pack(s), ` +
@@ -224,13 +226,13 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Resource packs',
+		group: 'web.searchGroups.resourcePacks',
 		icon: 'image',
 		load: async () => {
 			const body = await fetchJson<{ packs?: any[] }>('/api/respacks');
 
 			return (body?.packs ?? []).map((pack) => ({
-				group: 'Resource packs',
+				group: 'web.searchGroups.resourcePacks',
 				label: String(pack.key),
 				detail: `${pack.enabled ? 'enabled' : 'disabled'} · priority ${pack.priority} · ${pack.servers?.join(', ') || 'no servers'}`,
 				href: `/packs/${encodeURIComponent(pack.key)}`,
@@ -240,13 +242,13 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Data packs',
+		group: 'web.searchGroups.dataPacks',
 		icon: 'box',
 		load: async () => {
 			const body = await fetchJson<{ packs?: any[] }>('/api/datapacks');
 
 			return (body?.packs ?? []).map((pack) => ({
-				group: 'Data packs',
+				group: 'web.searchGroups.dataPacks',
 				label: String(pack.name),
 				detail: `${pack.entry?.source ?? 'pack'} ${pack.entry?.installed?.versionNumber ?? ''} · ${pack.effectiveTargets?.join(', ') || 'no targets'}`,
 				href: screenHref('/datapacks', pack.name),
@@ -256,13 +258,13 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Machines',
+		group: 'web.searchGroups.machines',
 		icon: 'hardDrive',
 		load: async () => {
 			const body = await fetchJson<{ daemons?: any[] }>('/api/daemons');
 
 			return (body?.daemons ?? []).map((daemon) => ({
-				group: 'Machines',
+				group: 'web.searchGroups.machines',
 				label: String(daemon.name),
 				detail: `${daemon.mode} · ${daemon.online ? 'online' : 'offline'}${daemon.host ? ` · ${daemon.host}` : ''}`,
 				href: `/machines/${encodeURIComponent(daemon.name)}`,
@@ -272,13 +274,13 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Schedules',
+		group: 'web.searchGroups.schedules',
 		icon: 'clock',
 		load: async () => {
 			const body = await fetchJson<{ schedules?: any[] }>('/api/schedules');
 
 			return (body?.schedules ?? []).map((schedule) => ({
-				group: 'Schedules',
+				group: 'web.searchGroups.schedules',
 				label: String(schedule.name),
 				detail: `${schedule.action} ${schedule.instances?.join(', ') ?? ''} · ${schedule.enabled ? 'enabled' : 'disabled'}`,
 				href: screenHref('/schedules', schedule.name),
@@ -288,14 +290,14 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Players',
+		group: 'web.searchGroups.players',
 		icon: 'users',
 		load: async () => {
 			// the directory covers everyone; online players carry their backend
 			const body = await fetchJson<{ players?: any[] }>('/api/players?limit=200');
 
 			return (body?.players ?? []).map((player) => ({
-				group: 'Players',
+				group: 'web.searchGroups.players',
 				label: String(player.username),
 				detail: player.online ? `on ${player.server} · ${player.uuid}` : `offline · ${player.uuid}`,
 				href: `/players/${player.uuid}`,
@@ -305,13 +307,13 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Permission groups',
+		group: 'web.searchGroups.permissionGroups',
 		icon: 'key',
 		load: async () => {
 			const body = await fetchJson<{ groups?: any[] }>('/api/permissions/groups');
 
 			return (body?.groups ?? []).map((group) => ({
-				group: 'Permission groups',
+				group: 'web.searchGroups.permissionGroups',
 				label: String(group.name),
 				detail: `weight ${group.weight} · ${group.memberCount} member(s)`,
 				href: `/permissions/${encodeURIComponent(String(group.name))}`,
@@ -321,13 +323,13 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Environment',
+		group: 'web.searchGroups.environment',
 		icon: 'key',
 		load: async () => {
 			const body = await fetchJson<{ variables?: any[] }>('/api/env');
 
 			return (body?.variables ?? []).map((variable) => ({
-				group: 'Environment',
+				group: 'web.searchGroups.environment',
 				label: String(variable.name),
 				detail: variable.secret ? 'secret' : (variable.description || variable.value || 'variable'),
 				href: screenHref('/environment', variable.name),
@@ -337,13 +339,13 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Ports',
+		group: 'web.searchGroups.ports',
 		icon: 'sitemap',
 		load: async () => {
 			const body = await fetchJson<{ ports?: any[] }>('/api/ports');
 
 			return (body?.ports ?? []).map((entry) => ({
-				group: 'Ports',
+				group: 'web.searchGroups.ports',
 				// the same number on two machines is two different ports, so the
 				// machine belongs in what tells them apart
 				label: `${entry.port}/${entry.protocol}`,
@@ -355,13 +357,13 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 	},
 
 	{
-		group: 'Proxy routes',
+		group: 'web.searchGroups.proxyRoutes',
 		icon: 'route',
 		load: async () => {
 			const body = await fetchJson<{ desired?: Record<string, string> }>('/api/proxy');
 
 			return Object.entries(body?.desired ?? {}).map(([server, address]) => ({
-				group: 'Proxy routes',
+				group: 'web.searchGroups.proxyRoutes',
 				label: server,
 				detail: `routes to ${address}`,
 				href: screenHref('/proxy', server),

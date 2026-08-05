@@ -12,7 +12,7 @@
 	 *
 	 * `value` is bindable and is the single source of truth: an edit inside Monaco
 	 * writes it back, and a change from outside (loading another file) replaces the
-	 * model's text without losing the undo stack of the file being replaced —
+	 * model's text without losing the undo stack of the file being replaced -
 	 * Monaco keeps one model per path for exactly that reason.
 	 */
 	let {
@@ -24,7 +24,7 @@
 		onsave
 	}: {
 		value: string;
-		/** File path — decides syntax highlighting and keys Monaco's model */
+		/** File path; decides syntax highlighting and keys Monaco's model */
 		path: string;
 		readOnly?: boolean;
 		height?: string;

@@ -4,7 +4,7 @@
 	/**
 	 * A provider's own logo, drawn from the inlined marks in `brands.ts` and
 	 * tinted with `currentColor` so it behaves like the Font Awesome glyphs it
-	 * sits beside — including when a row is disabled or greyed.
+	 * sits beside; including when a row is disabled or greyed.
 	 *
 	 * An unknown name renders nothing rather than a broken box: the providers
 	 * list is data, and a new one may arrive before its mark does.
@@ -14,7 +14,7 @@
 		mark: given,
 		size = '1em'
 	}: {
-		/** a key of `BRAND_MARKS` — how a source names its mark */
+		/** a key of `BRAND_MARKS`; how a source names its mark */
 		name?: string;
 		/** a mark that is not in the registry, e.g. a variant of one that is */
 		mark?: BrandMark;

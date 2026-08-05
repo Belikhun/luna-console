@@ -22,7 +22,7 @@
 		disabled?: boolean;
 		/** square + tick for "any number of these", circle + dot for "exactly one" */
 		shape?: 'check' | 'radio';
-		/** accessible name — required when the checkbox has no visible text */
+		/** accessible name; required when the checkbox has no visible text */
 		label?: string;
 		onchange?: (checked: boolean, event: Event) => void;
 	} = $props();

@@ -1,11 +1,12 @@
 /**
  * Daemon runtime entry. `luna daemon run` lands here: resolve the daemon
  * config, bind the local API socket (plus the cluster TCP listener on a
- * primary), and start the long-lived loops — sampler, scheduler, and the
+ * primary), and start the long-lived loops; sampler, scheduler, and the
  * follower link when this daemon is not the primary.
  */
 
 import { existsSync } from "node:fs";
+import { t } from "../shared/i18n";
 import { mkdir, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -14,7 +15,7 @@ import { resolveDaemonConfig, type DaemonConfig } from "./config";
 import { setDaemonIdentity } from "./identity";
 import { buildHandler, type WsData } from "./server";
 
-/** Timestamped daemon log line (the daemon is not core — it may print). */
+/** Timestamped daemon log line (the daemon is not core; it may print). */
 export function log(message: string): void {
 	const now = new Date();
 	const stamp = now.toTimeString().slice(0, 8);
@@ -40,17 +41,17 @@ async function socketAlive(socket: string): Promise<boolean> {
 export async function runDaemon(): Promise<void> {
 	const dcfg = await resolveDaemonConfig();
 
-	// core resolves the cluster root through this — set before any core call
+	// core resolves the cluster root through this; set before any core call
 	process.env.LUNA_ROOT = dcfg.root;
 
 	setDaemonIdentity(dcfg);
 
-	// provider credentials come from the daemon config — core never reads env
+	// provider credentials come from the daemon config; core never reads env
 	configureProviders({ curseforgeApiKey: dcfg.curseforgeApiKey });
 
 	if (!existsSync(dcfg.root)) {
 		if (dcfg.mode !== "follower") {
-			throw new Error(`cluster root does not exist: ${dcfg.root}`);
+			throw new Error(t("daemon.rootMissing", { root: dcfg.root }));
 		}
 
 		// a fresh follower starts empty and fills up from the primary's state sync
@@ -59,7 +60,7 @@ export async function runDaemon(): Promise<void> {
 
 	if (existsSync(dcfg.socket)) {
 		if (await socketAlive(dcfg.socket)) {
-			throw new Error(`a daemon is already running on ${dcfg.socket}`);
+			throw new Error(t("daemon.alreadyRunning", { socket: dcfg.socket }));
 		}
 
 		await unlink(dcfg.socket);
@@ -82,15 +83,15 @@ export async function runDaemon(): Promise<void> {
 		fetch: buildHandler(dcfg, true, startedAt),
 		websocket: noWebsocket,
 		// SSE consumers (job streams, console tails) legitimately go quiet for
-		// long stretches — a first server boot spends a minute in "Loading
-		// libraries" with nothing to report — and Bun's default 10s idle timeout
+		// long stretches; a first server boot spends a minute in "Loading
+		// libraries" with nothing to report; and Bun's default 10s idle timeout
 		// would cut them off mid-job. 0 disables it. Bun's types claim unix
 		// listeners take no idleTimeout, but the runtime both applies the 10s
 		// default and honours the override (its own timeout error says to pass it).
 		idleTimeout: 0 as never,
 	});
 
-	log(`luna daemon "${dcfg.name}" (${dcfg.mode}) — root ${dcfg.root}`);
+	log(t("daemon.log.starting", { name: dcfg.name, mode: dcfg.mode, root: dcfg.root }));
 	log(`local API on ${dcfg.socket}`);
 
 	let cluster: Bun.Server<WsData> | undefined;
@@ -102,7 +103,7 @@ export async function runDaemon(): Promise<void> {
 	// heartbeat up to the primary, which is where the console reads the fleet
 	ensureHealthSampler();
 
-	// keeps "what could this daemon upgrade to" answered from memory — the
+	// keeps "what could this daemon upgrade to" answered from memory; the
 	// check itself never applies anything
 	ensureUpgradeWatcher();
 
@@ -115,7 +116,7 @@ export async function runDaemon(): Promise<void> {
 				port: dcfg.listen.port,
 				fetch: buildHandler(dcfg, false, startedAt),
 				websocket: hubWebSocket,
-				// same SSE-idle reasoning as the local listener — a forwarded job's
+				// same SSE-idle reasoning as the local listener; a forwarded job's
 				// stream crosses this one
 				idleTimeout: 0,
 			});
@@ -123,7 +124,7 @@ export async function runDaemon(): Promise<void> {
 			installHub(dcfg, startedAt);
 
 			if (!dcfg.token) {
-				log("warning: no cluster token configured — followers cannot authenticate");
+				log(t("daemon.log.noToken"));
 			}
 
 			log(`cluster listener on ${dcfg.listen.host}:${dcfg.listen.port}`);
@@ -146,7 +147,7 @@ export async function runDaemon(): Promise<void> {
 	}
 
 	const shutdown = async (signal: string): Promise<void> => {
-		log(`${signal} — shutting down`);
+		log(t("daemon.log.shuttingDown", { signal }));
 
 		local.stop(true);
 		cluster?.stop(true);

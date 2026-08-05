@@ -1,7 +1,7 @@
 /**
  * Translating between a machine's *name* and its *key*.
  *
- * The registry scopes per-machine state by key, where the primary is `""` — the
+ * The registry scopes per-machine state by key, where the primary is `""`; the
  * same "absent `daemon` field" its instances carry (core/ports.ts, the
  * environment store's machine overrides). A key of `""` is not something anyone
  * can type at a prompt or read in a table, so every UI works in names and
@@ -15,7 +15,7 @@ export interface MachineLike {
 }
 
 export interface MachineOption {
-	/** Key the state files scope by — `""` for the primary */
+	/** Key the state files scope by; `""` for the primary */
 	key: string;
 	/** Name an operator sees and types */
 	name: string;

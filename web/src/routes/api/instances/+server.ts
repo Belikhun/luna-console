@@ -12,7 +12,7 @@ import { listJobs, startJob } from '$lib/server/jobs';
 import { errorMessage } from '$lib/server/http';
 
 /**
- * A placeholder row for an instance that only exists as a running job — a
+ * A placeholder row for an instance that only exists as a running job; a
  * create that has not registered yet, or a purge outliving the registry entry.
  */
 function ghostRow(
@@ -53,7 +53,7 @@ function ghostRow(
 /**
  * GET → live status of every instance, for the instances table. Rows caught
  * mid-provision or mid-delete are overlaid with that transient state, so every
- * open console sees the transition — not just the browser that started it.
+ * open console sees the transition; not just the browser that started it.
  */
 export async function GET() {
 	const data = (await listStatuses()) as { instances: Array<Record<string, unknown>> };
@@ -73,7 +73,7 @@ export async function GET() {
 
 	for (const job of creating) {
 		if (job.target && !data.instances.some((row) => row.name === job.target)) {
-			// the job's meta names the target machine — nothing else knows it yet
+			// the job's meta names the target machine; nothing else knows it yet
 			const daemon = (job.meta?.daemon as string | null) ?? null;
 
 			data.instances.push(ghostRow(job.target, 'provisioning', daemon));
@@ -97,12 +97,12 @@ export async function GET() {
  *
  * Creation lives on the collection, never at /api/instances/create: a static
  * segment there outranks [name], so the cluster's real `create` instance would
- * be unreachable — any verb-named route under this one is the same trap.
+ * be unreachable; any verb-named route under this one is the same trap.
  *
  * Creating an instance downloads a server jar, so it answers with a job id
  * instead of blocking: the client watches /api/jobs/<id>?stream for the same
- * progress tree the CLI renders. Anything cheap enough to check up front —
- * setting values, JVM flags — is rejected here, so the client gets a 400 rather
+ * progress tree the CLI renders. Anything cheap enough to check up front -
+ * setting values, JVM flags; is rejected here, so the client gets a 400 rather
  * than a job that fails a second later.
  */
 export async function POST({ request }) {
@@ -233,12 +233,12 @@ export async function POST({ request }) {
 						1,
 						'okay',
 						velocityUpdated
-							? 'velocity.toml updated — reload the proxy to apply'
+							? 'velocity.toml updated; reload the proxy to apply'
 							: 'velocity.toml already up to date'
 					);
 				});
 			} else {
-				proxy.complete('not registered — standalone instance');
+				proxy.complete('not registered; standalone instance');
 			}
 
 			pushEvent(body.name, 'action', `instance created (paper ${body.mcVersion}, port ${res.port})`);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { api, post, put } from '$lib/api';
@@ -21,7 +22,7 @@
 	/**
 	 * The instance file browser and config editor.
 	 *
-	 * A file is either plain — luna edits the bytes on disk and remembers nothing —
+	 * A file is either plain; luna edits the bytes on disk and remembers nothing -
 	 * or **managed**, in which case what this page edits is the *template*, and the
 	 * file inside the instance is rendered from it on every start. Selecting a
 	 * literal and naming it turns it into a `${VAR}` placeholder, which is what
@@ -61,7 +62,7 @@
 	let lastUpdated: number | null = $state(null);
 
 	let current = $state<FileContent | null>(null);
-	/** The editor's buffer — the template for a managed file, else the disk text */
+	/** The editor's buffer; the template for a managed file, else the disk text */
 	let buffer = $state('');
 	/** What was loaded, so "unsaved" is a comparison rather than a flag to maintain */
 	let pristine = $state('');
@@ -204,7 +205,7 @@
 				Notify.success(`${current.path} re-adopted from disk`, {
 					detail: result.kept?.length
 						? `Placeholders kept: ${result.kept.join(', ')}`
-						: 'No placeholder values matched — the template is now literal.'
+						: 'No placeholder values matched; the template is now literal.'
 				});
 			} else {
 				Notify.success(`${current.path}: ${action}`);
@@ -239,7 +240,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Rendering failed',
+				message: t('web.instanceFiles.renderingFailed'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -260,7 +261,7 @@
 
 	/**
 	 * A first guess at a variable name from the selected text's *key*, not its
-	 * value — the line `host: 10.0.0.10` should suggest `HOST`, and a bare IP
+	 * value; the line `host: 10.0.0.10` should suggest `HOST`, and a bare IP
 	 * suggests nothing worth typing over.
 	 */
 	function suggestName(value: string): string {
@@ -333,7 +334,7 @@
 
 			resolved = data.variables;
 		} catch {
-			// the panel just stays as it was — the editor is the point of this page
+			// the panel just stays as it was; the editor is the point of this page
 		}
 	}
 
@@ -377,7 +378,7 @@
 			? []
 			: [
 					{
-						label: 'Create placeholder from selection',
+						label: t('web.instanceFiles.createPlaceholderFromSelection'),
 						icon: 'key',
 						disabled: !selection.text.trim(),
 						action: startPlaceholder
@@ -388,14 +389,14 @@
 						action: () => manage(current!.managed ? 'unmanage' : 'manage')
 					},
 					{
-						label: 'Re-adopt from disk',
+						label: t('web.instanceFiles.reAdoptFromDisk'),
 						icon: 'arrowDown',
 						disabled: !current.managed,
 						action: () => manage('readopt')
 					},
 					{ separator: true },
 					{
-						label: 'Discard drift copy',
+						label: t('web.instanceFiles.discardDriftCopy'),
 						icon: 'trash',
 						disabled: !current.drifted,
 						action: () => manage('discard-drift')
@@ -425,18 +426,18 @@
 <svelte:window onkeydown={onKeydown} />
 
 <PageHeader
-	title="Config files"
-	description="Browse {name}'s directory and edit its configuration — a managed file is rendered from its template on every start."
+	title={t('web.instanceFiles.configFiles')}
+	description="Browse {name}'s directory and edit its configuration; a managed file is rendered from its template on every start."
 	info
 >
 	{#snippet extra()}
 		{#if current?.managed}
-			<StatusBadge state="ok" label="managed" />
+			<StatusBadge state="ok" label={t('web.instanceFiles.managed')} />
 		{/if}
 		{#if current?.drifted}
 			<StatusBadge
 				state="warning"
-				label="drifted"
+				label={t('web.instanceFiles.drifted')}
 				detail="This file was changed outside luna. The next start renders the template over it, keeping the current text as a .luna-drift copy."
 			/>
 		{/if}
@@ -448,8 +449,8 @@
 			loading={browsing}
 			storageKey="instance-files"
 		/>
-		<Dropdown label="File" disabled={!current} menu={fileActions} />
-		<Btn icon="rotate" onclick={renderAll}>Render managed files</Btn>
+		<Dropdown label={t('web.instanceFiles.file')} disabled={!current} menu={fileActions} />
+		<Btn icon="rotate" onclick={renderAll}>{t('web.instanceFiles.renderManagedFiles')}</Btn>
 		<Btn variant="primary" icon="floppyDisk" loading={saving} disabled={!dirty} onclick={save}>
 			Save
 		</Btn>
@@ -457,7 +458,7 @@
 </PageHeader>
 
 <div class="split">
-	<Panel title="Directory" flush fill>
+	<Panel title={t('web.instanceFiles.directory')} flush fill>
 		<div class="crumbs">
 			{#each crumbs as crumb, index (crumb.path)}
 				{#if index > 0}<span class="sep dim">/</span>{/if}
@@ -468,7 +469,7 @@
 			{#if cwd}
 				<button class="row up" onclick={() => browse(cwd.split('/').slice(0, -1).join('/'))}>
 					<Icon name="arrowUp" size="0.75rem" style="solid" />
-					<span class="dim">up one level</span>
+					<span class="dim">{t('web.instanceFiles.upOneLevel')}</span>
 				</button>
 			{/if}
 			{#each entries as entry (entry.path)}
@@ -489,16 +490,16 @@
 					/>
 					<span class="nm">{entry.name}</span>
 					{#if entry.managed}
-						<span class="tag managed" title="rendered from a template on every start">T</span>
+						<span class="tag managed" title={t('web.instanceFiles.renderedFromATemplateOn')}>T</span>
 					{/if}
 					{#if entry.drifted}
-						<span class="tag drift" title="changed outside luna">!</span>
+						<span class="tag drift" title={t('web.instanceFiles.changedOutsideLuna')}>!</span>
 					{/if}
 					<span class="sz dim">{entry.kind === 'dir' ? '' : fmtSize(entry.size)}</span>
 				</button>
 			{/each}
 			{#if !entries.length && !browsing}
-				<p class="empty dim">This directory is empty.</p>
+				<p class="empty dim">{t('web.instanceFiles.thisDirectoryIsEmpty')}</p>
 			{/if}
 		</div>
 	</Panel>
@@ -508,11 +509,9 @@
 			<Panel fill>
 				<div class="nothing">
 					<Icon name="fileCode" size="1.5rem" style="light" />
-					<h3>Pick a file to edit</h3>
+					<h3>{t('web.instanceFiles.pickAFileTo')}</h3>
 					<p class="dim">
-						Config files, properties and scripts open in the editor. Select a value inside one and
-						create a placeholder to move it into the environment — luna then renders that file on
-						every start.
+						{t('web.instanceFiles.configFilesPropertiesAnd')}
 					</p>
 				</div>
 			</Panel>
@@ -522,10 +521,10 @@
 					<div class="left">
 						<span class="mono">{current.path}</span>
 						{#if editingTemplate}
-							<span class="tag managed">template</span>
+							<span class="tag managed">{t('web.instanceFiles.template')}</span>
 						{/if}
 						{#if dirty}
-							<span class="tag drift">unsaved</span>
+							<span class="tag drift">{t('web.instanceFiles.unsaved')}</span>
 						{/if}
 					</div>
 					<div class="right">
@@ -553,8 +552,8 @@
 
 				{#if current.missing.length}
 					<div class="banner err">
-						Undefined variable(s): <b>{current.missing.join(', ')}</b> — luna refuses to render this
-						file until they exist.
+						Undefined variable(s): <b>{current.missing.join(', ')}</b>; luna refuses to render this
+						{t('web.instanceFiles.fileUntilTheyExist')}
 					</div>
 				{/if}
 
@@ -576,9 +575,9 @@
 			{#if current.placeholders.length}
 				<div class="gap"></div>
 				<Panel
-					title="Placeholders in this file"
+					title={t('web.instanceFiles.placeholdersInThisFile')}
 					count={current.placeholders.length}
-					description="Values luna substitutes when it renders this file — change one on the environment screen and every file using it follows"
+					description={t('web.instanceFiles.valuesLunaSubstitutesWhenIt')}
 				>
 					<div class="phs">
 						{#each current.placeholders as placeholder (placeholder)}
@@ -586,7 +585,7 @@
 							<div class="ph">
 								<span class="mono nm">${'{'}{placeholder}{'}'}</span>
 								{#if !found}
-									<StatusBadge state="failed" label="undefined" />
+									<StatusBadge state="failed" label={t('web.instanceFiles.undefined')} />
 								{:else}
 									<span class="mono val">{found.secret ? '••••••••' : found.value}</span>
 									<span class="scope dim">{found.scope}</span>
@@ -600,36 +599,36 @@
 	</div>
 </div>
 
-<Modal title="Create a placeholder" bind:open={phOpen}>
+<Modal title={t('web.instanceFiles.createAPlaceholder')} bind:open={phOpen}>
 	<p class="intro dim">
 		The literal below is replaced by <span class="mono">${'{'}NAME{'}'}</span> in the template, and
-		the value moves into the environment. The file on disk stays exactly as it is.
+		{t('web.instanceFiles.theValueMovesInto')}
 	</p>
 	<label class="field">
-		<span class="lbl">Variable name</span>
-		<span class="hint">ALL_UPPERCASE_WITH_UNDERSCORES; LUNA_* is reserved for builtins</span>
-		<input class="input mono" bind:value={phName} placeholder="DB_PASSWORD" />
+		<span class="lbl">{t('web.instanceFiles.variableName')}</span>
+		<span class="hint">{t('web.instanceFiles.allUppercaseWithUnderscores')}</span>
+		<input class="input mono" bind:value={phName} placeholder={t('web.instanceFiles.dbPassword')} />
 	</label>
 	<label class="field">
-		<span class="lbl">Value it replaces</span>
+		<span class="lbl">{t('web.instanceFiles.valueItReplaces')}</span>
 		<input class="input mono" bind:value={phValue} />
 	</label>
 	<div class="field">
-		<span class="lbl">Scope</span>
-		<span class="hint">A narrower scope overrides a wider one for the instances it covers</span>
+		<span class="lbl">{t('web.instanceFiles.scope')}</span>
+		<span class="hint">{t('web.instanceFiles.aNarrowerScopeOverrides')}</span>
 		<Select
 			bind:value={phScope}
 			width="100%"
 			options={[
-				{ value: 'global', label: 'Global — every instance in the cluster' },
-				{ value: 'machine', label: 'Machine — every instance on one host' },
-				{ value: 'instance', label: `Instance — ${name} only` }
+				{ value: 'global', label: t('web.instanceFiles.globalEveryInstanceInThe') },
+				{ value: 'machine', label: t('web.instanceFiles.machineEveryInstanceOnOne') },
+				{ value: 'instance', label: `Instance; ${name} only` }
 			]}
 		/>
 	</div>
 	{#if phScope === 'machine'}
 		<div class="field">
-			<span class="lbl">Machine</span>
+			<span class="lbl">{t('web.instanceFiles.machine')}</span>
 			<Select
 				bind:value={phMachine}
 				width="100%"
@@ -641,26 +640,26 @@
 		</div>
 	{/if}
 	<label class="field">
-		<span class="lbl">Description</span>
-		<input class="input" bind:value={phDescription} placeholder="What reads this" />
+		<span class="lbl">{t('web.instanceFiles.description')}</span>
+		<input class="input" bind:value={phDescription} placeholder={t('web.instanceFiles.whatReadsThis')} />
 	</label>
 	<label class="check">
-		<Checkbox checked={phAll} label="Replace all" onchange={(on) => (phAll = on)} />
-		Replace every occurrence in this file
+		<Checkbox checked={phAll} label={t('web.instanceFiles.replaceAll')} onchange={(on) => (phAll = on)} />
+		{t('web.instanceFiles.replaceEveryOccurrenceIn')}
 	</label>
 	<label class="check">
-		<Checkbox checked={phSecret} label="Secret" onchange={(on) => (phSecret = on)} />
-		Secret — mask the value everywhere in the console
+		<Checkbox checked={phSecret} label={t('web.instanceFiles.secret')} onchange={(on) => (phSecret = on)} />
+		{t('web.instanceFiles.secretMaskTheValue')}
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (phOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (phOpen = false)}>{t('web.instanceFiles.cancel')}</Btn>
 		<Btn
 			variant="primary"
 			loading={phSaving}
 			disabled={!phName || !phValue || (phScope === 'machine' && !phMachine)}
 			onclick={createPlaceholder}
 		>
-			Create placeholder
+			{t('web.instanceFiles.createPlaceholder')}
 		</Btn>
 	{/snippet}
 </Modal>
@@ -673,7 +672,7 @@
 		align-items: stretch;
 
 		// fills the viewport below the page chrome (top nav, breadcrumbs, page header)
-		// and above the layout's bottom padding — measured, not guessed.
+		// and above the layout's bottom padding; measured, not guessed.
 		// --split-bottom is the terminal drawer's own height, so opening the drawer
 		// shortens this rather than covering the editor.
 		height: calc(100vh - 13.75rem - var(--split-bottom));
@@ -736,7 +735,7 @@
 			background: var(--bg-selected);
 		}
 
-		// a non-text or oversized file is still listed — it just cannot be opened
+		// a non-text or oversized file is still listed; it just cannot be opened
 		&.dimmed {
 			color: var(--text-disabled);
 		}
@@ -863,7 +862,7 @@
 		gap: 0.375rem;
 
 		// the editor is the point of the screen, so this panel scrolls itself rather
-		// than growing until it starves it — the column has a fixed height now
+		// than growing until it starves it; the column has a fixed height now
 		max-height: 11rem;
 		overflow-y: auto;
 	}

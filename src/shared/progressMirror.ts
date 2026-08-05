@@ -9,7 +9,7 @@ import type { ProgressReporter, ProgressSnapshot } from "../core/progress";
  * locally: children are matched by position (the daemon side only appends),
  * every node weighs its own progress at 1 so its roll-up *is* the remote
  * roll-up we feed it, and a node only re-reports when something about it
- * actually changed — the local listener sees the same movement the remote one
+ * actually changed; the local listener sees the same movement the remote one
  * did, without a flood of duplicate updates.
  */
 export function applySnapshot(target: ProgressReporter, snap: ProgressSnapshot): void {

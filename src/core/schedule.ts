@@ -1,5 +1,5 @@
 /**
- * Instance schedules (DESIGN.md §3.4) — EventBridge Scheduler's model at luna
+ * Instance schedules (DESIGN.md §3.4); EventBridge Scheduler's model at luna
  * scale: one-time `at`, recurring `cron` (standard 5-field) or `rate` (every N
  * minutes) triggers firing a start/stop/restart across instance targets, with
  * an optional run cap and a persisted event log.
@@ -13,6 +13,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import type { ClusterConfig } from "./types";
+import { t } from "../shared/i18n";
 import { expandTargets, root } from "./config";
 
 const SCHEDULE_FILE = "schedules.json";
@@ -21,7 +22,7 @@ const SCHEDULE_FILE = "schedules.json";
 const MAX_EVENTS = 500;
 
 /**
- * A run further overdue than this — the console was down — is logged as missed
+ * A run further overdue than this; the console was down; is logged as missed
  * and skipped rather than fired late: a 3 a.m. restart must not happen at noon.
  */
 export const MISSED_AFTER_MS = 15 * 60_000;
@@ -55,7 +56,7 @@ export interface Schedule {
 }
 
 export interface ScheduleEvent {
-	/** Unique, monotonic — two runs can land in the same millisecond */
+	/** Unique, monotonic; two runs can land in the same millisecond */
 	seq: number;
 	t: number;
 	id: string;
@@ -138,7 +139,7 @@ function parseField(text: string, min: number, max: number, label: string): Cron
 		const every = step ? parseInt(step[2]!) : 1;
 
 		if (every < 1) {
-			throw new Error(`cron: bad step in ${label} field`);
+			throw new Error(t("core.schedule.cronBadStep", { field: label }));
 		}
 
 		let from: number;
@@ -151,7 +152,7 @@ function parseField(text: string, min: number, max: number, label: string): Cron
 			const range = rangeText.match(/^(\d+)(?:-(\d+))?$/);
 
 			if (!range) {
-				throw new Error(`cron: cannot parse "${part}" in ${label} field`);
+				throw new Error(t("core.schedule.cronBadPart", { part, field: label }));
 			}
 
 			from = parseInt(range[1]!);
@@ -159,7 +160,7 @@ function parseField(text: string, min: number, max: number, label: string): Cron
 		}
 
 		if (from < min || to > max || from > to) {
-			throw new Error(`cron: ${label} value out of range ${min}-${max}`);
+			throw new Error(t("core.schedule.cronOutOfRange", { field: label, min, max }));
 		}
 
 		for (let value = from; value <= to; value += every) {
@@ -175,7 +176,7 @@ export function parseCron(expr: string): CronSpec {
 	const fields = expr.trim().split(/\s+/);
 
 	if (fields.length !== 5) {
-		throw new Error("cron expressions have 5 fields: minute hour day-of-month month day-of-week");
+		throw new Error(t("core.schedule.cronFiveFields"));
 	}
 
 	return {
@@ -269,11 +270,11 @@ export function validateTrigger(trigger: ScheduleTrigger): void {
 		const at = new Date(trigger.at);
 
 		if (Number.isNaN(at.getTime())) {
-			throw new Error(`cannot parse time "${trigger.at}"`);
+			throw new Error(t("core.schedule.badTime", { time: trigger.at }));
 		}
 
 		if (at.getTime() <= Date.now()) {
-			throw new Error("the one-time trigger is in the past");
+			throw new Error(t("core.schedule.pastTrigger"));
 		}
 
 		return;
@@ -286,7 +287,7 @@ export function validateTrigger(trigger: ScheduleTrigger): void {
 	}
 
 	if (!Number.isFinite(trigger.minutes) || trigger.minutes < 1) {
-		throw new Error("rate must be at least 1 minute");
+		throw new Error(t("core.schedule.rateTooSmall"));
 	}
 }
 
@@ -307,11 +308,11 @@ export function createSchedule(
 	init: ScheduleInit,
 ): Schedule {
 	if (!init.name.trim()) {
-		throw new Error("schedules need a name");
+		throw new Error(t("core.schedule.needsName"));
 	}
 
 	if (!init.instances.length) {
-		throw new Error("pick at least one instance");
+		throw new Error(t("core.schedule.needsInstance"));
 	}
 
 	expandTargets(cfg, init.instances); // validates names/wildcards
@@ -319,7 +320,7 @@ export function createSchedule(
 	validateTrigger(init.trigger);
 
 	if (init.maxRuns !== undefined && (!Number.isFinite(init.maxRuns) || init.maxRuns < 1)) {
-		throw new Error("maxRuns must be a positive number");
+		throw new Error(t("core.schedule.badMaxRuns"));
 	}
 
 	const now = new Date();
@@ -374,7 +375,7 @@ export type ScheduleExecutor = (
 
 /**
  * Fire every enabled schedule whose time has come. Mutates the store (runs,
- * nextRun, events, self-disable on completion) — the caller persists it.
+ * nextRun, events, self-disable on completion); the caller persists it.
  * Returns the events this pass produced.
  */
 export async function runDue(
@@ -407,7 +408,7 @@ export async function runDue(
 					store,
 					schedule,
 					"missed",
-					`was due ${schedule.nextRun} while the console was not running — skipped`,
+					t("core.schedule.missed", { time: schedule.nextRun ?? "" }),
 				),
 			);
 		} else {
@@ -420,7 +421,7 @@ export async function runDue(
 					outcomes.push(`${instance}: ${await execute(schedule.action, instance)}`);
 				} catch (err) {
 					failures += 1;
-					outcomes.push(`${instance}: failed — ${err instanceof Error ? err.message : err}`);
+					outcomes.push(`${instance}: ${t("core.schedule.failed", { error: err instanceof Error ? err.message : String(err) })}`);
 				}
 			}
 

@@ -3,8 +3,8 @@
 
 	/**
 	 * Metric chart: title + current value above a filled line
-	 * plot. Axis labels live *inside* the plot area — y ticks down the left
-	 * edge, the sampled time range along the bottom — as HTML overlays, so they
+	 * plot. Axis labels live *inside* the plot area; y ticks down the left
+	 * edge, the sampled time range along the bottom; as HTML overlays, so they
 	 * stay upright and legible while the svg stretches to the container. The
 	 * plot's height is fixed by the wrapper; the svg is absolutely positioned
 	 * inside it, since a percentage-height svg in an auto-sized box falls back
@@ -190,7 +190,7 @@
 			}
 		}
 
-		// nearest sample is inside a gap — read out nothing rather than a value
+		// nearest sample is inside a gap; read out nothing rather than a value
 		// from the far side of the hazard band
 		if (near.v === undefined) {
 			hover = null;

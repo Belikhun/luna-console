@@ -3,6 +3,7 @@ import { createInterface } from "node:readline";
 import { dispatch, resolveCommand, usageLine, allCommands } from "./framework";
 import { complete } from "./complete";
 import { pc } from "./ui";
+import { t } from "../shared/i18n";
 
 /**
  * Split a prompt line into argv words, honouring double quotes. A line that ends
@@ -49,12 +50,8 @@ function printHint(line: string): void {
 
 /** Interactive prompt over the same command registry the CLI dispatches from. */
 export async function repl(): Promise<void> {
-	console.log(pc.bold(pc.magenta("\n  luna")) + pc.dim(" interactive console"));
-	console.log(
-		pc.dim(
-			"  Tab to complete · 'help' for commands · '?' after a command for hints · 'exit' to leave\n",
-		),
-	);
+	console.log(pc.bold(pc.magenta("\n  luna")) + pc.dim(` ${t("cli.repl.title")}`));
+	console.log(pc.dim(`  ${t("cli.repl.hints")}\n`));
 
 	const rl = createInterface({
 		input: process.stdin,
@@ -109,5 +106,5 @@ export async function repl(): Promise<void> {
 	}
 
 	rl.close();
-	console.log(pc.dim("bye"));
+	console.log(pc.dim(t("cli.repl.bye")));
 }

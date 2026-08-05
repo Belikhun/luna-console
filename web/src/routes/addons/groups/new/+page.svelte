@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
@@ -8,7 +9,7 @@
 	import SearchInput from '$lib/components/SearchInput.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 
-	/** Create an addon group — same form shape as the instance launch wizard. */
+	/** Create an addon group; same form shape as the instance launch wizard. */
 
 	let name = $state('');
 	let description = $state('');
@@ -29,9 +30,9 @@
 	let kinds: Kind[] = $state([
 		{
 			id: 'plugins',
-			title: 'Plugins',
+			title: t('web.groupNew.plugins'),
 			description:
-				'Members deploy to every instance using the group — paper builds to backends, velocity builds to the proxy, universal to both',
+				'Members deploy to every instance using the group; paper builds to backends, velocity builds to the proxy, universal to both',
 			placeholder: 'Find a plugin',
 			universe: [],
 			picked: new Set(),
@@ -39,9 +40,9 @@
 		},
 		{
 			id: 'respacks',
-			title: 'Resource packs',
+			title: t('web.groupNew.resourcePacks'),
 			description:
-				"The proxy serves these to players on the group's backends — membership is written into the pack's server rules",
+				"The proxy serves these to players on the group's backends; membership is written into the pack's server rules",
 			placeholder: 'Find a resource pack',
 			universe: [],
 			picked: new Set(),
@@ -49,7 +50,7 @@
 		},
 		{
 			id: 'datapacks',
-			title: 'Data packs',
+			title: t('web.groupNew.dataPacks'),
 			description: "Deployed into each member instance's world; servers load them on their next restart",
 			placeholder: 'Find a data pack',
 			universe: [],
@@ -140,10 +141,10 @@
 </script>
 
 <Wizard
-	title="Create an addon group"
-	windowTitle="Create addon group"
-	description="A named set of plugins, resource packs and data packs applied to instances as a unit"
-	submitLabel="Create group"
+	title={t('web.groupNew.createAnAddonGroup')}
+	windowTitle={t('web.groupNew.createAddonGroup')}
+	description={t('web.groupNew.aNamedSetOfPlugins')}
+	submitLabel={t('web.groupNew.createGroup')}
 	disabled={!name || !!nameError}
 	loading={creating}
 	onsubmit={create}
@@ -154,24 +155,24 @@
 		{#if description}· {description}{/if}
 	{/snippet}
 
-	<Panel title="Name">
+	<Panel title={t('web.groupNew.name')}>
 		<label class="field">
-			<span class="lbl">Group name</span>
-			<span class="hint">lowercase letters, digits, - and _</span>
+			<span class="lbl">{t('web.groupNew.groupName')}</span>
+			<span class="hint">{t('web.groupNew.lowercaseLettersDigitsAnd')}</span>
 			<input
 				class="input"
 				bind:value={name}
-				placeholder="e.g. survival-extras"
+				placeholder={t('web.groupNew.eGSurvivalExtras')}
 				disabled={creating}
 			/>
 			{#if nameError}<span class="err">{nameError}</span>{/if}
 		</label>
 		<label class="field">
-			<span class="lbl">Description</span>
+			<span class="lbl">{t('web.groupNew.description')}</span>
 			<input
 				class="input"
 				bind:value={description}
-				placeholder="What this set is for"
+				placeholder={t('web.groupNew.whatThisSetIsFor')}
 				disabled={creating}
 			/>
 		</label>
@@ -192,7 +193,7 @@
 					maxHeight="22rem"
 				/>
 			{:else}
-				<p class="dim none">Nothing pooled yet — install one first and it appears here.</p>
+				<p class="dim none">{t('web.groupNew.nothingPooledYetInstall')}</p>
 			{/if}
 		</Panel>
 	{/each}

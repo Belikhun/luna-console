@@ -25,7 +25,7 @@ export async function api<T = any>(path: string, init?: RequestInit): Promise<T>
 
 			msg = body.message ?? body.error ?? JSON.stringify(body);
 		} catch {
-			// no JSON body — the status code is all we can report
+			// no JSON body; the status code is all we can report
 		}
 
 		throw new ApiError(msg, res.status);
@@ -55,7 +55,7 @@ export function del<T = any>(path: string): Promise<T> {
 }
 
 /**
- * A picked file's bytes as base64, for JSON upload bodies — the console
+ * A picked file's bytes as base64, for JSON upload bodies; the console
  * uploads as JSON rather than multipart because SvelteKit's CSRF check
  * rejects form posts when the served origin is ambiguous.
  */
@@ -64,7 +64,7 @@ export function fileToBase64(file: File): Promise<string> {
 		const reader = new FileReader();
 
 		reader.onload = () => {
-			// readAsDataURL yields "data:<mime>;base64,<data>" — the payload
+			// readAsDataURL yields "data:<mime>;base64,<data>"; the payload
 			// starts after the comma
 			const text = String(reader.result);
 
@@ -91,7 +91,7 @@ export interface InstanceRow {
 	mcVersion: string | null;
 	/** null on a placeholder row for a mid-provision instance */
 	port: number | null;
-	/** host:port the instance answers on — its owning machine's, not always loopback */
+	/** host:port the instance answers on; its owning machine's, not always loopback */
 	address: string | null;
 	memory: string;
 	profile: string;
@@ -101,7 +101,7 @@ export interface InstanceRow {
 	pingVersion: string | null;
 	cpu: number | null;
 	rssMb: number | null;
-	/** From LunaCore's heartbeat — null when the plugin is not reporting for this instance */
+	/** From LunaCore's heartbeat; null when the plugin is not reporting for this instance */
 	tps: number | null;
 	heapUsedMb: number | null;
 	heapMaxMb: number | null;
@@ -112,7 +112,7 @@ export interface InstanceRow {
 	ports: Record<string, number>;
 	proxy: { register: boolean; forcedHosts?: string[]; priority?: number } | null;
 	external: string | null;
-	/** owning daemon — null on the primary's own instances */
+	/** owning daemon; null on the primary's own instances */
 	daemon: string | null;
 	dir: string;
 	checks: Array<{ name: string; ok: boolean | undefined; detail: string }>;

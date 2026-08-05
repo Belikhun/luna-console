@@ -1,4 +1,4 @@
-// luna console — dark design system.
+// luna console; dark design system.
 // The colours and metrics below are fixed: they are the reference values the
 // whole console is built against, so treat them as the source of truth.
 // Primary font: Albula Pro (static/AlbulaPro). Icons: Font Awesome via <icon data-icon>.
@@ -49,7 +49,7 @@
 	--primary-text: #0f141a;
 
 	// Luna's own brand: the violet primary and the near-black it fades into, as
-	// the artwork ships them. They are a *logo* pair, not UI colours — the plate
+	// the artwork ships them. They are a *logo* pair, not UI colours; the plate
 	// under the mark, the favicon, the login panel. Nothing typographic reads on
 	// --luna-deep, and --luna-primary itself only reaches 2.7:1 on --bg-panel,
 	// which is why the tint that carries text (--src-luna) is a lifted sibling
@@ -59,7 +59,7 @@
 	--luna-deep: #020132;
 	--luna-gradient: linear-gradient(225deg, var(--luna-primary), var(--luna-deep));
 
-	// Where an addon came from, in the provider's own brand primary — the word
+	// Where an addon came from, in the provider's own brand primary; the word
 	// "Modrinth" reads as Modrinth wherever it appears. Hangar (#004ee9) and
 	// Smithed (#216bea) publish primaries too dark to read on these panels, so
 	// theirs are lifted to clear 4.5:1; the other two are their published values.
@@ -89,7 +89,7 @@
 	--shadow-panel: 0 0.1rem 0.5rem 0.1rem rgba(0, 7, 22, 0.6);
 	--focus-ring: 0 0 0 0.125rem var(--link);
 
-	// one stacking scale for the whole console — everything that floats must
+	// one stacking scale for the whole console; everything that floats must
 	// pick a step from here, so popovers never end up under the split panel
 	--z-sticky: 2;
 	--z-split-panel: 840;
@@ -130,7 +130,7 @@ a {
 	color: var(--link);
 	text-decoration: underline;
 
-	// `auto` resolves to a single device pixel — an explicit rem thickness reads
+	// `auto` resolves to a single device pixel; an explicit rem thickness reads
 	// far too heavy at 0.875rem body text
 	text-decoration-thickness: auto;
 	text-underline-offset: 0.25rem;
@@ -140,7 +140,7 @@ a {
 	}
 
 	// A link's underline is painted across atomic inlines as well, and no rule on
-	// the descendant can cancel it — so a link that contains an icon drops the
+	// the descendant can cancel it; so a link that contains an icon drops the
 	// anchor-level underline and hands it to the text run instead. Forgetting the
 	// span degrades to "no underline" rather than "rule through the glyph".
 	&:has(icon) {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { deleteInstanceJob } from '$lib/instancejobs';
 	import Modal from './Modal.svelte';
 	import Btn from './Btn.svelte';
@@ -9,7 +10,7 @@
 	 * lead question, consequence notes, then a divided type-to-confirm section.
 	 *
 	 * It lives in the component library because both places that can delete an
-	 * instance — the instances table and the instance detail page — must offer
+	 * instance (the instances table and the instance detail page) must offer
 	 * the same dialog without either one navigating to the other.
 	 */
 	let {
@@ -44,7 +45,7 @@
 
 		open = false;
 
-		// the flash card follows the job from here — the row reads "deleting"
+		// the flash card follows the job from here; the row reads "deleting"
 		// until it (and a purge's directory walk) finishes
 		void deleteInstanceJob(name, purge);
 
@@ -52,32 +53,27 @@
 	}
 </script>
 
-<Modal title="Delete {name}?" bind:open>
+<Modal title={t('web.deleteInstance.title', { name })} bind:open>
 	<p class="del-lead">
-		Delete <b>{name}</b> permanently? This action cannot be undone.
+		{t('web.deleteInstance.leadBefore')} <b>{name}</b>{t('web.deleteInstance.leadAfter')}
 	</p>
-	<p class="del-note">
-		The instance is deregistered from the cluster registry and removed from the velocity proxy's
-		routing.
-	</p>
-	<p class="del-note">
-		The instance directory — worlds included — stays on disk unless you also delete it below.
-	</p>
+	<p class="del-note">{t('web.deleteInstance.noteDeregister')}</p>
+	<p class="del-note">{t('web.deleteInstance.noteDirectory')}</p>
 	<label class="purgerow">
 		<Checkbox
 			checked={purge}
-			label="Delete the instance directory"
+			label={t('web.deleteInstance.purgeLabel')}
 			onchange={(value) => (purge = value)}
 		/>
-		Also permanently delete the instance directory (worlds included)
+		{t('web.deleteInstance.purgeText')}
 	</label>
 	<div class="del-confirm">
-		<span class="del-ask">To confirm deletion, enter <i>delete</i> in the text input field.</span>
+		<span class="del-ask">{t('web.deleteInstance.confirmAsk')}</span>
 		<input class="input" bind:value={confirmText} placeholder="delete" />
 	</div>
 	{#snippet footer()}
-		<Btn onclick={() => (open = false)}>Cancel</Btn>
-		<Btn variant="danger" disabled={!confirmed} onclick={submit}>Delete</Btn>
+		<Btn onclick={() => (open = false)}>{t('web.common.cancel')}</Btn>
+		<Btn variant="danger" disabled={!confirmed} onclick={submit}>{t('web.common.delete')}</Btn>
 	{/snippet}
 </Modal>
 

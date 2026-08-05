@@ -1,5 +1,5 @@
 /**
- * Resource-pack server rules — the one vocabulary luna-pack has for "which
+ * Resource-pack server rules; the one vocabulary luna-pack has for "which
  * backends get this pack": a list of instance names, `*` for all, `!name` to
  * exclude, with exclusions beating inclusions.
  *
@@ -11,7 +11,7 @@
  */
 
 /**
- * Whether a rule list matches one backend name — a direct port of luna-pack's
+ * Whether a rule list matches one backend name; a direct port of luna-pack's
  * `PackDefinition.matchesServer`, so the console predicts exactly what the
  * plugin will do. Exclusions win; "all" is an alias for "*".
  */
@@ -54,7 +54,7 @@ export function respackMatchesServer(servers: string[], serverName: string): boo
 
 /**
  * Rewrite a rule list so one backend is served (`on`) or not served, keeping
- * the rest of the list — and its `*` wildcards — intact.
+ * the rest of the list; and its `*` wildcards; intact.
  *
  * The two directions are not symmetric, because the matcher is not: turning a
  * backend *on* only needs a rule when nothing already matches it, while turning
@@ -68,7 +68,7 @@ export function toggleServerRule(servers: string[], instance: string, on: boolea
 	const target = instance.trim().toLowerCase();
 
 	// both spellings of a rule about this backend go, whichever way we are
-	// heading — what is left is every rule that talks about something else
+	// heading; what is left is every rule that talks about something else
 	const rest = servers.filter((rule) => {
 		const bare = rule.trim().toLowerCase().replace(/^!/, "").trim();
 
@@ -101,7 +101,7 @@ export function hasWildcard(servers: string[]): boolean {
  * Rewrite a rule list to serve everywhere (`on`) or to name backends one by one.
  *
  * Turning the wildcard off keeps serving exactly the backends that were being
- * served — the matrix's checkboxes must not all flip because the operator
+ * served; the matrix's checkboxes must not all flip because the operator
  * changed how the same set is spelled. `matched` is the backend list to freeze;
  * the caller has it because it is what the checkboxes render from.
  */

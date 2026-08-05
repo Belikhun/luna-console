@@ -6,10 +6,10 @@
  * Two kinds of file live side by side in an instance directory:
  *
  * - **Plain files** are the server's own. Reading and writing one is exactly
- *   that — luna is a text editor over the instance directory and nothing else
+ *   that: luna is a text editor over the instance directory and nothing else
  *   remembers the edit.
- * - **Managed files** are luna's. The template — the file's text with `${VAR}`
- *   references in place of the values that vary — is the source of truth in
+ * - **Managed files** are luna's. The template (the file's text with `${VAR}`
+ *   references in place of the values that vary) is the source of truth in
  *   `configfiles.json`, and the file inside the instance is derived from it
  *   (state invariants: never the other way round). `renderManagedFiles` is what
  *   derives it, and `startInstance` calls it, so a variable change reaches the
@@ -22,7 +22,7 @@
  * read reports both texts.
  *
  * Files the server rewrote itself since luna last rendered them are **drift**.
- * Rendering still wins — the template is the source of truth — but the drifted
+ * Rendering still wins (the template is the source of truth), but the drifted
  * text is kept beside the file as `<name>.luna-drift` first, so a config a
  * plugin regenerated with new keys is never silently thrown away.
  */
@@ -32,6 +32,7 @@ import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 import type { ClusterConfig, PluginsLock } from "./types";
+import { t } from "../shared/i18n";
 import { instanceDir, managedInstances, notifySave, root } from "./config";
 import {
 	ENV_NAME_PATTERN,
@@ -60,7 +61,7 @@ const SNIFF_BYTES = 8192;
 
 /**
  * Extensions luna offers to edit. The list is an affordance, not a security
- * boundary — a file that passes it is still NUL-sniffed on read, and one that
+ * boundary: a file that passes it is still NUL-sniffed on read, and one that
  * fails it can still be opened by a caller that insists.
  */
 const TEXT_EXTENSIONS = new Set([
@@ -69,13 +70,13 @@ const TEXT_EXTENSIONS = new Set([
 	"tsv", "log", "lang", "mcfunction", "snbt", "mcmeta", "list", "acf", "lock",
 ]);
 
-/** Directories that are never worth browsing into — pure runtime churn. */
+/** Directories that are never worth browsing into: pure runtime churn. */
 const NOISE_DIRS = new Set(["cache", "libraries", "versions", "crash-reports", "debug"]);
 
 export interface ManagedConfigFile {
 	/** The file's text with `${VAR}` references where values vary */
 	template: string;
-	/** sha256 of the text luna last wrote — what makes drift detectable */
+	/** sha256 of the text luna last wrote, which is what makes drift detectable */
 	rendered?: string;
 	/** ISO 8601 of the last template edit */
 	updatedAt?: string;
@@ -131,7 +132,7 @@ export async function saveConfigFiles(store: ConfigFileStore): Promise<void> {
 
 /**
  * Resolve a caller-supplied relative path inside an instance, refusing anything
- * that escapes the instance directory. Every read and write goes through this —
+ * that escapes the instance directory. Every read and write goes through this,
  * the path arrives from an HTTP route, so `..`, an absolute path and a symlink
  * pointing outside are all things a client may try.
  */
@@ -143,7 +144,7 @@ export function resolveInstancePath(
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${instance}`);
+		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
 	const dir = resolve(instanceDir(inst));
@@ -151,7 +152,7 @@ export function resolveInstancePath(
 	const path = resolve(dir, normalized);
 
 	if (path !== dir && !path.startsWith(dir + sep)) {
-		throw new Error(`path escapes the instance directory: ${relPath}`);
+		throw new Error(t("core.configfiles.pathEscapes", { path: relPath }));
 	}
 
 	return { dir, path, rel: relative(dir, path).split(sep).join("/") };
@@ -220,7 +221,7 @@ export async function browseInstance(
 	const { path, rel } = resolveInstancePath(cfg, instance, relPath);
 
 	if (!existsSync(path)) {
-		throw new Error(`no such directory: ${rel || "."}`);
+		throw new Error(t("core.configfiles.noSuchDir", { path: rel || "." }));
 	}
 
 	const store = await loadConfigFiles();
@@ -240,7 +241,7 @@ export async function browseInstance(
 			size = info.size;
 			modified = info.mtimeMs;
 		} catch {
-			// vanished between readdir and stat (a log rotating, a temp file) — list
+			// vanished between readdir and stat (a log rotating, a temp file); list
 			// it with what we know rather than failing the whole listing
 		}
 
@@ -293,13 +294,13 @@ export interface FileContent {
 	modified: number;
 	/** Rendered from a template on every start */
 	managed: boolean;
-	/** The template, when managed — this is what an editor should edit */
+	/** The template, when managed; this is what an editor should edit */
 	template?: string;
 	/** Disk content diverged from what luna last wrote */
 	drifted: boolean;
 	/** `${VAR}` names the template references */
 	placeholders: string[];
-	/** Referenced names the instance cannot resolve — rendering would leave them literal */
+	/** Referenced names the instance cannot resolve; rendering would leave them literal */
 	missing: string[];
 	description?: string;
 }
@@ -322,7 +323,7 @@ export async function readInstanceFile(
 		// a managed file that has not been rendered yet is a real state: the
 		// template exists, the instance has never started with it
 		if (!entry) {
-			throw new Error(`no such file: ${rel}`);
+			throw new Error(t("core.configfiles.noSuchFile", { path: rel }));
 		}
 
 		return {
@@ -341,18 +342,21 @@ export async function readInstanceFile(
 	const info = await stat(path);
 
 	if (info.isDirectory()) {
-		throw new Error(`${rel} is a directory`);
+		throw new Error(t("core.configfiles.isDirectory", { path: rel }));
 	}
 
 	if (info.size > MAX_EDIT_BYTES) {
 		throw new Error(
-			`${rel} is ${Math.round(info.size / 1024)} KB — too large to edit ` +
-				`(the cap is ${MAX_EDIT_BYTES / 1024} KB)`,
+			t("core.configfiles.tooLargeEdit", {
+				path: rel,
+				size: Math.round(info.size / 1024),
+				cap: MAX_EDIT_BYTES / 1024,
+			}),
 		);
 	}
 
 	if (await looksBinary(path)) {
-		throw new Error(`${rel} is not a text file`);
+		throw new Error(t("core.configfiles.notText", { path: rel }));
 	}
 
 	const text = await Bun.file(path).text();
@@ -402,7 +406,7 @@ export interface WriteResult {
 
 /**
  * Write a file. For a plain file the text goes to disk verbatim; for a managed
- * one the text *is* the new template, and what lands on disk is its render — so
+ * one the text *is* the new template, and what lands on disk is its render, so
  * the editor never has to know which of the two it is holding.
  *
  * Refuses a managed write whose template references undefined variables: writing
@@ -431,8 +435,7 @@ export async function writeInstanceFile(
 
 	if (result.missing.length) {
 		throw new Error(
-			`${rel} references undefined variable(s): ${result.missing.join(", ")} — ` +
-				"define them first, or remove the placeholder",
+			t("core.configfiles.undefinedVars", { path: rel, names: result.missing.join(", ") }),
 		);
 	}
 
@@ -452,7 +455,7 @@ export async function writeInstanceFile(
 
 /**
  * Take a file under management, adopting its current text as the template. The
- * file must exist — a template is a description of a real config, and adopting a
+ * file must exist: a template is a description of a real config, and adopting a
  * blank one would write an empty file over the server's own on the next start.
  */
 export async function manageFile(
@@ -464,11 +467,11 @@ export async function manageFile(
 	const { path, rel } = resolveInstancePath(cfg, instance, relPath);
 
 	if (!existsSync(path)) {
-		throw new Error(`no such file: ${rel}`);
+		throw new Error(t("core.configfiles.noSuchFile", { path: rel }));
 	}
 
 	if ((await stat(path)).size > MAX_EDIT_BYTES) {
-		throw new Error(`${rel} is too large to manage as a template`);
+		throw new Error(t("core.configfiles.tooLargeTemplate", { path: rel }));
 	}
 
 	const store = await loadConfigFiles();
@@ -529,11 +532,11 @@ export async function readoptFile(
 	const entry = store.instances[instance]?.[rel];
 
 	if (!entry) {
-		throw new Error(`${rel} is not managed`);
+		throw new Error(t("core.configfiles.notManaged", { path: rel }));
 	}
 
 	if (!existsSync(path)) {
-		throw new Error(`no such file: ${rel}`);
+		throw new Error(t("core.configfiles.noSuchFile", { path: rel }));
 	}
 
 	const vars = await resolveVars(cfg, await loadEnv(), instance);
@@ -594,7 +597,7 @@ export interface PlaceholderResult {
 	/** What the file looks like once rendered */
 	rendered: string;
 	/**
-	 * True when rendering changed the file's bytes — only possible with `force`,
+	 * True when rendering changed the file's bytes; only possible with `force`,
 	 * because a placeholder that silently rewrites a config is refused otherwise.
 	 */
 	changedFile: boolean;
@@ -623,7 +626,7 @@ function valueAtScope(
  * become `${NAME}` in the template, the name is set in the environment store at
  * the requested scope, and the render is written back.
  *
- * The point is that the file on disk stays byte-identical — the value simply
+ * The point is that the file on disk stays byte-identical; the value simply
  * moves into the environment. Two things can break that promise, and both are
  * refused rather than done quietly (`force` overrides either):
  *
@@ -646,7 +649,7 @@ export async function createPlaceholder(
 		/** Replace every occurrence rather than only the first */
 		all?: boolean;
 		/** Character offset of the exact occurrence to replace, when the caller has
-		 *  one — an editor selection does. Without it, `all` decides between every
+		 *  one; an editor selection does. Without it, `all` decides between every
 		 *  occurrence and the first, which is ambiguous for a value as common as a
 		 *  username that also appears inside unrelated strings. */
 		at?: number;
@@ -660,21 +663,21 @@ export async function createPlaceholder(
 	const name = opts.name.trim();
 
 	if (!ENV_NAME_PATTERN.test(name)) {
-		throw new Error("variable names are ALL_UPPERCASE_WITH_UNDERSCORES");
+		throw new Error(t("core.configfiles.badVarName"));
 	}
 
 	if (name.startsWith("LUNA_")) {
-		throw new Error("LUNA_* names are builtin — pick another name");
+		throw new Error(t("core.configfiles.lunaReserved"));
 	}
 
 	const value = opts.value ?? "";
 
 	if (!value) {
-		throw new Error("a placeholder needs the literal value it replaces");
+		throw new Error(t("core.configfiles.needsValue"));
 	}
 
 	if (opts.instance !== undefined && opts.machine !== undefined) {
-		throw new Error("a variable is scoped to an instance or a machine, not both");
+		throw new Error(t("core.configfiles.scopeConflict"));
 	}
 
 	const env = await loadEnv();
@@ -682,7 +685,7 @@ export async function createPlaceholder(
 	const existingEntry = store.instances[instance]?.[rel];
 
 	if (!existingEntry && !existsSync(path)) {
-		throw new Error(`no such file: ${rel}`);
+		throw new Error(t("core.configfiles.noSuchFile", { path: rel }));
 	}
 
 	// the template to edit: the managed one, or the file as it stands today
@@ -700,10 +703,7 @@ export async function createPlaceholder(
 	const already = valueAtScope(env, name, scopeTarget);
 
 	if (already !== undefined && already !== value && !opts.force) {
-		throw new Error(
-			`${name} is already defined at ${scope} scope as "${already}" — reusing it here would ` +
-				`change that value everywhere it is referenced. Pick another name, or force the change.`,
-		);
+		throw new Error(t("core.configfiles.nameTaken", { name, scope, value: already }));
 	}
 
 	const token = `\${${name}}`;
@@ -717,8 +717,8 @@ export async function createPlaceholder(
 	if (swapped.count === 0) {
 		throw new Error(
 			opts.at !== undefined
-				? `${rel} does not hold "${value}" at offset ${opts.at} — reload the file and try again`
-				: `${rel} does not contain "${value}", so there is nothing to replace`,
+				? t("core.configfiles.valueNotAtOffset", { path: rel, value, offset: opts.at })
+				: t("core.configfiles.valueNotFound", { path: rel, value }),
 		);
 	}
 
@@ -731,7 +731,7 @@ export async function createPlaceholder(
 	const result = substitute(swapped.text, await resolveVars(cfg, env, instance));
 
 	if (result.missing.length) {
-		throw new Error(`unresolved after substitution: ${result.missing.join(", ")}`);
+		throw new Error(t("core.configfiles.unresolved", { names: result.missing.join(", ") }));
 	}
 
 	const changedFile = result.text !== before;
@@ -740,13 +740,17 @@ export async function createPlaceholder(
 		const resolvedNow = (await resolveVars(cfg, env, instance))[name];
 
 		throw new Error(
-			`${name} resolves to "${resolvedNow}" for ${instance}, not "${value}" — a narrower scope ` +
-				`overrides it, so rendering would rewrite ${rel}. Remove that override, scope this ` +
-				`placeholder to where it applies, or force the rewrite.`,
+			t("core.configfiles.narrowerScope", {
+				name,
+				resolved: resolvedNow ?? "",
+				instance,
+				value,
+				path: rel,
+			}),
 		);
 	}
 
-	// every check passed — from here on the writes go through
+	// every check passed; from here on the writes go through
 	if (!existingEntry) {
 		await manageFile(cfg, instance, rel);
 	}
@@ -822,7 +826,7 @@ export interface RenderResult {
 /**
  * Render every managed file of one instance from its template. Called by
  * `startInstance`, so the values an operator changed in the console are on disk
- * before the JVM reads them, and safe to call at any other time — a file whose
+ * before the JVM reads them, and safe to call at any other time: a file whose
  * render already matches is left alone, mtime included.
  *
  * A file the server rewrote since luna last rendered it is copied aside as
@@ -839,7 +843,7 @@ export async function renderManagedFiles(
 	const paths = Object.keys(files).sort();
 
 	if (!paths.length) {
-		reporter?.complete("no managed config files");
+		reporter?.complete(t("core.configfiles.noneManaged"));
 
 		return [];
 	}
@@ -858,9 +862,9 @@ export async function renderManagedFiles(
 		const result = substitute(entry.template, vars);
 
 		if (result.missing.length) {
-			const detail = `undefined: ${result.missing.join(", ")}`;
+			const detail = t("core.configfiles.undefinedDetail", { names: result.missing.join(", ") });
 
-			// a half-substituted config is worse than an untouched one — leave the
+			// a half-substituted config is worse than an untouched one; leave the
 			// file alone and let the failing node say why
 			node?.warn(1, detail);
 			results.push({ instance, path: rel, outcome: "missing-var", detail });
@@ -871,7 +875,7 @@ export async function renderManagedFiles(
 		const current = existsSync(path) ? await Bun.file(path).text() : undefined;
 
 		if (current === result.text) {
-			node?.complete("up to date");
+			node?.complete(t("core.configfiles.upToDate"));
 			results.push({ instance, path: rel, outcome: "unchanged" });
 
 			continue;
@@ -891,18 +895,18 @@ export async function renderManagedFiles(
 		touched = true;
 
 		if (drifted) {
-			node?.warn(1, `changed outside luna — previous text kept as ${rel}${DRIFT_SUFFIX}`);
+			node?.warn(1, t("core.configfiles.driftKept", { path: `${rel}${DRIFT_SUFFIX}` }));
 			results.push({
 				instance,
 				path: rel,
 				outcome: "drift-preserved",
-				detail: `overwritten from the template; previous text saved as ${rel}${DRIFT_SUFFIX}`,
+				detail: t("core.configfiles.overwrittenDetail", { path: `${rel}${DRIFT_SUFFIX}` }),
 			});
 
 			continue;
 		}
 
-		node?.complete("rendered");
+		node?.complete(t("core.configfiles.rendered"));
 		results.push({ instance, path: rel, outcome: "written" });
 	}
 
@@ -910,7 +914,7 @@ export async function renderManagedFiles(
 		await saveConfigFiles(store);
 	}
 
-	reporter?.complete(`${paths.length} managed file(s)`);
+	reporter?.complete(t("core.configfiles.managedCount", { count: paths.length }));
 
 	return results;
 }
@@ -1002,7 +1006,7 @@ export interface VariableConsumer {
 
 export interface VariableUsage {
 	name: string;
-	/** True when no scope defines it — every reference below would fail to render */
+	/** True when no scope defines it; every reference below would fail to render */
 	undefinedEverywhere: boolean;
 	references: VariableReference[];
 	consumers: VariableConsumer[];
@@ -1013,7 +1017,7 @@ export interface VariableUsage {
  * reference it, the plugin-owned config templates that do, and what each
  * instance actually resolves it to.
  *
- * This is what makes an environment value safe to change — the console can say
+ * This is what makes an environment value safe to change: the console can say
  * "12 files across 8 instances read this" before an operator edits a database
  * password, rather than after.
  */

@@ -49,7 +49,7 @@
 	const SUBMENU_CLOSE_DELAY_MS = 260;
 	const CLOSE_ANIM_MS = 150;
 
-	/** px — how far a submenu overlaps its parent row, vertically and horizontally */
+	/** px; how far a submenu overlaps its parent row, vertically and horizontally */
 	const SUB_OFFSET_Y = 8;
 	const SUB_OFFSET_X = 4;
 
@@ -115,7 +115,7 @@
 	}
 
 	async function show(): Promise<void> {
-		// only one menu is open at a time — this closes whatever held the slot,
+		// only one menu is open at a time; this closes whatever held the slot,
 		// and its onclose resets that trigger, so no button is left looking open
 		claimMenu(handle);
 

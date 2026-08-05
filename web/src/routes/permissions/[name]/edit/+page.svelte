@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -16,8 +17,8 @@
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
-	 * Edit one LuckPerms group as a wizard: everything is edited locally —
-	 * meta, parents, permission nodes — and nothing reaches LuckPerms until the
+	 * Edit one LuckPerms group as a wizard: everything is edited locally -
+	 * meta, parents, permission nodes; and nothing reaches LuckPerms until the
 	 * single save, which diffs the form against what was loaded and applies
 	 * only the changes. Parents and meta are edited through their own fields,
 	 * so the node table shows plain permission nodes only; inheritance and
@@ -140,7 +141,7 @@
 			contexts: nodeServer ? [{ key: 'server', value: nodeServer }] : []
 		};
 
-		// same key + contexts replaces the row — LuckPerms would reject the duplicate
+		// same key + contexts replaces the row; LuckPerms would reject the duplicate
 		nodes = [...nodes.filter((node) => nodeIdentity(node) !== nodeIdentity(draft)), draft];
 		nodeKey = '';
 	}
@@ -294,12 +295,12 @@
 		saving = false;
 	}
 
-	const nodeCols: Column[] = [
-		{ id: 'key', label: 'Node', minWidth: 240 },
-		{ id: 'value', label: 'Value', width: 110 },
-		{ id: 'contexts', label: 'Contexts' },
-		{ id: 'expiry', label: 'Expires' }
-	];
+	const nodeCols: Column[] = $derived([
+		{ id: 'key', label: t('web.permEdit.node'), minWidth: 240 },
+		{ id: 'value', label: t('web.permEdit.value'), width: 110 },
+		{ id: 'contexts', label: t('web.permEdit.contexts') },
+		{ id: 'expiry', label: t('web.permEdit.expires') }
+	]);
 
 	function nodeRowActions(node: PermNode): ContextMenuItem[] {
 		return [
@@ -311,7 +312,7 @@
 				}
 			},
 			{
-				label: 'Remove node',
+				label: t('web.permEdit.removeNode'),
 				icon: 'trash',
 				color: 'danger',
 				action: () => removeNode(node)
@@ -320,7 +321,7 @@
 	}
 
 	const parentOptions = $derived([
-		{ value: '', label: 'Pick a group' },
+		{ value: '', label: t('web.permEdit.pickAGroup') },
 		...otherGroups
 			.filter((groupName) => !parents.includes(groupName))
 			.map((groupName) => ({ value: groupName, label: groupName }))
@@ -330,18 +331,18 @@
 {#if missing}
 	<Wizard
 		title="Edit group {name}"
-		submitLabel="Save changes"
+		submitLabel={t('web.permEdit.saveChanges')}
 		disabled
 		onsubmit={() => {}}
 	>
 		{#snippet summary()}
-			group not found
+			{t('web.permEdit.groupNotFound')}
 		{/snippet}
 
-		<Panel title="Unknown group">
+		<Panel title={t('web.permEdit.unknownGroup')}>
 			<p class="dim">
-				{missing} — it may have been deleted, or LuckPerms is not answering.
-				<a href="/permissions">Back to permission groups.</a>
+				{missing}; it may have been deleted, or LuckPerms is not answering.
+				<a href="/permissions">{t('web.permEdit.backToPermissionGroups')}</a>
 			</p>
 		</Panel>
 	</Wizard>
@@ -349,8 +350,8 @@
 	<Wizard
 		title="Edit group {name}"
 		windowTitle="Edit {name}"
-		description="Changes are held in the form and applied to LuckPerms in one save, then pushed to every server"
-		submitLabel="Save changes"
+		description={t('web.permEdit.changesAreHeldInThe')}
+		submitLabel={t('web.permEdit.saveChanges')}
 		disabled={loading || changes.length === 0}
 		loading={saving}
 		onsubmit={save}
@@ -359,40 +360,40 @@
 			{#if loading}
 				loading…
 			{:else if changes.length === 0}
-				no changes yet
+				{t('web.permEdit.noChangesYet')}
 			{:else}
 				{changes.join(' · ')}
 			{/if}
 		{/snippet}
 
 		<Panel
-			title="Meta"
-			description="Weight decides which group wins when a player has several; prefix and suffix show in chat and the tab list"
+			title={t('web.permEdit.meta')}
+			description={t('web.permEdit.weightDecidesWhichGroupWins')}
 		>
 			<div class="meta">
 				<label class="field">
-					<span class="lbl">Weight</span>
+					<span class="lbl">{t('web.permEdit.weight')}</span>
 					<input class="input num" type="number" bind:value={weight} disabled={loading} />
 				</label>
 				<label class="field">
-					<span class="lbl">Display name</span>
+					<span class="lbl">{t('web.permEdit.displayName')}</span>
 					<input class="input" bind:value={displayName} placeholder={name} disabled={loading} />
 				</label>
 				<label class="field">
-					<span class="lbl">Prefix</span>
-					<input class="input mono" bind:value={prefix} placeholder="e.g. &6[Admin] " disabled={loading} />
+					<span class="lbl">{t('web.permEdit.prefix')}</span>
+					<input class="input mono" bind:value={prefix} placeholder={t('web.permEdit.eG6Admin')} disabled={loading} />
 				</label>
 				<label class="field">
-					<span class="lbl">Suffix</span>
+					<span class="lbl">{t('web.permEdit.suffix')}</span>
 					<input class="input mono" bind:value={suffix} disabled={loading} />
 				</label>
 			</div>
 		</Panel>
 
 		<Panel
-			title="Inherits from"
+			title={t('web.permEdit.inheritsFrom')}
 			count={parents.length}
-			description="Parents contribute every node they carry; weight still decides conflicts"
+			description={t('web.permEdit.parentsContributeEveryNodeThey')}
 		>
 			<div class="chips">
 				{#each parents as parent}
@@ -405,23 +406,23 @@
 						>×</button>
 					</span>
 				{:else}
-					<span class="dim">No parents — this group stands on its own.</span>
+					<span class="dim">{t('web.permEdit.noParentsThisGroup')}</span>
 				{/each}
 			</div>
 			<div class="chipadd">
 				<Select bind:value={parentPick} options={parentOptions} width="14rem" />
-				<Btn icon="plus" disabled={!parentPick} onclick={addParent}>Add parent</Btn>
+				<Btn icon="plus" disabled={!parentPick} onclick={addParent}>{t('web.permEdit.addParent')}</Btn>
 			</div>
 		</Panel>
 
 		<Panel
 			flush
-			title="Permission nodes"
+			title={t('web.permEdit.permissionNodes')}
 			count={nodes.length}
-			description="Plain permission nodes — parents and the meta fields cover the rest"
+			description={t('web.permEdit.plainPermissionNodesParentsAnd')}
 		>
 			<div class="nodeadd">
-				<input class="input key" bind:value={nodeKey} placeholder="permission.node.key" disabled={loading} />
+				<input class="input key" bind:value={nodeKey} placeholder={t('web.permEdit.permissionNodeKey')} disabled={loading} />
 				<label class="grant">
 					<Toggle checked={nodeGrant} onchange={(checked) => (nodeGrant = checked)} />
 					<span>{nodeGrant ? 'granted' : 'negated'}</span>
@@ -429,12 +430,12 @@
 				<Select
 					bind:value={nodeServer}
 					options={[
-						{ value: '', label: 'Every server' },
+						{ value: '', label: t('web.permEdit.everyServer') },
 						...servers.map((server) => ({ value: server, label: `server=${server}` }))
 					]}
 					width="13rem"
 				/>
-				<Btn icon="plus" disabled={!nodeKey.trim()} onclick={addNode}>Add node</Btn>
+				<Btn icon="plus" disabled={!nodeKey.trim()} onclick={addNode}>{t('web.permEdit.addNode')}</Btn>
 			</div>
 
 			<DataTable
@@ -446,8 +447,8 @@
 				rowLabel={(node) => node.key}
 				paging
 				pageSize={25}
-				emptyTitle="No nodes"
-				emptyText="Add permission nodes above; they are applied when the form is saved."
+				emptyTitle={t('web.permEdit.noNodes')}
+				emptyText={t('web.permEdit.addPermissionNodesAboveThey')}
 			>
 				{#snippet cell(node, col)}
 					{#if col === 'key'}
@@ -460,7 +461,7 @@
 								{node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(', ')}
 							</span>
 						{:else}
-							<span class="dim">global</span>
+							<span class="dim">{t('web.permEdit.global')}</span>
 						{/if}
 					{:else if col === 'expiry'}
 						{node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : 'never'}
@@ -470,9 +471,9 @@
 		</Panel>
 
 		<Panel
-			title="Members"
+			title={t('web.permEdit.members')}
 			count={members.length}
-			description="Players holding this group directly — manage memberships from a player's profile"
+			description={t('web.permEdit.playersHoldingThisGroupDirectly')}
 		>
 			<div class="chips">
 				{#each members as member}
@@ -480,7 +481,7 @@
 						{member.username || member.uuid}
 					</a>
 				{:else}
-					<span class="dim">Nobody holds this group directly.</span>
+					<span class="dim">{t('web.permEdit.nobodyHoldsThisGroup')}</span>
 				{/each}
 			</div>
 		</Panel>

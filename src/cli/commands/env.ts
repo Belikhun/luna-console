@@ -16,12 +16,13 @@ import {
 } from "../../client/core/environment";
 import { listDaemons } from "../../client/daemon";
 import { machineKeyFor, machineNameFor } from "../../shared/machines";
+import { t } from "../../shared/i18n";
 
 const MASK = "••••••••";
 
 /**
  * Turn `--machine <name>` / `--instance <name>` into the store's scope target.
- * A machine is named, never keyed, at the CLI — the primary's key is `""`, and
+ * A machine is named, never keyed, at the CLI. The primary's key is `""`, and
  * asking an operator to type that would be absurd.
  */
 async function scopeFrom(opts: Record<string, unknown>): Promise<ScopeTarget> {
@@ -29,14 +30,14 @@ async function scopeFrom(opts: Record<string, unknown>): Promise<ScopeTarget> {
 	const machine = opts.machine as string | undefined;
 
 	if (instance && machine) {
-		throw new UsageError("--instance and --machine are different scopes; pass one");
+		throw new UsageError(t("cli.env.scopeConflict"));
 	}
 
 	if (instance) {
 		const cfg = await loadCluster();
 
 		if (!managedInstances(cfg)[instance]) {
-			throw new UsageError(`unknown instance: ${instance}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name: instance }));
 		}
 
 		return { instance };
@@ -46,7 +47,7 @@ async function scopeFrom(opts: Record<string, unknown>): Promise<ScopeTarget> {
 		const key = machineKeyFor(await listDaemons(), machine);
 
 		if (key === undefined) {
-			throw new UsageError(`unknown machine: ${machine}`);
+			throw new UsageError(t("cli.env.unknownMachine", { name: machine }));
 		}
 
 		return { machine: key };
@@ -58,11 +59,11 @@ async function scopeFrom(opts: Record<string, unknown>): Promise<ScopeTarget> {
 /** How a scope reads in a sentence, e.g. " on lobby". */
 function scopeLabel(scope: ScopeTarget, machineName?: string): string {
 	if (scope.instance !== undefined) {
-		return ` on ${pc.bold(scope.instance)}`;
+		return ` ${t("cli.env.onInstance", { name: pc.bold(scope.instance) })}`;
 	}
 
 	if (scope.machine !== undefined) {
-		return ` on machine ${pc.bold(machineName ?? scope.machine ?? "primary")}`;
+		return ` ${t("cli.env.onMachine", { name: pc.bold(machineName ?? scope.machine ?? "primary") })}`;
 	}
 
 	return "";
@@ -72,26 +73,26 @@ function scopeLabel(scope: ScopeTarget, machineName?: string): string {
 function paintScope(scope: EnvScope): string {
 	switch (scope) {
 		case "builtin":
-			return pc.dim("builtin");
+			return pc.dim(t("cli.env.scopeBuiltin"));
 
 		case "global":
-			return pc.blue("global");
+			return pc.blue(t("cli.env.scopeGlobal"));
 
 		case "machine":
-			return pc.yellow("machine");
+			return pc.yellow(t("cli.env.scopeMachine"));
 
 		case "instance":
-			return pc.cyan("instance");
+			return pc.cyan(t("cli.env.scopeInstance"));
 	}
 }
 
 command({
 	path: ["env"],
-	desc: "List environment variables (injected at startup, and read by templates as ${NAME})",
+	desc: t("cli.env.list.desc"),
 	opts: [
-		{ flag: "--instance", desc: "resolve for this instance, showing what wins", value: true, complete: instanceNames },
-		{ flag: "--machine", desc: "show this machine's overrides", value: true, complete: machineNames },
-		{ flag: "--reveal", desc: "show secret values instead of masking them" },
+		{ flag: "--instance", desc: t("cli.env.list.optInstance"), value: true, complete: instanceNames },
+		{ flag: "--machine", desc: t("cli.env.list.optMachine"), value: true, complete: machineNames },
+		{ flag: "--reveal", desc: t("cli.env.list.optReveal") },
 	],
 
 	handler: async (_args, opts) => {
@@ -101,26 +102,32 @@ command({
 		const rows: string[][] = [];
 
 		// with an instance, the interesting thing is not the store but what that
-		// instance actually resolves — and which scope won
+		// instance actually resolves, and which scope won
 		if (instance) {
 			const cfg = await loadCluster();
 
 			if (!managedInstances(cfg)[instance]) {
-				throw new UsageError(`unknown instance: ${instance}`);
+				throw new UsageError(t("cli.env.unknownInstance", { name: instance }));
 			}
 
 			for (const entry of await resolveDetailed(cfg, env, instance)) {
 				const value = entry.secret && !reveal ? pc.dim(MASK) : entry.value;
 				const shadowed = entry.shadowed.length
-					? pc.dim(`overrides ${entry.shadowed.map((prev) => prev.scope).join(", ")}`)
+					? pc.dim(
+							t("cli.env.list.overrides", {
+								scopes: entry.shadowed.map((prev) => prev.scope).join(", "),
+							}),
+						)
 					: pc.dim(entry.description ?? "");
 
 				rows.push([entry.name, value, paintScope(entry.scope), shadowed]);
 			}
 
 			console.log();
-			info(`resolved for ${pc.bold(instance)} — builtin < global < machine < instance`);
-			printTable(rows, { head: ["name", "value", "scope", ""] });
+			info(t("cli.env.list.resolvedFor", { name: pc.bold(instance) }));
+			printTable(rows, {
+				head: [t("cli.head.name"), t("cli.head.value"), t("cli.head.scope"), ""],
+			});
 			console.log();
 
 			return;
@@ -133,7 +140,7 @@ command({
 			const key = machineKeyFor(fleet, machine);
 
 			if (key === undefined) {
-				throw new UsageError(`unknown machine: ${machine}`);
+				throw new UsageError(t("cli.env.unknownMachine", { name: machine }));
 			}
 
 			// a daemon older than the machine scope answers without the key at all
@@ -144,13 +151,15 @@ command({
 			}
 
 			if (!rows.length) {
-				info(`${machine} has no machine-scoped overrides`);
+				info(t("cli.env.list.noMachineOverrides", { name: machine }));
 
 				return;
 			}
 
 			console.log();
-			printTable(rows, { head: ["name", "value", "scope"] });
+			printTable(rows, {
+				head: [t("cli.head.name"), t("cli.head.value"), t("cli.head.scope")],
+			});
 			console.log();
 
 			return;
@@ -191,30 +200,32 @@ command({
 		}
 
 		if (!rows.length) {
-			info("no variables defined — set one with: luna env set NAME value");
+			info(t("cli.env.list.empty"));
 
 			return;
 		}
 
 		console.log();
-		printTable(rows, { head: ["name", "value", "scope", ""] });
+		printTable(rows, {
+			head: [t("cli.head.name"), t("cli.head.value"), t("cli.head.scope"), ""],
+		});
 		console.log();
-		info(`builtins are per-instance — see them with ${pc.bold("luna env --instance <name>")}`);
+		info(t("cli.env.list.builtinsHint", { command: pc.bold("luna env --instance <name>") }));
 	},
 });
 
 command({
 	path: ["env", "set"],
-	desc: "Set a variable, globally or as a machine/instance override",
+	desc: t("cli.env.set.desc"),
 	args: [
 		{ name: "name", required: true },
 		{ name: "value", required: true, variadic: true },
 	],
 	opts: [
-		{ flag: "--instance", desc: "override for this instance only", value: true, complete: instanceNames },
-		{ flag: "--machine", desc: "override for every instance on this machine", value: true, complete: machineNames },
-		{ flag: "--secret", desc: "mask the value in every UI" },
-		{ flag: "--description", desc: "what the variable is for", value: true },
+		{ flag: "--instance", desc: t("cli.env.set.optInstance"), value: true, complete: instanceNames },
+		{ flag: "--machine", desc: t("cli.env.set.optMachine"), value: true, complete: machineNames },
+		{ flag: "--secret", desc: t("cli.env.set.optSecret") },
+		{ flag: "--description", desc: t("cli.env.set.optDescription"), value: true },
 	],
 
 	handler: async (args, opts) => {
@@ -231,19 +242,19 @@ command({
 		await saveEnv(env);
 
 		ok(
-			`${pc.bold(name)} set${scopeLabel(scope, opts.machine as string | undefined)} ` +
-				pc.dim("(instances pick it up on their next start)"),
+			`${t("cli.env.set.done", { name: pc.bold(name) })}${scopeLabel(scope, opts.machine as string | undefined)} ` +
+				pc.dim(t("cli.env.set.pickupNote")),
 		);
 	},
 });
 
 command({
 	path: ["env", "unset"],
-	desc: "Remove a variable, or one machine's/instance's override",
+	desc: t("cli.env.unset.desc"),
 	args: [{ name: "name", required: true }],
 	opts: [
-		{ flag: "--instance", desc: "remove this instance's override only", value: true, complete: instanceNames },
-		{ flag: "--machine", desc: "remove this machine's override only", value: true, complete: machineNames },
+		{ flag: "--instance", desc: t("cli.env.unset.optInstance"), value: true, complete: instanceNames },
+		{ flag: "--machine", desc: t("cli.env.unset.optMachine"), value: true, complete: machineNames },
 	],
 
 	handler: async (args, opts) => {
@@ -252,18 +263,22 @@ command({
 		const name = args[0]!;
 
 		if (!unsetVariable(env, name, scope)) {
-			throw new Bail(`${name} is not set${scopeLabel(scope, opts.machine as string | undefined)}`);
+			throw new Bail(
+				`${t("cli.env.unset.notSet", { name })}${scopeLabel(scope, opts.machine as string | undefined)}`,
+			);
 		}
 
 		await saveEnv(env);
-		ok(`${pc.bold(name)} removed${scopeLabel(scope, opts.machine as string | undefined)}`);
-		warn("instances keep the old value until they restart");
+		ok(
+			`${t("cli.env.unset.done", { name: pc.bold(name) })}${scopeLabel(scope, opts.machine as string | undefined)}`,
+		);
+		warn(t("cli.env.unset.restartNote"));
 	},
 });
 
 command({
 	path: ["env", "inject"],
-	desc: "Rewrite an instance's .luna-env from the store (takes effect on its next start)",
+	desc: t("cli.env.inject.desc"),
 	args: [{ name: "instance", required: true, complete: instanceNames }],
 
 	handler: async (args) => {
@@ -271,19 +286,19 @@ command({
 		const instance = args[0]!;
 
 		if (!managedInstances(cfg)[instance]) {
-			throw new UsageError(`unknown instance: ${instance}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name: instance }));
 		}
 
 		const path = await writeEnvFile(cfg, instance);
 
-		ok(`wrote ${pc.dim(path)}`);
-		info("the JVM reads it at startup — restart the instance to apply");
+		ok(t("cli.env.inject.wrote", { path: pc.dim(path) }));
+		info(t("cli.env.inject.applyNote"));
 	},
 });
 
 command({
 	path: ["env", "apply"],
-	desc: "Re-apply every config template and managed config file to an instance",
+	desc: t("cli.env.apply.desc"),
 	args: [{ name: "instance", required: true, complete: instanceNames }],
 
 	handler: async (args) => {
@@ -291,7 +306,7 @@ command({
 		const instance = args[0]!;
 
 		if (!managedInstances(cfg)[instance]) {
-			throw new UsageError(`unknown instance: ${instance}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name: instance }));
 		}
 
 		const { loadLock } = await import("../../client/core/config");
@@ -303,7 +318,7 @@ command({
 		const notable = notableTemplateResults(results);
 
 		if (!notable.length) {
-			ok(`${instance}: every templated value already in place (${results.length} checked)`);
+			ok(t("cli.env.apply.templatesInPlace", { name: instance, count: results.length }));
 		}
 
 		for (const result of notable) {
@@ -330,7 +345,7 @@ command({
 		}
 
 		for (const result of rendered) {
-			const line = `${pc.dim(result.path)} ${result.outcome}${result.detail ? pc.dim(` — ${result.detail}`) : ""}`;
+			const line = `${pc.dim(result.path)} ${result.outcome}${result.detail ? pc.dim(` · ${result.detail}`) : ""}`;
 
 			if (result.outcome === "written") {
 				ok(line);
@@ -342,7 +357,7 @@ command({
 		const changed = rendered.filter((result) => result.outcome !== "unchanged").length;
 
 		if (rendered.length && !changed) {
-			ok(`${instance}: ${rendered.length} managed config file(s) already up to date`);
+			ok(t("cli.env.apply.filesUpToDate", { name: instance, count: rendered.length }));
 		}
 	},
 });

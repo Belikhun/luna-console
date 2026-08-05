@@ -2,7 +2,7 @@
  * Plugin runtime state and log attribution.
  *
  * The only truth about whether a plugin actually *loaded* is the server log,
- * and Paper's log4j rolls latest.log at midnight as well as on restart — so
+ * and Paper's log4j rolls latest.log at midnight as well as on restart; so
  * the current boot session is reconstructed by walking the rotated .gz files
  * backwards until the boot marker is found. Attribution matches a plugin's
  * *aliases* (plugin.yml `name`, velocity-plugin.json `name`/`id`), which are
@@ -22,6 +22,7 @@ import type {
 	PluginsLock,
 	Software,
 } from "./types";
+import { t } from "../shared/i18n";
 import { instanceDir, managedInstances, poolDir } from "./config";
 import {
 	effectiveTargets,
@@ -42,12 +43,12 @@ const MAX_SESSION_BYTES = 8 * 1024 * 1024;
 /**
  * The four phases an addon passes through, read from the server's own log.
  *
- * unknown — nothing in the session speaks about it: the instance is down, the
+ * unknown; nothing in the session speaks about it: the instance is down, the
  *           boot lines rotated out of reach, or the addon is not there at all
- * loading — the server announced it was loading the addon, and has not finished
+ * loading; the server announced it was loading the addon, and has not finished
  *           starting up yet
- * errored — the log says loading or enabling it failed
- * running — the addon reported itself up, or the server finished starting with
+ * errored; the log says loading or enabling it failed
+ * running; the addon reported itself up, or the server finished starting with
  *           the addon loaded
  *
  * `running` has two routes on purpose. An addon that logs "started" (or
@@ -65,7 +66,7 @@ export type ReportLifecycle = InstanceStatus["state"] | "stopping" | "restarting
 
 export interface BootSession {
 	lines: string[];
-	/** Whether the boot marker was found — without it absence proves nothing */
+	/** Whether the boot marker was found; without it absence proves nothing */
 	complete: boolean;
 	/** Software that wrote the log, which decides how a line is attributed */
 	software: Software;
@@ -202,7 +203,7 @@ async function readJarInfo(path: string): Promise<JarInfo> {
 				meta.authors = json.authors;
 			}
 		} catch {
-			// not valid JSON — some shaded jars carry junk under that path
+			// not valid JSON; some shaded jars carry junk under that path
 		}
 	}
 
@@ -311,13 +312,13 @@ async function rotatedLogs(logsDir: string): Promise<string[]> {
 }
 
 /**
- * First line of a boot, per software — everything from here down is one
+ * First line of a boot, per software; everything from here down is one
  * session.
  *
  * The marker has to sit *before* the software says anything about its addons.
  * For neoforge that rules out "Starting minecraft server version": the game
  * server only starts once mod construction is finished, so anchoring there
- * would cut the mod roster — the one place a mod's load is recorded — off the
+ * would cut the mod roster; the one place a mod's load is recorded; off the
  * top of the session. ModLauncher's banner is the true first line of the run.
  */
 const BOOT_MARKERS: Record<Software, RegExp> = {
@@ -330,14 +331,14 @@ const BOOT_MARKERS: Record<Software, RegExp> = {
  * Reconstruct the current boot session of an instance: latest.log, extended
  * backwards through rotated files until the boot marker appears (log4j rolls
  * latest.log at midnight, so a long-running server's boot lines usually live
- * in a .gz). Bounded — a marker further back than the caps yields
+ * in a .gz). Bounded; a marker further back than the caps yields
  * `complete: false`.
  */
 export async function readBootSession(cfg: ClusterConfig, instance: string): Promise<BootSession> {
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${instance}`);
+		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
 	const logsDir = join(instanceDir(inst), "logs");
@@ -377,7 +378,7 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 
 	const lines = text.split(/\r?\n/);
 
-	// the LAST marker starts the current session — older sessions may sit above it
+	// the LAST marker starts the current session; older sessions may sit above it
 	let start = -1;
 
 	for (let index = lines.length - 1; index >= 0; index -= 1) {
@@ -437,7 +438,7 @@ const NEOFORGE_LOGGER = /^\[[^\]]*\]\s*\[[^\]]*\]\s*\[([^\]/]*)\//;
  * field (`[LunaCore/]`), and the message body regularly mentions *other* mods
  * ("Registering events for 'lunacore'"), which a substring test would happily
  * credit to the wrong mod. So a mod loader is matched on the logger alone, and
- * matched whole — a prefix test would file every `LunaCoreMessaging` line under
+ * matched whole; a prefix test would file every `LunaCoreMessaging` line under
  * `LunaCore`. A multi-platform mod commonly names its logger after the platform
  * class, so a trailing loader suffix is stripped before comparing.
  */
@@ -494,7 +495,7 @@ export function pluginLogReport(session: BootSession, aliases: string[]): Plugin
 /**
  * Phrases an addon uses to announce that it has finished coming up, in its own
  * log lines. Only a handful of addons say anything at all, which is why this
- * list does not need to be exhaustive — "Done (Xs)!" catches the silent
+ * list does not need to be exhaustive; "Done (Xs)!" catches the silent
  * majority. It is matched against lines already attributed to the addon, so a
  * word as common as "running" cannot be picked up from someone else's line.
  */
@@ -512,11 +513,11 @@ const READY_HINTS = [
  * What a session says about one addon, before the server's own progress is
  * folded in.
  *
- * errored — a load or enable failure names it
- * ready   — it announced itself up
- * loading — the server announced it was loading it, and it has said no more
- * none    — the session never mentions it, though it did describe its peers
- * unknown — the session cannot answer (the part that would have is missing)
+ * errored; a load or enable failure names it
+ * ready  ; it announced itself up
+ * loading; the server announced it was loading it, and it has said no more
+ * none   ; the session never mentions it, though it did describe its peers
+ * unknown; the session cannot answer (the part that would have is missing)
  */
 type AddonEvidence = "errored" | "ready" | "loading" | "none" | "unknown";
 
@@ -535,7 +536,7 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 
 	// A mod loader has no per-mod "enabling" line. What neoforge does print is a
 	// roster of everything it constructed, one line per mod ending in the mod id
-	// — "\t\tLunaCore 0.1.0-SNAPSHOT (lunacore)". Absence only means "not there"
+	//; "\t\tLunaCore 0.1.0-SNAPSHOT (lunacore)". Absence only means "not there"
 	// when the roster was captured at all, so its two guaranteed members double
 	// as the marker that it is in the session.
 	let roster = software !== "neoforge";
@@ -626,13 +627,13 @@ export interface InstancePluginReport {
 }
 
 /**
- * Addon jars sitting in an instance's directory that luna does not manage —
+ * Addon jars sitting in an instance's directory that luna does not manage -
  * the modpack's own mods, or plugins an operator dropped in by hand.
  *
  * Identity is the file name against the lockfile's, which is the same test
  * `deploy` writes by and costs one directory listing. Deliberately *not* a hash
  * comparison: that is `scan`'s job, and it walks the whole cluster hashing every
- * jar — far too much for something a summary redraws every few seconds.
+ * jar; far too much for something a summary redraws every few seconds.
  */
 async function unmanagedAddons(inst: InstanceConfig, lock: PluginsLock): Promise<string[]> {
 	const dir = instanceAddonDir(inst);
@@ -658,7 +659,7 @@ async function unmanagedAddons(inst: InstanceConfig, lock: PluginsLock): Promise
  * counts attributed to it in the current boot session, alongside the jars in its
  * directory that luna does not manage at all.
  *
- * `opts.state` is the instance's lifecycle as the caller knows it — pass the
+ * `opts.state` is the instance's lifecycle as the caller knows it; pass the
  * console's transient state so a restart is reported as a restart. Without it
  * the instance is probed, which cannot see a stop that was only just asked for.
  */
@@ -671,7 +672,7 @@ export async function instancePluginReport(
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${instance}`);
+		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
 	const status = await getStatus(cfg, instance);
@@ -687,7 +688,7 @@ export async function instancePluginReport(
 	// The rest of the question is whether the log belongs to the process that is
 	// up *now*. It does not, for the first stretch of a boot: the JVM starts,
 	// but log4j only rolls latest.log once it initialises, so until then the file
-	// still holds the run that just ended — and reading it would report a server
+	// still holds the run that just ended; and reading it would report a server
 	// that is barely alive as fully up, which is the stale "running" this whole
 	// report exists to avoid.
 	//
@@ -792,7 +793,7 @@ export interface PluginUsageRow {
 
 /**
  * Where a plugin (by name) lands across the cluster: one row per instance that
- * deploys a build of it — or disabled it. The build listed is the one the
+ * deploys a build of it; or disabled it. The build listed is the one the
  * family match picks for that instance's software.
  */
 export function pluginUsageReport(
@@ -864,7 +865,7 @@ export function pluginUsageReport(
 
 /**
  * Remove a plugin's deployed jars from one instance without touching the
- * lockfile — the disable path: the override already keeps deploy from
+ * lockfile; the disable path: the override already keeps deploy from
  * re-copying, this clears what is on disk. Returns the files removed.
  */
 export async function removeInstanceJars(
@@ -876,7 +877,7 @@ export async function removeInstanceJars(
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${instance}`);
+		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
 	const removed: string[] = [];

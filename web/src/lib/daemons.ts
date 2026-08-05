@@ -1,12 +1,12 @@
 /**
  * Derived figures shared by the daemons list and detail views. The shapes
- * themselves come from the daemon (`$client/daemon`) — only the arithmetic the
+ * themselves come from the daemon (`$client/daemon`); only the arithmetic the
  * two pages would otherwise duplicate lives here.
  */
 
 import type { DaemonRow, HealthSample } from '$client/daemon';
 
-/** Memory utilization of a health sample, percent — null when not measured. */
+/** Memory utilization of a health sample, percent; null when not measured. */
 export function memPct(health: HealthSample | null | undefined): number | null {
 	if (!health || health.memTotalMb <= 0) {
 		return null;
@@ -31,7 +31,7 @@ export function fmtGb(bytes: number): string {
 
 /**
  * Tone for a heartbeat round-trip. A LAN hop is a couple of milliseconds, so
- * the thresholds are deliberately tight — 100ms between two machines in the
+ * the thresholds are deliberately tight; 100ms between two machines in the
  * same rack means something is wrong with the link, not with the distance.
  */
 export function latencyTone(ms: number | null): 'accent' | 'warning' | 'danger' {

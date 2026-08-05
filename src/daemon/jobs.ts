@@ -1,8 +1,8 @@
 /**
  * Registry of long-running daemon operations.
  *
- * An RPC that cannot answer inside one request — creating an instance, changing
- * a Minecraft version, a full deploy — runs as a job instead: it gets a
+ * An RPC that cannot answer inside one request; creating an instance, changing
+ * a Minecraft version, a full deploy; runs as a job instead: it gets a
  * ProgressReporter tree, the caller gets the job id straight away and watches
  * the tree move over SSE. Ported from the web console's job registry; the
  * daemon is the long-lived process now, so this is where jobs live.
@@ -38,7 +38,7 @@ interface JobEntry {
 
 /**
  * How often subscribers are told about progress. A jar download reports per
- * chunk — hundreds of times — and none of those frames are worth their own
+ * chunk; hundreds of times; and none of those frames are worth their own
  * SSE message.
  */
 const FLUSH_MS = 120;
@@ -154,7 +154,7 @@ export function startJob(
 }
 
 /** Current state of one job, or undefined once it has been pruned. */
-/** How many jobs are still running — what an upgrade waits for. */
+/** How many jobs are still running; what an upgrade waits for. */
 export function runningJobs(): number {
 	let count = 0;
 

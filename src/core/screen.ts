@@ -78,7 +78,7 @@ export async function javaPidFor(dir: string): Promise<number | undefined> {
 				return pid;
 			}
 		} catch {
-			// the process exited between pgrep and the readlink — skip it
+			// the process exited between pgrep and the readlink; skip it
 		}
 	}
 

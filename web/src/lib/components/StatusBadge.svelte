@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { untrack } from 'svelte';
 
 	import Icon from './Icon.svelte';
 
 	/**
 	 * State indicator: coloured icon + label. When `detail` is given the label
-	 * becomes a popover trigger — dashed underline in body colour, per the
+	 * becomes a popover trigger; dashed underline in body colour, per the
 	 * console convention that a solid underline means "navigates" and a dashed
 	 * one means "reveals more about this value".
 	 */
@@ -28,7 +29,7 @@
 		/**
 		 * Explanation revealed in a popover on click. Strings render as plain
 		 * rows; StatusDetailRow entries get a state-coloured icon, a bold name
-		 * and a secondary detail line — used for per-check breakdowns.
+		 * and a secondary detail line; used for per-check breakdowns.
 		 */
 		detail?: string | Array<string | StatusDetailRow>;
 	} = $props();
@@ -75,7 +76,7 @@
 	/** above this much room overhead, the card opens upwards on the first paint */
 	const FLIP_ABOVE = 160;
 
-	/** px — a card squeezed below this scrolls instead of shrinking further */
+	/** px; a card squeezed below this scrolls instead of shrinking further */
 	const MIN_POP_H = 120;
 
 	let open = $state(false);
@@ -84,7 +85,7 @@
 	let card: HTMLSpanElement | undefined = $state();
 	let pos = $state({ left: 0, top: 0, below: false });
 
-	/** px — measured, so it goes into the style as px (CLAUDE.md's one exception) */
+	/** px; measured, so it goes into the style as px (CLAUDE.md's one exception) */
 	let maxHeight = $state(0);
 
 	/**
@@ -92,8 +93,8 @@
 	 *
 	 * Called twice per opening: once on the click, when the card is not in the
 	 * DOM yet and the side can only be guessed from the trigger's position, and
-	 * once from the effect below with the real height in hand. A tall card — six
-	 * daemon checks, opening upwards from halfway down the screen — would
+	 * once from the effect below with the real height in hand. A tall card; six
+	 * daemon checks, opening upwards from halfway down the screen; would
 	 * otherwise run off the top of the viewport.
 	 *
 	 * Never reads `pos` or `maxHeight`: the effect that calls it would then
@@ -142,7 +143,7 @@
 		}
 	}
 
-	/** The card is rendered inside the badge but positioned fixed — test both. */
+	/** The card is rendered inside the badge but positioned fixed; test both. */
 	function onPointerDown(event: PointerEvent): void {
 		if (!open || !root) {
 			return;
@@ -193,7 +194,7 @@
 				</span>
 				<button
 					class="pclose"
-					title="Close"
+					title={t('web.common.close')}
 					onclick={(event) => {
 						event.stopPropagation();
 						open = false;

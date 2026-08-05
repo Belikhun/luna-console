@@ -120,7 +120,7 @@ function readPool(raw: unknown): PortPool {
 }
 
 /**
- * PUT { pools } — replace the cluster's pool catalog. An entry customizes the
+ * PUT { pools }; replace the cluster's pool catalog. An entry customizes the
  * built-in default of the same id, a new id adds a pool, an empty list returns
  * everything to the defaults. Nothing is written unless the whole catalog
  * validates.

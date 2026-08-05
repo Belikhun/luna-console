@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
@@ -35,7 +36,7 @@
 			groups = (await api('/addons/groups')).groups;
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error('Could not load addon groups', { detail: (err as Error).message });
+			Notify.error(t('web.addonGroups.loadFailed'), { detail: (err as Error).message });
 		}
 
 		loading = false;
@@ -45,15 +46,15 @@
 		void refresh();
 	});
 
-	const columns: Column[] = [
-		{ id: 'name', label: 'Group', sortable: true, width: 200 },
-		{ id: 'count', label: 'Addons', width: 200 },
-		{ id: 'plugins', label: 'Members' },
-		{ id: 'usedBy', label: 'Used by', width: 240 },
-		{ id: 'description', label: 'Description' }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'name', label: t('web.addonGroups.colGroup'), sortable: true, width: 200 },
+		{ id: 'count', label: t('web.addonGroups.colAddons'), width: 200 },
+		{ id: 'plugins', label: t('web.addonGroups.colMembers') },
+		{ id: 'usedBy', label: t('web.addonGroups.colUsedBy'), width: 240 },
+		{ id: 'description', label: t('web.env.colDescription') }
+	]);
 
-	/** Every member of a group, in one flat list — search and the copy verb. */
+	/** Every member of a group, in one flat list; search and the copy verb. */
 	function members(group: GroupInfo): string[] {
 		return [...group.plugins, ...group.respacks, ...group.datapacks];
 	}
@@ -61,18 +62,18 @@
 	function rowActions(group: GroupInfo): ContextMenuItem[] {
 		return [
 			{
-				label: 'Open group',
+				label: t('web.addonGroups.openGroup'),
 				icon: 'layerGroup',
 				action: () => goto(`/addons/groups/${group.name}`)
 			},
 			{
-				label: 'Add addons to it',
+				label: t('web.addonGroups.addAddons'),
 				icon: 'plus',
 				action: () => goto(`/addons/groups/${group.name}?add=1`)
 			},
 			{ separator: true },
 			{
-				label: 'Copy member list',
+				label: t('web.addonGroups.copyMembers'),
 				icon: 'copy',
 				disabled: members(group).length === 0,
 				action: () => navigator.clipboard?.writeText(members(group).join(', '))
@@ -86,19 +87,19 @@
 	const one = $derived(groups.find((row: any) => selected.has(row.name)));
 </script>
 
-<svelte:head><title>Addon groups | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.nav.addonGroups')} | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Addon groups"
+	title={t('web.nav.addonGroups')}
 	count={groups.length}
-	description="Sets of plugins, resource packs and data packs applied to instances as a unit. Every instance gets the default group; editing a group pushes it everywhere it is used."
+	description={t('web.addonGroups.pageDescription')}
 	info
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="addon-groups" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
 		<Btn variant="primary" icon="layerGroup" onclick={() => goto('/addons/groups/new')}>
-			Create group
+			{t('web.addonGroups.createGroup')}
 		</Btn>
 	{/snippet}
 </PageHeader>
@@ -111,22 +112,22 @@
 		getId={(group) => group.name}
 		searchValue={(group) =>
 			`${group.name} ${group.description} ${members(group).join(' ')} ${group.usedBy.join(' ')}`}
-		searchPlaceholder="Find a group, or an addon inside one"
+		searchPlaceholder={t('web.addonGroups.searchPlaceholder')}
 		selectable="single"
 		bind:selected
 		{rowActions}
 		rowLabel={(group) => group.name}
-		noun="group"
+		noun={t('web.addonGroups.noun')}
 		onRowClick={(group) => goto(`/addons/groups/${group.name}`)}
-		emptyTitle="No groups yet"
-		emptyText="Create one to apply a set of addons to instances as a unit."
+		emptyTitle={t('web.addonGroups.emptyTitle')}
+		emptyText={t('web.addonGroups.emptyText')}
 	>
 		{#snippet cell(group, col)}
 			{#if col === 'name'}
 				<a href="/addons/groups/{group.name}" onclick={(event) => event.stopPropagation()}>
 					<b>{group.name}</b>
 				</a>
-				{#if group.builtin}<StatusBadge state="ok" label="builtin" />{/if}
+				{#if group.builtin}<StatusBadge state="ok" label={t('web.addonGroups.builtin')} />{/if}
 			{:else if col === 'count'}
 				<span class="kinds">
 					<span class="kind"><Icon name="plug" size="0.75rem" />{group.plugins.length}</span>

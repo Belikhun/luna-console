@@ -5,8 +5,8 @@
 	import { ADDON_PROVIDERS } from './addons';
 
 	/**
-	 * Where an addon came from: the provider's own mark, its name, and — when we
-	 * know the project's page — an external link to it, all in that provider's
+	 * Where an addon came from: the provider's own mark, its name, and; when we
+	 * know the project's page; an external link to it, all in that provider's
 	 * brand colour rather than link blue, because the colour is part of what
 	 * names the service.
 	 *
@@ -27,7 +27,7 @@
 		href?: string | null;
 		/** Overrides the provider's display name */
 		label?: string;
-		/** One word instead of a phrase — what a table column has room for */
+		/** One word instead of a phrase; what a table column has room for */
 		short?: boolean;
 		size?: string;
 	} = $props();
@@ -75,7 +75,7 @@
 
 		// app.scss hands the underline to `.lt` for any link containing an icon, so
 		// the rule never cuts through the mark or the arrow. The colour is inline
-		// (above) because it has to beat both `a` and `a:hover` from the sheet —
+		// (above) because it has to beat both `a` and `a:hover` from the sheet -
 		// which leaves hover feedback to brightness, on the whole mark+name+arrow.
 		&:hover {
 			filter: brightness(1.15);

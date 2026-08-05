@@ -9,7 +9,7 @@
  *   synthetic monotonic stamp (epoch + rank) that keeps `pickCompatible`'s
  *   sorting and the downgrade guard working
  * - `supports` lists exact MC version strings of mixed granularity ("1.19",
- *   "1.21.4") — `coversMc`'s prefix rule is what makes "1.19" match 1.19.2
+ *   "1.21.4"); `coversMc`'s prefix rule is what makes "1.19" match 1.19.2
  * - every pack has two ids: an immutable docId (the RemoteRef's projectId)
  *   and a rename-able slug (rawId, for the web URL)
  * - download URLs point at author-hosted zips (GitHub releases etc.), so a
@@ -75,7 +75,7 @@ interface SmSearchEntry {
 async function search(query: string): Promise<AddonSearchHit[]> {
 	const params = new URLSearchParams({ search: query, limit: "10" });
 
-	// scopes pull display + stats into the list response — no per-hit fetches
+	// scopes pull display + stats into the list response; no per-hit fetches
 	params.append("scope", "data.display");
 	params.append("scope", "meta.stats");
 
@@ -154,7 +154,7 @@ async function getVersions(ref: RemoteRef): Promise<AddonVersion[]> {
 		version_type: /[-+]/.test(version.name) ? ("beta" as const) : ("release" as const),
 		game_versions: version.supports ?? [],
 		loaders: ["datapack"],
-		// no publish dates upstream — a synthetic monotonic stamp in semver order
+		// no publish dates upstream; a synthetic monotonic stamp in semver order
 		// keeps sorting and the downgrade guard consistent
 		date_published: new Date((rank + 1) * 86_400_000).toISOString(),
 		files: [

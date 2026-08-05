@@ -4,7 +4,7 @@ import { searchProvider } from '$core/services/providers';
 import type { PluginFamily, ProviderId } from '$core/types';
 
 /**
- * GET ?q=&family=&provider= — provider search for the "install addon" dialog.
+ * GET ?q=&family=&provider=; provider search for the "install addon" dialog.
  * The family picks both halves of the query: mods and plugins are separate
  * project types upstream, so a neoforge search never returns a paper plugin
  * and vice versa. The provider defaults to Modrinth.

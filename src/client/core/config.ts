@@ -1,7 +1,7 @@
 /**
  * Bridge mirror of core/config: path helpers answer from the daemon handshake
  * (the daemon told us the root), pure helpers run locally, and the state files
- * are read and written through the daemon — the only process that touches disk.
+ * are read and written through the daemon; the only process that touches disk.
  */
 
 import { join } from "node:path";
@@ -26,12 +26,12 @@ export function root(): string {
 	return clientRoot();
 }
 
-/** Path of the instance registry — the source of truth for the cluster. */
+/** Path of the instance registry; the source of truth for the cluster. */
 export function clusterPath(): string {
 	return join(root(), "cluster.json");
 }
 
-/** Path of the plugin lockfile — the source of truth for plugin versions. */
+/** Path of the plugin lockfile; the source of truth for plugin versions. */
 export function lockPath(): string {
 	return join(root(), "plugins.lock.json");
 }

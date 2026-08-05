@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -14,7 +15,7 @@
 
 	/**
 	 * Configure one resource pack: the registration the proxy reads, in the
-	 * order an operator decides it — what it is, whether it is on, who gets it,
+	 * order an operator decides it; what it is, whether it is on, who gets it,
 	 * how it updates. The server rules are edited as a matrix of backends with
 	 * the raw rule list beside it, because the rules are what the plugin reads
 	 * and hiding them would make an unexpected result unexplainable.
@@ -133,7 +134,7 @@
 				level: 'success',
 				message: `${key} saved`,
 				detail: reload.sent
-					? 'Reload sent to the proxy — the change is live.'
+					? 'Reload sent to the proxy; the change is live.'
 					: 'The proxy is not running; the change applies on its next boot.',
 				closeable: true
 			});
@@ -155,8 +156,8 @@
 <Wizard
 	title="Configure {key}"
 	windowTitle="Configure {key}"
-	description="The registration the luna-pack proxy plugin reads — saving rewrites the definition and reloads the proxy"
-	submitLabel="Save and reload"
+	description={t('web.packConfigure.theRegistrationTheLunaPack')}
+	submitLabel={t('web.packConfigure.saveAndReload')}
 	disabled={loading || !!invalid}
 	loading={saving}
 	onsubmit={save}
@@ -171,19 +172,19 @@
 		{/if}
 	{/snippet}
 
-	<Panel title="Identity" description="What the pack is called and how it stacks against the others">
+	<Panel title={t('web.packConfigure.identity')} description={t('web.packConfigure.whatThePackIsCalled')}>
 		<label class="field">
-			<span class="lbl">Display name</span>
+			<span class="lbl">{t('web.packConfigure.displayName')}</span>
 			<span class="hint">
-				luna-pack keys its catalog on this name, lowercased — players never see it
+				{t('web.packConfigure.lunaPackKeysIts')}
 			</span>
 			<input class="input" bind:value={name} disabled={loading} />
 			{#if invalid}<span class="err">{invalid}</span>{/if}
 		</label>
 
 		<label class="field">
-			<span class="lbl">Priority</span>
-			<span class="hint">Higher-priority packs apply over lower ones on the same client</span>
+			<span class="lbl">{t('web.packConfigure.priority')}</span>
+			<span class="hint">{t('web.packConfigure.higherPriorityPacksApply')}</span>
 			<input
 				class="input num"
 				type="number"
@@ -195,51 +196,51 @@
 		</label>
 
 		<div class="facts dim">
-			<span>File <code class="mono">{key}.zip</code></span>
+			<span>{t('web.packConfigure.file')} <code class="mono">{key}.zip</code></span>
 			<span>{present ? fmtBytes(sizeBytes) : 'missing on disk'}</span>
 			{#if !registered}
 				<StatusBadge
 					state="warning"
-					label="Unregistered"
-					detail="the zip exists but no definition registers it — saving here writes one"
+					label={t('web.packConfigure.unregistered')}
+					detail="the zip exists but no definition registers it; saving here writes one"
 				/>
 			{/if}
 		</div>
 	</Panel>
 
-	<Panel title="Availability" description="Whether the proxy offers the pack at all, and whether players may decline it">
+	<Panel title={t('web.packConfigure.availability')} description={t('web.packConfigure.whetherTheProxyOffersThe')}>
 		<label class="checkrow">
-			<Checkbox checked={enabled} label="Enabled" disabled={loading} onchange={(value) => (enabled = value)} />
+			<Checkbox checked={enabled} label={t('web.packConfigure.enabled')} disabled={loading} onchange={(value) => (enabled = value)} />
 			<span>
-				<b>Enabled</b>
-				<span class="dim">— the proxy offers this pack to matching backends' players</span>
+				<b>{t('web.packConfigure.enabled')}</b>
+				<span class="dim">{t('web.packConfigure.theProxyOffersThis')}</span>
 			</span>
 		</label>
 		<label class="checkrow">
-			<Checkbox checked={required} label="Required" disabled={loading} onchange={(value) => (required = value)} />
+			<Checkbox checked={required} label={t('web.packConfigure.required')} disabled={loading} onchange={(value) => (required = value)} />
 			<span>
-				<b>Required</b>
-				<span class="dim">— players cannot decline it; declining disconnects them</span>
+				<b>{t('web.packConfigure.required')}</b>
+				<span class="dim">{t('web.packConfigure.playersCannotDeclineIt')}</span>
 			</span>
 		</label>
 	</Panel>
 
 	<Panel
-		title="Where it applies"
+		title={t('web.packConfigure.whereItApplies')}
 		count={servers.length}
-		description="Tick the backends that should serve the pack — the rule list underneath is what the proxy reads"
+		description={t('web.packConfigure.tickTheBackendsThatShould')}
 	>
 		{#if instances.length}
 			<RuleMatrix {instances} bind:servers {granted} {running} />
 		{:else}
-			<p class="dim none">No backends in the cluster yet.</p>
+			<p class="dim none">{t('web.packConfigure.noBackendsInThe')}</p>
 		{/if}
 
 		<label class="field rules">
-			<span class="lbl">Rule list</span>
+			<span class="lbl">{t('web.packConfigure.ruleList')}</span>
 			<span class="hint">
-				Comma-separated: instance names, <code>*</code> for all, <code>!name</code> to exclude —
-				exclusions win
+				Comma-separated: instance names, <code>*</code> {t('web.packConfigure.forAll')} <code>{t('web.packConfigure.name')}</code> {t('web.packConfigure.toExclude')}
+				{t('web.packConfigure.exclusionsWin')}
 			</span>
 			<input
 				class="input mono"
@@ -247,7 +248,7 @@
 				onchange={applyText}
 				onblur={applyText}
 				disabled={loading}
-				placeholder="*, !create"
+				placeholder={t('web.packConfigure.create')}
 			/>
 		</label>
 
@@ -255,36 +256,36 @@
 			<p class="dim note">
 				Addon group{groups.length > 1 ? 's' : ''}
 				{groups.join(', ')} grant{groups.length > 1 ? '' : 's'}
-				<b>{granted.join(', ')}</b> — those come back whatever this list says, so they are locked
+				<b>{granted.join(', ')}</b>; those come back whatever this list says, so they are locked
 				above.
 			</p>
 		{/if}
 	</Panel>
 
 	{#if hasProvider}
-		<Panel title="Updates" description="How this pack follows its provider project">
+		<Panel title={t('web.packConfigure.updates')} description={t('web.packConfigure.howThisPackFollowsIts')}>
 			<label class="checkrow">
 				<Checkbox
 					checked={autoUpdate}
-					label="Auto-update"
+					label={t('web.packConfigure.autoUpdate')}
 					disabled={loading}
 					onchange={(value) => (autoUpdate = value)}
 				/>
 				<span>
-					<b>Auto-update</b>
-					<span class="dim">— update checks download newer versions of this pack</span>
+					<b>{t('web.packConfigure.autoUpdate')}</b>
+					<span class="dim">{t('web.packConfigure.updateChecksDownloadNewer')}</span>
 				</span>
 			</label>
 			<label class="field">
-				<span class="lbl">Update channel</span>
-				<span class="hint">The most unstable release the pack will accept</span>
+				<span class="lbl">{t('web.packConfigure.updateChannel')}</span>
+				<span class="hint">{t('web.packConfigure.theMostUnstableRelease')}</span>
 				<Select
 					value={channel}
 					width="10rem"
 					options={[
-						{ value: 'release', label: 'release' },
-						{ value: 'beta', label: 'beta' },
-						{ value: 'alpha', label: 'alpha' }
+						{ value: 'release', label: t('web.packConfigure.release') },
+						{ value: 'beta', label: t('web.packConfigure.beta') },
+						{ value: 'alpha', label: t('web.packConfigure.alpha') }
 					]}
 					onchange={(value) => (channel = value)}
 				/>

@@ -4,7 +4,7 @@
 	import Btn from './Btn.svelte';
 
 	/**
-	 * The console's one wizard shell — every create flow (launch instance,
+	 * The console's one wizard shell; every create flow (launch instance,
 	 * create schedule, create addon group) renders through this: the page
 	 * header, a single column of panels, and a sticky summary bar whose dim
 	 * recap and primary submit stay reachable while the form scrolls.
@@ -26,7 +26,7 @@
 		windowTitle?: string;
 		/** the primary button's label, e.g. "Launch instance" */
 		submitLabel: string;
-		/** blocks submit — a validation failure, a missing required field */
+		/** blocks submit; a validation failure, a missing required field */
 		disabled?: boolean;
 		/** the submit is in flight */
 		loading?: boolean;

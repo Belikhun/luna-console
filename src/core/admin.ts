@@ -23,6 +23,7 @@ import { forgetInstance } from "./configfiles";
 import { loadEnv, saveEnv, unsetInstanceScope } from "./environment";
 import { ProgressReporter } from "./progress";
 import { SERVER_SETTINGS, validateJavaArgs, validateSettings } from "./settings";
+import { t } from "../shared/i18n";
 
 /** Parse "1.21.11-127-bd74bf6 (MC: 1.21.11)" from version_history.json. */
 export async function detectMcVersion(dir: string): Promise<string | undefined> {
@@ -49,7 +50,7 @@ const NEOFORGE_LIBRARIES = join("libraries", "net", "neoforged", "neoforge");
 export interface InstanceDetection {
 	software: Software;
 	mcVersion?: string;
-	/** neoforge only — the installed loader build */
+	/** neoforge only: the installed loader build */
 	loaderVersion?: string;
 	/** server.properties `server-port`, when the file has one */
 	port?: number;
@@ -115,7 +116,7 @@ async function detectNeoForgeMcVersion(dir: string, loaderVersion: string): Prom
 /**
  * The heap the directory's own launcher asks for. Read so an adopted instance
  * keeps running with the memory it was tuned for instead of silently dropping
- * to luna's default — neoforge keeps it in `user_jvm_args.txt`, everything else
+ * to luna's default. Neoforge keeps it in `user_jvm_args.txt`, everything else
  * in whatever start script the operator wrote by hand.
  */
 async function detectMemory(dir: string): Promise<string | undefined> {
@@ -148,7 +149,7 @@ async function detectMemory(dir: string): Promise<string | undefined> {
 /**
  * Work out what an existing server directory is, without changing anything in
  * it. NeoForge is recognised by the installer's `libraries/` tree, velocity by
- * its jar, and everything else is assumed to be paper — which is what
+ * its jar, and everything else is assumed to be paper, which is what
  * `version_history.json` then confirms with an MC version.
  *
  * A relative path is resolved against this daemon's cluster root, so callers
@@ -158,7 +159,7 @@ export async function inspectInstanceDir(path: string): Promise<InstanceDetectio
 	const dir = isAbsolute(path) ? path : join(root(), path);
 
 	if (!existsSync(dir)) {
-		throw new Error(`directory does not exist: ${dir}`);
+		throw new Error(t("core.admin.dirMissing", { dir }));
 	}
 
 	const properties = join(dir, "server.properties");
@@ -222,7 +223,7 @@ export interface AdoptOptions {
 	memory?: string;
 	/** java profile whose flags the generated run script uses (default aikar) */
 	profile?: string;
-	/** pin a java binary — a modpack often needs an older JDK than the host default */
+	/** pin a java binary; a modpack often needs an older JDK than the host default */
 	java?: string;
 	/** extra JVM flags for the generated run script */
 	javaArgs?: string[];
@@ -249,7 +250,7 @@ export interface AdoptResult {
  * Adoption is **read-only against the directory**: it inspects the files to
  * work out what the server is, then writes the registry entry. It never edits
  * server.properties, never touches plugins or mods, and never adds anything to
- * the lockfile — the directory is already configured and working, and rewriting
+ * the lockfile: the directory is already configured and working, and rewriting
  * it is exactly the way to break a server that was fine. Anything luna would
  * have done differently comes back as a note instead.
  *
@@ -261,11 +262,11 @@ export async function adoptInstance(
 	opts: AdoptOptions = {},
 ): Promise<AdoptResult> {
 	if (!/^[a-z0-9_-]+$/.test(name)) {
-		throw new Error("instance name must be lowercase alphanumeric/-/_");
+		throw new Error(t("core.admin.badName"));
 	}
 
 	if (name === "proxy") {
-		throw new Error("the proxy is registered by `luna setup`, not adopted");
+		throw new Error(t("core.admin.proxyNotAdoptable"));
 	}
 
 	const existing = cfg.instances[name];
@@ -273,17 +274,14 @@ export async function adoptInstance(
 	// an external entry is a placeholder for exactly this server, so adopting it
 	// is an upgrade of that registration rather than a conflict
 	if (existing && !existing.external) {
-		throw new Error(`instance "${name}" is already managed`);
+		throw new Error(t("core.admin.alreadyManaged", { name }));
 	}
 
 	const dirName = opts.dir ?? existing?.dir ?? name;
 	const dir = join(root(), dirName);
 
 	if (!existsSync(dir)) {
-		throw new Error(
-			`${dir} does not exist — adopt runs on the daemon that owns the instance, ` +
-				"so the path is resolved against that machine's cluster root",
-		);
+		throw new Error(t("core.admin.adoptDirMissing", { dir }));
 	}
 
 	const badArgs = validateJavaArgs(opts.javaArgs ?? []);
@@ -296,7 +294,7 @@ export async function adoptInstance(
 	const port = opts.port ?? detected.port ?? existing?.port;
 
 	if (!port) {
-		throw new Error(`could not determine a port for ${name} — pass one explicitly`);
+		throw new Error(t("core.admin.noPortDetected", { name }));
 	}
 
 	// A port is only taken on the machine that binds it: the proxy holds 25565 on
@@ -310,7 +308,7 @@ export async function adoptInstance(
 	const notes: string[] = [];
 
 	// adopt takes the port the directory already binds, so a number outside the
-	// machine's pools is reported rather than moved — the server is running on it
+	// machine's pools is reported rather than moved; the server is running on it
 	if (check.warning) {
 		notes.push(check.warning);
 	}
@@ -318,7 +316,7 @@ export async function adoptInstance(
 	const memory = opts.memory ?? detected.memory;
 
 	if (!memory) {
-		notes.push("no -Xmx found in the directory's launcher — defaulting to 2G");
+		notes.push(t("core.admin.noXmx"));
 	}
 
 	const inst: InstanceConfig = {
@@ -363,33 +361,34 @@ export async function adoptInstance(
 	}
 
 	// A follower's backend is reached across the LAN, so a loopback bind makes it
-	// unreachable no matter what velocity.toml says. Reported, not corrected —
+	// unreachable no matter what velocity.toml says. Reported, not corrected:
 	// server.properties belongs to the server, and adopt does not rewrite it.
 	if (inst.proxy!.register) {
 		const wanted = opts.daemon ? "0.0.0.0" : "127.0.0.1";
 		const bind = detected.bindAddress;
 
 		if (bind !== undefined && bind !== "" && bind !== wanted) {
-			notes.push(`server-ip is "${bind}" — a proxied backend here wants ${wanted}`);
+			notes.push(t("core.admin.bindMismatch", { bind, wanted }));
 		}
 
 		if (opts.daemon && bind === "") {
-			notes.push('server-ip is empty (all interfaces) — luna would set 0.0.0.0');
+			notes.push(t("core.admin.bindEmpty"));
 		}
 	}
 
 	if (detected.port !== undefined && detected.port !== port) {
 		notes.push(
-			`registered on port ${port} but server.properties says ${detected.port} — ` +
-				`run \`luna instance config ${name} port ${port}\` to align them`,
+			t("core.admin.portMismatch", {
+				port,
+				detected: detected.port,
+				command: `luna instance config ${name} port ${port}`,
+			}),
 		);
 	}
 
 	// what the directory already contains is accounted for separately, by
-	// `adoptInstanceAddons` — adopt itself never reads or writes an addon
-	notes.push(
-		`existing ${addonDirOf(inst.software)}/ stay unmanaged — only addons already in the pool are registered`,
-	);
+	// `adoptInstanceAddons`; adopt itself never reads or writes an addon
+	notes.push(t("core.admin.addonsUnmanaged", { dir: addonDirOf(inst.software) }));
 
 	cfg.instances[name] = inst;
 
@@ -400,7 +399,7 @@ export async function adoptInstance(
  * server.properties for a fresh backend: every setting luna knows about, at the
  * value the caller asked for or at the schema's default. Paper fills in the keys
  * outside that list on first boot. The keys marked `managed` in the schema keep
- * their default whatever was requested — they are what makes velocity forwarding
+ * their default whatever was requested; they are what makes velocity forwarding
  * work.
  *
  * `bindAddress` is the one managed key that is not a constant: a backend on the
@@ -430,7 +429,7 @@ function serverPropertiesTemplate(
 
 /** Paper's velocity modern-forwarding block, keyed with the proxy's shared secret. */
 function paperGlobalTemplate(secret: string): string {
-	return `# Generated by luna — paper merges in remaining defaults on first boot.
+	return `# Generated by luna. Paper merges in remaining defaults on first boot.
 proxies:
   velocity:
     enabled: true
@@ -496,15 +495,15 @@ export async function createInstance(
 
 	await checks.task({ start: `checking ${name}` }, async (step) => {
 		if (managedInstances(cfg)[name] || cfg.instances[name]) {
-			throw new Error(`instance "${name}" already exists`);
+			throw new Error(t("core.admin.alreadyExists", { name }));
 		}
 
 		if (!/^[a-z0-9_-]+$/.test(name)) {
-			throw new Error("instance name must be lowercase alphanumeric/-/_");
+			throw new Error(t("core.admin.badName"));
 		}
 
 		if (existsSync(join(root(), name))) {
-			throw new Error(`directory ${join(root(), name)} already exists`);
+			throw new Error(t("core.admin.dirExists", { dir: join(root(), name) }));
 		}
 
 		const badSettings = validateSettings(opts.settings ?? {});
@@ -531,7 +530,7 @@ export async function createInstance(
 				reserve: true,
 			}).port;
 
-			step.info(0.8, `port ${port} acquired on ${machineLabel(machine)}`);
+			step.info(0.8, t("core.admin.portAcquired", { port, machine: machineLabel(machine) }));
 
 			return;
 		}
@@ -592,7 +591,7 @@ async function buildInstance(
 			await mkdir(join(dir, "plugins"), { recursive: true });
 			await mkdir(join(dir, "config"), { recursive: true });
 
-			step.info(0.05, `build ${info.build} — starting download`);
+			step.info(0.05, t("core.admin.startingDownload", { build: info.build }));
 
 			await papermc.downloadBuild(info, join(dir, "server.jar"), (received, total) => {
 				const mb = (received / 1024 / 1024).toFixed(1);
@@ -600,7 +599,7 @@ async function buildInstance(
 				// with no content-length there is nothing to divide by, so the step
 				// only reports the byte count and its progress stays where it was
 				if (!total) {
-					step.info(step.progress, `build ${info.build} — ${mb} MB`);
+					step.info(step.progress, `build ${info.build}: ${mb} MB`);
 
 					return;
 				}
@@ -609,7 +608,7 @@ async function buildInstance(
 
 				step.info(
 					0.05 + ratio * 0.95,
-					`build ${info.build} — ${mb} / ${(total / 1024 / 1024).toFixed(1)} MB`,
+					`build ${info.build}: ${mb} / ${(total / 1024 / 1024).toFixed(1)} MB`,
 				);
 			});
 
@@ -618,21 +617,21 @@ async function buildInstance(
 	);
 
 	await writing.task(
-		{ start: "writing eula, properties and forwarding config", done: "instance files written" },
+		{ start: t("core.admin.writingFiles"), done: t("core.admin.filesWritten") },
 		async (step) => {
 			await Bun.write(join(dir, "eula.txt"), "eula=true\n");
-			step.info(0.3, "eula accepted");
+			step.info(0.3, t("core.admin.eulaAccepted"));
 
 			await Bun.write(
 				join(dir, "server.properties"),
 				serverPropertiesTemplate(port, opts.settings ?? {}, opts.daemon ? "0.0.0.0" : "127.0.0.1"),
 			);
-			step.info(0.6, `server.properties on port ${port}`);
+			step.info(0.6, t("core.admin.propertiesOnPort", { port }));
 
 			const secret = await readForwardingSecret(cfg);
 
 			await Bun.write(join(dir, "config", "paper-global.yml"), paperGlobalTemplate(secret));
-			step.info(0.9, "velocity modern forwarding keyed");
+			step.info(0.9, t("core.admin.forwardingKeyed"));
 		},
 	);
 
@@ -687,22 +686,20 @@ export async function setVersion(
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	// PaperMC's Fill API is the only jar source luna has; a mod loader's server
 	// is installed by its own installer against a pinned MC version, so moving it
 	// is a modpack operation and not something luna can do behind the operator.
 	if (inst.software === "neoforge") {
-		throw new Error(
-			`${name} runs neoforge — reinstall the pack against the target version instead`,
-		);
+		throw new Error(t("core.admin.neoforgeNoSetVersion", { name }));
 	}
 
 	const progress = reporter ?? new ProgressReporter(`set-version ${name}`);
 	const project = inst.software === "velocity" ? "velocity" : "paper";
 
-	progress.info(0.05, `resolving newest ${project} ${mcVersion} build`);
+	progress.info(0.05, t("core.admin.resolvingBuild", { project, version: mcVersion }));
 
 	const build = await papermc.latestBuild(project, mcVersion);
 	const jar = join(instanceDir(inst), inst.software === "velocity" ? "velocity.jar" : "server.jar");
@@ -718,18 +715,18 @@ export async function setVersion(
 			const mb = (received / 1024 / 1024).toFixed(1);
 
 			if (!total) {
-				progress.info(progress.progress, `build ${build.build} — ${mb} MB`);
+				progress.info(progress.progress, `build ${build.build}: ${mb} MB`);
 
 				return;
 			}
 
 			progress.info(
 				0.1 + (received / total) * 0.85,
-				`build ${build.build} — ${mb} / ${(total / 1024 / 1024).toFixed(1)} MB`,
+				`build ${build.build}: ${mb} / ${(total / 1024 / 1024).toFixed(1)} MB`,
 			);
 		});
 	} catch (err) {
-		progress.error(progress.progress, "download failed — rolled back to the previous jar");
+		progress.error(progress.progress, t("core.admin.downloadRolledBack"));
 
 		if (existsSync(backup)) {
 			await rename(backup, jar);
@@ -748,14 +745,14 @@ export async function setVersion(
 }
 
 /**
- * Replace an instance's custom JVM flags. Registry only — the flags reach the
+ * Replace an instance's custom JVM flags. Registry only; the flags reach the
  * server through the run script, which is regenerated on every start.
  */
 export function setJavaArgs(cfg: ClusterConfig, name: string, args: string[]): void {
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	const problem = validateJavaArgs(args);
@@ -773,7 +770,7 @@ export function setJavaArgs(cfg: ClusterConfig, name: string, args: string[]): v
 
 /**
  * Change an instance's game port (server.properties + registry; caller runs proxy
- * sync). The number is checked against its own machine's allocations first — a
+ * sync). The number is checked against its own machine's allocations first; a
  * port moved onto one another instance on that host already binds would take both
  * servers down, and nothing else in the pipeline would notice.
  */
@@ -781,7 +778,7 @@ export async function setPort(cfg: ClusterConfig, name: string, port: number): P
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	const check = checkPort(cfg, port, { machine: inst.daemon, instance: name });
@@ -791,12 +788,12 @@ export async function setPort(cfg: ClusterConfig, name: string, port: number): P
 	}
 
 	// velocity's port lives in velocity.toml, which proxy sync owns; every
-	// backend — paper or a mod loader — keeps it in server.properties
+	// backend (paper or a mod loader) keeps it in server.properties
 	if (inst.software !== "velocity") {
 		const props = join(instanceDir(inst), "server.properties");
 
 		if (!(await setConfValue(props, "properties", "server-port", port))) {
-			throw new Error(`could not update server-port in ${props}`);
+			throw new Error(t("core.admin.portUpdateFailed", { file: props }));
 		}
 	}
 
@@ -816,7 +813,7 @@ export async function getServerProperty(
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	return await getConfValue(join(instanceDir(inst), "server.properties"), "properties", key);
@@ -832,7 +829,7 @@ export async function setServerProperty(
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	return await setConfValue(
@@ -845,7 +842,7 @@ export async function setServerProperty(
 
 /**
  * Drop an instance from the registry, optionally deleting its directory too.
- * External instances are never purged — their files live on another machine.
+ * External instances are never purged; their files live on another machine.
  * A purge deletes the directory entry by entry so the reporter can say which
  * part of a multi-gigabyte world is currently going.
  */
@@ -859,14 +856,14 @@ export async function deleteInstance(
 	const inst = cfg.instances[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	// dropping the entry *is* the release: what a pool has free is derived from the
 	// registry, so every number this instance held is available again from here
 	const released = heldPorts(inst);
 
-	progress.info(0.05, "deregistering from the cluster");
+	progress.info(0.05, t("core.admin.deregistering"));
 	delete cfg.instances[name];
 	releaseInstancePorts(inst);
 
@@ -884,11 +881,11 @@ export async function deleteInstance(
 		try {
 			entries = await readdir(dir);
 		} catch {
-			// the directory is already gone — nothing left to purge
+			// the directory is already gone; nothing left to purge
 		}
 
 		for (let i = 0; i < entries.length; i++) {
-			progress.info(0.1 + (i / Math.max(1, entries.length)) * 0.85, `deleting ${entries[i]}`);
+			progress.info(0.1 + (i / Math.max(1, entries.length)) * 0.85, t("core.admin.deleting", { name: entries[i] ?? "" }));
 
 			await rm(join(dir, entries[i]!), { recursive: true, force: true });
 		}
@@ -901,7 +898,7 @@ export async function deleteInstance(
 	const forgotten = await forgetInstance(name);
 
 	if (forgotten) {
-		progress.info(0.97, `dropped ${forgotten} managed config file(s)`);
+		progress.info(0.97, t("core.admin.droppedConfigs", { count: forgotten }));
 	}
 
 	const env = await loadEnv();
@@ -911,7 +908,7 @@ export async function deleteInstance(
 	}
 
 	progress.complete(
-		purge && !inst.external ? "directory deleted" : "deregistered — directory kept",
+		purge && !inst.external ? t("core.admin.dirDeleted") : t("core.admin.deregisteredKept"),
 	);
 
 	return { purged: purge, released: released.map((entry) => entry.port) };

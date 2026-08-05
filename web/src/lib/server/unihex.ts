@@ -1,15 +1,15 @@
 /**
  * Unifont, answered one codepoint at a time.
  *
- * The bundle the daemon extracts is eight megabytes of hex — a hundred and
- * fourteen thousand glyphs, nearly all of them CJK — and a preview needs a
+ * The bundle the daemon extracts is eight megabytes of hex; a hundred and
+ * fourteen thousand glyphs, nearly all of them CJK; and a preview needs a
  * handful of box characters out of it. Shipping the file to the browser would
  * cost more than every other asset the editor loads put together, so the browser
  * names the codepoints it could not draw and gets back only those rows.
  *
  * The parsed bundle is held in this process because the alternative is re-reading
  * eight megabytes per request, and it can only change when the assets are
- * re-extracted — which is what the modification time is compared for.
+ * re-extracted; which is what the modification time is compared for.
  */
 
 import { stat } from 'node:fs/promises';

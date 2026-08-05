@@ -19,7 +19,7 @@ export async function GET({ params }) {
  * `temporary` accepts an optional password (the proxy generates one when it is
  * omitted) and `expiresInMinutes`; `password` requires one. The plaintext of a
  * generated password comes back in this response and nowhere else, so it is
- * deliberately not written to the event log — only the fact of the change is.
+ * deliberately not written to the event log; only the fact of the change is.
  */
 export async function POST({ params, request }) {
 	const body = await request.json();

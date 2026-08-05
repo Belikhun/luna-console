@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
 
 	/**
 	 * Split panel. Docks flush to the bottom (or the right) of the content area
-	 * — outside the page's scroll box, spanning from the side nav to the window
-	 * edge — with a drag handle on the leading edge, a collapse toggle and a
+	 *; outside the page's scroll box, spanning from the side nav to the window
+	 * edge; with a drag handle on the leading edge, a collapse toggle and a
 	 * dock-side toggle. While open it publishes its size as --split-bottom /
 	 * --split-right so the layout can inset the page content instead of hiding
 	 * it underneath.
@@ -14,7 +15,7 @@
 		title,
 		subtitle,
 		href,
-		hrefLabel = 'Open full details',
+		hrefLabel = t('web.detail.openFull'),
 		location = $bindable('bottom'),
 		size = $bindable(38),
 		collapsed = $bindable(false),
@@ -36,7 +37,7 @@
 		children: Snippet;
 	} = $props();
 
-	/** rem — a collapsed panel is exactly its header row */
+	/** rem; a collapsed panel is exactly its header row */
 	const HEADER_H = 2.75;
 
 	/** percent of the viewport the panel may be resized between */
@@ -80,7 +81,7 @@
 	/**
 	 * The handle sits inside the panel and the panel's far edge is inset by the
 	 * status bar and terminal drawer, so resizing has to work from the panel's
-	 * measured box and keep the pointer's grab offset — deriving the size straight
+	 * measured box and keep the pointer's grab offset; deriving the size straight
 	 * from the viewport makes the panel jump to meet the cursor on the first move.
 	 */
 	function onPointerMove(event: PointerEvent): void {
@@ -135,7 +136,7 @@
 			class="slider"
 			type="button"
 			role="slider"
-			aria-label="Resize split panel"
+			aria-label={t('web.detail.resize')}
 			aria-valuenow={Math.round(size)}
 			aria-valuemin={MIN_SIZE}
 			aria-valuemax={MAX_SIZE}
@@ -159,14 +160,14 @@
 			{#if actions && !collapsed}{@render actions()}{/if}
 			<button
 				class="tool"
-				title={location === 'bottom' ? 'Dock to the right' : 'Dock to the bottom'}
+				title={location === 'bottom' ? t('web.detail.dockRight') : t('web.detail.dockBottom')}
 				onclick={() => (location = location === 'bottom' ? 'right' : 'bottom')}
 			>
 				<Icon name={location === 'bottom' ? 'sidebarFlip' : 'toggleOff'} size="1rem" />
 			</button>
 			<button
 				class="tool"
-				title={collapsed ? 'Expand panel' : 'Collapse panel'}
+				title={collapsed ? t('web.detail.expandPanel') : t('web.detail.collapsePanel')}
 				onclick={() => (collapsed = !collapsed)}
 			>
 				<Icon name={collapsed ? 'arrowUp' : 'arrowDown'} size="1rem" />
@@ -261,7 +262,7 @@
 	}
 
 	// the split-panel slider: a 1rem icon box drawing a single 0.75rem rule,
-	// sitting just inside the panel edge — not a rounded pill.
+	// sitting just inside the panel edge; not a rounded pill.
 	.slider {
 		display: inline-flex;
 		align-items: center;

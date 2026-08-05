@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
-	 * Range slider for a bounded numeric setting, with a live readout and — when the
-	 * range is short enough to be legible — a tick per step, so a stepped setting
+	 * Range slider for a bounded numeric setting, with a live readout and; when the
+	 * range is short enough to be legible; a tick per step, so a stepped setting
 	 * looks stepped.
 	 *
 	 * The native input is kept and restyled rather than rebuilt from divs: it already
@@ -45,8 +45,8 @@
 	const steps = $derived(step > 0 ? Math.round((max - min) / step) : 0);
 
 	/**
-	 * How many intervals to tick. A slider always shows a tick scale — that is what
-	 * says "this is a range between two ends, and it moves in jumps" — so a range
+	 * How many intervals to tick. A slider always shows a tick scale; that is what
+	 * says "this is a range between two ends, and it moves in jumps"; so a range
 	 * with more steps than the field is wide enough to show gets a coarser scale
 	 * rather than none. A divisor of the step count keeps those hint ticks on real
 	 * step boundaries; with no usable divisor (a prime step count) an even split

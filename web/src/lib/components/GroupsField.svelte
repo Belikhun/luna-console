@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { api, post } from '$lib/api';
 	import Checkbox from './Checkbox.svelte';
 	import StatusBadge from './StatusBadge.svelte';
@@ -17,7 +18,7 @@
 	 * (prospective) instance: OK, no compatible version (with a download action
 	 * when Modrinth has one), skipped (no build for the platform), or missing.
 	 *
-	 * A group carries packs as well as plugins, and those need no validation —
+	 * A group carries packs as well as plugins, and those need no validation -
 	 * they are listed under the picker so the selection's full effect is visible
 	 * before it is saved.
 	 *
@@ -36,7 +37,7 @@
 	}: {
 		software: 'paper' | 'velocity';
 		mcVersion?: string;
-		/** existing instance — overrides apply immediately through the API */
+		/** existing instance; overrides apply immediately through the API */
 		instance?: string;
 		/** selected groups beside "default" (bindable) */
 		selected?: string[];
@@ -60,7 +61,7 @@
 		groups: string[];
 		manual?: boolean;
 		disabled?: boolean;
-		/** lockfile key of the matched build — what the download action fetches for */
+		/** lockfile key of the matched build; what the download action fetches for */
 		entry?: string;
 		family?: string;
 		status: 'ok' | 'unverified' | 'no-version' | 'skipped' | 'missing';
@@ -105,7 +106,7 @@
 
 			rows = (await api(`/plugins/validate?${params}`)).rows;
 		} catch (err) {
-			Notify.error('Could not validate the plugin selection', {
+			Notify.error(t('web.groups.validateFailed'), {
 				detail: (err as Error).message
 			});
 		}
@@ -181,7 +182,7 @@
 			note.set({
 				level: 'success',
 				message: `Added ${names.join(', ')} on ${instance}`,
-				detail: 'A running server loads them on restart.',
+				detail: t('web.groups.aRunningServerLoadsThem'),
 				closeable: true
 			});
 		}
@@ -208,19 +209,24 @@
 
 		overriding = plugin;
 
-		const verb = state === true ? 'Adding' : state === false ? 'Disabling' : 'Re-enabling';
-		const note = Notify.loading(`${verb} ${plugin} on ${instance}…`);
+		const verbKey =
+			state === true
+				? 'web.groups.addingOn'
+				: state === false
+					? 'web.groups.disablingOn'
+					: 'web.groups.reenablingOn';
+		const note = Notify.loading(t(verbKey, { plugin, instance: instance ?? '' }));
 
 		try {
 			const result = await post(`/instances/${instance}/plugins`, { plugin, state });
 
 			note.set({
 				level: 'success',
-				message: `${plugin} ${state === true ? 'added' : state === false ? 'disabled' : 're-enabled'} on ${instance}`,
+				message: t(state === true ? 'web.groups.addedOn' : state === false ? 'web.groups.disabledOn' : 'web.groups.reenabledOn', { plugin, instance: instance ?? '' }),
 				detail: result.removed?.length
-					? `Removed ${result.removed.join(', ')} — a running server keeps it loaded until restart.`
+					? t('web.groups.removedDetail', { names: result.removed.join(', ') })
 					: result.deployed
-						? `${result.deployed} deploy change(s); a running server loads them on restart.`
+						? t('web.groups.deployedDetail', { count: result.deployed })
 						: '',
 				closeable: true
 			});
@@ -229,7 +235,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: `Could not update ${plugin}`,
+				message: t('web.groups.updateFailed', { plugin }),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -245,14 +251,14 @@
 
 		fetching = row.plugin;
 
-		const note = Notify.loading(`Downloading a ${row.plugin} build for MC ${mcVersion}…`);
+		const note = Notify.loading(t('web.groups.downloading', { plugin: row.plugin, mc: mcVersion ?? '' }));
 
 		try {
 			const result = await post('/plugins/fetch', { plugin: row.entry, mcVersion });
 
 			note.set({
 				level: 'success',
-				message: `${row.plugin} ${result.version} pooled for MC ${mcVersion}`,
+				message: t('web.groups.pooled', { plugin: row.plugin, version: result.version, mc: mcVersion ?? '' }),
 				closeable: true
 			});
 
@@ -260,7 +266,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: `No compatible ${row.plugin} build`,
+				message: t('web.groups.noCompatible', { plugin: row.plugin }),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -269,21 +275,21 @@
 		fetching = '';
 	}
 
-	const BADGES: Record<CheckRow['status'], { state: string; label: string }> = {
-		ok: { state: 'passed', label: 'OK' },
-		unverified: { state: 'ok', label: 'OK (unverified)' },
-		'no-version': { state: 'warning', label: 'No compatible version' },
-		skipped: { state: 'stopped', label: 'Skipped' },
-		missing: { state: 'failed', label: 'Not installed' }
-	};
+	const BADGES: Record<CheckRow['status'], { state: string; label: string }> = $derived({
+		ok: { state: 'passed', label: t('web.groups.badgeOk') },
+		unverified: { state: 'ok', label: t('web.groups.badgeUnverified') },
+		'no-version': { state: 'warning', label: t('web.groups.badgeNoVersion') },
+		skipped: { state: 'stopped', label: t('web.groups.badgeSkipped') },
+		missing: { state: 'failed', label: t('web.groups.badgeMissing') }
+	});
 
-	const columns: Column[] = [
-		{ id: 'plugin', label: 'Plugin', sortable: true },
-		{ id: 'status', label: 'Status', width: 210 },
-		{ id: 'family', label: 'Family', width: 110 },
-		{ id: 'version', label: 'Version' },
-		{ id: 'groups', label: 'From' }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'plugin', label: t('web.groups.colPlugin'), sortable: true },
+		{ id: 'status', label: t('web.groups.colStatus'), width: 210 },
+		{ id: 'family', label: t('web.groups.colFamily'), width: 110 },
+		{ id: 'version', label: t('web.groups.colVersion') },
+		{ id: 'groups', label: t('web.groups.colFrom') }
+	]);
 
 	/**
 	 * One plugin's per-instance override, as the row's menu. A disabled row is
@@ -294,7 +300,7 @@
 		if (row.disabled) {
 			return [
 				{
-					label: 'Enable on this instance',
+					label: t('web.groups.enableHere'),
 					icon: 'circleCheck',
 					disabled,
 					action: () => setOverride(row.plugin, null)
@@ -305,7 +311,7 @@
 		if (row.manual) {
 			return [
 				{
-					label: 'Remove this manually added plugin',
+					label: t('web.groups.removeManual'),
 					icon: 'trash',
 					color: 'danger',
 					disabled,
@@ -320,11 +326,11 @@
 
 		return [
 			{
-				label: 'Disable on this instance',
+				label: t('web.groups.disableHere'),
 				icon: 'ban',
 				color: 'danger',
 				disabled,
-				hint: 'disables it here even though a group provides it',
+				hint: t('web.groups.disableHint'),
 				action: () => setOverride(row.plugin, false)
 			}
 		];
@@ -369,11 +375,11 @@
 					{group.name}
 				</a>
 				<span class="gmeta">
-					{group.plugins.length} plugin(s){group.respacks?.length
-						? ` · ${group.respacks.length} resource pack(s)`
+					{t('web.groups.pluginCount', { count: group.plugins.length })}{group.respacks?.length
+						? ` · ${t('web.groups.respackCount', { count: group.respacks.length })}`
 						: ''}{group.datapacks?.length
-						? ` · ${group.datapacks.length} data pack(s)`
-						: ''}{group.builtin ? ' · always applied' : ''}
+						? ` · ${t('web.groups.datapackCount', { count: group.datapacks.length })}`
+						: ''}{group.builtin ? ` · ${t('web.groups.alwaysApplied')}` : ''}
 				</span>
 			</span>
 			{#if group.description}
@@ -388,17 +394,17 @@
 		{#if packs.respacks.length}
 			<div class="prow">
 				<Icon name="image" size="0.875rem" style="solid" />
-				<b>Resource packs</b>
+				<b>{t('web.nav.resourcePacks')}</b>
 				<span class="dim">{packs.respacks.join(', ')}</span>
 			</div>
 		{/if}
 		{#if packs.datapacks.length}
 			<div class="prow">
 				<Icon name="box" size="0.875rem" style="solid" />
-				<b>Data packs</b>
+				<b>{t('web.nav.dataPacks')}</b>
 				<span class="dim">
 					{packs.datapacks.join(', ')}{software === 'velocity'
-						? ' — the proxy has no world, so these are skipped'
+						? ` ${t('web.groups.proxyNoWorld')}`
 						: ''}
 				</span>
 			</div>
@@ -407,14 +413,14 @@
 {/if}
 
 <div class="addrow">
-	<Btn icon="plus" disabled={disabled} onclick={() => (addOpen = true)}>Add a plugin</Btn>
+	<Btn icon="plus" disabled={disabled} onclick={() => (addOpen = true)}>{t('web.groups.addPlugin')}</Btn>
 </div>
 
 <MultiAddModal
 	bind:open={addOpen}
-	title="Add plugins{instance ? ` to ${instance}` : ''}"
-	description="Force-added beyond the groups — an override the groups cannot take away."
-	selectLabel="Plugins"
+	title={instance ? t('web.groups.addPluginsTo', { instance }) : t('web.groups.addPlugins')}
+	description={t('web.groups.forceAddNote')}
+	selectLabel={t('web.groups.colPlugin')}
 	options={addable}
 	busy={!!overriding}
 	onconfirm={(names) => void addPlugins(names)}
@@ -428,15 +434,15 @@
 		{rowActions}
 		rowLabel={(row) => row.plugin}
 		rowDim={(row) => !!row.disabled}
-		emptyTitle="Nothing to validate"
-		emptyText="The selected groups name no plugins."
+		emptyTitle={t('web.groups.nothingToValidate')}
+		emptyText={t('web.groups.noPluginsInGroups')}
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'plugin'}
 				<b>{row.plugin}</b>
 			{:else if col === 'status'}
 				{#if row.disabled}
-					<StatusBadge state="stopped" label="Disabled" />
+					<StatusBadge state="stopped" label={t('web.groups.badgeDisabled')} />
 				{:else}
 					<StatusBadge state={BADGES[row.status].state} label={BADGES[row.status].label} />
 				{/if}
@@ -453,10 +459,10 @@
 						loading={fetching === row.plugin}
 						onclick={() => download(row)}
 					>
-						Download for {mcVersion}
+						{t('web.groups.downloadFor', { mc: mcVersion ?? '' })}
 					</Btn>
 				{:else if row.status === 'skipped'}
-					<span class="dim">no {software} build</span>
+					<span class="dim">{t('web.groups.noBuild', { software: software ?? '' })}</span>
 				{:else if row.version}
 					<span class="mono">{row.version}</span>
 				{:else}
@@ -464,7 +470,7 @@
 				{/if}
 			{:else if col === 'groups'}
 				{#if row.manual}
-					<span class="manual">manual</span>
+					<span class="manual">{t('web.groups.manual')}</span>
 				{:else}
 					<span class="dim">{row.groups.join(', ')}</span>
 				{/if}
@@ -473,8 +479,8 @@
 	</DataTable>
 	{#if problems}
 		<p class="warn-note">
-			{problems} plugin(s) will not deploy as selected — download a compatible build or adjust
-			the groups.
+			{problems} plugin(s) will not deploy as selected; download a compatible build or adjust
+			{t('web.groups.theGroups')}
 		</p>
 	{/if}
 </div>
@@ -532,7 +538,7 @@
 		color: var(--text-secondary);
 	}
 
-	// what the selection brings besides plugins — no validation, just the facts
+	// what the selection brings besides plugins; no validation, just the facts
 	.packs {
 		display: flex;
 		flex-direction: column;

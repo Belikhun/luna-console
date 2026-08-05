@@ -1,5 +1,5 @@
 <script lang="ts">
-	/** Toggle switch — used for column visibility in table preferences. */
+	/** Toggle switch; used for column visibility in table preferences. */
 	let {
 		checked = false,
 		disabled = false,

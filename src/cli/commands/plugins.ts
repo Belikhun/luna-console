@@ -31,6 +31,7 @@ import * as providers from "../../client/core/services/providers";
 import { getAllStatuses } from "../../client/core/instances";
 import { ensurePortAllocations } from "../../client/core/ports";
 import { parseProvider, printProbe } from "./packs";
+import { t } from "../../shared/i18n";
 
 /** Coloured label for a lock entry's source. */
 function sourceBadge(source: string): string {
@@ -51,7 +52,7 @@ function sourceBadge(source: string): string {
 			return pc.magenta("luna");
 
 		default:
-			return pc.yellow("manual");
+			return pc.yellow(t("cli.plugins.sourceManual"));
 	}
 }
 
@@ -77,17 +78,17 @@ async function parseTargets(raw: string | undefined): Promise<string[]> {
 	const names = await instanceNames();
 
 	const picked = await multiselect({
-		message: "Deploy to which instances?",
+		message: t("cli.plugins.pickTargets"),
 		required: false,
 		options: [
-			{ value: "*paper", label: "*paper (all paper instances)" },
-			{ value: "*velocity", label: "*velocity (the proxy)" },
+			{ value: "*paper", label: t("cli.plugins.allPaper") },
+			{ value: "*velocity", label: t("cli.plugins.theProxy") },
 			...names.map((name) => ({ value: name, label: name })),
 		],
 	});
 
 	if (isCancel(picked)) {
-		throw new Bail("aborted");
+		throw new Bail(t("cli.common.aborted"));
 	}
 
 	return picked as string[];
@@ -95,7 +96,7 @@ async function parseTargets(raw: string | undefined): Promise<string[]> {
 
 command({
 	path: ["plugins", "list"],
-	desc: "List managed plugins, versions and targets",
+	desc: t("cli.plugins.list.desc"),
 
 	handler: async () => {
 		const lock = await loadLock();
@@ -121,37 +122,43 @@ command({
 				sourceBadge(entry.source),
 				familyOf(entry),
 				version,
-				entry.targets.join(",") || pc.red("(none)"),
+				entry.targets.join(",") || pc.red(`(${t("cli.common.none")})`),
 			];
 		});
 
 		console.log();
-		printTable(rows, { head: ["auto", "addon", "source", "family", "version", "targets"] });
+		printTable(rows, {
+			head: [
+				t("cli.head.auto"),
+				t("cli.head.addon"),
+				t("cli.head.source"),
+				t("cli.head.family"),
+				t("cli.head.version"),
+				t("cli.head.targets"),
+			],
+		});
 
 		console.log(
-			pc.dim(
-				`\n  ${rows.length} addons — ${Sym.ok} auto-update on, ${Sym.off} off, ` +
-					"+Nv = per-instance variants/pins (see plugins info)\n",
-			),
+			pc.dim(`\n  ${t("cli.plugins.list.legend", { count: rows.length, ok: Sym.ok, off: Sym.off })}\n`),
 		);
 	},
 });
 
 command({
 	path: ["plugins", "scan"],
-	desc: "Scan pool + instances, identify jars on Modrinth, rebuild lockfile",
+	desc: t("cli.plugins.scan.desc"),
 
 	handler: async () => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
-		const spin = new Spinner().start("hashing jars and querying Modrinth...");
+		const spin = new Spinner().start(t("cli.plugins.scan.hashing"));
 		const report = await plugins.scan(cfg, lock);
 
 		await saveLock(lock);
 		spin.stop();
 
 		if (report.added.length) {
-			ok(`added ${report.added.length} lockfile entries`);
+			ok(t("cli.plugins.scan.added", { count: report.added.length }));
 		}
 
 		for (const hit of report.identified) {
@@ -161,31 +168,28 @@ command({
 		}
 
 		for (const name of report.unidentified) {
-			console.log(`  ${pc.yellow("?")} ${name} ${pc.dim("not on modrinth (manual)")}`);
+			console.log(`  ${pc.yellow("?")} ${name} ${pc.dim(t("cli.plugins.scan.notOnModrinth"))}`);
 		}
 
 		for (const name of report.luna) {
-			console.log(`  ${pc.magenta("◆")} ${name} ${pc.dim("luna plugin")}`);
+			console.log(`  ${pc.magenta("◆")} ${name} ${pc.dim(t("cli.plugins.scan.lunaPlugin"))}`);
 		}
 
 		if (report.caseMismatches.length) {
 			console.log();
-			warn("filename case mismatches (these NEVER received updates from the old sync script):");
+			warn(t("cli.plugins.scan.caseMismatches"));
 
 			for (const mismatch of report.caseMismatches) {
 				console.log(
 					`    ${mismatch.instance}/${mismatch.dir}/${pc.red(mismatch.actual)} ${Sym.arrow} ` +
-						`${pc.green(mismatch.expected)} ${pc.dim("(fixed on next deploy)")}`,
+						`${pc.green(mismatch.expected)} ${pc.dim(t("cli.plugins.scan.fixedOnDeploy"))}`,
 				);
 			}
 		}
 
 		if (report.recognized.length) {
 			console.log();
-			info(
-				`${report.recognized.length} instance file(s) are a pooled build under another name ` +
-					"(register with: luna instance adopt-addons <instance>)",
-			);
+			info(t("cli.plugins.scan.recognized", { count: report.recognized.length }));
 
 			for (const hit of report.recognized) {
 				console.log(
@@ -196,10 +200,7 @@ command({
 
 		if (report.unmanaged.length) {
 			console.log();
-			info(
-				`${report.unmanaged.length} instance-only jars not in the pool — left where they are ` +
-					"(adopt with: luna plugins adopt <instance> <jar>)",
-			);
+			info(t("cli.plugins.scan.unmanaged", { count: report.unmanaged.length }));
 
 			for (const jar of report.unmanaged) {
 				console.log(`    ${pc.dim(`${jar.instance}/${jar.dir}/`)}${jar.file}`);
@@ -207,7 +208,7 @@ command({
 		}
 
 		if (report.removedEntries.length) {
-			warn(`removed stale entries: ${report.removedEntries.join(", ")}`);
+			warn(t("cli.plugins.scan.removedStale", { names: report.removedEntries.join(", ") }));
 		}
 	},
 });
@@ -233,20 +234,26 @@ function renderCandidates(candidates: plugins.UpdateCandidate[]): {
 			rows.push([
 				pc.bold(cand.name),
 				versionDiff(current, group.version.version_number) +
-					(group.isPrimary ? "" : pc.dim(" (variant)")),
+					(group.isPrimary ? "" : pc.dim(` ${t("cli.plugins.variantTag")}`)),
 				pc.dim(group.changedTargets.join(",") || group.targets.join(",")),
 			]);
 		}
 
 		for (const holdback of cand.resolution.holdbacks) {
 			notes.push(
-				`${cand.name}: ${holdback.targets.join(",")} stays on ${holdback.current ?? "?"} — ` +
-					holdback.reason,
+				t("cli.plugins.holdback", {
+					name: cand.name,
+					targets: holdback.targets.join(","),
+					version: holdback.current ?? "?",
+					reason: holdback.reason,
+				}),
 			);
 		}
 
 		for (const pin of cand.resolution.pinned) {
-			notes.push(`${cand.name}: ${pin.target} pinned to ${pin.version}`);
+			notes.push(
+				t("cli.plugins.pinnedNote", { name: cand.name, target: pin.target, version: pin.version }),
+			);
 		}
 	}
 
@@ -255,14 +262,14 @@ function renderCandidates(candidates: plugins.UpdateCandidate[]): {
 
 command({
 	path: ["plugins", "check"],
-	desc: "Check providers for updates (per-instance version resolution)",
+	desc: t("cli.plugins.check.desc"),
 	args: [{ name: "plugin", variadic: true, complete: pluginNames }],
 
 	handler: async (args) => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
 
-		const progress = new ProgressReporter("check for updates");
+		const progress = new ProgressReporter(t("cli.plugins.checkProgress"));
 		const view = new ProgressView(progress).start();
 
 		const { candidates, skipped } = await plugins.checkUpdates(
@@ -278,16 +285,18 @@ command({
 		const { rows, notes } = renderCandidates(candidates);
 
 		if (!rows.length && !notes.length) {
-			ok("everything is up to date");
+			ok(t("cli.plugins.upToDate"));
 
 			return;
 		}
 
 		if (rows.length) {
 			console.log();
-			printTable(rows, { head: ["plugin", "update", "targets"] });
+			printTable(rows, {
+				head: [t("cli.head.plugin"), t("cli.head.update"), t("cli.head.targets")],
+			});
 			console.log();
-			info(`apply with: ${pc.cyan("luna plugins update")}`);
+			info(t("cli.plugins.check.applyHint", { command: pc.cyan("luna plugins update") }));
 		}
 
 		for (const note of notes) {
@@ -304,15 +313,15 @@ command({
 
 command({
 	path: ["plugins", "update"],
-	desc: "Download updates into the pool (then run plugins deploy)",
+	desc: t("cli.plugins.update.desc"),
 	args: [{ name: "plugin", variadic: true, complete: pluginNames }],
-	opts: [{ flag: "--deploy", desc: "also deploy to instances immediately" }],
+	opts: [{ flag: "--deploy", desc: t("cli.plugins.update.optDeploy") }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
 
-		const progress = new ProgressReporter("check for updates");
+		const progress = new ProgressReporter(t("cli.plugins.checkProgress"));
 		const view = new ProgressView(progress).start();
 
 		const { candidates } = await plugins.checkUpdates(cfg, lock, args.length ? args : undefined, {
@@ -324,15 +333,15 @@ command({
 		const updatable = candidates.filter((cand) => cand.pendingGroups.length);
 
 		if (!updatable.length) {
-			ok("everything is up to date");
+			ok(t("cli.plugins.upToDate"));
 
 			return;
 		}
 
-		const spin = new Spinner().start("downloading updates...");
+		const spin = new Spinner().start(t("cli.plugins.update.downloading"));
 
 		for (const cand of updatable) {
-			spin.update(`downloading ${cand.name}...`);
+			spin.update(t("cli.plugins.update.downloadingOne", { name: cand.name }));
 			await plugins.applyUpdate(lock, cand);
 		}
 
@@ -341,7 +350,7 @@ command({
 
 		for (const cand of updatable) {
 			for (const group of cand.pendingGroups) {
-				const variant = group.isPrimary ? "" : pc.dim(" (variant)");
+				const variant = group.isPrimary ? "" : pc.dim(` ${t("cli.plugins.variantTag")}`);
 
 				ok(
 					`${pc.bold(cand.name)} ${pc.green(group.version.version_number)}${variant} ` +
@@ -357,7 +366,7 @@ command({
 		if (opts.deploy) {
 			await runDeploy(undefined);
 		} else {
-			info(`pool updated — push to instances with: ${pc.cyan("luna plugins deploy")}`);
+			info(t("cli.plugins.update.deployHint", { command: pc.cyan("luna plugins deploy") }));
 		}
 	},
 });
@@ -369,17 +378,17 @@ command({
 export async function runDeploy(instances: string[] | undefined, plugin?: string): Promise<void> {
 	const cfg = await loadCluster();
 	const lock = await loadLock();
-	const spin = new Spinner().start("deploying plugins...");
+	const spin = new Spinner().start(t("cli.plugins.deploy.deploying"));
 	const actions = await plugins.deploy(cfg, lock, { instances, plugin });
 	const ports = await ensurePortAllocations(cfg, lock);
 
 	await saveCluster(cfg);
-	// deploy may auto-assign an MC-fit variant to an instance — persist it
+	// deploy may auto-assign an MC-fit variant to an instance; persist it
 	await saveLock(lock);
 	spin.stop();
 
 	for (const action of actions.filter((action) => action.action === "missing-variant")) {
-		warn(`${action.instance}: ${action.file} — ${action.detail}`);
+		warn(`${action.instance}: ${action.file} · ${action.detail}`);
 	}
 
 	const changed = actions.filter(
@@ -394,13 +403,16 @@ export async function runDeploy(instances: string[] | undefined, plugin?: string
 
 	for (const port of ports.filter((port) => !port.written)) {
 		info(
-			`${port.instance}: port ${port.port} reserved for ${port.key} ` +
-				pc.dim("(config appears after first boot — rerun deploy)"),
+			`${t("cli.plugins.deploy.portReserved", {
+				instance: port.instance,
+				port: port.port,
+				key: port.key,
+			})} ${pc.dim(t("cli.plugins.deploy.portNote"))}`,
 		);
 	}
 
 	if (!changed.length) {
-		ok("all instances already in sync");
+		ok(t("cli.plugins.deploy.inSync"));
 
 		return;
 	}
@@ -412,16 +424,16 @@ export async function runDeploy(instances: string[] | undefined, plugin?: string
 	);
 
 	if (needRestart.length) {
-		warn(`running instances with updated jars (restart to apply): ${needRestart.join(", ")}`);
+		warn(t("cli.plugins.deploy.needRestart", { names: needRestart.join(", ") }));
 	}
 }
 
 command({
 	path: ["plugins", "deploy"],
-	desc: "Sync pool jars to instances per target lists (fixes case mismatches)",
+	desc: t("cli.plugins.deploy.desc"),
 	args: [{ name: "instance", variadic: true, complete: instanceNames }],
 	opts: [
-		{ flag: "--plugin", desc: "deploy a single plugin", value: true, complete: pluginNames },
+		{ flag: "--plugin", desc: t("cli.plugins.deploy.optPlugin"), value: true, complete: pluginNames },
 	],
 
 	handler: async (args, opts) => {
@@ -431,21 +443,16 @@ command({
 
 command({
 	path: ["plugins", "add"],
-	desc: "Install a plugin or mod from a provider (slug, or search query)",
+	desc: t("cli.plugins.add.desc"),
 	args: [{ name: "slug-or-query", required: true, variadic: true }],
 	opts: [
-		{
-			flag: "--to",
-			desc: "targets: *, *paper, *velocity, *neoforge, or names",
-			value: true,
-			complete: targetSelectors,
-		},
-		{ flag: "--pool", desc: "pool the jar only — deploy it nowhere yet" },
-		{ flag: "--velocity", desc: "install the velocity variant" },
-		{ flag: "--neoforge", desc: "install the neoforge mod (searches mods, not plugins)" },
+		{ flag: "--to", desc: t("cli.plugins.add.optTo"), value: true, complete: targetSelectors },
+		{ flag: "--pool", desc: t("cli.plugins.add.optPool") },
+		{ flag: "--velocity", desc: t("cli.plugins.add.optVelocity") },
+		{ flag: "--neoforge", desc: t("cli.plugins.add.optNeoforge") },
 		{
 			flag: "--provider",
-			desc: "where to install from: modrinth (default), curseforge or hangar",
+			desc: t("cli.plugins.add.optProvider"),
 			value: true,
 			complete: async () => ["modrinth", "curseforge", "hangar"],
 		},
@@ -457,7 +464,7 @@ command({
 		const query = args.join(" ");
 
 		if (opts.velocity && opts.neoforge) {
-			throw new UsageError("--velocity and --neoforge are different platforms — pick one");
+			throw new UsageError(t("cli.plugins.add.platformConflict"));
 		}
 
 		const family: "paper" | "velocity" | "neoforge" = opts.neoforge
@@ -468,13 +475,13 @@ command({
 
 		const provider = parseProvider(opts.provider as string | undefined);
 		const type = plugins.projectTypeFor(family);
-		const spin = new Spinner().start(`resolving "${query}" on ${provider}...`);
+		const spin = new Spinner().start(t("cli.plugins.add.resolving", { query, provider }));
 
 		let project = await providers.getProject(provider, query, type);
 
 		spin.stop();
 
-		// not a slug — fall back to search and let the user pick
+		// not a slug; fall back to search and let the user pick
 		if (!project) {
 			const hits = await providers.searchProvider(
 				provider,
@@ -484,22 +491,22 @@ command({
 			);
 
 			if (!hits.length) {
-				throw new Bail(`nothing found for "${query}"`);
+				throw new Bail(t("cli.plugins.add.nothingFound", { query }));
 			}
 
 			const { select, isCancel } = await import("@clack/prompts");
 
 			const picked = await select({
-				message: family === "neoforge" ? "Select a mod" : "Select a plugin",
+				message: family === "neoforge" ? t("cli.plugins.add.selectMod") : t("cli.plugins.add.selectPlugin"),
 				options: hits.map((hit) => ({
 					value: hit.project_id,
 					label: hit.title,
-					hint: `${hit.downloads.toLocaleString()} downloads — ${hit.description.slice(0, 60)}`,
+					hint: `${t("cli.plugins.add.downloads", { count: hit.downloads.toLocaleString() })} · ${hit.description.slice(0, 60)}`,
 				})),
 			});
 
 			if (isCancel(picked)) {
-				info("aborted");
+				info(t("cli.common.aborted"));
 
 				return;
 			}
@@ -511,26 +518,34 @@ command({
 
 		expandTargets(cfg, targets); // validate
 
-		const installSpinner = new Spinner().start(`installing ${project.title}...`);
+		const installSpinner = new Spinner().start(t("cli.plugins.add.installing", { name: project.title }));
 		const res = await plugins.installFromProvider(cfg, lock, provider, project, family, targets);
 
 		await saveLock(lock);
 		installSpinner.stop();
 
 		for (const group of res.resolution.groups) {
-			const variant = group.isPrimary ? "" : pc.dim(" (variant)");
+			const variant = group.isPrimary ? "" : pc.dim(` ${t("cli.plugins.variantTag")}`);
 			const where = group.targets.length
 				? `${Sym.arrow} ${group.targets.join(",")}`
-				: pc.dim("(pooled — not deployed anywhere yet)");
+				: pc.dim(t("cli.plugins.add.pooledOnly"));
 
 			ok(
-				`installed ${pc.bold(res.name)} ${pc.green(group.version.version_number)}${variant} ` +
-					where,
+				`${t("cli.plugins.add.installed", {
+					name: pc.bold(res.name),
+					version: pc.green(group.version.version_number),
+				})}${variant} ${where}`,
 			);
 		}
 
 		for (const holdback of res.resolution.holdbacks) {
-			warn(`${res.name}: not installed on ${holdback.targets.join(",")} — ${holdback.reason}`);
+			warn(
+				t("cli.plugins.add.holdback", {
+					name: res.name,
+					targets: holdback.targets.join(","),
+					reason: holdback.reason,
+				}),
+			);
 		}
 
 		await runDeploy(undefined, res.name);
@@ -539,14 +554,11 @@ command({
 
 command({
 	path: ["plugins", "apply"],
-	desc: "Add instances to a plugin's targets and deploy",
+	desc: t("cli.plugins.apply.desc"),
 	args: [{ name: "plugin", required: true, complete: pluginNames }],
 	opts: [
-		{ flag: "--to", desc: "targets to add", value: true, complete: targetSelectors },
-		{
-			flag: "--replace",
-			desc: "set the target list to exactly --to (e.g. collapse names into *paper)",
-		},
+		{ flag: "--to", desc: t("cli.plugins.apply.optTo"), value: true, complete: targetSelectors },
+		{ flag: "--replace", desc: t("cli.plugins.apply.optReplace") },
 	],
 
 	handler: async (args, opts) => {
@@ -556,7 +568,7 @@ command({
 		const entry = lock.plugins[name];
 
 		if (!entry) {
-			throw new UsageError(`unknown plugin: ${name}`);
+			throw new UsageError(t("cli.plugins.unknown", { name }));
 		}
 
 		const add = await parseTargets(opts.to as string | undefined);
@@ -569,34 +581,31 @@ command({
 			: [...new Set([...entry.targets, ...add])].sort();
 
 		// replacing can narrow the list, which would leave the dropped instances
-		// running a jar nothing manages any more — deploy never deletes
+		// running a jar nothing manages any more; deploy never deletes
 		const dropped = before.filter((target) => !expandTargets(cfg, entry.targets).includes(target));
 
 		if (dropped.length) {
 			warn(
-				`no longer targeted: ${dropped.join(", ")} — their copies stay on disk, ` +
-					`remove them with "plugins remove ${name} --from ${dropped.join(",")}"`,
+				t("cli.plugins.apply.dropped", {
+					names: dropped.join(", "),
+					command: `plugins remove ${name} --from ${dropped.join(",")}`,
+				}),
 			);
 		}
 
 		await saveLock(lock);
-		ok(`${pc.bold(name)} targets: ${entry.targets.join(",")}`);
+		ok(t("cli.plugins.apply.saved", { name: pc.bold(name), targets: entry.targets.join(",") }));
 		await runDeploy(undefined, name);
 	},
 });
 
 command({
 	path: ["plugins", "remove"],
-	desc: "Remove a plugin from instances (--from), or everywhere + pool",
+	desc: t("cli.plugins.remove.desc"),
 	args: [{ name: "plugin", required: true, complete: pluginNames }],
 	opts: [
-		{
-			flag: "--from",
-			desc: "only remove from these targets",
-			value: true,
-			complete: targetSelectors,
-		},
-		{ flag: "--yes", desc: "skip confirmation" },
+		{ flag: "--from", desc: t("cli.plugins.remove.optFrom"), value: true, complete: targetSelectors },
+		{ flag: "--yes", desc: t("cli.common.optYes") },
 	],
 
 	handler: async (args, opts) => {
@@ -605,7 +614,7 @@ command({
 		const name = args[0]!;
 
 		if (!lock.plugins[name]) {
-			throw new UsageError(`unknown plugin: ${name}`);
+			throw new UsageError(t("cli.plugins.unknown", { name }));
 		}
 
 		const from = opts.from ? splitTargets(opts.from as string) : undefined;
@@ -613,11 +622,11 @@ command({
 		if (!from && !opts.yes) {
 			const { confirm, isCancel } = await import("@clack/prompts");
 			const sure = await confirm({
-				message: `Remove ${name} from ALL instances and the pool?`,
+				message: t("cli.plugins.remove.confirm", { name }),
 			});
 
 			if (isCancel(sure) || !sure) {
-				info("aborted");
+				info(t("cli.common.aborted"));
 
 				return;
 			}
@@ -627,17 +636,17 @@ command({
 
 		await saveLock(lock);
 
-		const where = res.deletedFrom.join(", ") || "(no jars present)";
-		const pool = res.entryRemoved ? " — pool entry deleted" : "";
+		const where = res.deletedFrom.join(", ") || t("cli.plugins.remove.noJars");
+		const pool = res.entryRemoved ? `; ${t("cli.plugins.remove.poolDeleted")}` : "";
 
-		ok(`removed ${pc.bold(name)} from: ${where}${pool}`);
-		warn("running instances keep the plugin loaded until restart");
+		ok(t("cli.plugins.remove.done", { name: pc.bold(name), where }) + pool);
+		warn(t("cli.plugins.remove.restartNote"));
 	},
 });
 
 command({
 	path: ["plugins", "adopt"],
-	desc: "Adopt an instance-only jar into the managed pool",
+	desc: t("cli.plugins.adopt.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "jar", required: true },
@@ -652,32 +661,27 @@ command({
 		await saveLock(lock);
 
 		ok(
-			`adopted ${pc.bold(jar)} into the pool ` +
-				pc.dim(`(source: ${entry.source}, targets: ${entry.targets.join(",")})`),
+			`${t("cli.plugins.adopt.done", { name: pc.bold(jar) })} ` +
+				pc.dim(`(${t("cli.head.source")}: ${entry.source}, ${t("cli.head.targets")}: ${entry.targets.join(",")})`),
 		);
 
-		info(`identify it on modrinth with: ${pc.cyan("luna plugins scan")}`);
+		info(t("cli.plugins.adopt.identifyHint", { command: pc.cyan("luna plugins scan") }));
 	},
 });
 
 command({
 	path: ["plugins", "upload"],
-	desc: "Pool a jar from this machine (deploys to --to, or nowhere)",
+	desc: t("cli.plugins.upload.desc"),
 	args: [{ name: "jar-path", required: true }],
 	opts: [
-		{ flag: "--name", desc: "plugin name (default: the jar's basename)", value: true },
+		{ flag: "--name", desc: t("cli.plugins.upload.optName"), value: true },
 		{
 			flag: "--family",
-			desc: "paper (default), velocity, universal or neoforge",
+			desc: t("cli.plugins.upload.optFamily"),
 			value: true,
 			complete: async () => ["paper", "velocity", "universal", "neoforge"],
 		},
-		{
-			flag: "--to",
-			desc: "targets: *, *paper, *velocity, or names (default: none)",
-			value: true,
-			complete: targetSelectors,
-		},
+		{ flag: "--to", desc: t("cli.plugins.upload.optTo"), value: true, complete: targetSelectors },
 	],
 
 	handler: async (args, opts) => {
@@ -687,13 +691,13 @@ command({
 		const file = Bun.file(path);
 
 		if (!(await file.exists())) {
-			throw new UsageError(`no such file: ${path}`);
+			throw new UsageError(t("cli.plugins.upload.noSuchFile", { path }));
 		}
 
 		const family = (opts.family as string | undefined) ?? "paper";
 
 		if (family !== "paper" && family !== "velocity" && family !== "universal" && family !== "neoforge") {
-			throw new UsageError("--family must be paper, velocity, universal or neoforge");
+			throw new UsageError(t("cli.plugins.upload.badFamily"));
 		}
 
 		const plugin =
@@ -706,7 +710,7 @@ command({
 				.toLowerCase();
 
 		const targets = opts.to ? splitTargets(String(opts.to)) : [];
-		const spin = new Spinner().start(`pooling ${plugin}...`);
+		const spin = new Spinner().start(t("cli.plugins.upload.pooling", { name: plugin }));
 
 		const res = await plugins.uploadJar(cfg, lock, {
 			plugin,
@@ -720,11 +724,11 @@ command({
 		spin.stop();
 
 		ok(
-			`pooled ${pc.bold(res.name)} ` +
+			`${t("cli.plugins.upload.pooled", { name: pc.bold(res.name) })} ` +
 				pc.dim(
 					targets.length
-						? `(targets: ${res.entry.targets.join(",")})`
-						: "(not deployed anywhere yet)",
+						? `(${t("cli.head.targets")}: ${res.entry.targets.join(",")})`
+						: t("cli.plugins.upload.notDeployed"),
 				),
 		);
 
@@ -736,7 +740,7 @@ command({
 
 command({
 	path: ["plugins", "info"],
-	desc: "Show a plugin's versions, per-instance assignments and requirements",
+	desc: t("cli.plugins.info.desc"),
 	args: [{ name: "plugin", required: true, complete: pluginNames }],
 
 	handler: async (args) => {
@@ -745,18 +749,21 @@ command({
 		const entry = lock.plugins[name];
 
 		if (!entry) {
-			throw new UsageError(`unknown plugin: ${name}`);
+			throw new UsageError(t("cli.plugins.unknown", { name }));
 		}
 
 		console.log();
 
 		printTable([
-			["file", entry.file],
-			["source", sourceBadge(entry.source)],
-			["family", familyOf(entry)],
-			["auto-update", entry.autoUpdate ? pc.green("on") : pc.yellow("off")],
-			["channel", entry.channel ?? "release"],
-			["targets", entry.targets.join(",")],
+			[t("cli.head.file"), entry.file],
+			[t("cli.head.source"), sourceBadge(entry.source)],
+			[t("cli.head.family"), familyOf(entry)],
+			[
+				t("cli.plugins.info.autoUpdate"),
+				entry.autoUpdate ? pc.green(t("cli.plugins.info.on")) : pc.yellow(t("cli.plugins.info.off")),
+			],
+			[t("cli.head.channel"), entry.channel ?? "release"],
+			[t("cli.head.targets"), entry.targets.join(",")],
 			...(entry.remote
 				? [[
 						entry.remote.provider,
@@ -769,23 +776,25 @@ command({
 
 		if (entry.installed) {
 			rows.push([
-				pc.green("primary"),
+				pc.green(t("cli.plugins.info.primary")),
 				entry.installed.versionNumber ?? "?",
-				pc.dim((entry.installed.gameVersions ?? []).join(", ") || "unknown"),
+				pc.dim((entry.installed.gameVersions ?? []).join(", ") || t("cli.plugins.info.unknownMc")),
 			]);
 		}
 
 		for (const variant of Object.values(entry.variants ?? {})) {
 			rows.push([
-				pc.yellow("variant"),
+				pc.yellow(t("cli.plugins.info.variant")),
 				variant.versionNumber,
-				pc.dim((variant.gameVersions ?? []).join(", ") || "unknown"),
+				pc.dim((variant.gameVersions ?? []).join(", ") || t("cli.plugins.info.unknownMc")),
 			]);
 		}
 
 		if (rows.length) {
 			console.log();
-			printTable(rows, { head: ["kind", "version", "supports MC"] });
+			printTable(rows, {
+				head: [t("cli.head.kind"), t("cli.head.version"), t("cli.head.supportsMc")],
+			});
 		}
 
 		const assigns = Object.entries({ ...entry.assign, ...entry.pins });
@@ -797,9 +806,11 @@ command({
 				assigns.map(([target, version]) => [
 					target,
 					version,
-					entry.pins?.[target] ? pc.magenta("pinned") : pc.dim("auto"),
+					entry.pins?.[target]
+						? pc.magenta(t("cli.plugins.info.pinned"))
+						: pc.dim(t("cli.plugins.info.auto")),
 				]),
-				{ head: ["instance", "runs version", "why"] },
+				{ head: [t("cli.head.instance"), t("cli.head.runsVersion"), t("cli.head.why")] },
 			);
 		}
 
@@ -809,19 +820,14 @@ command({
 
 command({
 	path: ["plugins", "pin"],
-	desc: "Pin instance(s) to a specific plugin version (downloads it as a variant)",
+	desc: t("cli.plugins.pin.desc"),
 	args: [
 		{ name: "plugin", required: true, complete: pluginNames },
 		{ name: "version", required: true },
 	],
 	opts: [
-		{
-			flag: "--on",
-			desc: "targets to pin (default: all of the plugin's targets)",
-			value: true,
-			complete: targetSelectors,
-		},
-		{ flag: "--force", desc: "pin even if the version doesn't list the target's MC version" },
+		{ flag: "--on", desc: t("cli.plugins.pin.optOn"), value: true, complete: targetSelectors },
+		{ flag: "--force", desc: t("cli.plugins.pin.optForce") },
 	],
 
 	handler: async (args, opts) => {
@@ -833,7 +839,7 @@ command({
 			? splitTargets(opts.on as string)
 			: (lock.plugins[name]?.targets ?? []);
 
-		const spin = new Spinner().start(`pinning ${name} to ${version}...`);
+		const spin = new Spinner().start(t("cli.plugins.pin.pinning", { name, version }));
 
 		try {
 			const res = await plugins.pinVersion(cfg, lock, name, version, targets, !!opts.force);
@@ -843,10 +849,16 @@ command({
 
 			const pinnedOn = Object.keys(lock.plugins[name]!.pins ?? {}).join(", ");
 
-			ok(`${pc.bold(name)} pinned to ${pc.green(res.version.version_number)} on: ${pinnedOn}`);
+			ok(
+				t("cli.plugins.pin.done", {
+					name: pc.bold(name),
+					version: pc.green(res.version.version_number),
+					targets: pinnedOn,
+				}),
+			);
 
 			if (res.incompatible.length) {
-				warn(`forced despite MC mismatch on: ${res.incompatible.join(", ")}`);
+				warn(t("cli.plugins.pin.forced", { names: res.incompatible.join(", ") }));
 			}
 		} catch (err) {
 			spin.stop();
@@ -860,10 +872,10 @@ command({
 
 command({
 	path: ["plugins", "unpin"],
-	desc: "Remove version pins (back to automatic per-instance resolution)",
+	desc: t("cli.plugins.unpin.desc"),
 	args: [{ name: "plugin", required: true, complete: pluginNames }],
 	opts: [
-		{ flag: "--on", desc: "only unpin these targets", value: true, complete: targetSelectors },
+		{ flag: "--on", desc: t("cli.plugins.unpin.optOn"), value: true, complete: targetSelectors },
 	],
 
 	handler: async (args, opts) => {
@@ -876,22 +888,22 @@ command({
 		await saveLock(lock);
 
 		if (!removed.length) {
-			info("nothing was pinned");
+			info(t("cli.plugins.unpin.nothing"));
 
 			return;
 		}
 
-		ok(`unpinned ${pc.bold(name)} on: ${removed.join(", ")}`);
-		info(`run ${pc.cyan(`luna plugins update ${name}`)} to re-resolve, then deploy`);
+		ok(t("cli.plugins.unpin.done", { name: pc.bold(name), targets: removed.join(", ") }));
+		info(t("cli.plugins.unpin.hint", { command: pc.cyan(`luna plugins update ${name}`) }));
 	},
 });
 
 command({
 	path: ["plugins", "compat"],
-	desc: "Server-version requirement check: can an instance (at a given MC version) run its plugins?",
+	desc: t("cli.plugins.compat.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
-		{ name: "mc-version", desc: "defaults to the instance's current version" },
+		{ name: "mc-version", desc: t("cli.plugins.compat.argMc") },
 	],
 
 	handler: async (args) => {
@@ -901,24 +913,26 @@ command({
 		const instance = managedInstances(cfg)[name];
 
 		if (!instance) {
-			throw new UsageError(`unknown instance: ${name}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name }));
 		}
 
 		const mc = args[1] ?? instance.mcVersion;
 
 		if (!mc) {
-			throw new Bail("no MC version known for this instance — pass one explicitly");
+			throw new Bail(t("cli.plugins.compat.noVersion"));
 		}
 
 		const rows = plugins.compatReport(cfg, lock, name, mc);
 
 		if (!rows.length) {
-			info("no managed paper plugins target this instance");
+			info(t("cli.plugins.compat.noPlugins"));
 
 			return;
 		}
 
-		console.log(`\n  plugin compatibility for ${pc.bold(name)} on MC ${pc.cyan(mc)}:\n`);
+		console.log(
+			`\n  ${t("cli.plugins.compat.heading", { name: pc.bold(name), mc: pc.cyan(mc) })}\n`,
+		);
 
 		printTable(
 			rows.map((row) => {
@@ -931,10 +945,10 @@ command({
 
 				const status =
 					row.status === "unknown"
-						? pc.yellow("unknown")
+						? pc.yellow(t("cli.plugins.compat.unknown"))
 						: row.status === "ok"
-							? pc.green("ok")
-							: pc.red("incompatible");
+							? pc.green(t("cli.plugins.compat.ok"))
+							: pc.red(t("cli.plugins.compat.incompatible"));
 
 				return [
 					glyph,
@@ -943,7 +957,7 @@ command({
 					status,
 				];
 			}),
-			{ head: ["", "plugin", "version", "status"] },
+			{ head: ["", t("cli.head.plugin"), t("cli.head.version"), t("cli.head.status")] },
 		);
 
 		const bad = rows.filter((row) => row.status === "incompatible");
@@ -952,18 +966,20 @@ command({
 
 		if (bad.length) {
 			warn(
-				`${bad.length} plugin(s) need a different version — run ` +
-					`${pc.cyan("luna plugins update")} after switching`,
+				t("cli.plugins.compat.needDifferent", {
+					count: bad.length,
+					command: pc.cyan("luna plugins update"),
+				}),
 			);
 
 			return;
 		}
 
 		const unknown = rows.some((row) => row.status === "unknown")
-			? pc.dim(" (some requirements unknown — run plugins check to backfill)")
+			? pc.dim(` ${t("cli.plugins.compat.someUnknown")}`)
 			: "";
 
-		ok("no known incompatibilities" + unknown);
+		ok(t("cli.plugins.compat.noneKnown") + unknown);
 	},
 });
 
@@ -973,7 +989,7 @@ for (const [verb, value] of [
 ] as const) {
 	command({
 		path: ["plugins", verb],
-		desc: `${verb === "enable" ? "Enable" : "Disable"} auto-update for plugin(s)`,
+		desc: t(verb === "enable" ? "cli.plugins.enable.desc" : "cli.plugins.disable.desc"),
 		args: [{ name: "plugin", required: true, variadic: true, complete: pluginNames }],
 
 		handler: async (args) => {
@@ -983,14 +999,16 @@ for (const [verb, value] of [
 				const entry = lock.plugins[name];
 
 				if (!entry) {
-					throw new UsageError(`unknown plugin: ${name}`);
+					throw new UsageError(t("cli.plugins.unknown", { name }));
 				}
 
 				entry.autoUpdate = value;
 
-				const state = value ? pc.green("enabled") : pc.yellow("disabled");
+				const state = value
+					? pc.green(t("cli.plugins.enable.state"))
+					: pc.yellow(t("cli.plugins.disable.state"));
 
-				ok(`${pc.bold(name)}: auto-update ${state}`);
+				ok(`${pc.bold(name)}: ${t("cli.plugins.info.autoUpdate")} ${state}`);
 			}
 
 			await saveLock(lock);
@@ -1006,7 +1024,7 @@ export async function applyGroupRestart(
 	restart: string | undefined,
 ): Promise<void> {
 	if (!restart || restart === "none") {
-		info(`instances using ${pc.bold(group)} pick the change up on their next restart`);
+		info(t("cli.plugins.groupRestart.onNextRestart", { name: pc.bold(group) }));
 
 		return;
 	}
@@ -1019,17 +1037,17 @@ export async function applyGroupRestart(
 
 		for (const name of affected) {
 			if (statuses.find((status) => status.name === name)?.state === "stopped") {
-				info(`${name} is stopped — leaving it down`);
+				info(t("cli.luna.deploy.leftDown", { name }));
 
 				continue;
 			}
 
-			const spin = new Spinner().start(`restarting ${name}...`);
+			const spin = new Spinner().start(t("cli.luna.deploy.restarting", { name }));
 
 			await inst.stopInstance(cfg, name);
 			await inst.startInstance(cfg, name);
 			spin.stop();
-			ok(`${pc.bold(name)} restarted`);
+			ok(t("cli.luna.deploy.restarted", { name: pc.bold(name) }));
 		}
 
 		return;
@@ -1040,21 +1058,26 @@ export async function applyGroupRestart(
 	const store = await loadSchedules();
 
 	const schedule = createSchedule(cfg, store, {
-		name: `group ${group} update reboot`,
+		name: t("cli.plugins.groupRestart.scheduleName", { name: group }),
 		action: "restart",
 		instances: affected,
 		trigger: { kind: "at", at: new Date(restart).toISOString() },
 	});
 
 	await saveSchedules(store);
-	ok(`restart scheduled ${pc.cyan(schedule.nextRun ?? "?")} for ${affected.join(", ")}`);
+	ok(
+		t("cli.plugins.groupRestart.scheduled", {
+			time: pc.cyan(schedule.nextRun ?? "?"),
+			names: affected.join(", "),
+		}),
+	);
 }
 
 command({
 	path: ["plugins", "validate"],
-	desc: "How a group selection lands on an instance (OK / no version / skipped)",
+	desc: t("cli.plugins.validate.desc"),
 	args: [{ name: "instance", required: true, complete: instanceNames }],
-	opts: [{ flag: "--groups", desc: "extra groups beside default, comma-separated", value: true }],
+	opts: [{ flag: "--groups", desc: t("cli.plugins.validate.optGroups"), value: true }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
@@ -1063,7 +1086,7 @@ command({
 		const inst = managedInstances(cfg)[name];
 
 		if (!inst) {
-			throw new UsageError(`unknown instance: ${name}`);
+			throw new UsageError(t("cli.env.unknownInstance", { name }));
 		}
 
 		const groups = opts.groups
@@ -1093,11 +1116,20 @@ command({
 				glyph(row.status),
 				row.plugin,
 				row.family ?? pc.dim("—"),
-				row.status + (row.downloadable ? pc.cyan(" (downloadable)") : ""),
+				row.status + (row.downloadable ? pc.cyan(` ${t("cli.plugins.validate.downloadable")}`) : ""),
 				row.version ?? pc.dim("—"),
 				pc.dim(row.groups.join(",")),
 			]),
-			{ head: ["", "plugin", "family", "status", "version", "groups"] },
+			{
+				head: [
+					"",
+					t("cli.head.plugin"),
+					t("cli.head.family"),
+					t("cli.head.status"),
+					t("cli.head.version"),
+					t("cli.head.groups"),
+				],
+			},
 		);
 
 		console.log();
@@ -1105,16 +1137,20 @@ command({
 		const fetchable = rows.filter((row) => row.downloadable);
 
 		if (fetchable.length) {
-			info(`fetch compatible builds with: ${pc.cyan(`luna plugins fetch <plugin> --mc ${inst.mcVersion}`)}`);
+			info(
+				t("cli.plugins.validate.fetchHint", {
+					command: pc.cyan(`luna plugins fetch <plugin> --mc ${inst.mcVersion}`),
+				}),
+			);
 		}
 	},
 });
 
 command({
 	path: ["plugins", "fetch"],
-	desc: "Download a build compatible with an MC version into the pool",
+	desc: t("cli.plugins.fetch.desc"),
 	args: [{ name: "plugin", required: true, complete: pluginNames }],
-	opts: [{ flag: "--mc", desc: "MC version the build must support", value: true }],
+	opts: [{ flag: "--mc", desc: t("cli.plugins.fetch.optMc"), value: true }],
 
 	handler: async (args, opts) => {
 		const lock = await loadLock();
@@ -1122,26 +1158,26 @@ command({
 		const mc = opts.mc as string | undefined;
 
 		if (!mc) {
-			throw new UsageError("--mc <version> is required");
+			throw new UsageError(t("cli.plugins.fetch.needsMc"));
 		}
 
-		const spin = new Spinner().start(`resolving ${name} for MC ${mc}...`);
+		const spin = new Spinner().start(t("cli.plugins.fetch.resolving", { name, mc }));
 		const result = await plugins.ensureVariantForMc(lock, name, mc);
 
 		await saveLock(lock);
 		spin.stop();
 
 		if (result.downloaded) {
-			ok(`${pc.bold(name)} ${pc.cyan(result.version)} pooled for MC ${mc}`);
+			ok(t("cli.plugins.fetch.pooled", { name: pc.bold(name), version: pc.cyan(result.version), mc }));
 		} else {
-			info(`${pc.bold(name)} ${result.version} already covers MC ${mc}`);
+			info(t("cli.plugins.fetch.alreadyCovers", { name: pc.bold(name), version: result.version, mc }));
 		}
 	},
 });
 
 command({
 	path: ["plugins", "config"],
-	desc: "Show a plugin's config template, or apply all templates to an instance",
+	desc: t("cli.plugins.config.desc"),
 	args: [
 		{ name: "what", required: true, complete: async () => ["show", "apply"] },
 		{ name: "target", required: true },
@@ -1156,11 +1192,11 @@ command({
 			const entry = lock.plugins[target];
 
 			if (!entry) {
-				throw new UsageError(`unknown plugin entry: ${target}`);
+				throw new UsageError(t("cli.plugins.config.unknownEntry", { name: target }));
 			}
 
 			if (!entry.config?.length) {
-				info(`${target} has no config template`);
+				info(t("cli.plugins.config.noTemplate", { name: target }));
 
 				return;
 			}
@@ -1171,7 +1207,7 @@ command({
 		}
 
 		if (what !== "apply") {
-			throw new UsageError('expected "show <entry>" or "apply <instance>"');
+			throw new UsageError(t("cli.plugins.config.badWhat"));
 		}
 
 		const { applyTemplates, notableTemplateResults } = await import("../../client/core/templates");
@@ -1179,7 +1215,7 @@ command({
 		const notable = notableTemplateResults(results);
 
 		if (!notable.length) {
-			ok(`${target}: every templated value already in place (${results.length} checked)`);
+			ok(t("cli.env.apply.templatesInPlace", { name: target, count: results.length }));
 
 			return;
 		}
@@ -1199,7 +1235,7 @@ command({
 
 command({
 	path: ["plugins", "override"],
-	desc: "Force-add, disable or clear a plugin on one instance (wins over its groups)",
+	desc: t("cli.plugins.override.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
 		{
@@ -1209,9 +1245,9 @@ command({
 		},
 	],
 	opts: [
-		{ flag: "--enable", desc: "force-add the plugin, regardless of groups" },
-		{ flag: "--disable", desc: "disable the plugin, even when a group provides it" },
-		{ flag: "--clear", desc: "drop the override — groups decide again" },
+		{ flag: "--enable", desc: t("cli.plugins.override.optEnable") },
+		{ flag: "--disable", desc: t("cli.plugins.override.optDisable") },
+		{ flag: "--clear", desc: t("cli.plugins.override.optClear") },
 	],
 
 	handler: async (args, opts) => {
@@ -1222,7 +1258,7 @@ command({
 		const picked = [opts.enable, opts.disable, opts.clear].filter(Boolean).length;
 
 		if (picked !== 1) {
-			throw new UsageError("pass exactly one of --enable, --disable or --clear");
+			throw new UsageError(t("cli.plugins.override.pickOne"));
 		}
 
 		const state = opts.enable ? true : opts.disable ? false : null;
@@ -1230,14 +1266,23 @@ command({
 		setPluginOverride(cfg, lock, instance, plugin, state);
 		await saveCluster(cfg);
 
-		// "wanted" must include explicit lockfile targets, not just groups/overrides —
+		// "wanted" must include explicit lockfile targets, not just groups/overrides:
 		// clearing an override on an explicitly targeted plugin re-deploys it
 		const wanted = entriesOf(lock, plugin).some((key) =>
 			effectiveTargets(cfg, lock, key).includes(instance),
 		);
 
 		if (wanted) {
-			ok(`${pc.bold(plugin)} ${state === null ? "override cleared" : "force-added"} on ${instance} — deploying`);
+			ok(
+				t("cli.plugins.override.deploying", {
+					name: pc.bold(plugin),
+					what:
+						state === null
+							? t("cli.plugins.override.cleared")
+							: t("cli.plugins.override.forceAdded"),
+					instance,
+				}),
+			);
 			await runDeploy([instance], undefined);
 
 			return;
@@ -1248,20 +1293,22 @@ command({
 		await saveLock(lock);
 
 		if (state === null) {
-			ok(`${pc.bold(plugin)} override cleared on ${instance}`);
+			ok(t("cli.plugins.override.clearedOn", { name: pc.bold(plugin), instance }));
 		} else {
-			ok(`${pc.bold(plugin)} disabled on ${instance}`);
+			ok(t("cli.plugins.override.disabledOn", { name: pc.bold(plugin), instance }));
 		}
 
 		if (removed.length) {
-			info(`removed from ${instance}/plugins: ${removed.join(", ")} ${pc.dim("(a running server keeps it loaded until restart)")}`);
+			info(
+				`${t("cli.plugins.override.removedJars", { instance, names: removed.join(", ") })} ${pc.dim(t("cli.plugins.override.loadedNote"))}`,
+			);
 		}
 	},
 });
 
 command({
 	path: ["plugins", "state"],
-	desc: "Runtime state of every plugin on an instance, with log warn/error counts",
+	desc: t("cli.plugins.state.desc"),
 	args: [{ name: "instance", required: true, complete: instanceNames }],
 
 	handler: async (args) => {
@@ -1269,7 +1316,7 @@ command({
 		const lock = await loadLock();
 		const instance = args[0]!;
 
-		const spin = new Spinner().start(`reading ${instance}'s boot session...`);
+		const spin = new Spinner().start(t("cli.plugins.state.reading", { name: instance }));
 
 		if (await ensureAliases(lock)) {
 			await saveLock(lock);
@@ -1279,11 +1326,11 @@ command({
 
 		spin.stop();
 
-		// "disabled" is the override, not a phase — it says why there is nothing to
+		// "disabled" is the override, not a phase: it says why there is nothing to
 		// report rather than what the log saw, so it is shown in place of the state
 		const stateGlyph = (state: string, disabled: boolean): string =>
 			disabled
-				? pc.dim("disabled")
+				? pc.dim(t("cli.plugins.state.disabled"))
 				: state === "running"
 					? pc.green(state)
 					: state === "errored"
@@ -1304,27 +1351,37 @@ command({
 				row.errors ? pc.red(String(row.errors)) : pc.dim("0"),
 				row.origin === "manual" ? pc.cyan(row.origin) : pc.dim(row.groups.join(",") || row.origin),
 			]),
-			{ head: ["plugin", "log name", "state", "version", "warn", "err", "from"] },
+			{
+				head: [
+					t("cli.head.plugin"),
+					t("cli.head.logName"),
+					t("cli.head.state"),
+					t("cli.head.version"),
+					t("cli.head.warn"),
+					t("cli.head.err"),
+					t("cli.head.from"),
+				],
+			},
 		);
 
 		console.log();
 
 		if (!session.complete) {
-			warn("boot marker not found within the log-rotation window — load states past the window read as unknown");
+			warn(t("cli.plugins.state.incompleteSession"));
 		}
 
 		const troubled = rows.filter((row) => row.state === "errored" || row.errors > 0);
 
 		if (troubled.length) {
-			warn(`${troubled.length} plugin(s) reported errors — inspect with: luna logs ${instance}`);
+			warn(t("cli.plugins.state.troubled", { count: troubled.length, name: instance }));
 		}
 	},
 });
 
 command({
 	path: ["plugins", "standardize"],
-	desc: "Migrate every entry to the <plugin>@<family> naming scheme (pool, lockfile, ports, instances)",
-	opts: [{ flag: "--yes", desc: "skip the confirmation" }],
+	desc: t("cli.plugins.standardize.desc"),
+	opts: [{ flag: "--yes", desc: t("cli.common.optYes") }],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
@@ -1334,17 +1391,15 @@ command({
 			const { confirm, isCancel } = await import("@clack/prompts");
 
 			const sure = await confirm({
-				message:
-					"Rename pool jars + lockfile keys + port allocations, redeploy everywhere and " +
-					"remove the old-name jars?",
+				message: t("cli.plugins.standardize.confirm"),
 			});
 
 			if (isCancel(sure) || !sure) {
-				throw new Bail("aborted");
+				throw new Bail(t("cli.common.aborted"));
 			}
 		}
 
-		const spin = new Spinner().start("standardizing plugin naming...");
+		const spin = new Spinner().start(t("cli.plugins.standardize.working"));
 		const report = await standardizeNaming(cfg, lock);
 
 		await saveCluster(cfg);
@@ -1356,38 +1411,43 @@ command({
 		}
 
 		for (const port of report.portKeys) {
-			info(`port allocation ${port}`);
+			info(t("cli.plugins.standardize.portKey", { name: port }));
 		}
 
 		for (const member of report.groupMembers) {
-			info(`group member ${member}`);
+			info(t("cli.plugins.standardize.groupMember", { name: member }));
 		}
 
-		info(`${report.deployed} deploy change(s), ${report.removed.length} old jar(s) removed`);
+		info(
+			t("cli.plugins.standardize.summary", {
+				deployed: report.deployed,
+				removed: report.removed.length,
+			}),
+		);
 
 		if (report.mismatches.length) {
 			for (const mismatch of report.mismatches) {
-				warn(`PARITY MISMATCH — ${mismatch}`);
+				warn(t("cli.plugins.standardize.mismatch", { detail: mismatch }));
 			}
 		} else {
-			ok("parity verified: every instance runs the same plugin set as before");
+			ok(t("cli.plugins.standardize.parityOk"));
 		}
 	},
 });
 
 command({
 	path: ["plugins", "identify"],
-	desc: "Map an existing plugin/mod to a provider project (so updates apply)",
+	desc: t("cli.plugins.identify.desc"),
 	args: [
 		{ name: "plugin", required: true, complete: pluginNames },
 		{ name: "slug-or-id", required: true },
 	],
 	opts: [
-		{ flag: "--provider", desc: "provider to map against (default modrinth)", value: true },
-		{ flag: "--version", desc: "version id to record as installed", value: true },
-		{ flag: "--unidentified", desc: "record the project but no version" },
-		{ flag: "--auto", desc: "auto-update: on or off (default on only for a proven match)", value: true },
-		{ flag: "--yes", desc: "accept an unproven match without asking" },
+		{ flag: "--provider", desc: t("cli.plugins.identify.optProvider"), value: true },
+		{ flag: "--version", desc: t("cli.plugins.identify.optVersion"), value: true },
+		{ flag: "--unidentified", desc: t("cli.plugins.identify.optUnidentified") },
+		{ flag: "--auto", desc: t("cli.plugins.identify.optAuto"), value: true },
+		{ flag: "--yes", desc: t("cli.plugins.identify.optYes") },
 	],
 
 	handler: async (args, opts) => {
@@ -1396,19 +1456,17 @@ command({
 		const name = args[0]!;
 		const provider = parseProvider(opts.provider as string | undefined);
 
-		const spin = new Spinner().start(`identifying ${name} at ${provider}…`);
+		const spin = new Spinner().start(t("cli.plugins.identify.probing", { name, provider }));
 		const probe = await plugins.probePluginIdentity(lock, name, provider, args[1]!);
 
 		spin.stop();
-		info(`local file: ${pc.dim(probe.local.file)}`);
+		info(t("cli.plugins.identify.localFile", { path: pc.dim(probe.local.file) }));
 		printProbe(probe);
 
 		// mapping an unproven file is the operator's judgement, never a default:
 		// the recorded version is what the downgrade guard compares against
 		if (probe.confidence !== "exact" && !opts.version && !opts.unidentified && !opts.yes) {
-			throw new Bail(
-				"nothing proved which version this is — re-run with --version <id>, --unidentified, or --yes",
-			);
+			throw new Bail(t("cli.plugins.identify.unproven"));
 		}
 
 		const { entry, match } = await plugins.identifyPlugin(cfg, lock, name, {
@@ -1423,16 +1481,16 @@ command({
 
 		ok(
 			`${pc.bold(name)} → ${provider}:${probe.project.slug} ` +
-				`${match ? pc.green(match.versionNumber) : pc.dim("version unknown")}, ` +
-				`auto-update ${entry.autoUpdate ? pc.green("on") : pc.dim("off")}`,
+				`${match ? pc.green(match.versionNumber) : pc.dim(t("cli.plugins.identify.versionUnknown"))}, ` +
+				`${t("cli.plugins.info.autoUpdate")} ${entry.autoUpdate ? pc.green(t("cli.plugins.info.on")) : pc.dim(t("cli.plugins.info.off"))}`,
 		);
-		info(`check it with: luna plugins check ${name}`);
+		info(t("cli.plugins.identify.checkHint", { command: `luna plugins check ${name}` }));
 	},
 });
 
 command({
 	path: ["plugins", "forget"],
-	desc: "Drop a plugin's provider mapping (keeps the jar and its deployments)",
+	desc: t("cli.plugins.forget.desc"),
 	args: [{ name: "plugin", required: true, complete: pluginNames }],
 
 	handler: async (args) => {
@@ -1441,6 +1499,6 @@ command({
 		await plugins.forgetPluginIdentity(lock, args[0]!);
 		await saveLock(lock);
 
-		ok(`${pc.bold(args[0]!)} is no longer mapped to a provider — updates will not be checked`);
+		ok(t("cli.plugins.forget.done", { name: pc.bold(args[0]!) }));
 	},
 });

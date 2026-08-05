@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 	import Spinner from './Spinner.svelte';
 	import ProgressBar from './ProgressBar.svelte';
@@ -10,8 +11,8 @@
 
 	/**
 	 * Notification flashbar: solid level-coloured cards with white content.
-	 * Several notifications collapse into a stack — only the newest card renders,
-	 * with the others peeking out below it as darker slivers — and a dark counter
+	 * Several notifications collapse into a stack; only the newest card renders,
+	 * with the others peeking out below it as darker slivers; and a dark counter
 	 * bar straddles the stack's bottom edge, listing every level's count and
 	 * toggling the full list. Loading notifications carry a spinner (or a
 	 * determinate bar) and never dismiss themselves.
@@ -24,7 +25,7 @@
 		loading: 'rotate'
 	};
 
-	/** counter icons — no circled-ellipsis glyph exists, so in-progress uses circleDot */
+	/** counter icons; no circled-ellipsis glyph exists, so in-progress uses circleDot */
 	const COUNTER_ICONS: Record<NotificationLevel, string> = {
 		error: 'circleXMark',
 		warning: 'triangleExclamation',
@@ -146,7 +147,7 @@
 					class="bar"
 					onclick={() => (Notifications.collapsed = !Notifications.collapsed)}
 					aria-expanded={!Notifications.collapsed}
-					aria-label={stacked ? `Show all ${items.length} notifications` : 'Collapse notifications'}
+					aria-label={stacked ? t('web.flash.showAll', { count: items.length }) : t('web.flash.collapse')}
 				>
 					{#each COUNTER_ORDER as level}
 						<span class="ctr">
@@ -164,7 +165,7 @@
 {/if}
 
 <style lang="scss">
-	// Notification colours are fixed rather than themed — solid fill, white
+	// Notification colours are fixed rather than themed; solid fill, white
 	// content, no border.
 	[data-level='error'] {
 		--flash-bg: #d63f38;
@@ -182,7 +183,7 @@
 		--flash-bg: #0972d3;
 	}
 
-	// in-progress reads as informational blue, like the info level — the spinner
+	// in-progress reads as informational blue, like the info level; the spinner
 	// is what tells them apart (matches the AWS flashbar convention)
 	[data-level='loading'] {
 		--flash-bg: #0972d3;
@@ -199,7 +200,7 @@
 
 		// Collapsed stack: only the newest card is real; the ones behind show as
 		// slivers stepped *inwards* and down, each darker than the one before, so
-		// the peek reads as receding cards. Only the bottom corners are rounded —
+		// the peek reads as receding cards. Only the bottom corners are rounded -
 		// the square tops hide behind the card above. The list padding reserves the
 		// peek so the counter bar still lands on the stack's real bottom edge.
 		&.stacked {

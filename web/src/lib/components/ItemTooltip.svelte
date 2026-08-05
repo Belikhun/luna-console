@@ -28,7 +28,7 @@
 	// The card is as wide as its widest line. The game only ever wraps a tooltip
 	// that would not fit the *screen*, which at a GUI's scale is several hundred
 	// game pixels, so a card capped at anything narrower breaks lines the player
-	// will never see broken — and the name line of a selector item, which pads its
+	// will never see broken; and the name line of a selector item, which pads its
 	// version out to the right edge, is exactly the line that would break.
 	const WRAP = Number.POSITIVE_INFINITY;
 	// the client steps a tooltip's lines by ten rather than the font's own nine

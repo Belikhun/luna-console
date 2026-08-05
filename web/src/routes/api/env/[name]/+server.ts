@@ -11,7 +11,7 @@ import { errorMessage } from '$lib/server/http';
  * One variable as an object: every scope that defines it, everywhere it is
  * referenced from, what each instance resolves it to, and its change trail.
  *
- * Secret values are still withheld here — the reveal endpoint is the only way
+ * Secret values are still withheld here; the reveal endpoint is the only way
  * out, because that is what gets recorded.
  */
 export async function GET({ params }) {
@@ -24,7 +24,7 @@ export async function GET({ params }) {
 	const scopes = scopesOf(env, name);
 
 	// a builtin is computed per instance rather than stored, so it has no scopes of
-	// its own — the screen still has to be able to explain one
+	// its own; the screen still has to be able to explain one
 	let builtin = false;
 
 	try {
@@ -34,7 +34,7 @@ export async function GET({ params }) {
 			builtin = name in (await builtinVars(cfg, first));
 		}
 	} catch {
-		// no instance to compute against — treat it as not builtin
+		// no instance to compute against; treat it as not builtin
 	}
 
 	if (!def && !scopes.length && !builtin) {

@@ -1,7 +1,7 @@
 /**
  * The daemon's RPC surface: named operations mapped onto core functions
  * verbatim (DESIGN.md §4.3). Arguments and results cross the wire as plain
- * JSON — `cfg`/`lock` included — and because several core functions mutate
+ * JSON; `cfg`/`lock` included; and because several core functions mutate
  * those objects in place, every op response echoes them back so the client
  * bridge can sync its caller's copies.
  *
@@ -11,6 +11,7 @@
  */
 
 import type { ProgressReporter } from "../core/progress";
+import { t } from "../shared/i18n";
 import type { ClusterConfig, PluginsLock } from "../core/types";
 
 import * as addonsCore from "../core/addons";
@@ -56,9 +57,9 @@ export interface OpSpec {
 	// the registry spans every core signature, so the map is untyped by design;
 	// type safety lives at the call sites (client bridge mirrors core's types)
 	fn: (...args: never[]) => unknown;
-	/** Argument index carrying the ClusterConfig — echoed back after the call */
+	/** Argument index carrying the ClusterConfig; echoed back after the call */
 	cfg?: number;
-	/** Argument index carrying the PluginsLock — echoed back after the call */
+	/** Argument index carrying the PluginsLock; echoed back after the call */
 	lock?: number;
 	/** Argument index naming the target instance, for follower routing */
 	instance?: number;
@@ -134,7 +135,7 @@ async function deployRouted(
 
 		try {
 			if (!forwardOp) {
-				throw new Error("no cluster link");
+				throw new Error(t("daemon.noClusterLink"));
 			}
 
 			const outcome = await forwardOp(
@@ -165,7 +166,7 @@ async function deployRouted(
 /**
  * Ownership-aware data pack deploy, shaped exactly like the plugin deploy
  * above: the local slice runs here, each follower's slice is forwarded whole
- * (the follower mirrors the pool zips it needs first — see follower.ts), and
+ * (the follower mirrors the pool zips it needs first; see follower.ts), and
  * an offline follower fails only its own instances.
  */
 async function deployDataPacksRouted(
@@ -191,7 +192,7 @@ async function deployDataPacksRouted(
 
 		try {
 			if (!forwardOp) {
-				throw new Error("no cluster link");
+				throw new Error(t("daemon.noClusterLink"));
 			}
 
 			const outcome = await forwardOp(
@@ -235,7 +236,7 @@ async function removeDataPackRouted(
 	const entry = lock.datapacks[name];
 
 	if (!entry) {
-		throw new Error(`unknown data pack: ${name}`);
+		throw new Error(t("core.datapacks.unknown", { name }));
 	}
 
 	const current = datapacksCore.datapackTargets(cfg, name, entry, groups);
@@ -253,7 +254,7 @@ async function removeDataPackRouted(
 	for (const [daemon, names] of remote) {
 		try {
 			if (!forwardOp) {
-				throw new Error("no cluster link");
+				throw new Error(t("daemon.noClusterLink"));
 			}
 
 			const outcome = await forwardOp(daemon, "datapacks.removeFiles", [cfg, lock, name, names]);
@@ -262,7 +263,7 @@ async function removeDataPackRouted(
 		} catch (err) {
 			const detail = err instanceof Error ? err.message : String(err);
 
-			throw new Error(`daemon ${daemon} could not remove ${name}: ${detail}`);
+			throw new Error(t("daemon.removeFailed", { daemon, name, detail }));
 		}
 	}
 
@@ -302,7 +303,7 @@ async function applyAddonGroupsRouted(
 
 	respackNode?.complete(
 		respacks.length
-			? `${respacks.length} definition(s) rewritten${reloaded ? " — proxy reloaded" : ""}`
+			? t("core.addons.rewritten", { count: respacks.length }) + (reloaded ? ` ${t("core.addons.proxyReloaded")}` : "")
 			: "nothing to change",
 	);
 
@@ -327,7 +328,7 @@ export async function getStatusRouted(
 	const inst = configCore.managedInstances(cfg)[name];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${name}`);
+		throw new Error(t("core.instances.unknown", { name }));
 	}
 
 	const owner = name === "proxy" ? undefined : inst.daemon;
@@ -338,7 +339,7 @@ export async function getStatusRouted(
 
 	try {
 		if (!forwardOp) {
-			throw new Error("no cluster link");
+			throw new Error(t("daemon.noClusterLink"));
 		}
 
 		const outcome = await forwardOp(owner, "instances.getStatus", [cfg, name]);
@@ -373,7 +374,7 @@ export async function getAllStatusesRouted(
 			for (const name of names) {
 				try {
 					if (!forwardOp) {
-						throw new Error("no cluster link");
+						throw new Error(t("daemon.noClusterLink"));
 					}
 
 					const outcome = await forwardOp(daemon, "instances.getStatus", [cfg, name]);
@@ -433,7 +434,7 @@ async function createInstanceRouted(
 ): Promise<adminCore.CreateResult> {
 	if (opts.daemon && opts.daemon !== daemonName()) {
 		if (!forwardOp) {
-			throw new Error(`instance targets daemon "${opts.daemon}" but no follower link exists`);
+			throw new Error(t("daemon.noFollowerLink", { name: opts.daemon }));
 		}
 
 		const { reporter, ...plain } = opts;
@@ -444,7 +445,7 @@ async function createInstanceRouted(
 			reporter,
 		);
 
-		// the follower mutated its copy of cfg — echo it into ours so the
+		// the follower mutated its copy of cfg; echo it into ours so the
 		// caller's registry entry (and its save) are correct
 		Object.assign(cfg, outcome.cfg as ClusterConfig);
 
@@ -456,7 +457,7 @@ async function createInstanceRouted(
 
 /**
  * Route adoption to the daemon named in the options. The instance is not in the
- * registry yet, so the usual owner routing has nothing to key on — the target
+ * registry yet, so the usual owner routing has nothing to key on; the target
  * comes from the request, exactly as it does for creation. It has to run there:
  * the directory being adopted only exists on that machine's disk.
  */
@@ -467,12 +468,12 @@ async function adoptInstanceRouted(
 ): Promise<adminCore.AdoptResult> {
 	if (opts.daemon && opts.daemon !== daemonName()) {
 		if (!forwardOp) {
-			throw new Error(`instance targets daemon "${opts.daemon}" but no follower link exists`);
+			throw new Error(t("daemon.noFollowerLink", { name: opts.daemon }));
 		}
 
 		const outcome = await forwardOp(opts.daemon, "admin.adoptInstance", [cfg, name, opts]);
 
-		// the follower mutated its copy of cfg — echo it into ours so the
+		// the follower mutated its copy of cfg; echo it into ours so the
 		// caller's registry entry (and its save) are correct
 		Object.assign(cfg, outcome.cfg as ClusterConfig);
 
@@ -499,13 +500,13 @@ function remoteMachines(cfg: ClusterConfig): string[] {
 
 /**
  * Ask one machine's daemon for something about its own ports. A machine we have
- * no link to is not an error — the caller renders "unknown" for it, which is the
+ * no link to is not an error; the caller renders "unknown" for it, which is the
  * truth, rather than a confident "not bound".
  */
 async function askMachine(machine: string, op: string, args: unknown[]): Promise<unknown | null> {
 	try {
 		if (!forwardOp) {
-			throw new Error("no cluster link");
+			throw new Error(t("daemon.noClusterLink"));
 		}
 
 		const outcome = await forwardOp(machine, op, args);
@@ -518,7 +519,7 @@ async function askMachine(machine: string, op: string, args: unknown[]): Promise
 
 /**
  * The list form of `askMachine`. A follower one build behind may not have the op
- * at all, or may answer with an older shape — `listeningPorts` used to return a
+ * at all, or may answer with an older shape; `listeningPorts` used to return a
  * Map, and a Map crosses JSON as `{}`. Only a real array is an answer; anything
  * else is "not known from here", which is what the callers already render.
  */
@@ -572,7 +573,7 @@ async function auditPortsRouted(
 				issues.push({
 					kind: "unchecked",
 					machine,
-					message: `${portsCore.machineLabel(machine)} is unreachable — its plugin port configuration was not checked`,
+					message: t("daemon.machineUnreachable", { machine: portsCore.machineLabel(machine) }),
 				});
 
 				return;
@@ -645,7 +646,7 @@ async function inspectInstanceDirRouted(
 ): Promise<adminCore.InstanceDetection> {
 	if (daemon && daemon !== daemonName()) {
 		if (!forwardOp) {
-			throw new Error(`inspection targets daemon "${daemon}" but no follower link exists`);
+			throw new Error(t("daemon.noFollowerLink", { name: daemon }));
 		}
 
 		const outcome = await forwardOp(daemon, "admin.inspectInstanceDir", [dir]);
@@ -657,7 +658,7 @@ async function inspectInstanceDirRouted(
 }
 
 /**
- * Provider behind `daemon.listDaemons` — replaced by the hub on a primary.
+ * Provider behind `daemon.listDaemons`; replaced by the hub on a primary.
  * Without a hub there are no live links to report, so this daemon describes
  * itself from its own health and everything else from the registry alone.
  */
@@ -717,7 +718,7 @@ let daemonsProvider: () => Promise<unknown> = async () => {
 	return [selfRow, ...others];
 };
 
-/** Provider behind `daemon.daemonDetail` — replaced by the hub on a primary. */
+/** Provider behind `daemon.daemonDetail`; replaced by the hub on a primary. */
 let daemonDetailProvider: (name: string) => Promise<unknown> = async (name: string) => {
 	const rows = (await daemonsProvider()) as DaemonRow[];
 	const row = rows.find((entry) => entry.name === name);
@@ -734,11 +735,11 @@ let daemonDetailProvider: (name: string) => Promise<unknown> = async (name: stri
 };
 
 /**
- * Provider behind `daemon.upgradeDaemon` — replaced by the hub on a primary,
+ * Provider behind `daemon.upgradeDaemon`; replaced by the hub on a primary,
  * which is the only role that can reach another daemon.
  */
 let upgradeSender: (name: string, force: boolean) => Promise<unknown> = async () => {
-	throw new Error("only the primary daemon can upgrade another daemon");
+	throw new Error(t("daemon.primaryOnlyUpgrade"));
 };
 
 /** Swap in the hub's follower upgrade sender. */
@@ -758,7 +759,7 @@ let checkSender: (name: string, refresh: boolean) => Promise<unknown> = async (
 	refresh: boolean,
 ) => {
 	if (name !== daemonName()) {
-		throw new Error("only the primary daemon can check another daemon for upgrades");
+		throw new Error(t("daemon.primaryOnlyCheck"));
 	}
 
 	return await upgrade.checkUpgrade(refresh);
@@ -921,7 +922,7 @@ export const OPS: Record<string, OpSpec> = {
 	"datapacks.forgetIdentity": { fn: datapacksCore.forgetDataPackIdentity, lock: 0 },
 	"datapacks.adopt": { fn: datapacksCore.adoptDataPack, cfg: 0, lock: 1, instance: 2 },
 	"datapacks.remove": { fn: removeDataPackRouted, cfg: 0, lock: 1 },
-	// the per-owner slice of a routed removal — the primary calls it on each
+	// the per-owner slice of a routed removal; the primary calls it on each
 	// follower, never a client
 	"datapacks.removeFiles": { fn: datapacksCore.removeDataPackFiles, cfg: 0, lock: 1 },
 	"addons.applyGroups": {
@@ -1153,7 +1154,7 @@ export async function runOp(
 	const spec = OPS[op];
 
 	if (!spec) {
-		throw new Error(`unknown operation: ${op}`);
+		throw new Error(t("daemon.unknownOp", { op }));
 	}
 
 	if (resolveRemote && forwardOp) {

@@ -1,15 +1,15 @@
 /** Menu model shared by ContextMenu, Dropdown and SplitButton. */
 export interface ContextMenuItem {
-	/** stable key — defaults to the label */
+	/** stable key; defaults to the label */
 	id?: string;
 	label?: string;
 	icon?: string;
-	/** provider brand mark (see brands.ts) — drawn instead of a glyph icon */
+	/** provider brand mark (see brands.ts); drawn instead of a glyph icon */
 	brand?: string;
 	/** tints the icon and label; "default" keeps the muted body colour */
 	color?: 'default' | 'accent' | 'success' | 'warning' | 'danger';
 	disabled?: boolean;
-	/** why the item is unavailable — shown as the row's tooltip. A disabled
+	/** why the item is unavailable; shown as the row's tooltip. A disabled
 	 *  action must say what would make it available (DESIGN.md §5.2). */
 	hint?: string;
 	/** renders a divider line instead of a row */
@@ -35,7 +35,7 @@ export interface ClosableMenu {
  * Ported from the dashboard's `app.currentContextMenu` (src/libs.js): opening a
  * menu closes whatever was open before it. Without this, every trigger owns its
  * own menu and a second click elsewhere leaves the first one hanging over the
- * page — two menus, two highlighted triggers, and a click that dismisses only
+ * page; two menus, two highlighted triggers, and a click that dismisses only
  * one of them.
  *
  * Submenus never register: they belong to their parent and close with it.
@@ -58,7 +58,7 @@ export function releaseMenu(menu: ClosableMenu): void {
 	}
 }
 
-/** Close whatever is open — used when something else takes over the screen. */
+/** Close whatever is open; used when something else takes over the screen. */
 export function closeOpenMenu(): void {
 	current?.close();
 }

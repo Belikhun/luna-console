@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -60,7 +61,7 @@
 			events = data.events;
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error('Could not load schedules', { detail: (err as Error).message });
+			Notify.error(t('web.schedules.loadFailed'), { detail: (err as Error).message });
 		}
 
 		loading = false;
@@ -74,43 +75,43 @@
 		const trigger = schedule.trigger;
 
 		if (trigger.kind === 'at') {
-			return `once at ${fmtDateTime(new Date(trigger.at).getTime())}`;
+			return t('web.schedules.onceAt', { time: fmtDateTime(new Date(trigger.at).getTime()) });
 		}
 
 		if (trigger.kind === 'cron') {
 			return `cron(${trigger.expr})`;
 		}
 
-		return `every ${trigger.minutes} min`;
+		return t('web.schedules.everyMin', { minutes: trigger.minutes });
 	}
 
-	const OUTCOME_BADGE: Record<string, { state: string; label: string }> = {
-		ok: { state: 'passed', label: 'Succeeded' },
-		partial: { state: 'warning', label: 'Partial' },
-		error: { state: 'failed', label: 'Failed' },
-		missed: { state: 'stopped', label: 'Missed' }
-	};
+	const OUTCOME_BADGE: Record<string, { state: string; label: string }> = $derived({
+		ok: { state: 'passed', label: t('web.schedules.succeeded') },
+		partial: { state: 'warning', label: t('web.schedules.partial') },
+		error: { state: 'failed', label: t('web.schedules.failed') },
+		missed: { state: 'stopped', label: t('web.schedules.missed') }
+	});
 
 	async function toggleEnabled(schedule: Schedule, enabled: boolean): Promise<void> {
 		try {
 			await patch(`/schedules/${schedule.id}`, { enabled });
 			await refresh();
 		} catch (err) {
-			Notify.error(`Could not ${enabled ? 'enable' : 'pause'} ${schedule.name}`, {
+			Notify.error(t(enabled ? 'web.schedules.enableFailed' : 'web.schedules.pauseFailed', { name: schedule.name }), {
 				detail: (err as Error).message
 			});
 		}
 	}
 
 	async function runNow(schedule: Schedule): Promise<void> {
-		const note = Notify.loading(`Running ${schedule.name}…`);
+		const note = Notify.loading(t('web.schedules.runningName', { name: schedule.name }));
 
 		try {
 			const result = await post(`/schedules/${schedule.id}`, { action: 'run' });
 
 			note.set({
 				level: result.outcome === 'ok' ? 'success' : 'error',
-				message: `${schedule.name} ran`,
+				message: t('web.schedules.ran', { name: schedule.name }),
 				detail: result.detail,
 				closeable: true
 			});
@@ -119,7 +120,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: `Could not run ${schedule.name}`,
+				message: t('web.schedules.runFailed', { name: schedule.name }),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -129,43 +130,43 @@
 	async function remove(schedule: Schedule): Promise<void> {
 		try {
 			await del(`/schedules/${schedule.id}`);
-			Notify.success(`${schedule.name} deleted`);
+			Notify.success(t('web.schedules.deleted', { name: schedule.name }));
 			await refresh();
 		} catch (err) {
-			Notify.error(`Could not delete ${schedule.name}`, { detail: (err as Error).message });
+			Notify.error(t('web.schedules.deleteFailed', { name: schedule.name }), { detail: (err as Error).message });
 		}
 	}
 
-	const columns: Column[] = [
-		{ id: 'state', label: 'State', width: 90 },
-		{ id: 'name', label: 'Name', sortable: true },
-		{ id: 'action', label: 'Action', width: 100 },
-		{ id: 'instances', label: 'Instances' },
-		{ id: 'trigger', label: 'Trigger' },
-		{ id: 'next', label: 'Next run', sortable: true },
-		{ id: 'last', label: 'Last outcome' },
-		{ id: 'runs', label: 'Runs', width: 90, align: 'right' }
-	];
+	const columns: Column[] = $derived([
+		{ id: 'state', label: t('web.schedules.colState'), width: 90 },
+		{ id: 'name', label: t('web.common.name'), sortable: true },
+		{ id: 'action', label: t('web.schedules.colAction'), width: 100 },
+		{ id: 'instances', label: t('web.nav.instancesList') },
+		{ id: 'trigger', label: t('web.schedules.colTrigger') },
+		{ id: 'next', label: t('web.schedules.colNext'), sortable: true },
+		{ id: 'last', label: t('web.schedules.colLast') },
+		{ id: 'runs', label: t('web.schedules.colRuns'), width: 90, align: 'right' }
+	]);
 
-	/** A schedule's verbs — the row menu and the toolbar's Actions button. */
+	/** A schedule's verbs; the row menu and the toolbar's Actions button. */
 	function rowActions(schedule: Schedule): ContextMenuItem[] {
 		return [
-			{ label: 'Run now', icon: 'play', action: () => runNow(schedule) },
+			{ label: t('web.schedules.runNow'), icon: 'play', action: () => runNow(schedule) },
 			{
-				label: historyFor === schedule.id ? 'Show all executions' : 'Show its executions',
+				label: historyFor === schedule.id ? t('web.schedules.showAll') : t('web.schedules.showIts'),
 				icon: 'clockRotateLeft',
 				action: () => {
 					historyFor = historyFor === schedule.id ? null : schedule.id;
 				}
 			},
 			{
-				label: schedule.enabled ? 'Disable schedule' : 'Enable schedule',
+				label: schedule.enabled ? t('web.schedules.disable') : t('web.schedules.enable'),
 				icon: schedule.enabled ? 'pause' : 'play',
 				action: () => toggleEnabled(schedule, !schedule.enabled)
 			},
 			{ separator: true },
 			{
-				label: 'Delete schedule',
+				label: t('web.schedules.delete'),
 				icon: 'trash',
 				color: 'danger',
 				action: () => remove(schedule)
@@ -184,12 +185,12 @@
 			schedule.lastOutcome ?? ''
 		].join(' ');
 
-	const eventCols: Column[] = [
-		{ id: 'time', label: 'Time', width: 180, sortable: true },
-		{ id: 'name', label: 'Schedule', sortable: true, width: 220 },
-		{ id: 'outcome', label: 'Outcome', width: 130 },
-		{ id: 'detail', label: 'Detail' }
-	];
+	const eventCols: Column[] = $derived([
+		{ id: 'time', label: t('web.schedules.colTime'), width: 180, sortable: true },
+		{ id: 'name', label: t('web.schedules.colSchedule'), sortable: true, width: 220 },
+		{ id: 'outcome', label: t('web.schedules.colOutcome'), width: 130 },
+		{ id: 'detail', label: t('web.schedules.colDetail') }
+	]);
 
 	const shownEvents = $derived(
 		historyFor ? events.filter((event) => event.id === historyFor) : events
@@ -201,18 +202,18 @@
 	const one = $derived(schedules.find((row: any) => selected.has(row.id)));
 </script>
 
-<svelte:head><title>Schedules | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.nav.schedules')} | Luna Console</title></svelte:head>
 
 <PageHeader
-	title="Schedules"
+	title={t('web.nav.schedules')}
 	count={schedules.length}
-	description="Start, stop or restart instances on a fixed time, a cron expression or a rate — runs fire from the luna daemon, 24/7"
+	description={t('web.schedules.pageDescription')}
 	info
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="schedules" />
-		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
-		<Btn variant="primary" icon="clock" onclick={() => goto('/schedules/new')}>Create schedule</Btn>
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Btn variant="primary" icon="clock" onclick={() => goto('/schedules/new')}>{t('web.schedules.create')}</Btn>
 	{/snippet}
 </PageHeader>
 
@@ -224,20 +225,20 @@
 		rows={schedules}
 		getId={(schedule) => schedule.id}
 		searchValue={scheduleText}
-		searchPlaceholder="Find a schedule by name, action or instance"
+		searchPlaceholder={t('web.schedules.searchPlaceholder')}
 		selectable="single"
 		bind:selected
 		{rowActions}
 		rowLabel={(schedule) => schedule.name}
-		noun="schedule"
-		emptyTitle="No schedules"
-		emptyText="Create one — e.g. a nightly survival restart at 04:30."
+		noun={t('web.schedules.noun')}
+		emptyTitle={t('web.schedules.emptyTitle')}
+		emptyText={t('web.schedules.emptyText')}
 	>
 		{#snippet cell(schedule, col)}
 			{#if col === 'state'}
 				<Toggle
 					checked={schedule.enabled}
-					label="Enabled"
+					label={t('web.schedules.enabled')}
 					onchange={(on) => toggleEnabled(schedule, on)}
 				/>
 			{:else if col === 'name'}
@@ -252,7 +253,7 @@
 				{#if schedule.nextRun}
 					{fmtDateTime(new Date(schedule.nextRun).getTime())}
 				{:else}
-					<span class="dim">finished</span>
+					<span class="dim">{t('web.schedules.finished')}</span>
 				{/if}
 			{:else if col === 'last'}
 				{#if schedule.lastOutcome}
@@ -261,7 +262,7 @@
 						label={OUTCOME_BADGE[schedule.lastOutcome]!.label}
 					/>
 				{:else}
-					<span class="dim">never ran</span>
+					<span class="dim">{t('web.schedules.neverRan')}</span>
 				{/if}
 			{:else if col === 'runs'}
 				{schedule.runs}{schedule.maxRuns ? ` / ${schedule.maxRuns}` : ''}
@@ -273,11 +274,13 @@
 <div class="gap"></div>
 
 <Panel
-	title="Event log"
+	title={t('web.schedules.eventLog')}
 	count={shownEvents.length}
 	description={historyFor
-		? `Executions of ${schedules.find((schedule) => schedule.id === historyFor)?.name ?? historyFor} — click History again for all`
-		: 'Every execution, newest first (kept across restarts)'}
+		? t('web.schedules.executionsOf', {
+				name: schedules.find((schedule) => schedule.id === historyFor)?.name ?? historyFor
+			})
+		: t('web.schedules.everyExecution')}
 	flush
 >
 	<ResourceTable
@@ -285,12 +288,12 @@
 		columns={eventCols}
 		rows={shownEvents}
 		getId={(event) => String(event.seq)}
-		searchPlaceholder="Find an execution"
+		searchPlaceholder={t('web.schedules.findExecution')}
 		searchWidth="20rem"
 		pageSize={10}
-		noun="execution"
-		emptyTitle="No executions yet"
-		emptyText="Runs land here as schedules fire."
+		noun={t('web.schedules.executionNoun')}
+		emptyTitle={t('web.schedules.noExecutions')}
+		emptyText={t('web.schedules.executionsHint')}
 	>
 		{#snippet cell(event, col)}
 			{#if col === 'time'}

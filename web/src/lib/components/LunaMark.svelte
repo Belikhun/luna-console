@@ -3,7 +3,7 @@
 	import { LUNA_PLATE_MARK } from './brands';
 
 	/**
-	 * Luna's logo: the crescent-and-stars mark on its brand gradient plate — the
+	 * Luna's logo: the crescent-and-stars mark on its brand gradient plate; the
 	 * favicon composition, so the browser tab, the top bar and (later) the login
 	 * panel are recognisably one thing.
 	 *
@@ -22,7 +22,7 @@
 	}: {
 		/** the plate */
 		size?: string;
-		/** the mark inside it — roughly ⅔ of the plate, as in the artwork */
+		/** the mark inside it; roughly ⅔ of the plate, as in the artwork */
 		glyph?: string;
 		/** a circle, as the favicon; false gives the rounded square of the app icon */
 		round?: boolean;

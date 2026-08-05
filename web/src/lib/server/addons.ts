@@ -1,6 +1,6 @@
 /**
- * One consistent view of everything an instance loads — plugins or mods, plus
- * the world's data packs — assembled from the same inputs the individual tab
+ * One consistent view of everything an instance loads; plugins or mods, plus
+ * the world's data packs; assembled from the same inputs the individual tab
  * routes use.
  *
  * It lives here rather than in a route because the stream and the plain GET
@@ -19,7 +19,7 @@ import type { InstanceDataPackRow } from '$core/datapacks';
 import { instanceStatus } from '$lib/server/luna';
 
 export interface AddonSnapshot {
-	/** Lifecycle the report reasoned from — the console's transient states included */
+	/** Lifecycle the report reasoned from; the console's transient states included */
 	state: ReportLifecycle;
 	plugins: InstancePluginRow[];
 	sessionComplete: boolean;

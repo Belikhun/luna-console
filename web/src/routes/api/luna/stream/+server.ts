@@ -13,7 +13,7 @@ const STREAMS: Record<string, string> = {
  *
  * The body is forwarded untouched: re-framing the events here would mean parsing
  * and re-emitting them, which only adds a place for one to be dropped. The token
- * stays server-side — the browser never sees the forwarding secret.
+ * stays server-side; the browser never sees the forwarding secret.
  */
 export async function GET({ url, request }) {
 	const name = url.searchParams.get('stream') ?? 'telemetry';
@@ -26,7 +26,7 @@ export async function GET({ url, request }) {
 	let upstream: Response;
 
 	// Handing the request's own signal to the upstream fetch is what closes our
-	// connection to the proxy when the browser goes away — otherwise LunaCore keeps
+	// connection to the proxy when the browser goes away; otherwise LunaCore keeps
 	// writing to a subscriber nobody reads. The body itself can't be cancelled here:
 	// returning it in a Response locks the stream.
 	try {

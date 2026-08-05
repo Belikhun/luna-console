@@ -4,7 +4,7 @@
  * A group carries three kinds of addon and each reaches an instance by its own
  * road: plugins are deployed as jars (plugins.ts), data packs are copied into
  * the instance's world (datapacks.ts), and resource packs never leave the
- * proxy at all — their membership is materialized into the `.yml` rules
+ * proxy at all; their membership is materialized into the `.yml` rules
  * luna-pack reads (respacks.ts). This module is the one call that walks all
  * three, so "the group changed" means the same thing to the CLI, the console
  * and an instance's launch.
@@ -14,7 +14,7 @@
  *
  * The other cross-kind walk lives here too: `adoptInstanceAddons`, which is
  * what an adopted server's own plugins, mods and data packs are measured
- * against — all three kinds, one answer, one rule about what luna may claim.
+ * against; all three kinds, one answer, one rule about what luna may claim.
  */
 
 import { existsSync } from "node:fs";
@@ -30,6 +30,7 @@ import type { ProgressReporter } from "./progress";
 import { reloadResourcePacks, syncResourcePackGroups } from "./respacks";
 import { sha512File } from "./services/download";
 import type { AddonGroup, ClusterConfig, PluginsLock } from "./types";
+import { t } from "../shared/i18n";
 
 /** What applying the groups' pack membership changed. */
 export interface AddonGroupApply {
@@ -44,7 +45,7 @@ export interface AddonGroupApply {
 /**
  * Push the groups' resource packs and data packs to the instances they cover:
  * rewrite the pack definitions, reload the proxy when any changed, then deploy
- * the pool into the instances' worlds. Idempotent — a run that changes nothing
+ * the pool into the instances' worlds. Idempotent; a run that changes nothing
  * reports nothing touched and sends no reload.
  */
 export async function applyAddonGroups(
@@ -66,7 +67,7 @@ export async function applyAddonGroups(
 
 	respackNode?.complete(
 		respacks.length
-			? `${respacks.length} definition(s) rewritten${reloaded ? " — proxy reloaded" : ""}`
+			? t("core.addons.rewritten", { count: respacks.length }) + (reloaded ? ` ${t("core.addons.proxyReloaded")}` : "")
 			: "nothing to change",
 	);
 
@@ -130,7 +131,7 @@ function matchPooledJar(
 		}
 
 		// A standardized file name is written by a luna deploy and nothing else,
-		// so a server arriving with one came from a luna cluster — that is ours
+		// so a server arriving with one came from a luna cluster; that is ours
 		// even when the build drifted from what the pool holds today.
 		if (identityFromFile(entry.file) && file.toLowerCase() === entry.file.toLowerCase()) {
 			return { key };
@@ -144,17 +145,17 @@ function matchPooledJar(
  * Work out what an instance brought with it, and register only the parts that
  * are already in luna's addon store.
  *
- * The rule (DESIGN.md — adoption): a server joining the cluster keeps its own
+ * The rule (DESIGN.md; adoption): a server joining the cluster keeps its own
  * plugins, mods and data packs. They stay in its directory, untouched and
  * unmanaged, because the directory is configured and working and rewriting it
  * is exactly how a working server stops working. The single exception is a file
- * that *is* one of ours — byte-identical to a pooled build, or carrying the
- * standardized pool file name — which is registered as a deployment of that
+ * that *is* one of ours; byte-identical to a pooled build, or carrying the
+ * standardized pool file name; which is registered as a deployment of that
  * addon rather than left to drift as a stranger's copy.
  *
  * Registering renames the instance's file to the pool's name when they differ,
  * so the copy already there becomes the deployment instead of a duplicate the
- * server would load twice — that rename is the only write this makes, and
+ * server would load twice; that rename is the only write this makes, and
  * `opts.apply: false` skips it for a dry run.
  *
  * The lockfiles are read here, never written: this runs on the daemon that owns
@@ -171,7 +172,7 @@ export async function adoptInstanceAddons(
 	const inst = managedInstances(cfg)[instance];
 
 	if (!inst) {
-		throw new Error(`unknown instance: ${instance}`);
+		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
 	const apply = opts.apply !== false;
@@ -259,7 +260,7 @@ export async function adoptInstanceAddons(
  * instance as a target, and a match against an older pooled build assigns that
  * version so the next deploy does not push a newer one over a working server.
  *
- * Pure — the disk work already happened in `adoptInstanceAddons`. Mutates
+ * Pure; the disk work already happened in `adoptInstanceAddons`. Mutates
  * `lock`/`packs`; the caller saves them. Returns the addons it registered, so a
  * second run over the same adoption reports nothing new.
  */

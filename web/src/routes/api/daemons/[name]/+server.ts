@@ -61,7 +61,7 @@ export async function DELETE({ params }) {
 	const live = (await listDaemons()).find((row) => row.name === name);
 
 	if (live?.online) {
-		throw error(409, `daemon "${name}" is currently connected — stop it first`);
+		throw error(409, `daemon "${name}" is currently connected; stop it first`);
 	}
 
 	const owned = Object.entries(cfg.instances)
@@ -69,7 +69,7 @@ export async function DELETE({ params }) {
 		.map(([instName]) => instName);
 
 	if (owned.length > 0) {
-		throw error(409, `daemon "${name}" still owns ${owned.join(', ')} — reassign or delete those instances first`);
+		throw error(409, `daemon "${name}" still owns ${owned.join(', ')}; reassign or delete those instances first`);
 	}
 
 	delete cfg.daemons[name];

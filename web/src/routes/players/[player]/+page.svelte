@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { api, post } from '$lib/api';
@@ -32,7 +33,7 @@
 
 	/**
 	 * One player, in full: identity, skin, play history and statistics,
-	 * permissions, chat/command log and moderation history — everything LunaCore
+	 * permissions, chat/command log and moderation history; everything LunaCore
 	 * has recorded about them, with the administration verbs in the header.
 	 */
 
@@ -165,7 +166,7 @@
 	/** Page size for the log tabs; "Load more" appends another page. */
 	const LOG_PAGE = 100;
 
-	/** Transactions per request — LunaVault pages this one by page index, not offset. */
+	/** Transactions per request; LunaVault pages this one by page index, not offset. */
 	const VAULT_PAGE = 50;
 
 	/** Default lifetime offered for a temporary password, in minutes. */
@@ -173,12 +174,12 @@
 
 	/** Lifetimes the dialog offers, matching what luna-auth accepts. */
 	const TEMP_LIFETIMES = [
-		{ value: '15', label: '15 minutes' },
-		{ value: '60', label: '1 hour' },
-		{ value: '360', label: '6 hours' },
-		{ value: '1440', label: '24 hours' },
-		{ value: '10080', label: '7 days' },
-		{ value: '43200', label: '30 days' }
+		{ value: '15', label: t('web.playerDetail.15Minutes') },
+		{ value: '60', label: t('web.playerDetail.1Hour') },
+		{ value: '360', label: t('web.playerDetail.6Hours') },
+		{ value: '1440', label: t('web.playerDetail.24Hours') },
+		{ value: '10080', label: t('web.playerDetail.7Days') },
+		{ value: '43200', label: t('web.playerDetail.30Days') }
 	];
 
 	const ref = $derived(page.params.player ?? '');
@@ -244,11 +245,11 @@
 	let tempPassword = $state('');
 	let tempMinutes = $state(String(DEFAULT_TEMP_MINUTES));
 	let tempBusy = $state(false);
-	/** The plaintext of a freshly issued password — shown once, then forgotten. */
+	/** The plaintext of a freshly issued password; shown once, then forgotten. */
 	let issuedPassword = $state('');
 	let issuedOpen = $state(false);
 
-	// economy — balance and transactions, held by LunaVault on the proxy
+	// economy; balance and transactions, held by LunaVault on the proxy
 	let vaultInfo: VaultInfo | undefined = $state();
 	let vaultAvailable = $state(true);
 	let vaultProblem = $state('');
@@ -288,7 +289,7 @@
 
 		// the account state is loaded eagerly rather than with its tab: the header
 		// verbs need to know whether the account is locked or has a password.
-		// The balance is eager for the same reason — it sits in the overview bar.
+		// The balance is eager for the same reason; it sits in the overview bar.
 		await Promise.all([
 			loadAuth(),
 			loadVault(),
@@ -448,14 +449,14 @@
 	const identityCells: InfoCell[] = $derived(
 		detail
 			? [
-					{ id: 'uuid', label: 'UUID', value: detail.uuid, style: 'mono', copyable: true },
+					{ id: 'uuid', label: t('web.playerDetail.uuid'), value: detail.uuid, style: 'mono', copyable: true },
 					{
-						label: 'Account type',
+						label: t('web.playerDetail.accountType'),
 						value: detail.onlineMode ? 'Premium (Mojang)' : 'Offline / proxy-authenticated'
 					},
-					{ label: 'First seen', value: detail.firstSeenAtEpochMillis ? fmtDateTime(detail.firstSeenAtEpochMillis) : '–' },
+					{ label: t('web.playerDetail.firstSeen'), value: detail.firstSeenAtEpochMillis ? fmtDateTime(detail.firstSeenAtEpochMillis) : '–' },
 					{
-						label: 'Last seen',
+						label: t('web.playerDetail.lastSeen'),
 						value: detail.online ? 'online now' : detail.lastSeenAtEpochMillis ? fmtDateTime(detail.lastSeenAtEpochMillis) : '–'
 					},
 					{
@@ -465,10 +466,10 @@
 							? { href: `/instances/${detail.online ? detail.server : detail.lastServer}` }
 							: {})
 					},
-					{ label: 'Last address', value: detail.lastAddress || '–', style: 'mono' },
-					{ label: 'Client version', value: detail.lastClientVersion || '–' },
+					{ label: t('web.playerDetail.lastAddress'), value: detail.lastAddress || '–', style: 'mono' },
+					{ label: t('web.playerDetail.clientVersion'), value: detail.lastClientVersion || '–' },
 					{
-						label: 'Permission group',
+						label: t('web.playerDetail.permissionGroup'),
 						value: detail.permissions.available
 							? detail.permissions.primaryGroupDisplay || detail.permissions.primaryGroup || '–'
 							: 'LuckPerms unavailable',
@@ -482,13 +483,13 @@
 			: []
 	);
 
-	/** Administration verbs in the header — live ones first, then the lists. */
+	/** Administration verbs in the header; live ones first, then the lists. */
 	function headerActions(): ContextMenuItem[] {
 		const offline = !detail?.online;
 
 		return [
 			{
-				label: 'Send a message',
+				label: t('web.playerDetail.sendAMessage'),
 				icon: 'paperPlane',
 				disabled: offline,
 				hint: offline ? 'player is offline' : undefined,
@@ -497,7 +498,7 @@
 				}
 			},
 			{
-				label: 'Move to another backend',
+				label: t('web.playerDetail.moveToAnotherBackend'),
 				icon: 'rightLeft',
 				disabled: offline,
 				hint: offline ? 'player is offline' : undefined,
@@ -506,7 +507,7 @@
 				}
 			},
 			{
-				label: 'Disconnect from the network',
+				label: t('web.playerDetail.disconnectFromTheNetwork'),
 				icon: 'userSlash',
 				color: 'danger',
 				disabled: offline,
@@ -516,13 +517,13 @@
 				}
 			},
 			{ separator: true },
-			{ label: 'Add to whitelist…', icon: 'userTick', action: () => openModerate('whitelist-add') },
-			{ label: 'Remove from whitelist…', icon: 'userMinus', action: () => openModerate('whitelist-remove') },
-			{ label: 'Grant operator…', icon: 'userCog', action: () => openModerate('op') },
-			{ label: 'Revoke operator…', icon: 'userLock', action: () => openModerate('deop') },
+			{ label: t('web.playerDetail.addToWhitelist'), icon: 'userTick', action: () => openModerate('whitelist-add') },
+			{ label: t('web.playerDetail.removeFromWhitelist'), icon: 'userMinus', action: () => openModerate('whitelist-remove') },
+			{ label: t('web.playerDetail.grantOperator'), icon: 'userCog', action: () => openModerate('op') },
+			{ label: t('web.playerDetail.revokeOperator'), icon: 'userLock', action: () => openModerate('deop') },
 			{ separator: true },
 			{
-				label: 'Change skin…',
+				label: t('web.playerDetail.changeSkin'),
 				icon: 'wandMagicSparkles',
 				action: () => {
 					skinMode = 'upload';
@@ -536,11 +537,11 @@
 			{ separator: true },
 			...passwordActions(),
 			{ separator: true },
-			{ label: 'Ban…', icon: 'gavel', color: 'danger', action: () => openModerate('ban') },
-			{ label: 'Pardon…', icon: 'handshake', action: () => openModerate('pardon') },
+			{ label: t('web.playerDetail.ban'), icon: 'gavel', color: 'danger', action: () => openModerate('ban') },
+			{ label: t('web.playerDetail.pardon'), icon: 'handshake', action: () => openModerate('pardon') },
 			{ separator: true },
 			{
-				label: 'Record a moderation note',
+				label: t('web.playerDetail.recordAModerationNote'),
 				icon: 'note',
 				action: () => {
 					noteOpen = true;
@@ -550,7 +551,7 @@
 	}
 
 	/**
-	 * The password verbs. Each unavailable one keeps its place and says why —
+	 * The password verbs. Each unavailable one keeps its place and says why -
 	 * "unlock" on an account that is not locked is information, not clutter.
 	 */
 	function passwordActions(): ContextMenuItem[] {
@@ -559,7 +560,7 @@
 
 		return [
 			{
-				label: 'Issue a temporary password…',
+				label: t('web.playerDetail.issueATemporaryPassword'),
 				icon: 'key',
 				disabled: gone,
 				hint: reason,
@@ -570,7 +571,7 @@
 				}
 			},
 			{
-				label: 'Reset password…',
+				label: t('web.playerDetail.resetPassword'),
 				icon: 'rotate',
 				color: 'danger',
 				disabled: gone || !authInfo?.registered,
@@ -580,18 +581,18 @@
 				}
 			},
 			{
-				label: 'Unlock account',
+				label: t('web.playerDetail.unlockAccount'),
 				icon: 'lockOpen',
 				disabled: gone || !authInfo?.locked,
 				hint: reason ?? (authInfo?.locked ? undefined : 'the account is not locked'),
 				action: () => void doAuth('unlock', 'Unlocking account…', 'Account unlocked')
 			},
 			{
-				label: 'End authenticated session',
+				label: t('web.playerDetail.endAuthenticatedSession'),
 				icon: 'userLock',
 				disabled: gone || !(authInfo?.authenticated || authInfo?.session.hasSession),
 				hint: reason ?? (authInfo?.authenticated || authInfo?.session.hasSession ? undefined : 'no session to end'),
-				action: () => void doAuth('logout', 'Ending session…', 'Session ended — the player must log in again')
+				action: () => void doAuth('logout', 'Ending session…', 'Session ended; the player must log in again')
 			}
 		];
 	}
@@ -754,7 +755,7 @@
 				level: 'success',
 				message:
 					skinMode === 'reset'
-						? `${detail?.username}'s skin reset — their own skin applies again`
+						? `${detail?.username}'s skin reset; their own skin applies again`
 						: `${detail?.username}'s skin changed${detail?.online ? ' and applied live' : '; it applies on their next login'}`,
 				closeable: true
 			});
@@ -764,7 +765,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Skin change failed',
+				message: t('web.playerDetail.skinChangeFailed'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -807,7 +808,7 @@
 		await doAuth(
 			'reset',
 			`Resetting ${detail?.username}'s password…`,
-			`Password cleared — ${detail?.username} registers a new one with /register`
+			`Password cleared; ${detail?.username} registers a new one with /register`
 		);
 
 		await loadModeration(true);
@@ -815,13 +816,13 @@
 
 	/**
 	 * Issue a temporary password. The plaintext only exists in this response, so
-	 * it goes straight into a dialog for the operator to pass on — reloading the
+	 * it goes straight into a dialog for the operator to pass on; reloading the
 	 * page cannot bring it back.
 	 */
 	async function doTemporary(): Promise<void> {
 		tempBusy = true;
 
-		const note = Notify.loading(`Issuing a temporary password for ${detail?.username}…`);
+		const note = Notify.loading(t('web.playerDetail.issuingTempPassword', { name: detail?.username ?? '' }));
 
 		try {
 			const chosen = tempPassword.trim();
@@ -841,7 +842,7 @@
 
 			note.set({
 				level: 'success',
-				message: `Temporary password issued for ${detail?.username}`,
+				message: t('web.playerDetail.tempPasswordIssued', { name: detail?.username ?? '' }),
 				closeable: true
 			});
 
@@ -850,7 +851,7 @@
 		} catch (err) {
 			note.set({
 				level: 'error',
-				message: 'Could not issue a temporary password',
+				message: t('web.playerDetail.couldNotIssueATemporary'),
 				detail: (err as Error).message,
 				closeable: true
 			});
@@ -863,32 +864,32 @@
 		authInfo
 			? [
 					{
-						label: 'Password',
+						label: t('web.playerDetail.password'),
 						value: !authInfo.registered
-							? 'None — not registered'
+							? 'None; not registered'
 							: authInfo.temporaryPassword
 								? `Temporary, expires ${fmtDateTime(authInfo.temporaryPasswordUntilEpochMillis)}`
 								: 'Set by the player'
 					},
-					{ label: 'Signed in', value: authInfo.authenticated ? 'Yes' : 'No' },
+					{ label: t('web.playerDetail.signedIn'), value: authInfo.authenticated ? 'Yes' : 'No' },
 					{
-						label: 'Account lock',
+						label: t('web.playerDetail.accountLock'),
 						value: authInfo.locked
 							? `Locked until ${fmtDateTime(authInfo.lockedUntilEpochMillis)}`
 							: 'Not locked'
 					},
-					{ label: 'Failed attempts', value: authInfo.failedAttempts },
+					{ label: t('web.playerDetail.failedAttempts'), value: authInfo.failedAttempts },
 					{
-						label: 'Last login',
+						label: t('web.playerDetail.lastLogin'),
 						value: authInfo.lastLoginAtEpochMillis ? fmtDateTime(authInfo.lastLoginAtEpochMillis) : '–'
 					},
-					{ label: 'Last address', value: authInfo.lastIp || '–', style: 'mono' },
+					{ label: t('web.playerDetail.lastAddress'), value: authInfo.lastIp || '–', style: 'mono' },
 					{
-						label: 'Registered on',
+						label: t('web.playerDetail.registeredOn'),
 						value: authInfo.createdAtEpochMillis ? fmtDateTime(authInfo.createdAtEpochMillis) : '–'
 					},
 					{
-						label: 'Resumable session',
+						label: t('web.playerDetail.resumableSession'),
 						value: authInfo.session.hasSession
 							? `Until ${fmtDateTime(authInfo.session.expiresAtEpochMillis)}`
 							: 'None'
@@ -902,22 +903,22 @@
 	const vaultCells: InfoCell[] = $derived(
 		vaultInfo
 			? [
-					{ label: 'Balance', value: vaultInfo.balanceFormatted },
+					{ label: t('web.playerDetail.balance'), value: vaultInfo.balanceFormatted },
 					{
-						label: 'Leaderboard rank',
+						label: t('web.playerDetail.leaderboardRank'),
 						value: vaultInfo.rank ? `#${vaultInfo.rank} of ${vaultInfo.accountCount}` : '–'
 					},
-					{ label: 'Transactions', value: vaultInfo.summary.transactionCount },
-					{ label: 'Total received', value: vaultInfo.summary.receivedFormatted },
-					{ label: 'Total spent', value: vaultInfo.summary.sentFormatted },
+					{ label: t('web.playerDetail.transactions'), value: vaultInfo.summary.transactionCount },
+					{ label: t('web.playerDetail.totalReceived'), value: vaultInfo.summary.receivedFormatted },
+					{ label: t('web.playerDetail.totalSpent'), value: vaultInfo.summary.sentFormatted },
 					{
-						label: 'First transaction',
+						label: t('web.playerDetail.firstTransaction'),
 						value: vaultInfo.summary.firstAtEpochMillis
 							? fmtDateTime(vaultInfo.summary.firstAtEpochMillis)
 							: '–'
 					},
 					{
-						label: 'Last transaction',
+						label: t('web.playerDetail.lastTransaction'),
 						value: vaultInfo.summary.lastAtEpochMillis
 							? fmtDateTime(vaultInfo.summary.lastAtEpochMillis)
 							: '–'
@@ -926,14 +927,14 @@
 			: []
 	);
 
-	const txCols: Column[] = [
-		{ id: 'time', label: 'Time', width: 180, sortable: true },
-		{ id: 'direction', label: 'Direction', width: 120 },
-		{ id: 'amount', label: 'Amount', width: 150, sortable: true },
-		{ id: 'counterparty', label: 'Counterparty', minWidth: 160 },
-		{ id: 'source', label: 'Source', width: 140 },
-		{ id: 'details', label: 'Details' }
-	];
+	const txCols: Column[] = $derived([
+		{ id: 'time', label: t('web.playerDetail.time'), width: 180, sortable: true },
+		{ id: 'direction', label: t('web.playerDetail.direction'), width: 120 },
+		{ id: 'amount', label: t('web.playerDetail.amount'), width: 150, sortable: true },
+		{ id: 'counterparty', label: t('web.playerDetail.counterparty'), minWidth: 160 },
+		{ id: 'source', label: t('web.playerDetail.source'), width: 140 },
+		{ id: 'details', label: t('web.playerDetail.details') }
+	]);
 
 	// ------------------------------------------------------------- permissions
 
@@ -1036,46 +1037,46 @@
 		await loadPermissions();
 	}
 
-	const sessionCols: Column[] = [
-		{ id: 'connected', label: 'Connected', sortable: true },
-		{ id: 'server', label: 'Backend', sortable: true },
-		{ id: 'duration', label: 'Duration', sortable: true },
-		{ id: 'ended', label: 'Disconnected' }
-	];
+	const sessionCols: Column[] = $derived([
+		{ id: 'connected', label: t('web.playerDetail.connected'), sortable: true },
+		{ id: 'server', label: t('web.playerDetail.backend'), sortable: true },
+		{ id: 'duration', label: t('web.playerDetail.duration'), sortable: true },
+		{ id: 'ended', label: t('web.playerDetail.disconnected') }
+	]);
 
-	const chatCols: Column[] = [
-		{ id: 'time', label: 'Time', width: 180, sortable: true },
-		{ id: 'type', label: 'Type', width: 120 },
-		{ id: 'server', label: 'Backend', width: 130 },
-		{ id: 'content', label: 'Content' }
-	];
+	const chatCols: Column[] = $derived([
+		{ id: 'time', label: t('web.playerDetail.time'), width: 180, sortable: true },
+		{ id: 'type', label: t('web.playerDetail.type'), width: 120 },
+		{ id: 'server', label: t('web.playerDetail.backend'), width: 130 },
+		{ id: 'content', label: t('web.playerDetail.content') }
+	]);
 
-	const modCols: Column[] = [
-		{ id: 'time', label: 'Time', width: 180, sortable: true },
-		{ id: 'action', label: 'Action', width: 150 },
-		{ id: 'actor', label: 'By', width: 130 },
-		{ id: 'server', label: 'Where', width: 140 },
-		{ id: 'reason', label: 'Reason' }
-	];
+	const modCols: Column[] = $derived([
+		{ id: 'time', label: t('web.playerDetail.time'), width: 180, sortable: true },
+		{ id: 'action', label: t('web.playerDetail.action'), width: 150 },
+		{ id: 'actor', label: t('web.playerDetail.by'), width: 130 },
+		{ id: 'server', label: t('web.playerDetail.where'), width: 140 },
+		{ id: 'reason', label: t('web.playerDetail.reason') }
+	]);
 
-	const nodeCols: Column[] = [
-		{ id: 'key', label: 'Node', minWidth: 240 },
-		{ id: 'value', label: 'Value', width: 110 },
-		{ id: 'type', label: 'Type', width: 130 },
-		{ id: 'contexts', label: 'Contexts' },
-		{ id: 'expiry', label: 'Expires' }
-	];
+	const nodeCols: Column[] = $derived([
+		{ id: 'key', label: t('web.playerDetail.node2'), minWidth: 240 },
+		{ id: 'value', label: t('web.playerDetail.value'), width: 110 },
+		{ id: 'type', label: t('web.playerDetail.type'), width: 130 },
+		{ id: 'contexts', label: t('web.playerDetail.contexts') },
+		{ id: 'expiry', label: t('web.playerDetail.expires') }
+	]);
 
 	function nodeActions(node: PermNode): ContextMenuItem[] {
 		return [
 			{
-				label: 'Edit node…',
+				label: t('web.playerDetail.editNode'),
 				icon: 'pen',
 				action: () => openNodeEditor(node)
 			},
 			{ separator: true },
 			{
-				label: 'Remove node',
+				label: t('web.playerDetail.removeNode'),
 				icon: 'trash',
 				color: 'danger',
 				action: () => void removeNode(node)
@@ -1089,74 +1090,74 @@
 <PageHeader title={detail?.username ?? ref} info description={detail?.uuid ?? ''}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="player-detail" />
-		<Dropdown label="Actions" disabled={!detail} menu={headerActions()} />
+		<Dropdown label={t('web.playerDetail.actions')} disabled={!detail} menu={headerActions()} />
 	{/snippet}
 </PageHeader>
 
 {#if notFound}
 	<Flash kind="error">
-		<b>Unknown player:</b> the directory has no record of <code>{ref}</code>. Profiles are
-		created on a player's first join once the LunaCore player directory is running.
+		<b>{t('web.playerDetail.unknownPlayer')}</b> {t('web.playerDetail.theDirectoryHasNo')} <code>{ref}</code>. Profiles are
+		{t('web.playerDetail.createdOnAPlayer')}
 	</Flash>
 {:else if !available}
 	<Flash kind="warning">
-		<b>LunaCore is not answering:</b> {problem}. The proxy may be stopped, or running a build
-		without the player directory.
+		<b>{t('web.playerDetail.lunacoreIsNotAnswering')}</b> {problem}. The proxy may be stopped, or running a build
+		{t('web.playerDetail.withoutThePlayerDirectory')}
 	</Flash>
 {:else if detail}
-	<OverviewBar title="Player overview">
-		<OverviewCell label="Status">
+	<OverviewBar title={t('web.playerDetail.playerOverview')}>
+		<OverviewCell label={t('web.playerDetail.status')}>
 			{#if detail.online}
-				<StatusBadge state="ok" label="Online — {detail.server}" />
+				<StatusBadge state="ok" label="Online; {detail.server}" />
 			{:else}
-				<StatusBadge state="stopped" label="Offline" />
+				<StatusBadge state="stopped" label={t('web.playerDetail.offline')} />
 			{/if}
 		</OverviewCell>
-		<OverviewCell label="Balance">
+		<OverviewCell label={t('web.playerDetail.balance')}>
 			{#if vaultAvailable && vaultInfo}
 				<span class="balance">{vaultInfo.balanceFormatted}</span>
 			{:else}
 				<span class="dim">–</span>
 			{/if}
 		</OverviewCell>
-		<OverviewCell label="Total playtime">
+		<OverviewCell label={t('web.playerDetail.totalPlaytime')}>
 			{detail.totalPlayMillis ? fmtDuration(detail.totalPlayMillis) : '–'}
 		</OverviewCell>
-		<OverviewCell label="Sessions">
+		<OverviewCell label={t('web.playerDetail.sessions')}>
 			{detail.sessionCount}
 		</OverviewCell>
-		<OverviewCell label="Chat messages">
+		<OverviewCell label={t('web.playerDetail.chatMessages')}>
 			{detail.chatTotal}
 		</OverviewCell>
-		<OverviewCell label="Commands">
+		<OverviewCell label={t('web.playerDetail.commands')}>
 			{detail.commandTotal}
 		</OverviewCell>
-		<OverviewCell label="Moderation entries">
+		<OverviewCell label={t('web.playerDetail.moderationEntries')}>
 			{detail.moderationTotal}
 		</OverviewCell>
 	</OverviewBar>
 
 	<div class="columns">
-		<Panel title="Skin" description="Pick a pose; drag the model to turn it">
+		<Panel title={t('web.playerDetail.skin')} description={t('web.playerDetail.pickAPoseDragThe')}>
 			<div class="skin">
 				<PlayerSkin3D player={detail.uuid} bust={skinEpoch} />
 			</div>
 		</Panel>
 
-		<Panel title="Identity">
+		<Panel title={t('web.playerDetail.identity')}>
 			<InfoGrid cells={identityCells} columns={[2, 2, 1]} />
 		</Panel>
 	</div>
 
 	<Tabs
 		tabs={[
-			{ id: 'overview', label: 'Overview' },
-			{ id: 'account', label: 'Account' },
-			{ id: 'economy', label: 'Economy' },
-			{ id: 'sessions', label: 'Play history' },
-			{ id: 'chat', label: 'Chat & commands' },
-			{ id: 'permissions', label: 'Permissions' },
-			{ id: 'moderation', label: 'Moderation' }
+			{ id: 'overview', label: t('web.playerDetail.overview') },
+			{ id: 'account', label: t('web.playerDetail.account') },
+			{ id: 'economy', label: t('web.playerDetail.economy') },
+			{ id: 'sessions', label: t('web.playerDetail.playHistory') },
+			{ id: 'chat', label: t('web.playerDetail.chatCommands') },
+			{ id: 'permissions', label: t('web.playerDetail.permissions') },
+			{ id: 'moderation', label: t('web.playerDetail.moderation') }
 		]}
 		bind:active={tab}
 	/>
@@ -1164,8 +1165,8 @@
 	<div class="tabbody">
 		{#if tab === 'overview'}
 			<Panel
-				title="Playtime by backend"
-				description="Closed play sessions only — the current session counts once it ends"
+				title={t('web.playerDetail.playtimeByBackend')}
+				description={t('web.playerDetail.closedPlaySessionsOnlyThe')}
 			>
 				{#if detail.playtimeByServer.length > 0}
 					{@const maxPlay = Math.max(...detail.playtimeByServer.map((entry) => entry.playMillis))}
@@ -1184,37 +1185,37 @@
 						{/each}
 					</div>
 				{:else}
-					<p class="dim">No completed play sessions recorded yet.</p>
+					<p class="dim">{t('web.playerDetail.noCompletedPlaySessions')}</p>
 				{/if}
 			</Panel>
 		{:else if tab === 'account'}
 			{#if !authAvailable}
 				<Flash kind="warning">
-					<b>luna-auth is not answering:</b> {authProblem}. Password administration needs the
-					plugin running on the proxy.
+					<b>{t('web.playerDetail.lunaAuthIsNot')}</b> {authProblem}. Password administration needs the
+					{t('web.playerDetail.pluginRunningOnThe')}
 				</Flash>
 			{:else if authInfo}
 				{#if authInfo.temporaryPasswordExpired}
 					<Flash kind="warning">
-						This player's temporary password has <b>expired</b>. Their account has no password
-						until they register a new one, or you issue another temporary password.
+						This player's temporary password has <b>{t('web.playerDetail.expired')}</b>. Their account has no password
+						{t('web.playerDetail.untilTheyRegisterA')}
 					</Flash>
 				{:else if authInfo.temporaryPassword}
 					<Flash kind="info">
-						This player is using a <b>temporary password</b>, issued by an administrator. It stops
+						This player is using a <b>{t('web.playerDetail.temporaryPassword')}</b>, issued by an administrator. It stops
 						working on {fmtDateTime(authInfo.temporaryPasswordUntilEpochMillis)}, after which the
-						account has no password until they register again.
+						{t('web.playerDetail.accountHasNoPassword')}
 					</Flash>
 				{:else if !authInfo.registered}
 					<Flash kind="info">
-						This player has never set a password. They register one in game with
-						<code>/register</code>, or you can issue a temporary one for them.
+						{t('web.playerDetail.thisPlayerHasNever')}
+						<code>{t('web.playerDetail.register')}</code>, or you can issue a temporary one for them.
 					</Flash>
 				{/if}
 
 				<Panel
-					title="Authentication"
-					description="Held by luna-auth on the proxy — the same state the /auth command reports"
+					title={t('web.playerDetail.authentication')}
+					description={t('web.playerDetail.heldByLunaAuthOn')}
 				>
 					<InfoGrid cells={authCells} columns={[4, 2, 1]} />
 				</Panel>
@@ -1222,20 +1223,19 @@
 		{:else if tab === 'economy'}
 			{#if !vaultAvailable}
 				<Flash kind="warning">
-					<b>LunaVault is not answering:</b> {vaultProblem}. Balances and transactions come from
-					the plugin on the proxy — the backends only hold a cache of them.
+					<b>{t('web.playerDetail.lunavaultIsNotAnswering')}</b> {vaultProblem}. Balances and transactions come from
+					{t('web.playerDetail.thePluginOnThe')}
 				</Flash>
 			{:else}
 				{#if vaultInfo && !vaultInfo.hasAccount}
 					<Flash kind="info">
-						This player has no economy account yet. One is created the first time they earn or
-						are given money, and until then their balance is zero rather than unknown.
+						{t('web.playerDetail.thisPlayerHasNo')}
 					</Flash>
 				{/if}
 
 				<Panel
-					title="Wallet"
-					description="Held by LunaVault on the proxy — the network's source of truth for balances"
+					title={t('web.playerDetail.wallet')}
+					description={t('web.playerDetail.heldByLunavaultOnThe')}
 				>
 					<InfoGrid cells={vaultCells} columns={[4, 2, 1]} />
 				</Panel>
@@ -1247,8 +1247,8 @@
 						rows={vaultTx}
 						getId={(entry) => entry.id}
 						searchValue={(entry) => `${entry.counterpartyName} ${entry.source} ${entry.details}`}
-						searchPlaceholder="Find in transactions"
-						noun="transaction"
+						searchPlaceholder={t('web.playerDetail.findInTransactions')}
+						noun={t('web.playerDetail.transaction')}
 						pageSize={25}
 						sortValue={(entry, col) =>
 							col === 'time'
@@ -1256,8 +1256,8 @@
 								: col === 'amount'
 									? entry.amountMinor
 									: null}
-						emptyTitle="No transactions"
-						emptyText="Every payment, reward and admin adjustment LunaVault records for this player appears here."
+						emptyTitle={t('web.playerDetail.noTransactions')}
+						emptyText={t('web.playerDetail.everyPaymentRewardAndAdmin')}
 					>
 						{#snippet cell(entry, col)}
 							{#if col === 'time'}
@@ -1282,7 +1282,7 @@
 								</span>
 							{:else if col === 'counterparty'}
 								{#if entry.system}
-									<span class="dim">System</span>
+									<span class="dim">{t('web.playerDetail.system')}</span>
 								{:else if entry.counterpartyUuid}
 									<a href="/players/{entry.counterpartyUuid}">
 										{entry.counterpartyName || entry.counterpartyUuid}
@@ -1314,8 +1314,8 @@
 					rows={sessions}
 					getId={(session) => String(session.id)}
 					searchValue={(session) => session.server}
-					searchPlaceholder="Find backend"
-					noun="session"
+					searchPlaceholder={t('web.playerDetail.findBackend')}
+					noun={t('web.playerDetail.session')}
 					pageSize={25}
 					sortValue={(session, col) =>
 						col === 'connected'
@@ -1325,8 +1325,8 @@
 								: col === 'duration'
 									? session.durationMillis
 									: null}
-					emptyTitle="No sessions recorded"
-					emptyText="Play sessions are recorded from the moment the LunaCore player directory first runs."
+					emptyTitle={t('web.playerDetail.noSessionsRecorded')}
+					emptyText={t('web.playerDetail.playSessionsAreRecordedFrom')}
 				>
 					{#snippet cell(session, col)}
 						{#if col === 'connected'}
@@ -1335,7 +1335,7 @@
 							<a href="/instances/{session.server}">{session.server}</a>
 						{:else if col === 'duration'}
 							{#if session.open}
-								<StatusBadge state="ok" label="ongoing" />
+								<StatusBadge state="ok" label={t('web.playerDetail.ongoing')} />
 							{:else}
 								{fmtDuration(session.durationMillis)}
 							{/if}
@@ -1358,9 +1358,9 @@
 					<Select
 						bind:value={chatType}
 						options={[
-							{ value: '', label: 'Chat and commands' },
-							{ value: 'chat', label: 'Chat only' },
-							{ value: 'command', label: 'Commands only' }
+							{ value: '', label: t('web.playerDetail.chatAndCommands') },
+							{ value: 'chat', label: t('web.playerDetail.chatOnly') },
+							{ value: 'command', label: t('web.playerDetail.commandsOnly') }
 						]}
 						onchange={() => void loadChat(true)}
 					/>
@@ -1371,12 +1371,12 @@
 					rows={chat}
 					getId={(entry) => String(entry.id)}
 					searchValue={(entry) => `${entry.content} ${entry.server} ${entry.type}`}
-					searchPlaceholder="Find in messages"
-					noun="entry"
+					searchPlaceholder={t('web.playerDetail.findInMessages')}
+					noun={t('web.playerDetail.entry')}
 					pageSize={50}
 					sortValue={(entry, col) => (col === 'time' ? entry.atEpochMillis : null)}
-					emptyTitle="Nothing recorded"
-					emptyText="Chat and commands are recorded by the proxy as they happen; credentials in auth commands are redacted."
+					emptyTitle={t('web.playerDetail.nothingRecorded')}
+					emptyText={t('web.playerDetail.chatAndCommandsAreRecorded')}
 				>
 					{#snippet cell(entry, col)}
 						{#if col === 'time'}
@@ -1402,19 +1402,19 @@
 		{:else if tab === 'permissions'}
 			{#if !permsAvailable}
 				<Flash kind="warning">
-					<b>LuckPerms is not answering:</b> {permsProblem}
+					<b>{t('web.playerDetail.luckpermsIsNotAnswering')}</b> {permsProblem}
 				</Flash>
 			{:else}
 				<Panel
-					title="Groups"
-					description="Primary group is the one LuckPerms resolves for prefix and weight"
+					title={t('web.playerDetail.groups')}
+					description={t('web.playerDetail.primaryGroupIsTheOne')}
 				>
 					<div class="groups">
 						{#each userGroups as group}
 							<span class="group" class:primary={group === primaryGroup}>
 								<a href="/permissions/{encodeURIComponent(group)}">{group}</a>
 								{#if group === primaryGroup}
-									<span class="tagnote">primary</span>
+									<span class="tagnote">{t('web.playerDetail.primary')}</span>
 								{/if}
 								<button
 									class="chipbtn"
@@ -1423,7 +1423,7 @@
 								>×</button>
 							</span>
 						{:else}
-							<span class="dim">No group memberships — LuckPerms falls back to default.</span>
+							<span class="dim">{t('web.playerDetail.noGroupMembershipsLuckperms')}</span>
 						{/each}
 					</div>
 					<div class="groupadd">
@@ -1433,17 +1433,17 @@
 							width="14rem"
 						/>
 						<Btn icon="plus" onclick={() => void editGroups('add', groupPick)} disabled={!groupPick}>
-							Add group
+							{t('web.playerDetail.addGroup')}
 						</Btn>
 						<Btn onclick={() => void editGroups('set', groupPick)} disabled={!groupPick}>
-							Set as only group
+							{t('web.playerDetail.setAsOnlyGroup')}
 						</Btn>
 					</div>
 				</Panel>
 				<div class="gap"></div>
-				<Panel flush title="Permission nodes" count={userNodes.length}>
+				<Panel flush title={t('web.playerDetail.permissionNodes')} count={userNodes.length}>
 					<div class="nodeadd">
-						<input class="input" bind:value={nodeKey} placeholder="permission.node.key" />
+						<input class="input" bind:value={nodeKey} placeholder={t('web.playerDetail.permissionNodeKey')} />
 						<label class="grant">
 							<Toggle checked={nodeGrant} onchange={(checked) => (nodeGrant = checked)} />
 							<span>{nodeGrant ? 'granted' : 'negated'}</span>
@@ -1451,12 +1451,12 @@
 						<Select
 							bind:value={nodeServer}
 							options={[
-								{ value: '', label: 'Every server' },
+								{ value: '', label: t('web.playerDetail.everyServer') },
 								...servers.map((name) => ({ value: name, label: `server=${name}` }))
 							]}
 							width="13rem"
 						/>
-						<Btn variant="primary" icon="plus" onclick={addNode} disabled={!nodeKey.trim()}>Add node</Btn>
+						<Btn variant="primary" icon="plus" onclick={addNode} disabled={!nodeKey.trim()}>{t('web.playerDetail.addNode')}</Btn>
 					</div>
 					<ResourceTable
 						tableId="player-nodes"
@@ -1464,13 +1464,13 @@
 						rows={userNodes}
 						getId={(node) => `${node.key}|${node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(',')}`}
 						searchValue={(node) => node.key}
-						searchPlaceholder="Find node"
-						noun="node"
+						searchPlaceholder={t('web.playerDetail.findNode')}
+						noun={t('web.playerDetail.node')}
 						pageSize={25}
 						rowActions={nodeActions}
 						rowLabel={(node) => node.key}
-						emptyTitle="No nodes on this user"
-						emptyText="Direct nodes only — permissions inherited from groups live on the group."
+						emptyTitle={t('web.playerDetail.noNodesOnThisUser')}
+						emptyText={t('web.playerDetail.directNodesOnlyPermissionsInherited')}
 					>
 						{#snippet cell(node, col)}
 							{#if col === 'key'}
@@ -1485,7 +1485,7 @@
 										{node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(', ')}
 									</span>
 								{:else}
-									<span class="dim">global</span>
+									<span class="dim">{t('web.playerDetail.global')}</span>
 								{/if}
 							{:else if col === 'expiry'}
 								{node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : 'never'}
@@ -1502,12 +1502,12 @@
 					rows={moderation}
 					getId={(entry) => String(entry.id)}
 					searchValue={(entry) => `${entry.action} ${entry.actor} ${entry.reason} ${entry.server}`}
-					searchPlaceholder="Find entry"
-					noun="entry"
+					searchPlaceholder={t('web.playerDetail.findEntry')}
+					noun={t('web.playerDetail.entry')}
 					pageSize={25}
 					sortValue={(entry, col) => (col === 'time' ? entry.atEpochMillis : null)}
-					emptyTitle="A clean record"
-					emptyText="Kicks, bans, whitelist and operator changes made through luna land here, along with manual notes."
+					emptyTitle={t('web.playerDetail.aCleanRecord')}
+					emptyText={t('web.playerDetail.kicksBansWhitelistAndOperator')}
 				>
 					{#snippet cell(entry, col)}
 						{#if col === 'time'}
@@ -1539,31 +1539,31 @@
 {/if}
 
 <Modal title="Disconnect {detail?.username ?? 'player'}" bind:open={kickOpen}>
-	<p>They are removed from the network immediately and can reconnect straight away.</p>
+	<p>{t('web.playerDetail.theyAreRemovedFrom')}</p>
 	<label class="field">
-		<span class="lbl">Reason shown to the player</span>
-		<input class="input" bind:value={kickReason} placeholder="e.g. restarting the lobby" />
+		<span class="lbl">{t('web.playerDetail.reasonShownToThe')}</span>
+		<input class="input" bind:value={kickReason} placeholder={t('web.playerDetail.eGRestartingTheLobby')} />
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (kickOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" onclick={doKick}>Disconnect</Btn>
+		<Btn onclick={() => (kickOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
+		<Btn variant="danger" onclick={doKick}>{t('web.playerDetail.disconnect')}</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="Message {detail?.username ?? 'player'}" bind:open={messageOpen}>
 	<label class="field">
-		<span class="lbl">Message</span>
-		<input class="input" bind:value={messageText} placeholder="Type a message" />
+		<span class="lbl">{t('web.playerDetail.message')}</span>
+		<input class="input" bind:value={messageText} placeholder={t('web.playerDetail.typeAMessage')} />
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (messageOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!messageText.trim()} onclick={doMessage}>Send</Btn>
+		<Btn onclick={() => (messageOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
+		<Btn variant="primary" disabled={!messageText.trim()} onclick={doMessage}>{t('web.playerDetail.send')}</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="Move {detail?.username ?? 'player'}" bind:open={transferOpen}>
 	<div class="field">
-		<span class="lbl">Destination backend</span>
+		<span class="lbl">{t('web.playerDetail.destinationBackend')}</span>
 		<Select
 			bind:value={transferTo}
 			width="100%"
@@ -1573,15 +1573,15 @@
 		/>
 	</div>
 	{#snippet footer()}
-		<Btn onclick={() => (transferOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!transferTo} onclick={doTransfer}>Move</Btn>
+		<Btn onclick={() => (transferOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
+		<Btn variant="primary" disabled={!transferTo} onclick={doTransfer}>{t('web.playerDetail.move')}</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="{ACTION_LABELS[moderateAction] ?? moderateAction}: {detail?.username ?? ref}" bind:open={moderateOpen}>
 	<div class="field">
-		<span class="lbl">Instances</span>
-		<span class="hint">The change is applied on each selected instance</span>
+		<span class="lbl">{t('web.playerDetail.instances')}</span>
+		<span class="hint">{t('web.playerDetail.theChangeIsApplied')}</span>
 		<MultiSelect
 			bind:value={moderateInstances}
 			width="100%"
@@ -1590,13 +1590,13 @@
 	</div>
 	{#if moderateAction === 'ban'}
 		<label class="field">
-			<span class="lbl">Reason</span>
-			<span class="hint">Recorded in the moderation log and shown to the player</span>
-			<input class="input" bind:value={moderateReason} placeholder="e.g. griefing on survival" />
+			<span class="lbl">{t('web.playerDetail.reason')}</span>
+			<span class="hint">{t('web.playerDetail.recordedInTheModeration')}</span>
+			<input class="input" bind:value={moderateReason} placeholder={t('web.playerDetail.eGGriefingOnSurvival')} />
 		</label>
 	{/if}
 	{#snippet footer()}
-		<Btn onclick={() => (moderateOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (moderateOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
 		<Btn
 			variant={moderateAction === 'ban' ? 'danger' : 'primary'}
 			disabled={moderateInstances.length === 0}
@@ -1616,64 +1616,62 @@
 
 <Modal title="Change {detail?.username ?? 'player'}'s skin" bind:open={skinOpen}>
 	<div class="field">
-		<span class="lbl">Source</span>
+		<span class="lbl">{t('web.playerDetail.source')}</span>
 		<Select
 			bind:value={skinMode}
 			width="100%"
 			options={[
-				{ value: 'upload', label: 'Upload a skin file (PNG)' },
-				{ value: 'url', label: 'Image URL' },
-				{ value: 'name', label: 'Mirror a Mojang account' },
-				{ value: 'reset', label: 'Reset — back to their own skin' }
+				{ value: 'upload', label: t('web.playerDetail.uploadASkinFilePng') },
+				{ value: 'url', label: t('web.playerDetail.imageUrl') },
+				{ value: 'name', label: t('web.playerDetail.mirrorAMojangAccount') },
+				{ value: 'reset', label: t('web.playerDetail.resetBackToTheirOwn') }
 			]}
 		/>
 	</div>
 
 	{#if skinMode === 'upload'}
 		<div class="field">
-			<span class="lbl">Skin file</span>
+			<span class="lbl">{t('web.playerDetail.skinFile')}</span>
 			<span class="hint">
-				A 64×64 (or legacy 64×32) skin PNG. It is signed through MineSkin, then stored and
-				applied by SkinsRestorer on the proxy.
+				{t('web.playerDetail.a6464Or')}
 			</span>
-			<FileDrop bind:file={skinFile} accept=".png" hint="Drop a skin PNG here, or click to browse" />
+			<FileDrop bind:file={skinFile} accept=".png" hint={t('web.playerDetail.dropASkinPngHere')} />
 		</div>
 	{:else if skinMode === 'url'}
 		<label class="field">
-			<span class="lbl">Image URL</span>
-			<span class="hint">Must be publicly reachable — MineSkin fetches it to sign the texture</span>
-			<input class="input mono" bind:value={skinUrl} placeholder="https://…/skin.png" />
+			<span class="lbl">{t('web.playerDetail.imageUrl')}</span>
+			<span class="hint">{t('web.playerDetail.mustBePubliclyReachable')}</span>
+			<input class="input mono" bind:value={skinUrl} placeholder={t('web.playerDetail.httpsSkinPng')} />
 		</label>
 	{:else if skinMode === 'name'}
 		<label class="field">
-			<span class="lbl">Mojang account</span>
-			<span class="hint">The player gets this account's current skin</span>
-			<input class="input" bind:value={skinName} placeholder="e.g. Notch" />
+			<span class="lbl">{t('web.playerDetail.mojangAccount')}</span>
+			<span class="hint">{t('web.playerDetail.thePlayerGetsThis')}</span>
+			<input class="input" bind:value={skinName} placeholder={t('web.playerDetail.eGNotch')} />
 		</label>
 	{:else}
 		<p>
-			SkinsRestorer forgets the stored skin; the player goes back to whatever their own
-			profile carries.
+			{t('web.playerDetail.skinsrestorerForgetsTheStored')}
 		</p>
 	{/if}
 
 	{#if skinMode === 'upload' || skinMode === 'url'}
 		<div class="field">
-			<span class="lbl">Arm model</span>
+			<span class="lbl">{t('web.playerDetail.armModel')}</span>
 			<Select
 				bind:value={skinVariant}
 				width="100%"
 				options={[
-					{ value: '', label: 'Detect automatically' },
-					{ value: 'classic', label: 'Classic (4-px arms)' },
-					{ value: 'slim', label: 'Slim (3-px arms)' }
+					{ value: '', label: t('web.playerDetail.detectAutomatically') },
+					{ value: 'classic', label: t('web.playerDetail.classic4PxArms') },
+					{ value: 'slim', label: t('web.playerDetail.slim3PxArms') }
 				]}
 			/>
 		</div>
 	{/if}
 
 	{#snippet footer()}
-		<Btn onclick={() => (skinOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (skinOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
 		<Btn
 			variant={skinMode === 'reset' ? 'danger' : 'primary'}
 			disabled={!skinModeValid || skinBusy}
@@ -1688,31 +1686,30 @@
 <Modal title="Reset {detail?.username ?? 'player'}'s password" bind:open={resetOpen}>
 	<p>
 		The password on file is cleared. {detail?.username} keeps their profile, playtime and
-		permissions, but cannot log in until they set a new password with <code>/register</code>.
+		permissions, but cannot log in until they set a new password with <code>{t('web.playerDetail.register')}</code>.
 	</p>
 	<p class="dim">
-		If they need to get back in right away, issue a temporary password instead — that gives them
-		a credential you can hand over.
+		{t('web.playerDetail.ifTheyNeedTo')}
 	</p>
 	{#snippet footer()}
-		<Btn onclick={() => (resetOpen = false)}>Cancel</Btn>
-		<Btn variant="danger" onclick={doReset}>Reset password</Btn>
+		<Btn onclick={() => (resetOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
+		<Btn variant="danger" onclick={doReset}>{t('web.playerDetail.resetPassword')}</Btn>
 	{/snippet}
 </Modal>
 
 <Modal title="Temporary password for {detail?.username ?? 'player'}" bind:open={tempOpen}>
 	<label class="field">
-		<span class="lbl">Password</span>
+		<span class="lbl">{t('web.playerDetail.password')}</span>
 		<span class="hint">
-			Leave empty and the proxy generates one — it is shown once, after this dialog closes
+			{t('web.playerDetail.leaveEmptyAndThe')}
 		</span>
-		<input class="input mono" bind:value={tempPassword} placeholder="Generate one for me" />
+		<input class="input mono" bind:value={tempPassword} placeholder={t('web.playerDetail.generateOneForMe')} />
 	</label>
 
 	<div class="field">
-		<span class="lbl">Valid for</span>
+		<span class="lbl">{t('web.playerDetail.validFor')}</span>
 		<span class="hint">
-			When it expires the account is left with no password, exactly as a reset leaves it
+			{t('web.playerDetail.whenItExpiresThe')}
 		</span>
 		<Select bind:value={tempMinutes} width="100%" options={TEMP_LIFETIMES} />
 	</div>
@@ -1720,46 +1717,46 @@
 	{#if authInfo?.online}
 		<p class="dim">
 			{detail?.username} is online and will be disconnected, so the new password applies on their
-			next login.
+			{t('web.playerDetail.nextLogin')}
 		</p>
 	{/if}
 
 	{#snippet footer()}
-		<Btn onclick={() => (tempOpen = false)}>Cancel</Btn>
+		<Btn onclick={() => (tempOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
 		<Btn
 			variant="primary"
 			disabled={tempBusy || (tempPassword.trim().length > 0 && tempPassword.trim().length < 6)}
 			loading={tempBusy}
 			onclick={doTemporary}
 		>
-			Issue password
+			{t('web.playerDetail.issuePassword')}
 		</Btn>
 	{/snippet}
 </Modal>
 
-<Modal title="Temporary password issued" bind:open={issuedOpen}>
+<Modal title={t('web.playerDetail.temporaryPasswordIssued')} bind:open={issuedOpen}>
 	<p>
 		Give this to {detail?.username}. Only its hash is stored, so this is the one and only time it
-		can be read — reopening the page will not show it again.
+		{t('web.playerDetail.canBeReadReopening')}
 	</p>
 	<div class="issued">
 		<code>{issuedPassword}</code>
-		<Btn icon="copy" onclick={() => void copyText(issuedPassword)}>Copy</Btn>
+		<Btn icon="copy" onclick={() => void copyText(issuedPassword)}>{t('web.playerDetail.copy')}</Btn>
 	</div>
 	{#snippet footer()}
-		<Btn variant="primary" onclick={() => (issuedOpen = false)}>Done</Btn>
+		<Btn variant="primary" onclick={() => (issuedOpen = false)}>{t('web.playerDetail.done')}</Btn>
 	{/snippet}
 </Modal>
 
-<Modal title="Record a moderation note" bind:open={noteOpen}>
+<Modal title={t('web.playerDetail.recordAModerationNote')} bind:open={noteOpen}>
 	<label class="field">
-		<span class="lbl">Note</span>
-		<span class="hint">Stored in the player's moderation history, visible to every operator</span>
-		<input class="input" bind:value={noteText} placeholder="e.g. warned about chat behaviour" />
+		<span class="lbl">{t('web.playerDetail.note')}</span>
+		<span class="hint">{t('web.playerDetail.storedInThePlayer')}</span>
+		<input class="input" bind:value={noteText} placeholder={t('web.playerDetail.eGWarnedAboutChat')} />
 	</label>
 	{#snippet footer()}
-		<Btn onclick={() => (noteOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" disabled={!noteText.trim()} onclick={doNote}>Record</Btn>
+		<Btn onclick={() => (noteOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
+		<Btn variant="primary" disabled={!noteText.trim()} onclick={doNote}>{t('web.playerDetail.record')}</Btn>
 	{/snippet}
 </Modal>
 

@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * Material-style indeterminate spinner: the whole ring rotates linearly
-	 * while the arc sweeps between short and long with an eased dash animation —
+	 * while the arc sweeps between short and long with an eased dash animation -
 	 * the two frequencies beat against each other, so the head and tail chase
 	 * around the circle instead of the ring just spinning in place.
 	 */

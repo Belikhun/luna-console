@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, type InstanceRow } from '$lib/api';
@@ -51,7 +52,7 @@
 	let scheduleTargets: string[] = $state([]);
 	let deleteOpen = $state(false);
 	let deleteTarget = $state('');
-	/** name of the primary daemon — what "no owner" means in the registry */
+	/** name of the primary daemon; what "no owner" means in the registry */
 	let hostName = $state('');
 
 	/** Open the quick one-shot scheduler for the given instances. */
@@ -65,7 +66,7 @@
 	}
 
 	/**
-	 * Confirm a delete here rather than on the instance's own page — asking a
+	 * Confirm a delete here rather than on the instance's own page; asking a
 	 * question must not navigate away from the table the user is working in.
 	 */
 	function askDelete(target: string): void {
@@ -73,7 +74,7 @@
 		deleteOpen = true;
 	}
 
-	// external servers have a name and an address and nothing else — they are
+	// external servers have a name and an address and nothing else; they are
 	// listed for completeness and rendered dimmed
 	const allRows: Row[] = $derived([
 		...rows,
@@ -104,17 +105,17 @@
 		selRows.some((row) => row.state === 'running' || row.state === 'starting')
 	);
 
-	const filters: TableFilterGroup<Row>[] = [
+	const filters: TableFilterGroup<Row>[] = $derived([
 		{
 			id: 'state',
-			label: 'Filter instance state',
+			label: t('web.instances.filterState'),
 			options: [
-				{ value: 'any', label: 'Any state' },
-				{ value: 'running', label: 'Running', match: (row) => row.state === 'running' },
-				{ value: 'stopped', label: 'Stopped', match: (row) => row.state === 'stopped' },
+				{ value: 'any', label: t('web.instances.anyState') },
+				{ value: 'running', label: t('web.instances.running'), match: (row) => row.state === 'running' },
+				{ value: 'stopped', label: t('web.instances.stopped'), match: (row) => row.state === 'stopped' },
 				{
 					value: 'transitioning',
-					label: 'Starting or stopping',
+					label: t('web.instances.transitioning'),
 					match: (row) =>
 						row.state === 'starting' ||
 						row.state === 'stopping' ||
@@ -124,47 +125,47 @@
 				},
 				{
 					value: 'unhealthy',
-					label: 'Failing status checks',
+					label: t('web.instances.failingChecks'),
 					match: (row) => !!row.checks?.some((check) => check.ok === false)
 				}
 			]
 		},
 		{
 			id: 'kind',
-			label: 'Filter instance type',
+			label: t('web.instances.filterType'),
 			options: [
-				{ value: 'any', label: 'Any type' },
-				{ value: 'paper', label: 'Paper backends', match: (row) => row.software === 'paper' },
+				{ value: 'any', label: t('web.instances.anyType') },
+				{ value: 'paper', label: t('web.instances.paperBackends'), match: (row) => row.software === 'paper' },
 				{
 					value: 'velocity',
-					label: 'Velocity proxy',
+					label: t('web.instances.velocityProxy'),
 					match: (row) => row.software === 'velocity'
 				},
-				{ value: 'external', label: 'External servers', match: (row) => !!row.externalOnly }
+				{ value: 'external', label: t('web.instances.externalServers'), match: (row) => !!row.externalOnly }
 			]
 		}
-	];
+	]);
 
-	const columns: Column[] = [
-		{ id: 'name', label: 'Name', sortable: true, minWidth: 100 },
-		{ id: 'state', label: 'Instance state', sortable: true },
-		{ id: 'checks', label: 'Status check' },
-		{ id: 'machine', label: 'Machine', sortable: true },
-		{ id: 'software', label: 'Software', sortable: true },
-		{ id: 'version', label: 'Version', sortable: true },
-		{ id: 'port', label: 'Port', sortable: true },
-		{ id: 'memory', label: 'Memory' },
+	const columns: Column[] = $derived([
+		{ id: 'name', label: t('web.common.name'), sortable: true, minWidth: 100 },
+		{ id: 'state', label: t('web.instances.colState'), sortable: true },
+		{ id: 'checks', label: t('web.instances.colChecks') },
+		{ id: 'machine', label: t('web.instances.colMachine'), sortable: true },
+		{ id: 'software', label: t('web.instances.colSoftware'), sortable: true },
+		{ id: 'version', label: t('web.groups.colVersion'), sortable: true },
+		{ id: 'port', label: t('web.instances.colPort'), sortable: true },
+		{ id: 'memory', label: t('web.instances.colMemory') },
 		{ id: 'cpu', label: 'CPU', sortable: true },
-		{ id: 'rss', label: 'Mem (RSS)', sortable: true },
+		{ id: 'rss', label: t('web.instances.colRss'), sortable: true },
 		{ id: 'tps', label: 'TPS', sortable: true, width: 80, align: 'right' },
 		// heap duplicates what Mem (RSS) already conveys at a glance, and thirteen
-		// visible columns overflow the table — it is one gear-click away instead
-		{ id: 'heap', label: 'Heap', sortable: true, hidden: true },
-		{ id: 'uptime', label: 'Uptime', sortable: true },
-		{ id: 'players', label: 'Players', sortable: true },
-		{ id: 'profile', label: 'Java profile', hidden: true },
-		{ id: 'pid', label: 'Java PID', hidden: true }
-	];
+		// visible columns overflow the table; it is one gear-click away instead
+		{ id: 'heap', label: t('web.instances.colHeap'), sortable: true, hidden: true },
+		{ id: 'uptime', label: t('web.instances.colUptime'), sortable: true },
+		{ id: 'players', label: t('web.instances.colPlayers'), sortable: true },
+		{ id: 'profile', label: t('web.instances.colProfile'), hidden: true },
+		{ id: 'pid', label: t('web.instances.colPid'), hidden: true }
+	]);
 
 	function sortValue(row: Row, col: string): string | number | null {
 		switch (col) {
@@ -220,7 +221,7 @@
 			hostMemMb = data.hostMemMb ?? 0;
 			lastUpdated = Date.now();
 		} catch (err) {
-			Notify.error('Could not refresh instances', { detail: (err as Error).message });
+			Notify.error(t('web.instances.refreshFailed'), { detail: (err as Error).message });
 		}
 
 		loading = false;
@@ -234,8 +235,8 @@
 			.then((host) => (hostName = host.name ?? ''))
 			.catch(() => {});
 
-		// jobs this page did not start — a create finishing after the launch page
-		// navigated here, a card's "Start now" — still change the table
+		// jobs this page did not start; a create finishing after the launch page
+		// navigated here, a card's "Start now"; still change the table
 		return onJobFlash(() => void refresh());
 	});
 
@@ -294,7 +295,7 @@
 		return tps >= 15 ? 'warning' : 'danger';
 	}
 
-	/** An instance's verbs — the row menu and the toolbar's Actions button. */
+	/** An instance's verbs; the row menu and the toolbar's Actions button. */
 	function rowActions(row: Row): ContextMenuItem[] {
 		const up = row.state === 'running' || row.state === 'starting';
 
@@ -304,14 +305,14 @@
 
 		return [
 			{
-				label: 'Connect to console',
+				label: t('web.instances.connectConsole'),
 				icon: 'code',
 				disabled: busy,
 				hint: busyHint,
 				action: () => goto(`/instances/${row.name}/console`)
 			},
 			{
-				label: 'View details',
+				label: t('web.instances.viewDetails'),
 				icon: 'circleInfo',
 				disabled: busy,
 				hint: busyHint,
@@ -319,28 +320,28 @@
 			},
 			{ separator: true },
 			{
-				label: 'Start instance',
+				label: t('web.instances.startInstance'),
 				icon: 'play',
 				disabled: row.state !== 'stopped',
-				hint: row.state !== 'stopped' ? `${row.name} is already ${row.state}` : undefined,
+				hint: row.state !== 'stopped' ? t('web.instances.alreadyState', { name: row.name, state: row.state ?? '' }) : undefined,
 				action: () => stateAction('start')
 			},
 			{
-				label: 'Stop instance',
+				label: t('web.instances.stopInstance'),
 				icon: 'stop',
 				disabled: !up,
 				hint: !up ? `${row.name} is not running` : undefined,
 				action: () => stateAction('stop')
 			},
 			{
-				label: 'Restart instance',
+				label: t('web.instances.restartInstance'),
 				icon: 'rotate',
 				disabled: !up,
 				hint: !up ? `${row.name} is not running` : undefined,
 				action: () => stateAction('restart')
 			},
 			{
-				label: 'Schedule an action…',
+				label: t('web.instances.scheduleAction'),
 				icon: 'clock',
 				disabled: busy,
 				hint: busyHint,
@@ -348,53 +349,53 @@
 			},
 			{ separator: true },
 			{
-				label: 'Manage',
+				label: t('web.instances.manage'),
 				icon: 'sliders',
 				disabled: busy,
 				hint: busyHint,
 				submenu: [
 					{
-						label: 'Plugins',
+						label: t('web.nav.plugins'),
 						icon: 'plug',
 						action: () => goto(`/instances/${row.name}?tab=plugins`)
 					},
 					{
-						label: 'Configuration',
+						label: t('web.instances.configuration'),
 						icon: 'sliders',
 						action: () => goto(`/instances/${row.name}?tab=config`)
 					},
 					{
-						label: 'Networking',
+						label: t('web.instances.networking'),
 						icon: 'sitemap',
 						action: () => goto(`/instances/${row.name}?tab=network`)
 					},
 					{
-						label: 'Logs',
+						label: t('web.instances.logs'),
 						icon: 'scroll',
 						action: () => goto(`/instances/${row.name}?tab=logs`)
 					}
 				]
 			},
 			{
-				label: 'Copy game address',
+				label: t('web.instances.copyAddress'),
 				icon: 'copy',
-				// the daemon resolves this to the owning machine's host — an external
+				// the daemon resolves this to the owning machine's host; an external
 				// server advertises its own, and a mid-provision row has none yet
 				disabled: !(row.address ?? row.external),
-				hint: (row.address ?? row.external) ? undefined : 'the instance has no address yet',
+				hint: (row.address ?? row.external) ? undefined : t('web.instances.noAddressYet'),
 				action: () => navigator.clipboard?.writeText(row.address ?? row.external ?? '')
 			},
 			{ separator: true },
 			{
-				label: 'Delete instance',
+				label: t('web.instances.deleteInstance'),
 				icon: 'trash',
 				color: 'danger',
 				disabled: row.state !== 'stopped' || row.name === 'proxy',
 				hint:
 					row.name === 'proxy'
-						? 'the proxy is the cluster entrypoint and cannot be deleted'
+						? t('web.instances.proxyUndeletable')
 						: row.state !== 'stopped'
-							? 'stop the instance first'
+							? t('web.instances.stopFirst')
 							: undefined,
 				action: () => askDelete(row.name)
 			}
@@ -407,23 +408,23 @@
 		}
 
 		return [
-			{ id: 'state', label: 'Instance state' },
-			{ label: 'Software', value: `${one.software} ${one.mcVersion ?? ''}` },
+			{ id: 'state', label: t('web.instances.colState') },
+			{ label: t('web.instances.colSoftware'), value: `${one.software} ${one.mcVersion ?? ''}` },
 			{
-				label: 'Machine',
+				label: t('web.instances.colMachine'),
 				value: one.daemon ?? hostName,
 				href: (one.daemon ?? hostName) ? `/machines/${one.daemon ?? hostName}` : undefined
 			},
-			{ label: 'Game address', value: one.address, copyable: true, style: 'mono' },
-			{ label: 'Memory (heap)', value: one.memory },
-			{ label: 'Java profile', value: one.profile },
-			{ label: 'Java PID', value: one.javaPid },
-			{ label: 'Uptime', value: fmtDuration(one.uptimeMs) },
+			{ label: t('web.instances.gameAddress'), value: one.address, copyable: true, style: 'mono' },
+			{ label: t('web.instances.memoryHeap'), value: one.memory },
+			{ label: t('web.instances.colProfile'), value: one.profile },
+			{ label: t('web.instances.colPid'), value: one.javaPid },
+			{ label: t('web.instances.colUptime'), value: fmtDuration(one.uptimeMs) },
 			{
-				label: 'Players',
+				label: t('web.instances.colPlayers'),
 				value: one.players ? `${one.players.online}/${one.players.max}` : null
 			},
-			{ label: 'Directory', value: one.dir, copyable: true, style: 'mono' }
+			{ label: t('web.instances.directory'), value: one.dir, copyable: true, style: 'mono' }
 		];
 	});
 
@@ -433,83 +434,75 @@
 		}
 
 		const registration = one.proxy?.register
-			? 'registered'
+			? t('web.instances.registered')
 			: one.name === 'proxy'
-				? '(is the proxy)'
-				: 'not registered';
+				? t('web.instances.isTheProxy')
+				: t('web.instances.notRegistered');
 
 		const forcedHosts = one.proxy?.forcedHosts?.length
-			? [{ label: 'Forced hosts', value: one.proxy.forcedHosts.join(', ') }]
+			? [{ label: t('web.instances.forcedHosts'), value: one.proxy.forcedHosts.join(', ') }]
 			: [];
 
 		return [
-			{ label: 'Game port', value: `tcp/${one.port}`, style: 'mono' },
+			{ label: t('web.instances.gamePort'), value: `tcp/${one.port}`, style: 'mono' },
 			...Object.entries(one.ports).map(([key, port]) => ({
 				label: key,
 				value: String(port),
 				style: 'mono' as const
 			})),
-			{ label: 'Proxy registration', value: registration },
+			{ label: t('web.instances.proxyRegistration'), value: registration },
 			...forcedHosts
 		];
 	});
 </script>
 
-<svelte:head><title>Instances | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.nav.instancesList')} | Luna Console</title></svelte:head>
 
 <div class="split-view">
 	<div class="main-col">
 		<PageHeader
-			title="Instances"
+			title={t('web.nav.instancesList')}
 			count="{selected.size ? `${selected.size}/` : ''}{allRows.length}"
 			info
 		>
 			{#snippet actions()}
 				<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="instances" />
-				<Btn disabled={!one} onclick={() => one && goto(`/instances/${one.name}/console`)}>Connect</Btn>
+				<Btn disabled={!one} onclick={() => one && goto(`/instances/${one.name}/console`)}>{t('web.instances.connect')}</Btn>
 				<Dropdown
-					label="Instance state"
+					label={t('web.instances.colState')}
 					disabled={selected.size === 0}
 					items={[
 						{
-							label: 'Start instance',
-							icon: 'play',
-							disabled: !anyStopped,
+							label: t('web.instances.startInstance'), icon: 'play', disabled: !anyStopped,
 							action: () => stateAction('start')
 						},
 						{
-							label: 'Stop instance',
-							icon: 'stop',
-							disabled: !anyUp,
+							label: t('web.instances.stopInstance'), icon: 'stop', disabled: !anyUp,
 							action: () => stateAction('stop')
 						},
 						{
-							label: 'Restart instance',
-							icon: 'rotate',
-							disabled: !anyUp,
+							label: t('web.instances.restartInstance'), icon: 'rotate', disabled: !anyUp,
 							action: () => stateAction('restart')
 						},
 						{ divider: true, label: '' },
 						{
-							label: 'Schedule an action…',
-							icon: 'clock',
+							label: t('web.instances.scheduleAction'), icon: 'clock',
 							action: () => openScheduler(selRows.map((row) => row.name))
 						}
 					]}
 				/>
-				<!-- the selection's verbs are the row's verbs — one declaration, two
+				<!-- the selection's verbs are the row's verbs; one declaration, two
 				     places to reach it (here and the row's context menu) -->
-				<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
+				<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
 				<SplitButton
-					label="Launch instance"
+					label={t('web.nav.launchInstance')}
 					onclick={() => goto('/instances/launch')}
 					items={[
 						{
-							label: 'Launch instance (wizard)',
-							icon: 'rocket',
+							label: t('web.instances.launchWizard'), icon: 'rocket',
 							action: () => goto('/instances/launch')
 						},
-						{ label: 'Clone selected instance', icon: 'copy', disabled: true }
+						{ label: t('web.instances.cloneSelected'), icon: 'copy', disabled: true }
 					]}
 				/>
 			{/snippet}
@@ -523,25 +516,25 @@
 				getId={(row) => row.name}
 				searchValue={(row) =>
 					`${row.name} ${row.state ?? 'external'} ${row.software ?? ''} ${row.mcVersion ?? ''} ${row.port ?? row.external ?? ''} ${row.daemon ?? hostName}`}
-				searchPlaceholder="Find instance by name, state or version"
+				searchPlaceholder={t('web.instances.searchPlaceholder')}
 				selectable="multi"
 				bind:selected
 				{rowActions}
 				rowLabel={(row) => row.name}
-				noun="instance"
+				noun={t('web.instances.noun')}
 				{sortValue}
 				rowLocked={(row) => !!row.externalOnly}
 				{filters}
 				pageSize={25}
-				emptyTitle="No instances registered"
-				emptyText="Launch one to get started."
+				emptyTitle={t('web.instances.emptyTitle')}
+				emptyText={t('web.instances.emptyText')}
 			>
 				{#snippet cell(row, col)}
 					{#if row.externalOnly}
 						{#if col === 'name'}
 							{row.name}
 						{:else if col === 'state'}
-							<StatusBadge state="external" label="External" />
+							<StatusBadge state="external" label={t('web.instances.external')} />
 						{:else if col === 'checks'}
 							<!-- externals run elsewhere, so LunaCore's heartbeat is the only
 							     thing that can say whether they are actually up -->
@@ -550,11 +543,10 @@
 							{:else if row.lunaStatus === 'ONLINE'}
 								<StatusBadge
 									state="passed"
-									label="Heartbeat ok"
+									label={t('web.instances.heartbeatOk')}
 									detail={[
 										{
-											state: 'passed',
-											label: 'LunaCore heartbeat',
+											state: 'passed', label: t('web.instances.lunaHeartbeat'),
 											detail: `${(row.tps ?? 0).toFixed(2)} TPS · ${row.players?.online ?? 0}/${row.players?.max ?? 0} players`
 										}
 									]}
@@ -562,12 +554,10 @@
 							{:else}
 								<StatusBadge
 									state="warning"
-									label="No heartbeat"
+									label={t('web.instances.noHeartbeat')}
 									detail={[
 										{
-											state: 'failed',
-											label: 'LunaCore heartbeat',
-											detail: 'not reporting to the proxy — the server is down or unreachable'
+											state: 'failed', label: t('web.instances.lunaHeartbeat'), detail: t('web.instances.noHeartbeatDetail')
 										}
 									]}
 								/>
@@ -613,11 +603,10 @@
 							{@const passed = row.checks.filter((check) => check.ok).length}
 							<StatusBadge
 								state={passed === row.checks.length ? 'passed' : 'warning'}
-								label="{passed}/{row.checks.length} checks passed"
+								label={t('web.instances.checksPassed', { passed, total: row.checks.length })}
 								detail={row.checks.map((check) => ({
 									state: check.ok === undefined ? 'pending' : check.ok ? 'passed' : 'failed',
-									label: check.name,
-									detail: check.detail
+									label: check.name, detail: check.detail
 								}))}
 							/>
 						{/if}
@@ -692,7 +681,7 @@
 		</Panel>
 
 		{#if !one}
-			<div class="hint dim">Select an instance to see its details in the split panel.</div>
+			<div class="hint dim">{t('web.instances.selectHint')}</div>
 		{/if}
 	</div>
 
@@ -710,9 +699,9 @@
 			{/snippet}
 			<Tabs
 				tabs={[
-					{ id: 'details', label: 'Details' },
-					{ id: 'checks', label: 'Status checks' },
-					{ id: 'network', label: 'Networking' }
+					{ id: 'details', label: t('web.instances.details') },
+					{ id: 'checks', label: t('web.instances.statusChecks') },
+					{ id: 'network', label: t('web.instances.networking') }
 				]}
 				bind:active={detailTab}
 			/>
@@ -728,30 +717,30 @@
 					</InfoGrid>
 					{#if one.state === 'running'}
 						<div class="meters">
-							<ProgressBar left="CPU utilization" value={one.cpu ?? 0} color="auto" />
+							<ProgressBar left={t('web.instances.cpuUtilization')} value={one.cpu ?? 0} color="auto" />
 							<ProgressBar
-								left="Resident memory"
+								left={t('web.instances.residentMemory')}
 								value={one.rssMb ?? 0}
 								max={hostMemMb || heapMb(one.memory) || one.rssMb || 1}
 								color="auto"
-								right="{((one.rssMb ?? 0) / 1024).toFixed(1)} GB of {((hostMemMb || 0) / 1024).toFixed(0)} GB"
+								right={t('web.instances.gbOfGb', { used: ((one.rssMb ?? 0) / 1024).toFixed(1), total: ((hostMemMb || 0) / 1024).toFixed(0) })}
 							/>
 							{#if one.tps != null}
 								<ProgressBar
-									left="Tick rate"
+									left={t('web.instances.tickRate')}
 									value={one.tps}
 									max={20}
 									color={tpsTone(one.tps)}
-									right="{one.tps.toFixed(2)} of 20 TPS"
+									right={t('web.instances.tpsOf20', { tps: one.tps.toFixed(2) })}
 								/>
 							{/if}
 							{#if one.heapUsedMb != null && one.heapMaxMb != null}
 								<ProgressBar
-									left="JVM heap"
+									left={t('web.instances.jvmHeap')}
 									value={one.heapUsedMb}
 									max={one.heapMaxMb}
 									color="auto"
-									right="{(one.heapUsedMb / 1024).toFixed(1)} GB of {(one.heapMaxMb / 1024).toFixed(1)} GB"
+									right={t('web.instances.gbOfGb', { used: (one.heapUsedMb / 1024).toFixed(1), total: (one.heapMaxMb / 1024).toFixed(1) })}
 								/>
 							{/if}
 						</div>
@@ -784,7 +773,7 @@
 	bind:open={deleteOpen}
 	name={deleteTarget}
 	ondeleted={(target) => {
-		// the row reads "deleting" until the job finishes and then disappears —
+		// the row reads "deleting" until the job finishes and then disappears;
 		// drop it from the selection so the detail panel is not left holding it
 		selected = new Set([...selected].filter((id) => id !== target));
 
@@ -807,7 +796,7 @@
 		font-size: 0.875rem;
 	}
 
-	// TPS is only meaningful against 20 — the colour carries that, the number alone doesn't
+	// TPS is only meaningful against 20; the colour carries that, the number alone doesn't
 	.tps {
 		font-variant-numeric: tabular-nums;
 
