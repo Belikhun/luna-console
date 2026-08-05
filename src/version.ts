@@ -7,13 +7,13 @@
  * (DESIGN.md §4.7). The checked-in values are what a from-source run reports.
  */
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0";
 
 /** Short git SHA of the tree the binary was built from, "dev" from source. */
-export const COMMIT = "cd4dd00";
+export const COMMIT = "666b058";
 
 /** ISO 8601 build timestamp, empty from source. */
-export const BUILD_AT = "2026-08-05T13:43:57.397Z";
+export const BUILD_AT = "2026-08-05T17:33:09.325Z";
 
 /** The full build identity, e.g. "1.0.0+6ee20ac". */
 export function buildVersion(): string {
