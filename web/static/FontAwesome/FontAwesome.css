@@ -1350,3 +1350,7 @@ icon[data-icon="bullhorn"]::after {
 icon[data-icon="fileCode"]::after {
 	content: "\f1c9";
 }
+
+icon[data-icon="circleUp"]::after {
+	content: "\f35b";
+}
