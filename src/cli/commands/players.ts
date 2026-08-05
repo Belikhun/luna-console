@@ -337,6 +337,68 @@ command({
 });
 
 command({
+	path: ["net", "vault"],
+	desc: "A player's balance and recent transactions, as LunaVault holds them",
+	args: [{ name: "player", required: true }],
+	opts: [{ flag: "--limit", desc: "how many transactions to list (default 10)", value: true }],
+
+	handler: async (args, opts) => {
+		const player = args[0]!;
+		const limit = opts.limit ? Number(opts.limit) : 10;
+
+		const [account, history] = await Promise.all([
+			luna.vaultAccount(player),
+			luna.vaultTransactions(player, 0, Math.max(1, limit)),
+		]);
+
+		if (!account.ok || !account.data) {
+			bailUnavailable(account.error);
+		}
+
+		const wallet = account.data;
+
+		console.log();
+		console.log(`  ${pc.bold(wallet.username)} ${pc.dim(wallet.uuid)}`);
+		printTable([
+			["balance", pc.bold(wallet.balanceFormatted)],
+			[
+				"rank",
+				wallet.rank ? `#${wallet.rank} ${pc.dim(`of ${wallet.accountCount}`)}` : pc.dim("no account"),
+			],
+			["transactions", String(wallet.summary.transactionCount)],
+			["total received", wallet.summary.receivedFormatted],
+			["total spent", wallet.summary.sentFormatted],
+			["last transaction", fmtEpoch(wallet.summary.lastAtEpochMillis)],
+		]);
+
+		if (!history.ok || !history.data || history.data.entries.length === 0) {
+			console.log();
+			return;
+		}
+
+		console.log();
+		printTable(
+			history.data.entries.map((entry) => [
+				pc.dim(fmtEpoch(entry.atEpochMillis)),
+				entry.direction === "in"
+					? pc.green(`+${entry.amountFormatted}`)
+					: entry.direction === "out"
+						? pc.yellow(`-${entry.amountFormatted}`)
+						: pc.dim(`±${entry.amountFormatted}`),
+				entry.system ? pc.dim("system") : entry.counterpartyName || pc.dim("—"),
+				pc.dim(entry.source || "—"),
+				entry.details || "",
+			]),
+			{ head: ["when", "amount", "counterparty", "source", "details"] },
+		);
+		console.log(
+			`  ${pc.dim(`showing ${history.data.entries.length} of ${history.data.totalCount}`)}`,
+		);
+		console.log();
+	},
+});
+
+command({
 	path: ["net", "password"],
 	desc: "Reset a player's password, or issue a temporary one",
 	args: [{ name: "player", required: true }],

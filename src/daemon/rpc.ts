@@ -17,6 +17,7 @@ import * as addonsCore from "../core/addons";
 import * as adminCore from "../core/admin";
 import * as cleanupCore from "../core/cleanup";
 import * as configCore from "../core/config";
+import * as configfilesCore from "../core/configfiles";
 import * as datapacksCore from "../core/datapacks";
 import * as environmentCore from "../core/environment";
 import * as instancesCore from "../core/instances";
@@ -986,6 +987,41 @@ export const OPS: Record<string, OpSpec> = {
 	// the daemon whose instances will actually read the value
 	"environment.builtinVars": { fn: environmentCore.builtinVars, cfg: 0, instance: 1 },
 	"environment.resolveVars": { fn: environmentCore.resolveVars, cfg: 0, instance: 2 },
+	// no op for resolveDetailed: the client composes it from `builtinVars` plus the
+	// pure layering, which keeps it working against a follower on an older build
+	// reveal is a read that records itself, so the daemon does the whole load →
+	// reveal → save cycle: the pure half mutates a store object, which could not
+	// survive the trip back over the bridge
+	"environment.reveal": { fn: environmentCore.revealAndRecord },
+	// the env file is written into the instance directory, so it runs on the owner
+	"environment.writeEnvFile": { fn: instancesCore.writeEnvFile, cfg: 0, instance: 1 },
+
+	// -- instance config files ------------------------------------------------------
+	// every one of these reads or writes inside an instance directory, so they all
+	// route to the daemon that owns it; the store they update is primary-owned and
+	// travels back up through the save-through hook
+	"configfiles.browse": { fn: configfilesCore.browseInstance, cfg: 0, instance: 1 },
+	"configfiles.read": { fn: configfilesCore.readInstanceFile, cfg: 0, instance: 1 },
+	"configfiles.write": { fn: configfilesCore.writeInstanceFile, cfg: 0, instance: 1 },
+	"configfiles.manage": { fn: configfilesCore.manageFile, cfg: 0, instance: 1 },
+	"configfiles.unmanage": { fn: configfilesCore.unmanageFile, cfg: 0, instance: 1 },
+	"configfiles.readopt": { fn: configfilesCore.readoptFile, cfg: 0, instance: 1 },
+	"configfiles.createPlaceholder": { fn: configfilesCore.createPlaceholder, cfg: 0, instance: 1 },
+	"configfiles.render": {
+		fn: configfilesCore.renderManagedFiles,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 2 },
+	},
+	"configfiles.discardDrift": { fn: configfilesCore.discardDrift, cfg: 0, instance: 1 },
+	"configfiles.forgetInstance": { fn: configfilesCore.forgetInstance },
+	// the whole-cluster overview: the store is primary-owned, and the drift check
+	// it reports is only accurate for instances this daemon can see on disk
+	"configfiles.report": { fn: configfilesCore.managedFileReport, cfg: 0 },
+	// spans every instance's templates and resolution, so it stays on the primary
+	// where the stores live rather than routing anywhere
+	"configfiles.variableUsage": { fn: configfilesCore.variableUsage, cfg: 0, lock: 1 },
+	"configfiles.load": { fn: configfilesCore.loadConfigFiles },
 
 	// -- server selector -------------------------------------------------------------
 	// cluster.json is primary-owned, so none of these route to a follower; the
@@ -1048,6 +1084,8 @@ export const OPS: Record<string, OpSpec> = {
 	"lunaApi.setSkin": { fn: lunaApi.setSkin },
 	"lunaApi.authAccount": { fn: lunaApi.authAccount },
 	"lunaApi.setAuth": { fn: lunaApi.setAuth },
+	"lunaApi.vaultAccount": { fn: lunaApi.vaultAccount },
+	"lunaApi.vaultTransactions": { fn: lunaApi.vaultTransactions },
 
 	// -- daemon-native (sampler, events) ---------------------------------------------------
 	"daemon.listStatuses": { fn: sampler.listStatuses },

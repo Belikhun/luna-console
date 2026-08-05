@@ -39,6 +39,15 @@ export type {
 	SkinInfo,
 	SkinChange,
 	SkinChangeResult,
+	AuthSession,
+	AuthAccountInfo,
+	AuthChange,
+	AuthChangeResult,
+	VaultCurrency,
+	VaultSummary,
+	VaultAccountInfo,
+	VaultTransaction,
+	VaultTransactionPage,
 } from "../../../core/services/luna";
 
 export const dashboard = call("lunaApi.dashboard") as typeof core.dashboard;
@@ -69,6 +78,8 @@ export const skinInfo = call("lunaApi.skinInfo") as typeof core.skinInfo;
 export const setSkin = call("lunaApi.setSkin") as typeof core.setSkin;
 export const authAccount = call("lunaApi.authAccount") as typeof core.authAccount;
 export const setAuth = call("lunaApi.setAuth") as typeof core.setAuth;
+export const vaultAccount = call("lunaApi.vaultAccount") as typeof core.vaultAccount;
+export const vaultTransactions = call("lunaApi.vaultTransactions") as typeof core.vaultTransactions;
 
 /** Open a LunaCore SSE stream, tunneled through the daemon. */
 export async function openStream(path: string, signal?: AbortSignal): Promise<Response> {

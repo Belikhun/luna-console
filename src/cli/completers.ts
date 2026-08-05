@@ -24,6 +24,20 @@ export async function pluginNames(): Promise<string[]> {
 	}
 }
 
+/**
+ * Daemon names a per-machine value can be scoped to. Names, not keys — the
+ * primary answers to its own name here, and `machineKeyFor` converts.
+ */
+export async function machineNames(): Promise<string[]> {
+	try {
+		const { listDaemons } = await import("../client/daemon");
+
+		return (await listDaemons()).map((row) => row.name).sort();
+	} catch {
+		return [];
+	}
+}
+
 /** Instance names plus the wildcard selectors that target groups of them. */
 export async function targetSelectors(): Promise<string[]> {
 	return ["*", "*paper", "*velocity", ...(await instanceNames())];

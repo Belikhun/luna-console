@@ -125,8 +125,48 @@
 		};
 	}
 
+	interface VaultInfo {
+		uuid: string;
+		username: string;
+		online: boolean;
+		hasAccount: boolean;
+		balanceMinor: number;
+		balance: number;
+		balanceFormatted: string;
+		rank: number;
+		accountCount: number;
+		currency: { symbol: string; grouping: boolean; scale: number };
+		summary: {
+			transactionCount: number;
+			receivedMinor: number;
+			receivedFormatted: string;
+			sentMinor: number;
+			sentFormatted: string;
+			netMinor: number;
+			netFormatted: string;
+			firstAtEpochMillis: number;
+			lastAtEpochMillis: number;
+		};
+	}
+
+	interface VaultTx {
+		id: string;
+		direction: 'in' | 'out' | 'self';
+		counterpartyUuid: string;
+		counterpartyName: string;
+		system: boolean;
+		amountMinor: number;
+		amountFormatted: string;
+		source: string;
+		details: string;
+		atEpochMillis: number;
+	}
+
 	/** Page size for the log tabs; "Load more" appends another page. */
 	const LOG_PAGE = 100;
+
+	/** Transactions per request — LunaVault pages this one by page index, not offset. */
+	const VAULT_PAGE = 50;
 
 	/** Default lifetime offered for a temporary password, in minutes. */
 	const DEFAULT_TEMP_MINUTES = 1440;
@@ -208,6 +248,15 @@
 	let issuedPassword = $state('');
 	let issuedOpen = $state(false);
 
+	// economy — balance and transactions, held by LunaVault on the proxy
+	let vaultInfo: VaultInfo | undefined = $state();
+	let vaultAvailable = $state(true);
+	let vaultProblem = $state('');
+	let vaultTx: VaultTx[] = $state([]);
+	let vaultTotal = $state(0);
+	/** Index of the last page fetched, so "Load more" asks for the next one. */
+	let vaultPage = $state(0);
+
 	// permissions editor state
 	let groupPick = $state('');
 	let nodeKey = $state('');
@@ -238,9 +287,11 @@
 		loading = false;
 
 		// the account state is loaded eagerly rather than with its tab: the header
-		// verbs need to know whether the account is locked or has a password
+		// verbs need to know whether the account is locked or has a password.
+		// The balance is eager for the same reason — it sits in the overview bar.
 		await Promise.all([
 			loadAuth(),
+			loadVault(),
 			loadTab(tab, true),
 			permsLoaded ? loadPermissions() : Promise.resolve()
 		]);
@@ -262,6 +313,39 @@
 			authAvailable = false;
 			authProblem = (err as Error).message;
 		}
+	}
+
+	async function loadVault(): Promise<void> {
+		try {
+			const data = await api(`/players/${encodeURIComponent(ref)}/vault`);
+
+			if (data.available === false) {
+				vaultAvailable = false;
+				vaultProblem = data.error ?? 'LunaVault is unavailable';
+				return;
+			}
+
+			vaultAvailable = true;
+			vaultInfo = data as VaultInfo;
+		} catch (err) {
+			vaultAvailable = false;
+			vaultProblem = (err as Error).message;
+		}
+	}
+
+	async function loadVaultTransactions(reset: boolean): Promise<void> {
+		const wanted = reset ? 0 : vaultPage + 1;
+		const data = await api(
+			`/players/${encodeURIComponent(ref)}/vault/transactions?page=${wanted}&pageSize=${VAULT_PAGE}`
+		);
+
+		if (data.available === false) {
+			return;
+		}
+
+		vaultTotal = data.totalCount ?? 0;
+		vaultPage = data.page ?? 0;
+		vaultTx = reset ? (data.entries ?? []) : [...vaultTx, ...(data.entries ?? [])];
 	}
 
 	async function loadSessions(reset: boolean): Promise<void> {
@@ -336,6 +420,8 @@
 			await loadModeration(true);
 		} else if (id === 'permissions' && (force || !permsLoaded)) {
 			await loadPermissions();
+		} else if (id === 'economy' && (force || vaultTx.length === 0)) {
+			await loadVaultTransactions(true);
 		}
 	}
 
@@ -811,6 +897,44 @@
 			: []
 	);
 
+	// ------------------------------------------------------------------ economy
+
+	const vaultCells: InfoCell[] = $derived(
+		vaultInfo
+			? [
+					{ label: 'Balance', value: vaultInfo.balanceFormatted },
+					{
+						label: 'Leaderboard rank',
+						value: vaultInfo.rank ? `#${vaultInfo.rank} of ${vaultInfo.accountCount}` : '–'
+					},
+					{ label: 'Transactions', value: vaultInfo.summary.transactionCount },
+					{ label: 'Total received', value: vaultInfo.summary.receivedFormatted },
+					{ label: 'Total spent', value: vaultInfo.summary.sentFormatted },
+					{
+						label: 'First transaction',
+						value: vaultInfo.summary.firstAtEpochMillis
+							? fmtDateTime(vaultInfo.summary.firstAtEpochMillis)
+							: '–'
+					},
+					{
+						label: 'Last transaction',
+						value: vaultInfo.summary.lastAtEpochMillis
+							? fmtDateTime(vaultInfo.summary.lastAtEpochMillis)
+							: '–'
+					}
+				]
+			: []
+	);
+
+	const txCols: Column[] = [
+		{ id: 'time', label: 'Time', width: 180, sortable: true },
+		{ id: 'direction', label: 'Direction', width: 120 },
+		{ id: 'amount', label: 'Amount', width: 150, sortable: true },
+		{ id: 'counterparty', label: 'Counterparty', minWidth: 160 },
+		{ id: 'source', label: 'Source', width: 140 },
+		{ id: 'details', label: 'Details' }
+	];
+
 	// ------------------------------------------------------------- permissions
 
 	async function editGroups(action: 'add' | 'remove' | 'set', group: string): Promise<void> {
@@ -988,6 +1112,13 @@
 				<StatusBadge state="stopped" label="Offline" />
 			{/if}
 		</OverviewCell>
+		<OverviewCell label="Balance">
+			{#if vaultAvailable && vaultInfo}
+				<span class="balance">{vaultInfo.balanceFormatted}</span>
+			{:else}
+				<span class="dim">–</span>
+			{/if}
+		</OverviewCell>
 		<OverviewCell label="Total playtime">
 			{detail.totalPlayMillis ? fmtDuration(detail.totalPlayMillis) : '–'}
 		</OverviewCell>
@@ -1021,6 +1152,7 @@
 		tabs={[
 			{ id: 'overview', label: 'Overview' },
 			{ id: 'account', label: 'Account' },
+			{ id: 'economy', label: 'Economy' },
 			{ id: 'sessions', label: 'Play history' },
 			{ id: 'chat', label: 'Chat & commands' },
 			{ id: 'permissions', label: 'Permissions' },
@@ -1085,6 +1217,93 @@
 					description="Held by luna-auth on the proxy — the same state the /auth command reports"
 				>
 					<InfoGrid cells={authCells} columns={[4, 2, 1]} />
+				</Panel>
+			{/if}
+		{:else if tab === 'economy'}
+			{#if !vaultAvailable}
+				<Flash kind="warning">
+					<b>LunaVault is not answering:</b> {vaultProblem}. Balances and transactions come from
+					the plugin on the proxy — the backends only hold a cache of them.
+				</Flash>
+			{:else}
+				{#if vaultInfo && !vaultInfo.hasAccount}
+					<Flash kind="info">
+						This player has no economy account yet. One is created the first time they earn or
+						are given money, and until then their balance is zero rather than unknown.
+					</Flash>
+				{/if}
+
+				<Panel
+					title="Wallet"
+					description="Held by LunaVault on the proxy — the network's source of truth for balances"
+				>
+					<InfoGrid cells={vaultCells} columns={[4, 2, 1]} />
+				</Panel>
+
+				<Panel flush>
+					<ResourceTable
+						tableId="player-transactions"
+						columns={txCols}
+						rows={vaultTx}
+						getId={(entry) => entry.id}
+						searchValue={(entry) => `${entry.counterpartyName} ${entry.source} ${entry.details}`}
+						searchPlaceholder="Find in transactions"
+						noun="transaction"
+						pageSize={25}
+						sortValue={(entry, col) =>
+							col === 'time'
+								? entry.atEpochMillis
+								: col === 'amount'
+									? entry.amountMinor
+									: null}
+						emptyTitle="No transactions"
+						emptyText="Every payment, reward and admin adjustment LunaVault records for this player appears here."
+					>
+						{#snippet cell(entry, col)}
+							{#if col === 'time'}
+								<span class="mono dim">{fmtDateTime(entry.atEpochMillis)}</span>
+							{:else if col === 'direction'}
+								<StatusBadge
+									state={entry.direction === 'in'
+										? 'passed'
+										: entry.direction === 'out'
+											? 'warning'
+											: 'stopped'}
+									label={entry.direction === 'in'
+										? 'received'
+										: entry.direction === 'out'
+											? 'paid'
+											: 'adjusted'}
+								/>
+							{:else if col === 'amount'}
+								<span class="amount {entry.direction}">
+									{entry.direction === 'in' ? '+' : entry.direction === 'out' ? '−' : '±'}{entry
+										.amountFormatted}
+								</span>
+							{:else if col === 'counterparty'}
+								{#if entry.system}
+									<span class="dim">System</span>
+								{:else if entry.counterpartyUuid}
+									<a href="/players/{entry.counterpartyUuid}">
+										{entry.counterpartyName || entry.counterpartyUuid}
+									</a>
+								{:else}
+									{entry.counterpartyName}
+								{/if}
+							{:else if col === 'source'}
+								<span class="mono">{entry.source || '–'}</span>
+							{:else if col === 'details'}
+								{entry.details || '–'}
+							{/if}
+						{/snippet}
+					</ResourceTable>
+					{#if vaultTx.length < vaultTotal}
+						<div class="more">
+							<Btn onclick={() => void loadVaultTransactions(false)}>
+								Load more ({vaultTx.length}/{vaultTotal})
+							</Btn>
+						</div>
+					{/if}
 				</Panel>
 			{/if}
 		{:else if tab === 'sessions'}
@@ -1623,6 +1842,31 @@
 
 	.content {
 		word-break: break-word;
+	}
+
+	.balance {
+		font-weight: 700;
+		color: var(--text-heading);
+	}
+
+	// the sign already says which way the money went; the colour is there so a
+	// column of transactions reads at a glance, not to carry the meaning alone
+	.amount {
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+
+		&.in {
+			color: var(--success);
+		}
+
+		&.out {
+			color: var(--warning);
+		}
+
+		// an admin adjusting their own balance: no direction to colour
+		&.self {
+			color: var(--text-secondary);
+		}
 	}
 
 	.groups {

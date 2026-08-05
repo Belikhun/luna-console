@@ -23,7 +23,10 @@ Stack (locked): Bun + TypeScript · single compiled binary (`bun build --compile
 `dist/luna`, symlinked as `/mnt/shulker/mrds/luna`) · picocolors + @clack/prompts
 for the terminal · SvelteKit (Svelte 5 runes) + adapter-node running **under Bun** for the
 web console (no Elysia, no separate backend) · **SCSS** (`sass-embedded` through
-`vitePreprocess`) for every stylesheet · xterm.js for the terminal drawer · SSE for all
+`vitePreprocess`) for every stylesheet · xterm.js for the terminal drawer · **Monaco** for
+config editing, reached only through the dynamic import in `CodeEditor.svelte` and carrying
+just the languages a server config uses (`$lib/monaco.ts` — never import it statically, it
+touches `self` at module load and would break SSR for the whole page) · SSE for all
 client streaming (never WebSockets to a browser; daemons talk to each other over
 WebSocket + HTTP file streaming) · HTTP over a unix socket between clients and the
 local daemon · the addon providers (Modrinth, CurseForge, Hangar, Smithed — behind
@@ -52,6 +55,8 @@ control/                # this repo — the only source tree
 /mnt/shulker/mrds/      # cluster root (parent dir) — managed data, not source
   cluster.json          # instance registry — source of truth
   plugins.lock.json     # plugin metadata/versions — source of truth
+  environment.json      # env variables: global + per-machine + per-instance
+  configfiles.json      # managed config-file templates (instance → path → body)
   plugins/              # jar pool (+ versions/ for per-instance variants)
   logs/<instance>/      # archived, compacted logs (YYYY-MM.log.gz)
   <instance>/           # live server directories (managed, not source)
@@ -249,6 +254,53 @@ export interface InstanceConfig {}
   never let an "update" move an instance backwards or onto a snapshot.
 - `luna-*` jars are in-house plugins (`source: "luna"` in the lockfile): excluded from
   Modrinth checks; their deployment mechanism is still to be provided.
+- **Environment values layer, and the layering is one-directional**: builtin < global <
+  machine < instance (`core/environment.ts`). A machine's key is read off the *instance's*
+  `daemon` field (`machineKeyOf`, primary = `""`), never off the daemon running the call, so
+  the primary resolves a follower's values correctly; `resolveDetailed` reports which scope
+  won and what it shadowed. Machine keys are presented as **names** everywhere a human sees
+  them (`shared/machines.ts` converts) — nobody can type `""`. Every instance's resolved set
+  is written to `.luna-env` (mode 0600, regenerated per start) and sourced by `run.sh`, so a
+  variable reaches the JVM without any templating, and **a restart is the whole apply step**.
+  The layering is pure math over a store that is identical on every machine, so `layerScopes`
+  is separate and the **client bridge composes** `resolveDetailed` from the routed
+  `builtinVars` op plus local layering — do not collapse that back into one op, it is what
+  keeps the resolution view working against a follower on an older build.
+- **A secret's value never leaves the daemon on a read; revealing it is an action.**
+  Listings mask it, `revealAndRecord` returns it and appends to the store's capped `history`
+  trail, which records the scope and the time but **never a value**. New env mutations go
+  through `setVariable`/`unsetVariable` so they land in that trail automatically. The CLI's
+  `--reveal` reads the store directly and is not recorded — a shell that can reach the daemon
+  socket already has it, and that is the trust boundary.
+- **Environment is shown at three levels, and every table carries a `Source` column.**
+  `/environment` is one row per *value* (not per name), so a name with overrides is several
+  rows; a machine's Environment tab and an instance's Environment tab each show the
+  **effective set at that level** — the wider values inherited plus that level's own
+  departures, with `Source` naming which layer won (`builtin`/`global`/`machine`/`instance`).
+  A table of overrides alone cannot answer "what does this machine/instance actually see",
+  which is the question those screens exist for. An inherited row is still actionable
+  (override it), but its remove verb is disabled — the value lives at a wider scope, and
+  deleting it from a narrower screen would surprise everything else that reads it. Only the
+  instance level can show builtins at all, since they are computed per instance. The
+  variable's own screen (`/environment/<name>`) is where the layering, `variableUsage` (which
+  files and plugin templates reference it, what each instance resolves) and the change trail
+  live.
+- **A managed config file is derived from its template, never the reverse.** `configfiles.json`
+  holds the template; `startInstance` renders it into the instance before spawning. Creating a
+  placeholder must leave the file on disk byte-identical — `createPlaceholder` refuses a name
+  already holding a different value at that scope, and refuses when a narrower scope would make
+  the render rewrite the file, unless the caller forces it; nothing is written until every check
+  passes. A file the server rewrote itself is **drift**: the template still wins, but the drifted
+  text is kept as `<file>.luna-drift` and reported, so a regenerated config is never lost —
+  `readoptFile` pulls it back in, keeping the placeholders whose values still match. Client paths
+  always go through `resolveInstancePath` (no escaping the instance dir), browsing never recurses,
+  and editing is capped at 512 KB and refuses binaries.
+- **State files are primary-owned.** A follower writing `cluster.json`, `plugins.lock.json`,
+  `environment.json` or `configfiles.json` forwards the save up the cluster link
+  (`notifySave` → the follower's hook → the hub persists → the root watcher syncs it back).
+  Adding a new cluster-root state file means adding it to `SaveFile`, calling `notifySave` from
+  its saver, and listing it in `SYNC_FILES` — otherwise a follower's write is silently clobbered
+  by the next sync frame.
 
 ### Daemon health
 - **Every daemon samples its own machine** (`daemon/health.ts`, 5 s, one hour kept):
@@ -400,6 +452,15 @@ Wiring rules:
   value, a timestamp with a popover — gets the `.info-trigger` dashed underline in body
   colour, never link blue. Chrome links (brand, side nav, tabs, buttons rendered as `<a>`)
   opt out of the underline in their own component.
+- **A screen whose content *is* a viewport** — an editor, a scroller, a log — sizes itself
+  against `100vh` minus the measured chrome and minus `var(--split-bottom)` (the terminal
+  drawer's own height, so opening the drawer shortens the screen instead of covering it), with
+  a `min-height` floor. `Panel` takes `fill` for this: the panel becomes a flex column that
+  takes the height its parent gives it (`height: 100%` in a grid cell, `flex: 1` beside
+  siblings in a flex column) and its body flexes, so one child can own the remaining space.
+  Never hand-roll a panel to get this. Measure the chrome offset in the browser rather than
+  guessing it — the page header's own `.split` is a different element from a page's, and
+  reading the wrong one is how a layout ends up 66px too tall.
 - Streaming (instance console, terminal drawer, events) is **SSE only**. The terminal drawer
   runs the real compiled CLI and gets its Tab-completion and ghost text from the CLI's own
   `__complete` engine — completion logic is never reimplemented in the browser.
@@ -418,6 +479,15 @@ luna daemon upgrade [name]        # apply an upgrade: the primary's binary, else
 luna daemon upgrade --check       # what each channel offers, applying nothing
 luna daemon token                 # generate the shared cluster token
 luna daemon service install       # just the unit file, for an already-configured host
+luna env [--instance x|--machine y]   # variables; with --instance, what it resolves and why
+luna env set NAME value [--machine m|--instance i] [--secret]
+luna env inject <instance>            # rewrite its .luna-env (applies on next start)
+luna env apply <instance>             # re-run plugin config templates + render managed files
+luna configs [--instance x]           # managed config files: placeholders + drift state
+luna configs ls|show <instance> …     # browse one level · print template or rendered file
+luna configs manage|unmanage <instance> <file>
+luna configs placeholder <instance> <file> NAME value [--all] [--machine m] [--secret]
+luna configs render|readopt <instance> [file]
 luna version                      # build identity of the binary and of the daemon
 bun run src/cli/index.ts <cmd…>   # run the CLI from source (this dir)
 bun run build                     # compile the single binary → dist/luna

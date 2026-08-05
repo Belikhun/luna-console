@@ -26,7 +26,7 @@
 	import type { DistributionSegment } from '$lib/components/distribution';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import BrandLink from '$lib/components/BrandLink.svelte';
-	import type { Column } from '$lib/components/table';
+	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
 	import ProgressTree from '$lib/components/ProgressTree.svelte';
@@ -48,7 +48,7 @@
 	 * a plugin report scans the instance's jars and its boot session, which is
 	 * not something to do every four seconds.
 	 */
-	const REFRESHED_TABS = ['plugins', 'datapacks', 'respacks', 'monitoring', 'checks', 'logs'];
+	const REFRESHED_TABS = ['plugins', 'datapacks', 'respacks', 'monitoring', 'checks', 'logs', 'environment'];
 
 	const LOG_LINE_CHOICES = [100, 200, 500, 1000];
 
@@ -100,6 +100,25 @@
 	/** addon stream state, in the same vocabulary the log stream uses */
 	let addonLive: 'off' | 'connecting' | 'live' | 'reconnecting' = $state('off');
 	let instRespacks: any[] = $state([]);
+
+	/**
+	 * Every variable this instance resolves, with the scope that won. Builtins are
+	 * in here too — they are computed per instance, so this is the only screen that
+	 * can show them at all.
+	 */
+	interface EnvVar {
+		name: string;
+		value: string;
+		scope: 'builtin' | 'global' | 'machine' | 'instance';
+		secret: boolean;
+		description: string;
+		shadowed: Array<{ scope: string; value: string }>;
+	}
+
+	let envVars: EnvVar[] = $state([]);
+	/** Secrets revealed this session, dropped on reload */
+	let envRevealed: Record<string, string> = $state({});
+
 
 	/** Pack key whose per-instance rule edit is in flight, for the row's button. */
 	let respackBusy = $state('');
@@ -217,6 +236,12 @@
 				instDatapacks = data.rows;
 				datapackWorld = data.world;
 			}
+		}
+
+		if (which === 'environment') {
+			const data = await api(`/instances/${name}/env`);
+
+			envVars = data.variables;
 		}
 
 		if (which === 'respacks') {
@@ -1147,6 +1172,88 @@
 		];
 	}
 
+	// -- environment ---------------------------------------------------------------
+
+	const envCols: Column[] = [
+		{ id: 'name', label: 'Variable', sortable: true, width: 240 },
+		{ id: 'value', label: 'Value on this instance' },
+		{ id: 'source', label: 'Source', sortable: true, width: 120 },
+		{ id: 'shadowed', label: 'Shadows' }
+	];
+
+	const envFilters: TableFilterGroup<EnvVar>[] = [
+		{
+			id: 'source',
+			label: 'Filter source scope',
+			options: [
+				{ value: 'any', label: 'Any source' },
+				{ value: 'instance', label: 'This instance only', match: (row) => row.scope === 'instance' },
+				{ value: 'machine', label: 'From its machine', match: (row) => row.scope === 'machine' },
+				{ value: 'global', label: 'Cluster-wide', match: (row) => row.scope === 'global' },
+				{ value: 'builtin', label: 'Builtin', match: (row) => row.scope === 'builtin' }
+			]
+		}
+	];
+
+	/**
+	 * Reveal one secret for this instance. The scope that won decides where the
+	 * value lives, so that is the scope the reveal asks for — a builtin secret
+	 * (the forwarding secret) is computed and has nothing to reveal.
+	 */
+	async function revealEnv(row: EnvVar): Promise<void> {
+		try {
+			const result = await post(`/env/${encodeURIComponent(row.name)}/reveal`, {
+				machine: row.scope === 'machine' ? (inst?.daemon ?? '') : undefined,
+				instance: row.scope === 'instance' ? name : undefined
+			});
+
+			envRevealed = { ...envRevealed, [row.name]: result.value };
+		} catch (err) {
+			Notify.error(`Could not reveal ${row.name}`, { detail: (err as Error).message });
+		}
+	}
+
+	function hideEnv(varName: string): void {
+		const next = { ...envRevealed };
+
+		delete next[varName];
+		envRevealed = next;
+	}
+
+	function envActions(row: EnvVar): ContextMenuItem[] {
+		const builtin = row.scope === 'builtin';
+
+		return [
+			{
+				label: 'Open variable details',
+				icon: 'circleInfo',
+				disabled: builtin,
+				action: () => goto(`/environment/${encodeURIComponent(row.name)}`)
+			},
+			{
+				label: row.scope === 'instance' ? 'Edit this value' : 'Override for this instance',
+				icon: row.scope === 'instance' ? 'pen' : 'layerGroup',
+				disabled: builtin,
+				action: () =>
+					goto(`/environment/new?name=${encodeURIComponent(row.name)}&instance=${name}`)
+			},
+			{
+				label: envRevealed[row.name] !== undefined ? 'Hide value' : 'Reveal value',
+				icon: envRevealed[row.name] !== undefined ? 'eyeSlash' : 'eye',
+				// a builtin's value is computed, so there is no stored secret to reveal
+				disabled: !row.secret || builtin,
+				action: () =>
+					envRevealed[row.name] !== undefined ? hideEnv(row.name) : revealEnv(row)
+			},
+			{
+				label: 'Copy value',
+				icon: 'copy',
+				disabled: row.secret && envRevealed[row.name] === undefined,
+				action: () => navigator.clipboard?.writeText(envRevealed[row.name] ?? row.value)
+			}
+		];
+	}
+
 	const eventCols: Column[] = [
 		{ id: 'time', label: 'Time', width: 190 },
 		{ id: 'kind', label: 'Type', width: 120 },
@@ -1209,6 +1316,11 @@
 						label: 'Serial console',
 						icon: 'code',
 						action: () => goto(`/instances/${name}/console`)
+					},
+					{
+						label: 'Config files',
+						icon: 'fileCode',
+						action: () => goto(`/instances/${name}/files`)
 					},
 					{ label: 'Deploy plugins here', icon: 'upload', action: () => deployPlugins() },
 					{ divider: true, label: '' },
@@ -1278,6 +1390,7 @@
 						{ id: 'access', label: 'Players & access' }
 					]),
 			{ id: 'network', label: 'Networking' },
+			{ id: 'environment', label: 'Environment' },
 			{ id: 'logs', label: 'Logs' },
 			{ id: 'config', label: 'Configuration' }
 		]}
@@ -1656,6 +1769,83 @@
 			<Panel title="Proxy registration">
 				<InfoGrid cells={proxyCells} />
 			</Panel>
+		{:else if tab === 'environment'}
+			<Panel
+				title="Environment"
+				count={envVars.length}
+				description="Every variable this instance exports into its JVM at startup, and what config files substitute as $&lbrace;NAME&rbrace;. The source column is the layer that won: builtin < global < machine < instance."
+				flush
+			>
+				{#snippet actions()}
+					<Btn icon="key" href="/environment">All variables</Btn>
+					<Btn
+						variant="primary"
+						icon="plus"
+						href="/environment/new?instance={encodeURIComponent(name ?? '')}"
+					>
+						Add an override
+					</Btn>
+				{/snippet}
+
+				<ResourceTable
+					tableId="instance-environment"
+					columns={envCols}
+					filters={envFilters}
+					rows={envVars}
+					getId={(row) => row.name}
+					searchValue={(row) =>
+						`${row.name} ${row.secret ? 'secret' : row.value} ${row.scope} ${row.description}`}
+					searchPlaceholder="Find a variable"
+					rowActions={envActions}
+					rowLabel={(row) => row.name}
+					noun="variable"
+					emptyTitle="Nothing resolved"
+					emptyText="This instance resolves no variables — not even builtins, which means it could not be read."
+				>
+					{#snippet cell(row, col)}
+						{#if col === 'name'}
+							{#if row.scope === 'builtin'}
+								<span class="mono"><b>{row.name}</b></span>
+							{:else}
+								<a class="mono" href="/environment/{encodeURIComponent(row.name)}">
+									<b>{row.name}</b>
+								</a>
+							{/if}
+						{:else if col === 'value'}
+							{#if !row.secret}
+								<span class="mono">{row.value || '(empty)'}</span>
+							{:else if envRevealed[row.name] !== undefined}
+								<span class="mono">{envRevealed[row.name] || '(empty)'}</span>
+								<button class="peek" onclick={() => hideEnv(row.name)}>hide</button>
+							{:else}
+								<StatusBadge state="warning" label="secret" />
+								<span class="dim">••••••••</span>
+								{#if row.scope !== 'builtin'}
+									<button
+										class="peek"
+										title="Reveal this value — the read is recorded"
+										onclick={() => revealEnv(row)}
+									>
+										reveal
+									</button>
+								{/if}
+							{/if}
+						{:else if col === 'source'}
+							<span class="envscope {row.scope}">{row.scope}</span>
+						{:else if col === 'shadowed'}
+							{#if row.shadowed.length}
+								<span class="dim">
+									overrides {row.shadowed.map((prev) => prev.scope).join(', ')}
+								</span>
+							{:else if row.description}
+								<span class="dim">{row.description}</span>
+							{:else}
+								<span class="dim">–</span>
+							{/if}
+						{/if}
+					{/snippet}
+				</ResourceTable>
+			</Panel>
 		{:else if tab === 'logs'}
 			<Panel title="latest.log" flush>
 				{#snippet actions()}
@@ -1858,6 +2048,39 @@
 	}
 
 	// panels inside one tab are separated by an explicit spacer element
+	// one colour per layer, matching the environment screens
+	.envscope {
+		font-size: 0.75rem;
+
+		&.builtin {
+			color: var(--text-secondary);
+		}
+
+		&.global {
+			color: var(--link);
+		}
+
+		&.machine {
+			color: var(--warning);
+		}
+
+		&.instance {
+			color: var(--success);
+		}
+	}
+
+	.peek {
+		@include bare-button;
+
+		margin-left: 0.5rem;
+		color: var(--link);
+		font-size: 0.75rem;
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+
 	.gap {
 		height: 1rem;
 	}

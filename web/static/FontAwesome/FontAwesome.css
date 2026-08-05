@@ -1346,3 +1346,7 @@ icon[data-icon="layerGroup"]::after {
 icon[data-icon="bullhorn"]::after {
 	content: "\f0a1";
 }
+
+icon[data-icon="fileCode"]::after {
+	content: "\f1c9";
+}

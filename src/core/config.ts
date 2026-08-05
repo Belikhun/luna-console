@@ -66,19 +66,32 @@ export function centralLogsDir(): string {
 	return join(root(), "logs");
 }
 
+/** A cluster-root state file whose single writer is the primary daemon. */
+export type SaveFile = "cluster" | "lock" | "env" | "configfiles";
+
 /**
  * Save-through hook for follower daemons: the state files' single writer is the
  * primary, so a follower installs a hook that forwards every save up the
  * cluster link after updating its local copy. Unset (the default) everywhere
  * else — saves are then purely local.
  */
-export type SaveHook = (file: "cluster" | "lock", data: unknown) => Promise<void>;
+export type SaveHook = (file: SaveFile, data: unknown) => Promise<void>;
 
 let saveHook: SaveHook | undefined;
 
 /** Install (or clear) the save-through hook. */
 export function installSaveHook(hook: SaveHook | undefined): void {
 	saveHook = hook;
+}
+
+/**
+ * Announce a state-file save to the hook, if one is installed. Every module that
+ * owns a cluster-root state file calls this after writing its local copy, so a
+ * follower's write reaches the primary instead of being clobbered by the next
+ * sync frame.
+ */
+export async function notifySave(file: SaveFile, data: unknown): Promise<void> {
+	await saveHook?.(file, data);
 }
 
 /** Read the instance registry. */

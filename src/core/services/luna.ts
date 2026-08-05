@@ -1090,3 +1090,91 @@ export async function setAuth(player: string, change: AuthChange): Promise<LunaR
 		{ form, timeoutMs: 10000 },
 	);
 }
+
+export interface VaultCurrency {
+	/** The plain symbol, with the money template's MiniMessage tags stripped */
+	symbol: string;
+	grouping: boolean;
+	/** Decimal places a minor amount carries — 100 minor units to the coin */
+	scale: number;
+}
+
+export interface VaultSummary {
+	transactionCount: number;
+	receivedMinor: number;
+	receivedFormatted: string;
+	sentMinor: number;
+	sentFormatted: string;
+	netMinor: number;
+	netFormatted: string;
+	firstAtEpochMillis: number;
+	lastAtEpochMillis: number;
+}
+
+export interface VaultAccountInfo {
+	uuid: string;
+	username: string;
+	online: boolean;
+	/** False for a player who has never held money — the balance is then a zero, not a record */
+	hasAccount: boolean;
+	balanceMinor: number;
+	balance: number;
+	/** The amount as the server itself prints it, symbol included */
+	balanceFormatted: string;
+	/** Position on the balance leaderboard, 1-based; 0 when there is no account */
+	rank: number;
+	accountCount: number;
+	currency: VaultCurrency;
+	summary: VaultSummary;
+}
+
+/** A player's economy state, as LunaVault on the proxy holds it. */
+export async function vaultAccount(player: string): Promise<LunaResult<VaultAccountInfo>> {
+	return await call<VaultAccountInfo>(`/vault/accounts/${encodeURIComponent(player)}`);
+}
+
+export interface VaultTransaction {
+	id: string;
+	/**
+	 * in = the player received · out = the player paid · self = the same player on
+	 * both sides, which `/eco` writes when an admin adjusts their own balance and
+	 * which carries no recoverable direction
+	 */
+	direction: "in" | "out" | "self";
+	counterpartyUuid: string;
+	counterpartyName: string;
+	/** The other side is the server itself: an admin grant, a shop, a reward */
+	system: boolean;
+	amountMinor: number;
+	amountFormatted: string;
+	/** Which plugin moved the money */
+	source: string;
+	details: string;
+	atEpochMillis: number;
+}
+
+export interface VaultTransactionPage {
+	uuid: string;
+	username: string;
+	/** Zero-based */
+	page: number;
+	pageSize: number;
+	/** Index of the last page, so a page equal to it is the end */
+	maxPage: number;
+	totalCount: number;
+	currency: VaultCurrency;
+	entries: VaultTransaction[];
+}
+
+/** A page of one player's transactions, newest first. */
+export async function vaultTransactions(
+	player: string,
+	page = 0,
+	pageSize = 25,
+): Promise<LunaResult<VaultTransactionPage>> {
+	const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+
+	return await call<VaultTransactionPage>(
+		`/vault/accounts/${encodeURIComponent(player)}/transactions?${params.toString()}`,
+	);
+}

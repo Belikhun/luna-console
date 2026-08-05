@@ -11,6 +11,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { loadCluster, saveCluster, saveLock, root } from "../core/config";
+import { saveConfigFiles, type ConfigFileStore } from "../core/configfiles";
+import { saveEnv, type EnvironmentStore } from "../core/environment";
 import { portOpen } from "../core/ping";
 import { ProgressReporter } from "../core/progress";
 import type { ClusterConfig, DaemonRegistration } from "../core/types";
@@ -55,6 +57,7 @@ const SYNC_FILES = [
 	"plugins.lock.json",
 	"packs.lock.json",
 	"environment.json",
+	"configfiles.json",
 	"proxy/forwarding.secret",
 ] as const;
 
@@ -1104,11 +1107,17 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 	}
 
 	if (frame.t === "save" && frame.file && frame.data !== undefined) {
-		// the primary is the single writer: persist, then the watcher broadcasts
+		// the primary is the single writer: persist, and the root watcher turns the
+		// write into a sync frame every follower (the sender included) picks up.
+		// No recursion — only a follower installs the save-through hook.
 		if (frame.file === "cluster") {
 			await saveCluster(frame.data as ClusterConfig);
-		} else {
+		} else if (frame.file === "lock") {
 			await saveLock(frame.data as never);
+		} else if (frame.file === "env") {
+			await saveEnv(frame.data as EnvironmentStore);
+		} else if (frame.file === "configfiles") {
+			await saveConfigFiles(frame.data as ConfigFileStore);
 		}
 
 		return;

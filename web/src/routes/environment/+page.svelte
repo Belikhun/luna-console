@@ -1,50 +1,53 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { api, post, del } from '$lib/api';
+	import { api, del, post } from '$lib/api';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
-	import Modal from '$lib/components/Modal.svelte';
-	import Select from '$lib/components/Select.svelte';
-	import Checkbox from '$lib/components/Checkbox.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
-	import type { Column } from '$lib/components/table';
+	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
-	 * Environment manager: the variables config templates substitute as ${NAME}.
-	 * Global values with optional per-instance overrides; secrets are write-only
-	 * — the server masks them on every read.
+	 * Environment manager: the variables every instance's JVM inherits at startup
+	 * and config files substitute as ${NAME}.
+	 *
+	 * One row per *value*, not per name — a variable with a machine override and an
+	 * instance override is three rows, each carrying the source scope it comes from.
+	 * That is deliberate: the question this screen answers is "what values exist and
+	 * where do they apply", and hiding the narrower ones in a second table made the
+	 * cluster-wide value look like the whole truth. The variable's own screen is
+	 * where the layering is shown as one object.
 	 */
 
-	interface EnvRow {
+	type Scope = 'global' | 'machine' | 'instance';
+
+	interface ValueRow {
+		/** `<scope>:<target>:<name>` — unique per value, not per variable */
+		id: string;
 		name: string;
+		scope: Scope;
+		/** Machine name or instance name; null at global scope */
+		target: string | null;
 		value: string;
 		secret: boolean;
 		description: string;
+		/** The wider value this one shadows, when there is one */
+		shadows: string | null;
 	}
 
-	let variables: EnvRow[] = $state([]);
-	/** instance → override names (values stay server-side for secrets' sake) */
-	let overrides: Record<string, string[]> = $state({});
-	let instanceNames: string[] = $state([]);
-
+	let rows: ValueRow[] = $state([]);
 	let loading = $state(false);
 	let lastUpdated: number | null = $state(null);
-
-	let editOpen = $state(false);
-	let editing: EnvRow | null = $state(null);
-	let formName = $state('');
-	let formValue = $state('');
-	let formSecret = $state(false);
-	let formDescription = $state('');
-	let formScope = $state('');
-	let saving = $state(false);
+	let selected: Set<string> = $state(new Set());
+	/** Secrets revealed this session, keyed by row id; dropped on reload */
+	let revealed: Record<string, string> = $state({});
 
 	async function refresh(): Promise<void> {
 		loading = true;
@@ -52,8 +55,40 @@
 		try {
 			const data = await api('/env');
 
-			variables = data.variables;
-			overrides = data.instances;
+			const globals = new Map<string, { value: string; secret: boolean; description: string }>(
+				(data.variables as Array<any>).map((entry) => [entry.name, entry])
+			);
+
+			const globalRows: ValueRow[] = (data.variables as Array<any>).map((entry) => ({
+				id: `global::${entry.name}`,
+				name: entry.name,
+				scope: 'global',
+				target: null,
+				value: entry.value,
+				secret: entry.secret,
+				description: entry.description,
+				shadows: null
+			}));
+
+			const overrideRows: ValueRow[] = (data.overrides as Array<any>).map((entry) => ({
+				id: `${entry.scope}:${entry.target}:${entry.name}`,
+				name: entry.name,
+				scope: entry.scope,
+				target: entry.target,
+				value: entry.value,
+				secret: entry.secret,
+				description: globals.get(entry.name)?.description ?? '',
+				shadows: globals.has(entry.name)
+					? globals.get(entry.name)!.secret
+						? '••••••••'
+						: globals.get(entry.name)!.value
+					: null
+			}));
+
+			rows = [...globalRows, ...overrideRows].sort(
+				(a, b) => a.name.localeCompare(b.name) || SCOPE_ORDER[a.scope] - SCOPE_ORDER[b.scope]
+			);
+
 			lastUpdated = Date.now();
 		} catch (err) {
 			Notify.error('Could not load the environment', { detail: (err as Error).message });
@@ -62,68 +97,147 @@
 		}
 	}
 
+	/** Weakest scope first, so a name's rows read in precedence order. */
+	const SCOPE_ORDER: Record<Scope, number> = { global: 0, machine: 1, instance: 2 };
+
 	onMount(() => {
 		void refresh();
-
-		void api('/instances').then((data) => {
-			instanceNames = data.instances.map((inst: any) => inst.name);
-		});
 	});
 
-	function openEditor(row: EnvRow | null): void {
-		editing = row;
-		formName = row?.name ?? '';
-		formValue = row?.secret ? '' : (row?.value ?? '');
-		formSecret = row?.secret ?? false;
-		formDescription = row?.description ?? '';
-		formScope = '';
-		editOpen = true;
+	/** The variable's own screen: scopes, usage, resolution, history. */
+	function detailHref(row: { name: string }): string {
+		return `/environment/${encodeURIComponent(row.name)}`;
 	}
 
-	async function save(): Promise<void> {
-		saving = true;
+	/** The wizard, prefilled to edit exactly this value. */
+	function editHref(row: ValueRow): string {
+		const params = new URLSearchParams({ name: row.name });
 
-		try {
-			await post('/env', {
-				name: formName,
-				value: formValue,
-				secret: formSecret,
-				description: formDescription,
-				instance: formScope || undefined
-			});
-
-			Notify.success(`${formName} saved`, {
-				detail: 'Templates pick it up on the next deploy or env apply.'
-			});
-
-			editOpen = false;
-			await refresh();
-		} catch (err) {
-			Notify.error(`Could not save ${formName}`, { detail: (err as Error).message });
+		if (row.scope === 'machine' && row.target) {
+			params.set('machine', row.target);
 		}
 
-		saving = false;
+		if (row.scope === 'instance' && row.target) {
+			params.set('instance', row.target);
+		}
+
+		return `/environment/new?${params}`;
 	}
 
-	async function remove(row: EnvRow): Promise<void> {
+	/** The `?scope=` query the delete endpoint takes for this row. */
+	function scopeQuery(row: ValueRow): string {
+		if (row.scope === 'machine') {
+			return `&machine=${encodeURIComponent(row.target ?? '')}`;
+		}
+
+		if (row.scope === 'instance') {
+			return `&instance=${encodeURIComponent(row.target ?? '')}`;
+		}
+
+		return '';
+	}
+
+	async function remove(row: ValueRow): Promise<void> {
+		const narrower = rows.filter((entry) => entry.name === row.name && entry.scope !== 'global');
+
+		const warning =
+			row.scope === 'global' && narrower.length
+				? `\n\n${narrower.length} narrower value(s) of this name stay behind and keep applying where they are defined.`
+				: '';
+
+		const where =
+			row.scope === 'global' ? 'from every instance in the cluster' : `from ${row.scope} ${row.target}`;
+
+		if (!confirm(`Remove ${row.name} ${where}?${warning}`)) {
+			return;
+		}
+
 		try {
-			await del(`/env?name=${encodeURIComponent(row.name)}`);
-			Notify.success(`${row.name} removed`);
+			await del(`/env?name=${encodeURIComponent(row.name)}${scopeQuery(row)}`);
+			Notify.success(`${row.name} removed ${where}`, {
+				detail: 'Instances keep the old value until they restart.'
+			});
 			await refresh();
 		} catch (err) {
 			Notify.error(`Could not remove ${row.name}`, { detail: (err as Error).message });
 		}
 	}
 
+	/**
+	 * Reveal one secret in place. The value stays in this component's state and is
+	 * dropped on reload; the server records the read, which the variable's History
+	 * tab shows.
+	 */
+	async function reveal(row: ValueRow): Promise<void> {
+		try {
+			const result = await post(`/env/${encodeURIComponent(row.name)}/reveal`, {
+				machine: row.scope === 'machine' ? row.target : undefined,
+				instance: row.scope === 'instance' ? row.target : undefined
+			});
+
+			revealed = { ...revealed, [row.id]: result.value };
+		} catch (err) {
+			Notify.error(`Could not reveal ${row.name}`, { detail: (err as Error).message });
+		}
+	}
+
+	function hide(id: string): void {
+		const next = { ...revealed };
+
+		delete next[id];
+		revealed = next;
+	}
+
 	const columns: Column[] = [
-		{ id: 'name', label: 'Name', sortable: true, width: 240 },
+		{ id: 'name', label: 'Name', sortable: true, width: 230 },
 		{ id: 'value', label: 'Value' },
-		{ id: 'description', label: 'Description' },
+		{ id: 'source', label: 'Source', sortable: true, width: 120 },
+		{ id: 'target', label: 'Applies to', sortable: true, width: 190 },
+		{ id: 'description', label: 'Description' }
 	];
 
-	function rowActions(row: EnvRow): ContextMenuItem[] {
+	const filters: TableFilterGroup<ValueRow>[] = [
+		{
+			id: 'source',
+			label: 'Filter source scope',
+			options: [
+				{ value: 'any', label: 'Any source' },
+				{ value: 'global', label: 'Global', match: (row) => row.scope === 'global' },
+				{ value: 'machine', label: 'Machine', match: (row) => row.scope === 'machine' },
+				{ value: 'instance', label: 'Instance', match: (row) => row.scope === 'instance' },
+				{
+					value: 'override',
+					label: 'Overrides only',
+					match: (row) => row.scope !== 'global'
+				}
+			]
+		},
+		{
+			id: 'kind',
+			label: 'Filter kind',
+			options: [
+				{ value: 'any', label: 'Any kind' },
+				{ value: 'secret', label: 'Secret', match: (row) => row.secret },
+				{ value: 'plain', label: 'Plain', match: (row) => !row.secret }
+			]
+		}
+	];
+
+	function rowActions(row: ValueRow): ContextMenuItem[] {
 		return [
-			{ label: 'Edit variable', icon: 'pen', action: () => openEditor(row) },
+			{ label: 'Open details', icon: 'circleInfo', action: () => goto(detailHref(row)) },
+			{ label: 'Edit this value', icon: 'pen', action: () => goto(editHref(row)) },
+			{
+				label: 'Add an override',
+				icon: 'layerGroup',
+				action: () => goto(`/environment/new?name=${encodeURIComponent(row.name)}`)
+			},
+			{
+				label: revealed[row.id] !== undefined ? 'Hide value' : 'Reveal value',
+				icon: revealed[row.id] !== undefined ? 'eyeSlash' : 'eye',
+				disabled: !row.secret,
+				action: () => (revealed[row.id] !== undefined ? hide(row.id) : reveal(row))
+			},
 			{
 				label: 'Copy name',
 				icon: 'copy',
@@ -132,13 +246,13 @@
 			{
 				label: 'Copy value',
 				icon: 'copy',
-				// a secret's value never reaches the browser, so there is nothing to copy
-				disabled: row.secret,
-				action: () => navigator.clipboard?.writeText(row.value)
+				// a secret's value only reaches the browser once it has been revealed
+				disabled: row.secret && revealed[row.id] === undefined,
+				action: () => navigator.clipboard?.writeText(revealed[row.id] ?? row.value)
 			},
 			{ separator: true },
 			{
-				label: 'Remove variable',
+				label: row.scope === 'global' ? 'Remove variable' : 'Remove this override',
 				icon: 'trash',
 				color: 'danger',
 				action: () => remove(row)
@@ -146,30 +260,25 @@
 		];
 	}
 
-	const overrideRows = $derived(
-		Object.entries(overrides).flatMap(([instance, names]) =>
-			names.map((name) => ({ instance, name }))
-		)
-	);
-
-	let selected: Set<string> = $state(new Set());
-
 	/** The row the header's Actions dropdown acts on. */
-	const one = $derived(variables.find((row: any) => selected.has(row.name)));
+	const one = $derived(rows.find((row) => selected.has(row.id)));
+
+	/** Distinct variable names, for the header count — rows outnumber them. */
+	const nameCount = $derived(new Set(rows.map((row) => row.name)).size);
 </script>
 
 <svelte:head><title>Environment | Luna Console</title></svelte:head>
 
 <PageHeader
 	title="Environment"
-	count={variables.length}
-	description="Variables that config templates substitute as $&lbrace;NAME&rbrace; when plugins deploy — builtins like LUNA_INSTANCE and LUNA_FORWARDING_SECRET are computed per instance"
+	count={nameCount}
+	description="Variables exported into every instance's JVM at startup and substituted into config files as $&lbrace;NAME&rbrace;. One row per value: the source column is the scope it comes from, and a narrower scope wins — builtin < global < machine < instance. Builtins like LUNA_PORT are computed per instance and appear on each instance's own screen."
 	info
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="environment" />
 		<Dropdown label="Actions" disabled={!one} menu={one ? rowActions(one) : []} />
-		<Btn variant="primary" icon="key" onclick={() => openEditor(null)}>Add variable</Btn>
+		<Btn variant="primary" icon="key" href="/environment/new">Define variable</Btn>
 	{/snippet}
 </PageHeader>
 
@@ -178,124 +287,89 @@
 		tableId="environment"
 		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
-		rows={variables}
-		getId={(row) => row.name}
-		searchValue={(row) => `${row.name} ${row.secret ? 'secret' : row.value} ${row.description}`}
-		searchPlaceholder="Find a variable"
+		{filters}
+		{rows}
+		getId={(row) => row.id}
+		searchValue={(row) =>
+			`${row.name} ${row.secret ? 'secret' : row.value} ${row.scope} ${row.target ?? ''} ${row.description}`}
+		searchPlaceholder="Find a value"
 		selectable="single"
 		bind:selected
 		{rowActions}
-		rowLabel={(row) => row.name}
-		noun="variable"
-		onRowClick={(row) => openEditor(row)}
+		rowLabel={(row) => `${row.name} (${row.scope})`}
+		noun="value"
+		onRowClick={(row) => goto(detailHref(row))}
 		emptyTitle="No variables defined"
-		emptyText="Add DB_HOST, LUNA_HTTP_PORT and friends — templates reference them as ${'${NAME}'}."
+		emptyText="Define DB_HOST, an API token or a shared port — instances export them at startup and config files reference them as ${'${NAME}'}."
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'name'}
-				<span class="mono"><b>{row.name}</b></span>
+				<a class="mono" href={detailHref(row)}><b>{row.name}</b></a>
 			{:else if col === 'value'}
-				{#if row.secret}
+				{#if !row.secret}
+					<span class="mono">{row.value || '(empty)'}</span>
+				{:else if revealed[row.id] !== undefined}
+					<span class="mono">{revealed[row.id] || '(empty)'}</span>
+					<button class="peek" onclick={() => hide(row.id)} title="Hide again">hide</button>
+				{:else}
 					<StatusBadge state="warning" label="secret" />
 					<span class="dim">••••••••</span>
+					<button
+						class="peek"
+						onclick={() => reveal(row)}
+						title="Reveal this value — the read is recorded"
+					>
+						reveal
+					</button>
+				{/if}
+			{:else if col === 'source'}
+				<span class="scope {row.scope}">{row.scope}</span>
+			{:else if col === 'target'}
+				{#if row.scope === 'instance'}
+					<a href="/instances/{row.target}">{row.target}</a>
+				{:else if row.scope === 'machine'}
+					<a href="/machines/{row.target}">{row.target}</a>
 				{:else}
-					<span class="mono">{row.value}</span>
+					<span class="dim">every instance</span>
 				{/if}
 			{:else if col === 'description'}
-				<span class="dim">{row.description || '–'}</span>
+				{#if row.shadows !== null}
+					<span class="dim">shadows <span class="mono">{row.shadows || '(empty)'}</span></span>
+				{:else}
+					<span class="dim">{row.description || '–'}</span>
+				{/if}
 			{/if}
 		{/snippet}
 	</ResourceTable>
 </Panel>
 
-{#if overrideRows.length}
-	<div class="gap"></div>
-	<Panel
-		title="Per-instance overrides"
-		count={overrideRows.length}
-		description="Values that replace the global one on a single instance"
-	>
-		{#each overrideRows as row}
-			<div class="ovr">
-				<span class="mono">{row.name}</span>
-				<span class="dim">on</span>
-				<a href="/instances/{row.instance}">{row.instance}</a>
-				<Btn
-					variant="icon"
-					icon="trash"
-					title="Remove override"
-					onclick={async () => {
-						await del(`/env?name=${encodeURIComponent(row.name)}&instance=${row.instance}`);
-						await refresh();
-					}}
-				/>
-			</div>
-		{/each}
-	</Panel>
-{/if}
-
-<Modal title={editing ? `Edit ${editing.name}` : 'Add variable'} bind:open={editOpen}>
-	{#if !editing}
-		<label class="field">
-			<span class="lbl">Name</span>
-			<span class="hint">ALL_UPPERCASE_WITH_UNDERSCORES; LUNA_* is reserved for builtins</span>
-			<input class="input mono" bind:value={formName} placeholder="DB_HOST" />
-		</label>
-	{/if}
-	<label class="field">
-		<span class="lbl">Value</span>
-		{#if editing?.secret}
-			<span class="hint">Secrets are write-only — enter a new value to replace the stored one</span>
-		{/if}
-		<input class="input mono" bind:value={formValue} />
-	</label>
-	<label class="field">
-		<span class="lbl">Description</span>
-		<input class="input" bind:value={formDescription} placeholder="What reads this" />
-	</label>
-	<div class="field">
-		<span class="lbl">Scope</span>
-		<Select
-			bind:value={formScope}
-			width="100%"
-			options={[
-				{ value: '', label: 'Global — every instance' },
-				...instanceNames.map((name) => ({ value: name, label: `Override on ${name} only` }))
-			]}
-		/>
-	</div>
-	<label class="secret-row">
-		<Checkbox checked={formSecret} label="Secret" onchange={(on) => (formSecret = on)} />
-		Secret — mask the value everywhere after saving
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (editOpen = false)}>Cancel</Btn>
-		<Btn variant="primary" loading={saving} disabled={!formName} onclick={save}>Save</Btn>
-	{/snippet}
-</Modal>
-
 <style lang="scss">
-	.gap {
-		height: 1rem;
-	}
+	// the scope vocabulary keeps one colour per layer everywhere it appears
+	.scope {
+		font-size: 0.75rem;
 
-	.ovr {
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-		padding: 0.375rem 0;
-		border-bottom: 0.1rem solid var(--border-divider);
+		&.global {
+			color: var(--link);
+		}
 
-		&:last-child {
-			border-bottom: none;
+		&.machine {
+			color: var(--warning);
+		}
+
+		&.instance {
+			color: var(--success);
 		}
 	}
 
-	.secret-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-top: 0.25rem;
-		font-size: 0.875rem;
+	.peek {
+		@include bare-button;
+
+		margin-left: 0.5rem;
+		color: var(--link);
+		font-size: 0.75rem;
+
+		&:hover {
+			text-decoration: underline;
+		}
 	}
 </style>

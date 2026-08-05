@@ -14,6 +14,7 @@
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
+	import DataTable from '$lib/components/DataTable.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
@@ -25,7 +26,7 @@
 	import { consumersLine, poolsPayload } from '$lib/pools';
 	import type { PortPool } from '$core/types';
 	import type { InfoCell } from '$lib/components/grid';
-	import type { Column } from '$lib/components/table';
+	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import type { DaemonDetail, DaemonRow, HealthSample, UpgradeCheck } from '$client/daemon';
 
@@ -67,7 +68,7 @@
 			lastUpdated = Date.now();
 			missing = false;
 
-			await loadPools();
+			await Promise.all([loadPools(), loadEnvironment()]);
 		} catch (err) {
 			missing = true;
 			Notify.error(`Could not load daemon ${name}`, { detail: (err as Error).message });
@@ -435,6 +436,171 @@
 		{ id: 'kind', label: 'Type', width: 120 },
 		{ id: 'message', label: 'Event' }
 	];
+
+	// -- environment ---------------------------------------------------------------
+	// Machine-scoped overrides: the values every instance on THIS host resolves in
+	// place of the cluster-wide ones. The global values themselves belong to the
+	// environment screen, so this tab shows only what departs from them.
+
+	interface MachineVar {
+		name: string;
+		/** The value instances on this machine resolve */
+		value: string;
+		secret: boolean;
+		/** Where that value comes from: this machine, or inherited from the cluster */
+		source: 'global' | 'machine';
+		/** The cluster-wide value a machine override shadows, when there is one */
+		global: string | null;
+		globalSecret: boolean;
+	}
+
+	let machineVars: MachineVar[] = $state([]);
+	/** Secrets revealed this session, dropped on reload */
+	let revealedVars: Record<string, string> = $state({});
+
+	async function loadEnvironment(): Promise<void> {
+		if (!name) {
+			return;
+		}
+
+		const data = await api('/env');
+
+		const globals = new Map<string, { value: string; secret: boolean }>(
+			(data.variables as Array<{ name: string; value: string; secret: boolean }>).map((entry) => [
+				entry.name,
+				{ value: entry.value, secret: entry.secret }
+			])
+		);
+
+		// this machine's own overrides, keyed for the merge below
+		const own = new Map<string, { value: string; secret: boolean }>(
+			(data.overrides as Array<any>)
+				.filter((entry) => entry.scope === 'machine' && entry.target === name)
+				.map((entry) => [entry.name, { value: entry.value, secret: entry.secret }])
+		);
+
+		// every value instances on this host resolve: the cluster-wide set with this
+		// machine's overrides applied over it, plus anything defined only here. The
+		// source column is what tells the two apart — a table of overrides alone
+		// could not answer "what does this machine actually see".
+		const names = new Set([...globals.keys(), ...own.keys()]);
+
+		machineVars = [...names]
+			.map((varName) => {
+				const override = own.get(varName);
+				const global = globals.get(varName);
+
+				return {
+					name: varName,
+					value: override ? override.value : (global?.value ?? ''),
+					secret: !!(override?.secret ?? global?.secret),
+					source: override ? ('machine' as const) : ('global' as const),
+					global: global ? global.value : null,
+					globalSecret: !!global?.secret
+				};
+			})
+			.sort((a, b) => a.name.localeCompare(b.name));
+	}
+
+	/** How many of the rows are this machine's own departures from the cluster. */
+	const machineOwnCount = $derived(machineVars.filter((entry) => entry.source === 'machine').length);
+
+	async function revealVar(entry: MachineVar): Promise<void> {
+		try {
+			// an inherited value's secret lives at the global scope, so that is where
+			// the reveal has to look — asking this machine for it would 404
+			const result = await post(`/env/${encodeURIComponent(entry.name)}/reveal`, {
+				machine: entry.source === 'machine' ? name : undefined
+			});
+
+			revealedVars = { ...revealedVars, [entry.name]: result.value };
+		} catch (err) {
+			Notify.error(`Could not reveal ${entry.name}`, { detail: (err as Error).message });
+		}
+	}
+
+	function hideVar(varName: string): void {
+		const next = { ...revealedVars };
+
+		delete next[varName];
+		revealedVars = next;
+	}
+
+	async function removeVar(entry: MachineVar): Promise<void> {
+		if (!confirm(`Remove the ${entry.name} override on ${name}?\n\nInstances on this machine fall back to the cluster-wide value.`)) {
+			return;
+		}
+
+		try {
+			await del(`/env?name=${encodeURIComponent(entry.name)}&machine=${encodeURIComponent(name!)}`);
+			Notify.success(`${entry.name} override removed`, {
+				detail: 'Instances on this machine keep the old value until they restart.'
+			});
+			await loadEnvironment();
+		} catch (err) {
+			Notify.error(`Could not remove ${entry.name}`, { detail: (err as Error).message });
+		}
+	}
+
+	const envCols: Column[] = [
+		{ id: 'name', label: 'Variable', sortable: true, width: 240 },
+		{ id: 'value', label: 'Value on this machine' },
+		{ id: 'source', label: 'Source', sortable: true, width: 120 },
+		{ id: 'global', label: 'Cluster-wide value' }
+	];
+
+	const envFilters: TableFilterGroup<MachineVar>[] = [
+		{
+			id: 'source',
+			label: 'Filter source scope',
+			options: [
+				{ value: 'any', label: 'Any source' },
+				{
+					value: 'machine',
+					label: 'This machine only',
+					match: (entry) => entry.source === 'machine'
+				},
+				{ value: 'global', label: 'Inherited', match: (entry) => entry.source === 'global' }
+			]
+		}
+	];
+
+	function envActions(entry: MachineVar): ContextMenuItem[] {
+		const own = entry.source === 'machine';
+
+		return [
+			{
+				label: 'Open variable details',
+				icon: 'circleInfo',
+				action: () => goto(`/environment/${encodeURIComponent(entry.name)}`)
+			},
+			{
+				label: own ? 'Edit this override' : 'Override for this machine',
+				icon: own ? 'pen' : 'layerGroup',
+				action: () =>
+					goto(
+						`/environment/new?name=${encodeURIComponent(entry.name)}&machine=${encodeURIComponent(name!)}`
+					)
+			},
+			{
+				label: revealedVars[entry.name] !== undefined ? 'Hide value' : 'Reveal value',
+				icon: revealedVars[entry.name] !== undefined ? 'eyeSlash' : 'eye',
+				disabled: !entry.secret,
+				action: () =>
+					revealedVars[entry.name] !== undefined ? hideVar(entry.name) : revealVar(entry)
+			},
+			{ separator: true },
+			{
+				label: 'Remove override',
+				icon: 'trash',
+				color: 'danger',
+				// an inherited value has nothing to remove here — it lives at the cluster
+				// level, and deleting it from this screen would surprise every machine
+				disabled: !own,
+				action: () => removeVar(entry)
+			}
+		];
+	}
 </script>
 
 <svelte:head><title>{name} | Machines | Luna Console</title></svelte:head>
@@ -508,7 +674,10 @@
 	<Tabs
 		tabs={[
 			{ id: 'details', label: 'Details' },
+			{ id: 'checks', label: `Health checks (${row.checks.length})` },
 			{ id: 'monitoring', label: 'Monitoring' },
+			{ id: 'pools', label: `Port pools (${catalog.length})` },
+			{ id: 'environment', label: `Environment (${machineVars.length})` },
 			{ id: 'instances', label: 'Instances' },
 			{ id: 'events', label: 'Events' }
 		]}
@@ -563,6 +732,84 @@
 				</InfoGrid>
 			</Panel>
 			<div class="gap"></div>
+			<Panel
+				title="Build and upgrades"
+				description="The primary's own binary is preferred; the GitHub release is the fallback"
+			>
+				<div class="buildrow">
+					<span class="blabel">Running</span>
+					<span class="mono">{row.version ?? '–'}</span>
+					{#if upgradeCheck}
+						<span class="dim">{upgradeCheck.platform} · checked {fmtDateTime(upgradeCheck.checkedAt)}</span>
+					{/if}
+				</div>
+				{#if upgradeCheck}
+					{#each upgradeCheck.offers as offer}
+						<div class="buildrow">
+							<span class="blabel">{offer.channel === 'primary' ? 'Primary' : 'GitHub'}</span>
+							<StatusBadge
+								state={offer.newer ? 'warning' : 'passed'}
+								label={offer.newer ? `${offer.version} available` : `${offer.version} — same build`}
+							/>
+							<span class="dim">
+								{offer.origin} · {(offer.size / 1024 / 1024).toFixed(1)} MB
+								{#if offer.pageUrl}
+									· <a href={offer.pageUrl} target="_blank" rel="noreferrer">release notes</a>
+								{/if}
+							</span>
+						</div>
+					{/each}
+					{#each upgradeCheck.notes as note}
+						<div class="buildrow">
+							<span class="blabel"></span>
+							<span class="dim">{note}</span>
+						</div>
+					{/each}
+					{#if upgradeCheck.offers.length === 0 && upgradeCheck.notes.length === 0}
+						<p class="dim">No upgrade source answered.</p>
+					{/if}
+				{:else if checking}
+					<p class="dim">Checking…</p>
+				{:else}
+					<p class="dim">Not checked yet.</p>
+				{/if}
+			</Panel>
+		{:else if tab === 'checks'}
+			<Panel
+				title="Health checks"
+				count={row.checks.length}
+				description="Run by the primary's hub against this machine — a check the daemon cannot answer for itself reads as unknown"
+			>
+				{#each row.checks as check}
+					<div class="checkrow">
+						<StatusBadge
+							state={check.ok === undefined ? 'unknown' : check.ok ? 'passed' : 'failed'}
+						/>
+						<b>{check.name}</b>
+						<span class="dim">{check.detail}</span>
+					</div>
+				{:else}
+					<p class="dim">This daemon reports no checks — the primary's hub is what runs them.</p>
+				{/each}
+			</Panel>
+
+			{#if row.reach?.length}
+				<div class="gap"></div>
+				<Panel
+					title="Reachability from the primary"
+					count={row.reach.length}
+					description="Each running instance's port, TCP-probed from the primary's host — a healthy daemon link says nothing about whether velocity can reach the backends"
+				>
+					{#each row.reach as probe}
+						<div class="checkrow">
+							<StatusBadge state={probe.ok ? 'passed' : 'failed'} />
+							<b>{probe.instance}</b>
+							<span class="mono dim">{probe.address}</span>
+						</div>
+					{/each}
+				</Panel>
+			{/if}
+		{:else if tab === 'pools'}
 			<Panel
 				title="Port pools on {row.name}"
 				count={poolViews.length}
@@ -627,62 +874,85 @@
 					<p class="dim">No pools defined.</p>
 				{/if}
 			</Panel>
-			<div class="gap"></div>
+		{:else if tab === 'environment'}
 			<Panel
-				title="Build and upgrades"
-				description="The primary's own binary is preferred; the GitHub release is the fallback"
+				title="Environment on {row.name}"
+				count={machineVars.length}
+				description="Every value instances on this host resolve — the cluster-wide set with this machine's own overrides applied over it. The source column says which. A single instance can still depart from these: builtin < global < machine < instance."
+				flush
 			>
-				<div class="buildrow">
-					<span class="blabel">Running</span>
-					<span class="mono">{row.version ?? '–'}</span>
-					{#if upgradeCheck}
-						<span class="dim">{upgradeCheck.platform} · checked {fmtDateTime(upgradeCheck.checkedAt)}</span>
-					{/if}
-				</div>
-				{#if upgradeCheck}
-					{#each upgradeCheck.offers as offer}
-						<div class="buildrow">
-							<span class="blabel">{offer.channel === 'primary' ? 'Primary' : 'GitHub'}</span>
-							<StatusBadge
-								state={offer.newer ? 'warning' : 'passed'}
-								label={offer.newer ? `${offer.version} available` : `${offer.version} — same build`}
-							/>
-							<span class="dim">
-								{offer.origin} · {(offer.size / 1024 / 1024).toFixed(1)} MB
-								{#if offer.pageUrl}
-									· <a href={offer.pageUrl} target="_blank" rel="noreferrer">release notes</a>
+				{#snippet actions()}
+					<span class="dim ownnote">{machineOwnCount} defined on this machine</span>
+					<Btn icon="key" href="/environment">All variables</Btn>
+					<Btn
+						variant="primary"
+						icon="plus"
+						href="/environment/new?machine={encodeURIComponent(row!.name)}"
+					>
+						Add an override
+					</Btn>
+				{/snippet}
+
+				{#if machineVars.length}
+					<ResourceTable
+						tableId="machine-environment"
+						columns={envCols}
+						filters={envFilters}
+						rows={machineVars}
+						getId={(entry) => entry.name}
+						searchValue={(entry) =>
+							`${entry.name} ${entry.secret ? 'secret' : entry.value} ${entry.source}`}
+						searchPlaceholder="Find a variable"
+						rowActions={envActions}
+						rowLabel={(entry) => entry.name}
+						noun="variable"
+						onRowClick={(entry) => goto(`/environment/${encodeURIComponent(entry.name)}`)}
+						emptyTitle="No variables defined"
+						emptyText="Nothing is defined cluster-wide or on this machine yet."
+					>
+						{#snippet cell(entry, col)}
+							{#if col === 'name'}
+								<a class="mono" href="/environment/{encodeURIComponent(entry.name)}">
+									<b>{entry.name}</b>
+								</a>
+							{:else if col === 'value'}
+								{#if !entry.secret}
+									<span class="mono">{entry.value || '(empty)'}</span>
+								{:else if revealedVars[entry.name] !== undefined}
+									<span class="mono">{revealedVars[entry.name] || '(empty)'}</span>
+									<button class="peek" onclick={() => hideVar(entry.name)}>hide</button>
+								{:else}
+									<StatusBadge state="warning" label="secret" />
+									<span class="dim">••••••••</span>
+									<button
+										class="peek"
+										title="Reveal this value — the read is recorded"
+										onclick={() => revealVar(entry)}
+									>
+										reveal
+									</button>
 								{/if}
-							</span>
-						</div>
-					{/each}
-					{#each upgradeCheck.notes as note}
-						<div class="buildrow">
-							<span class="blabel"></span>
-							<span class="dim">{note}</span>
-						</div>
-					{/each}
-					{#if upgradeCheck.offers.length === 0 && upgradeCheck.notes.length === 0}
-						<p class="dim">No upgrade source answered.</p>
-					{/if}
-				{:else if checking}
-					<p class="dim">Checking…</p>
+							{:else if col === 'source'}
+								<span class="scope {entry.source}">{entry.source}</span>
+							{:else if col === 'global'}
+								{#if entry.source === 'global'}
+									<span class="dim">inherited — no override here</span>
+								{:else if entry.global === null}
+									<span class="dim">not defined cluster-wide — this machine only</span>
+								{:else if entry.globalSecret}
+									<span class="dim">shadows ••••••••</span>
+								{:else}
+									<span class="dim">shadows <span class="mono">{entry.global || '(empty)'}</span></span>
+								{/if}
+							{/if}
+						{/snippet}
+					</ResourceTable>
 				{:else}
-					<p class="dim">Not checked yet.</p>
+					<p class="none dim">
+						Nothing is defined cluster-wide or on this machine yet, so instances here export only
+						their builtins.
+					</p>
 				{/if}
-			</Panel>
-			<div class="gap"></div>
-			<Panel title="Health checks" count={row.checks.length}>
-				{#each row.checks as check}
-					<div class="checkrow">
-						<StatusBadge
-							state={check.ok === undefined ? 'unknown' : check.ok ? 'passed' : 'failed'}
-						/>
-						<b>{check.name}</b>
-						<span class="dim">{check.detail}</span>
-					</div>
-				{:else}
-					<p class="dim">This daemon reports no checks — the primary's hub is what runs them.</p>
-				{/each}
 			</Panel>
 		{:else if tab === 'monitoring'}
 			<Panel title="Host health" description="Sampled every 5s on the daemon's own machine">
@@ -896,6 +1166,41 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
 		gap: 1rem;
+	}
+
+	.ownnote {
+		font-size: 0.75rem;
+	}
+
+	// one colour per layer, matching the environment screens
+	.scope {
+		font-size: 0.75rem;
+
+		&.global {
+			color: var(--link);
+		}
+
+		&.machine {
+			color: var(--warning);
+		}
+	}
+
+	.peek {
+		@include bare-button;
+
+		margin-left: 0.5rem;
+		color: var(--link);
+		font-size: 0.75rem;
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+
+	.none {
+		margin: 0;
+		padding: 1rem 1.25rem;
+		font-size: 0.8125rem;
 	}
 
 	.checkrow {

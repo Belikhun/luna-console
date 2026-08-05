@@ -19,6 +19,8 @@ import {
 	reservePort,
 } from "./ports";
 import { getConfValue, setConfValue } from "./confedit";
+import { forgetInstance } from "./configfiles";
+import { loadEnv, saveEnv, unsetInstanceScope } from "./environment";
 import { ProgressReporter } from "./progress";
 import { SERVER_SETTINGS, validateJavaArgs, validateSettings } from "./settings";
 
@@ -892,6 +894,20 @@ export async function deleteInstance(
 		}
 
 		await rm(dir, { recursive: true, force: true });
+	}
+
+	// the templates and env overrides described an instance that no longer exists;
+	// leaving them would resurrect themselves onto the next instance of that name
+	const forgotten = await forgetInstance(name);
+
+	if (forgotten) {
+		progress.info(0.97, `dropped ${forgotten} managed config file(s)`);
+	}
+
+	const env = await loadEnv();
+
+	if (unsetInstanceScope(env, name)) {
+		await saveEnv(env);
 	}
 
 	progress.complete(
