@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Bridge mirror of core/config: path helpers answer from the daemon handshake
  * (the daemon told us the root), pure helpers run locally, and the state files

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Environment manager (DESIGN.md §3.3); the SSM-Parameter-Store half of the
  * config-template design: named variables at the cluster root, optionally

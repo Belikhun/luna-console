@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * A MiniMessage renderer, enough of one to show an admin what a string will
  * look like in game.

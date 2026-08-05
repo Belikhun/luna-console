@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Bridge mirror of core/mcassets: the version pin is pure arithmetic over the
  * registry; downloading and extracting Mojang's client jar happens in the daemon.

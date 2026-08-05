@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Bridge mirror of core/admin. Creating an instance and switching its version
  * are jobs; their progress trees stream back into the caller's reporter.

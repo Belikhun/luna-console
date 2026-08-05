@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Per-daemon host health: CPU, memory, disk, load average, the network
  * addresses this machine can be reached on, and the resident size of every

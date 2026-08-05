@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import enCli from "../lang/en/cli.json";
 import enCore from "../lang/en/core.json";
 import enDaemon from "../lang/en/daemon.json";

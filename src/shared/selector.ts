@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * The server-selector model: what the LunaCore proxy plugin renders as the
  * `/servers` chest GUI, expressed as luna data rather than as YAML.

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Resource pack management, built around the luna-pack proxy plugin
  * (~/luna-plugins/luna-pack): every pack is a zip in `<root>/packs` beside a

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Bridge mirror of core/lifecycle. Tracked transitions follow the server log
  * for minutes, so all three run as daemon jobs; the log-derived progress

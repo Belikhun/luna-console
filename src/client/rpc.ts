@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import type { ProgressReporter } from "../core/progress";
 import { applySnapshot } from "../shared/progressMirror";
 import type { ProgressSnapshot } from "../core/progress";

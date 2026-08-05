@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Types for `MinecraftInventory.svelte`. They live here because a type exported
  * from a component's `<script>` block does not resolve for importers.

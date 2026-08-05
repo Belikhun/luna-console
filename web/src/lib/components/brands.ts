@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Brand marks for the addon providers, inlined as path data so the console
  * stays self-contained (no CDN, no network on render) and the glyphs take

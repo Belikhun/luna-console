@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Bridge mirror of core/settings: the schema and its validation are pure; the
  * server.properties reads/writes happen on the instance's own daemon.

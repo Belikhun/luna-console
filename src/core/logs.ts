@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Instance log reads; the tail of latest.log plus the monthly archives. This
  * lives in core (and runs as a routed op) because the files are only on the

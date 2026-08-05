@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Bridge mirror of core/plugins: resolution math is pure and runs locally;
  * scanning, downloading, pinning and deploying run in the daemon. Deploy and

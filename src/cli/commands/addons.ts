@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Addon groups: named sets of plugins, resource packs and data packs applied
  * to instances as a unit. The membership lives in `plugins.lock.json`; what

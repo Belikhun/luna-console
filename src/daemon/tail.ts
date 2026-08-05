@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Follow one log file line by line; the daemon's half of a live console.
  * `tail -F` rather than `-f`: the server rotates latest.log, and tail has to

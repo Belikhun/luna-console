@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /** Cell definition for InfoGrid (vloom ScreenGrid-style). */
 export interface InfoCell {
 	id?: string;

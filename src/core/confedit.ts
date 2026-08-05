@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Minimal line-preserving editors for the config formats plugins use.
  * These only get/set a single scalar key, keeping the rest of the file intact.

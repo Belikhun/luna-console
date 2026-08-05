@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import { Bail, UsageError, command } from "../framework";
 import { pc, Sym, ok, warn, info, printTable, fmtBytes, Spinner } from "../ui";
 import { loadCluster, saveCluster, loadLock } from "../../client/core/config";

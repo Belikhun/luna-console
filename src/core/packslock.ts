@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Pack state: `packs.lock.json` in the cluster root is the source of truth for
  * where every resource pack and data pack came from (Modrinth provenance,

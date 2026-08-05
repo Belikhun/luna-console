@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Tracked instance lifecycle: start, stop and restart with live progress
  * derived from the server's own log. The untracked primitives in

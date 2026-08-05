@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * The console's one text matcher. Both the resource tables and the global
  * search box run queries through it, so a term that finds a row in a table

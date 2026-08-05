@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Tooltip singleton, ported from the vloom dashboard's `tooltip` module in
  * src/libs.js: one fixed container is anchored to the hovered element on one of

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Naming standardization (lockfile v3): every entry is keyed `<plugin>@<family>`
  * and its pool file is `<plugin>@<family>.jar`, making the (plugin, family)

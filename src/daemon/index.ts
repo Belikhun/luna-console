@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Daemon runtime entry. `luna daemon run` lands here: resolve the daemon
  * config, bind the local API socket (plus the cluster TCP listener on a

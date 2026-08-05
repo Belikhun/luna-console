@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveCluster, saveLock, managedInstances } from '$core/config';
 import { effectiveTargets, entriesOf, setPluginOverride } from '$core/families';

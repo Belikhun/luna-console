@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import { readdir, rm, copyFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename } from "node:path";

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Mapping an addon luna already has to the project it came from; the operation
  * that turns a hand-uploaded or adopted file into a provider-managed one, so

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Derived figures shared by the daemons list and detail views. The shapes
  * themselves come from the daemon (`$client/daemon`); only the arithmetic the

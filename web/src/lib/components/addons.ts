@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /** Shapes and constants for AddonPicker.svelte (a component cannot export types). */
 
 import { api } from '$lib/api';

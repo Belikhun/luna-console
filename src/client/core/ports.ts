@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Bridge mirror of core/ports: the pool arithmetic is pure registry work and runs
  * here, while anything that has to look at a machine; `ss`, the plugin config

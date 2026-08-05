@@ -1,3 +1,7 @@
+<!-- Copyright (c) 2026 Belikhun. All rights reserved.
+     Proprietary software: use, copying, modification and distribution are
+     prohibited without written permission. See LICENSE at the repository root. -->
+
 <script lang="ts">
 	/**
 	 * Radial gauge: a 270° arc with the reading in the middle and a caption

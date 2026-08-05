@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Bake the build identity into `src/version.ts` before compiling, so the binary
  * knows what it is (DESIGN.md §4.7). Run by `bun run build`; running it by hand

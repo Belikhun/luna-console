@@ -10,10 +10,10 @@
 export const VERSION = "1.0.0";
 
 /** Short git SHA of the tree the binary was built from, "dev" from source. */
-export const COMMIT = "4a12ca3";
+export const COMMIT = "cd4dd00";
 
 /** ISO 8601 build timestamp, empty from source. */
-export const BUILD_AT = "2026-08-05T13:26:14.349Z";
+export const BUILD_AT = "2026-08-05T13:43:57.397Z";
 
 /** The full build identity, e.g. "1.0.0+6ee20ac". */
 export function buildVersion(): string {

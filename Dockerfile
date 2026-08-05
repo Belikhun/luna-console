@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Belikhun. All rights reserved.
+# Proprietary software: use, copying, modification and distribution are
+# prohibited without written permission. See LICENSE at the repository root.
+
 # luna — the luna cluster control binary, its web console, and everything a
 # Minecraft backend needs to actually run inside the container.
 #

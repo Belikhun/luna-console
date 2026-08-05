@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import { command, Bail } from "../framework";
 import { pc, Sym, ok, warn, info, fail, printTable, ProgressView } from "../ui";
 import { loadCluster } from "../../client/core/config";

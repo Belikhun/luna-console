@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * The daemon's API server: one fetch handler served over the local unix socket
  * (CLI + web console) and, on a primary, over TCP for followers and the

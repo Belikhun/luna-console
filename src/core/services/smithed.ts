@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Smithed API client (api.smithed.dev/v2), as an addon provider. Smithed is a
  * data-pack platform: data packs only (a version may bundle a companion

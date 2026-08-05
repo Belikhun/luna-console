@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * The daemon-owned cluster event log. This is the single log every client sees:
  * the web console reads it over the socket, followers push their events up into

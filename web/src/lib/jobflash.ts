@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * The flash-card wrapper for long-running jobs; the console's one way to run
  * an operation behind a live notification card. It raises a loading card,

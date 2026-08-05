@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * CurseForge API client (api.curseforge.com), as an addon provider. Serves
  * mods, Bukkit plugins, resource packs and data packs; each a "class" of the

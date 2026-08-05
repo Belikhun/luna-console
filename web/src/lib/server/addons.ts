@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * One consistent view of everything an instance loads; plugins or mods, plus
  * the world's data packs; assembled from the same inputs the individual tab

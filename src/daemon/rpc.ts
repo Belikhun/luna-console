@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * The daemon's RPC surface: named operations mapped onto core functions
  * verbatim (DESIGN.md §4.3). Arguments and results cross the wire as plain

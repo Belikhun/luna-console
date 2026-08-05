@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Client access to the daemon-native surface: sampler-enriched statuses,
  * metric history, the cluster event log, UI transitions, and the daemons

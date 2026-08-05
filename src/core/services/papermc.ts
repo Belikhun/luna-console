@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import { t } from "../../shared/i18n";
 
 /** PaperMC download API client (Fill v3, falling back to legacy v2). */

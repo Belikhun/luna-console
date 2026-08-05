@@ -1,3 +1,7 @@
+<!-- Copyright (c) 2026 Belikhun. All rights reserved.
+     Proprietary software: use, copying, modification and distribution are
+     prohibited without written permission. See LICENSE at the repository root. -->
+
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import ContextMenu from './ContextMenu.svelte';

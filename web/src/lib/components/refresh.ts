@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /** Auto-refresh intervals offered by RefreshControl; labels are i18n keys. */
 export const REFRESH_INTERVALS: Array<{ label: string; ms: number }> = [
 	{ label: 'web.refresh.off', ms: 0 },

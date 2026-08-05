@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Monaco setup, isolated in a module that is only ever **dynamically** imported
  * from the browser (`CodeEditor.svelte`'s `onMount`). Monaco touches `self`,

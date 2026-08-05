@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Per-instance player access lists: whitelist, operators, player bans and IP
  * bans; the four JSON files every Paper server keeps next to `server.properties`.

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * `luna configs …` is the terminal half of the config-file editor. Browsing,
  * reading and rendering are all here; the editing itself is the console's job

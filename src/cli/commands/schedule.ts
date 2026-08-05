@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import { command, UsageError, Bail } from "../framework";
 import { pc, Sym, ok, info, warn, printTable, fmtDuration } from "../ui";
 import { instanceNames } from "../completers";

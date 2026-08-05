@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Instance schedules (DESIGN.md §3.4); EventBridge Scheduler's model at luna
  * scale: one-time `at`, recurring `cron` (standard 5-field) or `rate` (every N

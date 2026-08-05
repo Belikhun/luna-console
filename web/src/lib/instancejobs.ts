@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * The instance lifecycle flows, as flash-card jobs. Every page that starts,
  * stops, restarts or deletes an instance calls these; the card wording, the

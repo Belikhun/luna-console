@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /** Bridge mirror of core/proxy; velocity.toml lives beside the primary daemon. */
 
 import { join } from "node:path";

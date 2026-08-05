@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Follower daemon runtime: connects to the primary's cluster listener over
  * WebSocket (reconnecting forever), mirrors the synced state files into its own

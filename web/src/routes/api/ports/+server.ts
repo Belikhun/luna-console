@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import { error, json } from '@sveltejs/kit';
 import type { PortPool, PortPoolOverride } from '$core/types';
 import { loadCluster, loadLock, saveCluster } from '$core/config';

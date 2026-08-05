@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Data pack management: a shared pool of zips in `<root>/datapacks` deployed
  * into each target instance's world (`<instance>/<level-name>/datapacks/`),

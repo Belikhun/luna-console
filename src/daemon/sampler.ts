@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * The daemon's metrics sampler; ported from the web console's server bridge,
  * because the daemon is the long-lived 24/7 process now. Holds per-instance

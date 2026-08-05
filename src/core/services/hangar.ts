@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Hangar API client (hangar.papermc.io/api/v1), as an addon provider. Hangar
  * is PaperMC's own plugin repository: plugins only, published per platform

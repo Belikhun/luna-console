@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Everything about a resource pack that its registration does not say: what is
  * inside the zip, where the proxy tells clients to fetch it from, whether that

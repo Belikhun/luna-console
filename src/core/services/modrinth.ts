@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Modrinth v2 API client, as an addon provider (services/providers.ts). Its
  * wire shapes are what the normalized types were modelled on, so the mapping

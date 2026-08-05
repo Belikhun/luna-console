@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 import { json, error } from '@sveltejs/kit';
 import { loadCluster } from '$core/config';
 import { loadPacksLock, savePacksLock } from '$core/packslock';

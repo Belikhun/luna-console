@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Belikhun. All rights reserved.
+// Proprietary software: use, copying, modification and distribution are
+// prohibited without written permission. See LICENSE at the repository root.
+
 /**
  * Resource-pack server rules; the one vocabulary luna-pack has for "which
  * backends get this pack": a list of instance names, `*` for all, `!name` to

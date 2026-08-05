@@ -1,3 +1,7 @@
+<!-- Copyright (c) 2026 Belikhun. All rights reserved.
+     Proprietary software: use, copying, modification and distribution are
+     prohibited without written permission. See LICENSE at the repository root. -->
+
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
