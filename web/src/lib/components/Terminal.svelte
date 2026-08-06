@@ -14,7 +14,15 @@
 	import type { FitAddon } from '@xterm/addon-fit';
 	import { post } from '$lib/api';
 
-	const PROMPT = '\x1b[38;5;135mluna\x1b[0m \x1b[90m>>>\x1b[0m ';
+	let { user = 'root' }: { user?: string } = $props();
+
+	/**
+	 * `user@luna >>> `, matching the prompt the real REPL draws (`cli/actor.ts`).
+	 * The drawer runs the same binary as a shell does, and the commands it sends are
+	 * attributed to the signed-in account rather than to `root`, so the prompt has
+	 * to say which of the two is typing.
+	 */
+	const PROMPT = $derived(`\x1b[38;5;135m${user}@luna\x1b[0m \x1b[90m>>>\x1b[0m `);
 
 	const GHOST_DEBOUNCE_MS = 60;
 	const HISTORY_KEY = 'luna.shell.history';

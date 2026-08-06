@@ -66,6 +66,9 @@
 		// distribution bar, spinning because it is a phase that resolves on its own
 		loading: { color: 'var(--warning)', icon: 'rotate', spin: true },
 		warning: { color: 'var(--warning)', icon: 'triangleExclamation' },
+		// a plain statement of fact rather than a state: a linked identity, an
+		// ordinary entry in an audit trail, a note beside a title
+		info: { color: 'var(--info)', icon: 'circleInfo' },
 		unknown: { color: 'var(--text-secondary)', icon: 'circleQuestion' },
 		external: { color: 'var(--text-secondary)', icon: 'externalLink' }
 	};

@@ -4,6 +4,7 @@
 
 import { createInterface } from "node:readline";
 
+import { actorPrompt } from "./actor";
 import { dispatch, resolveCommand, usageLine, allCommands } from "./framework";
 import { complete } from "./complete";
 import { pc } from "./ui";
@@ -60,7 +61,10 @@ export async function repl(): Promise<void> {
 	const rl = createInterface({
 		input: process.stdin,
 		output: process.stdout,
-		prompt: `${pc.magenta("luna")} ${pc.dim(">>>")} `,
+		// user@luna, as a shell names itself: the CLI acts as `root` unless the
+		// console's terminal drawer told it whose session it is running for, and the
+		// prompt is where that has to be visible before a command is typed
+		prompt: `${pc.magenta(actorPrompt())} ${pc.dim(">>>")} `,
 		historySize: 500,
 
 		completer: (line: string, cb: (err: null, result: [string[], string]) => void) => {

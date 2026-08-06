@@ -340,5 +340,31 @@
 		"processGone": "process gone in {seconds}s",
 		"stoppedIn": "stopped in {seconds}s",
 		"restarted": "{name} restarted"
+	},
+	"accounts": {
+		"reservedUsername": "{name} is reserved: it is the identity the CLI and the daemon act as",
+		"unknown": "no console account named {name}",
+		"badUsername": "a username starts with a letter and holds 3 to 32 letters, digits, dots, dashes or underscores",
+		"usernameTaken": "the username {name} is already taken",
+		"passwordTooShort": "a password is at least {min} characters",
+		"consolePassword": "Console password",
+		"accessKey": "Access key",
+		"withPassword": "with a console password",
+		"bootstrapDone": "the console already has accounts, so the first-run form no longer applies",
+		"bootstrapNote": "created as the first console account",
+		"lastAccount": "{name} is the only account that can sign in; create another before removing it",
+		"currentWrong": "the current password does not match",
+		"resetByAdmin": "reset by an administrator",
+		"changedByOwner": "changed by the owner",
+		"badUuid": "not a player UUID: {uuid}",
+		"uuidTaken": "{uuid} is already linked to {name}",
+		"unknownIdentity": "this account has no identity with id {id}",
+		"signInRefused": "that username and password do not match an account that may sign in",
+		"lockedOut": "too many failed attempts; this account is locked for a few minutes",
+		"noSuchAccount": "no such account",
+		"accountDisabled": "account disabled",
+		"noPassword": "no console password set",
+		"wrongPassword": "wrong password",
+		"sessionsClosed": "{count} session(s) closed"
 	}
 }

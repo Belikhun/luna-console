@@ -36,7 +36,7 @@ function parseArgv(raw: string | null): string[] {
  * GET ?argv=<json array> → SSE stream of CLI output chunks.
  * Events: data {chunk}, exit {code}. The drawer terminal renders the ANSI output.
  */
-export async function GET({ url }) {
+export async function GET({ url, locals }) {
 	const argv = parseArgv(url.searchParams.get('argv'));
 
 	let proc: ReturnType<typeof Bun.spawn> | undefined;
@@ -51,9 +51,18 @@ export async function GET({ url }) {
 				);
 			};
 
-			// FORCE_COLOR so picocolors keeps its ANSI codes for xterm.js to render
+			// FORCE_COLOR so picocolors keeps its ANSI codes for xterm.js to render.
+			// LUNA_ACTOR names the signed-in account: the drawer runs the same binary a
+			// shell does, and without it every command sent from the console would be
+			// recorded against `root` rather than the operator who typed it.
 			proc = Bun.spawn([cliBinary(), ...argv], {
-				env: { ...process.env, LUNA_ROOT: root(), FORCE_COLOR: '3', LUNA_WEB: '1' },
+				env: {
+					...process.env,
+					LUNA_ROOT: root(),
+					FORCE_COLOR: '3',
+					LUNA_WEB: '1',
+					LUNA_ACTOR: locals.account?.username ?? ''
+				},
 				stdout: 'pipe',
 				stderr: 'pipe',
 				stdin: 'ignore'

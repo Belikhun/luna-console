@@ -125,7 +125,11 @@
 		"pack": "gói",
 		"priority": "ưu tiên",
 		"servers": "máy chủ",
-		"deploysTo": "triển khai tới"
+		"deploysTo": "triển khai tới",
+		"username": "tên đăng nhập",
+		"label": "nhãn",
+		"created": "tạo lúc",
+		"field": "trường"
 	},
 	"machines": {
 		"unknown": "không biết máy \"{name}\"; các máy đã biết: {known}"
@@ -1359,5 +1363,138 @@
 		"daemonLabel": "daemon",
 		"daemonLine": "{name}: {version}, giao thức {protocol}",
 		"daemonDown": "chưa chạy trên máy này"
+	},
+	"accounts": {
+		"stateActive": "hoạt động",
+		"stateDisabled": "đã tắt",
+		"stateLocked": "bị khoá",
+		"stateNoPassword": "chưa có mật khẩu",
+		"stateMustChange": "phải đổi mật khẩu",
+		"kindPassword": "mật khẩu",
+		"kindAccessKey": "khoá truy cập",
+		"kindMinecraft": "minecraft",
+		"enabled": "đang bật",
+		"disabled": "đã tắt",
+		"cancelled": "đã huỷ",
+		"passwordNeeded": "hãy truyền --password khi stdin không phải là terminal",
+		"passwordMismatch": "hai mật khẩu không khớp",
+		"promptPassword": "Mật khẩu",
+		"promptPasswordAgain": "Nhập lại mật khẩu",
+		"head": {
+			"displayName": "tên hiển thị",
+			"identities": "danh tính",
+			"sessions": "phiên",
+			"lastSignIn": "đăng nhập gần nhất",
+			"kind": "loại",
+			"lastUsed": "dùng gần nhất",
+			"address": "địa chỉ",
+			"opened": "mở lúc",
+			"lastSeen": "thấy gần nhất",
+			"expires": "hết hạn",
+			"action": "hành động",
+			"account": "tài khoản",
+			"actor": "người thực hiện"
+		},
+		"field": {
+			"id": "id",
+			"displayName": "tên hiển thị",
+			"email": "email",
+			"description": "mô tả",
+			"created": "tạo lúc",
+			"lastSignIn": "đăng nhập gần nhất",
+			"failedAttempts": "số lần thử sai",
+			"lockedUntil": "khoá đến",
+			"sessions": "phiên đang mở"
+		},
+		"list": {
+			"desc": "tài khoản console: ai được đăng nhập vào console web",
+			"none": "chưa có tài khoản console nào, nên console đang ở chế độ khởi tạo lần đầu",
+			"createHint": "tạo tài khoản đầu tiên bằng {command}"
+		},
+		"show": {
+			"desc": "một tài khoản console: các trường, danh tính và trạng thái khoá",
+			"identities": "{count} danh tính",
+			"noIdentities": "tài khoản này không có danh tính nào, nên không gì đăng nhập được"
+		},
+		"add": {
+			"desc": "tạo một tài khoản console",
+			"optPassword": "mật khẩu console, thay vì được hỏi",
+			"optDisplay": "tên hiển thị trong console",
+			"optEmail": "địa chỉ email, để người quản trị tự ghi nhớ",
+			"optDescription": "tài khoản này dùng để làm gì",
+			"optMustChange": "yêu cầu đặt mật khẩu mới ở lần đăng nhập đầu",
+			"optDisabled": "tạo ở trạng thái tắt, bật sau",
+			"optNoPassword": "tạo mà không đặt mật khẩu console",
+			"created": "đã tạo tài khoản console {name}",
+			"noPasswordNote": "{name} chưa có mật khẩu; hãy đặt bằng luna account password {name}"
+		},
+		"password": {
+			"desc": "đặt mật khẩu cho một tài khoản console",
+			"optPassword": "mật khẩu mới, thay vì được hỏi",
+			"optReset": "quản trị viên đặt lại; chủ tài khoản sẽ được yêu cầu đổi ở lần đăng nhập sau",
+			"set": "đã đặt mật khẩu cho {name}",
+			"mustChangeNote": "chủ tài khoản sẽ được yêu cầu chọn mật khẩu mới ở lần đăng nhập sau"
+		},
+		"enable": {
+			"desc": "bật một tài khoản console và bỏ khoá",
+			"done": "đã bật {name}"
+		},
+		"disable": {
+			"desc": "tắt một tài khoản console và đóng các phiên của nó",
+			"done": "đã tắt {name} và đóng các phiên của nó"
+		},
+		"unlock": {
+			"desc": "bỏ khoá do thử sai của một tài khoản console",
+			"done": "đã bỏ khoá {name}"
+		},
+		"remove": {
+			"desc": "xoá một tài khoản console và mọi phiên nó đang giữ",
+			"optYes": "bỏ qua bước xác nhận",
+			"confirm": "Xoá {name} và đóng {sessions} phiên đang mở?",
+			"done": "đã xoá {name}"
+		},
+		"key": {
+			"desc": "tạo khoá truy cập cho một tài khoản console",
+			"created": "đã tạo khoá truy cập cho {name} ({label})",
+			"onceOnly": "đây là lần duy nhất khoá bí mật được hiển thị; hãy lưu lại ngay"
+		},
+		"link": {
+			"desc": "liên kết một hồ sơ Minecraft với tài khoản console",
+			"done": "đã liên kết {player} với {name}"
+		},
+		"unlink": {
+			"desc": "xoá một danh tính khỏi tài khoản console",
+			"done": "đã xoá danh tính {id} khỏi {name}"
+		},
+		"sessions": {
+			"desc": "các phiên console đang mở",
+			"optAccount": "chỉ các phiên của tài khoản này",
+			"none": "không có phiên console nào đang mở"
+		},
+		"revoke": {
+			"desc": "đóng một phiên console, hoặc mọi phiên của một tài khoản",
+			"optAccount": "đóng mọi phiên của tài khoản này",
+			"needTarget": "hãy nêu id phiên, hoặc truyền --account",
+			"doneAccount": "đã đóng {count} phiên của {name}",
+			"doneOne": "đã đóng phiên {id}",
+			"unknown": "không có phiên đang mở nào với id {id}"
+		},
+		"audit": {
+			"desc": "dấu vết kiểm toán tài khoản của console, mới nhất trước",
+			"optAccount": "chỉ các mục nêu tài khoản này, ở vai chủ thể hoặc người thực hiện",
+			"optLimit": "hiển thị bao nhiêu mục (mặc định 50)",
+			"none": "chưa có gì được ghi lại"
+		},
+		"logs": {
+			"desc": "nhật ký console của máy này: hoạt động của daemon, web và CLI",
+			"optSource": "chỉ nguồn này",
+			"optLevel": "mức này trở lên",
+			"optLimit": "hiển thị bao nhiêu mục (mặc định 100)",
+			"optSearch": "chỉ các mục có nội dung, chi tiết hoặc người thực hiện chứa đoạn này",
+			"badSource": "nguồn không rõ {source}; các nguồn đã biết là {known}",
+			"badLevel": "mức không rõ {level}; các mức đã biết là {known}",
+			"none": "nhật ký không có mục nào khớp",
+			"truncated": "đang hiển thị {count} mục khớp mới nhất"
+		}
 	}
 }

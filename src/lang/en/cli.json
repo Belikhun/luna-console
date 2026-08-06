@@ -125,7 +125,11 @@
 		"pack": "pack",
 		"priority": "priority",
 		"servers": "servers",
-		"deploysTo": "deploys to"
+		"deploysTo": "deploys to",
+		"username": "username",
+		"label": "label",
+		"created": "created",
+		"field": "field"
 	},
 	"machines": {
 		"unknown": "unknown machine \"{name}\"; known machines: {known}"
@@ -1359,5 +1363,138 @@
 		"daemonLabel": "daemon",
 		"daemonLine": "{name}: {version}, protocol {protocol}",
 		"daemonDown": "not running on this host"
+	},
+	"accounts": {
+		"stateActive": "active",
+		"stateDisabled": "disabled",
+		"stateLocked": "locked",
+		"stateNoPassword": "no password",
+		"stateMustChange": "must change",
+		"kindPassword": "password",
+		"kindAccessKey": "access key",
+		"kindMinecraft": "minecraft",
+		"enabled": "enabled",
+		"disabled": "disabled",
+		"cancelled": "cancelled",
+		"passwordNeeded": "pass --password when stdin is not a terminal",
+		"passwordMismatch": "the two passwords do not match",
+		"promptPassword": "Password",
+		"promptPasswordAgain": "Password again",
+		"head": {
+			"displayName": "display name",
+			"identities": "identities",
+			"sessions": "sessions",
+			"lastSignIn": "last sign-in",
+			"kind": "kind",
+			"lastUsed": "last used",
+			"address": "address",
+			"opened": "opened",
+			"lastSeen": "last seen",
+			"expires": "expires",
+			"action": "action",
+			"account": "account",
+			"actor": "actor"
+		},
+		"field": {
+			"id": "id",
+			"displayName": "display name",
+			"email": "email",
+			"description": "description",
+			"created": "created",
+			"lastSignIn": "last sign-in",
+			"failedAttempts": "failed attempts",
+			"lockedUntil": "locked until",
+			"sessions": "open sessions"
+		},
+		"list": {
+			"desc": "console accounts: who may sign in to the web console",
+			"none": "no console accounts exist yet, so the console is in first-run mode",
+			"createHint": "create the first one with {command}"
+		},
+		"show": {
+			"desc": "one console account: its fields, identities and lockout state",
+			"identities": "{count} identity/identities",
+			"noIdentities": "this account has no identity, so nothing can sign in as it"
+		},
+		"add": {
+			"desc": "create a console account",
+			"optPassword": "the console password, instead of being prompted for it",
+			"optDisplay": "display name shown in the console",
+			"optEmail": "email address, for the operator's own records",
+			"optDescription": "what this account is for",
+			"optMustChange": "ask for a new password on the first sign-in",
+			"optDisabled": "create it disabled, to be enabled later",
+			"optNoPassword": "create it without a console password",
+			"created": "created console account {name}",
+			"noPasswordNote": "{name} has no password yet; set one with luna account password {name}"
+		},
+		"password": {
+			"desc": "set a console account's password",
+			"optPassword": "the new password, instead of being prompted for it",
+			"optReset": "an administrator's reset; the owner is asked for a new one on next sign-in",
+			"set": "password set for {name}",
+			"mustChangeNote": "the owner will be asked to choose a new password on their next sign-in"
+		},
+		"enable": {
+			"desc": "enable a console account and clear any lockout",
+			"done": "{name} enabled"
+		},
+		"disable": {
+			"desc": "disable a console account and close its sessions",
+			"done": "{name} disabled, and its sessions closed"
+		},
+		"unlock": {
+			"desc": "clear a console account's failed-attempt lockout",
+			"done": "{name} unlocked"
+		},
+		"remove": {
+			"desc": "delete a console account and every session it holds",
+			"optYes": "skip the confirmation",
+			"confirm": "Delete {name} and close its {sessions} open session(s)?",
+			"done": "{name} deleted"
+		},
+		"key": {
+			"desc": "mint an access key for a console account",
+			"created": "access key created for {name} ({label})",
+			"onceOnly": "this is the only time the secret is shown; store it now"
+		},
+		"link": {
+			"desc": "link a Minecraft profile to a console account",
+			"done": "{player} linked to {name}"
+		},
+		"unlink": {
+			"desc": "remove one identity from a console account",
+			"done": "identity {id} removed from {name}"
+		},
+		"sessions": {
+			"desc": "open console sessions",
+			"optAccount": "only this account's sessions",
+			"none": "no console session is open"
+		},
+		"revoke": {
+			"desc": "close a console session, or every session an account holds",
+			"optAccount": "close every session this account holds",
+			"needTarget": "name a session id, or pass --account",
+			"doneAccount": "{count} session(s) closed for {name}",
+			"doneOne": "session {id} closed",
+			"unknown": "no open session with id {id}"
+		},
+		"audit": {
+			"desc": "the console's account audit trail, newest first",
+			"optAccount": "only entries naming this account, as subject or actor",
+			"optLimit": "how many entries to show (default 50)",
+			"none": "nothing recorded yet"
+		},
+		"logs": {
+			"desc": "the console journal for this machine: daemon, web and CLI activity",
+			"optSource": "only this source",
+			"optLevel": "this level and above",
+			"optLimit": "how many entries to show (default 100)",
+			"optSearch": "only entries whose message, detail or actor contains this text",
+			"badSource": "unknown source {source}; known sources are {known}",
+			"badLevel": "unknown level {level}; known levels are {known}",
+			"none": "the journal has nothing matching that",
+			"truncated": "showing the newest {count} matching entries"
+		}
 	}
 }

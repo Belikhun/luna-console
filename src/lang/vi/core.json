@@ -340,5 +340,31 @@
 		"processGone": "tiến trình kết thúc trong {seconds}s",
 		"stoppedIn": "đã dừng trong {seconds}s",
 		"restarted": "đã khởi động lại {name}"
+	},
+	"accounts": {
+		"reservedUsername": "{name} là tên dành riêng: đây là danh tính mà CLI và daemon dùng",
+		"unknown": "không có tài khoản console nào tên {name}",
+		"badUsername": "tên đăng nhập bắt đầu bằng một chữ cái và gồm 3 đến 32 chữ cái, chữ số, dấu chấm, gạch ngang hoặc gạch dưới",
+		"usernameTaken": "tên đăng nhập {name} đã có người dùng",
+		"passwordTooShort": "mật khẩu phải dài ít nhất {min} ký tự",
+		"consolePassword": "Mật khẩu console",
+		"accessKey": "Khoá truy cập",
+		"withPassword": "kèm mật khẩu console",
+		"bootstrapDone": "console đã có tài khoản, biểu mẫu khởi tạo lần đầu không còn áp dụng",
+		"bootstrapNote": "được tạo làm tài khoản console đầu tiên",
+		"lastAccount": "{name} là tài khoản duy nhất có thể đăng nhập; hãy tạo tài khoản khác trước khi xoá",
+		"currentWrong": "mật khẩu hiện tại không đúng",
+		"resetByAdmin": "được quản trị viên đặt lại",
+		"changedByOwner": "do chủ tài khoản thay đổi",
+		"badUuid": "không phải UUID người chơi: {uuid}",
+		"uuidTaken": "{uuid} đã được liên kết với {name}",
+		"unknownIdentity": "tài khoản này không có danh tính nào với id {id}",
+		"signInRefused": "tên đăng nhập và mật khẩu không khớp với tài khoản nào được phép đăng nhập",
+		"lockedOut": "quá nhiều lần thử sai; tài khoản này bị khoá trong vài phút",
+		"noSuchAccount": "không có tài khoản này",
+		"accountDisabled": "tài khoản đã bị tắt",
+		"noPassword": "chưa đặt mật khẩu console",
+		"wrongPassword": "mật khẩu không đúng",
+		"sessionsClosed": "đã đóng {count} phiên"
 	}
 }

@@ -6,6 +6,7 @@
 	import '../app.scss';
 	import favicon from '$lib/assets/favicon.svg';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import TerminalDrawer from '$lib/components/TerminalDrawer.svelte';
 	import Flashbar from '$lib/components/Flashbar.svelte';
@@ -15,11 +16,26 @@
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import LunaMark from '$lib/components/LunaMark.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
+	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { del } from '$lib/api';
 	import { fmtBytes } from '$lib/format';
 	import { LANGUAGES, currentLanguage, switchLanguage, t } from '$lib/i18n.svelte';
 	import { tooltip } from '$lib/tooltip.svelte';
 
-	let { children } = $props();
+	let { children, data } = $props();
+
+	/**
+	 * The sign-in screen renders on its own, without any of the chrome below: it is
+	 * the one page reachable before there is a session, so the side nav, the global
+	 * search, the terminal drawer and the host vitals all have nothing to talk to.
+	 * A route group would express this too, but at the cost of moving every screen
+	 * in the console into one.
+	 */
+	const bare = $derived(page.url.pathname === '/login');
+
+	/** The signed-in account, resolved server-side in `+layout.server.ts`. */
+	const account = $derived(data?.account ?? null);
 
 	/** host vitals are cheap but not free; poll them slowly */
 	const HOST_POLL_MS = 60_000;
@@ -34,6 +50,11 @@
 	let host: HostInfo | null = $state(null);
 
 	$effect(() => {
+		// the sign-in screen has no session, so this poll would only ever 401
+		if (bare) {
+			return;
+		}
+
 		let alive = true;
 
 		const load = async (): Promise<void> => {
@@ -112,10 +133,56 @@
 			items: [{ label: t('web.nav.machines'), href: '/machines', icon: 'hardDrive' }]
 		},
 		{
+			section: t('web.nav.console'),
+			items: [
+				{ label: t('web.nav.accounts'), href: '/console/accounts', icon: 'userShield' },
+				{ label: t('web.nav.consoleLogs'), href: '/console/logs', icon: 'fileLines' }
+			]
+		},
+		{
 			section: t('web.nav.development'),
 			items: [{ label: t('web.nav.components'), href: '/gallery', icon: 'shapes' }]
 		}
 	]);
+
+	/**
+	 * The account menu, top right, as the console this is modelled on places it.
+	 * "Your account" goes to the signed-in account's own detail screen, which is
+	 * where its password, its access keys and its open sessions live; there is no
+	 * separate profile screen holding a second copy of them.
+	 */
+	const accountMenu: ContextMenuItem[] = $derived(
+		!account
+			? []
+			: [
+					{ label: account.username, header: true },
+					{
+						label: t('web.layout.yourAccount'),
+						icon: 'userPortrait',
+						action: () => goto(`/console/accounts/${account.id}`)
+					},
+					{
+						label: t('web.nav.accounts'),
+						icon: 'userShield',
+						action: () => goto('/console/accounts')
+					},
+					{
+						label: t('web.nav.consoleLogs'),
+						icon: 'fileLines',
+						action: () => goto('/console/logs')
+					},
+					{ separator: true },
+					{ label: t('web.layout.signOut'), icon: 'rightFromBracket', color: 'danger', action: signOut }
+				]
+	);
+
+	async function signOut(): Promise<void> {
+		await del('/auth/session').catch(() => {});
+
+		// a full load: the gate has to run again, and every layout on the far side of
+		// it must be discarded rather than kept in the client's cache
+		location.href = '/login';
+	}
 
 	const crumbs = $derived.by(() => {
 		const parts = page.url.pathname.split('/').filter(Boolean);
@@ -124,7 +191,14 @@
 
 		for (const part of parts) {
 			acc += `/${part}`;
-			out.push({ label: part.charAt(0).toUpperCase() + part.slice(1), href: acc });
+
+			// only a word gets title-cased: an opaque path segment (an account id, a
+			// player UUID) is not a noun, and "Acc_1f6835d0fd52a988" reads as a shout
+			const label = /^[a-z]+$/.test(part)
+				? part.charAt(0).toUpperCase() + part.slice(1)
+				: part;
+
+			out.push({ label, href: acc });
 		}
 
 		return out;
@@ -151,121 +225,136 @@
 	<title>Luna Console</title>
 </svelte:head>
 
-<div class="app" style:--shell-h="{shellOpen && browser ? shellHeight : 0}px">
-	<header class="topnav">
-		<a class="brand" href="/instances">
-			<LunaMark size="1.5rem" glyph="1rem" />
-			<span class="dim-sep">|</span>
-			<span class="logo"><Icon name="cube" size="1.125rem" style="solid" /></span>
-			<b>luna</b><span class="dim-sep">|</span><span class="sub">Luna Cluster Console</span>
-		</a>
-		<GlobalSearch />
-		<div class="region">
-			{#if host?.disk}
-				{@const disk = host.disk}
-				<span
-					class="disk"
-					use:tooltip={{
-						content: t('web.layout.diskTooltip', {
-							used: fmtBytes(disk.usedBytes),
-							total: fmtBytes(disk.totalBytes),
-							mount: disk.mount,
-							free: fmtBytes(disk.freeBytes)
-						}),
-						position: 'bottom'
-					}}
-				>
-					<ProgressBar
-						compact
-						transition={false}
-						width="12rem"
-						value={disk.usedBytes}
-						max={disk.totalBytes}
-						color="auto"
-						right={t('web.layout.diskFree', { free: fmtBytes(disk.freeBytes) })}
-					/>
-				</span>
-				<span class="regdiv"></span>
-			{/if}
-			<span class="where">
-				<Icon name="hardDrive" size="0.875rem" style="solid" />
-				{host?.name ?? '—'} · {host?.root ?? '—'}
-			</span>
-		</div>
-	</header>
-
-	<div class="crumbs">
-		{#each crumbs as crumb, i}
-			{#if i > 0}
-				<span class="sep"><Icon name="arrowRight" size="0.625rem" /></span>
-			{/if}
-			{#if i === crumbs.length - 1}
-				<span class="here">{crumb.label}</span>
-			{:else}
-				<a href={crumb.href}>{crumb.label}</a>
-			{/if}
-		{/each}
-	</div>
-
-	<div class="mid">
-		<nav class="sidenav" class:collapsed={navCollapsed}>
-			<button
-				class="collapse"
-				onclick={() => (navCollapsed = !navCollapsed)}
-				title={navCollapsed ? t('web.layout.expand') : t('web.layout.collapse')}
-			>
-				<Icon name={navCollapsed ? 'rightFromLine' : 'leftFromLine'} size="0.875rem" style="solid" />
-			</button>
-			{#if !navCollapsed}
-				<div class="navhead"><a href="/instances">{t('web.layout.navTitle')}</a></div>
-				{#each nav as group, gi}
-					{#if gi > 0}<hr />{/if}
-					<div class="group">
-						<div class="gt">{group.section}</div>
-						{#each group.items as item}
-							<a class="nl" class:active={isActive(item.href)} href={item.href}>
-								<Icon name={item.icon} size="1rem" style="solid" />
-								{item.label}
-							</a>
-						{/each}
-					</div>
-				{/each}
-			{/if}
-		</nav>
-
-		<main class="content">
-			<Flashbar />
-			{@render children?.()}
-		</main>
-	</div>
-
-	{#if shellOpen && browser}
-		<TerminalDrawer bind:height={shellHeight} onclose={() => (shellOpen = false)} />
-	{/if}
-
-	<footer class="statusbar">
-		<button class="shellbtn" onclick={() => (shellOpen = !shellOpen)}>
-			<ShellGlyph size="0.8125rem" /> {t('web.layout.terminal')}
-		</button>
-		<span class="statusdiv"></span>
-		<span class="spacer"></span>
-		<label class="langpick">
-			<Icon name="globe" size="0.75rem" style="solid" />
-			<select
-				value={currentLanguage()}
-				onchange={(event) => switchLanguage(event.currentTarget.value as 'en' | 'vi')}
-			>
-				{#each LANGUAGES as lang}
-					<option value={lang.code}>{lang.label}</option>
-				{/each}
-			</select>
-		</label>
-		<span class="statusdiv"></span>
-		<span class="dim">{t('web.layout.footer')} <a href="https://github.com/belikhun" target="_blank">belikhun</a></span>
-	</footer>
-
+{#if bare}
+	{@render children?.()}
 	<TooltipHost />
-</div>
+{:else}
+	<div class="app" style:--shell-h="{shellOpen && browser ? shellHeight : 0}px">
+		<header class="topnav">
+			<a class="brand" href="/instances">
+				<LunaMark size="1.5rem" glyph="1rem" />
+				<span class="dim-sep">|</span>
+				<span class="logo"><Icon name="cube" size="1.125rem" style="solid" /></span>
+				<b>luna</b><span class="dim-sep">|</span><span class="sub">Luna Cluster Console</span>
+			</a>
+			<GlobalSearch />
+			<div class="region">
+				{#if host?.disk}
+					{@const disk = host.disk}
+					<span
+						class="disk"
+						use:tooltip={{
+							content: t('web.layout.diskTooltip', {
+								used: fmtBytes(disk.usedBytes),
+								total: fmtBytes(disk.totalBytes),
+								mount: disk.mount,
+								free: fmtBytes(disk.freeBytes)
+							}),
+							position: 'bottom'
+						}}
+					>
+						<ProgressBar
+							compact
+							transition={false}
+							width="12rem"
+							value={disk.usedBytes}
+							max={disk.totalBytes}
+							color="auto"
+							right={t('web.layout.diskFree', { free: fmtBytes(disk.freeBytes) })}
+						/>
+					</span>
+					<span class="regdiv"></span>
+				{/if}
+				<span class="where">
+					<Icon name="hardDrive" size="0.875rem" style="solid" />
+					{host?.name ?? '—'} · {host?.root ?? '—'}
+				</span>
+				{#if account}
+					<span class="regdiv"></span>
+					<span class="who">
+						<Dropdown label={account.username} menu={accountMenu} />
+					</span>
+				{/if}
+			</div>
+		</header>
+
+		<div class="crumbs">
+			{#each crumbs as crumb, i}
+				{#if i > 0}
+					<span class="sep"><Icon name="arrowRight" size="0.625rem" /></span>
+				{/if}
+				{#if i === crumbs.length - 1}
+					<span class="here">{crumb.label}</span>
+				{:else}
+					<a href={crumb.href}>{crumb.label}</a>
+				{/if}
+			{/each}
+		</div>
+
+		<div class="mid">
+			<nav class="sidenav" class:collapsed={navCollapsed}>
+				<button
+					class="collapse"
+					onclick={() => (navCollapsed = !navCollapsed)}
+					title={navCollapsed ? t('web.layout.expand') : t('web.layout.collapse')}
+				>
+					<Icon name={navCollapsed ? 'rightFromLine' : 'leftFromLine'} size="0.875rem" style="solid" />
+				</button>
+				{#if !navCollapsed}
+					<div class="navhead"><a href="/instances">{t('web.layout.navTitle')}</a></div>
+					{#each nav as group, gi}
+						{#if gi > 0}<hr />{/if}
+						<div class="group">
+							<div class="gt">{group.section}</div>
+							{#each group.items as item}
+								<a class="nl" class:active={isActive(item.href)} href={item.href}>
+									<Icon name={item.icon} size="1rem" style="solid" />
+									{item.label}
+								</a>
+							{/each}
+						</div>
+					{/each}
+				{/if}
+			</nav>
+
+			<main class="content">
+				<Flashbar />
+				{@render children?.()}
+			</main>
+		</div>
+
+		{#if shellOpen && browser}
+			<TerminalDrawer
+				bind:height={shellHeight}
+				user={account?.username ?? 'root'}
+				onclose={() => (shellOpen = false)}
+			/>
+		{/if}
+
+		<footer class="statusbar">
+			<button class="shellbtn" onclick={() => (shellOpen = !shellOpen)}>
+				<ShellGlyph size="0.8125rem" /> {t('web.layout.terminal')}
+			</button>
+			<span class="statusdiv"></span>
+			<span class="spacer"></span>
+			<label class="langpick">
+				<Icon name="globe" size="0.75rem" style="solid" />
+				<select
+					value={currentLanguage()}
+					onchange={(event) => switchLanguage(event.currentTarget.value as 'en' | 'vi')}
+				>
+					{#each LANGUAGES as lang}
+						<option value={lang.code}>{lang.label}</option>
+					{/each}
+				</select>
+			</label>
+			<span class="statusdiv"></span>
+			<span class="dim">{t('web.layout.footer')} <a href="https://github.com/belikhun" target="_blank">belikhun</a></span>
+		</footer>
+
+		<TooltipHost />
+	</div>
+{/if}
 
 <style lang="scss">
 	.app {
@@ -353,6 +442,14 @@
 		width: var(--hairline);
 		height: 1rem;
 		background: var(--border-nav);
+	}
+
+	// the account menu sits in chrome, not in a content panel, so its trigger is
+	// pulled down to the bar's own type scale rather than the button metric
+	.who :global(.trigger) {
+		height: 1.5rem;
+		font-size: 0.75rem;
+		padding: 0 0.625rem;
 	}
 
 	.crumbs {

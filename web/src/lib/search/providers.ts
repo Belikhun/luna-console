@@ -122,6 +122,20 @@ const pages = (): SearchHit[] => [
 		detail: t('web.searchPages.machines'),
 		href: '/machines',
 		icon: 'hardDrive'
+	},
+	{
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.accounts'),
+		detail: t('web.searchPages.accounts'),
+		href: '/console/accounts',
+		icon: 'userShield'
+	},
+	{
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.consoleLogs'),
+		detail: t('web.searchPages.consoleLogs'),
+		href: '/console/logs',
+		icon: 'fileLines'
 	}
 ];
 
@@ -338,6 +352,29 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 				detail: variable.secret ? 'secret' : (variable.description || variable.value || 'variable'),
 				href: screenHref('/environment', variable.name),
 				icon: 'key'
+			}));
+		}
+	},
+
+	{
+		group: 'web.searchGroups.accounts',
+		icon: 'userShield',
+		load: async () => {
+			const body = await fetchJson<{ accounts?: any[] }>('/api/accounts');
+
+			return (body?.accounts ?? []).map((account) => ({
+				group: 'web.searchGroups.accounts',
+				label: String(account.username),
+				detail: [
+					account.displayName || '',
+					account.enabled ? 'enabled' : 'disabled',
+					`${account.identities?.length ?? 0} identity/identities`,
+					account.activeSessions ? `${account.activeSessions} session(s)` : ''
+				]
+					.filter(Boolean)
+					.join(' · '),
+				href: `/console/accounts/${account.id}`,
+				icon: 'userShield'
 			}));
 		}
 	},

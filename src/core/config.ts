@@ -72,7 +72,7 @@ export function centralLogsDir(): string {
 }
 
 /** A cluster-root state file whose single writer is the primary daemon. */
-export type SaveFile = "cluster" | "lock" | "env" | "configfiles";
+export type SaveFile = "cluster" | "lock" | "env" | "configfiles" | "accounts";
 
 /**
  * Save-through hook for follower daemons: the state files' single writer is the

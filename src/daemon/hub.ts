@@ -15,6 +15,7 @@ import { t } from "../shared/i18n";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
+import { saveAccounts, type AccountStore } from "../core/accounts";
 import { loadCluster, saveCluster, saveLock, root } from "../core/config";
 import { saveConfigFiles, type ConfigFileStore } from "../core/configfiles";
 import { saveEnv, type EnvironmentStore } from "../core/environment";
@@ -63,6 +64,7 @@ const SYNC_FILES = [
 	"packs.lock.json",
 	"environment.json",
 	"configfiles.json",
+	"accounts.json",
 	"proxy/forwarding.secret",
 ] as const;
 
@@ -1121,6 +1123,8 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 			await saveEnv(frame.data as EnvironmentStore);
 		} else if (frame.file === "configfiles") {
 			await saveConfigFiles(frame.data as ConfigFileStore);
+		} else if (frame.file === "accounts") {
+			await saveAccounts(frame.data as AccountStore);
 		}
 
 		return;

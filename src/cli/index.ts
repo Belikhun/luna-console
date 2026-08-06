@@ -21,6 +21,7 @@ import "./commands/schedule";
 import "./commands/selector";
 import "./commands/daemon";
 import "./commands/setup";
+import "./commands/accounts";
 
 import { command, dispatch } from "./framework";
 import { complete, BASH_HOOK, ZSH_HOOK, FISH_HOOK } from "./complete";

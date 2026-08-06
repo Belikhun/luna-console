@@ -14,17 +14,28 @@ import { t } from "../shared/i18n";
 import { mkdir, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import { appendJournal, setJournalMachine, type JournalLevel } from "../core/journal";
 import { configureProviders } from "../core/services/providers";
 import { resolveDaemonConfig, type DaemonConfig } from "./config";
 import { setDaemonIdentity } from "./identity";
 import { buildHandler, type WsData } from "./server";
 
-/** Timestamped daemon log line (the daemon is not core; it may print). */
-export function log(message: string): void {
+/**
+ * Timestamped daemon log line (the daemon is not core; it may print).
+ *
+ * Every line also lands in the console journal, which is what the console's Logs
+ * screen reads: the daemon's own stdout is inside a screen session or a systemd
+ * unit, and "read the journal" must not mean "ssh in and find the right pane".
+ * The append is fire-and-forget on purpose; `log` is called from synchronous
+ * paths, and journalling can never be the reason one of them fails.
+ */
+export function log(message: string, level: JournalLevel = "info"): void {
 	const now = new Date();
 	const stamp = now.toTimeString().slice(0, 8);
 
 	console.log(`[${stamp}] ${message}`);
+
+	void appendJournal({ source: "daemon", level, message });
 }
 
 /** Whether a daemon is already answering on this socket. */
@@ -49,6 +60,10 @@ export async function runDaemon(): Promise<void> {
 	process.env.LUNA_ROOT = dcfg.root;
 
 	setDaemonIdentity(dcfg);
+
+	// every journal entry is stamped with the machine that wrote it; core cannot
+	// read the daemon's identity itself, so the runtime hands it over
+	setJournalMachine(dcfg.name);
 
 	// provider credentials come from the daemon config; core never reads env
 	configureProviders({ curseforgeApiKey: dcfg.curseforgeApiKey });

@@ -18,6 +18,7 @@ import type { ProgressReporter } from "../core/progress";
 import { t } from "../shared/i18n";
 import type { ClusterConfig, PluginsLock } from "../core/types";
 
+import * as accountsCore from "../core/accounts";
 import * as addonsCore from "../core/addons";
 import * as adminCore from "../core/admin";
 import * as cleanupCore from "../core/cleanup";
@@ -26,6 +27,7 @@ import * as configfilesCore from "../core/configfiles";
 import * as datapacksCore from "../core/datapacks";
 import * as environmentCore from "../core/environment";
 import * as instancesCore from "../core/instances";
+import * as journalCore from "../core/journal";
 import * as lifecycleCore from "../core/lifecycle";
 import * as logsCore from "../core/logs";
 import * as lunaCore from "../core/luna";
@@ -849,6 +851,38 @@ export const OPS: Record<string, OpSpec> = {
 
 	// -- logs (read on the machine that owns the instance) ---------------------
 	"logs.readInstanceLogs": { fn: logsCore.readInstanceLogs, cfg: 0, instance: 1 },
+
+	// -- console journal (this machine's own; a follower's stays on the follower) --
+	"journal.append": { fn: journalCore.appendJournal },
+	"journal.read": { fn: journalCore.readJournal },
+
+	// -- console accounts ------------------------------------------------------------
+	// Deliberately no op for the raw store: `loadAccounts` returns password hashes
+	// and access-key digests, and every op below hands back the masked summaries
+	// instead. That is what keeps a credential inside the daemon process by
+	// construction rather than by every caller remembering to strip it.
+	"accounts.list": { fn: accountsCore.listAccounts },
+	"accounts.get": { fn: accountsCore.getAccount },
+	"accounts.create": { fn: accountsCore.createAccount },
+	"accounts.update": { fn: accountsCore.updateAccount },
+	"accounts.delete": { fn: accountsCore.deleteAccount },
+	"accounts.setPassword": { fn: accountsCore.setPassword },
+	"accounts.addAccessKey": { fn: accountsCore.addAccessKey },
+	"accounts.addMinecraft": { fn: accountsCore.addMinecraftIdentity },
+	"accounts.removeIdentity": { fn: accountsCore.removeIdentity },
+	"accounts.setIdentityDisabled": { fn: accountsCore.setIdentityDisabled },
+	"accounts.audit": { fn: accountsCore.auditTrail },
+	"accounts.bootstrapNeeded": { fn: accountsCore.bootstrapNeeded },
+	"accounts.bootstrap": { fn: accountsCore.bootstrapAccount },
+	// the whole verify → open-session → record cycle runs here: the argon2 hash
+	// never crosses the socket, so nothing outside the daemon can attempt a guess
+	"accounts.signIn": { fn: accountsCore.signIn },
+	"accounts.signOut": { fn: accountsCore.signOut },
+	"accounts.resolveSession": { fn: accountsCore.resolveSession },
+	"accounts.resolveAccessKey": { fn: accountsCore.resolveAccessKey },
+	"accounts.listSessions": { fn: accountsCore.listSessions },
+	"accounts.revokeSession": { fn: accountsCore.revokeSession },
+	"accounts.revokeAccountSessions": { fn: accountsCore.revokeAccountSessions },
 
 	// -- plugins ---------------------------------------------------------------
 	"plugins.scan": { fn: pluginsCore.scan, cfg: 0, lock: 1 },

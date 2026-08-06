@@ -42,6 +42,17 @@ export async function machineNames(): Promise<string[]> {
 	}
 }
 
+/** Usernames of every console account. */
+export async function accountNames(): Promise<string[]> {
+	try {
+		const { listAccounts } = await import("../client/core/accounts");
+
+		return (await listAccounts()).map((account) => account.username);
+	} catch {
+		return [];
+	}
+}
+
 /** Instance names plus the wildcard selectors that target groups of them. */
 export async function targetSelectors(): Promise<string[]> {
 	return ["*", "*paper", "*velocity", ...(await instanceNames())];

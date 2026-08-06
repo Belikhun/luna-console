@@ -17,8 +17,14 @@
 	 */
 	let {
 		height = $bindable(320),
+		user = 'root',
 		onclose
-	}: { height?: number; onclose: () => void } = $props();
+	}: {
+		height?: number;
+		/** whose prompt this is; the signed-in console account, or `root` in a shell */
+		user?: string;
+		onclose: () => void;
+	} = $props();
 
 	interface ShellTab {
 		id: number;
@@ -150,7 +156,7 @@
 	<div class="body">
 		{#each tabs as tab (tab.id)}
 			<div class="session" class:hidden={active !== tab.id}>
-				<Terminal />
+				<Terminal {user} />
 			</div>
 		{/each}
 	</div>

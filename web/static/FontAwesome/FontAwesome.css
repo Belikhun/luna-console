@@ -1354,3 +1354,15 @@ icon[data-icon="fileCode"]::after {
 icon[data-icon="circleUp"]::after {
 	content: "\f35b";
 }
+
+icon[data-icon="userShield"]::after {
+	content: "\f505";
+}
+
+icon[data-icon="fileLines"]::after {
+	content: "\f15c";
+}
+
+icon[data-icon="terminal"]::after {
+	content: "\f120";
+}

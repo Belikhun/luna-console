@@ -49,8 +49,11 @@ control/                # this repo — the only source tree
   plugins.lock.json     # plugin metadata/versions — source of truth
   environment.json      # env variables: global + per-machine + per-instance
   configfiles.json      # managed config-file templates (instance → path → body)
+  accounts.json         # console accounts + identities + the audit trail
+  sessions.json         # open console sessions — primary-local, never mirrored
   plugins/              # jar pool (+ versions/ for per-instance variants)
   logs/<instance>/      # archived, compacted logs (YYYY-MM.log.gz)
+  logs/console/         # the console journal (YYYY-MM.ndjson), per machine
   <instance>/           # live server directories (managed, not source)
 ```
 
@@ -315,6 +318,44 @@ export interface InstanceConfig {}
   means adding it to `SaveFile`, calling `notifySave` from its saver, and listing it in
   `SYNC_FILES`; otherwise a follower's write is silently clobbered by the next sync frame.
 
+### Console accounts
+- **The console is gated; the CLI is not.** Every web route goes through
+  `web/src/hooks.server.ts`, which resolves the session cookie once and hangs the account on
+  `event.locals`: a page without one redirects to `/login`, an API route answers 401 JSON. The CLI
+  never signs in, because a shell that can open the daemon socket can already do everything the
+  daemon can, so the socket's file permissions *are* the check. It acts as the reserved identity
+  `root` (`ROOT_ACTOR`), which is why no account may be created under that name; `LUNA_ACTOR`
+  overrides it, and the console's terminal drawer sets it so commands typed there are attributed to
+  the operator rather than to `root`. The prompt is `<actor>@luna` in both the REPL and the drawer.
+- **An account is an identity; its credentials are separate objects.** `ConsoleIdentity` covers a
+  console password, an access key for scripts and a linked Minecraft profile, each retired on its
+  own: a leaked access key must be killable without locking its owner out. A password is
+  argon2id-hashed; an access key's secret and a session's token are 256-bit random, so SHA-256 is
+  all their lookups need, compared with a constant-time digest match. Nothing in `src/client/core/
+  accounts.ts` can return a hash — there is deliberately **no bridge for the raw store**, so a route
+  cannot leak one by forgetting to mask it, and the whole verify → open-session → record cycle runs
+  inside the daemon.
+- **Two stores, and only one of them is cluster state.** `accounts.json` is primary-owned and
+  mirrored like every other state file (`SaveFile` + `notifySave` + `SYNC_FILES`). `sessions.json` is
+  the primary's own runtime state and is **not** mirrored: the console only runs beside the primary,
+  so a follower could not validate a token it was given, and copying live credentials to machines
+  that cannot use them buys nothing. A session's `lastSeenAt` is only persisted once it is
+  `SESSION_TOUCH_MS` stale, or every page load would rewrite the file and wake the sync watcher.
+- **Every refusal reads the same and every refusal is recorded.** A disabled account, a wrong
+  password and a username that does not exist all answer with one message, because telling them
+  apart is how an account list gets enumerated; a miss also burns an argon2 verification, since
+  returning in microseconds is the same leak by another route. Failures count toward a lockout
+  (`MAX_SIGNIN_FAILURES` → `LOCKOUT_MS`). The audit trail records the scope and the actor and
+  **never a value**, exactly as the environment trail does.
+- **Authorization is not in this phase.** Every console account can reach everything, and the
+  screens say so rather than implying a permission model that does not exist. Do not add per-account
+  checks piecemeal; RBAC/ABAC is its own phase.
+- **A new kind of console log goes in the journal, not a second log.** `core/journal.ts` is the
+  append-only NDJSON record of what luna itself did (daemon lines, console routes, CLI, sign-ins),
+  monthly files under `logs/console/`, **per machine** — a follower's journal stays on the follower.
+  It is a third thing on purpose: `core/logs.ts` reads an *instance's* log, and `daemon/events.ts` is
+  the in-memory cluster event feed that dies with the daemon.
+
 ### Daemon health
 - **Every daemon samples its own machine** (`daemon/health.ts`, 5 s, one hour kept): CPU, memory,
   cluster-root disk, load, host uptime, IP addresses and each owned instance's resident memory. A
@@ -459,6 +500,13 @@ Wiring rules:
   flexes, so one child can own the remaining space. Never hand-roll a panel to get this, and measure
   the chrome offset in the browser rather than guessing: the page header's own `.split` is a
   different element from a page's, and reading the wrong one is how a layout ends up 66px too tall.
+- **The sign-in screen is the one page without chrome.** `/login` renders bare (the root layout
+  branches on it), because the side nav, the global search, the terminal drawer and the host vitals
+  all need a session to have anything to say. Its layout follows the AWS console's sign-in page -
+  centred mark, narrow credentials card, banner panel beside it; the banner is the plate from
+  `docs/console.svg` through `LunaBanner.svelte`, and a washed copy of it is the page background. A
+  console with no accounts offers the first-run form instead of a sign-in, and core refuses that path
+  the moment one account exists.
 - Streaming (instance console, terminal drawer, events) is **SSE only**. The terminal drawer runs
   the real compiled CLI and gets its Tab-completion and ghost text from the CLI's own `__complete`
   engine; completion logic is never reimplemented in the browser.
@@ -486,6 +534,17 @@ luna configs ls|show <instance> …     # browse one level · print template or 
 luna configs manage|unmanage <instance> <file>
 luna configs placeholder <instance> <file> NAME value [--all] [--machine m] [--secret]
 luna configs render|readopt <instance> [file]
+luna accounts                     # console accounts: who may sign in to the web console
+luna account show <name>          # one account: fields, identities, lockout state
+luna account add <name> [--password x] [--no-password] [--must-change] [--disabled]
+luna account password <name> [--reset]    # set it; --reset asks the owner for a new one
+luna account enable|disable|unlock|remove <name>
+luna account key <name> [label]           # mint an access key (secret shown once)
+luna account link|unlink <name> …         # a Minecraft profile, or an identity id
+luna sessions [--account x]               # open console sessions
+luna sessions revoke <id>|--account x     # close one, or all of an account's
+luna audit [--account x] [--limit n]      # the account audit trail, newest first
+luna logs [--source s] [--level l] [--search x]   # this machine's console journal
 luna version                      # build identity of the binary and of the daemon
 bun run src/cli/index.ts <cmd…>   # run the CLI from source (this dir)
 bun run build                     # compile the single binary → dist/luna
