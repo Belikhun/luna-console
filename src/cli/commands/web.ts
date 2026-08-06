@@ -18,6 +18,8 @@ command({
 		{ flag: "--port", desc: t("cli.web.optPort"), value: true },
 		{ flag: "--host", desc: t("cli.web.optHost"), value: true },
 		{ flag: "--dev", desc: t("cli.web.optDev") },
+		{ flag: "--behind-proxy", desc: t("cli.web.optBehindProxy") },
+		{ flag: "--proxy-depth", desc: t("cli.web.optProxyDepth"), value: true },
 	],
 
 	handler: async (_args, opts) => {
@@ -44,6 +46,32 @@ command({
 			stdout: "inherit",
 			stderr: "inherit",
 		} as const;
+
+		/**
+		 * Reverse-proxy mode, opt-in and never a default.
+		 *
+		 * Behind nginx every request arrives from 127.0.0.1 over plain HTTP, so
+		 * without these the console records the proxy as the client address, marks
+		 * no session cookie `Secure`, and builds redirects against the internal
+		 * host. adapter-node reads all four from the environment.
+		 *
+		 * It has to be opt-in: `X-Forwarded-For` is a request header like any
+		 * other, so a directly-reachable console that trusted it would let anyone
+		 * choose the address written into the audit trail, and pick a fresh one per
+		 * request to sidestep the sign-in lockout. `XFF_DEPTH` says how many
+		 * proxies of our own to count back through; with one nginx in front that is
+		 * 1, and a larger number would start trusting client-supplied hops.
+		 */
+		const proxyEnv: Record<string, string> = {};
+
+		if (opts["behind-proxy"]) {
+			proxyEnv.ADDRESS_HEADER = "X-Forwarded-For";
+			proxyEnv.XFF_DEPTH = (opts["proxy-depth"] as string) ?? "1";
+			proxyEnv.PROTOCOL_HEADER = "X-Forwarded-Proto";
+			proxyEnv.HOST_HEADER = "X-Forwarded-Host";
+
+			info(t("cli.web.behindProxy", { depth: proxyEnv.XFF_DEPTH }));
+		}
 
 		let proc;
 
@@ -83,6 +111,7 @@ command({
 					PORT: port,
 					HOST: host,
 					BODY_SIZE_LIMIT: process.env.BODY_SIZE_LIMIT ?? "256M",
+					...proxyEnv,
 				},
 				...stdio,
 			});

@@ -1355,7 +1355,10 @@
 		"devHotReload": "(hot reload)",
 		"buildMissing": "thiếu bản dựng production; chạy: cd {dir} && bun run build",
 		"serving": "bảng điều khiển web tại {url}",
-		"stopHint": "(Ctrl+C để dừng)"
+		"stopHint": "(Ctrl+C để dừng)",
+		"optBehindProxy": "tin cậy X-Forwarded-* từ reverse proxy đặt trước console",
+		"optProxyDepth": "số proxy của chính ta cần lần ngược qua (mặc định 1)",
+		"behindProxy": "chế độ reverse proxy: đọc địa chỉ client từ X-Forwarded-For, độ sâu {depth}"
 	},
 	"version": {
 		"desc": "Thông tin bản dựng của binary này (và của daemon, nếu daemon trả lời)",

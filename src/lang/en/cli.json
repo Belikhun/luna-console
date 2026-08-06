@@ -1355,7 +1355,10 @@
 		"devHotReload": "(hot reload)",
 		"buildMissing": "production build missing; run: cd {dir} && bun run build",
 		"serving": "web console on {url}",
-		"stopHint": "(Ctrl+C to stop)"
+		"stopHint": "(Ctrl+C to stop)",
+		"optBehindProxy": "trust X-Forwarded-* from a reverse proxy in front of the console",
+		"optProxyDepth": "how many of our own proxies to count back through (default 1)",
+		"behindProxy": "reverse-proxy mode: reading the client address from X-Forwarded-For, depth {depth}"
 	},
 	"version": {
 		"desc": "Build identity of this binary (and the daemon, when one answers)",
