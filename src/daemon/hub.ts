@@ -16,7 +16,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { saveAccounts, type AccountStore } from "../core/accounts";
-import { loadCluster, saveCluster, saveLock, root } from "../core/config";
+import { dataDir, loadCluster, saveCluster, saveLock, root, syncFilePath } from "../core/config";
 import { saveConfigFiles, type ConfigFileStore } from "../core/configfiles";
 import { saveEnv, type EnvironmentStore } from "../core/environment";
 import { portOpen } from "../core/ping";
@@ -201,12 +201,17 @@ let reachTimer: ReturnType<typeof setInterval> | undefined;
 /** Last reachability round against this machine's own instances. */
 let selfReach: { at: number; results: ReachResult[] } | undefined;
 
-/** Read the current sync payload: raw file texts, missing files skipped. */
+/**
+ * Read the current sync payload: raw file texts, missing files skipped.
+ *
+ * Keyed by logical name, never by path, so the follower resolves where each one
+ * belongs on its own machine.
+ */
 async function syncPayload(): Promise<Record<string, string>> {
 	const files: Record<string, string> = {};
 
 	for (const name of SYNC_FILES) {
-		const path = join(root(), name);
+		const path = syncFilePath(name);
 
 		if (existsSync(path)) {
 			files[name] = await Bun.file(path).text();
@@ -1203,8 +1208,10 @@ export function installHub(dcfg: DaemonConfig, startedAt: number): void {
 
 	void probeSelf();
 
-	// Bun.write replaces files, so watch the directory and filter by name
-	watcher = watch(root(), (_kind, filename) => {
+	// Bun.write replaces files, so watch the directory and filter by name. The
+	// state files live in `.data/` and are watched there; `watch` is not recursive,
+	// so watching the root alone would see none of them.
+	watcher = watch(dataDir(), (_kind, filename) => {
 		if (!filename || !SYNC_FILES.includes(filename as (typeof SYNC_FILES)[number])) {
 			return;
 		}

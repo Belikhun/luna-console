@@ -21,7 +21,7 @@ import { join } from "node:path";
 
 import type { ClusterConfig, InstanceConfig } from "./types";
 import { t } from "../shared/i18n";
-import { managedInstances, notifySave, root } from "./config";
+import { managedInstances, notifySave, root, statePath } from "./config";
 import { readForwardingSecret } from "./proxy";
 
 const ENV_FILE = "environment.json";
@@ -101,7 +101,7 @@ const SEED_VARIABLES: Record<string, EnvVarDef> = {
 };
 
 function envPath(): string {
-	return join(root(), ENV_FILE);
+	return statePath(ENV_FILE);
 }
 
 /**

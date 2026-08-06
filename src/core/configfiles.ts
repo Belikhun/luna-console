@@ -37,7 +37,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 
 import type { ClusterConfig, PluginsLock } from "./types";
 import { t } from "../shared/i18n";
-import { instanceDir, managedInstances, notifySave, root } from "./config";
+import { instanceDir, managedInstances, notifySave, statePath } from "./config";
 import {
 	ENV_NAME_PATTERN,
 	loadEnv,
@@ -93,7 +93,7 @@ export interface ConfigFileStore {
 }
 
 function storePath(): string {
-	return join(root(), STORE_FILE);
+	return statePath(STORE_FILE);
 }
 
 /** Read the managed-file store, treating a missing file as an empty one. */

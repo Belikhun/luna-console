@@ -18,7 +18,7 @@ import { join } from "node:path";
 
 import type { ClusterConfig } from "./types";
 import { t } from "../shared/i18n";
-import { expandTargets, root } from "./config";
+import { expandTargets, statePath } from "./config";
 
 const SCHEDULE_FILE = "schedules.json";
 
@@ -77,7 +77,7 @@ export interface ScheduleStore {
 }
 
 function schedulePath(): string {
-	return join(root(), SCHEDULE_FILE);
+	return statePath(SCHEDULE_FILE);
 }
 
 /** Read the schedule store. */

@@ -14,6 +14,7 @@ import { t } from "../shared/i18n";
 import { mkdir, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import { ensureDataDir } from "../core/config";
 import { appendJournal, setJournalMachine, type JournalLevel } from "../core/journal";
 import { configureProviders } from "../core/services/providers";
 import { resolveDaemonConfig, type DaemonConfig } from "./config";
@@ -76,6 +77,10 @@ export async function runDaemon(): Promise<void> {
 		// a fresh follower starts empty and fills up from the primary's state sync
 		await mkdir(dcfg.root, { recursive: true });
 	}
+
+	// the hub's sync watcher opens this directly, and `watch` throws on a missing
+	// directory; a fresh follower has no state until its first sync lands
+	await ensureDataDir();
 
 	if (existsSync(dcfg.socket)) {
 		if (await socketAlive(dcfg.socket)) {

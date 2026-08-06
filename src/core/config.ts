@@ -3,15 +3,47 @@
 // prohibited without written permission. See LICENSE at the repository root.
 
 import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import type { ClusterConfig, InstanceConfig, PluginFamily, PluginsLock, Software } from "./types";
 import { t } from "../shared/i18n";
 
 /**
+ * The directory every cluster state file lives in, relative to the root.
+ *
+ * Dotted so it sorts away from the instance directories it sits beside: the
+ * cluster root is also where `lobby/`, `survival/` and the jar pool live, and a
+ * registry loose among them is one `rm -rf` away from being collateral.
+ */
+export const DATA_DIR = ".data";
+
+/**
+ * Every state file the primary owns, by name.
+ *
+ * What `syncFilePath` recognises as state rather than as an ordinary
+ * root-relative file, so a new state file is added here once.
+ */
+export const STATE_FILES = [
+	"cluster.json",
+	"plugins.lock.json",
+	"packs.lock.json",
+	"environment.json",
+	"configfiles.json",
+	"accounts.json",
+	"sessions.json",
+	"schedules.json",
+] as const;
+
+/** Whether a directory is a cluster root: it holds the registry. */
+function isClusterRoot(dir: string): boolean {
+	return existsSync(join(dir, DATA_DIR, "cluster.json"));
+}
+
+/**
  * Locate the cluster root: the nearest ancestor of the working directory that
- * holds a `cluster.json`, or the directory containing this tool. Bails out of
- * the process when neither exists; nothing else in `core/` can run without it.
+ * holds a registry, or the directory containing this tool. Bails out of the
+ * process when neither exists; nothing else in `core/` can run without it.
  */
 function findRoot(): string {
 	if (process.env.LUNA_ROOT) {
@@ -21,7 +53,7 @@ function findRoot(): string {
 	let dir = process.cwd();
 
 	while (true) {
-		if (existsSync(join(dir, "cluster.json"))) {
+		if (isClusterRoot(dir)) {
 			return dir;
 		}
 
@@ -36,11 +68,13 @@ function findRoot(): string {
 
 	const toolRoot = resolve(import.meta.dir, "..", "..");
 
-	if (existsSync(join(toolRoot, "cluster.json"))) {
+	if (isClusterRoot(toolRoot)) {
 		return toolRoot;
 	}
 
-	console.error("error: cluster.json not found (set LUNA_ROOT or run inside the cluster directory)");
+	console.error(
+		`error: ${DATA_DIR}/cluster.json not found (set LUNA_ROOT or run inside the cluster directory)`,
+	);
 	process.exit(1);
 }
 
@@ -51,14 +85,50 @@ export function root(): string {
 	return (cachedRoot ??= findRoot());
 }
 
+/** Directory holding every cluster state file. */
+export function dataDir(): string {
+	return join(root(), DATA_DIR);
+}
+
+/**
+ * Create the state directory if it is not there yet.
+ *
+ * Called once at daemon startup. `Bun.write` would create it on the first save
+ * anyway, but the hub's sync watcher opens it directly and `watch` throws ENOENT
+ * on a missing directory, which would take a fresh primary down on boot.
+ */
+export async function ensureDataDir(): Promise<void> {
+	await mkdir(dataDir(), { recursive: true });
+}
+
+/**
+ * Path of one state file. Every module that owns one resolves through this, so
+ * there is a single answer to where cluster state lives.
+ */
+export function statePath(file: string): string {
+	return join(dataDir(), file);
+}
+
+/**
+ * Where a logical sync name lives on *this* machine.
+ *
+ * The cluster link carries logical names, not paths, so each daemon decides
+ * where a given name belongs. That is what lets a primary on this build sync to
+ * a follower that still keeps its state at the root: the name on the wire is
+ * unchanged, and only the resolution differs.
+ */
+export function syncFilePath(name: string): string {
+	return (STATE_FILES as readonly string[]).includes(name) ? statePath(name) : join(root(), name);
+}
+
 /** Path of the instance registry; the source of truth for the cluster. */
 export function clusterPath(): string {
-	return join(root(), "cluster.json");
+	return statePath("cluster.json");
 }
 
 /** Path of the plugin lockfile; the source of truth for plugin versions. */
 export function lockPath(): string {
-	return join(root(), "plugins.lock.json");
+	return statePath("plugins.lock.json");
 }
 
 /** Path of the shared jar pool. */

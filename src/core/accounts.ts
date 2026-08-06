@@ -34,7 +34,7 @@ import { join } from "node:path";
 
 import { MIN_PASSWORD_LENGTH, USERNAME_PATTERN } from "../shared/accountrules";
 import { t } from "../shared/i18n";
-import { notifySave, root } from "./config";
+import { notifySave, statePath } from "./config";
 
 const ACCOUNTS_FILE = "accounts.json";
 const SESSIONS_FILE = "sessions.json";
@@ -257,11 +257,11 @@ export interface ClientMeta {
 }
 
 function accountsPath(): string {
-	return join(root(), ACCOUNTS_FILE);
+	return statePath(ACCOUNTS_FILE);
 }
 
 function sessionsPath(): string {
-	return join(root(), SESSIONS_FILE);
+	return statePath(SESSIONS_FILE);
 }
 
 /** Read the account store, treating a missing file as an empty cluster. */

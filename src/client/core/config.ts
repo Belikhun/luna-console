@@ -16,12 +16,16 @@ import type { ClusterConfig, InstanceConfig } from "../../core/types";
 import { call } from "../rpc";
 import { clientRoot } from "../socket";
 
+import { DATA_DIR } from "../../core/config";
+
 export {
 	allInstances,
 	managedInstances,
 	addonDirOf,
 	addonDirForFamily,
 	expandTargets,
+	DATA_DIR,
+	STATE_FILES,
 } from "../../core/config";
 export type { AddonDir } from "../../core/config";
 
@@ -30,14 +34,24 @@ export function root(): string {
 	return clientRoot();
 }
 
+/** Directory holding every cluster state file. */
+export function dataDir(): string {
+	return join(root(), DATA_DIR);
+}
+
+/** Path of one state file, mirroring core's own resolution. */
+export function statePath(file: string): string {
+	return join(dataDir(), file);
+}
+
 /** Path of the instance registry; the source of truth for the cluster. */
 export function clusterPath(): string {
-	return join(root(), "cluster.json");
+	return statePath("cluster.json");
 }
 
 /** Path of the plugin lockfile; the source of truth for plugin versions. */
 export function lockPath(): string {
-	return join(root(), "plugins.lock.json");
+	return statePath("plugins.lock.json");
 }
 
 /** Path of the shared jar pool. */

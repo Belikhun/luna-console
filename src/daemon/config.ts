@@ -9,6 +9,9 @@ import { hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { socketCandidates } from "../shared/sockpath";
+// a plain constant: importing it cannot trigger core's root resolution, which
+// has not been told where the root is yet at this point in the boot
+import { DATA_DIR } from "../core/config";
 
 export type DaemonMode = "primary" | "follower";
 
@@ -112,12 +115,16 @@ export async function configuredToken(): Promise<TokenSource> {
 	return {};
 }
 
-/** Walk from cwd looking for a cluster.json, mirroring core's root discovery. */
+/** Walk from cwd looking for a registry, mirroring core's root discovery. */
+function isClusterRoot(dir: string): boolean {
+	return existsSync(join(dir, DATA_DIR, "cluster.json"));
+}
+
 function discoverRoot(): string | undefined {
 	let dir = process.cwd();
 
 	while (true) {
-		if (existsSync(join(dir, "cluster.json"))) {
+		if (isClusterRoot(dir)) {
 			return dir;
 		}
 
@@ -132,7 +139,7 @@ function discoverRoot(): string | undefined {
 
 	const toolRoot = resolve(import.meta.dir, "..", "..", "..");
 
-	if (existsSync(join(toolRoot, "cluster.json"))) {
+	if (isClusterRoot(toolRoot)) {
 		return toolRoot;
 	}
 

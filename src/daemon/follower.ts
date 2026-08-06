@@ -21,6 +21,7 @@ import {
 	managedInstances,
 	poolDir,
 	root,
+	syncFilePath,
 } from "../core/config";
 import { datapacksDir, datapackTargets, type AddonGroups } from "../core/datapacks";
 import { setProxyHost } from "../core/environment";
@@ -275,10 +276,15 @@ async function handleForwardedOp(frame: PrimaryFrame): Promise<void> {
 	}
 }
 
-/** Write the primary's state files into this daemon's root, verbatim. */
+/**
+ * Write the primary's state files into this daemon's root, verbatim.
+ *
+ * The primary sends logical names, so where each one lands is decided here; a
+ * state file goes to `.data/`, anything else stays root-relative.
+ */
 async function applySync(files: Record<string, string>): Promise<void> {
 	for (const [name, text] of Object.entries(files)) {
-		const path = join(root(), name);
+		const path = syncFilePath(name);
 
 		await mkdir(dirname(path), { recursive: true });
 		await Bun.write(path, text);

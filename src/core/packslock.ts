@@ -19,7 +19,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { root } from "./config";
+import { statePath } from "./config";
 import type { ProviderId, RemoteRef } from "./types";
 import { t } from "../shared/i18n";
 
@@ -86,7 +86,7 @@ export interface PacksLock {
 
 /** Path of the pack lockfile; the source of truth for pack provenance. */
 export function packsLockPath(): string {
-	return join(root(), "packs.lock.json");
+	return statePath("packs.lock.json");
 }
 
 /** Read the pack lockfile, treating a missing file as an empty lock. */

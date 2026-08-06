@@ -16,7 +16,7 @@
 # starts, or point LUNA_ROOT at an existing cluster directory.
 #
 #   docker compose -f docker-compose.primary.yml run --rm --entrypoint sh luna \
-#     -c 'echo "{\"instances\":{},\"daemons\":{}}" > /data/cluster.json'
+#     -c 'mkdir -p /data/.data && echo "{\"instances\":{},\"daemons\":{}}" > /data/.data/cluster.json'
 
 name: luna-primary
 

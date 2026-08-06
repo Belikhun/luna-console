@@ -45,12 +45,15 @@ control/                # this repo — the only source tree
   Dockerfile            # binary + console + JRE + screen — the published image
 
 /mnt/shulker/mrds/      # cluster root (parent dir) — managed data, not source
-  cluster.json          # instance registry — source of truth
-  plugins.lock.json     # plugin metadata/versions — source of truth
-  environment.json      # env variables: global + per-machine + per-instance
-  configfiles.json      # managed config-file templates (instance → path → body)
-  accounts.json         # console accounts + identities + the audit trail
-  sessions.json         # open console sessions — primary-local, never mirrored
+  .data/                # every state file; `STATE_FILES` in core/config.ts
+    cluster.json        # instance registry — source of truth
+    plugins.lock.json   # plugin metadata/versions — source of truth
+    packs.lock.json     # resource/data pack state
+    environment.json    # env variables: global + per-machine + per-instance
+    configfiles.json    # managed config-file templates (instance → path → body)
+    schedules.json      # start/stop/restart schedules
+    accounts.json       # console accounts + identities + the audit trail
+    sessions.json       # open console sessions — primary-local, never mirrored
   plugins/              # jar pool (+ versions/ for per-instance variants)
   logs/<instance>/      # archived, compacted logs (YYYY-MM.log.gz)
   logs/console/         # the console journal (YYYY-MM.ndjson), per machine
@@ -317,6 +320,13 @@ export interface InstanceConfig {}
   follower's hook → the hub persists → the root watcher syncs it back). A new cluster-root state file
   means adding it to `SaveFile`, calling `notifySave` from its saver, and listing it in
   `SYNC_FILES`; otherwise a follower's write is silently clobbered by the next sync frame.
+- **State lives in `<root>/.data/`, and only `core/config.ts` knows that.** Every state file resolves
+  through `statePath()`, so a new one is a `STATE_FILES` entry and nothing else; never `join(root(),
+  "x.json")`. A cluster root *is* a directory holding `.data/cluster.json`, which is what root
+  discovery looks for; `ensureDataDir()` runs at daemon boot because the hub's sync watcher opens that
+  directory and `watch` throws on a missing one. **The cluster link carries logical names, not
+  paths**: `syncFilePath()` resolves each name on the machine that has it, so where a file lives is
+  never on the wire.
 
 ### Console accounts
 - **The console is gated; the CLI is not.** Every web route goes through

@@ -37,6 +37,9 @@ import { BASH_HOOK } from "../complete";
 import { unitFile, UNIT_NAME, UNIT_PATH } from "./daemon";
 import { DEFAULT_CLUSTER_PORT } from "../../daemon/config";
 import { starterCluster } from "../../shared/bootstrap";
+// a plain constant, so this does not pull core's root resolution into the
+// installer, which runs before a root exists
+import { DATA_DIR } from "../../core/config";
 import { isCompiledBinary } from "../../version";
 import { t } from "../../shared/i18n";
 
@@ -379,7 +382,9 @@ async function wirePath(plan: Plan): Promise<void> {
  * the directory has none; a follower's arrives over the cluster link.
  */
 async function prepareRoot(plan: Plan, owner: { uid: number; gid: number }): Promise<void> {
-	const registry = join(plan.root, "cluster.json");
+	// every state file lives in <root>/.data/
+	const dataDir = join(plan.root, DATA_DIR);
+	const registry = join(dataDir, "cluster.json");
 
 	if (plan.dryRun) {
 		info(t("cli.setup.wouldCreateRoot", { root: pc.cyan(plan.root), user: plan.user }));
@@ -391,7 +396,7 @@ async function prepareRoot(plan: Plan, owner: { uid: number; gid: number }): Pro
 		return;
 	}
 
-	await mkdir(plan.root, { recursive: true });
+	await mkdir(dataDir, { recursive: true });
 
 	if (plan.mode === "primary" && !existsSync(registry)) {
 		await writeFile(registry, JSON.stringify(starterCluster(), null, "\t") + "\n");
