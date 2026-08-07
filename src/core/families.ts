@@ -27,8 +27,9 @@ import type {
 	Software,
 } from "./types";
 import { t } from "../shared/i18n";
-import { addonDirForFamily, addonDirOf, expandTargets, managedInstances } from "./config";
+import { addonDirForFamily, addonDirsOf, expandTargets, managedInstances } from "./config";
 import { coversMc } from "./services/providers";
+import { traitsOf } from "./software";
 
 export const DEFAULT_GROUP = "default";
 
@@ -63,31 +64,25 @@ export function familyOf(entry: PluginEntry): PluginFamily {
 /**
  * Whether a build of this family loads on the given server software.
  *
- * A mod loader is a closed ecosystem in both directions: only a `neoforge`
- * build loads on neoforge, and a neoforge build loads nowhere else. `universal`
- * means "paper and velocity" (the jars that carry both descriptors); never
- * "every platform"; so it stops at the loader boundary too.
+ * The answer is the software's own `acceptsFamilies` row, which is what lets a
+ * mod loader stay a closed ecosystem in both directions (only a `neoforge`
+ * build loads on neoforge, and it loads nowhere else) while the hybrids
+ * legitimately accept two ecosystems at once. `universal` means "paper and
+ * velocity" - the jars carrying both descriptors - never "every platform", so
+ * it stops at the loader boundary like everything else.
  */
 export function familyMatches(family: PluginFamily, software: Software): boolean {
-	if (family === "neoforge" || software === "neoforge") {
-		return family === "neoforge" && software === "neoforge";
-	}
-
-	if (family === "universal") {
-		return true;
-	}
-
-	return family === software;
+	return traitsOf(software).acceptsFamilies.includes(family);
 }
 
 /**
- * Whether a build for this software is tied to a Minecraft version. Only the
+ * Whether a build for this software is tied to a Minecraft version. Only a
  * proxy is version-independent; a paper plugin and a neoforge mod are both
  * compiled against a game version and refuse to load outside it, so they go
  * through the same resolution, holdback and compatibility rules.
  */
 export function carriesMcRequirement(software: Software): boolean {
-	return software !== "velocity";
+	return traitsOf(software).carriesMcRequirement;
 }
 
 /** Group names applied to an instance; "default" always, then its own list. */
@@ -243,7 +238,7 @@ export function effectiveTargets(cfg: ClusterConfig, lock: PluginsLock, key: str
 	for (const name of [...out]) {
 		const inst = insts[name];
 
-		if (!inst || addonDirOf(inst.software) !== dir) {
+		if (!inst || !addonDirsOf(inst.software).includes(dir)) {
 			out.delete(name);
 
 			continue;

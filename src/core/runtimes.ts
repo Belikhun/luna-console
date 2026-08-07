@@ -11,8 +11,9 @@ import { buildPlatform } from "../version";
 import { managedInstances, root } from "./config";
 import { ProgressReporter } from "./progress";
 import * as adoptium from "./services/adoptium";
-import { downloadToFile } from "./services/download";
+import { downloadToFile, reportBytes } from "./services/download";
 import * as graalvm from "./services/graalvm";
+import { mcVersionParts, traitsOf } from "./software";
 import type {
 	AvailableRuntime,
 	ClusterConfig,
@@ -122,15 +123,22 @@ export function validateRuntimeId(id: string): string | undefined {
  * three times: 1.17 moved to 16, 1.18 to 17 and 1.20.5 to 21. The floor is
  * answered with the release luna would actually install, so 1.17 resolves to 17
  * rather than the long-withdrawn 16.
+ *
+ * Two version schemes are in circulation. Everything Mojang shipped as
+ * `1.<minor>` is read by its minor; the date-based scheme that arrived with
+ * 26.2 starts at a year, is newer than anything in the table, and so takes the
+ * newest release without further inspection.
  */
 export function suggestedFeature(mcVersion?: string): number {
 	if (!mcVersion) {
 		return 21;
 	}
 
-	const parts = mcVersion.split(".");
-	const minor = Number.parseInt(parts[1] ?? "", 10);
-	const patch = Number.parseInt(parts[2] ?? "0", 10) || 0;
+	const [major, minor, patch = 0] = mcVersionParts(mcVersion);
+
+	if (major !== 1) {
+		return 21;
+	}
 
 	if (!minor) {
 		return 21;
@@ -500,22 +508,7 @@ export async function installRuntime(
 		async (step) => {
 			await downloadToFile(target.url, archive, {
 				expected: sha256 ? { sha256 } : {},
-				onProgress: (received, total) => {
-					const mb = (received / 1024 / 1024).toFixed(1);
-
-					// with no content-length there is nothing to divide by, so the step
-					// only reports the byte count and its progress stays where it was
-					if (!total) {
-						step.info(step.progress, t("core.runtimes.downloadedSoFar", { mb }));
-
-						return;
-					}
-
-					step.info(received / total, t("core.runtimes.downloadedOf", {
-						mb,
-						total: (total / 1024 / 1024).toFixed(1),
-					}));
-				},
+				onProgress: reportBytes(step),
 			});
 		},
 	);
@@ -604,6 +597,13 @@ export async function ensureInstanceRuntime(
 
 	if (!inst) {
 		throw new Error(t("core.instances.unknown", { name }));
+	}
+
+	// software with no JVM resolves no runtime, whatever its profile says
+	if (!traitsOf(inst.software).usesJava) {
+		reporter?.settle();
+
+		return { outcome: "none" };
 	}
 
 	const selection = javaSelection(cfg, inst);

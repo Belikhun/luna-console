@@ -214,8 +214,6 @@
 		"checkProgress": "check for updates",
 		"variantTag": "(variant)",
 		"pickTargets": "Deploy to which instances?",
-		"allPaper": "*paper (all paper instances)",
-		"theProxy": "*velocity (the proxy)",
 		"holdback": "{name}: {targets} stays on {version}; {reason}",
 		"pinnedNote": "{name}: {target} pinned to {version}",
 		"list": {
@@ -270,7 +268,9 @@
 			"installing": "installing {name}...",
 			"pooledOnly": "(pooled; not deployed anywhere yet)",
 			"installed": "installed {name} {version}",
-			"holdback": "{name}: not installed on {targets}; {reason}"
+			"holdback": "{name}: not installed on {targets}; {reason}",
+			"optFamily": "ecosystem the build is for (paper, velocity, neoforge, fabric, forge)",
+			"badFamily": "unknown or unusable family: {family}"
 		},
 		"apply": {
 			"desc": "Add instances to a plugin's targets and deploy",
@@ -423,7 +423,8 @@
 		"forget": {
 			"desc": "Drop a plugin's provider mapping (keeps the jar and its deployments)",
 			"done": "{name} is no longer mapped to a provider; updates will not be checked"
-		}
+		},
+		"allOf": "every {software} server"
 	},
 	"packs": {
 		"unknownProvider": "unknown provider: {name} (expected {known})",
@@ -684,7 +685,7 @@
 			"optDaemon": "follower daemon that will own the instance",
 			"badSetPair": "--set expects key=value pairs, got \"{pair}\"",
 			"unknownGroup": "unknown addon group: {name}",
-			"resolvingVersion": "resolving latest paper version...",
+			"resolvingVersion": "resolving latest {software} version...",
 			"phaseFiles": "Server files",
 			"phasePlugins": "Plugins",
 			"phasePacks": "Packs",
@@ -702,8 +703,14 @@
 			"registering": "registering in velocity.toml",
 			"velocityUpdated": "velocity.toml updated (reload the proxy to apply)",
 			"velocityUpToDate": "velocity.toml already up to date",
-			"created": "created {name}: paper {version} build {build}, port {port}",
-			"jvmFlags": "extra JVM flags: {flags}"
+			"created": "created {name}: {software} {version} build {build}, port {port}",
+			"jvmFlags": "extra JVM flags: {flags}",
+			"optSoftware": "server software to install (default paper)",
+			"optLoaderVersion": "pin the loader build instead of taking the newest",
+			"unknownSoftware": "unknown server software: {software}",
+			"softwareNoProvider": "luna cannot download {software}; it can only be adopted",
+			"softwareHasNoJava": "{software} is not a JVM program; drop --runtime and --java-args",
+			"noVersions": "{software} has no published versions to install"
 		},
 		"adopt": {
 			"desc": "Register a server directory that already exists as a managed instance",
@@ -740,7 +747,8 @@
 			"unknownReqs": "{count} plugin(s) have unknown MC requirements (luna/manual jars; verify manually)",
 			"downloading": "downloading {version}...",
 			"jarKept": "old jar kept at {path}",
-			"updateHint": "re-resolve plugin versions for the new MC: {command}"
+			"updateHint": "re-resolve plugin versions for the new MC: {command}",
+			"optLoaderVersion": "pin the loader build instead of taking the newest"
 		},
 		"settings": {
 			"desc": "Show or change an instance's server settings (difficulty, max-players, pvp, …)",

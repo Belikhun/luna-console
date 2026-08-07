@@ -26,8 +26,9 @@ import { tailFollow, type TailHandle } from "./tail";
 import { localBinaryMeta, localBinaryPath } from "./upgrade";
 import { BUILD_AT, COMMIT, VERSION, buildPlatform, buildVersion } from "../version";
 
-/** Local API protocol revision; clients refuse to talk across a mismatch. */
-export const PROTOCOL_VERSION = 3;
+import { PROTOCOL_VERSION } from "../shared/protocol";
+
+export { PROTOCOL_VERSION };
 
 /** How often the fleet health stream emits. Matches the heartbeat cadence. */
 const DAEMON_STREAM_MS = 5_000;

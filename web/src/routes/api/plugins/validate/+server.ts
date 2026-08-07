@@ -7,6 +7,7 @@ import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, managedInstances } from '$core/config';
 import { validateGroups } from '$core/families';
 import type { Software } from '$core/types';
+import { SOFTWARE_IDS } from '$core/software';
 
 /**
  * GET ?groups=a,b&software=paper&mcVersion=1.21.11[&instance=name]
@@ -33,8 +34,8 @@ export async function GET({ url }) {
 		mcVersion ??= inst.mcVersion;
 	}
 
-	if (software !== 'paper' && software !== 'velocity' && software !== 'neoforge') {
-		throw error(400, 'software=paper|velocity|neoforge (or instance=) is required');
+	if (!software || !SOFTWARE_IDS.includes(software)) {
+		throw error(400, `software=${SOFTWARE_IDS.join('|')} (or instance=) is required`);
 	}
 
 	const groups = (url.searchParams.get('groups') ?? '')

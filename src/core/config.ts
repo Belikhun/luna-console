@@ -6,8 +6,11 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import type { ClusterConfig, InstanceConfig, PluginFamily, PluginsLock, Software } from "./types";
+import type { AddonDir, ClusterConfig, InstanceConfig, PluginFamily, PluginsLock, Software } from "./types";
+import { FAMILY_DIRS, SOFTWARE_IDS, traitsOf } from "./software";
 import { t } from "../shared/i18n";
+
+export type { AddonDir } from "./types";
 
 /**
  * The directory every cluster state file lives in, relative to the root.
@@ -236,37 +239,40 @@ export function instanceDir(inst: InstanceConfig): string {
 	return join(root(), inst.dir);
 }
 
-/** The directory name an addon of one kind lives in, inside an instance. */
-export type AddonDir = "plugins" | "mods";
+/**
+ * Every directory a software keeps addons in. Mod loaders keep theirs in
+ * `mods/` rather than `plugins/`, and the two are not interchangeable: a bukkit
+ * jar in `mods/` is ignored at best and a crash at worst. The hybrids carry
+ * both, which is why this answers with a list.
+ */
+export function addonDirsOf(software: Software): AddonDir[] {
+	return traitsOf(software).addonDirs;
+}
 
 /**
- * Where luna deploys a server's addons. Mod loaders keep theirs in `mods/`
- * rather than `plugins/`, and the two are not interchangeable: a bukkit jar in
- * `mods/` is ignored at best and a crash at worst. Everything that reads or
- * writes an instance's addons goes through this, so neither kind can ever be
- * written into the other's directory.
+ * The directory an unqualified question about "this instance's addons" means:
+ * the first one the software declares. Anything that has to place a specific
+ * *build* asks `addonDirForFamily` instead, because on a hybrid the answer
+ * depends on the build, not on the server.
  */
 export function addonDirOf(software: Software): AddonDir {
-	return software === "neoforge" ? "mods" : "plugins";
+	return addonDirsOf(software)[0] ?? "plugins";
 }
 
 /**
  * The directory a *build* belongs in, from its family. Paired with
- * `addonDirOf`, this is the one comparison that keeps a plugin out of a
+ * `addonDirsOf`, this is the one comparison that keeps a plugin out of a
  * modpack's `mods/` even when an operator names the instance explicitly.
  */
 export function addonDirForFamily(family: PluginFamily): AddonDir {
-	return family === "neoforge" ? "mods" : "plugins";
+	return FAMILY_DIRS[family];
 }
-
-/** Software names accepted as a `*<software>` wildcard target. */
-const SOFTWARE_WILDCARDS: Software[] = ["paper", "velocity", "neoforge"];
 
 /**
  * Expand target selectors to concrete instance names. Accepts plain names, the
- * `*` wildcard, and the per-software wildcards `*paper` / `*velocity` /
- * `*neoforge`. Throws on a name that is not a managed instance, so a typo can
- * never silently match none.
+ * `*` wildcard, and a `*<software>` wildcard for every software luna knows.
+ * Throws on a name that is not a managed instance, so a typo can never
+ * silently match none.
  */
 export function expandTargets(cfg: ClusterConfig, targets: string[]): string[] {
 	const all = managedInstances(cfg);
@@ -281,7 +287,7 @@ export function expandTargets(cfg: ClusterConfig, targets: string[]): string[] {
 			continue;
 		}
 
-		const software = SOFTWARE_WILDCARDS.find((candidate) => target === `*${candidate}`);
+		const software = SOFTWARE_IDS.find((candidate) => target === `*${candidate}`);
 
 		if (software) {
 			for (const [name, inst] of Object.entries(all)) {

@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { traitsOf } from '$core/software';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -121,7 +122,7 @@
 		// backends the moderation verbs can target; the proxy keeps no lists
 		void api('/instances').then((data) => {
 			instances = data.instances
-				.filter((inst: any) => inst.software !== 'velocity' && inst.name !== 'proxy')
+				.filter((inst: any) => !traitsOf(inst.software).isProxy && inst.name !== 'proxy')
 				.map((inst: any) => inst.name)
 				.sort();
 		});

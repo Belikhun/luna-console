@@ -31,6 +31,9 @@ import {
 	removeInstanceJars,
 } from "../../client/core/pluginstate";
 import { standardizeNaming } from "../../client/core/standardize";
+import type { PluginFamily } from "../../client/core/types";
+import { FAMILY_DIRS, SOFTWARE_IDS } from "../../client/core/software";
+import { PLUGIN_FAMILIES } from "../../client/core/types";
 import * as providers from "../../client/core/services/providers";
 import { getAllStatuses } from "../../client/core/instances";
 import { ensurePortAllocations } from "../../client/core/ports";
@@ -85,8 +88,11 @@ async function parseTargets(raw: string | undefined): Promise<string[]> {
 		message: t("cli.plugins.pickTargets"),
 		required: false,
 		options: [
-			{ value: "*paper", label: t("cli.plugins.allPaper") },
-			{ value: "*velocity", label: t("cli.plugins.theProxy") },
+			// the same wildcards tab-completion offers, so the two agree
+			...SOFTWARE_IDS.map((software) => ({
+				value: `*${software}`,
+				label: t("cli.plugins.allOf", { software }),
+			})),
 			...names.map((name) => ({ value: name, label: name })),
 		],
 	});
@@ -452,6 +458,12 @@ command({
 	opts: [
 		{ flag: "--to", desc: t("cli.plugins.add.optTo"), value: true, complete: targetSelectors },
 		{ flag: "--pool", desc: t("cli.plugins.add.optPool") },
+		{
+			flag: "--family",
+			desc: t("cli.plugins.add.optFamily"),
+			value: true,
+			complete: async () => [...PLUGIN_FAMILIES],
+		},
 		{ flag: "--velocity", desc: t("cli.plugins.add.optVelocity") },
 		{ flag: "--neoforge", desc: t("cli.plugins.add.optNeoforge") },
 		{
@@ -471,11 +483,16 @@ command({
 			throw new UsageError(t("cli.plugins.add.platformConflict"));
 		}
 
-		const family: "paper" | "velocity" | "neoforge" = opts.neoforge
-			? "neoforge"
-			: opts.velocity
-				? "velocity"
-				: "paper";
+		// --velocity and --neoforge predate --family and stay as aliases for it;
+		// a flag per ecosystem does not scale past the two that already existed
+		const named = (opts.family as string | undefined)
+			?? (opts.neoforge ? "neoforge" : opts.velocity ? "velocity" : "paper");
+
+		if (!PLUGIN_FAMILIES.includes(named as PluginFamily) || named === "universal") {
+			throw new UsageError(t("cli.plugins.add.badFamily", { family: named }));
+		}
+
+		const family = named as Exclude<PluginFamily, "universal">;
 
 		const provider = parseProvider(opts.provider as string | undefined);
 		const type = plugins.projectTypeFor(family);
@@ -501,7 +518,7 @@ command({
 			const { select, isCancel } = await import("@clack/prompts");
 
 			const picked = await select({
-				message: family === "neoforge" ? t("cli.plugins.add.selectMod") : t("cli.plugins.add.selectPlugin"),
+				message: FAMILY_DIRS[family] === "mods" ? t("cli.plugins.add.selectMod") : t("cli.plugins.add.selectPlugin"),
 				options: hits.map((hit) => ({
 					value: hit.project_id,
 					label: hit.title,
@@ -683,7 +700,7 @@ command({
 			flag: "--family",
 			desc: t("cli.plugins.upload.optFamily"),
 			value: true,
-			complete: async () => ["paper", "velocity", "universal", "neoforge"],
+			complete: async () => [...PLUGIN_FAMILIES],
 		},
 		{ flag: "--to", desc: t("cli.plugins.upload.optTo"), value: true, complete: targetSelectors },
 	],
@@ -698,9 +715,9 @@ command({
 			throw new UsageError(t("cli.plugins.upload.noSuchFile", { path }));
 		}
 
-		const family = (opts.family as string | undefined) ?? "paper";
+		const family = ((opts.family as string | undefined) ?? "paper") as PluginFamily;
 
-		if (family !== "paper" && family !== "velocity" && family !== "universal" && family !== "neoforge") {
+		if (!PLUGIN_FAMILIES.includes(family)) {
 			throw new UsageError(t("cli.plugins.upload.badFamily"));
 		}
 

@@ -7,11 +7,26 @@ import type { InstanceSelectorEntry, SelectorStatus, ServerSelectorConfig } from
 export * from "../shared/selector";
 
 /**
- * Server software luna can launch. A `neoforge` instance keeps its addons in
- * `mods/` rather than `plugins/` (see `addonDirOf`), and only `neoforge`-family
- * builds ever land there; the two ecosystems never cross.
+ * Server software luna can launch. Everything that differs between them is one
+ * row of `SOFTWARE_TRAITS` (core/software.ts): where addons live, how the
+ * server is launched, which plugin families load, how proxy forwarding is
+ * configured. A mod loader keeps its addons in `mods/` rather than `plugins/`,
+ * and the two ecosystems never cross except on the hybrids, which carry both.
  */
-export type Software = "paper" | "velocity" | "neoforge";
+export type Software =
+	| "paper"
+	| "folia"
+	| "velocity"
+	| "purpur"
+	| "fabric"
+	| "forge"
+	| "neoforge"
+	| "pumpkin"
+	| "youer"
+	| "asyncyouer";
+
+/** The directory name an addon of one kind lives in, inside an instance. */
+export type AddonDir = "plugins" | "mods";
 
 export interface JavaProfile {
 	/** Path to java binary, default "java" */
@@ -114,10 +129,12 @@ export interface InstanceConfig {
 	/** Directory name under the root */
 	dir: string;
 	software: Software;
-	/** Minecraft version, e.g. "1.21.11" (paper and neoforge) */
+	/** Minecraft version, e.g. "1.21.11". Absent only on software that does not
+	 *  pin one, which today means the proxy. */
 	mcVersion?: string;
-	/** Mod-loader build for software that launches from its own argument file,
-	 *  e.g. neoforge "21.1.233" → libraries/net/neoforged/neoforge/21.1.233 */
+	/** Loader build, for software that has one beside the MC version: the args-file
+	 *  loaders (neoforge "21.1.233" → libraries/net/neoforged/neoforge/21.1.233,
+	 *  forge "52.0.20"), fabric's loader, and the hybrids' bundled loader. */
 	loaderVersion?: string;
 	port: number;
 	memory: string; // "4G"
@@ -269,8 +286,22 @@ export interface RemoteRef {
 
 export type PluginSource = ProviderId | "luna" | "manual";
 
-/** Platform a plugin build runs on. "universal" jars load on paper and velocity alike. */
-export type PluginFamily = "paper" | "velocity" | "universal" | "neoforge";
+/**
+ * Platform a plugin build runs on. "universal" jars load on paper and velocity
+ * alike. Which families a given software accepts is one column of
+ * `SOFTWARE_TRAITS` (core/software.ts), not a rule spelled out per call site.
+ */
+export type PluginFamily = "paper" | "velocity" | "universal" | "neoforge" | "fabric" | "forge";
+
+/** Every family, in the order they are offered. */
+export const PLUGIN_FAMILIES: PluginFamily[] = [
+	"paper",
+	"velocity",
+	"universal",
+	"neoforge",
+	"fabric",
+	"forge",
+];
 
 /** What the jar says about itself, read from its own descriptor. */
 export interface PluginMeta {

@@ -4,6 +4,8 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { FAMILY_DIRS } from '$core/software';
+	import type { PluginFamily } from '$core/types';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -57,13 +59,13 @@
 	// "which project is this?" is asked about one jar at a time
 	let identifyOpen = $state(false);
 	let identifyKey = $state('');
-	let identifyFamily = $state('paper');
+	let identifyFamily: PluginFamily = $state('paper');
 	let identifyMapped = $state(false);
 
 	/** Open the mapping dialog for one family build. */
 	function openIdentify(family: { key: string; family: string; remote?: unknown }): void {
 		identifyKey = family.key;
-		identifyFamily = family.family;
+		identifyFamily = family.family as PluginFamily;
 		identifyMapped = !!family.remote;
 		identifyOpen = true;
 	}
@@ -401,7 +403,8 @@
 	// an addon whose every build is a mod is a mod, and the page says so; the
 	// route is shared because the identity is, not because the kinds are
 	const kindLabel = $derived(
-		data?.families?.length && data.families.every((family: any) => family.family === 'neoforge')
+		data?.families?.length &&
+			data.families.every((family: any) => FAMILY_DIRS[family.family as PluginFamily] === 'mods')
 			? 'Mods'
 			: 'Plugins'
 	);
@@ -655,7 +658,7 @@
 <!-- map an unidentified build to the project it came from -->
 <IdentifyAddonModal
 	bind:open={identifyOpen}
-	kind={identifyFamily === 'neoforge' ? 'mod' : 'plugin'}
+	kind={FAMILY_DIRS[identifyFamily] === 'mods' ? 'mod' : 'plugin'}
 	target={identifyKey}
 	family={identifyFamily}
 	mapped={identifyMapped}

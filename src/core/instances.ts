@@ -11,6 +11,7 @@ import { instanceDir, managedInstances } from "./config";
 import { renderManagedFiles } from "./configfiles";
 import { ENV_SCRIPT, loadEnv, renderEnvFile, resolveVars } from "./environment";
 import { ensureInstanceRuntime, isRuntimeInstalled, javaSelection } from "./runtimes";
+import { traitsOf } from "./software";
 import * as screen from "./screen";
 import { ping } from "./ping";
 import { t } from "../shared/i18n";
@@ -43,9 +44,19 @@ export function sessionName(cfg: ClusterConfig, name: string): string {
 	return cfg.screenPrefix + name;
 }
 
-/** File name of the server jar inside the instance directory. */
+/**
+ * File name of the server binary inside the instance directory. Software that
+ * launches from an argument file has no single runnable file, so asking for one
+ * is a mistake worth naming rather than an empty string to concatenate.
+ */
 export function jarName(inst: InstanceConfig): string {
-	return inst.software === "velocity" ? "velocity.jar" : "server.jar";
+	const name = traitsOf(inst.software).binaryName;
+
+	if (!name) {
+		throw new Error(t("core.instances.noBinary", { software: inst.software }));
+	}
+
+	return name;
 }
 
 /**
@@ -82,31 +93,37 @@ export function validateRestartDelay(seconds: number): string | undefined {
 
 /** Console command that shuts this software down gracefully. */
 export function stopCommand(inst: InstanceConfig): string {
-	return inst.software === "velocity" ? "end" : "stop";
+	return traitsOf(inst.software).stopCommand;
 }
 
 /**
- * NeoForge's generated argument file, relative to the instance directory. The
- * installer writes the whole classpath and launch target in there, so it is the
- * only supported way to boot the server; there is no runnable `-jar`.
+ * The loader's generated argument file, relative to the instance directory.
+ * The installer writes the whole classpath and launch target in there, so it
+ * is the only supported way to boot such a server; there is no runnable `-jar`.
  */
-export function neoForgeArgsFile(inst: InstanceConfig): string {
-	if (!inst.loaderVersion) {
-		throw new Error(t("core.instances.noLoaderVersion"));
+export function argsFileOf(inst: InstanceConfig): string {
+	const resolve = traitsOf(inst.software).argsFile;
+
+	if (!resolve) {
+		throw new Error(t("core.instances.noArgsFile", { software: inst.software }));
 	}
 
-	return `libraries/net/neoforged/neoforge/${inst.loaderVersion}/unix_args.txt`;
+	return resolve(inst);
 }
 
 /**
- * Assemble the full java invocation for an instance from its java profile.
+ * Assemble the full launch command for an instance.
  *
- * Paper and velocity launch from a jar. NeoForge instead launches from the
- * installer's argument file, which already carries the classpath and the launch
- * target, so luna contributes only the heap, the profile's flags and `nogui`
- * (bare, not `--nogui`: modlauncher takes it as a program argument). The pack's
- * own `user_jvm_args.txt` is deliberately not referenced, because memory and
- * flags come from the registry.
+ * Three shapes, by the software's launch kind. A `jar` server runs `-jar`; an
+ * `argsfile` server (the forge loaders) launches from the installer's argument
+ * file, which already carries the classpath and the launch target, so luna
+ * contributes only the heap, the profile's flags and `nogui`; a `native` server
+ * is an executable with no JVM anywhere, so the profile, the heap and the
+ * managed runtime are all skipped. The loader pack's own `user_jvm_args.txt` is
+ * deliberately not referenced, because memory and flags come from the registry.
+ *
+ * `--nogui` versus a bare `nogui` is not cosmetic: paper parses it as an option,
+ * modlauncher and the vanilla-derived servers as a program argument.
  *
  * A managed runtime is emitted as `$LUNA_JAVA` rather than as its path: this
  * function is pure config and runs on clients too, where the cluster root is
@@ -115,6 +132,12 @@ export function neoForgeArgsFile(inst: InstanceConfig): string {
  * instance, and `.luna-env` is sourced above the loop that runs this line.
  */
 export function buildJavaCommand(cfg: ClusterConfig, inst: InstanceConfig): string {
+	const traits = traitsOf(inst.software);
+
+	if (!traits.usesJava) {
+		return `./${jarName(inst)}`;
+	}
+
 	const profile = cfg.javaProfiles[inst.profile];
 
 	if (!profile) {
@@ -139,14 +162,16 @@ export function buildJavaCommand(cfg: ClusterConfig, inst: InstanceConfig): stri
 		...(inst.javaArgs ?? []),
 	];
 
-	if (inst.software === "neoforge") {
-		parts.push(`@${neoForgeArgsFile(inst)}`, "nogui");
+	if (traits.kind === "argsfile") {
+		parts.push(`@${argsFileOf(inst)}`);
 	} else {
 		parts.push("-jar", jarName(inst));
+	}
 
-		if (inst.software === "paper") {
-			parts.push("--nogui");
-		}
+	if (traits.noGui === "flag") {
+		parts.push("--nogui");
+	} else if (traits.noGui === "bare") {
+		parts.push("nogui");
 	}
 
 	if (profile.jarArgs) {

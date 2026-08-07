@@ -35,8 +35,9 @@ import {
 	instanceGroupNames,
 	pluginNameOf,
 } from "./families";
-import { assignedVersion, instanceAddonDir } from "./plugins";
+import { assignedVersion, instanceAddonDir, instanceAddonDirs } from "./plugins";
 import { getStatus, type InstanceStatus } from "./instances";
+import { traitsOf } from "./software";
 
 /** Rotated files walked back at most, looking for the boot marker. */
 const MAX_ROTATIONS = 6;
@@ -316,22 +317,6 @@ async function rotatedLogs(logsDir: string): Promise<string[]> {
 }
 
 /**
- * First line of a boot, per software; everything from here down is one
- * session.
- *
- * The marker has to sit *before* the software says anything about its addons.
- * For neoforge that rules out "Starting minecraft server version": the game
- * server only starts once mod construction is finished, so anchoring there
- * would cut the mod roster; the one place a mod's load is recorded; off the
- * top of the session. ModLauncher's banner is the true first line of the run.
- */
-const BOOT_MARKERS: Record<Software, RegExp> = {
-	velocity: /Booting up Velocity/,
-	neoforge: /ModLauncher running:/,
-	paper: /\[bootstrap\] Running Java|Starting minecraft server version/,
-};
-
-/**
  * Reconstruct the current boot session of an instance: latest.log, extended
  * backwards through rotated files until the boot marker appears (log4j rolls
  * latest.log at midnight, so a long-running server's boot lines usually live
@@ -346,7 +331,7 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 	}
 
 	const logsDir = join(instanceDir(inst), "logs");
-	const marker = BOOT_MARKERS[inst.software];
+	const marker = traitsOf(inst.software).bootMarker;
 
 	let text = "";
 	let writtenAt: number | undefined;
@@ -438,16 +423,16 @@ const NEOFORGE_LOGGER = /^\[[^\]]*\]\s*\[[^\]]*\]\s*\[([^\]/]*)\//;
  * Whether a line is attributed to one of the aliases.
  *
  * Bukkit prefixes the message itself with `[Name]`, so a substring test is the
- * whole rule there. NeoForge does not: the mod is named in the layout's logger
- * field (`[LunaCore/]`), and the message body regularly mentions *other* mods
- * ("Registering events for 'lunacore'"), which a substring test would happily
- * credit to the wrong mod. So a mod loader is matched on the logger alone, and
- * matched whole; a prefix test would file every `LunaCoreMessaging` line under
- * `LunaCore`. A multi-platform mod commonly names its logger after the platform
- * class, so a trailing loader suffix is stripped before comparing.
+ * whole rule there. ModLauncher does not: the mod is named in the layout's
+ * logger field (`[LunaCore/]`), and the message body regularly mentions *other*
+ * mods ("Registering events for 'lunacore'"), which a substring test would
+ * happily credit to the wrong mod. So a mod loader is matched on the logger
+ * alone, and matched whole; a prefix test would file every `LunaCoreMessaging`
+ * line under `LunaCore`. A multi-platform mod commonly names its logger after
+ * the platform class, so a trailing loader suffix is stripped before comparing.
  */
 function attributed(lowerLine: string, lowerAliases: string[], software: Software): boolean {
-	if (software !== "neoforge") {
+	if (traitsOf(software).logGrammar !== "modlauncher") {
 		return lowerAliases.some((alias) => lowerLine.includes(`[${alias}]`));
 	}
 
@@ -534,27 +519,28 @@ function claimsReady(lowerLine: string): boolean {
 function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
 	const software = session.software;
+	const grammar = traitsOf(software).logGrammar;
 
 	let loading = false;
 	let ready = false;
 
-	// A mod loader has no per-mod "enabling" line. What neoforge does print is a
-	// roster of everything it constructed, one line per mod ending in the mod id
+	// A mod loader has no per-mod "enabling" line. What modlauncher does print is
+	// a roster of everything it constructed, one line per mod ending in the mod id
 	//; "\t\tLunaCore 0.1.0-SNAPSHOT (lunacore)". Absence only means "not there"
 	// when the roster was captured at all, so its two guaranteed members double
 	// as the marker that it is in the session.
-	let roster = software !== "neoforge";
+	let roster = grammar !== "modlauncher";
 
 	for (const rawLine of session.lines) {
 		const lower = rawLine.trimEnd().toLowerCase();
 		const mine = attributed(lower, lowerAliases, software);
 
-		if (software === "neoforge" && (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)"))) {
+		if (grammar === "modlauncher" && (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)"))) {
 			roster = true;
 		}
 
 		for (const alias of lowerAliases) {
-			if (software === "paper") {
+			if (grammar === "bukkit") {
 				// bukkit prints "[Name] Loading server plugin Name vX", then
 				// "[Name] Enabling Name vX"; failures follow as
 				// "Error occurred while enabling Name vX"
@@ -573,7 +559,7 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 				) {
 					loading = true;
 				}
-			} else if (software === "velocity") {
+			} else if (grammar === "velocity") {
 				if (lower.includes(`can't create plugin ${alias}`)) {
 					return "errored";
 				}
@@ -640,21 +626,26 @@ export interface InstancePluginReport {
  * jar; far too much for something a summary redraws every few seconds.
  */
 async function unmanagedAddons(inst: InstanceConfig, lock: PluginsLock): Promise<string[]> {
-	const dir = instanceAddonDir(inst);
-
-	if (!existsSync(dir)) {
-		return [];
-	}
-
 	const managed = new Set(
 		Object.values(lock.plugins).map((entry) => entry.file.toLowerCase()),
 	);
 
-	const files = await readdir(dir);
+	const found: string[] = [];
 
-	return files
-		.filter((file) => file.toLowerCase().endsWith(".jar") && !managed.has(file.toLowerCase()))
-		.sort();
+	// a hybrid keeps two directories, and an unmanaged jar in either is still one
+	for (const { path } of instanceAddonDirs(inst)) {
+		if (!existsSync(path)) {
+			continue;
+		}
+
+		const files = await readdir(path);
+
+		found.push(
+			...files.filter((file) => file.toLowerCase().endsWith(".jar") && !managed.has(file.toLowerCase())),
+		);
+	}
+
+	return found.sort();
 }
 
 /**
@@ -891,7 +882,7 @@ export async function removeInstanceJars(
 			continue;
 		}
 
-		const path = join(instanceAddonDir(inst), entry.file);
+		const path = join(instanceAddonDir(inst, familyOf(entry)), entry.file);
 
 		if (existsSync(path)) {
 			await rm(path);

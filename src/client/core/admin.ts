@@ -18,6 +18,7 @@ export type {
 	CreateOptions,
 	CreateResult,
 	InstanceDetection,
+	SetVersionOptions,
 	SetVersionResult,
 } from "../../core/admin";
 
@@ -30,6 +31,10 @@ export const inspectInstanceDir = call("admin.inspectInstanceDir") as (
 	daemon?: string,
 ) => Promise<core.InstanceDetection>;
 export const setPort = call("admin.setPort", { cfg: 0 }) as typeof core.setPort;
+export const ensureForwardingMod = call("admin.ensureForwardingMod", {
+	cfg: 0,
+	lock: 1,
+}) as typeof core.ensureForwardingMod;
 export const getServerProperty = call("admin.getServerProperty", { cfg: 0 }) as typeof core.getServerProperty;
 export const setServerProperty = call("admin.setServerProperty", { cfg: 0 }) as typeof core.setServerProperty;
 

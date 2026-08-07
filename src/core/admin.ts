@@ -6,9 +6,14 @@ import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
-import type { ClusterConfig, InstanceConfig, Software } from "./types";
-import { addonDirOf, instanceDir, managedInstances, root } from "./config";
-import * as papermc from "./services/papermc";
+import type { ClusterConfig, InstanceConfig, PluginsLock, Software } from "./types";
+import { addonDirsOf, instanceDir, managedInstances, root } from "./config";
+import { installFromProvider, projectTypeFor } from "./plugins";
+import { getProject } from "./services/providers";
+import { installBuild } from "./services/software/install";
+import { resolveBuild } from "./services/software/registry";
+import type { SoftwareBuild } from "./services/software/types";
+import { SOFTWARE_IDS, familyForDir, hasProvider, traitsOf } from "./software";
 import { readForwardingSecret } from "./proxy";
 import {
 	GAME_POOL,
@@ -26,8 +31,9 @@ import { getConfValue, setConfValue } from "./confedit";
 import { forgetInstance } from "./configfiles";
 import { loadEnv, saveEnv, unsetInstanceScope } from "./environment";
 import { ProgressReporter } from "./progress";
-import { validateRuntimeId } from "./runtimes";
+import { ensureRuntime, javaSelection, resolveJavaPath, validateRuntimeId } from "./runtimes";
 import { SERVER_SETTINGS, validateJavaArgs, validateSettings } from "./settings";
+import { buildPlatform } from "../version";
 import { t } from "../shared/i18n";
 
 /** Parse "1.21.11-127-bd74bf6 (MC: 1.21.11)" from version_history.json. */
@@ -48,9 +54,6 @@ export async function detectMcVersion(dir: string): Promise<string | undefined> 
 	}
 }
 
-/** Directory the neoforge installer writes its per-build launch files into. */
-const NEOFORGE_LIBRARIES = join("libraries", "net", "neoforged", "neoforge");
-
 /** What an existing server directory says about itself. */
 export interface InstanceDetection {
 	software: Software;
@@ -65,9 +68,9 @@ export interface InstanceDetection {
 	bindAddress?: string;
 }
 
-/** Newest neoforge build installed under `libraries/`, by directory name. */
-async function detectNeoForgeVersion(dir: string): Promise<string | undefined> {
-	const libraries = join(dir, NEOFORGE_LIBRARIES);
+/** Newest loader build installed under `libraries/`, by directory name. */
+async function detectLoaderVersion(dir: string, libraryPath: string): Promise<string | undefined> {
+	const libraries = join(dir, libraryPath);
 
 	if (!existsSync(libraries)) {
 		return undefined;
@@ -88,11 +91,15 @@ async function detectNeoForgeVersion(dir: string): Promise<string | undefined> {
 }
 
 /**
- * The MC version a neoforge pack targets. The launcher script records it in
+ * The MC version a forge-family pack targets. The launcher script records it in
  * `.previousrun` after a successful boot; a pack that has never run only has
  * the installer's `--fml.mcVersion` in its argument file.
  */
-async function detectNeoForgeMcVersion(dir: string, loaderVersion: string): Promise<string | undefined> {
+async function detectLoaderMcVersion(
+	dir: string,
+	libraryPath: string,
+	loaderVersion: string,
+): Promise<string | undefined> {
 	const previous = join(dir, ".previousrun");
 
 	if (existsSync(previous)) {
@@ -104,7 +111,7 @@ async function detectNeoForgeMcVersion(dir: string, loaderVersion: string): Prom
 		}
 	}
 
-	const args = join(dir, NEOFORGE_LIBRARIES, loaderVersion, "unix_args.txt");
+	const args = join(dir, libraryPath, loaderVersion, "unix_args.txt");
 
 	if (existsSync(args)) {
 		const text = await Bun.file(args).text();
@@ -189,13 +196,31 @@ export async function inspectInstanceDir(path: string): Promise<InstanceDetectio
 		detection.memory = memory;
 	}
 
-	const loaderVersion = await detectNeoForgeVersion(dir);
+	// both forge flavours install the same way and differ only in where their
+	// library tree lands, which the traits row already names
+	for (const software of SOFTWARE_IDS) {
+		const libraryPath = traitsOf(software).libraryPath;
 
-	if (loaderVersion) {
-		detection.software = "neoforge";
-		detection.loaderVersion = loaderVersion;
+		if (!libraryPath) {
+			continue;
+		}
 
-		const mcVersion = await detectNeoForgeMcVersion(dir, loaderVersion);
+		const loaderVersion = await detectLoaderVersion(dir, libraryPath);
+
+		if (!loaderVersion) {
+			continue;
+		}
+
+		detection.software = software;
+
+		// forge names its tree `<mc>-<forge>`; the registry stores the halves apart
+		const split = software === "forge" ? loaderVersion.indexOf("-") : -1;
+
+		detection.loaderVersion = split > 0 ? loaderVersion.slice(split + 1) : loaderVersion;
+
+		const mcVersion = split > 0
+			? loaderVersion.slice(0, split)
+			: await detectLoaderMcVersion(dir, libraryPath, loaderVersion);
 
 		if (mcVersion) {
 			detection.mcVersion = mcVersion;
@@ -208,6 +233,19 @@ export async function inspectInstanceDir(path: string): Promise<InstanceDetectio
 		detection.software = "velocity";
 
 		return detection;
+	}
+
+	// pumpkin is a native executable, so its own binary is the only marker
+	if (existsSync(join(dir, "pumpkin")) && existsSync(join(dir, PUMPKIN_CONFIG))) {
+		detection.software = "pumpkin";
+
+		return detection;
+	}
+
+	// fabric's launcher jar is what its installer leaves behind; the paper forks
+	// all look alike from here and are adopted as paper, which they behave as
+	if (existsSync(join(dir, "fabric-server-launch.jar"))) {
+		detection.software = "fabric";
 	}
 
 	const mcVersion = await detectMcVersion(dir);
@@ -393,7 +431,7 @@ export async function adoptInstance(
 
 	// what the directory already contains is accounted for separately, by
 	// `adoptInstanceAddons`; adopt itself never reads or writes an addon
-	notes.push(t("core.admin.addonsUnmanaged", { dir: addonDirOf(inst.software) }));
+	notes.push(t("core.admin.addonsUnmanaged", { dir: addonDirsOf(inst.software).join(", ") }));
 
 	cfg.instances[name] = inst;
 
@@ -443,8 +481,57 @@ proxies:
 `;
 }
 
+/** Pumpkin's whole config file; it is one document rather than paper's several. */
+const PUMPKIN_CONFIG = "pumpkin.toml";
+
+/**
+ * Pumpkin's bind address, forwarding block and the listeners luna turns off.
+ * Every field it reads is `serde(default)`, so a partial document is legitimate
+ * and the server fills in the rest on first boot, exactly as paper does with
+ * `paper-global.yml`.
+ *
+ * Online mode and encryption are off together on purpose: behind a proxy the
+ * player is already authenticated, and pumpkin refuses to start with encryption
+ * on and online mode off.
+ *
+ * The three side listeners are off for the reason `enable-query=false` is
+ * forced into every server.properties: each defaults to a *fixed* port of its
+ * own (query 25565, bedrock 19132, LAN broadcast), which no port pool allocated
+ * and which the second instance on a machine cannot bind. Pumpkin does not
+ * survive that; it panics on the collision and takes the server down with it.
+ */
+function pumpkinConfigTemplate(port: number, bindAddress: string, secret: string): string {
+	return `# Generated by luna. Pumpkin merges in remaining defaults on first boot.
+[networking.java]
+address = "${bindAddress}:${port}"
+online_mode = false
+encryption = false
+
+[networking.query]
+enabled = false
+
+[networking.bedrock]
+enabled = false
+
+[networking.lan_broadcast]
+enabled = false
+
+[networking.proxy]
+enabled = true
+
+[networking.proxy.velocity]
+enabled = true
+secret = "${secret}"
+`;
+}
+
 export interface CreateOptions {
-	mcVersion: string;
+	/** Server software to provision; absent = paper */
+	software?: Software;
+	/** Minecraft version; absent = the newest release the software publishes */
+	mcVersion?: string;
+	/** Loader build to pin, for software that has one beside the MC version */
+	loaderVersion?: string;
 	port?: number;
 	memory?: string;
 	profile?: string;
@@ -469,13 +556,14 @@ export interface CreateResult {
 	name: string;
 	dir: string;
 	port: number;
-	build: papermc.BuildInfo;
+	build: SoftwareBuild;
 }
 
 /**
- * Lay down a new Paper backend: directory skeleton, newest build for the given
- * MC version, EULA, server.properties on a free port, and the proxy forwarding
- * config. Mutates cfg with the new registry entry (caller saves).
+ * Lay down a new backend: directory skeleton, the software's newest build for
+ * the given MC version, EULA, server.properties on a free port, and whatever
+ * proxy forwarding that software needs. Mutates cfg with the new registry entry
+ * (caller saves).
  *
  * Everything the caller passes is validated before the first byte is written, so
  * a rejected setting or JVM flag can never leave a half-built instance directory
@@ -489,9 +577,11 @@ export async function createInstance(
 	// a detached reporter when the caller does not want progress, so the reporting
 	// calls below need no branches
 	const progress = opts.reporter ?? new ProgressReporter(`create ${name}`);
+	const software = opts.software ?? "paper";
+	const traits = traitsOf(software);
 
 	const checks = progress.child("Validate request", 1);
-	const fetching = progress.child("Download paper server", 6);
+	const fetching = progress.child(t("core.admin.phaseInstallServer", { software }), 6);
 	const writing = progress.child("Write instance files", 2);
 
 	// this node's work is entirely its children's, so it contributes none of its own
@@ -507,6 +597,16 @@ export async function createInstance(
 
 		if (!/^[a-z0-9_-]+$/.test(name)) {
 			throw new Error(t("core.admin.badName"));
+		}
+
+		if (!hasProvider(software)) {
+			throw new Error(t("core.services.software.noProvider", { software }));
+		}
+
+		// a server with no JVM has nothing to point a runtime, a profile or a flag
+		// at, so asking is a mistake worth naming rather than silently ignoring
+		if (!traits.usesJava && (opts.runtime || opts.javaArgs?.length)) {
+			throw new Error(t("core.admin.softwareHasNoJava", { software }));
 		}
 
 		if (existsSync(join(root(), name))) {
@@ -577,8 +677,8 @@ export async function createInstance(
 }
 
 /**
- * The half of `createInstance` that writes: the paper build, the instance files
- * and the registry entry. Split out so the port acquired before it can be
+ * The half of `createInstance` that writes: the server build, the instance
+ * files and the registry entry. Split out so the port acquired before it can be
  * released again when any of it fails.
  */
 async function buildInstance(
@@ -593,72 +693,35 @@ async function buildInstance(
 	},
 ): Promise<CreateResult> {
 	const { dir, port, fetching, writing } = ctx;
+	const software = opts.software ?? "paper";
+	const traits = traitsOf(software);
 
-	const build = await fetching.task(
-		{
-			start: `resolving newest paper ${opts.mcVersion} build`,
-			done: `paper ${opts.mcVersion} downloaded`,
-			failed: `could not download paper ${opts.mcVersion}`,
-		},
-		async (step) => {
-			const info = await papermc.latestBuild("paper", opts.mcVersion);
+	const build = await resolveBuild(software, {
+		...(opts.mcVersion ? { mcVersion: opts.mcVersion } : {}),
+		...(opts.loaderVersion ? { loaderVersion: opts.loaderVersion } : {}),
+		// this runs on the daemon that will own the instance, so its own platform
+		// is the one a native build has to match
+		platform: buildPlatform(),
+	});
 
-			await mkdir(join(dir, "plugins"), { recursive: true });
-			await mkdir(join(dir, "config"), { recursive: true });
-
-			step.info(0.05, t("core.admin.startingDownload", { build: info.build }));
-
-			await papermc.downloadBuild(info, join(dir, "server.jar"), (received, total) => {
-				const mb = (received / 1024 / 1024).toFixed(1);
-
-				// with no content-length there is nothing to divide by, so the step
-				// only reports the byte count and its progress stays where it was
-				if (!total) {
-					step.info(step.progress, `build ${info.build}: ${mb} MB`);
-
-					return;
-				}
-
-				const ratio = received / total;
-
-				step.info(
-					0.05 + ratio * 0.95,
-					`build ${info.build}: ${mb} / ${(total / 1024 / 1024).toFixed(1)} MB`,
-				);
-			});
-
-			return info;
-		},
-	);
-
-	await writing.task(
-		{ start: t("core.admin.writingFiles"), done: t("core.admin.filesWritten") },
-		async (step) => {
-			await Bun.write(join(dir, "eula.txt"), "eula=true\n");
-			step.info(0.3, t("core.admin.eulaAccepted"));
-
-			await Bun.write(
-				join(dir, "server.properties"),
-				serverPropertiesTemplate(port, opts.settings ?? {}, opts.daemon ? "0.0.0.0" : "127.0.0.1"),
-			);
-			step.info(0.6, t("core.admin.propertiesOnPort", { port }));
-
-			const secret = await readForwardingSecret(cfg);
-
-			await Bun.write(join(dir, "config", "paper-global.yml"), paperGlobalTemplate(secret));
-			step.info(0.9, t("core.admin.forwardingKeyed"));
-		},
-	);
-
+	// the registry entry is assembled before the install, because an installer
+	// build needs the java this instance resolves in order to run at all
 	const inst: InstanceConfig = {
 		dir: name,
-		software: "paper",
-		mcVersion: opts.mcVersion,
+		software,
 		port,
 		memory: opts.memory ?? "2G",
 		profile: opts.profile ?? "aikar",
 		proxy: { register: opts.register ?? true },
 	};
+
+	if (build.mcVersion) {
+		inst.mcVersion = build.mcVersion;
+	}
+
+	if (build.loaderVersion) {
+		inst.loaderVersion = build.loaderVersion;
+	}
 
 	if (opts.javaArgs?.length) {
 		inst.javaArgs = opts.javaArgs;
@@ -680,26 +743,191 @@ async function buildInstance(
 		inst.daemon = opts.daemon;
 	}
 
+	// the instance directory in its own right: software with no addon directory
+	// at all (a server with no plugin ecosystem) would otherwise have nothing
+	// create it before the download lands
+	await mkdir(dir, { recursive: true });
+
+	for (const addonDir of traits.addonDirs) {
+		await mkdir(join(dir, addonDir), { recursive: true });
+	}
+
+	if (traits.forwarding === "paper-global" || traits.forwardingMod) {
+		await mkdir(join(dir, "config"), { recursive: true });
+	}
+
+	fetching.info(0.02, t("core.admin.resolvingBuild", { project: software, version: build.buildId }));
+
+	await installBuild(dir, traits.binaryName ?? build.fileName, build, {
+		...(traits.kind === "argsfile" ? { java: await installerJava(cfg, inst, fetching) } : {}),
+		...(traits.kind === "argsfile" ? { expectArgsFile: traits.argsFile!(inst) } : {}),
+		reporter: fetching,
+	});
+
+	fetching.complete(t("core.admin.serverInstalled", { software, version: build.buildId }));
+
+	await writing.task(
+		{ start: t("core.admin.writingFiles"), done: t("core.admin.filesWritten") },
+		async (step) => {
+			if (traits.needsEula) {
+				await Bun.write(join(dir, "eula.txt"), "eula=true\n");
+				step.info(0.3, t("core.admin.eulaAccepted"));
+			}
+
+			const bindAddress = opts.daemon ? "0.0.0.0" : "127.0.0.1";
+
+			if (traits.portConfig === "properties") {
+				await Bun.write(
+					join(dir, "server.properties"),
+					serverPropertiesTemplate(port, opts.settings ?? {}, bindAddress),
+				);
+				step.info(0.6, t("core.admin.propertiesOnPort", { port }));
+			}
+
+			const secret = await readForwardingSecret(cfg);
+
+			if (traits.forwarding === "paper-global") {
+				await Bun.write(join(dir, "config", "paper-global.yml"), paperGlobalTemplate(secret));
+				step.info(0.9, t("core.admin.forwardingKeyed"));
+			} else if (traits.forwarding === "pumpkin-toml") {
+				await Bun.write(join(dir, PUMPKIN_CONFIG), pumpkinConfigTemplate(port, bindAddress, secret));
+				step.info(0.9, t("core.admin.pumpkinConfigWritten"));
+			}
+
+			// a mod loader's forwarding is `ensureForwardingMod`'s whole job, config
+			// and jar together: writing the config here would leave an instance
+			// keyed with the real secret and no mod able to read it, which refuses
+			// every proxied login and says nothing about why
+		},
+	);
+
 	cfg.instances[name] = inst;
 
 	return { name, dir, port, build };
 }
 
-export interface SetVersionResult {
-	from?: string;
-	to: string;
-	build: papermc.BuildInfo;
-	backedUpJar: string;
+/**
+ * Install the forwarding mod an instance's software needs to sit behind the
+ * proxy, if it needs one and does not already have it.
+ *
+ * A mod loader has no native support for velocity's modern forwarding: without
+ * this the backend refuses every proxied login, which is not a state worth
+ * handing an operator who asked for a registered instance. Idempotent, and a
+ * no-op for the software that reads a forwarding config of its own.
+ *
+ * The jar lands in the pool targeted at this instance; the caller's deploy pass
+ * is what copies it in, exactly as for any other addon.
+ */
+export async function ensureForwardingMod(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	name: string,
+	reporter?: ProgressReporter,
+): Promise<{ installed: boolean; slug?: string }> {
+	const inst = managedInstances(cfg)[name];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name }));
+	}
+
+	const traits = traitsOf(inst.software);
+	const mod = traits.forwardingMod;
+
+	// a standalone instance gets neither the mod nor its config: nothing is
+	// forwarding to it, and a config keyed with the cluster secret is not
+	// something to leave lying in a directory that never needed it
+	if (!mod || !inst.proxy?.register) {
+		reporter?.settle();
+
+		return { installed: false };
+	}
+
+	// the config is written every time: an instance that already has the mod
+	// pooled may still be missing it, and it is what carries the secret
+	await mkdir(join(instanceDir(inst), "config"), { recursive: true });
+	await Bun.write(join(instanceDir(inst), mod.configFile), mod.config(await readForwardingSecret(cfg)));
+
+	const family = familyForDir(inst.software, "mods");
+	const key = `${mod.slug}@${family}`;
+	const existing = lock.plugins[key];
+
+	if (existing) {
+		// already pooled by another instance of the same ecosystem; this one only
+		// has to become a target of it
+		if (!existing.targets.includes(name)) {
+			existing.targets.push(name);
+		}
+
+		reporter?.complete(t("core.admin.forwardingModPooled", { mod: mod.slug }));
+
+		return { installed: false, slug: mod.slug };
+	}
+
+	reporter?.info(0.2, t("core.admin.installingForwardingMod", { mod: mod.slug }));
+
+	const project = await getProject(mod.provider, mod.slug, projectTypeFor(family));
+
+	if (!project) {
+		throw new Error(t("core.admin.forwardingModMissing", { mod: mod.slug }));
+	}
+
+	await installFromProvider(cfg, lock, mod.provider, project, family, [name]);
+
+	reporter?.complete(t("core.admin.forwardingModInstalled", { mod: mod.slug }));
+
+	return { installed: true, slug: mod.slug };
 }
 
 /**
- * Swap an instance onto another Minecraft version, keeping the previous jar as
- * `.old` and rolling back to it if the download fails. Mutates cfg (caller saves).
+ * The java a loader installer runs under, installing the managed runtime first
+ * when the instance resolves one. The installer is a normal JVM program, so it
+ * needs the same java the server will; asking the operator to have one already
+ * would make a first provision on a fresh machine fail for no good reason.
+ */
+async function installerJava(
+	cfg: ClusterConfig,
+	inst: InstanceConfig,
+	reporter: ProgressReporter,
+): Promise<string> {
+	const selection = javaSelection(cfg, inst);
+
+	if (selection.kind === "runtime") {
+		await ensureRuntime(selection.id, { reporter: reporter.child(t("core.runtimes.phaseDownload"), 3) });
+	}
+
+	return resolveJavaPath(cfg, inst);
+}
+
+export interface SetVersionResult {
+	from?: string;
+	to: string;
+	build: SoftwareBuild;
+	/** The previous binary, kept beside the new one; absent for a loader install */
+	backedUpJar?: string;
+}
+
+/** Which build to move an instance onto; absent fields mean "newest". */
+export interface SetVersionOptions {
+	mcVersion?: string;
+	loaderVersion?: string;
+}
+
+/**
+ * Swap an instance onto another version of its own software.
+ *
+ * A single-file server (a jar, or pumpkin's executable) keeps its previous
+ * binary as `.old` and is rolled back to it when the download fails. A loader
+ * that installs itself has no single file to swap: its installer writes a new
+ * library tree beside the old one, so the version an instance runs is decided
+ * by the registry, and rolling back means leaving the registry as it was. The
+ * superseded tree is left on disk, because it is what a rollback would need.
+ *
+ * Mutates cfg (caller saves).
  */
 export async function setVersion(
 	cfg: ClusterConfig,
 	name: string,
-	mcVersion: string,
+	opts: SetVersionOptions,
 	reporter?: ProgressReporter,
 ): Promise<SetVersionResult> {
 	const inst = managedInstances(cfg)[name];
@@ -708,59 +936,73 @@ export async function setVersion(
 		throw new Error(t("core.instances.unknown", { name }));
 	}
 
-	// PaperMC's Fill API is the only jar source luna has; a mod loader's server
-	// is installed by its own installer against a pinned MC version, so moving it
-	// is a modpack operation and not something luna can do behind the operator.
-	if (inst.software === "neoforge") {
-		throw new Error(t("core.admin.neoforgeNoSetVersion", { name }));
+	// an unprovisionable software is refused by `resolveBuild` below, in the one
+	// message every caller of it already reports
+	const traits = traitsOf(inst.software);
+	const progress = reporter ?? new ProgressReporter(`set-version ${name}`);
+
+	progress.info(0.05, t("core.admin.resolvingBuild", {
+		project: inst.software,
+		version: opts.mcVersion ?? opts.loaderVersion ?? "latest",
+	}));
+
+	const build = await resolveBuild(inst.software, {
+		...(opts.mcVersion ? { mcVersion: opts.mcVersion } : {}),
+		...(opts.loaderVersion ? { loaderVersion: opts.loaderVersion } : {}),
+		platform: buildPlatform(),
+	});
+
+	const dir = instanceDir(inst);
+	const from = inst.mcVersion;
+
+	if (traits.kind === "argsfile") {
+		// the loader version is what decides which library tree boots, so the
+		// registry only moves once the installer has actually written one
+		const target: InstanceConfig = { ...inst, mcVersion: build.mcVersion, loaderVersion: build.loaderVersion };
+
+		await installBuild(dir, build.fileName, build, {
+			java: await installerJava(cfg, target, progress),
+			expectArgsFile: traits.argsFile!(target),
+			reporter: progress,
+		});
+
+		inst.mcVersion = build.mcVersion;
+		inst.loaderVersion = build.loaderVersion;
+
+		progress.complete(`${from ?? "?"} → ${build.mcVersion} (${build.loaderVersion})`);
+
+		return { from, to: build.mcVersion ?? build.buildId, build };
 	}
 
-	const progress = reporter ?? new ProgressReporter(`set-version ${name}`);
-	const project = inst.software === "velocity" ? "velocity" : "paper";
+	const binary = join(dir, traits.binaryName ?? build.fileName);
+	const backup = binary + ".old";
 
-	progress.info(0.05, t("core.admin.resolvingBuild", { project, version: mcVersion }));
-
-	const build = await papermc.latestBuild(project, mcVersion);
-	const jar = join(instanceDir(inst), inst.software === "velocity" ? "velocity.jar" : "server.jar");
-	const backup = jar + ".old";
-
-	if (existsSync(jar)) {
+	if (existsSync(binary)) {
 		await rm(backup, { force: true });
-		await rename(jar, backup);
+		await rename(binary, backup);
 	}
 
 	try {
-		await papermc.downloadBuild(build, jar, (received, total) => {
-			const mb = (received / 1024 / 1024).toFixed(1);
-
-			if (!total) {
-				progress.info(progress.progress, `build ${build.build}: ${mb} MB`);
-
-				return;
-			}
-
-			progress.info(
-				0.1 + (received / total) * 0.85,
-				`build ${build.build}: ${mb} / ${(total / 1024 / 1024).toFixed(1)} MB`,
-			);
-		});
+		await installBuild(dir, traits.binaryName ?? build.fileName, build, { reporter: progress });
 	} catch (err) {
 		progress.error(progress.progress, t("core.admin.downloadRolledBack"));
 
 		if (existsSync(backup)) {
-			await rename(backup, jar);
+			await rename(backup, binary);
 		}
 
 		throw err;
 	}
 
-	const from = inst.mcVersion;
+	inst.mcVersion = build.mcVersion;
 
-	inst.mcVersion = mcVersion;
+	if (build.loaderVersion) {
+		inst.loaderVersion = build.loaderVersion;
+	}
 
-	progress.complete(`${from ?? "?"} → ${mcVersion} (build ${build.build})`);
+	progress.complete(`${from ?? "?"} → ${build.mcVersion} (build ${build.buildId})`);
 
-	return { from, to: mcVersion, build, backedUpJar: backup };
+	return { from, to: build.mcVersion ?? build.buildId, build, backedUpJar: backup };
 }
 
 /**
@@ -806,13 +1048,26 @@ export async function setPort(cfg: ClusterConfig, name: string, port: number): P
 		throw new Error(check.error);
 	}
 
-	// velocity's port lives in velocity.toml, which proxy sync owns; every
-	// backend (paper or a mod loader) keeps it in server.properties
-	if (inst.software !== "velocity") {
+	// velocity's port lives in velocity.toml, which proxy sync owns; a backend
+	// keeps it wherever its own config puts it
+	const portConfig = traitsOf(inst.software).portConfig;
+
+	if (portConfig === "properties") {
 		const props = join(instanceDir(inst), "server.properties");
 
 		if (!(await setConfValue(props, "properties", "server-port", port))) {
 			throw new Error(t("core.admin.portUpdateFailed", { file: props }));
+		}
+	} else if (portConfig === "pumpkin-toml") {
+		const conf = join(instanceDir(inst), PUMPKIN_CONFIG);
+
+		// pumpkin binds one composite value rather than a bare port, so the host
+		// half of the address it already has is kept and only the port replaced
+		const current = await getConfValue(conf, "toml", "address");
+		const host = current?.replace(/^"|"$/g, "").split(":")[0] ?? "0.0.0.0";
+
+		if (!(await setConfValue(conf, "toml", "address", `"${host}:${port}"`))) {
+			throw new Error(t("core.admin.portUpdateFailed", { file: conf }));
 		}
 	}
 

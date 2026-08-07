@@ -21,9 +21,11 @@ export interface KnownHashes {
 	sha512?: string;
 	sha256?: string;
 	sha1?: string;
+	/** Purpur publishes only this one, and mohist publishes it alongside sha256 */
+	md5?: string;
 }
 
-const HASH_ALGOS = ["sha512", "sha256", "sha1"] as const;
+const HASH_ALGOS = ["sha512", "sha256", "sha1", "md5"] as const;
 
 /**
  * Download a file to `dest`, verifying every hash the provider published.
@@ -70,6 +72,34 @@ export async function download(
 
 /** Bytes written so far, and the total when the server sent a content-length. */
 export type WriteProgress = (received: number, total?: number) => void;
+
+/** Something a download can narrate into; the shape `ProgressReporter` offers. */
+interface ByteSink {
+	progress: number;
+	info(progress: number, message?: string): unknown;
+}
+
+/**
+ * A `WriteProgress` that narrates a download into a progress node. Without a
+ * content-length there is nothing to divide by, so the node reports the byte
+ * count alone and its progress stays where it was.
+ */
+export function reportBytes(step: ByteSink): WriteProgress {
+	return (received, total) => {
+		const mb = (received / 1024 / 1024).toFixed(1);
+
+		if (!total) {
+			step.info(step.progress, t("core.services.downloadedSoFar", { mb }));
+
+			return;
+		}
+
+		step.info(received / total, t("core.services.downloadedOf", {
+			mb,
+			total: (total / 1024 / 1024).toFixed(1),
+		}));
+	};
+}
 
 /**
  * Stream a file to `dest`, hashing as it goes. Unlike `download`, nothing is

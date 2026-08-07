@@ -4,7 +4,7 @@
 
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, saveCluster, loadLock, saveLock } from '$core/config';
-import { createInstance } from '$core/admin';
+import { createInstance, ensureForwardingMod } from '$core/admin';
 import { deploy } from '$core/plugins';
 import { ensurePortAllocations } from '$core/ports';
 import { syncVelocityToml } from '$core/proxy';
@@ -12,6 +12,8 @@ import { parseJavaArgs, validateJavaArgs, validateSettings } from '$core/setting
 import { validateRuntimeId } from '$core/runtimes';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
 import { applyAddonGroups } from '$core/addons';
+import { SOFTWARE_IDS, hasProvider } from '$core/software';
+import type { Software } from '$core/types';
 import { listStatuses, pushEvent } from '$lib/server/luna';
 import { listJobs, startJob } from '$lib/server/jobs';
 import { errorMessage } from '$lib/server/http';
@@ -23,12 +25,13 @@ import { errorMessage } from '$lib/server/http';
 function ghostRow(
 	name: string,
 	state: 'provisioning' | 'deleting',
-	daemon: string | null
+	daemon: string | null,
+	software = 'paper'
 ): Record<string, unknown> {
 	return {
 		name,
 		state,
-		software: 'paper',
+		software,
 		mcVersion: null,
 		port: null,
 		address: null,
@@ -78,10 +81,12 @@ export async function GET() {
 
 	for (const job of creating) {
 		if (job.target && !data.instances.some((row) => row.name === job.target)) {
-			// the job's meta names the target machine; nothing else knows it yet
+			// the job's meta names the target machine and the software being laid
+			// down; nothing else knows either until the registry entry exists
 			const daemon = (job.meta?.daemon as string | null) ?? null;
+			const software = (job.meta?.software as string | undefined) ?? 'paper';
 
-			data.instances.push(ghostRow(job.target, 'provisioning', daemon));
+			data.instances.push(ghostRow(job.target, 'provisioning', daemon, software));
 		}
 	}
 
@@ -97,8 +102,8 @@ export async function GET() {
 }
 
 /**
- * POST { name, mcVersion, memory?, profile?, port?, register?, settings?, javaArgs?,
- * addonGroups?, pluginOverrides?, daemon? }
+ * POST { name, software?, mcVersion?, loaderVersion?, memory?, profile?, port?,
+ * register?, settings?, javaArgs?, addonGroups?, pluginOverrides?, daemon? }
  *
  * Creation lives on the collection, never at /api/instances/create: a static
  * segment there outranks [name], so the cluster's real `create` instance would
@@ -123,6 +128,16 @@ export async function POST({ request }) {
 
 	if (typeof body.mcVersion !== 'string' || !body.mcVersion) {
 		throw error(400, 'mcVersion required');
+	}
+
+	const software = (body.software ? String(body.software) : 'paper') as Software;
+
+	if (!SOFTWARE_IDS.includes(software)) {
+		throw error(400, `unknown software: ${software}`);
+	}
+
+	if (!hasProvider(software)) {
+		throw error(409, `${software} has no download provider; it can only be adopted`);
 	}
 
 	const badSettings = validateSettings(settings);
@@ -172,9 +187,13 @@ export async function POST({ request }) {
 		const ports = reporter.child('Port allocations', 1);
 		const proxy = reporter.child('Proxy registration', 1);
 
+		let forwarding: { installed: boolean; slug?: string } = { installed: false };
+
 		try {
 			const res = await createInstance(cfg, body.name, {
+				software,
 				mcVersion: body.mcVersion,
+				loaderVersion: body.loaderVersion ? String(body.loaderVersion) : undefined,
 				memory: body.memory || undefined,
 				profile: body.profile || undefined,
 				port: body.port ? Number(body.port) : undefined,
@@ -198,7 +217,14 @@ export async function POST({ request }) {
 			// wildcard-targeted plugins apply to the new instance right away
 			const deployed = await plugins.task(
 				{ start: 'deploying wildcard-targeted plugins' },
-				(step) => deploy(cfg, lock, { instances: [body.name], reporter: step })
+				async (step) => {
+					// a mod loader cannot speak modern forwarding on its own; the mod
+					// that lets it is pooled here so the same deploy carries it in
+					forwarding = await ensureForwardingMod(cfg, lock, body.name);
+					await saveLock(lock);
+
+					return await deploy(cfg, lock, { instances: [body.name], reporter: step });
+				}
 			);
 
 			const changed = deployed.filter((action) => action.action !== 'unchanged').length;
@@ -254,12 +280,17 @@ export async function POST({ request }) {
 				proxy.complete('not registered; standalone instance');
 			}
 
-			pushEvent(body.name, 'action', `instance created (paper ${body.mcVersion}, port ${res.port})`);
+			pushEvent(
+				body.name,
+				'action',
+				`instance created (${software} ${res.build.mcVersion ?? body.mcVersion}, port ${res.port})`
+			);
 
 			return {
 				name: res.name,
 				port: res.port,
-				build: res.build.build,
+				build: res.build.buildId,
+				forwardingMod: forwarding.slug ?? null,
 				pluginsDeployed: changed,
 				velocityUpdated
 			};
@@ -268,7 +299,7 @@ export async function POST({ request }) {
 
 			throw err;
 		}
-	}, { daemon: targetDaemon });
+	}, { daemon: targetDaemon, software });
 
 	return json({ ok: true, job });
 }

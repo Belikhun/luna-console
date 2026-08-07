@@ -4,6 +4,8 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { FAMILY_DIRS } from '$core/software';
+	import type { PluginFamily } from '$core/types';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -508,14 +510,14 @@
 	// the detail screen asks about each one.
 	let identifyOpen = $state(false);
 	let identifyKey = $state('');
-	let identifyFamily = $state('paper');
+	let identifyFamily: PluginFamily = $state('paper');
 	let identifyMapped = $state(false);
 
 	function openIdentify(row: AddonRow): void {
 		const family = row.families[0]!;
 
 		identifyKey = family.key;
-		identifyFamily = family.family;
+		identifyFamily = family.family as PluginFamily;
 		identifyMapped = !!family.remote;
 		identifyOpen = true;
 	}
@@ -709,7 +711,7 @@
 <!-- map a file luna already pools to the project it came from -->
 <IdentifyAddonModal
 	bind:open={identifyOpen}
-	kind={identifyFamily === 'neoforge' ? 'mod' : 'plugin'}
+	kind={FAMILY_DIRS[identifyFamily] === 'mods' ? 'mod' : 'plugin'}
 	target={identifyKey}
 	family={identifyFamily}
 	mapped={identifyMapped}

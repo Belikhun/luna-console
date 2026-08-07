@@ -25,14 +25,15 @@ import { existsSync } from "node:fs";
 import { readdir, rename } from "node:fs/promises";
 import { join, relative } from "node:path";
 
-import { addonDirForFamily, addonDirOf, instanceDir, managedInstances } from "./config";
+import { addonDirForFamily, instanceDir, managedInstances } from "./config";
 import { deployDataPacks, worldDatapacksDir, type DataPackDeployAction } from "./datapacks";
 import { effectiveTargets, familyOf } from "./families";
 import type { PacksLock } from "./packslock";
-import { identityFromFile, instanceAddonDir } from "./plugins";
+import { identityFromFile, instanceAddonDirs } from "./plugins";
 import type { ProgressReporter } from "./progress";
 import { reloadResourcePacks, syncResourcePackGroups } from "./respacks";
 import { sha512File } from "./services/download";
+import { traitsOf } from "./software";
 import type { AddonGroup, ClusterConfig, PluginsLock } from "./types";
 import { t } from "../shared/i18n";
 
@@ -182,10 +183,14 @@ export async function adoptInstanceAddons(
 	const apply = opts.apply !== false;
 	const adoption: AddonAdoption = { adopted: [], unmanaged: [] };
 
-	const dir = addonDirOf(inst.software);
-	const addonDir = instanceAddonDir(inst);
+	// a hybrid runs two ecosystems side by side, so each of its directories is
+	// adopted against the pool of the family that deploys there
+	for (const { dir, path: addonDir } of instanceAddonDirs(inst)) {
+		if (!existsSync(addonDir)) {
+			continue;
+		}
 
-	if (existsSync(addonDir)) {
+		const kind = dir === "mods" ? "mod" : "plugin";
 		const jars = (await readdir(addonDir)).filter((file) => file.toLowerCase().endsWith(".jar"));
 
 		for (const file of jars.sort()) {
@@ -193,13 +198,13 @@ export async function adoptInstanceAddons(
 			const match = matchPooledJar(lock, dir, file, hash);
 
 			if (!match) {
-				adoption.unmanaged.push({ kind: dir === "mods" ? "mod" : "plugin", path: `${dir}/${file}` });
+				adoption.unmanaged.push({ kind, path: `${dir}/${file}` });
 
 				continue;
 			}
 
 			const entry = lock.plugins[match.key]!;
-			const adopted: AdoptedAddon = { kind: dir === "mods" ? "mod" : "plugin", addon: match.key, file };
+			const adopted: AdoptedAddon = { kind, addon: match.key, file };
 
 			if (match.version) {
 				adopted.version = match.version;
@@ -217,8 +222,8 @@ export async function adoptInstanceAddons(
 		}
 	}
 
-	// the proxy has no world, so it has no data packs to account for
-	if (inst.software !== "velocity") {
+	// a proxy has no world, so it has no data packs to account for
+	if (!traitsOf(inst.software).isProxy) {
 		const worldDir = await worldDatapacksDir(inst);
 
 		if (existsSync(worldDir)) {

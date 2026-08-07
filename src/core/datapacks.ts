@@ -42,6 +42,7 @@ import {
 } from "./identify";
 import type { AddonProject, AddonVersion, AddonVersionFile } from "./services/providers";
 import { getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
+import { traitsOf } from "./software";
 import type { AddonGroup, ClusterConfig, InstanceConfig, ProviderId } from "./types";
 import { t } from "../shared/i18n";
 
@@ -75,7 +76,7 @@ export async function worldDatapacksDir(inst: InstanceConfig): Promise<string> {
 /** Instances that have a world to load data packs from (everything but the proxy). */
 function worldInstances(cfg: ClusterConfig): Record<string, InstanceConfig> {
 	const entries = Object.entries(managedInstances(cfg)).filter(
-		([, inst]) => inst.software !== "velocity",
+		([, inst]) => !traitsOf(inst.software).isProxy,
 	);
 
 	return Object.fromEntries(entries);

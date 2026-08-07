@@ -16,15 +16,32 @@
 	import FormGrid from '$lib/components/FormGrid.svelte';
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
 	import GroupsField from '$lib/components/GroupsField.svelte';
+	import type { Software } from '$core/types';
 
 	/** how many recent Minecraft versions the picker offers */
 	const VERSION_CHOICES = 25;
 
 	const MEMORY_CHOICES = ['1G', '2G', '4G', '6G', '8G'];
 
+	/** One server software, as /api/software describes it. */
+	interface SoftwareOption {
+		id: Software;
+		label: string;
+		usesJava: boolean;
+		provisionable: boolean;
+		hasLoaderVersions: boolean;
+		experimental: boolean;
+	}
+
 	let name = $state('');
+	let softwares: SoftwareOption[] = $state([]);
+	let software: Software = $state('paper');
 	let versions: string[] = $state([]);
 	let mcVersion = $state('');
+	let loaderVersions: string[] = $state([]);
+	let loaderVersion = $state('');
+	let versionsLoading = $state(false);
+	let versionError = $state('');
 	let memory = $state('2G');
 	let profile = $state('aikar');
 	let profiles: string[] = $state(['aikar']);
@@ -47,14 +64,19 @@
 	let pluginOverrides: Record<string, boolean> = $state({});
 
 	onMount(async () => {
-		const [paper, insts, cluster] = await Promise.all([
-			api('/paper'),
+		const [catalog, insts, cluster] = await Promise.all([
+			api('/software'),
 			api('/instances'),
 			api('/daemons')
 		]);
 
-		versions = paper.versions;
-		mcVersion = versions[0] ?? '';
+		// a proxy is created by the cluster's own bootstrap, never from this form
+		softwares = (catalog.software as SoftwareOption[]).filter(
+			(entry) => entry.provisionable && !(entry as any).isProxy
+		);
+
+		await loadVersions();
+
 		existing = insts.instances.map((inst: any) => inst.name);
 
 		daemons = cluster.daemons.map((row: any) => ({
@@ -104,6 +126,53 @@
 		}
 	});
 
+	/**
+	 * The chosen software's version lists. Refetched on every software change,
+	 * because each publishes its own; the loader list then follows the MC pick,
+	 * for the loaders whose build is identified by both.
+	 */
+	async function loadVersions(): Promise<void> {
+		versionsLoading = true;
+		versionError = '';
+		versions = [];
+
+		try {
+			const res = await api(`/software/${software}/versions`);
+
+			versions = res.mcVersions;
+			mcVersion = versions[0] ?? '';
+
+			await loadLoaderVersions();
+		} catch (err) {
+			versionError = err instanceof Error ? err.message : String(err);
+			mcVersion = '';
+		} finally {
+			versionsLoading = false;
+		}
+	}
+
+	/** Loader builds for the chosen MC version, when the software pins one. */
+	async function loadLoaderVersions(): Promise<void> {
+		loaderVersions = [];
+		loaderVersion = '';
+
+		if (!selected?.hasLoaderVersions || !mcVersion) {
+			return;
+		}
+
+		try {
+			const res = await api(`/software/${software}/versions?mc=${encodeURIComponent(mcVersion)}`);
+
+			loaderVersions = res.loaderVersions;
+		} catch {
+			// the MC list already loaded, so a missing loader list only means the
+			// newest build is taken rather than pinned
+			loaderVersions = [];
+		}
+	}
+
+	const selected = $derived(softwares.find((entry) => entry.id === software));
+
 	const nameError = $derived.by(() => {
 		if (!name) {
 			return '';
@@ -133,6 +202,31 @@
 
 	const changedCount = $derived(Object.keys(changedSettings).length);
 
+	/**
+	 * The one-line recap under the form. Built as a list rather than inline
+	 * markup: an `{#if}` between two separators swallows the whitespace around
+	 * it, which reads as a missing space in the rendered line.
+	 */
+	const summaryLine = $derived.by(() => {
+		const parts = [
+			name || t('web.scheduleNew.namePlaceholder'),
+			`${software} ${mcVersion}`,
+			memory
+		];
+
+		if (selected?.usesJava) {
+			parts.push(`${t('web.launch.profileWord')} ${profile}`);
+		}
+
+		parts.push(register ? t('web.launch.proxied') : t('web.launch.standalone'));
+
+		if (changedCount) {
+			parts.push(t('web.launch.settingsChanged', { count: changedCount }));
+		}
+
+		return parts.join(' · ');
+	});
+
 	/** Every daemon, primary first, with offline ones listed but unpickable. */
 	const daemonOptions = $derived(
 		[...daemons]
@@ -159,13 +253,15 @@
 			start: () =>
 				post('/instances', {
 					name: target,
+					software,
 					mcVersion,
+					loaderVersion,
 					memory,
 					profile,
 					register,
 					settings: changedSettings,
-					javaArgs,
-					runtime,
+					javaArgs: selected?.usesJava ? javaArgs : '',
+					runtime: selected?.usesJava ? runtime : '',
 					addonGroups,
 					pluginOverrides,
 					// the registry records an owner only for follower-held instances, so
@@ -194,9 +290,7 @@
 	onsubmit={launch}
 >
 	{#snippet summary()}
-		{name || t('web.scheduleNew.namePlaceholder')} · paper {mcVersion} · {memory} · {t('web.launch.profileWord')} {profile} ·
-		{register ? t('web.launch.proxied') : t('web.launch.standalone')}
-		{#if changedCount}· {t('web.launch.settingsChanged', { count: changedCount })}{/if}
+		{summaryLine}
 	{/snippet}
 
 	<Panel title={t('web.common.name')}>
@@ -208,22 +302,61 @@
 		</label>
 	</Panel>
 
-	<Panel title={t('web.instances.colSoftware')}>
+	<Panel title={t('web.instances.colSoftware')} description={t('web.launch.softwareHint')}>
 		<FormGrid cols={2}>
-			<label class="field">
+			<div class="field">
 				<span class="lbl">{t('web.launch.serverSoftware')}</span>
-				<input class="input" value={t('web.launch.paperLatest')} disabled />
-			</label>
+				<Select
+					value={software}
+					width="100%"
+					onchange={(value) => {
+						software = value as Software;
+						void loadVersions();
+					}}
+					options={softwares.map((entry) => ({
+						value: entry.id,
+						label: entry.experimental
+							? `${t(entry.label)} (${t('web.launch.experimental')})`
+							: t(entry.label)
+					}))}
+				/>
+				{#if selected?.experimental}
+					<span class="hint">{t('web.launch.experimentalNote')}</span>
+				{/if}
+			</div>
 			<div class="field">
 				<span class="lbl">{t('web.launch.minecraftVersion')}</span>
 				<Select
-					bind:value={mcVersion}
+					value={mcVersion}
 					width="100%"
+					disabled={!versions.length}
+					onchange={(value) => {
+						mcVersion = value;
+						void loadLoaderVersions();
+					}}
 					options={versions
 						.slice(0, VERSION_CHOICES)
 						.map((version) => ({ value: version, label: version }))}
 				/>
+				{#if versionError}<span class="err">{versionError}</span>{/if}
 			</div>
+			{#if selected?.hasLoaderVersions && loaderVersions.length}
+				<div class="field">
+					<span class="lbl">{t('web.launch.loaderVersion')}</span>
+					<span class="hint">{t('web.launch.loaderVersionHint')}</span>
+					<Select
+						bind:value={loaderVersion}
+						width="100%"
+						searchable
+						options={[
+							{ value: '', label: t('web.launch.loaderNewest') },
+							...loaderVersions
+								.slice(0, VERSION_CHOICES)
+								.map((version) => ({ value: version, label: version }))
+						]}
+					/>
+				</div>
+			{/if}
 		</FormGrid>
 	</Panel>
 
@@ -237,27 +370,29 @@
 					options={MEMORY_CHOICES.map((size) => ({ value: size, label: size }))}
 				/>
 			</div>
-			<div class="field">
-				<span class="lbl">{t('web.instances.colProfile')}</span>
-				<Select
-					bind:value={profile}
-					width="100%"
-					options={profiles.map((entry) => ({ value: entry, label: entry }))}
-				/>
-			</div>
-			<div class="field">
-				<span class="lbl">{t('web.launch.javaRuntime')}</span>
-				<span class="hint">{t('web.launch.runtimeHint')}</span>
-				<Select
-					bind:value={runtime}
-					width="100%"
-					searchable
-					options={[
-						{ value: '', label: t('web.launch.profileDefault') },
-						...runtimeIds.map((id) => ({ value: id, label: id }))
-					]}
-				/>
-			</div>
+			{#if selected?.usesJava}
+				<div class="field">
+					<span class="lbl">{t('web.instances.colProfile')}</span>
+					<Select
+						bind:value={profile}
+						width="100%"
+						options={profiles.map((entry) => ({ value: entry, label: entry }))}
+					/>
+				</div>
+				<div class="field">
+					<span class="lbl">{t('web.launch.javaRuntime')}</span>
+					<span class="hint">{t('web.launch.runtimeHint')}</span>
+					<Select
+						bind:value={runtime}
+						width="100%"
+						searchable
+						options={[
+							{ value: '', label: t('web.launch.profileDefault') },
+							...runtimeIds.map((id) => ({ value: id, label: id }))
+						]}
+					/>
+				</div>
+			{/if}
 		</FormGrid>
 		<FormGrid cols={2}>
 			<div class="field">
@@ -266,16 +401,20 @@
 				<Select bind:value={daemon} width="100%" options={daemonOptions} />
 			</div>
 		</FormGrid>
-		<label class="field">
-			<span class="lbl">{t('web.launch.extraJvmArgs')}</span>
-			<span class="hint">{t('web.launch.jvmArgsHint')}</span>
-			<input
-				class="input mono"
-				bind:value={javaArgs}
-				placeholder="-XX:+UseStringDeduplication -Dfile.encoding=UTF-8"
-				disabled={creating}
-			/>
-		</label>
+		{#if selected?.usesJava}
+			<label class="field">
+				<span class="lbl">{t('web.launch.extraJvmArgs')}</span>
+				<span class="hint">{t('web.launch.jvmArgsHint')}</span>
+				<input
+					class="input mono"
+					bind:value={javaArgs}
+					placeholder="-XX:+UseStringDeduplication -Dfile.encoding=UTF-8"
+					disabled={creating}
+				/>
+			</label>
+		{:else}
+			<p class="hint">{t('web.launch.noJavaNote')}</p>
+		{/if}
 		<label class="reg">
 			<Checkbox
 				checked={register}
@@ -292,7 +431,7 @@
 		description={t('web.launch.addonsDescription')}
 	>
 		<GroupsField
-			software="paper"
+			{software}
 			{mcVersion}
 			bind:selected={addonGroups}
 			bind:overrides={pluginOverrides}

@@ -9,6 +9,8 @@ import { ensureAliases } from '$core/pluginstate';
 import { ensurePortAllocations } from '$core/ports';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
+import type { PluginFamily } from '$core/types';
+import { PLUGIN_FAMILIES } from '$core/types';
 
 /**
  * POST { plugin, family, targets?, data } → pool a jar uploaded from the
@@ -20,7 +22,7 @@ export async function POST({ request }) {
 	const body = await request.json();
 	const plugin = String(body.plugin ?? '');
 	const data = String(body.data ?? '');
-	const family = body.family === 'velocity' || body.family === 'universal' ? body.family : 'paper';
+	const family: PluginFamily = PLUGIN_FAMILIES.includes(body.family) ? body.family : 'paper';
 
 	if (!plugin || !data) {
 		throw error(400, 'plugin and data are required');

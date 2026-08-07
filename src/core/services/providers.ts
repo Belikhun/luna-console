@@ -28,14 +28,23 @@ export type AddonType = "plugin" | "mod" | "resourcepack" | "datapack";
 
 export type ReleaseChannel = "release" | "beta" | "alpha";
 
-// Loader families accepted per side. A paper server loads bukkit/spigot/paper
-// plugins; a mod loader accepts only its own artifacts. Packs publish under
-// pseudo-loaders ("minecraft" for resource packs, "datapack" for data packs).
-export const PAPER_LOADERS = ["paper", "spigot", "bukkit", "folia"];
-export const VELOCITY_LOADERS = ["velocity"];
-export const NEOFORGE_LOADERS = ["neoforge"];
-export const RESOURCEPACK_LOADERS = ["minecraft"];
-export const DATAPACK_LOADERS = ["datapack"];
+// The loader vocabulary lives with the family table it describes; re-exported
+// here because every provider client reaches for it through this module.
+import {
+	DATAPACK_LOADERS,
+	PAPER_LOADERS,
+	RESOURCEPACK_LOADERS,
+} from "../software";
+
+export {
+	DATAPACK_LOADERS,
+	FABRIC_LOADERS,
+	FORGE_LOADERS,
+	NEOFORGE_LOADERS,
+	PAPER_LOADERS,
+	RESOURCEPACK_LOADERS,
+	VELOCITY_LOADERS,
+} from "../software";
 
 /** One downloadable file of a version, with whatever hashes the provider knows. */
 export interface AddonVersionFile {

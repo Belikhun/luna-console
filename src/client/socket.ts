@@ -5,6 +5,7 @@
 import { existsSync } from "node:fs";
 import { t } from "../shared/i18n";
 
+import { PROTOCOL_VERSION } from "../shared/protocol";
 import { socketCandidates } from "../shared/sockpath";
 
 /**
@@ -31,8 +32,8 @@ export interface DaemonInfo {
 	listen: { host: string; port: number } | null;
 }
 
-/** Local API protocol revision this client speaks (matches daemon/server.ts). */
-export const CLIENT_PROTOCOL = 3;
+/** Local API protocol revision this client speaks. */
+export const CLIENT_PROTOCOL = PROTOCOL_VERSION;
 
 let connection: { socket: string; info: DaemonInfo } | undefined;
 

@@ -57,7 +57,7 @@ import * as standardizeCore from "../core/standardize";
 import * as templatesCore from "../core/templates";
 import * as lunaApi from "../core/services/luna";
 import * as modrinth from "../core/services/modrinth";
-import * as papermc from "../core/services/papermc";
+import * as softwareRegistry from "../core/services/software/registry";
 import * as providers from "../core/services/providers";
 
 import * as events from "./events";
@@ -942,6 +942,7 @@ export const OPS: Record<string, OpSpec> = {
 	"admin.adoptInstance": { fn: adoptInstanceRouted, cfg: 0 },
 	"admin.inspectInstanceDir": { fn: inspectInstanceDirRouted },
 	"admin.setVersion": { fn: adminCore.setVersion, cfg: 0, instance: 1, reporter: { arg: 3 } },
+	"admin.ensureForwardingMod": { fn: adminCore.ensureForwardingMod, cfg: 0, lock: 1, instance: 2 },
 	"admin.setPort": { fn: adminCore.setPort, cfg: 0 },
 	"admin.getServerProperty": { fn: adminCore.getServerProperty, cfg: 0, instance: 1 },
 	"admin.setServerProperty": { fn: adminCore.setServerProperty, cfg: 0, instance: 1 },
@@ -1254,8 +1255,8 @@ export const OPS: Record<string, OpSpec> = {
 	"providers.status": { fn: providers.providerStatus },
 	"providers.getProject": { fn: providers.getProject },
 	"providers.getVersions": { fn: providers.getVersions },
-	"papermc.latestBuild": { fn: papermc.latestBuild },
-	"papermc.listVersions": { fn: papermc.listVersions },
+	"software.listMcVersions": { fn: softwareRegistry.listMcVersions },
+	"software.listLoaderVersions": { fn: softwareRegistry.listLoaderVersions },
 	"lunaApi.dashboard": { fn: lunaApi.dashboard },
 	"lunaApi.backend": { fn: lunaApi.backend },
 	"lunaApi.players": { fn: lunaApi.players },

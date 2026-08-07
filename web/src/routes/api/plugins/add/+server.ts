@@ -9,7 +9,8 @@ import { getProject } from '$core/services/providers';
 import { ensurePortAllocations } from '$core/ports';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
-import type { ProviderId } from '$core/types';
+import type { PluginFamily, ProviderId } from '$core/types';
+import { PLUGIN_FAMILIES } from '$core/types';
 
 /**
  * POST { slug, family, targets, provider?, id? }; `id` is the provider's
@@ -21,8 +22,10 @@ export async function POST({ request }) {
 	const cfg = await loadCluster();
 	const lock = await loadLock();
 
-	const family =
-		body.family === 'velocity' || body.family === 'neoforge' ? body.family : 'paper';
+	// "universal" is declared by hand on an upload, never chosen for a provider
+	// install: upstream publishes one artifact per ecosystem
+	const family: Exclude<PluginFamily, 'universal'> =
+		PLUGIN_FAMILIES.includes(body.family) && body.family !== 'universal' ? body.family : 'paper';
 	const provider = (body.provider ?? 'modrinth') as ProviderId;
 	const project = await getProject(provider, body.id ?? body.slug, projectTypeFor(family));
 

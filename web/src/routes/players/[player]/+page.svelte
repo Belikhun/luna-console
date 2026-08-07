@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { traitsOf } from '$core/software';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { api, post } from '$lib/api';
@@ -439,7 +440,7 @@
 
 		void api('/instances').then((data) => {
 			instances = data.instances
-				.filter((inst: any) => inst.software !== 'velocity' && inst.name !== 'proxy')
+				.filter((inst: any) => !traitsOf(inst.software).isProxy && inst.name !== 'proxy')
 				.map((inst: any) => inst.name)
 				.sort();
 			servers = [

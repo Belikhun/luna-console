@@ -25,6 +25,8 @@
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { hasProvider, traitsOf } from '$core/software';
+	import type { Software } from '$core/types';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
@@ -79,8 +81,28 @@
 	let tab = $state('details');
 
 	// a mod loader keeps its addons in mods/, so the tab is called what the
-	// operator will look for; the rows and the API behind them are the same
-	const addonLabel = $derived(inst?.software === 'neoforge' ? 'Mods' : 'Plugins');
+	// operator will look for; a hybrid runs both ecosystems and says so. The rows
+	// and the API behind them are the same either way.
+	const addonLabel = $derived.by(() => {
+		const dirs = inst ? traitsOf(inst.software as Software).addonDirs : ['plugins'];
+		const names = dirs.map((dir) => (dir === 'mods' ? 'Mods' : 'Plugins'));
+
+		return names.join(' & ') || 'Plugins';
+	});
+
+	/** Whether java profiles, runtimes and JVM flags mean anything for this one. */
+	const usesJava = $derived(!inst || traitsOf(inst.software as Software).usesJava);
+
+	/** Whether this instance's version can be changed from here at all. */
+	const versionChangeable = $derived.by(() => {
+		if (!inst) {
+			return false;
+		}
+
+		const software = inst.software as Software;
+
+		return hasProvider(software) && traitsOf(software).carriesMcRequirement;
+	});
 
 	let cfgData: any = $state(null);
 	let cfgMemory = $state('');
@@ -92,7 +114,7 @@
 	let cfgRestartDelay = $state(3);
 	let cfgSettings: Record<string, string> = $state({});
 	let cfgAddonGroups: string[] = $state([]);
-	let paperVersions: string[] = $state([]);
+	let serverVersions: string[] = $state([]);
 	let saving = $state(false);
 	let versionJob: JobView | null = $state(null);
 	let deleteOpen = $state(false);
@@ -287,8 +309,8 @@
 			cfgSettings = { ...cfgData.settings };
 			cfgAddonGroups = [...(cfgData.addonGroups ?? [])];
 
-			if (!paperVersions.length) {
-				paperVersions = (await api('/paper')).versions;
+			if (!serverVersions.length && versionChangeable) {
+				serverVersions = (await api(`/software/${inst?.software}/versions`)).mcVersions;
 			}
 		}
 	}
@@ -945,7 +967,7 @@
 			{ label: t('web.instanceDetail.pingVersion'), value: inst.pingVersion },
 			{ label: t('web.instanceDetail.gameAddress'), value: inst.address, copyable: true, style: 'mono' },
 			{ label: t('web.instanceDetail.memoryHeap'), value: inst.memory },
-			{ label: t('web.instanceDetail.javaProfile'), value: inst.profile },
+			...(usesJava ? [{ label: t('web.instanceDetail.javaProfile'), value: inst.profile }] : []),
 			{
 				label: t('web.instanceDetail.machine'),
 				value: inst.daemon ?? (hostName || 'primary'),
@@ -1452,8 +1474,8 @@
 			{ id: 'checks', label: t('web.instanceDetail.statusAndAlarms') },
 			{ id: 'monitoring', label: t('web.instanceDetail.monitoring') },
 			{ id: 'plugins', label: addonLabel },
-			// the proxy has no world, so the world-scoped tabs do not apply to it
-			...(inst.software === 'velocity'
+			// a proxy has no world, so the world-scoped tabs do not apply to it
+			...(traitsOf(inst.software as Software).isProxy
 				? []
 				: [
 						{ id: 'datapacks', label: t('web.instanceDetail.dataPacks') },
@@ -1980,27 +2002,29 @@
 							<span class="hint">{t('web.instanceDetail.xmsXmxEG')}</span>
 							<input class="input" bind:value={cfgMemory} />
 						</label>
-						<div class="field">
-							<span class="lbl">{t('web.instanceDetail.javaProfile')}</span>
-							<span class="hint">{t('web.instanceDetail.jvmFlagSetFrom')}</span>
-							<Select
-								bind:value={cfgProfile}
-								width="100%"
-								options={cfgData.profiles.map((entry: string) => ({
-									value: entry, label: entry
-								}))}
-							/>
-						</div>
-						<div class="field">
-							<span class="lbl">{t('web.instanceDetail.javaRuntime')}</span>
-							<span class="hint">{runtimeHint}</span>
-							<Select
-								bind:value={cfgRuntime}
-								width="100%"
-								searchable
-								options={runtimeOptions}
-							/>
-						</div>
+						{#if usesJava}
+							<div class="field">
+								<span class="lbl">{t('web.instanceDetail.javaProfile')}</span>
+								<span class="hint">{t('web.instanceDetail.jvmFlagSetFrom')}</span>
+								<Select
+									bind:value={cfgProfile}
+									width="100%"
+									options={cfgData.profiles.map((entry: string) => ({
+										value: entry, label: entry
+									}))}
+								/>
+							</div>
+							<div class="field">
+								<span class="lbl">{t('web.instanceDetail.javaRuntime')}</span>
+								<span class="hint">{runtimeHint}</span>
+								<Select
+									bind:value={cfgRuntime}
+									width="100%"
+									searchable
+									options={runtimeOptions}
+								/>
+							</div>
+						{/if}
 						<div class="field">
 							<span class="lbl">{t('web.instanceDetail.autoRestart')}</span>
 							<span class="hint">{t('web.instanceDetail.autoRestartHint')}</span>
@@ -2030,23 +2054,27 @@
 								disabled={!cfgAutoRestart}
 							/>
 						</label>
-						<label class="field">
-							<span class="lbl">{t('web.instanceDetail.extraJvmArguments')}</span>
-							<span class="hint">
-								{t('web.instanceDetail.appendedAfterTheProfile')}
-							</span>
-							<input class="input mono" bind:value={cfgJavaArgs} placeholder={t('web.instanceDetail.none')} />
-						</label>
-						{#if inst.software === 'paper'}
+						{#if usesJava}
+							<label class="field">
+								<span class="lbl">{t('web.instanceDetail.extraJvmArguments')}</span>
+								<span class="hint">
+									{t('web.instanceDetail.appendedAfterTheProfile')}
+								</span>
+								<input class="input mono" bind:value={cfgJavaArgs} placeholder={t('web.instanceDetail.none')} />
+							</label>
+						{:else}
+							<p class="hint">{t('web.launch.noJavaNote')}</p>
+						{/if}
+						{#if versionChangeable}
 							<div class="field">
 								<span class="lbl">{t('web.instanceDetail.minecraftVersion')}</span>
 								<span class="hint">
-									{t('web.instanceDetail.downloadsTheLatestPaper')}
+									{t('web.instanceDetail.downloadsTheNewestBuild', { software: inst.software })}
 								</span>
 								<Select
 									bind:value={cfgVersion}
 									width="100%"
-									options={paperVersions.map((version: string) => ({
+									options={serverVersions.map((version: string) => ({
 										value: version, label: version
 									}))}
 								/>

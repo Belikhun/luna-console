@@ -214,8 +214,6 @@
 		"checkProgress": "kiểm tra cập nhật",
 		"variantTag": "(biến thể)",
 		"pickTargets": "Triển khai tới những instance nào?",
-		"allPaper": "*paper (mọi instance paper)",
-		"theProxy": "*velocity (proxy)",
 		"holdback": "{name}: {targets} giữ nguyên {version}; {reason}",
 		"pinnedNote": "{name}: {target} ghim ở {version}",
 		"list": {
@@ -270,7 +268,9 @@
 			"installing": "đang cài {name}...",
 			"pooledOnly": "(đã vào kho; chưa triển khai đi đâu)",
 			"installed": "đã cài {name} {version}",
-			"holdback": "{name}: không cài trên {targets}; {reason}"
+			"holdback": "{name}: không cài trên {targets}; {reason}",
+			"optFamily": "hệ sinh thái của build (paper, velocity, neoforge, fabric, forge)",
+			"badFamily": "family không xác định hoặc không dùng được: {family}"
 		},
 		"apply": {
 			"desc": "Thêm instance vào danh sách đích của plugin rồi triển khai",
@@ -423,7 +423,8 @@
 		"forget": {
 			"desc": "Bỏ ánh xạ nhà cung cấp của một plugin (giữ jar và các bản triển khai)",
 			"done": "{name} không còn ánh xạ tới nhà cung cấp; sẽ không kiểm tra cập nhật nữa"
-		}
+		},
+		"allOf": "mọi máy chủ {software}"
 	},
 	"packs": {
 		"unknownProvider": "không biết nhà cung cấp: {name} (cần {known})",
@@ -684,7 +685,7 @@
 			"optDaemon": "daemon follower sẽ sở hữu instance",
 			"badSetPair": "--set cần các cặp key=value, nhận được \"{pair}\"",
 			"unknownGroup": "không biết nhóm addon: {name}",
-			"resolvingVersion": "đang tìm bản paper mới nhất...",
+			"resolvingVersion": "đang tìm phiên bản {software} mới nhất...",
 			"phaseFiles": "Tệp máy chủ",
 			"phasePlugins": "Plugin",
 			"phasePacks": "Gói",
@@ -702,8 +703,14 @@
 			"registering": "đang đăng ký trong velocity.toml",
 			"velocityUpdated": "đã cập nhật velocity.toml (reload proxy để áp dụng)",
 			"velocityUpToDate": "velocity.toml đã mới nhất",
-			"created": "đã tạo {name}: paper {version} build {build}, cổng {port}",
-			"jvmFlags": "cờ JVM bổ sung: {flags}"
+			"created": "đã tạo {name}: {software} {version} build {build}, cổng {port}",
+			"jvmFlags": "cờ JVM bổ sung: {flags}",
+			"optSoftware": "phần mềm máy chủ cần cài (mặc định paper)",
+			"optLoaderVersion": "ghim build loader thay vì lấy bản mới nhất",
+			"unknownSoftware": "phần mềm máy chủ không xác định: {software}",
+			"softwareNoProvider": "luna không tải được {software}; chỉ có thể nhận vào (adopt)",
+			"softwareHasNoJava": "{software} không phải chương trình JVM; bỏ --runtime và --java-args",
+			"noVersions": "{software} chưa phát hành phiên bản nào để cài"
 		},
 		"adopt": {
 			"desc": "Đăng ký một thư mục máy chủ sẵn có thành instance được quản lý",
@@ -740,7 +747,8 @@
 			"unknownReqs": "{count} plugin có yêu cầu MC không rõ (jar luna/thủ công; tự kiểm tra)",
 			"downloading": "đang tải {version}...",
 			"jarKept": "jar cũ giữ tại {path}",
-			"updateHint": "tính lại phiên bản plugin cho MC mới: {command}"
+			"updateHint": "tính lại phiên bản plugin cho MC mới: {command}",
+			"optLoaderVersion": "ghim build loader thay vì lấy bản mới nhất"
 		},
 		"settings": {
 			"desc": "Xem hoặc đổi thiết lập máy chủ của instance (difficulty, max-players, pvp, …)",

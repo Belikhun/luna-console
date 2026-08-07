@@ -276,19 +276,21 @@ export async function PATCH({ params, request }) {
 
 		const version = String(body.mcVersion);
 
+		const loaderVersion = body.loaderVersion ? String(body.loaderVersion) : undefined;
+
 		const job = startJob('instance-version', name, `${name} → ${version}`, async (reporter) => {
 			const fresh = await loadCluster();
-			const res = await setVersion(fresh, name, version, reporter);
+			const res = await setVersion(fresh, name, { mcVersion: version, loaderVersion }, reporter);
 
 			await saveCluster(fresh);
 
 			pushEvent(
 				name,
 				'action',
-				`version ${res.from ?? '?'} → ${res.to} (build ${res.build.build})`
+				`version ${res.from ?? '?'} → ${res.to} (build ${res.build.buildId})`
 			);
 
-			return { from: res.from ?? null, to: res.to, build: res.build.build };
+			return { from: res.from ?? null, to: res.to, build: res.build.buildId };
 		});
 
 		return json({ ok: true, changed, rejected, job });

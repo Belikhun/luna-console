@@ -6,7 +6,7 @@ import { command, UsageError, Bail } from "../framework";
 import { pc, Sym, ok, warn, info, printTable, fmtDuration, Spinner, ProgressView } from "../ui";
 import { instanceNames, runtimeIds } from "../completers";
 import { loadCluster, saveCluster, managedInstances, loadLock, saveLock } from "../../client/core/config";
-import type { ClusterConfig } from "../../client/core/types";
+import type { ClusterConfig, Software } from "../../client/core/types";
 import * as inst from "../../client/core/instances";
 import * as lifecycle from "../../client/core/lifecycle";
 import * as admin from "../../client/core/admin";
@@ -15,7 +15,8 @@ import { syncVelocityToml } from "../../client/core/proxy";
 import { ensurePortAllocations } from "../../client/core/ports";
 import { validateRuntimeId } from "../../client/core/runtimes";
 import { deploy, compatReport } from "../../client/core/plugins";
-import { listVersions } from "../../client/core/services/papermc";
+import { hasProvider, newestRelease, SOFTWARE_IDS, traitsOf } from "../../client/core/software";
+import { listMcVersions } from "../../client/core/services/software";
 import { ProgressReporter } from "../../client/core/progress";
 import { loadPacksLock, savePacksLock } from "../../client/core/packslock";
 import * as addons from "../../client/core/addons";
@@ -334,7 +335,14 @@ command({
 	desc: t("cli.instance.create.desc"),
 	args: [{ name: "name", required: true }],
 	opts: [
+		{
+			flag: "--software",
+			desc: t("cli.instance.create.optSoftware"),
+			value: true,
+			complete: async () => SOFTWARE_IDS.filter(hasProvider),
+		},
 		{ flag: "--version", desc: t("cli.instance.create.optVersion"), value: true },
+		{ flag: "--loader-version", desc: t("cli.instance.create.optLoaderVersion"), value: true },
 		{ flag: "--port", desc: t("cli.instance.create.optPort"), value: true },
 		{ flag: "--memory", desc: t("cli.instance.create.optMemory"), value: true },
 		{ flag: "--profile", desc: t("cli.instance.create.optProfile"), value: true },
@@ -371,20 +379,34 @@ command({
 			}
 		}
 
+		const software = (opts.software as Software | undefined) ?? "paper";
+
+		if (!SOFTWARE_IDS.includes(software)) {
+			throw new UsageError(t("cli.instance.create.unknownSoftware", { software }));
+		}
+
+		if (!hasProvider(software)) {
+			throw new UsageError(t("cli.instance.create.softwareNoProvider", { software }));
+		}
+
+		if (!traitsOf(software).usesJava && (opts.runtime || opts["java-args"])) {
+			throw new UsageError(t("cli.instance.create.softwareHasNoJava", { software }));
+		}
+
 		let version = opts.version as string | undefined;
 
 		if (!version) {
-			const spin = new Spinner().start(t("cli.instance.create.resolvingVersion"));
+			const spin = new Spinner().start(t("cli.instance.create.resolvingVersion", { software }));
 
-			// plain x.y / x.y.z only; the list also carries snapshots and pre-releases
-			const versions = await listVersions("paper");
-
-			version = versions
-				.filter((candidate) => /^\d+\.\d+(\.\d+)?$/.test(candidate))
-				.sort()
-				.at(-1)!;
+			// the list also carries snapshots and pre-releases, which a default pick
+			// must never land on
+			version = newestRelease(await listMcVersions(software));
 
 			spin.stop();
+
+			if (!version) {
+				throw new UsageError(t("cli.instance.create.noVersions", { software }));
+			}
 		}
 
 		// one node per phase, weighted by how long each actually takes, so the
@@ -398,9 +420,13 @@ command({
 
 		const view = new ProgressView(progress).start();
 
+		let forwarding: { installed: boolean; slug?: string } = { installed: false };
+
 		try {
 			const res = await admin.createInstance(cfg, name, {
+				software,
 				mcVersion: version,
+				loaderVersion: opts["loader-version"] as string | undefined,
 				port: opts.port ? parseInt(opts.port as string) : undefined,
 				memory: opts.memory as string | undefined,
 				profile: opts.profile as string | undefined,
@@ -420,7 +446,14 @@ command({
 					start: t("cli.instance.create.deployingPlugins"),
 					done: t("cli.instance.create.pluginsDeployed"),
 				},
-				(step) => deploy(cfg, lock, { instances: [name], reporter: step }),
+				async (step) => {
+					// a mod loader cannot speak modern forwarding on its own; the mod
+					// that lets it is pooled here so the same deploy carries it in
+					forwarding = await admin.ensureForwardingMod(cfg, lock, name);
+					await saveLock(lock);
+
+					return await deploy(cfg, lock, { instances: [name], reporter: step });
+				},
 			);
 
 			plugins.complete(t("cli.instance.create.pluginCount", { count: deployed.length }));
@@ -483,11 +516,16 @@ command({
 			ok(
 				t("cli.instance.create.created", {
 					name: pc.bold(name),
-					version: version,
-					build: res.build.build,
+					software,
+					version: res.build.mcVersion ?? version,
+					build: res.build.buildId,
 					port: pc.cyan(String(res.port)),
 				}),
 			);
+
+			if (forwarding.slug) {
+				info(t("core.admin.forwardingModInstalled", { mod: forwarding.slug }));
+			}
 
 			if (javaArgs.length) {
 				info(t("cli.instance.create.jvmFlags", { flags: pc.cyan(javaArgs.join(" ")) }));
@@ -669,7 +707,10 @@ command({
 		{ name: "instance", required: true, complete: instanceNames },
 		{ name: "version", required: true },
 	],
-	opts: [{ flag: "--force", desc: t("cli.instance.setVersion.optForce") }],
+	opts: [
+		{ flag: "--force", desc: t("cli.instance.setVersion.optForce") },
+		{ flag: "--loader-version", desc: t("cli.instance.setVersion.optLoaderVersion"), value: true },
+	],
 
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
@@ -707,17 +748,25 @@ command({
 		}
 
 		const spin = new Spinner().start(t("cli.instance.setVersion.downloading", { version }));
-		const res = await admin.setVersion(cfg, name, version);
+
+		const res = await admin.setVersion(cfg, name, {
+			mcVersion: version,
+			loaderVersion: opts["loader-version"] as string | undefined,
+		});
 
 		await saveCluster(cfg);
 		spin.stop();
 
 		ok(
 			`${pc.bold(name)}: ${pc.dim(res.from ?? "?")} ${Sym.arrow} ${pc.green(res.to)} ` +
-				`(build ${res.build.build})`,
+				`(build ${res.build.buildId})`,
 		);
 
-		info(t("cli.instance.setVersion.jarKept", { path: pc.dim(res.backedUpJar) }));
+		// a loader installs a new library tree rather than replacing one file, so
+		// there is no superseded binary to point the operator at
+		if (res.backedUpJar) {
+			info(t("cli.instance.setVersion.jarKept", { path: pc.dim(res.backedUpJar) }));
+		}
 		info(t("cli.instance.setVersion.updateHint", { command: pc.cyan("luna plugins update --deploy") }));
 	},
 });

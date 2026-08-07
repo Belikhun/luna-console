@@ -10,6 +10,8 @@
 	import Btn from './Btn.svelte';
 	import MultiAddModal from './MultiAddModal.svelte';
 	import Icon from './Icon.svelte';
+	import type { Software } from '$core/types';
+	import { traitsOf } from '$core/software';
 	import DataTable from './DataTable.svelte';
 	import type { Column } from './table';
 	import type { ContextMenuItem } from './contextmenu';
@@ -39,7 +41,7 @@
 		overrides = $bindable({}),
 		disabled = false
 	}: {
-		software: 'paper' | 'velocity';
+		software: Software;
 		mcVersion?: string;
 		/** existing instance; overrides apply immediately through the API */
 		instance?: string;
@@ -407,7 +409,7 @@
 				<Icon name="box" size="0.875rem" style="solid" />
 				<b>{t('web.nav.dataPacks')}</b>
 				<span class="dim">
-					{packs.datapacks.join(', ')}{software === 'velocity'
+					{packs.datapacks.join(', ')}{traitsOf(software).isProxy
 						? ` ${t('web.groups.proxyNoWorld')}`
 						: ''}
 				</span>

@@ -3,6 +3,7 @@
 // prohibited without written permission. See LICENSE at the repository root.
 
 import { loadCluster, loadLock, managedInstances } from "../client/core/config";
+import { SOFTWARE_IDS } from "../client/core/software";
 
 /**
  * Completion sources are called while the user is mid-keystroke, so every one of
@@ -89,9 +90,13 @@ export async function accountNames(): Promise<string[]> {
 	}
 }
 
-/** Instance names plus the wildcard selectors that target groups of them. */
+/**
+ * Instance names plus the wildcard selectors that target groups of them. The
+ * per-software wildcards are derived, so a new software gains its own without
+ * this list having to remember it.
+ */
 export async function targetSelectors(): Promise<string[]> {
-	return ["*", "*paper", "*velocity", ...(await instanceNames())];
+	return ["*", ...SOFTWARE_IDS.map((software) => `*${software}`), ...(await instanceNames())];
 }
 
 /** Gradle module names in the luna-plugins workspace that produce a deployable jar. */

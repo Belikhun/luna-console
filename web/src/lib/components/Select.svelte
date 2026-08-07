@@ -22,6 +22,7 @@
 		options,
 		width = '15rem',
 		searchable,
+		disabled,
 		onchange
 	}: {
 		/** caption notched into the field's top border */
@@ -34,6 +35,9 @@
 		/** Filter box inside the listbox; on by default once the list is long
 		 *  enough to be worth one, off for the handful-of-entries filters */
 		searchable?: boolean;
+		/** the whole control, not one entry: nothing to pick yet, or a list still
+		 *  loading. It cannot open, so it reads as a field rather than a menu */
+		disabled?: boolean;
 		onchange?: (value: string) => void;
 	} = $props();
 
@@ -114,6 +118,10 @@
 	onDestroy(() => releaseMenu(handle));
 
 	function toggle(): void {
+		if (disabled) {
+			return;
+		}
+
 		open = !open;
 
 		if (open) {
@@ -174,6 +182,7 @@
 		type="button"
 		aria-haspopup="listbox"
 		aria-expanded={open}
+		{disabled}
 		onclick={toggle}
 	>
 		<span class="val">{selected?.label ?? ''}</span>
@@ -278,6 +287,14 @@
 
 		&.open .caret {
 			transform: rotate(180deg);
+		}
+
+		// after the hover rule, so a disabled field does not light up under the
+		// pointer the way a pickable one does
+		&:disabled {
+			opacity: 0.55;
+			cursor: default;
+			border-color: var(--border-field);
 		}
 	}
 

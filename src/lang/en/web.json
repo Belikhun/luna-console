@@ -614,8 +614,6 @@
 		"failingChecks": "Failing status checks",
 		"filterType": "Filter instance type",
 		"anyType": "Any type",
-		"paperBackends": "Paper backends",
-		"velocityProxy": "Velocity proxy",
 		"externalServers": "External servers",
 		"colState": "Instance state",
 		"colChecks": "Status check",
@@ -883,7 +881,7 @@
 		"nameTaken": "an instance with this name already exists",
 		"offline": "offline",
 		"title": "Launch an instance",
-		"pageDescription": "Creates a Paper server, wires velocity forwarding, allocates a port and deploys wildcard-targeted plugins",
+		"pageDescription": "Creates a server of the software you pick, wires velocity forwarding, allocates a port and deploys wildcard-targeted plugins",
 		"profileWord": "profile",
 		"proxied": "proxied",
 		"standalone": "standalone",
@@ -892,7 +890,6 @@
 		"nameHint": "Also used as the directory name and velocity server id",
 		"namePlaceholder": "e.g. bedwars",
 		"serverSoftware": "Server software",
-		"paperLatest": "Paper (latest build)",
 		"minecraftVersion": "Minecraft version",
 		"resourcesNetwork": "Resources & network",
 		"machineHint": "Daemon the instance is created on and runs under; followers mirror the plugin pool from the primary and the proxy routes to them over the LAN. An offline daemon cannot be given work, so it is listed but not selectable.",
@@ -904,7 +901,14 @@
 		"serverSettings": "Server settings",
 		"changedCount": "{count} changed",
 		"settingsDescription": "Written into the new instance's server.properties; every one of these can be changed later",
-		"loadingSchema": "Loading the settings schema…"
+		"loadingSchema": "Loading the settings schema…",
+		"softwareHint": "What the server runs. Each publishes its own versions.",
+		"experimental": "experimental",
+		"experimentalNote": "Upstream publishes no stable release yet; expect it to change under you.",
+		"loaderVersion": "Loader build",
+		"loaderVersionHint": "The loader's own version, beside the Minecraft one.",
+		"loaderNewest": "Newest",
+		"noJavaNote": "This software is not a JVM program, so java profiles, runtimes and JVM flags do not apply to it."
 	},
 	"envNew": {
 		"nameRule": "ALL_UPPERCASE_WITH_UNDERSCORES, starting with a letter",
@@ -1842,11 +1846,11 @@
 		"extraJvmArguments": "Extra JVM arguments",
 		"appendedAfterTheProfile": "Appended after the profile's flags; see the resolved command on the Details tab. Space separated, flags only; -Xmx/-Xms come from the memory field above.",
 		"minecraftVersion": "Minecraft version",
-		"downloadsTheLatestPaper": "Downloads the latest Paper build for the chosen version (instance must be stopped). Plugin compatibility is checked first.",
 		"versionChangeBlockedIncompatible": "Version change blocked; incompatible plugins:",
 		"forceAnyway": "Force anyway",
 		"cancel": "Cancel",
-		"saveChanges": "Save changes"
+		"saveChanges": "Save changes",
+		"downloadsTheNewestBuild": "Downloads the newest {software} build for the chosen version and restarts into it."
 	},
 	"instanceFiles": {
 		"configFiles": "Config files",

@@ -4,7 +4,9 @@
 		"restartDelayRange": "độ trễ khởi động lại phải từ 0 đến {max} giây",
 		"unknown": "không biết instance: {name}",
 		"unknownProfile": "không biết profile java \"{name}\"",
-		"noLoaderVersion": "instance neoforge không có loaderVersion; không tìm được tệp tham số của nó"
+		"noLoaderVersion": "instance neoforge không có loaderVersion; không tìm được tệp tham số của nó",
+		"noBinary": "{software} khởi chạy từ tệp tham số, không phải từ một tệp jar duy nhất",
+		"noArgsFile": "{software} không khởi chạy từ tệp tham số"
 	},
 	"admin": {
 		"dirMissing": "thư mục không tồn tại: {dir}",
@@ -27,7 +29,6 @@
 		"eulaAccepted": "đã chấp nhận eula",
 		"propertiesOnPort": "server.properties trên cổng {port}",
 		"forwardingKeyed": "đã đặt khóa modern forwarding của velocity",
-		"neoforgeNoSetVersion": "{name} chạy neoforge; hãy cài lại pack theo phiên bản đích",
 		"resolvingBuild": "đang tìm build {project} {version} mới nhất",
 		"downloadRolledBack": "tải thất bại; đã lùi về jar trước đó",
 		"portUpdateFailed": "không cập nhật được server-port trong {file}",
@@ -35,7 +36,15 @@
 		"deleting": "đang xóa {name}",
 		"droppedConfigs": "đã bỏ {count} tệp cấu hình được quản lý",
 		"dirDeleted": "đã xóa thư mục",
-		"deregisteredKept": "đã hủy đăng ký; giữ lại thư mục"
+		"deregisteredKept": "đã hủy đăng ký; giữ lại thư mục",
+		"phaseInstallServer": "Cài đặt máy chủ {software}",
+		"serverInstalled": "đã cài {software} {version}",
+		"softwareHasNoJava": "{software} không phải chương trình JVM; nó không nhận runtime, profile hay cờ JVM",
+		"pumpkinConfigWritten": "đã ghi pumpkin.toml kèm khoá forwarding",
+		"installingForwardingMod": "đang cài {mod} để đăng nhập qua proxy",
+		"forwardingModInstalled": "đã cài {mod} để đăng nhập qua proxy",
+		"forwardingModPooled": "{mod} đã có trong pool; thêm instance này làm đích",
+		"forwardingModMissing": "không tìm thấy mod forwarding {mod} ở nguồn"
 	},
 	"configfiles": {
 		"pathEscapes": "đường dẫn thoát khỏi thư mục instance: {path}",
@@ -189,11 +198,26 @@
 		"notAFlag": "\"{arg}\" không phải một cờ (tham số JVM bắt đầu bằng -)",
 		"reservedFlag": "{flag} do luna đặt từ thiết lập bộ nhớ của chính instance",
 		"groups": {
-			"world": { "label": "Thế giới", "hint": "Áp dụng khi thế giới được tạo hoặc nạp" },
-			"gameplay": { "label": "Lối chơi", "hint": "Các luật máy chủ áp dụng khi người chơi đang trên máy" },
-			"players": { "label": "Người chơi", "hint": "Sức chứa, quyền vào và cách máy chủ tự giới thiệu" },
-			"performance": { "label": "Hiệu năng", "hint": "Chi phí theo người chơi và theo chunk; tăng cẩn thận" },
-			"network": { "label": "Mạng", "hint": "Do luna sở hữu để velocity forwarding luôn hoạt động" }
+			"world": {
+				"label": "Thế giới",
+				"hint": "Áp dụng khi thế giới được tạo hoặc nạp"
+			},
+			"gameplay": {
+				"label": "Lối chơi",
+				"hint": "Các luật máy chủ áp dụng khi người chơi đang trên máy"
+			},
+			"players": {
+				"label": "Người chơi",
+				"hint": "Sức chứa, quyền vào và cách máy chủ tự giới thiệu"
+			},
+			"performance": {
+				"label": "Hiệu năng",
+				"hint": "Chi phí theo người chơi và theo chunk; tăng cẩn thận"
+			},
+			"network": {
+				"label": "Mạng",
+				"hint": "Do luna sở hữu để velocity forwarding luôn hoạt động"
+			}
 		},
 		"levelTypes": {
 			"normal": "bình thường",
@@ -203,35 +227,113 @@
 			"singleBiome": "một biome"
 		},
 		"spec": {
-			"level-name": { "label": "Tên level", "hint": "Thư mục thế giới trong instance; đổi tên sẽ bắt đầu thế giới mới" },
-			"level-type": { "label": "Kiểu level", "hint": "Chỉ ảnh hưởng các chunk tạo từ giờ trở đi" },
-			"level-seed": { "label": "Seed", "hint": "Để trống sẽ chọn seed ngẫu nhiên khi tạo lần đầu" },
-			"difficulty": { "label": "Độ khó" },
-			"hardcore": { "label": "Hardcore", "hint": "Chết là vĩnh viễn và độ khó khóa ở hard" },
-			"allow-nether": { "label": "Cho phép nether" },
-			"generate-structures": { "label": "Tạo công trình" },
-			"gamemode": { "label": "Chế độ chơi mặc định" },
-			"force-gamemode": { "label": "Ép chế độ chơi", "hint": "Đưa người chơi về chế độ mặc định ở mỗi lần vào" },
-			"pvp": { "label": "PvP" },
-			"spawn-monsters": { "label": "Sinh quái" },
-			"spawn-animals": { "label": "Sinh động vật" },
-			"spawn-npcs": { "label": "Sinh dân làng" },
-			"allow-flight": { "label": "Cho phép bay", "hint": "Thiếu mục này, bay ở chế độ sinh tồn từ mod/plugin sẽ khiến người chơi bị kick" },
-			"enable-command-block": { "label": "Khối lệnh" },
-			"spawn-protection": { "label": "Bảo vệ spawn", "hint": "Bán kính người không phải op không thể xây; 0 để tắt" },
-			"max-players": { "label": "Số người chơi tối đa", "hint": "Proxy cũng có giới hạn riêng; mục này tính theo từng backend" },
-			"motd": { "label": "MOTD", "hint": "Mô tả trong danh sách máy chủ; sau proxy chỉ kết nối trực tiếp mới thấy" },
-			"white-list": { "label": "Whitelist", "hint": "Chỉ người chơi trong whitelist mới vào được" },
-			"enforce-whitelist": { "label": "Bắt buộc whitelist", "hint": "Kick cả người chơi đang trực tuyến nếu không có trong danh sách" },
-			"player-idle-timeout": { "label": "Thời gian treo máy", "hint": "Số phút trước khi người chơi treo máy bị kick; 0 là không kick" },
-			"view-distance": { "label": "Tầm nhìn", "hint": "Số chunk gửi tới mỗi người chơi; chi phí lớn nhất theo đầu người" },
-			"simulation-distance": { "label": "Khoảng mô phỏng", "hint": "Số chunk tiếp tục tick quanh mỗi người chơi" },
-			"entity-broadcast-range-percentage": { "label": "Tầm phát thực thể", "hint": "Phần trăm khoảng cách mặc định mà thực thể được gửi tới client" },
-			"max-world-size": { "label": "Kích thước thế giới tối đa", "hint": "Giới hạn viền thế giới tính bằng khối" },
-			"server-ip": { "label": "Địa chỉ bind", "managed": "proxy là lối vào công khai; backend trên máy này bind loopback, backend trên daemon follower bind 0.0.0.0 để proxy với tới được" },
-			"online-mode": { "label": "Online mode", "managed": "velocity xác thực người chơi và chuyển tiếp danh tính của họ" },
-			"enforce-secure-profile": { "label": "Bắt buộc hồ sơ bảo mật", "managed": "tắt trên instance do luna tạo; máy chủ sẵn có giữ thiết lập riêng" },
-			"prevent-proxy-connections": { "label": "Chặn kết nối qua proxy", "managed": "mọi kết nối đều đi qua velocity theo thiết kế" }
+			"level-name": {
+				"label": "Tên level",
+				"hint": "Thư mục thế giới trong instance; đổi tên sẽ bắt đầu thế giới mới"
+			},
+			"level-type": {
+				"label": "Kiểu level",
+				"hint": "Chỉ ảnh hưởng các chunk tạo từ giờ trở đi"
+			},
+			"level-seed": {
+				"label": "Seed",
+				"hint": "Để trống sẽ chọn seed ngẫu nhiên khi tạo lần đầu"
+			},
+			"difficulty": {
+				"label": "Độ khó"
+			},
+			"hardcore": {
+				"label": "Hardcore",
+				"hint": "Chết là vĩnh viễn và độ khó khóa ở hard"
+			},
+			"allow-nether": {
+				"label": "Cho phép nether"
+			},
+			"generate-structures": {
+				"label": "Tạo công trình"
+			},
+			"gamemode": {
+				"label": "Chế độ chơi mặc định"
+			},
+			"force-gamemode": {
+				"label": "Ép chế độ chơi",
+				"hint": "Đưa người chơi về chế độ mặc định ở mỗi lần vào"
+			},
+			"pvp": {
+				"label": "PvP"
+			},
+			"spawn-monsters": {
+				"label": "Sinh quái"
+			},
+			"spawn-animals": {
+				"label": "Sinh động vật"
+			},
+			"spawn-npcs": {
+				"label": "Sinh dân làng"
+			},
+			"allow-flight": {
+				"label": "Cho phép bay",
+				"hint": "Thiếu mục này, bay ở chế độ sinh tồn từ mod/plugin sẽ khiến người chơi bị kick"
+			},
+			"enable-command-block": {
+				"label": "Khối lệnh"
+			},
+			"spawn-protection": {
+				"label": "Bảo vệ spawn",
+				"hint": "Bán kính người không phải op không thể xây; 0 để tắt"
+			},
+			"max-players": {
+				"label": "Số người chơi tối đa",
+				"hint": "Proxy cũng có giới hạn riêng; mục này tính theo từng backend"
+			},
+			"motd": {
+				"label": "MOTD",
+				"hint": "Mô tả trong danh sách máy chủ; sau proxy chỉ kết nối trực tiếp mới thấy"
+			},
+			"white-list": {
+				"label": "Whitelist",
+				"hint": "Chỉ người chơi trong whitelist mới vào được"
+			},
+			"enforce-whitelist": {
+				"label": "Bắt buộc whitelist",
+				"hint": "Kick cả người chơi đang trực tuyến nếu không có trong danh sách"
+			},
+			"player-idle-timeout": {
+				"label": "Thời gian treo máy",
+				"hint": "Số phút trước khi người chơi treo máy bị kick; 0 là không kick"
+			},
+			"view-distance": {
+				"label": "Tầm nhìn",
+				"hint": "Số chunk gửi tới mỗi người chơi; chi phí lớn nhất theo đầu người"
+			},
+			"simulation-distance": {
+				"label": "Khoảng mô phỏng",
+				"hint": "Số chunk tiếp tục tick quanh mỗi người chơi"
+			},
+			"entity-broadcast-range-percentage": {
+				"label": "Tầm phát thực thể",
+				"hint": "Phần trăm khoảng cách mặc định mà thực thể được gửi tới client"
+			},
+			"max-world-size": {
+				"label": "Kích thước thế giới tối đa",
+				"hint": "Giới hạn viền thế giới tính bằng khối"
+			},
+			"server-ip": {
+				"label": "Địa chỉ bind",
+				"managed": "proxy là lối vào công khai; backend trên máy này bind loopback, backend trên daemon follower bind 0.0.0.0 để proxy với tới được"
+			},
+			"online-mode": {
+				"label": "Online mode",
+				"managed": "velocity xác thực người chơi và chuyển tiếp danh tính của họ"
+			},
+			"enforce-secure-profile": {
+				"label": "Bắt buộc hồ sơ bảo mật",
+				"managed": "tắt trên instance do luna tạo; máy chủ sẵn có giữ thiết lập riêng"
+			},
+			"prevent-proxy-connections": {
+				"label": "Chặn kết nối qua proxy",
+				"managed": "mọi kết nối đều đi qua velocity theo thiết kế"
+			}
 		}
 	},
 	"standardize": {
@@ -273,7 +375,6 @@
 		"hashMismatch": "lệch {algo} cho {url}",
 		"noBuild": "không thấy build {project} nào cho phiên bản {version}",
 		"cannotListVersions": "không liệt kê được các phiên bản {project}",
-		"jarHashMismatch": "lệch sha256 trên jar máy chủ vừa tải",
 		"curseforgeNoKey": "chưa cấu hình API key của CurseForge",
 		"curseforgeNoVelocity": "CurseForge chỉ chứa plugin Bukkit/Paper; không có bản velocity",
 		"curseforgeKeyHint": "cần API key; đặt LUNA_CURSEFORGE_KEY hoặc curseforgeApiKey trong cấu hình daemon",
@@ -287,7 +388,25 @@
 		"zipTooShort": "không phải tệp zip (quá ngắn)",
 		"zipNoEocd": "không phải tệp zip (thiếu bản ghi end-of-central-directory)",
 		"zip64Unsupported": "chưa hỗ trợ kho nén zip64",
-		"adoptiumHttp": "adoptium api: HTTP {status}"
+		"adoptiumHttp": "adoptium api: HTTP {status}",
+		"software": {
+			"noProvider": "luna không có nguồn tải cho {software}; chỉ có thể nhận vào (adopt)",
+			"notServed": "{provider} không phục vụ {software}",
+			"noPublishedBuilds": "{software} chưa phát hành build nào",
+			"noAssetForPlatform": "{software} không phát hành build cho {platform}",
+			"badLoaderVersion": "không đọc được phiên bản Minecraft từ build loader {version}",
+			"forgeTooOld": "forge cho {version} cũ hơn bố cục installer mà luna khởi chạy; {oldest} là bản cũ nhất được hỗ trợ",
+			"phaseDownload": "Tải installer",
+			"phaseInstall": "Chạy installer",
+			"runningInstaller": "đang chạy installer của loader",
+			"installed": "đã cài loader",
+			"downloaded": "đã tải xong",
+			"installerFailed": "installer thoát với mã {code}: {detail}",
+			"installerNeedsJava": "{software} cài qua installer riêng, cần một tệp thực thi java",
+			"installerNoArgsFile": "installer không ghi {file}; không thể khởi chạy gói này"
+		},
+		"downloadedSoFar": "{mb} MB",
+		"downloadedOf": "{mb} / {total} MB"
 	},
 	"runtimes": {
 		"idEmpty": "id runtime trống",
@@ -305,8 +424,6 @@
 		"downloading": "đang tải {id}",
 		"downloaded": "đã tải xong {id}",
 		"downloadFailed": "không tải được {id}",
-		"downloadedSoFar": "{mb} MB",
-		"downloadedOf": "{mb} / {total} MB",
 		"extracting": "đang giải nén {id}",
 		"extracted": "đã cài {id}",
 		"extractFailed": "không giải nén được {id}",
@@ -406,5 +523,18 @@
 		"noPassword": "chưa đặt mật khẩu console",
 		"wrongPassword": "mật khẩu không đúng",
 		"sessionsClosed": "đã đóng {count} phiên"
+	},
+	"software": {
+		"paper": "Paper",
+		"folia": "Folia",
+		"velocity": "Velocity",
+		"purpur": "Purpur",
+		"fabric": "Fabric",
+		"forge": "Forge",
+		"neoforge": "NeoForge",
+		"pumpkin": "Pumpkin",
+		"youer": "Youer",
+		"asyncyouer": "AsyncYouer",
+		"unknown": "phần mềm máy chủ không xác định: {software}"
 	}
 }

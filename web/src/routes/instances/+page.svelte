@@ -8,6 +8,7 @@
 	import { goto } from '$app/navigation';
 	import { api, type InstanceRow } from '$lib/api';
 	import { fmtDuration } from '$lib/format';
+	import { SOFTWARE_IDS, traitsOf } from '$core/software';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -34,6 +35,11 @@
 	type Row = InstanceRow & { externalOnly?: boolean };
 
 	let rows: InstanceRow[] = $state([]);
+
+	// the softwares present in the cluster right now, in the traits table's order
+	const usedSoftware = $derived(
+		SOFTWARE_IDS.filter((software) => rows.some((row) => row.software === software))
+	);
 	/** Externals run on another machine, so LunaCore's heartbeat is all we know of them. */
 	let externals: Array<{
 		name: string;
@@ -146,12 +152,13 @@
 			label: t('web.instances.filterType'),
 			options: [
 				{ value: 'any', label: t('web.instances.anyType') },
-				{ value: 'paper', label: t('web.instances.paperBackends'), match: (row) => row.software === 'paper' },
-				{
-					value: 'velocity',
-					label: t('web.instances.velocityProxy'),
-					match: (row) => row.software === 'velocity'
-				},
+				// one chip per software the cluster actually runs; listing all ten
+				// when nine of them are unused is a filter nobody can use
+				...usedSoftware.map((software) => ({
+					value: software,
+					label: t(traitsOf(software).label),
+					match: (row: InstanceRow) => row.software === software
+				})),
 				{ value: 'external', label: t('web.instances.externalServers'), match: (row) => !!row.externalOnly }
 			]
 		}

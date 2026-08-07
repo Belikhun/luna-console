@@ -22,6 +22,7 @@ import { ping } from "./ping";
 import { ProgressReporter } from "./progress";
 import { ensureInstanceRuntime, isRuntimeInstalled, javaSelection } from "./runtimes";
 import * as screen from "./screen";
+import { traitsOf } from "./software";
 import type { ClusterConfig } from "./types";
 import { t } from "../shared/i18n";
 
@@ -98,6 +99,28 @@ class LogFollower {
 	}
 }
 
+/**
+ * Seconds, from what a ready line happens to report.
+ *
+ * The vanilla family captures a bare figure already in seconds; pumpkin, being
+ * fast enough for it to matter, reports "6ms". The reporter prints the number
+ * followed by "s", so a millisecond figure passed through verbatim would read
+ * as six seconds.
+ */
+function elapsedSeconds(elapsed: string): string {
+	const match = /^([\d.]+)\s*(ms)?$/i.exec(elapsed.trim());
+
+	if (!match || !Number.isFinite(Number(match[1]))) {
+		return elapsed;
+	}
+
+	if (!match[2]) {
+		return match[1]!;
+	}
+
+	return (Number(match[1]) / 1000).toFixed(3);
+}
+
 /** Progress ceiling for open-ended counters (plugins), so they never read done. */
 const COUNTER_CAP = 0.9;
 
@@ -136,7 +159,8 @@ export async function startInstanceTracked(
 	// the phases below are the whole story; the root adds nothing of its own
 	progress.weighOwn(0);
 
-	const isProxy = inst.software === "velocity";
+	const traits = traitsOf(inst.software);
+	const isProxy = traits.isProxy;
 	const selection = javaSelection(cfg, inst);
 
 	// a first start on a machine that has never held this runtime downloads a few
@@ -212,11 +236,11 @@ export async function startInstanceTracked(
 				throw new Error(t("core.lifecycle.crashLoop", { name }));
 			}
 
-			const doneLine = /Done \(([\d.]+)s\)!/.exec(line);
+			const doneLine = traits.readyMarker.exec(line);
 
 			if (doneLine) {
 				done = true;
-				doneIn = doneLine[1]!;
+				doneIn = elapsedSeconds(doneLine[1] ?? "");
 
 				continue;
 			}
@@ -403,7 +427,7 @@ export async function stopInstanceTracked(
 
 	progress.weighOwn(0);
 
-	const isProxy = inst.software === "velocity";
+	const isProxy = traitsOf(inst.software).isProxy;
 	const plugins = isProxy ? undefined : progress.child(t("core.lifecycle.phasePlugins"), 2);
 	const worlds = isProxy ? undefined : progress.child(t("core.lifecycle.phaseWorlds"), 2);
 	const exit = progress.child(t("core.lifecycle.phaseExit"), 1);

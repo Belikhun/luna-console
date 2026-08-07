@@ -6,6 +6,7 @@ import { json, error } from '@sveltejs/kit';
 import { loadersFor, projectTypeFor } from '$core/plugins';
 import { searchProvider } from '$core/services/providers';
 import type { PluginFamily, ProviderId } from '$core/types';
+import { PLUGIN_FAMILIES } from '$core/types';
 
 /**
  * GET ?q=&family=&provider=; provider search for the "install addon" dialog.
@@ -20,9 +21,9 @@ export async function GET({ url }) {
 		throw error(400, 'q required');
 	}
 
-	const requested = url.searchParams.get('family');
+	const requested = url.searchParams.get('family') as PluginFamily | null;
 	const family: PluginFamily =
-		requested === 'velocity' || requested === 'neoforge' ? requested : 'paper';
+		requested && PLUGIN_FAMILIES.includes(requested) ? requested : 'paper';
 	const provider = (url.searchParams.get('provider') ?? 'modrinth') as ProviderId;
 
 	try {

@@ -7,15 +7,19 @@ import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
 
 import type { ClusterConfig, InstanceConfig, PluginEntry, PluginFamily, PluginsLock, ProviderId } from "./types";
+import { PLUGIN_FAMILIES } from "./types";
 import { t } from "../shared/i18n";
 import type { AddonDir } from "./config";
-import { addonDirForFamily, addonDirOf, expandTargets, instanceDir, managedInstances, poolDir } from "./config";
+import { addonDirForFamily, addonDirOf, addonDirsOf, expandTargets, instanceDir, managedInstances, poolDir } from "./config";
 import { carriesMcRequirement, effectiveTargets, familyMatches, familyOf, pluginNameOf } from "./families";
+import { FAMILY_LOADERS, familyForDir } from "./software";
 import { download, sha512File } from "./services/download";
 import * as modrinth from "./services/modrinth";
 import type { AddonProject, AddonType, AddonVersion } from "./services/providers";
 import {
 	coversMc,
+	FABRIC_LOADERS,
+	FORGE_LOADERS,
 	getVersions,
 	NEOFORGE_LOADERS,
 	PAPER_LOADERS,
@@ -41,15 +45,7 @@ import {
  * paper facets are what find it.
  */
 export function loadersFor(family: PluginFamily): string[] {
-	if (family === "neoforge") {
-		return NEOFORGE_LOADERS;
-	}
-
-	if (family === "velocity") {
-		return VELOCITY_LOADERS;
-	}
-
-	return PAPER_LOADERS;
+	return FAMILY_LOADERS[family];
 }
 
 /**
@@ -57,7 +53,7 @@ export function loadersFor(family: PluginFamily): string[] {
  * separate types upstream, and a search for one never returns the other.
  */
 export function projectTypeFor(family: PluginFamily): AddonType {
-	return family === "neoforge" ? "mod" : "plugin";
+	return addonDirForFamily(family) === "mods" ? "mod" : "plugin";
 }
 
 /** The version list of an entry's remote project, in its family's facets. */
@@ -76,8 +72,9 @@ export function entryNameFor(file: string): string {
 	return basename(file, ".jar").toLowerCase();
 }
 
-/** Pool file names under the standardized `<addon>@<family>.jar` scheme. */
-const STANDARDIZED = /^(.+)@(paper|velocity|universal|neoforge)$/;
+/** Pool file names under the standardized `<addon>@<family>.jar` scheme.
+ *  Built from the family list so the pattern can never drift from the union. */
+const STANDARDIZED = new RegExp(`^(.+)@(${PLUGIN_FAMILIES.join("|")})$`);
 
 /**
  * The (name, family) a pool jar declares through its own file name. Undefined
@@ -107,9 +104,28 @@ async function listJars(dir: string): Promise<string[]> {
 	return (await readdir(dir)).filter((file) => file.toLowerCase().endsWith(".jar"));
 }
 
-/** Absolute path of the directory luna deploys an instance's addons into. */
-export function instanceAddonDir(inst: InstanceConfig): string {
-	return join(instanceDir(inst), addonDirOf(inst.software));
+/**
+ * Absolute path of the directory luna deploys an instance's addons into. A
+ * hybrid keeps two, so anything placing a specific build names its family and
+ * gets that ecosystem's directory; asking without one gets the software's
+ * primary directory.
+ */
+export function instanceAddonDir(inst: InstanceConfig, family?: PluginFamily): string {
+	const dir = family
+		? addonDirForFamily(family)
+		: addonDirOf(inst.software);
+
+	return join(instanceDir(inst), dir);
+}
+
+/**
+ * Every addon directory an instance has, absolute, paired with its kind.
+ * Anything that walks an instance's addons goes through this rather than
+ * joining the names itself, so a hybrid's second directory is never the one a
+ * caller forgot.
+ */
+export function instanceAddonDirs(inst: InstanceConfig): Array<{ dir: AddonDir; path: string }> {
+	return addonDirsOf(inst.software).map((dir) => ({ dir, path: join(instanceDir(inst), dir) }));
 }
 
 /** One addon jar found inside an instance's own addon directory. */
@@ -176,18 +192,19 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 	const byHash = new Map<string, InstanceJar[]>();
 
 	for (const [name, inst] of Object.entries(insts)) {
-		const dir = addonDirOf(inst.software);
+		// a hybrid runs two ecosystems, so both of its directories are scanned
+		for (const { dir, path } of instanceAddonDirs(inst)) {
+			for (const jar of await listJars(path)) {
+				const hash = await sha512File(join(path, jar));
+				const found: InstanceJar = { instance: name, dir, actual: jar, hash };
 
-		for (const jar of await listJars(join(instanceDir(inst), dir))) {
-			const hash = await sha512File(join(instanceDir(inst), dir, jar));
-			const found: InstanceJar = { instance: name, dir, actual: jar, hash };
+				instJars.push(found);
 
-			instJars.push(found);
+				const nameKey = jar.toLowerCase();
 
-			const nameKey = jar.toLowerCase();
-
-			byName.set(nameKey, [...(byName.get(nameKey) ?? []), found]);
-			byHash.set(hash, [...(byHash.get(hash) ?? []), found]);
+				byName.set(nameKey, [...(byName.get(nameKey) ?? []), found]);
+				byHash.set(hash, [...(byHash.get(hash) ?? []), found]);
+			}
 		}
 	}
 
@@ -1112,9 +1129,10 @@ export async function deploy(
 				continue;
 			}
 
-			// `mods/` on a mod loader, `plugins/` everywhere else; effectiveTargets
-			// already guaranteed the build belongs in whichever one this is
-			const addonDir = instanceAddonDir(inst);
+			// the build's own ecosystem decides the directory, which is what places
+			// a bukkit plugin and a mod correctly on a hybrid running both;
+			// effectiveTargets already guaranteed the build belongs here at all
+			const addonDir = instanceAddonDir(inst, familyOf(entry));
 
 			if (!existsSync(addonDir)) {
 				continue;
@@ -1247,7 +1265,10 @@ export async function installFromProvider(
 	lock: PluginsLock,
 	provider: ProviderId,
 	project: AddonProject,
-	family: "paper" | "velocity" | "neoforge",
+	// "universal" is never installed from a provider: upstream publishes per
+	// ecosystem, and a jar that happens to carry two descriptors is declared by
+	// hand rather than guessed from a search
+	family: Exclude<PluginFamily, "universal">,
 	targets: string[],
 ): Promise<{ name: string; entry: PluginEntry; resolution: EntryResolution }> {
 	// standardized scheme: key <plugin>@<family>, pool file <plugin>@<family>.jar
@@ -1419,12 +1440,16 @@ export async function adopt(
 		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
-	const dir = addonDirOf(inst.software);
-	const src = join(instanceDir(inst), dir, jarName);
+	// a hybrid keeps two addon directories, and which one holds the jar is what
+	// says which ecosystem it belongs to
+	const dirs = addonDirsOf(inst.software);
+	const dir = dirs.find((candidate) => existsSync(join(instanceDir(inst), candidate, jarName)));
 
-	if (!existsSync(src)) {
-		throw new Error(t("core.plugins.jarNotFound", { jar: jarName, path: `${instance}/${dir}` }));
+	if (!dir) {
+		throw new Error(t("core.plugins.jarNotFound", { jar: jarName, path: `${instance}/${dirs.join(", ")}` }));
 	}
+
+	const src = join(instanceDir(inst), dir, jarName);
 
 	await copyFile(src, join(poolDir(), jarName));
 
@@ -1434,9 +1459,10 @@ export async function adopt(
 		file: jarName,
 		source: jarName.toLowerCase().startsWith("luna-") ? "luna" : "manual",
 		plugin: identity?.plugin ?? entryNameFor(jarName),
-		// the jar runs on the software it was found under; a universal build is
-		// only ever declared by hand, never guessed from one instance
-		family: identity?.family ?? inst.software,
+		// the jar runs on the ecosystem whose directory it was found in; a
+		// universal build is only ever declared by hand, never guessed from one
+		// instance
+		family: identity?.family ?? familyForDir(inst.software, dir),
 		autoUpdate: false,
 		targets: [instance],
 		installed: { sha512: await sha512File(src) },
@@ -1473,7 +1499,7 @@ export async function removePlugin(
 			continue;
 		}
 
-		const dest = join(instanceAddonDir(inst), entry.file);
+		const dest = join(instanceAddonDir(inst, familyOf(entry)), entry.file);
 
 		if (existsSync(dest)) {
 			await rm(dest);

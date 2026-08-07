@@ -4,7 +4,9 @@
 		"restartDelayRange": "the restart delay must be between 0 and {max} seconds",
 		"unknown": "unknown instance: {name}",
 		"unknownProfile": "unknown java profile \"{name}\"",
-		"noLoaderVersion": "neoforge instance has no loaderVersion; cannot locate its argument file"
+		"noLoaderVersion": "neoforge instance has no loaderVersion; cannot locate its argument file",
+		"noBinary": "{software} launches from an argument file, not from a single jar",
+		"noArgsFile": "{software} does not launch from an argument file"
 	},
 	"admin": {
 		"dirMissing": "directory does not exist: {dir}",
@@ -27,7 +29,6 @@
 		"eulaAccepted": "eula accepted",
 		"propertiesOnPort": "server.properties on port {port}",
 		"forwardingKeyed": "velocity modern forwarding keyed",
-		"neoforgeNoSetVersion": "{name} runs neoforge; reinstall the pack against the target version instead",
 		"resolvingBuild": "resolving newest {project} {version} build",
 		"downloadRolledBack": "download failed; rolled back to the previous jar",
 		"portUpdateFailed": "could not update server-port in {file}",
@@ -35,7 +36,15 @@
 		"deleting": "deleting {name}",
 		"droppedConfigs": "dropped {count} managed config file(s)",
 		"dirDeleted": "directory deleted",
-		"deregisteredKept": "deregistered; directory kept"
+		"deregisteredKept": "deregistered; directory kept",
+		"phaseInstallServer": "Install {software} server",
+		"serverInstalled": "{software} {version} installed",
+		"softwareHasNoJava": "{software} is not a JVM program; it takes no runtime, profile or JVM flags",
+		"pumpkinConfigWritten": "wrote pumpkin.toml with the forwarding secret",
+		"installingForwardingMod": "installing {mod} for proxy logins",
+		"forwardingModInstalled": "{mod} installed for proxy logins",
+		"forwardingModPooled": "{mod} already pooled; targeting this instance",
+		"forwardingModMissing": "the forwarding mod {mod} could not be found upstream"
 	},
 	"configfiles": {
 		"pathEscapes": "path escapes the instance directory: {path}",
@@ -189,11 +198,26 @@
 		"notAFlag": "\"{arg}\" is not a flag (JVM arguments start with -)",
 		"reservedFlag": "{flag} is set by luna from the instance's own memory setting",
 		"groups": {
-			"world": { "label": "World", "hint": "Applied when the world is generated or loaded" },
-			"gameplay": { "label": "Gameplay", "hint": "Rules the server enforces while players are on" },
-			"players": { "label": "Players", "hint": "Capacity, access and how the server presents itself" },
-			"performance": { "label": "Performance", "hint": "Cost per player and per chunk; raise these carefully" },
-			"network": { "label": "Network", "hint": "Owned by luna so velocity forwarding keeps working" }
+			"world": {
+				"label": "World",
+				"hint": "Applied when the world is generated or loaded"
+			},
+			"gameplay": {
+				"label": "Gameplay",
+				"hint": "Rules the server enforces while players are on"
+			},
+			"players": {
+				"label": "Players",
+				"hint": "Capacity, access and how the server presents itself"
+			},
+			"performance": {
+				"label": "Performance",
+				"hint": "Cost per player and per chunk; raise these carefully"
+			},
+			"network": {
+				"label": "Network",
+				"hint": "Owned by luna so velocity forwarding keeps working"
+			}
 		},
 		"levelTypes": {
 			"normal": "normal",
@@ -203,35 +227,113 @@
 			"singleBiome": "single biome"
 		},
 		"spec": {
-			"level-name": { "label": "Level name", "hint": "World directory inside the instance; renaming it starts a new world" },
-			"level-type": { "label": "Level type", "hint": "Only affects chunks generated from now on" },
-			"level-seed": { "label": "Level seed", "hint": "Blank picks a random seed on first generation" },
-			"difficulty": { "label": "Difficulty" },
-			"hardcore": { "label": "Hardcore", "hint": "Death is permanent and difficulty is locked to hard" },
-			"allow-nether": { "label": "Allow nether" },
-			"generate-structures": { "label": "Generate structures" },
-			"gamemode": { "label": "Default gamemode" },
-			"force-gamemode": { "label": "Force gamemode", "hint": "Put players back into the default gamemode on every join" },
-			"pvp": { "label": "PvP" },
-			"spawn-monsters": { "label": "Spawn monsters" },
-			"spawn-animals": { "label": "Spawn animals" },
-			"spawn-npcs": { "label": "Spawn villagers" },
-			"allow-flight": { "label": "Allow flight", "hint": "Without this, survival-mode flight from a mod or plugin gets players kicked" },
-			"enable-command-block": { "label": "Command blocks" },
-			"spawn-protection": { "label": "Spawn protection", "hint": "Radius non-ops cannot build in; 0 disables it" },
-			"max-players": { "label": "Max players", "hint": "The proxy enforces its own limit too; this one is per backend" },
-			"motd": { "label": "MOTD", "hint": "Server-list description; behind the proxy only direct connections see it" },
-			"white-list": { "label": "Whitelist", "hint": "Only whitelisted players may join" },
-			"enforce-whitelist": { "label": "Enforce whitelist", "hint": "Also kick players already online when they are not on the list" },
-			"player-idle-timeout": { "label": "Idle timeout", "hint": "Minutes before an idle player is kicked; 0 never kicks" },
-			"view-distance": { "label": "View distance", "hint": "Chunks sent to each player; the single biggest cost per player" },
-			"simulation-distance": { "label": "Simulation distance", "hint": "Chunks that keep ticking around each player" },
-			"entity-broadcast-range-percentage": { "label": "Entity broadcast range", "hint": "Percentage of the default distance at which entities are sent to clients" },
-			"max-world-size": { "label": "Max world size", "hint": "World border limit in blocks" },
-			"server-ip": { "label": "Bind address", "managed": "the proxy is the public entrypoint; backends on this host bind to loopback, backends on a follower daemon bind to 0.0.0.0 so the proxy can reach them" },
-			"online-mode": { "label": "Online mode", "managed": "velocity authenticates players and forwards their identity" },
-			"enforce-secure-profile": { "label": "Enforce secure profile", "managed": "off on instances luna creates; existing servers keep their own setting" },
-			"prevent-proxy-connections": { "label": "Prevent proxy connections", "managed": "every connection arrives through velocity by design" }
+			"level-name": {
+				"label": "Level name",
+				"hint": "World directory inside the instance; renaming it starts a new world"
+			},
+			"level-type": {
+				"label": "Level type",
+				"hint": "Only affects chunks generated from now on"
+			},
+			"level-seed": {
+				"label": "Level seed",
+				"hint": "Blank picks a random seed on first generation"
+			},
+			"difficulty": {
+				"label": "Difficulty"
+			},
+			"hardcore": {
+				"label": "Hardcore",
+				"hint": "Death is permanent and difficulty is locked to hard"
+			},
+			"allow-nether": {
+				"label": "Allow nether"
+			},
+			"generate-structures": {
+				"label": "Generate structures"
+			},
+			"gamemode": {
+				"label": "Default gamemode"
+			},
+			"force-gamemode": {
+				"label": "Force gamemode",
+				"hint": "Put players back into the default gamemode on every join"
+			},
+			"pvp": {
+				"label": "PvP"
+			},
+			"spawn-monsters": {
+				"label": "Spawn monsters"
+			},
+			"spawn-animals": {
+				"label": "Spawn animals"
+			},
+			"spawn-npcs": {
+				"label": "Spawn villagers"
+			},
+			"allow-flight": {
+				"label": "Allow flight",
+				"hint": "Without this, survival-mode flight from a mod or plugin gets players kicked"
+			},
+			"enable-command-block": {
+				"label": "Command blocks"
+			},
+			"spawn-protection": {
+				"label": "Spawn protection",
+				"hint": "Radius non-ops cannot build in; 0 disables it"
+			},
+			"max-players": {
+				"label": "Max players",
+				"hint": "The proxy enforces its own limit too; this one is per backend"
+			},
+			"motd": {
+				"label": "MOTD",
+				"hint": "Server-list description; behind the proxy only direct connections see it"
+			},
+			"white-list": {
+				"label": "Whitelist",
+				"hint": "Only whitelisted players may join"
+			},
+			"enforce-whitelist": {
+				"label": "Enforce whitelist",
+				"hint": "Also kick players already online when they are not on the list"
+			},
+			"player-idle-timeout": {
+				"label": "Idle timeout",
+				"hint": "Minutes before an idle player is kicked; 0 never kicks"
+			},
+			"view-distance": {
+				"label": "View distance",
+				"hint": "Chunks sent to each player; the single biggest cost per player"
+			},
+			"simulation-distance": {
+				"label": "Simulation distance",
+				"hint": "Chunks that keep ticking around each player"
+			},
+			"entity-broadcast-range-percentage": {
+				"label": "Entity broadcast range",
+				"hint": "Percentage of the default distance at which entities are sent to clients"
+			},
+			"max-world-size": {
+				"label": "Max world size",
+				"hint": "World border limit in blocks"
+			},
+			"server-ip": {
+				"label": "Bind address",
+				"managed": "the proxy is the public entrypoint; backends on this host bind to loopback, backends on a follower daemon bind to 0.0.0.0 so the proxy can reach them"
+			},
+			"online-mode": {
+				"label": "Online mode",
+				"managed": "velocity authenticates players and forwards their identity"
+			},
+			"enforce-secure-profile": {
+				"label": "Enforce secure profile",
+				"managed": "off on instances luna creates; existing servers keep their own setting"
+			},
+			"prevent-proxy-connections": {
+				"label": "Prevent proxy connections",
+				"managed": "every connection arrives through velocity by design"
+			}
 		}
 	},
 	"standardize": {
@@ -273,7 +375,6 @@
 		"hashMismatch": "{algo} mismatch for {url}",
 		"noBuild": "no {project} build found for version {version}",
 		"cannotListVersions": "cannot list {project} versions",
-		"jarHashMismatch": "sha256 mismatch on downloaded server jar",
 		"curseforgeNoKey": "CurseForge API key not configured",
 		"curseforgeNoVelocity": "CurseForge hosts Bukkit/Paper plugins only; no velocity builds",
 		"curseforgeKeyHint": "needs an API key; set LUNA_CURSEFORGE_KEY or curseforgeApiKey in the daemon config",
@@ -287,7 +388,25 @@
 		"zipTooShort": "not a zip file (too short)",
 		"zipNoEocd": "not a zip file (no end-of-central-directory record)",
 		"zip64Unsupported": "zip64 archives are not supported",
-		"adoptiumHttp": "adoptium api: HTTP {status}"
+		"adoptiumHttp": "adoptium api: HTTP {status}",
+		"software": {
+			"noProvider": "luna has no download provider for {software}; it can only be adopted",
+			"notServed": "{provider} does not serve {software}",
+			"noPublishedBuilds": "{software} has no published builds yet",
+			"noAssetForPlatform": "{software} publishes no build for {platform}",
+			"badLoaderVersion": "cannot read a Minecraft version out of loader build {version}",
+			"forgeTooOld": "forge for {version} predates the installer layout luna launches; {oldest} is the oldest supported",
+			"phaseDownload": "Download installer",
+			"phaseInstall": "Run installer",
+			"runningInstaller": "running the loader installer",
+			"installed": "loader installed",
+			"downloaded": "downloaded",
+			"installerFailed": "the installer exited with code {code}: {detail}",
+			"installerNeedsJava": "{software} installs through its own installer, which needs a java binary",
+			"installerNoArgsFile": "the installer wrote no {file}; the pack cannot be launched"
+		},
+		"downloadedSoFar": "{mb} MB",
+		"downloadedOf": "{mb} / {total} MB"
 	},
 	"runtimes": {
 		"idEmpty": "runtime id is empty",
@@ -305,8 +424,6 @@
 		"downloading": "downloading {id}",
 		"downloaded": "{id} downloaded",
 		"downloadFailed": "could not download {id}",
-		"downloadedSoFar": "{mb} MB",
-		"downloadedOf": "{mb} / {total} MB",
 		"extracting": "unpacking {id}",
 		"extracted": "{id} installed",
 		"extractFailed": "could not unpack {id}",
@@ -406,5 +523,18 @@
 		"noPassword": "no console password set",
 		"wrongPassword": "wrong password",
 		"sessionsClosed": "{count} session(s) closed"
+	},
+	"software": {
+		"paper": "Paper",
+		"folia": "Folia",
+		"velocity": "Velocity",
+		"purpur": "Purpur",
+		"fabric": "Fabric",
+		"forge": "Forge",
+		"neoforge": "NeoForge",
+		"pumpkin": "Pumpkin",
+		"youer": "Youer",
+		"asyncyouer": "AsyncYouer",
+		"unknown": "unknown server software: {software}"
 	}
 }

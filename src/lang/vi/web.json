@@ -614,8 +614,6 @@
 		"failingChecks": "Trượt kiểm tra trạng thái",
 		"filterType": "Lọc loại instance",
 		"anyType": "Mọi loại",
-		"paperBackends": "Backend Paper",
-		"velocityProxy": "Proxy Velocity",
 		"externalServers": "Máy chủ ngoài cụm",
 		"colState": "Trạng thái instance",
 		"colChecks": "Kiểm tra trạng thái",
@@ -883,7 +881,7 @@
 		"nameTaken": "đã có instance mang tên này",
 		"offline": "ngoại tuyến",
 		"title": "Tạo một instance",
-		"pageDescription": "Tạo máy chủ Paper, nối velocity forwarding, cấp cổng và triển khai các plugin nhắm wildcard",
+		"pageDescription": "Tạo máy chủ theo phần mềm bạn chọn, nối velocity forwarding, cấp cổng và triển khai các plugin nhắm wildcard",
 		"profileWord": "profile",
 		"proxied": "qua proxy",
 		"standalone": "độc lập",
@@ -892,7 +890,6 @@
 		"nameHint": "Cũng dùng làm tên thư mục và id máy chủ trong velocity",
 		"namePlaceholder": "ví dụ: bedwars",
 		"serverSoftware": "Phần mềm máy chủ",
-		"paperLatest": "Paper (bản mới nhất)",
 		"minecraftVersion": "Phiên bản Minecraft",
 		"resourcesNetwork": "Tài nguyên & mạng",
 		"machineHint": "Daemon nơi instance được tạo và chạy; follower sao chép kho plugin từ primary và proxy định tuyến tới chúng qua LAN. Daemon ngoại tuyến không nhận việc được nên chỉ hiển thị chứ không chọn được.",
@@ -904,7 +901,14 @@
 		"serverSettings": "Thiết lập máy chủ",
 		"changedCount": "{count} thay đổi",
 		"settingsDescription": "Ghi vào server.properties của instance mới; mọi mục đều đổi lại được sau",
-		"loadingSchema": "Đang tải lược đồ thiết lập…"
+		"loadingSchema": "Đang tải lược đồ thiết lập…",
+		"softwareHint": "Phần mềm máy chủ sẽ chạy. Mỗi loại phát hành phiên bản riêng.",
+		"experimental": "thử nghiệm",
+		"experimentalNote": "Nguồn phát hành chưa có bản ổn định; nó có thể thay đổi bất cứ lúc nào.",
+		"loaderVersion": "Build loader",
+		"loaderVersionHint": "Phiên bản của loader, đi kèm phiên bản Minecraft.",
+		"loaderNewest": "Mới nhất",
+		"noJavaNote": "Phần mềm này không phải chương trình JVM, nên java profile, runtime và cờ JVM không áp dụng cho nó."
 	},
 	"envNew": {
 		"nameRule": "CHỮ_HOA_VỚI_GẠCH_DƯỚI, bắt đầu bằng chữ cái",
@@ -1523,11 +1527,11 @@
 		"extraJvmArguments": "Tham số JVM bổ sung",
 		"appendedAfterTheProfile": "Nối sau các cờ của profile; xem lệnh đã phân giải ở tab Chi tiết. Phân tách bằng dấu cách, chỉ nhận cờ; -Xmx/-Xms lấy từ trường bộ nhớ ở trên.",
 		"minecraftVersion": "Phiên bản Minecraft",
-		"downloadsTheLatestPaper": "Tải bản Paper mới nhất cho phiên bản đã chọn (instance phải đang tắt). Độ tương thích plugin được kiểm tra trước.",
 		"versionChangeBlockedIncompatible": "Việc đổi phiên bản bị chặn; các plugin không tương thích:",
 		"forceAnyway": "Vẫn ép",
 		"cancel": "Hủy",
-		"saveChanges": "Lưu thay đổi"
+		"saveChanges": "Lưu thay đổi",
+		"downloadsTheNewestBuild": "Tải build {software} mới nhất cho phiên bản đã chọn rồi khởi động lại vào đó."
 	},
 	"playerDetail": {
 		"issuingTempPassword": "Đang cấp mật khẩu tạm cho {name}…",
