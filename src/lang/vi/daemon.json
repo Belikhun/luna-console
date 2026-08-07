@@ -56,7 +56,22 @@
 		"sourceNoUpgrade": "daemon này chạy từ mã nguồn; khởi động lại từ cây mã mới thay vì nâng cấp",
 		"dirNotWritable": "không thay được {path}: {dir} không ghi được bởi daemon này; chạy lại \"sudo luna setup\" để chuyển sang binary do tài khoản dịch vụ sở hữu",
 		"nothingNewer": "đang chạy {version}; không có gì mới hơn trên kênh nào{why}",
-		"noSourceWhy": "không liên lạc được nguồn nâng cấp nào{why}"
+		"noSourceWhy": "không liên lạc được nguồn nâng cấp nào{why}",
+		"received": "{got} trên {total}",
+		"steps": {
+			"preflight": "Kiểm tra trước",
+			"resolving": "Nguồn nâng cấp",
+			"download": "Binary",
+			"install": "Cài đặt",
+			"checking": "kiểm tra binary, các job đang chạy và thư mục cài đặt",
+			"checked": "đủ điều kiện nâng cấp",
+			"asking": "hỏi từng kênh xem có gì",
+			"resolved": "{version} từ {origin}",
+			"fetching": "đang tải {size} từ {origin}",
+			"verified": "đã tải và kiểm tra {size}",
+			"swapping": "đang thay binary",
+			"restarting": "{from} → {to}; đang khởi động lại"
+		}
 	},
 	"rootNotFound": "không tìm thấy gốc cụm; đặt root trong cấu hình daemon, LUNA_ROOT, hoặc chạy trong thư mục cụm",
 	"log": {

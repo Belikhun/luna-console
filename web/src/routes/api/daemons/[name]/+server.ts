@@ -7,6 +7,7 @@ import { json, error } from '@sveltejs/kit';
 import { loadCluster, saveCluster } from '$core/config';
 import { checkDaemonUpgrade, daemonDetail, listDaemons, upgradeDaemon } from '$client/daemon';
 import { pushEvent } from '$lib/server/luna';
+import { startJob } from '$lib/server/jobs';
 
 /** GET → one daemon's row, health history and its own event log. */
 export async function GET({ params }) {
@@ -24,8 +25,10 @@ export async function GET({ params }) {
  *
  * `check-upgrade` reports what each channel offers (the primary's binary first,
  * the GitHub release as the fallback) and applies nothing. `upgrade` applies
- * the preferred one: the daemon exits as it answers, so a 200 means the swap
- * happened and its service manager is bringing the new build up.
+ * the preferred one as a job: fetching a 90 MB binary outlasts a request, so
+ * the route answers with the job and the page follows its progress tree. The
+ * daemon exits as the job settles, so a finished job means the swap happened
+ * and its service manager is bringing the new build up.
  */
 export async function POST({ params, request }) {
 	const body = (await request.json().catch(() => ({}))) as {
@@ -46,11 +49,20 @@ export async function POST({ params, request }) {
 		throw error(400, `unknown action: ${body.action ?? '(none)'}`);
 	}
 
-	try {
-		return json({ ok: true, result: await upgradeDaemon(params.name, !!body.force) });
-	} catch (err) {
-		throw error(409, (err as Error).message);
-	}
+	const job = startJob(
+		'daemon-upgrade',
+		params.name,
+		`Upgrade ${params.name}`,
+		async (reporter) => {
+			const result = await upgradeDaemon(params.name, !!body.force, reporter);
+
+			pushEvent(`daemon:${params.name}`, 'action', `upgraded ${result.from} → ${result.to}`);
+
+			return result;
+		}
+	);
+
+	return json({ ok: true, job });
 }
 
 /** DELETE → drop a follower daemon's registration (must be offline and own nothing). */

@@ -6,7 +6,6 @@
 	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 	import Spinner from './Spinner.svelte';
-	import ProgressBar from './ProgressBar.svelte';
 	import {
 		Notifications,
 		type NotificationItem,
@@ -93,8 +92,15 @@
 			{:else}
 				{#if item.detail}<div class="detail">{item.detail}</div>{/if}
 				{#if item.level === 'loading' && item.progress !== null}
-					<div class="pw">
-						<ProgressBar value={item.progress} right="{Math.round(item.progress)}%" />
+					<!-- a job with no task tree still reads like one: the same taskline
+					     and the same bar, with a single segment -->
+					<div class="taskline">
+						<span class="pct">{Math.round(item.progress)}%</span>
+					</div>
+					<div class="segbar">
+						<span class="seg" data-tone="running">
+							<span class="fill" style:width="{Math.round(item.progress)}%"></span>
+						</span>
 					</div>
 				{/if}
 			{/if}
@@ -263,11 +269,6 @@
 		font-size: 0.8125rem;
 		margin-top: 0.125rem;
 		word-break: break-word;
-	}
-
-	.pw {
-		margin-top: 0.5rem;
-		max-width: 22rem;
 	}
 
 	// current task · (i/n) · percent, one line above the segmented bar

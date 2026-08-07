@@ -876,13 +876,17 @@ let daemonDetailProvider: (name: string) => Promise<unknown> = async (name: stri
  * Provider behind `daemon.upgradeDaemon`; replaced by the hub on a primary,
  * which is the only role that can reach another daemon.
  */
-let upgradeSender: (name: string, force: boolean) => Promise<unknown> = async () => {
+let upgradeSender: (
+	name: string,
+	force: boolean,
+	reporter?: ProgressReporter,
+) => Promise<unknown> = async () => {
 	throw new Error(t("daemon.primaryOnlyUpgrade"));
 };
 
 /** Swap in the hub's follower upgrade sender. */
 export function setUpgradeSender(
-	sender: (name: string, force: boolean) => Promise<unknown>,
+	sender: (name: string, force: boolean, reporter?: ProgressReporter) => Promise<unknown>,
 ): void {
 	upgradeSender = sender;
 }
@@ -1301,11 +1305,15 @@ export const OPS: Record<string, OpSpec> = {
 	"daemon.daemonDetail": { fn: (name: string) => daemonDetailProvider(name) },
 	"daemon.health": { fn: health.currentHealth },
 	"daemon.binaryMeta": { fn: upgrade.localBinaryMeta },
-	// both run on the daemon they describe; the primary forwards them there
-	"daemon.selfUpgrade": { fn: upgrade.selfUpgrade },
+	// both run on the daemon they describe; the primary forwards them there, and
+	// the reporter travels with the forward so the tree the follower builds is
+	// the one the caller watches
+	"daemon.selfUpgrade": { fn: upgrade.selfUpgrade, reporter: { arg: 1 } },
 	"daemon.checkUpgrade": { fn: upgrade.checkUpgrade },
 	"daemon.upgradeDaemon": {
-		fn: (name: string, force?: boolean) => upgradeSender(name, force ?? false),
+		fn: (name: string, force?: boolean, reporter?: ProgressReporter) =>
+			upgradeSender(name, force ?? false, reporter),
+		reporter: { arg: 2 },
 	},
 	"daemon.checkDaemonUpgrade": {
 		fn: (name: string, refresh?: boolean) => checkSender(name, refresh ?? false),

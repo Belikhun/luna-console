@@ -671,11 +671,15 @@ function forwardOp(
  * itself from the GitHub release; either way the daemon resolves its own source
  * (DESIGN.md §4.7) and this only decides *where the request runs*.
  */
-async function upgradeDaemon(name: string, force: boolean): Promise<unknown> {
+async function upgradeDaemon(
+	name: string,
+	force: boolean,
+	reporter?: ProgressReporter,
+): Promise<unknown> {
 	if (name === hubConfig?.name) {
 		pushEvent(daemonEventKey(name), "action", "self-upgrade requested from the console");
 
-		return await selfUpgrade(force);
+		return await selfUpgrade(force, reporter);
 	}
 
 	if (!followers.has(name)) {
@@ -684,7 +688,7 @@ async function upgradeDaemon(name: string, force: boolean): Promise<unknown> {
 
 	pushEvent(daemonEventKey(name), "action", "upgrade requested by the primary");
 
-	const outcome = await forwardOp(name, "daemon.selfUpgrade", [force]);
+	const outcome = await forwardOp(name, "daemon.selfUpgrade", [force], reporter);
 
 	return outcome.result;
 }

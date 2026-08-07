@@ -26,6 +26,7 @@
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { jobFlash } from '$lib/jobflash';
 	import DistributionBar from '$lib/components/DistributionBar.svelte';
 	import { checksFailed, checksPassed, diskPct, fmtGb, latencyTone, memPct } from '$lib/daemons';
 	import { consumersLine, poolsPayload } from '$lib/pools';
@@ -33,7 +34,13 @@
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
-	import type { DaemonDetail, DaemonRow, HealthSample, UpgradeCheck } from '$client/daemon';
+	import type {
+		DaemonDetail,
+		DaemonRow,
+		HealthSample,
+		UpgradeCheck,
+		UpgradeResult
+	} from '$client/daemon';
 
 	/** History and events are re-read on this cadence; the row itself streams. */
 	const POLL_MS = 15_000;
@@ -309,42 +316,42 @@
 	}
 
 	/**
-	 * Replace this daemon's binary with the best offer. It exits as it answers,
-	 * so the row goes offline for a moment and comes back on the new build.
+	 * Replace this daemon's binary with the best offer. Fetching it outlasts a
+	 * request, so it runs as a job and the card carries its progress tree; the
+	 * daemon exits as the job settles, so the row goes offline for a moment and
+	 * comes back on the new build.
 	 */
 	async function upgrade(): Promise<void> {
 		if (!row) {
 			return;
 		}
 
+		const target = row.name;
+
 		upgrading = true;
+		upgradeOpen = false;
 
-		const note = Notify.loading(t('web.machineDetail.upgrading', { name: row.name }));
+		await jobFlash({
+			title: t('web.machineDetail.upgrading', { name: target }),
+			start: () =>
+				post(`/daemons/${encodeURIComponent(target)}`, {
+					action: 'upgrade',
+					force: !upgradeCheck?.offer
+				}),
+			success: (result) => {
+				const outcome = result as UpgradeResult;
 
-		try {
-			const res = await post(`/daemons/${encodeURIComponent(row.name)}`, {
-				action: 'upgrade',
-				force: !upgradeCheck?.offer
-			});
-
-			note.set({
-				level: 'success',
-				message: `${row.name}: ${res.result.from} → ${res.result.to}`,
-				detail: `From the ${res.result.origin}. It is restarting on the new build and will reconnect shortly.`,
-				closeable: true
-			});
-
-			upgradeOpen = false;
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: `Could not upgrade ${row.name}`,
-				detail: (err as Error).message,
-				closeable: true
-			});
-		}
+				return {
+					message: `${target}: ${outcome.from} → ${outcome.to}`,
+					detail: t('web.machineDetail.upgradedFrom', { origin: outcome.origin })
+				};
+			},
+			failure: () => ({ message: t('web.machineDetail.upgradeFailed', { name: target }) })
+		});
 
 		upgrading = false;
+
+		await refresh();
 	}
 
 	const health = $derived(row?.health ?? null);

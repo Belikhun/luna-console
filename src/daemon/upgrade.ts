@@ -32,6 +32,8 @@ import {
 	RELEASE_REPO,
 	type ReleaseInfo,
 } from "../core/services/github";
+import { ProgressReporter } from "../core/progress";
+import { UPGRADE_JOB_KIND } from "../shared/jobs";
 import { BUILD_AT, VERSION, buildPlatform, buildVersion, isCompiledBinary } from "../version";
 
 import { runningJobs } from "./jobs";
@@ -348,8 +350,64 @@ export function stopUpgradeWatcher(): void {
 	}
 }
 
+/** Megabytes, as every size in an upgrade line is written. */
+function mb(bytes: number): string {
+	return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * Read the body as it arrives, reporting bytes against the size the source
+ * promised. A 90 MB fetch is the whole wait, so it is the one step that has to
+ * move while it runs rather than jumping from 0 to done.
+ */
+async function readWithProgress(
+	response: Response,
+	total: number,
+	reporter: ProgressReporter,
+): Promise<Uint8Array> {
+	const body = response.body;
+
+	if (!body) {
+		return new Uint8Array(await response.arrayBuffer());
+	}
+
+	const reader = body.getReader();
+	const chunks: Uint8Array[] = [];
+	let received = 0;
+
+	while (true) {
+		const { done, value } = await reader.read();
+
+		if (done) {
+			break;
+		}
+
+		chunks.push(value);
+		received += value.byteLength;
+
+		// a source that promised nothing measurable leaves the step indeterminate
+		// rather than inventing a denominator
+		if (total > 0) {
+			reporter.info(
+				Math.min(1, received / total),
+				t("daemon.upgrade.received", { got: mb(received), total: mb(total) }),
+			);
+		}
+	}
+
+	const out = new Uint8Array(received);
+	let offset = 0;
+
+	for (const chunk of chunks) {
+		out.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+
+	return out;
+}
+
 /** Fetch the offered binary and check it against what the source promised. */
-async function download(offer: UpgradeOffer): Promise<ArrayBuffer> {
+async function download(offer: UpgradeOffer, reporter: ProgressReporter): Promise<Uint8Array> {
 	const headers: Record<string, string> = {};
 
 	if (offer.channel === "primary") {
@@ -364,7 +422,7 @@ async function download(offer: UpgradeOffer): Promise<ArrayBuffer> {
 		throw new Error(t("daemon.upgrade.refused", { origin: offer.origin, status: response.status }));
 	}
 
-	const bytes = await response.arrayBuffer();
+	const bytes = await readWithProgress(response, offer.size, reporter);
 
 	if (offer.sha256) {
 		const hasher = new Bun.CryptoHasher("sha256");
@@ -404,31 +462,54 @@ export interface UpgradeResult {
  * The rename is what makes it safe: on Linux it is atomic and the running
  * process keeps the inode it started from, so the swap cannot leave a
  * half-written executable behind for the service manager to start.
+ *
+ * The four steps are weighted by how long they really take: the download is
+ * the whole wait, and it reports per chunk, so the caller's bar moves while the
+ * bytes land rather than sitting still for a minute.
  */
-export async function selfUpgrade(force = false): Promise<UpgradeResult> {
-	if (!isCompiledBinary()) {
-		throw new Error(t("daemon.upgrade.sourceNoUpgrade"));
-	}
+export async function selfUpgrade(force = false, reporter?: ProgressReporter): Promise<UpgradeResult> {
+	const progress = reporter ?? new ProgressReporter("self-upgrade");
 
-	const jobs = runningJobs();
+	const preflight = progress.child(t("daemon.upgrade.steps.preflight"), 1);
+	const resolving = progress.child(t("daemon.upgrade.steps.resolving"), 2);
+	const fetching = progress.child(t("daemon.upgrade.steps.download"), 12);
+	const installing = progress.child(t("daemon.upgrade.steps.install"), 2);
 
-	if (jobs > 0 && !force) {
-		throw new Error(t("daemon.upgrade.jobsRunning", { count: jobs }));
-	}
+	await preflight.task(
+		{
+			start: t("daemon.upgrade.steps.checking"),
+			done: t("daemon.upgrade.steps.checked"),
+		},
+		async () => {
+			if (!isCompiledBinary()) {
+				throw new Error(t("daemon.upgrade.sourceNoUpgrade"));
+			}
 
-	// Checked before spending a 90 MB download on a swap that cannot land. The
-	// staged file is written *beside* the binary and renamed over it, so what has
-	// to be writable is the directory; a daemon whose binary sits in
-	// /usr/local/bin cannot upgrade itself however the file itself is owned.
-	const binDir = dirname(process.execPath);
+			// the upgrade is a job itself now, so it must not count itself as work
+			// to wait for
+			const jobs = runningJobs([UPGRADE_JOB_KIND]);
 
-	try {
-		await access(binDir, constants.W_OK);
-	} catch {
-		throw new Error(
-			t("daemon.upgrade.dirNotWritable", { path: process.execPath, dir: binDir }),
-		);
-	}
+			if (jobs > 0 && !force) {
+				throw new Error(t("daemon.upgrade.jobsRunning", { count: jobs }));
+			}
+
+			// Checked before spending a 90 MB download on a swap that cannot land. The
+			// staged file is written *beside* the binary and renamed over it, so what has
+			// to be writable is the directory; a daemon whose binary sits in
+			// /usr/local/bin cannot upgrade itself however the file itself is owned.
+			const binDir = dirname(process.execPath);
+
+			try {
+				await access(binDir, constants.W_OK);
+			} catch {
+				throw new Error(
+					t("daemon.upgrade.dirNotWritable", { path: process.execPath, dir: binDir }),
+				);
+			}
+		},
+	);
+
+	resolving.info(0, t("daemon.upgrade.steps.asking"));
 
 	const check = await checkUpgrade(true);
 
@@ -438,13 +519,18 @@ export async function selfUpgrade(force = false): Promise<UpgradeResult> {
 
 	if (!offer) {
 		const why = check.notes.length ? ` (${check.notes.join("; ")})` : "";
+		const message = check.offers.length
+			? t("daemon.upgrade.nothingNewer", { version: check.current, why })
+			: t("daemon.upgrade.noSourceWhy", { why });
 
-		throw new Error(
-			check.offers.length
-				? t("daemon.upgrade.nothingNewer", { version: check.current, why })
-				: t("daemon.upgrade.noSourceWhy", { why }),
-		);
+		resolving.error(resolving.progress, message);
+
+		throw new Error(message);
 	}
+
+	resolving.complete(
+		t("daemon.upgrade.steps.resolved", { version: offer.version, origin: offer.origin }),
+	);
 
 	const path = process.execPath;
 	const staging = `${path}.new`;
@@ -455,20 +541,37 @@ export async function selfUpgrade(force = false): Promise<UpgradeResult> {
 			`(${(offer.size / 1024 / 1024).toFixed(1)} MB)`,
 	);
 
-	const bytes = await download(offer);
+	fetching.info(0, t("daemon.upgrade.steps.fetching", { origin: offer.origin, size: mb(offer.size) }));
+
+	let bytes: Uint8Array;
 
 	try {
-		await Bun.write(staging, bytes);
-		await chmod(staging, 0o755);
-		await rename(staging, path);
+		bytes = await download(offer, fetching);
 	} catch (err) {
-		// a failed swap must not leave a stray half-binary next to the real one
-		await unlink(staging).catch(() => {});
+		fetching.error(fetching.progress, err instanceof Error ? err.message : String(err));
 
 		throw err;
 	}
 
+	fetching.complete(t("daemon.upgrade.steps.verified", { size: mb(bytes.byteLength) }));
+
+	await installing.task({ start: t("daemon.upgrade.steps.swapping") }, async () => {
+		try {
+			await Bun.write(staging, bytes);
+			await chmod(staging, 0o755);
+			await rename(staging, path);
+		} catch (err) {
+			// a failed swap must not leave a stray half-binary next to the real one
+			await unlink(staging).catch(() => {});
+
+			throw err;
+		}
+	});
+
 	log(`upgrade: ${current} → ${offer.version}; exiting so the service manager restarts`);
+
+	installing.complete(t("daemon.upgrade.steps.restarting", { from: current, to: offer.version }));
+	progress.complete(t("daemon.upgrade.steps.restarting", { from: current, to: offer.version }));
 
 	// answer the caller first; the frame is already queued on the socket, and
 	// exiting inside the handler would drop it

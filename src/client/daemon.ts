@@ -19,8 +19,10 @@ import type {
 	UpgradeResult,
 } from "../daemon/upgrade";
 import type { MetricSample, StatusCheck, UiState } from "../daemon/sampler";
+import type { ProgressReporter } from "../core/progress";
+import { UPGRADE_JOB_KIND } from "../shared/jobs";
 
-import { call } from "./rpc";
+import { call, jobCall } from "./rpc";
 import { followSse } from "./socket";
 
 export type {
@@ -90,11 +92,15 @@ export const binaryMeta = call("daemon.binaryMeta") as () => Promise<BinaryMeta>
  * Upgrade one daemon: a follower pulls the primary's binary, the primary pulls
  * the GitHub release. The daemon exits as it answers, so a successful call
  * means "the swap happened and its service manager is restarting it".
+ *
+ * It runs as a daemon job: the download is the whole wait, so the caller passes
+ * a reporter and watches the tree rather than a spinner.
  */
-export const upgradeDaemon = call("daemon.upgradeDaemon") as (
-	name: string,
-	force?: boolean,
-) => Promise<UpgradeResult>;
+export const upgradeDaemon = jobCall("daemon.upgradeDaemon", {
+	reporter: { arg: 2 },
+	kind: UPGRADE_JOB_KIND,
+	targetArg: 0,
+}) as (name: string, force?: boolean, reporter?: ProgressReporter) => Promise<UpgradeResult>;
 
 /**
  * What one daemon could upgrade to, primary channel first and the GitHub

@@ -56,7 +56,22 @@
 		"sourceNoUpgrade": "this daemon runs from source; restart it from the new tree instead of upgrading",
 		"dirNotWritable": "cannot replace {path}: {dir} is not writable by this daemon; re-run \"sudo luna setup\" here to move it onto a binary the service account owns",
 		"nothingNewer": "already running {version}; nothing newer on any channel{why}",
-		"noSourceWhy": "no upgrade source could be reached{why}"
+		"noSourceWhy": "no upgrade source could be reached{why}",
+		"received": "{got} of {total}",
+		"steps": {
+			"preflight": "Preflight",
+			"resolving": "Upgrade source",
+			"download": "Binary",
+			"install": "Install",
+			"checking": "checking the binary, the running jobs and the install directory",
+			"checked": "clear to upgrade",
+			"asking": "asking every channel what it has",
+			"resolved": "{version} from {origin}",
+			"fetching": "fetching {size} from {origin}",
+			"verified": "{size} downloaded and verified",
+			"swapping": "swapping the binary",
+			"restarting": "{from} → {to}; restarting"
+		}
 	},
 	"rootNotFound": "cluster root not found; set root in the daemon config, LUNA_ROOT, or run inside the cluster directory",
 	"log": {

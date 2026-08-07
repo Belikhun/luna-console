@@ -157,19 +157,26 @@ export function startJob(
 	return entry.view;
 }
 
-/** Current state of one job, or undefined once it has been pruned. */
-/** How many jobs are still running; what an upgrade waits for. */
-export function runningJobs(): number {
+/**
+ * How many jobs are still running; what an upgrade waits for.
+ *
+ * `excludeKinds` is what keeps the upgrade from counting itself: it runs as a
+ * job of its own now, so an unforced upgrade would always find one job running
+ * and refuse.
+ */
+export function runningJobs(excludeKinds: readonly string[] = []): number {
 	let count = 0;
 
 	for (const entry of jobs.values()) {
-		if (entry.view.state === "running") {
+		if (entry.view.state === "running" && !excludeKinds.includes(entry.view.kind)) {
 			count += 1;
 		}
 	}
 
 	return count;
 }
+
+/** Current state of one job, or undefined once it has been pruned. */
 
 export function getJob(id: string): JobView | undefined {
 	return jobs.get(id)?.view;

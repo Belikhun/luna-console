@@ -17,10 +17,11 @@
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { jobFlash } from '$lib/jobflash';
 	import { checksFailed, checksPassed, diskPct, fmtGb, latencyTone, memPct } from '$lib/daemons';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
-	import type { DaemonRow } from '$client/daemon';
+	import type { DaemonRow, UpgradeResult } from '$client/daemon';
 
 	let daemons: DaemonRow[] = $state([]);
 	let loaded = $state(false);
@@ -293,7 +294,7 @@
 	}
 
 	/**
-	 * Upgrade each target in turn, reporting per-target outcomes.
+	 * Upgrade each target in turn, one job card each.
 	 *
 	 * Sequential on purpose: every one of these exits as it answers and comes
 	 * back on the new build, and taking the whole fleet down at once would leave
@@ -305,37 +306,29 @@
 		upgrading = true;
 		upgradeOpen = false;
 
-		const note = Notify.loading(t('web.machines.upgradingCount', { count: targets.length }), { progress: 0 });
-		const done: string[] = [];
-		const failed: string[] = [];
-
 		for (const [index, row] of targets.entries()) {
-			note.set({
-				message: t('web.machines.upgradingOne', { name: row.name, index: index + 1, total: targets.length }),
-				progress: Math.round((index / targets.length) * 100)
+			await jobFlash({
+				title: t('web.machines.upgradingOne', {
+					name: row.name,
+					index: index + 1,
+					total: targets.length
+				}),
+				start: () =>
+					post(`/daemons/${encodeURIComponent(row.name)}`, {
+						action: 'upgrade',
+						force: !row.outdated
+					}),
+				success: (result) => {
+					const outcome = result as UpgradeResult;
+
+					return {
+						message: t('web.machines.upgraded', { name: row.name }),
+						detail: `${outcome.from} → ${outcome.to} · ${outcome.origin}`
+					};
+				},
+				failure: () => ({ message: t('web.machines.upgradeFailed', { name: row.name }) })
 			});
-
-			try {
-				const res = await post(`/daemons/${encodeURIComponent(row.name)}`, {
-					action: 'upgrade',
-					force: !row.outdated
-				});
-
-				done.push(`${row.name}: ${res.result.from} → ${res.result.to}`);
-			} catch (err) {
-				failed.push(`${row.name}: ${(err as Error).message}`);
-			}
 		}
-
-		note.set({
-			level: failed.length ? (done.length ? 'warning' : 'error') : 'success',
-			message: failed.length
-				? `${done.length} upgraded, ${failed.length} failed`
-				: `${done.length} daemon(s) upgraded`,
-			detail: [...done, ...failed].join('\n'),
-			progress: 100,
-			closeable: true
-		});
 
 		upgrading = false;
 		selected = new Set();

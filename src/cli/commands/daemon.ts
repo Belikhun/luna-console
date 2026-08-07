@@ -9,7 +9,8 @@ import { dirname, join } from "node:path";
 
 import { command, Bail } from "../framework";
 import { configuredToken } from "../../daemon/config";
-import { pc, info, ok, warn, fail, printTable, Sym } from "../ui";
+import { pc, info, ok, warn, fail, printTable, ProgressView, Sym } from "../ui";
+import { ProgressReporter } from "../../core/progress";
 import { ensureConnected, daemonInfo, DaemonUnavailable } from "../../client/socket";
 import { loadCluster, saveCluster } from "../../client/core/config";
 import {
@@ -370,11 +371,20 @@ command({
 			}),
 		);
 
+		// the download is the whole wait, so the daemon's own tree is what the
+		// operator watches; this end only renders it
+		const progress = new ProgressReporter(`upgrade ${name}`);
+		const view = new ProgressView(progress).start();
+
 		let result;
 
 		try {
-			result = await upgradeDaemon(name, !!opts.force);
+			result = await upgradeDaemon(name, !!opts.force, progress);
+
+			view.stop();
 		} catch (err) {
+			view.stop();
+
 			// the daemon's refusal names every channel it tried; show the table
 			// underneath it so the reason is obvious rather than quoted
 			const check = await checkDaemonUpgrade(name, false).catch(() => undefined);
