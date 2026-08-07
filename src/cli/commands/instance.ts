@@ -4,7 +4,7 @@
 
 import { command, UsageError, Bail } from "../framework";
 import { pc, Sym, ok, warn, info, printTable, fmtDuration, Spinner, ProgressView } from "../ui";
-import { instanceNames } from "../completers";
+import { instanceNames, runtimeIds } from "../completers";
 import { loadCluster, saveCluster, managedInstances, loadLock, saveLock } from "../../client/core/config";
 import type { ClusterConfig } from "../../client/core/types";
 import * as inst from "../../client/core/instances";
@@ -13,6 +13,7 @@ import * as admin from "../../client/core/admin";
 import * as screen from "../../client/core/screen";
 import { syncVelocityToml } from "../../client/core/proxy";
 import { ensurePortAllocations } from "../../client/core/ports";
+import { validateRuntimeId } from "../../client/core/runtimes";
 import { deploy, compatReport } from "../../client/core/plugins";
 import { listVersions } from "../../client/core/services/papermc";
 import { ProgressReporter } from "../../client/core/progress";
@@ -38,6 +39,9 @@ function stateCell(status: inst.InstanceStatus): string {
 
 		case "starting":
 			return `${Sym.warn} ${pc.yellow(t("cli.instance.stateStarting"))}`;
+
+		case "auto-restarting":
+			return `${Sym.warn} ${pc.yellow(t("cli.instance.stateAutoRestarting"))}`;
 
 		case "stopped":
 			return `${Sym.off} ${pc.dim(t("cli.instance.stateStopped"))}`;
@@ -336,6 +340,12 @@ command({
 		{ flag: "--profile", desc: t("cli.instance.create.optProfile"), value: true },
 		{ flag: "--set", desc: t("cli.instance.create.optSet"), value: true },
 		{ flag: "--java-args", desc: t("cli.instance.create.optJavaArgs"), value: true },
+		{
+			flag: "--runtime",
+			desc: t("cli.instance.create.optRuntime"),
+			value: true,
+			complete: runtimeIds,
+		},
 		{ flag: "--groups", desc: t("cli.instance.create.optGroups"), value: true },
 		{ flag: "--no-register", desc: t("cli.instance.create.optNoRegister") },
 		{ flag: "--daemon", desc: t("cli.instance.create.optDaemon"), value: true },
@@ -397,6 +407,7 @@ command({
 				register: !opts["no-register"],
 				settings,
 				javaArgs,
+				runtime: opts.runtime as string | undefined,
 				addonGroups: groups,
 				daemon: opts.daemon as string | undefined,
 				reporter: files,
@@ -790,7 +801,16 @@ command({
 });
 
 /** Settings stored in the registry rather than in server.properties. */
-const REGISTRY_KEYS = ["memory", "profile", "java", "javaArgs", "port"];
+const REGISTRY_KEYS = [
+	"memory",
+	"profile",
+	"java",
+	"runtime",
+	"javaArgs",
+	"autoRestart",
+	"restartDelay",
+	"port",
+];
 
 command({
 	path: ["instance", "config"],
@@ -800,8 +820,9 @@ command({
 		{ name: "key", complete: async () => [...REGISTRY_KEYS, ...editableSettingKeys()] },
 		{ name: "value", variadic: true },
 	],
+	opts: [{ flag: "--clear", desc: t("cli.instance.config.optClear") }],
 
-	handler: async (args) => {
+	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const [name, key, ...rest] = args as [string, string?, ...string[]];
 		const instance = managedInstances(cfg)[name];
@@ -810,13 +831,59 @@ command({
 			throw new UsageError(t("cli.env.unknownInstance", { name }));
 		}
 
+		// an empty value cannot travel through argv, so unpinning an optional field
+		// is its own flag rather than a magic value the shell would eat
+		if (opts.clear) {
+			if (!key) {
+				throw new UsageError(t("cli.instance.config.clearNeedsKey"));
+			}
+
+			switch (key) {
+				case "java":
+					delete instance.java;
+					break;
+
+				case "runtime":
+					delete instance.runtime;
+					break;
+
+				case "javaArgs":
+					delete instance.javaArgs;
+					break;
+
+				case "autoRestart":
+					delete instance.autoRestart;
+					break;
+
+				case "restartDelay":
+					delete instance.restartDelay;
+					break;
+
+				default:
+					throw new UsageError(t("cli.instance.config.notClearable", { key }));
+			}
+
+			await saveCluster(cfg);
+			ok(t("cli.instance.config.cleared", { name: pc.bold(name), key: pc.bold(key) }));
+
+			return;
+		}
+
 		if (!key) {
 			printTable([
 				["memory", instance.memory],
 				["profile", instance.profile],
 				["port", String(instance.port)],
 				["java", instance.java ?? pc.dim(t("cli.instance.config.profileDefault"))],
+				["runtime", instance.runtime ?? pc.dim(t("cli.instance.config.profileDefault"))],
 				["javaArgs", instance.javaArgs?.join(" ") ?? pc.dim(`(${t("cli.common.none")})`)],
+				[
+					"autoRestart",
+					inst.autoRestartOf(instance)
+						? t("cli.instance.config.on")
+						: pc.dim(t("cli.instance.config.off")),
+				],
+				["restartDelay", `${inst.restartDelayOf(instance)}s`],
 				["mcVersion", instance.mcVersion ?? pc.dim("—")],
 				...Object.entries(instance.ports ?? {}).map(([id, port]) => [
 					`port:${id}`,
@@ -842,7 +909,10 @@ command({
 				profile: instance.profile,
 				port: String(instance.port),
 				java: instance.java,
+				runtime: instance.runtime,
 				javaArgs: instance.javaArgs?.join(" "),
+				autoRestart: inst.autoRestartOf(instance) ? "true" : "false",
+				restartDelay: String(inst.restartDelayOf(instance)),
 			};
 
 			if (key in builtin) {
@@ -873,9 +943,45 @@ command({
 				instance.java = value;
 				break;
 
+			case "runtime": {
+				const bad = validateRuntimeId(value);
+
+				if (bad) {
+					throw new UsageError(bad);
+				}
+
+				instance.runtime = value;
+				break;
+			}
+
 			case "javaArgs":
 				admin.setJavaArgs(cfg, name, parseJavaArgs(value));
 				break;
+
+			case "autoRestart": {
+				const on = /^(true|on|yes|1)$/i.test(value);
+
+				if (!on && !/^(false|off|no|0)$/i.test(value)) {
+					throw new UsageError(t("cli.instance.config.notABoolean", { value }));
+				}
+
+				// only stored when it departs from the default, so an untouched
+				// instance keeps the registry entry it has always had
+				instance.autoRestart = on ? undefined : false;
+				break;
+			}
+
+			case "restartDelay": {
+				const seconds = Number.parseInt(value, 10);
+				const bad = inst.validateRestartDelay(seconds);
+
+				if (bad) {
+					throw new UsageError(bad);
+				}
+
+				instance.restartDelay = seconds === inst.DEFAULT_RESTART_DELAY ? undefined : seconds;
+				break;
+			}
 
 			case "port": {
 				await admin.setPort(cfg, name, parseInt(value));

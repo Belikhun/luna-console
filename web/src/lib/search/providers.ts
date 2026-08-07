@@ -105,6 +105,20 @@ const pages = (): SearchHit[] => [
 		href: '/datapacks',
 		icon: 'box'
 	},
+	{
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.javaRuntimes'),
+		detail: t('web.searchPages.javaRuntimes'),
+		href: '/runtime/java',
+		icon: 'microchip'
+	},
+	{
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.javaProfiles'),
+		detail: t('web.searchPages.javaProfiles'),
+		href: '/runtime/profiles',
+		icon: 'sliders'
+	},
 	{ group: 'web.searchGroups.pages', label: t('web.nav.ports'), detail: t('web.searchPages.ports'), href: '/network', icon: 'sitemap' },
 	{ group: 'web.searchGroups.pages', label: t('web.nav.proxyRouting'), detail: t('web.searchPages.proxy'), href: '/proxy', icon: 'route' },
 	{ group: 'web.searchGroups.pages', label: t('web.nav.schedules'), detail: t('web.searchPages.schedules'), href: '/schedules', icon: 'clock' },
@@ -271,6 +285,54 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 				detail: `${pack.entry?.source ?? 'pack'} ${pack.entry?.installed?.versionNumber ?? ''} · ${pack.effectiveTargets?.join(', ') || 'no targets'}`,
 				href: screenHref('/datapacks', pack.name),
 				icon: 'box'
+			}));
+		}
+	},
+
+	{
+		group: 'web.searchGroups.runtimes',
+		icon: 'microchip',
+		load: async () => {
+			const body = await fetchJson<{ machines?: any[] }>('/api/runtimes');
+			const seen = new Map<string, string[]>();
+
+			// a runtime installed on three machines is one object to look for, so the
+			// machines it sits on become its detail line rather than three hits
+			for (const machine of body?.machines ?? []) {
+				for (const runtime of machine.runtimes ?? []) {
+					const on = seen.get(runtime.id) ?? [];
+
+					on.push(machine.name);
+					seen.set(runtime.id, on);
+				}
+			}
+
+			return [...seen.entries()].map(([id, on]) => ({
+				group: 'web.searchGroups.runtimes',
+				label: id,
+				detail: on.join(', '),
+				href: screenHref('/runtime/java', id),
+				icon: 'microchip'
+			}));
+		}
+	},
+
+	{
+		group: 'web.searchGroups.profiles',
+		icon: 'sliders',
+		load: async () => {
+			const body = await fetchJson<{ profiles?: any[] }>('/api/profiles');
+
+			return (body?.profiles ?? []).map((profile) => ({
+				group: 'web.searchGroups.profiles',
+				label: String(profile.name),
+				detail: [
+					profile.runtime ?? profile.java ?? 'machine default',
+					`${profile.flags?.length ?? 0} flags`,
+					profile.usedBy?.length ? profile.usedBy.join(', ') : 'unused'
+				].join(' · '),
+				href: screenHref('/runtime/profiles', profile.name),
+				icon: 'sliders'
 			}));
 		}
 	},

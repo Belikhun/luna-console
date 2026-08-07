@@ -111,6 +111,13 @@
 			]
 		},
 		{
+			section: t('web.nav.runtime'),
+			items: [
+				{ label: t('web.nav.javaRuntimes'), href: '/runtime/java', icon: 'microchip' },
+				{ label: t('web.nav.javaProfiles'), href: '/runtime/profiles', icon: 'sliders' }
+			]
+		},
+		{
 			section: t('web.nav.networkProxy'),
 			items: [
 				{ label: t('web.nav.ports'), href: '/network', icon: 'sitemap' },

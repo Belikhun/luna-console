@@ -86,7 +86,10 @@
 	let cfgMemory = $state('');
 	let cfgProfile = $state('');
 	let cfgVersion = $state('');
+	let cfgRuntime = $state('');
 	let cfgJavaArgs = $state('');
+	let cfgAutoRestart = $state(true);
+	let cfgRestartDelay = $state(3);
 	let cfgSettings: Record<string, string> = $state({});
 	let cfgAddonGroups: string[] = $state([]);
 	let paperVersions: string[] = $state([]);
@@ -277,7 +280,10 @@
 			cfgMemory = cfgData.memory;
 			cfgProfile = cfgData.profile;
 			cfgVersion = cfgData.mcVersion ?? '';
+			cfgRuntime = cfgData.runtime ?? '';
 			cfgJavaArgs = (cfgData.javaArgs ?? []).join(' ');
+			cfgAutoRestart = cfgData.autoRestart !== false;
+			cfgRestartDelay = cfgData.restartDelay ?? 3;
 			cfgSettings = { ...cfgData.settings };
 			cfgAddonGroups = [...(cfgData.addonGroups ?? [])];
 
@@ -516,6 +522,65 @@
 
 	const javaArgsDirty = $derived(cfgData !== null && cfgJavaArgs.trim() !== (cfgData.javaArgs ?? []).join(' '));
 
+	const runtimeDirty = $derived(cfgData !== null && cfgRuntime !== (cfgData.runtime ?? ''));
+
+	const autoRestartDirty = $derived(
+		cfgData !== null && cfgAutoRestart !== (cfgData.autoRestart !== false)
+	);
+
+	const restartDelayDirty = $derived(
+		cfgData !== null && Number(cfgRestartDelay) !== (cfgData.restartDelay ?? 3)
+	);
+
+	/**
+	 * Runtimes this instance's own machine holds, plus whatever it is already
+	 * pinned to. A runtime the machine has not installed yet stays pickable and
+	 * is labelled as such: starting the instance installs it, which is the point.
+	 */
+	const runtimeOptions = $derived.by(() => {
+		if (!cfgData) {
+			return [{ value: '', label: t('web.instanceDetail.profileDefault') }];
+		}
+
+		const installed = (cfgData.machineRuntimes ?? []) as Array<{ id: string }>;
+		const options = [
+			{ value: '', label: t('web.instanceDetail.profileDefault') },
+			...installed.map((runtime) => ({ value: runtime.id, label: runtime.id }))
+		];
+
+		if (cfgRuntime && !installed.some((runtime) => runtime.id === cfgRuntime)) {
+			options.push({
+				value: cfgRuntime,
+				label: `${cfgRuntime} · ${t('web.instanceDetail.installsOnStart')}`
+			});
+		}
+
+		return options;
+	});
+
+	/** What the instance actually resolves today, and which level decided it. */
+	const runtimeHint = $derived.by(() => {
+		const selection = cfgData?.selection as
+			| { kind: string; id?: string; path?: string; source?: string }
+			| undefined;
+
+		if (!selection || selection.kind === 'default') {
+			return t('web.instanceDetail.runtimeDefaultHint');
+		}
+
+		if (selection.kind === 'path') {
+			return t('web.instanceDetail.runtimePathHint', {
+				path: selection.path ?? '',
+				source: selection.source ?? ''
+			});
+		}
+
+		return t('web.instanceDetail.runtimeIdHint', {
+			id: selection.id ?? '',
+			source: selection.source ?? ''
+		});
+	});
+
 	const groupsDirty = $derived.by(() => {
 		if (!cfgData) {
 			return false;
@@ -568,6 +633,18 @@
 
 			if (javaArgsDirty) {
 				body.javaArgs = cfgJavaArgs;
+			}
+
+			if (runtimeDirty) {
+				body.runtime = cfgRuntime;
+			}
+
+			if (autoRestartDirty) {
+				body.autoRestart = cfgAutoRestart;
+			}
+
+			if (restartDelayDirty) {
+				body.restartDelay = Number(cfgRestartDelay);
 			}
 
 			if (groupsDirty) {
@@ -1914,6 +1991,45 @@
 								}))}
 							/>
 						</div>
+						<div class="field">
+							<span class="lbl">{t('web.instanceDetail.javaRuntime')}</span>
+							<span class="hint">{runtimeHint}</span>
+							<Select
+								bind:value={cfgRuntime}
+								width="100%"
+								searchable
+								options={runtimeOptions}
+							/>
+						</div>
+						<div class="field">
+							<span class="lbl">{t('web.instanceDetail.autoRestart')}</span>
+							<span class="hint">{t('web.instanceDetail.autoRestartHint')}</span>
+							<span class="toggleRow">
+								<Toggle
+									checked={cfgAutoRestart}
+									label={t('web.instanceDetail.autoRestart')}
+									onchange={(on) => (cfgAutoRestart = on)}
+								/>
+								<span class="dim">
+									{cfgAutoRestart
+										? t('web.instanceDetail.autoRestartOn')
+										: t('web.instanceDetail.autoRestartOff')}
+								</span>
+							</span>
+						</div>
+						<label class="field">
+							<span class="lbl">{t('web.instanceDetail.restartDelay')}</span>
+							<span class="hint">{t('web.instanceDetail.restartDelayHint')}</span>
+							<input
+								class="input"
+								type="number"
+								min="0"
+								max="3600"
+								step="1"
+								bind:value={cfgRestartDelay}
+								disabled={!cfgAutoRestart}
+							/>
+						</label>
 						<label class="field">
 							<span class="lbl">{t('web.instanceDetail.extraJvmArguments')}</span>
 							<span class="hint">
@@ -2149,6 +2265,14 @@
 	}
 	.cfg {
 		max-width: 30rem;
+	}
+
+	// the switch reads as a field like the others, with its current meaning spelled
+	// out beside it rather than left to the knob's position
+	.toggleRow {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
 	.conflict-actions {

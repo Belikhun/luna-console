@@ -629,6 +629,7 @@
 		}
 	},
 	"instance": {
+		"stateAutoRestarting": "auto-restarting",
 		"stateRunning": "running",
 		"stateStarting": "starting",
 		"stateStopped": "stopped",
@@ -677,6 +678,7 @@
 			"optProfile": "java profile (default aikar)",
 			"optSet": "server settings, e.g. difficulty=hard,max-players=100 (see instance settings)",
 			"optJavaArgs": "extra JVM flags, e.g. \"-XX:+UseZGC\"",
+			"optRuntime": "managed java runtime id (installed on first start)",
 			"optGroups": "addon groups beside default, comma-separated",
 			"optNoRegister": "don't register in velocity.toml",
 			"optDaemon": "follower daemon that will own the instance",
@@ -752,8 +754,15 @@
 			"appliesOnRestart": "applies on next restart"
 		},
 		"config": {
+			"on": "on",
+			"off": "off",
+			"notABoolean": "{value} is not a yes/no value (true, false, on, off)",
 			"desc": "Get/set instance settings (memory, profile, port, javaArgs, or any server.properties key)",
 			"profileDefault": "(profile default)",
+			"optClear": "unpin an optional field (java, runtime, javaArgs)",
+			"clearNeedsKey": "--clear needs the key to clear",
+			"notClearable": "{key} cannot be cleared; it always has a value",
+			"cleared": "{name}.{key} cleared (applies on next restart)",
 			"settingsHint": "server settings live in server.properties: {command}",
 			"unknownProfile": "unknown profile: {name}",
 			"keyNotFound": "key \"{key}\" not found in server.properties",
@@ -1104,6 +1113,116 @@
 			"desc": "Delete the .luna-drift copy kept beside a file",
 			"noCopy": "no drift copy beside {file}",
 			"done": "drift copy removed"
+		}
+	},
+	"runtime": {
+		"unknownMachine": "no such machine: {name}",
+		"unknownVendor": "unknown vendor: {name}; known vendors: {vendors}",
+		"head": {
+			"runtime": "runtime",
+			"vendor": "vendor",
+			"platform": "platform",
+			"feature": "feature",
+			"lts": "lts",
+			"usedBy": "used by",
+			"reported": "reported"
+		},
+		"list": {
+			"desc": "Java runtimes installed across the fleet",
+			"optMachine": "only this machine",
+			"unreachable": "unreachable",
+			"none": "nothing installed",
+			"empty": "no java runtimes installed anywhere"
+		},
+		"available": {
+			"desc": "Java runtimes the vendors publish for a machine",
+			"argFeature": "only this feature release, e.g. 21",
+			"optMachine": "the machine whose platform decides the builds",
+			"optVendor": "only this vendor",
+			"optLts": "only long-term-support releases",
+			"optRefresh": "refetch instead of using the cached catalog",
+			"badFeature": "not a feature release: {value}",
+			"empty": "no builds published for {machine}",
+			"lts": "lts",
+			"forPlatform": "builds for {machine}'s platform; install with luna runtime install <id>"
+		},
+		"install": {
+			"desc": "Download and install a java runtime on a machine",
+			"optMachine": "machine to install it on (default: the primary)",
+			"optForce": "reinstall even when it is already there",
+			"done": "{id} installed on {machine}"
+		},
+		"remove": {
+			"desc": "Delete a java runtime from a machine",
+			"optMachine": "machine to remove it from (default: the primary)",
+			"optForce": "remove even while something still asks for it",
+			"optYes": "skip the confirmation",
+			"confirm": "Remove {id} from {machine}?",
+			"cancelled": "nothing removed",
+			"done": "{id} removed from {machine} ({freed} freed)",
+			"forcedNote": "a server already running on it keeps running until it restarts"
+		},
+		"show": {
+			"desc": "Where one java runtime is installed, and what uses it",
+			"title": "runtime {id}",
+			"installed": "installed",
+			"missing": "not installed",
+			"usedBy": "used by {consumers}"
+		},
+		"suggest": {
+			"desc": "The java feature release a Minecraft version needs",
+			"result": "minecraft {version} needs java {feature} or newer"
+		}
+	},
+	"profile": {
+		"head": {
+			"runtime": "runtime",
+			"java": "java",
+			"flags": "flags",
+			"jarArgs": "jar args",
+			"usedBy": "used by"
+		},
+		"list": {
+			"desc": "Java profiles: the JVM flag sets instances launch with",
+			"empty": "no java profiles defined"
+		},
+		"show": {
+			"desc": "One java profile in full",
+			"title": "profile {name}",
+			"flagCount": "{count} flag(s)"
+		},
+		"add": {
+			"desc": "Define a java profile",
+			"optCopy": "start from an existing profile",
+			"optRuntime": "managed runtime id the profile launches on",
+			"optJava": "explicit java binary path (wins over --runtime)",
+			"optFlags": "JVM flags, space separated",
+			"optJarArgs": "arguments appended after the jar",
+			"done": "profile {name} created"
+		},
+		"edit": {
+			"desc": "Change a java profile",
+			"optRuntime": "managed runtime id the profile launches on",
+			"optClearRuntime": "stop pinning a runtime",
+			"optJava": "explicit java binary path",
+			"optClearJava": "stop pinning a java path",
+			"optFlags": "replace the JVM flags, space separated",
+			"optJarArgs": "replace the arguments appended after the jar",
+			"nothing": "nothing to change; pass at least one field",
+			"done": "profile {name} updated ({fields})",
+			"restartNote": "instances pick the change up on their next start"
+		},
+		"rename": {
+			"desc": "Rename a java profile, moving every instance using it",
+			"done": "profile {from} renamed to {to}",
+			"moved": "moved: {instances}"
+		},
+		"remove": {
+			"desc": "Delete a java profile",
+			"optYes": "skip the confirmation",
+			"confirm": "Delete java profile {name}?",
+			"cancelled": "nothing removed",
+			"done": "profile {name} removed"
 		}
 	},
 	"env": {

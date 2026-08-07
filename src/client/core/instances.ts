@@ -14,6 +14,12 @@ import { call } from "../rpc";
 
 export {
 	NORESTART,
+	RESTARTING,
+	DEFAULT_RESTART_DELAY,
+	MAX_RESTART_DELAY,
+	autoRestartOf,
+	restartDelayOf,
+	validateRestartDelay,
 	sessionName,
 	jarName,
 	stopCommand,

@@ -16,7 +16,15 @@
 
 import type { ProgressReporter } from "../core/progress";
 import { t } from "../shared/i18n";
-import type { ClusterConfig, PluginsLock } from "../core/types";
+import type {
+	AvailableRuntime,
+	ClusterConfig,
+	InstalledRuntime,
+	LocalRuntimeInventory,
+	MachineRuntimes,
+	PluginsLock,
+	RuntimeVendor,
+} from "../core/types";
 
 import * as accountsCore from "../core/accounts";
 import * as addonsCore from "../core/addons";
@@ -40,6 +48,7 @@ import * as playerlistsCore from "../core/playerlists";
 import * as respacksCore from "../core/respacks";
 import * as portsCore from "../core/ports";
 import * as proxyCore from "../core/proxy";
+import * as runtimesCore from "../core/runtimes";
 import * as scheduleCore from "../core/schedule";
 import * as selectorCore from "../core/selector";
 import * as screenCore from "../core/screen";
@@ -645,6 +654,129 @@ async function ensurePortAllocationsRouted(
 	return results;
 }
 
+// -- java runtimes -------------------------------------------------------------
+// A JDK is arch-specific and lives under the machine's own cluster root, so every
+// machine holds its own and answers for its own. Unlike the port ops these fan out
+// over *registered* machines rather than instance owners: a follower with nothing
+// on it yet is exactly the one an operator installs a runtime onto first.
+
+/** Every machine in the fleet, this daemon's own key first. */
+function fleetMachines(cfg: ClusterConfig): string[] {
+	const mine = machineKey();
+	const keys = ["", ...Object.keys(cfg.daemons ?? {})];
+
+	return [mine, ...keys.filter((key) => key !== mine)];
+}
+
+/** What every machine in the fleet has installed. */
+async function runtimesInventoryRouted(cfg: ClusterConfig): Promise<MachineRuntimes[]> {
+	const mine = machineKey();
+	const rows: MachineRuntimes[] = [];
+
+	await Promise.all(
+		fleetMachines(cfg).map(async (machine) => {
+			if (machine === mine) {
+				const local = await runtimesCore.listInstalledRuntimes();
+
+				rows.push({ machine, platform: local.platform, runtimes: local.runtimes });
+
+				return;
+			}
+
+			const answer = (await askMachine(machine, "runtimes.inventoryLocal", [])) as
+				| LocalRuntimeInventory
+				| null;
+
+			rows.push({
+				machine,
+				platform: answer?.platform ?? null,
+				runtimes: Array.isArray(answer?.runtimes) ? answer.runtimes : null,
+			});
+		}),
+	);
+
+	return rows.sort((a, b) => a.machine.localeCompare(b.machine));
+}
+
+/** The catalog as one machine sees it; its platform decides which builds exist. */
+async function runtimesAvailableRouted(
+	cfg: ClusterConfig,
+	machine = machineKey(),
+	opts: { vendor?: RuntimeVendor; feature?: number; refresh?: boolean } = {},
+): Promise<AvailableRuntime[]> {
+	if (machine === machineKey()) {
+		return await runtimesCore.listAvailableRuntimes(opts);
+	}
+
+	const answer = await askMachineList<AvailableRuntime>(machine, "runtimes.listAvailable", [opts]);
+
+	return answer ?? [];
+}
+
+/**
+ * Install a runtime onto one machine. The download runs where the runtime will
+ * be used, so a follower's progress is mirrored back through the forwarded
+ * reporter rather than the primary fetching an archive it cannot run.
+ */
+async function installRuntimeRouted(
+	cfg: ClusterConfig,
+	machine: string,
+	id: string,
+	opts: { force?: boolean; reporter?: ProgressReporter } = {},
+): Promise<InstalledRuntime> {
+	if (machine === machineKey()) {
+		return await runtimesCore.installRuntime(id, opts);
+	}
+
+	if (!forwardOp) {
+		throw new Error(t("daemon.noFollowerLink", { name: machine }));
+	}
+
+	const { reporter, ...plain } = opts;
+	const outcome = await forwardOp(machine, "runtimes.installLocal", [id, plain], reporter);
+
+	return outcome.result as InstalledRuntime;
+}
+
+/**
+ * Delete a runtime from one machine, refusing while something still asks for it.
+ * The guard lives here because it needs the cluster config: the machine holding
+ * the files has no idea which instances point at them.
+ */
+async function removeRuntimeRouted(
+	cfg: ClusterConfig,
+	machine: string,
+	id: string,
+	opts: { force?: boolean } = {},
+): Promise<{ removed: boolean; freedBytes?: number }> {
+	if (!opts.force) {
+		const consumers = (runtimesCore.runtimeConsumers(cfg)[id] ?? []).filter(
+			(consumer) => consumer.kind === "profile" || consumer.machine === machine,
+		);
+
+		if (consumers.length > 0) {
+			throw new Error(
+				t("core.runtimes.inUse", {
+					id,
+					consumers: consumers.map((consumer) => consumer.name).join(", "),
+				}),
+			);
+		}
+	}
+
+	if (machine === machineKey()) {
+		return await runtimesCore.removeLocalRuntime(id);
+	}
+
+	if (!forwardOp) {
+		throw new Error(t("daemon.noFollowerLink", { name: machine }));
+	}
+
+	const outcome = await forwardOp(machine, "runtimes.removeLocal", [id]);
+
+	return outcome.result as { removed: boolean; freedBytes?: number };
+}
+
 /** Route a directory inspection to the daemon whose disk holds the directory. */
 async function inspectInstanceDirRouted(
 	dir: string,
@@ -1007,6 +1139,31 @@ export const OPS: Record<string, OpSpec> = {
 	"ports.auditPorts": { fn: auditPortsRouted, cfg: 0, lock: 1 },
 	"ports.auditConfigDrift": { fn: portsCore.auditConfigDrift, cfg: 0, lock: 1 },
 	"ports.collectPortRows": { fn: collectPortRowsRouted, cfg: 0, lock: 1 },
+	// -- java runtimes -------------------------------------------------------------
+	// the "…Local" ops answer for the machine they run on and are what the routed
+	// wrappers forward; a client only ever calls the routed ones
+	"runtimes.inventoryLocal": { fn: runtimesCore.listInstalledRuntimes },
+	"runtimes.installLocal": {
+		fn: runtimesCore.installRuntime,
+		reporter: { arg: 1, prop: "reporter" },
+	},
+	"runtimes.removeLocal": { fn: runtimesCore.removeLocalRuntime },
+	"runtimes.listAvailable": { fn: runtimesCore.listAvailableRuntimes },
+	"runtimes.inventory": { fn: runtimesInventoryRouted, cfg: 0 },
+	"runtimes.available": { fn: runtimesAvailableRouted, cfg: 0 },
+	"runtimes.install": {
+		fn: installRuntimeRouted,
+		cfg: 0,
+		reporter: { arg: 3, prop: "reporter" },
+	},
+	"runtimes.remove": { fn: removeRuntimeRouted, cfg: 0 },
+	"runtimes.ensureForInstance": {
+		fn: runtimesCore.ensureInstanceRuntime,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 2 },
+	},
+
 	"proxy.syncVelocityToml": { fn: proxyCore.syncVelocityToml, cfg: 0 },
 	"proxy.readVelocityServers": { fn: proxyCore.readVelocityServers, cfg: 0 },
 	"proxy.readForwardingSecret": { fn: proxyCore.readForwardingSecret, cfg: 0 },

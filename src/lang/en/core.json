@@ -1,5 +1,7 @@
 {
 	"instances": {
+		"restartDelayNotInteger": "the restart delay is a whole number of seconds",
+		"restartDelayRange": "the restart delay must be between 0 and {max} seconds",
 		"unknown": "unknown instance: {name}",
 		"unknownProfile": "unknown java profile \"{name}\"",
 		"noLoaderVersion": "neoforge instance has no loaderVersion; cannot locate its argument file"
@@ -284,12 +286,50 @@
 		"providerUnavailable": "{provider} is not available: {reason}",
 		"zipTooShort": "not a zip file (too short)",
 		"zipNoEocd": "not a zip file (no end-of-central-directory record)",
-		"zip64Unsupported": "zip64 archives are not supported"
+		"zip64Unsupported": "zip64 archives are not supported",
+		"adoptiumHttp": "adoptium api: HTTP {status}"
+	},
+	"runtimes": {
+		"idEmpty": "runtime id is empty",
+		"idMalformed": "not a runtime id: {id} (expected <vendor>@<version>)",
+		"unknownVendor": "unknown runtime vendor in {id}; known vendors: {vendors}",
+		"notInstalled": "runtime {id} is not installed on this machine (needed by {name})",
+		"alreadyInstalled": "{id} already installed",
+		"noSuchBuild": "no {id} build published for {platform}",
+		"phaseResolve": "Resolve build",
+		"phaseDownload": "Download",
+		"phaseExtract": "Unpack",
+		"resolving": "looking up {id}",
+		"resolved": "{id} resolved",
+		"resolveFailed": "could not resolve {id}",
+		"downloading": "downloading {id}",
+		"downloaded": "{id} downloaded",
+		"downloadFailed": "could not download {id}",
+		"downloadedSoFar": "{mb} MB",
+		"downloadedOf": "{mb} / {total} MB",
+		"extracting": "unpacking {id}",
+		"extracted": "{id} installed",
+		"extractFailed": "could not unpack {id}",
+		"verifying": "checking {id}",
+		"noJavaInArchive": "{id}: the archive has no bin/java",
+		"tarFailed": "tar failed (exit {code}): {detail}",
+		"inUse": "runtime {id} is still used by {consumers}",
+		"notHere": "runtime {id} is not installed on {machine}",
+		"unknownMachine": "no such machine: {machine}"
+	},
+	"profiles": {
+		"unknown": "no such java profile: {name}",
+		"exists": "java profile {name} already exists",
+		"badName": "bad profile name: {name} (lowercase letters, digits, - and _)",
+		"inUse": "profile {name} is still used by {instances}",
+		"lastProfile": "{name} is the only java profile left; every instance needs one",
+		"javaPathSpaces": "a java path cannot contain spaces; it is interpolated into run.sh unquoted"
 	},
 	"lifecycle": {
 		"alreadyRunning": "already running",
 		"notRunning": "not running",
 		"phaseJava": "Java runtime",
+		"phaseRuntimeInstall": "Runtime install",
 		"phaseProxyBoot": "Proxy boot",
 		"phaseServerBoot": "Server boot",
 		"phaseDatapacks": "Data packs",

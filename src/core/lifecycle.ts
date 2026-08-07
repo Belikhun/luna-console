@@ -20,6 +20,7 @@ import { instanceDir, managedInstances } from "./config";
 import * as instances from "./instances";
 import { ping } from "./ping";
 import { ProgressReporter } from "./progress";
+import { ensureInstanceRuntime, isRuntimeInstalled, javaSelection } from "./runtimes";
 import * as screen from "./screen";
 import type { ClusterConfig } from "./types";
 import { t } from "../shared/i18n";
@@ -136,6 +137,16 @@ export async function startInstanceTracked(
 	progress.weighOwn(0);
 
 	const isProxy = inst.software === "velocity";
+	const selection = javaSelection(cfg, inst);
+
+	// a first start on a machine that has never held this runtime downloads a few
+	// hundred megabytes; it only becomes a phase when there is really something to
+	// install, so an ordinary start's tree keeps the shape operators know
+	const runtime =
+		selection.kind === "runtime" && !isRuntimeInstalled(selection.id)
+			? progress.child(t("core.lifecycle.phaseRuntimeInstall"), 4)
+			: undefined;
+
 	const boot = progress.child(t("core.lifecycle.phaseJava"), 1);
 	const server = progress.child(
 		isProxy ? t("core.lifecycle.phaseProxyBoot") : t("core.lifecycle.phaseServerBoot"),
@@ -148,6 +159,10 @@ export async function startInstanceTracked(
 	const follower = new LogFollower(join(instanceDir(inst), "logs", "latest.log"));
 
 	await follower.seekToEnd();
+
+	if (runtime) {
+		await ensureInstanceRuntime(cfg, name, runtime);
+	}
 
 	await boot.task(
 		{ start: t("core.lifecycle.spawningSession"), progress: 0.6 },

@@ -23,6 +23,7 @@ import type { ClusterConfig, InstanceConfig } from "./types";
 import { t } from "../shared/i18n";
 import { managedInstances, notifySave, root, statePath } from "./config";
 import { readForwardingSecret } from "./proxy";
+import { resolveJavaHome, resolveJavaPath } from "./runtimes";
 
 const ENV_FILE = "environment.json";
 
@@ -410,6 +411,11 @@ export async function builtinVars(
 		LUNA_SOFTWARE: inst.software,
 		LUNA_DIR: inst.dir,
 		LUNA_ROOT: root(),
+		// the java binary is resolved here rather than in the run script because a
+		// managed runtime's path is machine-local: this runs on the daemon owning
+		// the instance, so `root()` is that machine's own root
+		LUNA_JAVA: resolveJavaPath(cfg, inst),
+		JAVA_HOME: resolveJavaHome(cfg, inst),
 		LUNA_PROXY_HOST: proxyHost,
 		LUNA_PROXY_PORT: String(cfg.proxy.port),
 		LUNA_FORWARDING_SECRET: await readForwardingSecret(cfg),

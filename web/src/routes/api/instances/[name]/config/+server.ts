@@ -14,8 +14,15 @@ import {
 	readServerProperties,
 	validateSettings
 } from '$core/settings';
+import { inventory, javaSelection, suggestedFeature, validateRuntimeId } from '$core/runtimes';
 import { syncVelocityToml } from '$core/proxy';
-import { getStatus } from '$core/instances';
+import {
+	DEFAULT_RESTART_DELAY,
+	autoRestartOf,
+	getStatus,
+	restartDelayOf,
+	validateRestartDelay
+} from '$core/instances';
 import { compatReport, deploy } from '$core/plugins';
 import { instanceGroupNames } from '$core/families';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
@@ -40,14 +47,33 @@ export async function GET({ params }) {
 		SERVER_SETTINGS.map((spec) => [spec.key, properties[spec.key] ?? spec.fallback])
 	);
 
+	// what this instance's own machine has installed, so the runtime picker can
+	// mark a choice the machine does not hold yet rather than hiding it: starting
+	// installs it, which is exactly what an operator picking it wants
+	const machine = inst.daemon ?? '';
+	const fleet = await inventory(cfg);
+	const machineRuntimes = fleet.find((row) => row.machine === machine)?.runtimes ?? null;
+
 	return json({
 		memory: inst.memory,
 		profile: inst.profile,
 		java: inst.java ?? null,
+		runtime: inst.runtime ?? null,
 		javaArgs: inst.javaArgs ?? [],
+		autoRestart: autoRestartOf(inst),
+		restartDelay: restartDelayOf(inst),
 		port: inst.port,
 		mcVersion: inst.mcVersion ?? null,
 		profiles: Object.keys(cfg.javaProfiles),
+		profileDetails: Object.fromEntries(
+			Object.entries(cfg.javaProfiles).map(([key, profile]) => [
+				key,
+				{ java: profile.java ?? null, runtime: profile.runtime ?? null }
+			])
+		),
+		machineRuntimes,
+		selection: javaSelection(cfg, inst),
+		suggestedFeature: suggestedFeature(inst.mcVersion),
 		schema: SERVER_SETTINGS,
 		groups: SETTING_GROUPS,
 		settings,
@@ -96,6 +122,37 @@ export async function PATCH({ params, request }) {
 	if (body.java !== undefined) {
 		inst.java = body.java || undefined;
 		changed.push('java');
+	}
+
+	if (body.autoRestart !== undefined) {
+		// stored only when it departs from the default, so an untouched instance
+		// keeps the registry entry it has always had
+		inst.autoRestart = body.autoRestart ? undefined : false;
+		changed.push('autoRestart');
+	}
+
+	if (body.restartDelay !== undefined) {
+		const seconds = Number(body.restartDelay);
+		const bad = validateRestartDelay(seconds);
+
+		if (bad) {
+			throw error(400, bad);
+		}
+
+		inst.restartDelay = seconds === DEFAULT_RESTART_DELAY ? undefined : seconds;
+		changed.push('restartDelay');
+	}
+
+	if (body.runtime !== undefined) {
+		const id = String(body.runtime);
+		const bad = id ? validateRuntimeId(id) : undefined;
+
+		if (bad) {
+			throw error(400, bad);
+		}
+
+		inst.runtime = id || undefined;
+		changed.push('runtime');
 	}
 
 	if (body.javaArgs !== undefined) {

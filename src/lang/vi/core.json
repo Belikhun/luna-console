@@ -1,5 +1,7 @@
 {
 	"instances": {
+		"restartDelayNotInteger": "độ trễ khởi động lại là số giây nguyên",
+		"restartDelayRange": "độ trễ khởi động lại phải từ 0 đến {max} giây",
 		"unknown": "không biết instance: {name}",
 		"unknownProfile": "không biết profile java \"{name}\"",
 		"noLoaderVersion": "instance neoforge không có loaderVersion; không tìm được tệp tham số của nó"
@@ -284,12 +286,50 @@
 		"providerUnavailable": "{provider} không khả dụng: {reason}",
 		"zipTooShort": "không phải tệp zip (quá ngắn)",
 		"zipNoEocd": "không phải tệp zip (thiếu bản ghi end-of-central-directory)",
-		"zip64Unsupported": "chưa hỗ trợ kho nén zip64"
+		"zip64Unsupported": "chưa hỗ trợ kho nén zip64",
+		"adoptiumHttp": "adoptium api: HTTP {status}"
+	},
+	"runtimes": {
+		"idEmpty": "id runtime trống",
+		"idMalformed": "không phải id runtime: {id} (cần <nhà cung cấp>@<phiên bản>)",
+		"unknownVendor": "nhà cung cấp runtime không xác định trong {id}; đã biết: {vendors}",
+		"notInstalled": "runtime {id} chưa được cài trên máy này ({name} đang cần)",
+		"alreadyInstalled": "{id} đã được cài",
+		"noSuchBuild": "không có bản {id} nào cho {platform}",
+		"phaseResolve": "Tìm bản dựng",
+		"phaseDownload": "Tải về",
+		"phaseExtract": "Giải nén",
+		"resolving": "đang tìm {id}",
+		"resolved": "đã tìm thấy {id}",
+		"resolveFailed": "không tìm được {id}",
+		"downloading": "đang tải {id}",
+		"downloaded": "đã tải xong {id}",
+		"downloadFailed": "không tải được {id}",
+		"downloadedSoFar": "{mb} MB",
+		"downloadedOf": "{mb} / {total} MB",
+		"extracting": "đang giải nén {id}",
+		"extracted": "đã cài {id}",
+		"extractFailed": "không giải nén được {id}",
+		"verifying": "đang kiểm tra {id}",
+		"noJavaInArchive": "{id}: gói nén không có bin/java",
+		"tarFailed": "tar lỗi (mã {code}): {detail}",
+		"inUse": "runtime {id} vẫn đang được {consumers} sử dụng",
+		"notHere": "runtime {id} chưa được cài trên {machine}",
+		"unknownMachine": "không có máy: {machine}"
+	},
+	"profiles": {
+		"unknown": "không có java profile: {name}",
+		"exists": "java profile {name} đã tồn tại",
+		"badName": "tên profile không hợp lệ: {name} (chữ thường, chữ số, - và _)",
+		"inUse": "profile {name} vẫn đang được {instances} sử dụng",
+		"lastProfile": "{name} là java profile cuối cùng; mọi instance đều cần một profile",
+		"javaPathSpaces": "đường dẫn java không được chứa khoảng trắng; nó được ghép thẳng vào run.sh mà không có dấu nháy"
 	},
 	"lifecycle": {
 		"alreadyRunning": "vốn đang chạy",
 		"notRunning": "không chạy",
 		"phaseJava": "Môi trường Java",
+		"phaseRuntimeInstall": "Cài runtime",
 		"phaseProxyBoot": "Khởi động proxy",
 		"phaseServerBoot": "Khởi động máy chủ",
 		"phaseDatapacks": "Gói dữ liệu",

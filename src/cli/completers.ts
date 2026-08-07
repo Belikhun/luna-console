@@ -42,6 +42,42 @@ export async function machineNames(): Promise<string[]> {
 	}
 }
 
+/** Names of every java profile in the registry. */
+export async function profileNames(): Promise<string[]> {
+	try {
+		return Object.keys((await loadCluster()).javaProfiles).sort();
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Runtime ids worth completing: what the fleet already has installed, plus the
+ * catalog for this machine. Installing one that is not installed anywhere yet is
+ * the whole point of the command, so the catalog is part of the answer.
+ */
+export async function runtimeIds(): Promise<string[]> {
+	try {
+		const { available, inventory } = await import("../client/core/runtimes");
+		const cfg = await loadCluster();
+		const ids = new Set<string>();
+
+		for (const machine of await inventory(cfg)) {
+			for (const runtime of machine.runtimes ?? []) {
+				ids.add(runtime.id);
+			}
+		}
+
+		for (const row of await available(cfg)) {
+			ids.add(row.id);
+		}
+
+		return [...ids].sort();
+	} catch {
+		return [];
+	}
+}
+
 /** Usernames of every console account. */
 export async function accountNames(): Promise<string[]> {
 	try {

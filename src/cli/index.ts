@@ -15,6 +15,8 @@ import "./commands/players";
 import "./commands/misc";
 import "./commands/web";
 import "./commands/env";
+import "./commands/runtime";
+import "./commands/profile";
 import "./commands/configs";
 import "./commands/packs";
 import "./commands/schedule";

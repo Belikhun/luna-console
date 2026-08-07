@@ -87,7 +87,10 @@ export interface InstanceRow {
 		| 'starting'
 		| 'stopping'
 		| 'stopped'
+		// asked for by an operator
 		| 'restarting'
+		// not asked for: the wrapper is waiting to relaunch after a crash
+		| 'auto-restarting'
 		| 'provisioning'
 		| 'deleting'
 		| 'unknown';

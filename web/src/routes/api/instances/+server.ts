@@ -9,6 +9,7 @@ import { deploy } from '$core/plugins';
 import { ensurePortAllocations } from '$core/ports';
 import { syncVelocityToml } from '$core/proxy';
 import { parseJavaArgs, validateJavaArgs, validateSettings } from '$core/settings';
+import { validateRuntimeId } from '$core/runtimes';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
 import { applyAddonGroups } from '$core/addons';
 import { listStatuses, pushEvent } from '$lib/server/luna';
@@ -136,6 +137,13 @@ export async function POST({ request }) {
 		throw error(400, badArgs);
 	}
 
+	const runtime = body.runtime ? String(body.runtime) : undefined;
+	const badRuntime = runtime ? validateRuntimeId(runtime) : undefined;
+
+	if (badRuntime) {
+		throw error(400, badRuntime);
+	}
+
 	if (Array.isArray(body.addonGroups) && body.addonGroups.length) {
 		const lock = await loadLock();
 		const unknown = body.addonGroups.filter((name: string) => !lock.groups?.[name]);
@@ -173,6 +181,7 @@ export async function POST({ request }) {
 				register,
 				settings,
 				javaArgs,
+				runtime,
 				addonGroups: Array.isArray(body.addonGroups) ? body.addonGroups.map(String) : undefined,
 				pluginOverrides:
 					body.pluginOverrides && typeof body.pluginOverrides === 'object'

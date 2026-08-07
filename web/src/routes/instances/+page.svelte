@@ -103,10 +103,16 @@
 		selected.size === 1 ? rows.find((row) => selected.has(row.name)) : undefined
 	);
 
+	/**
+	 * States whose instance still owns a live screen session, so stopping and
+	 * restarting apply. An auto-restarting one is between JVMs, not down.
+	 */
+	const UP_STATES = ['running', 'starting', 'auto-restarting'];
+
 	const selRows = $derived(rows.filter((row) => selected.has(row.name)));
 	const anyStopped = $derived(selRows.some((row) => row.state === 'stopped'));
 	const anyUp = $derived(
-		selRows.some((row) => row.state === 'running' || row.state === 'starting')
+		selRows.some((row) => UP_STATES.includes(row.state ?? ''))
 	);
 
 	const filters: TableFilterGroup<Row>[] = $derived([
@@ -124,6 +130,7 @@
 						row.state === 'starting' ||
 						row.state === 'stopping' ||
 						row.state === 'restarting' ||
+						row.state === 'auto-restarting' ||
 						row.state === 'provisioning' ||
 						row.state === 'deleting'
 				},
@@ -247,9 +254,7 @@
 	async function stateAction(action: StateAction): Promise<void> {
 		// only act on rows the action can actually apply to
 		const targets = selRows.filter((row) =>
-			action === 'start'
-				? row.state === 'stopped'
-				: row.state === 'running' || row.state === 'starting'
+			action === 'start' ? row.state === 'stopped' : UP_STATES.includes(row.state ?? '')
 		);
 
 		if (!targets.length) {
@@ -301,7 +306,7 @@
 
 	/** An instance's verbs; the row menu and the toolbar's Actions button. */
 	function rowActions(row: Row): ContextMenuItem[] {
-		const up = row.state === 'running' || row.state === 'starting';
+		const up = UP_STATES.includes(row.state ?? '');
 
 		// a mid-provision instance has no directory or registry entry to act on yet
 		const busy = row.state === 'provisioning' || row.state === 'deleting';

@@ -16,10 +16,90 @@ export type Software = "paper" | "velocity" | "neoforge";
 export interface JavaProfile {
 	/** Path to java binary, default "java" */
 	java?: string;
+	/** Managed runtime id, e.g. "temurin@21.0.5+11". Used when `java` is unset. */
+	runtime?: string;
 	/** JVM flags placed before -jar */
 	flags: string[];
 	/** Extra args appended after the jar (e.g. --nogui is added automatically for paper) */
 	jarArgs?: string[];
+}
+
+/**
+ * Java distributions luna can install. Temurin comes from the Adoptium API in
+ * both its JDK and JRE image, GraalVM Community from its own GitHub releases;
+ * a vendor is the half of a runtime id before the "@".
+ */
+export type RuntimeVendor = "temurin" | "temurin-jre" | "graalvm-ce";
+
+/** A runtime the vendor publishes for one platform, ready to be installed. */
+export interface AvailableRuntime {
+	/** Canonical id, "<vendor>@<version>", e.g. "temurin@21.0.5+11" */
+	id: string;
+	vendor: RuntimeVendor;
+	version: string;
+	/** Major/feature release: 21 for "21.0.5+11", 8 for "8u432-b06" */
+	feature: number;
+	lts?: boolean;
+	/** Platform triple the archive is built for, e.g. "linux-x64" */
+	platform: string;
+	url: string;
+	sha256?: string;
+	/** Sidecar holding the sha256, when the vendor publishes it as its own file */
+	digestUrl?: string;
+	size?: number;
+}
+
+/** A runtime installed under `<root>/.runtimes` on one machine. */
+export interface InstalledRuntime {
+	id: string;
+	vendor: RuntimeVendor;
+	version: string;
+	feature: number;
+	/** Directory under `.runtimes`; the id with "+" folded to "_" */
+	dirName: string;
+	/** Absolute path to the java binary on the machine holding it */
+	javaPath: string;
+	platform: string;
+	/** ISO 8601 */
+	installedAt: string;
+	sizeBytes?: number;
+	/** First line of `bin/java -version`, recorded once at install */
+	javaVersionLine?: string;
+}
+
+/** What one machine has installed, as that machine reports it. */
+export interface LocalRuntimeInventory {
+	/** The answering daemon's own platform triple */
+	platform: string;
+	runtimes: InstalledRuntime[];
+}
+
+/** One machine's slice of the fleet-wide inventory. */
+export interface MachineRuntimes {
+	/** Machine key; "" is the primary */
+	machine: string;
+	platform: string | null;
+	/** null = the machine did not answer, which is not the same as "none" */
+	runtimes: InstalledRuntime[] | null;
+}
+
+/**
+ * Which of the four possible sources decides an instance's java binary. The
+ * decision is pure config, so it resolves identically on a client; only the
+ * absolute path behind a `runtime` is machine-local.
+ */
+export type JavaSelection =
+	| { kind: "path"; path: string; source: "instance" | "profile" }
+	| { kind: "runtime"; id: string; source: "instance" | "profile" }
+	| { kind: "default" };
+
+/** Something that asked for a runtime id, and where it runs. */
+export interface RuntimeConsumer {
+	kind: "instance" | "profile";
+	/** Instance name, or the profile's name */
+	name: string;
+	/** Machine key the use lands on ("" = primary); absent for an unused profile */
+	machine?: string;
 }
 
 export interface ProxyRegistration {
@@ -42,10 +122,17 @@ export interface InstanceConfig {
 	port: number;
 	memory: string; // "4G"
 	profile: string;
-	/** Override java binary for this instance */
+	/** Override java binary for this instance; wins over every runtime id */
 	java?: string;
+	/** Managed runtime id for this instance, e.g. "temurin@21.0.5+11" */
+	runtime?: string;
 	/** Extra JVM flags for this instance, appended after the profile's own flags */
 	javaArgs?: string[];
+	/** Relaunch after an unexpected exit; absent = on. A requested stop never
+	 *  relaunches, whatever this says. */
+	autoRestart?: boolean;
+	/** Seconds to wait before relaunching after a crash; absent = 3 */
+	restartDelay?: number;
 	/** Plugin port allocations, key = "<plugin>/<portId>" */
 	ports?: Record<string, number>;
 	/** Addon groups applied to this instance ("default" is always applied, never

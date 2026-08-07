@@ -30,6 +30,9 @@
 	let profiles: string[] = $state(['aikar']);
 	let register = $state(true);
 	let javaArgs = $state('');
+	/** managed runtime id, empty = whatever the java profile resolves */
+	let runtime = $state('');
+	let runtimeIds: string[] = $state([]);
 	let creating = $state(false);
 	let existing: string[] = $state([]);
 	/** the machine the instance will be created on; a daemon name, always set */
@@ -81,6 +84,23 @@
 			settings = Object.fromEntries(
 				cfg.schema.map((spec: any) => [spec.key, spec.fallback])
 			);
+		}
+
+		// runtimes the fleet already holds; picking one the target machine lacks is
+		// allowed too, it just installs on the first start
+		try {
+			const fleet = await api('/runtimes');
+			const ids = new Set<string>();
+
+			for (const machine of fleet.machines as Array<any>) {
+				for (const entry of machine.runtimes ?? []) {
+					ids.add(entry.id);
+				}
+			}
+
+			runtimeIds = [...ids].sort();
+		} catch {
+			runtimeIds = [];
 		}
 	});
 
@@ -145,6 +165,7 @@
 					register,
 					settings: changedSettings,
 					javaArgs,
+					runtime,
 					addonGroups,
 					pluginOverrides,
 					// the registry records an owner only for follower-held instances, so
@@ -222,6 +243,19 @@
 					bind:value={profile}
 					width="100%"
 					options={profiles.map((entry) => ({ value: entry, label: entry }))}
+				/>
+			</div>
+			<div class="field">
+				<span class="lbl">{t('web.launch.javaRuntime')}</span>
+				<span class="hint">{t('web.launch.runtimeHint')}</span>
+				<Select
+					bind:value={runtime}
+					width="100%"
+					searchable
+					options={[
+						{ value: '', label: t('web.launch.profileDefault') },
+						...runtimeIds.map((id) => ({ value: id, label: id }))
+					]}
 				/>
 			</div>
 		</FormGrid>

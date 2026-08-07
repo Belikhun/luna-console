@@ -26,6 +26,7 @@ import { getConfValue, setConfValue } from "./confedit";
 import { forgetInstance } from "./configfiles";
 import { loadEnv, saveEnv, unsetInstanceScope } from "./environment";
 import { ProgressReporter } from "./progress";
+import { validateRuntimeId } from "./runtimes";
 import { SERVER_SETTINGS, validateJavaArgs, validateSettings } from "./settings";
 import { t } from "../shared/i18n";
 
@@ -452,6 +453,8 @@ export interface CreateOptions {
 	settings?: Record<string, string>;
 	/** extra JVM flags for the generated run script */
 	javaArgs?: string[];
+	/** managed java runtime id; installed on the owning machine at first start */
+	runtime?: string;
 	/** addon groups beside "default" (which always applies) */
 	addonGroups?: string[];
 	/** per-instance plugin overrides (plugin name → force-add/disable) */
@@ -520,6 +523,14 @@ export async function createInstance(
 
 		if (badArgs) {
 			throw new Error(badArgs);
+		}
+
+		if (opts.runtime) {
+			const badRuntime = validateRuntimeId(opts.runtime);
+
+			if (badRuntime) {
+				throw new Error(badRuntime);
+			}
 		}
 
 		// The port is taken here, before the first byte is written: a provision runs
@@ -651,6 +662,10 @@ async function buildInstance(
 
 	if (opts.javaArgs?.length) {
 		inst.javaArgs = opts.javaArgs;
+	}
+
+	if (opts.runtime) {
+		inst.runtime = opts.runtime;
 	}
 
 	if (opts.addonGroups?.length) {

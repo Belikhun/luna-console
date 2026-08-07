@@ -23,7 +23,20 @@ import { pushEvent } from "./events";
 import { isPrimary, ownsInstance } from "./identity";
 import { getAllStatusesRouted, getStatusRouted } from "./rpc";
 
-export type UiState = "running" | "starting" | "stopping" | "stopped" | "restarting" | "unknown";
+/**
+ * `restarting` is the console's own transient, set when an operator asks for a
+ * restart; `auto-restarting` comes from core and means the wrapper loop is
+ * waiting out its delay after a crash. They read alike and mean different
+ * things: one was asked for, the other was not.
+ */
+export type UiState =
+	| "running"
+	| "starting"
+	| "stopping"
+	| "stopped"
+	| "restarting"
+	| "auto-restarting"
+	| "unknown";
 
 /** Status as core reports it, before the UI's transient states are layered on. */
 type CoreStatus = Awaited<ReturnType<typeof instances.getStatus>>;
@@ -132,7 +145,10 @@ function settleTransition(name: string, coreState: CoreStatus["state"]): void {
 		transition.sawDown = true;
 	}
 
-	const stopped = transition.state === "stopping" && coreState === "stopped";
+	// an instance that crashed into its own relaunch has gone down, whether or not
+	// anybody asked it to; a requested stop is settled by that just as well
+	const stopped =
+		transition.state === "stopping" && (coreState === "stopped" || coreState === "auto-restarting");
 
 	// a restart is marked while the server is still up, so "running" only means
 	// it is over once the process has been seen down in between
@@ -314,6 +330,8 @@ export function effectiveState(name: string, coreState: CoreStatus["state"]): Ui
 
 	const transition = transitions.get(name);
 
+	// a stop landing mid-wait has already told the wrapper not to relaunch, so the
+	// row reads as stopping rather than as a relaunch that is no longer coming
 	if (transition?.state === "stopping") {
 		return coreState === "stopped" ? "stopped" : "stopping";
 	}

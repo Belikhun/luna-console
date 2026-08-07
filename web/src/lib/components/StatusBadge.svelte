@@ -59,6 +59,9 @@
 		starting: { color: 'var(--text-secondary)', icon: 'rotate', spin: true },
 		stopping: { color: 'var(--warning)', icon: 'rotate', spin: true },
 		restarting: { color: 'var(--text-secondary)', icon: 'rotate', spin: true },
+		// not asked for: the server went down on its own and the wrapper is waiting
+		// to relaunch it, which is worth an amber rather than the neutral spinner
+		'auto-restarting': { color: 'var(--warning)', icon: 'rotate', spin: true },
 		provisioning: { color: 'var(--link)', icon: 'rotate', spin: true },
 		deleting: { color: 'var(--warning)', icon: 'rotate', spin: true },
 		pending: { color: 'var(--text-secondary)', icon: 'rotate', spin: true },

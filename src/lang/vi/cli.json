@@ -629,6 +629,7 @@
 		}
 	},
 	"instance": {
+		"stateAutoRestarting": "đang tự khởi động lại",
 		"stateRunning": "đang chạy",
 		"stateStarting": "đang khởi động",
 		"stateStopped": "đã tắt",
@@ -677,6 +678,7 @@
 			"optProfile": "profile java (mặc định aikar)",
 			"optSet": "thiết lập máy chủ, ví dụ difficulty=hard,max-players=100 (xem instance settings)",
 			"optJavaArgs": "cờ JVM bổ sung, ví dụ \"-XX:+UseZGC\"",
+			"optRuntime": "id java runtime quản lý (cài ở lần khởi động đầu)",
 			"optGroups": "các nhóm addon ngoài default, phân tách bằng dấu phẩy",
 			"optNoRegister": "không đăng ký trong velocity.toml",
 			"optDaemon": "daemon follower sẽ sở hữu instance",
@@ -752,8 +754,15 @@
 			"appliesOnRestart": "áp dụng ở lần khởi động lại sau"
 		},
 		"config": {
+			"on": "bật",
+			"off": "tắt",
+			"notABoolean": "{value} không phải giá trị bật/tắt (true, false, on, off)",
 			"desc": "Xem/đặt thiết lập instance (memory, profile, port, javaArgs, hoặc khóa server.properties bất kỳ)",
 			"profileDefault": "(theo profile)",
+			"optClear": "bỏ ghim một trường tuỳ chọn (java, runtime, javaArgs)",
+			"clearNeedsKey": "--clear cần tên trường muốn xoá",
+			"notClearable": "{key} không thể bỏ trống; nó luôn phải có giá trị",
+			"cleared": "đã xoá {name}.{key} (áp dụng ở lần khởi động lại)",
 			"settingsHint": "thiết lập máy chủ nằm trong server.properties: {command}",
 			"unknownProfile": "không biết profile: {name}",
 			"keyNotFound": "không thấy khóa \"{key}\" trong server.properties",
@@ -1104,6 +1113,116 @@
 			"desc": "Xóa bản sao .luna-drift nằm cạnh một tệp",
 			"noCopy": "không có bản sao lệch cạnh {file}",
 			"done": "đã xóa bản sao lệch"
+		}
+	},
+	"runtime": {
+		"unknownMachine": "không có máy: {name}",
+		"unknownVendor": "nhà cung cấp không xác định: {name}; đã biết: {vendors}",
+		"head": {
+			"runtime": "runtime",
+			"vendor": "nhà cung cấp",
+			"platform": "nền tảng",
+			"feature": "phiên bản lớn",
+			"lts": "lts",
+			"usedBy": "đang dùng bởi",
+			"reported": "báo cáo"
+		},
+		"list": {
+			"desc": "Các java runtime đã cài trên toàn cụm",
+			"optMachine": "chỉ máy này",
+			"unreachable": "không kết nối được",
+			"none": "chưa cài gì",
+			"empty": "chưa máy nào cài java runtime"
+		},
+		"available": {
+			"desc": "Các java runtime nhà cung cấp phát hành cho một máy",
+			"argFeature": "chỉ phiên bản lớn này, ví dụ 21",
+			"optMachine": "máy quyết định nền tảng của bản dựng",
+			"optVendor": "chỉ nhà cung cấp này",
+			"optLts": "chỉ các bản hỗ trợ dài hạn",
+			"optRefresh": "tải lại thay vì dùng danh mục đã lưu",
+			"badFeature": "không phải phiên bản lớn: {value}",
+			"empty": "không có bản dựng nào cho {machine}",
+			"lts": "lts",
+			"forPlatform": "bản dựng cho nền tảng của {machine}; cài bằng luna runtime install <id>"
+		},
+		"install": {
+			"desc": "Tải và cài một java runtime lên một máy",
+			"optMachine": "máy để cài (mặc định: máy chính)",
+			"optForce": "cài lại kể cả khi đã có",
+			"done": "đã cài {id} trên {machine}"
+		},
+		"remove": {
+			"desc": "Xoá một java runtime khỏi một máy",
+			"optMachine": "máy để xoá (mặc định: máy chính)",
+			"optForce": "xoá kể cả khi vẫn còn nơi đang dùng",
+			"optYes": "bỏ qua bước xác nhận",
+			"confirm": "Xoá {id} khỏi {machine}?",
+			"cancelled": "chưa xoá gì",
+			"done": "đã xoá {id} khỏi {machine} (giải phóng {freed})",
+			"forcedNote": "server đang chạy trên nó vẫn chạy cho tới lần khởi động lại"
+		},
+		"show": {
+			"desc": "Một java runtime đang có ở đâu và ai dùng nó",
+			"title": "runtime {id}",
+			"installed": "đã cài",
+			"missing": "chưa cài",
+			"usedBy": "đang dùng bởi {consumers}"
+		},
+		"suggest": {
+			"desc": "Phiên bản java mà một phiên bản Minecraft cần",
+			"result": "minecraft {version} cần java {feature} trở lên"
+		}
+	},
+	"profile": {
+		"head": {
+			"runtime": "runtime",
+			"java": "java",
+			"flags": "cờ",
+			"jarArgs": "tham số jar",
+			"usedBy": "đang dùng bởi"
+		},
+		"list": {
+			"desc": "Java profile: các bộ cờ JVM instance dùng để khởi động",
+			"empty": "chưa có java profile nào"
+		},
+		"show": {
+			"desc": "Chi tiết một java profile",
+			"title": "profile {name}",
+			"flagCount": "{count} cờ"
+		},
+		"add": {
+			"desc": "Tạo một java profile",
+			"optCopy": "sao chép từ một profile có sẵn",
+			"optRuntime": "id runtime profile sẽ chạy",
+			"optJava": "đường dẫn java cụ thể (được ưu tiên hơn --runtime)",
+			"optFlags": "các cờ JVM, cách nhau bởi khoảng trắng",
+			"optJarArgs": "tham số nối sau jar",
+			"done": "đã tạo profile {name}"
+		},
+		"edit": {
+			"desc": "Sửa một java profile",
+			"optRuntime": "id runtime profile sẽ chạy",
+			"optClearRuntime": "bỏ ghim runtime",
+			"optJava": "đường dẫn java cụ thể",
+			"optClearJava": "bỏ ghim đường dẫn java",
+			"optFlags": "thay toàn bộ cờ JVM, cách nhau bởi khoảng trắng",
+			"optJarArgs": "thay toàn bộ tham số nối sau jar",
+			"nothing": "không có gì để sửa; hãy truyền ít nhất một trường",
+			"done": "đã cập nhật profile {name} ({fields})",
+			"restartNote": "instance sẽ áp dụng ở lần khởi động kế tiếp"
+		},
+		"rename": {
+			"desc": "Đổi tên java profile và chuyển mọi instance đang dùng",
+			"done": "đã đổi tên profile {from} thành {to}",
+			"moved": "đã chuyển: {instances}"
+		},
+		"remove": {
+			"desc": "Xoá một java profile",
+			"optYes": "bỏ qua bước xác nhận",
+			"confirm": "Xoá java profile {name}?",
+			"cancelled": "chưa xoá gì",
+			"done": "đã xoá profile {name}"
 		}
 	},
 	"env": {

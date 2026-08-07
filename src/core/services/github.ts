@@ -155,6 +155,69 @@ export async function latestRelease(
 	return null;
 }
 
+/** One release of any repository, with every asset it published. */
+export interface RepoRelease {
+	tag: string;
+	prerelease: boolean;
+	draft: boolean;
+	publishedAt: string;
+	assets: ReleaseAsset[];
+}
+
+/**
+ * Every published release of a repository, newest first, with its assets left
+ * unfiltered. `latestRelease` answers the daemon-binary question and knows what
+ * a luna asset is called; this is the raw listing, for catalogs whose asset
+ * naming is somebody else's (GraalVM's, say).
+ *
+ * Drafts are dropped, because an unpublished release has no downloadable asset.
+ */
+export async function listRepoReleases(
+	repo: string,
+	opts: { perPage?: number; prerelease?: boolean; signal?: AbortSignal } = {},
+): Promise<RepoRelease[]> {
+	const perPage = Math.min(Math.max(opts.perPage ?? 30, 1), 100);
+	const response = await fetch(`${API}/repos/${repo}/releases?per_page=${perPage}`, {
+		headers: headers("application/vnd.github+json"),
+		signal: opts.signal,
+	});
+
+	if (response.status === 404) {
+		throw new Error(t("core.services.noRepo", { repo }));
+	}
+
+	if (!response.ok) {
+		throw new Error(t("core.services.githubHttp", { status: response.status }));
+	}
+
+	const releases = (await response.json()) as GhRelease[];
+	const out: RepoRelease[] = [];
+
+	for (const raw of releases) {
+		if (raw.draft) {
+			continue;
+		}
+
+		if (raw.prerelease && !opts.prerelease) {
+			continue;
+		}
+
+		out.push({
+			tag: raw.tag_name,
+			prerelease: raw.prerelease,
+			draft: raw.draft,
+			publishedAt: raw.published_at,
+			assets: raw.assets.map((asset) => ({
+				name: asset.name,
+				url: asset.browser_download_url,
+				size: asset.size,
+			})),
+		});
+	}
+
+	return out;
+}
+
 /**
  * Read a `.sha256` sidecar asset. The format is `sha256sum`'s own -
  * `<hex>  <filename>`; so only the first field is taken.
