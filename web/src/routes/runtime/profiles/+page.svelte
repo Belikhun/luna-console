@@ -225,7 +225,7 @@
 				<span class="mono dim">{row.jarArgs.join(' ') || '–'}</span>
 			{:else if col === 'usedBy'}
 				{#if row.usedBy.length}
-					{#each row.usedBy as instance, i (instance)}{#if i > 0}, {/if}<a
+					{#each row.usedBy as instance, i (instance)}{i > 0 ? ', ' : ''}<a
 							href="/instances/{instance}">{instance}</a
 						>{/each}
 				{:else}
