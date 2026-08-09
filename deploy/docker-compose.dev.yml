@@ -15,14 +15,17 @@
 #   docker compose -f deploy/docker-compose.dev.yml up -d --build
 #   docker compose -f deploy/docker-compose.dev.yml exec luna luna instances
 #
-# Console on http://127.0.0.1:8430, proxy on 127.0.0.1:25566. Every published
+# Console on http://<this host>:8430, proxy on <this host>:25566. Every published
 # port is offset from the production defaults so both can run on one host.
 #
-# The console and the proxy both bind loopback by default. To reach either from
-# another machine on the LAN, publish it wider - it is a disposable cluster, but
-# it is still a console, and the proxy is still a server anyone could join:
+# The console and the proxy both publish on every interface, because testing
+# either one means reaching it from the machine you actually sit at - a browser
+# and a game client are not on the server. The console is gated by its own
+# sign-in and the proxy runs online-mode, but this is still a console and a
+# joinable server: keep the cluster on a trusted network, or narrow either one
+# back to an address of your choosing:
 #
-#   CONSOLE_BIND=0.0.0.0 PROXY_BIND=0.0.0.0 \
+#   CONSOLE_BIND=127.0.0.1 PROXY_BIND=127.0.0.1 \
 #     docker compose -f deploy/docker-compose.dev.yml up -d
 #
 # The instances run as screen sessions inside the daemon container, so rebuilding
@@ -68,11 +71,13 @@ services:
       - ${LUNA_PLUGINS_DIR:-${HOME}/luna-plugins}:/luna-plugins:ro
 
     ports:
+      # the daemon's own HTTP API stays on loopback: nothing outside this host
+      # has a reason to reach it, and the cluster token is the only thing in
+      # front of it
       - "127.0.0.1:8431:8331"
-      # loopback by default like the console, and widened the same way, because
-      # testing a client flow needs a client and it is rarely on this machine:
-      #   PROXY_BIND=0.0.0.0 docker compose -f deploy/docker-compose.dev.yml up -d
-      - "${PROXY_BIND:-127.0.0.1}:25566:25565"
+      # published everywhere by default like the console, because testing a
+      # client flow needs a client and it is rarely on this machine
+      - "${PROXY_BIND:-0.0.0.0}:25566:25565"
 
     stop_grace_period: 2m
 
@@ -99,7 +104,7 @@ services:
       - cluster:/data
 
     ports:
-      - "${CONSOLE_BIND:-127.0.0.1}:8430:8330"
+      - "${CONSOLE_BIND:-0.0.0.0}:8430:8330"
 
   # The player directory, which the luna velocity plugins migrate a schema into
   # at boot. Without it lunacore, lunaauth and lunamessenger all fail their

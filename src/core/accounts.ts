@@ -508,7 +508,20 @@ function assertUsername(store: AccountStore, username: string, exceptId?: string
 	}
 }
 
-function assertPassword(password: string): void {
+/**
+ * Hold a new password to the length rule, unless the caller opted out.
+ *
+ * The opt-out exists for the CLI, and the reasoning is the same one that leaves
+ * the CLI ungated entirely: a shell that can open the daemon socket can already
+ * do everything the daemon can, so a length rule there protects nothing it could
+ * not simply edit around. The console keeps the rule, because that is the surface
+ * a password actually defends.
+ */
+function assertPassword(password: string, allowWeak?: boolean): void {
+	if (allowWeak) {
+		return;
+	}
+
 	if (password.length < MIN_PASSWORD_LENGTH) {
 		throw new Error(t("core.accounts.passwordTooShort", { min: MIN_PASSWORD_LENGTH }));
 	}
@@ -524,6 +537,8 @@ export interface CreateAccountInput {
 	mustChangePassword?: boolean;
 	/** Created disabled, for an account being prepared ahead of its owner */
 	disabled?: boolean;
+	/** Skip the length rule; the CLI sets this, the console never does */
+	allowWeakPassword?: boolean;
 }
 
 /**
@@ -540,7 +555,7 @@ export async function createAccount(
 	assertUsername(store, input.username);
 
 	if (input.password !== undefined) {
-		assertPassword(input.password);
+		assertPassword(input.password, input.allowWeakPassword);
 	}
 
 	const account: ConsoleAccount = {
@@ -748,12 +763,18 @@ export async function deleteAccount(idOrName: string, actor?: string): Promise<v
 export async function setPassword(
 	idOrName: string,
 	password: string,
-	opts: { current?: string; actor?: string; reset?: boolean } = {},
+	opts: {
+		current?: string;
+		actor?: string;
+		reset?: boolean;
+		/** Skip the length rule; the CLI sets this, the console never does */
+		allowWeak?: boolean;
+	} = {},
 ): Promise<void> {
 	const store = await loadAccounts();
 	const account = requireAccount(store, idOrName);
 
-	assertPassword(password);
+	assertPassword(password, opts.allowWeak);
 
 	if (opts.current !== undefined) {
 		const existing = account.identities.find((identity) => identity.kind === "password");

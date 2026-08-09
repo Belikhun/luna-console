@@ -273,6 +273,7 @@ command({
 				description: opts.description as string | undefined,
 				mustChangePassword: !!opts["must-change"],
 				disabled: !!opts.disabled,
+				allowWeakPassword: true,
 			},
 			cliActor(),
 		);
@@ -304,7 +305,11 @@ command({
 		const name = args[0]!;
 		const password = await askPassword(opts, true);
 
-		await setPassword(name, password, { actor: cliActor(), reset: !!opts.reset });
+		await setPassword(name, password, {
+			actor: cliActor(),
+			reset: !!opts.reset,
+			allowWeak: true,
+		});
 
 		await appendJournal({
 			source: "cli",
