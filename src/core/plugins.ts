@@ -1181,6 +1181,11 @@ export async function deploy(
 		const srcFor = (target: string): DeploySource => {
 			let version = assignedVersion(entry, target);
 
+			// An explicit pin wins over the MC-fitness check below: pinning is the
+			// operator overriding exactly that check (a build whose declared versions
+			// lag what it actually runs on), and `pin --force` already warned once.
+			const pinned = entry.pins?.[target] !== undefined;
+
 			// The assigned build may not fit this backend's MC version (a fresh
 			// instance on an old MC, before `plugins update` has resolved it). When a
 			// pooled variant fits, deploy that and record the assignment so the choice
@@ -1188,7 +1193,7 @@ export async function deploy(
 			const inst = insts[target];
 			const mc = inst && carriesMcRequirement(inst.software) ? inst.mcVersion : undefined;
 
-			if (mc && inst && familyMatches(familyOf(entry), inst.software)) {
+			if (!pinned && mc && inst && familyMatches(familyOf(entry), inst.software)) {
 				const assigned =
 					version === entry.installed?.versionNumber
 						? entry.installed?.gameVersions
