@@ -63,9 +63,16 @@ export async function attach(session: string): Promise<number> {
 	return await proc.exited;
 }
 
-/** Find pid of a java process whose cwd is `dir`. */
-export async function javaPidFor(dir: string): Promise<number | undefined> {
-	const proc = Bun.spawn(["pgrep", "java"], { stdout: "pipe", stderr: "ignore" });
+/**
+ * Find the pid of a `process` whose cwd is `dir`.
+ *
+ * The process name is the software's own binary rather than a constant: a
+ * native server has no JVM anywhere, so matching `java` would report every
+ * pumpkin instance as stopped while its screen session and its server were
+ * both perfectly alive.
+ */
+export async function serverPidFor(dir: string, process: string): Promise<number | undefined> {
+	const proc = Bun.spawn(["pgrep", process], { stdout: "pipe", stderr: "ignore" });
 	const out = await new Response(proc.stdout).text();
 
 	await proc.exited;

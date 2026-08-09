@@ -772,7 +772,6 @@
 			"notClearable": "{key} cannot be cleared; it always has a value",
 			"cleared": "{name}.{key} cleared (applies on next restart)",
 			"settingsHint": "server settings live in server.properties: {command}",
-			"unknownProfile": "unknown profile: {name}",
 			"keyNotFound": "key \"{key}\" not found in server.properties",
 			"appliesOnRestart": "(applies on next restart)"
 		},

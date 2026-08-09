@@ -12,8 +12,9 @@ import { t } from "../shared/i18n";
 import type { AddonDir } from "./config";
 import { addonDirForFamily, addonDirOf, addonDirsOf, expandTargets, instanceDir, managedInstances, poolDir } from "./config";
 import { carriesMcRequirement, effectiveTargets, familyMatches, familyOf, pluginNameOf } from "./families";
-import { FAMILY_LOADERS, familyForDir } from "./software";
+import { ADDON_EXTENSIONS, FAMILY_EXTENSIONS, FAMILY_LOADERS, familyForDir } from "./software";
 import { download, sha512File } from "./services/download";
+import { syncConsent } from "./pumpkin";
 import * as modrinth from "./services/modrinth";
 import type { AddonProject, AddonType, AddonVersion } from "./services/providers";
 import {
@@ -67,12 +68,24 @@ async function remoteVersions(entry: PluginEntry): Promise<AddonVersion[]> {
 	return await getVersions(entry.remote, projectTypeFor(family), loadersFor(family));
 }
 
-/** Lockfile key for a pool jar: its file name, lowercased and without `.jar`. */
+/**
+ * Lockfile key for a pooled build: its file name, lowercased and without the
+ * extension its family uses. A jar and a wasm component key alike, because the
+ * key names the *plugin*, not the file format it happens to ship as.
+ */
 export function entryNameFor(file: string): string {
-	return basename(file, ".jar").toLowerCase();
+	const lowered = basename(file).toLowerCase();
+	const extension = ADDON_EXTENSIONS.find((suffix) => lowered.endsWith(suffix));
+
+	return extension ? lowered.slice(0, -extension.length) : lowered;
 }
 
-/** Pool file names under the standardized `<addon>@<family>.jar` scheme.
+/** File name a build of `family` is pooled and deployed under. */
+export function addonFileName(name: string, family: PluginFamily): string {
+	return `${name}${FAMILY_EXTENSIONS[family]}`;
+}
+
+/** Pool file names under the standardized `<addon>@<family>` scheme.
  *  Built from the family list so the pattern can never drift from the union. */
 const STANDARDIZED = new RegExp(`^(.+)@(${PLUGIN_FAMILIES.join("|")})$`);
 
@@ -95,13 +108,22 @@ function guessFamily(file: string): "paper" | "velocity" {
 	return /velocity/i.test(file) ? "velocity" : "paper";
 }
 
-/** Jar file names directly inside a directory. Missing directories list as empty. */
-async function listJars(dir: string): Promise<string[]> {
+/**
+ * Addon file names directly inside a directory, whatever form they take.
+ * Missing directories list as empty.
+ */
+async function listAddons(dir: string): Promise<string[]> {
 	if (!existsSync(dir)) {
 		return [];
 	}
 
-	return (await readdir(dir)).filter((file) => file.toLowerCase().endsWith(".jar"));
+	const entries = await readdir(dir);
+
+	return entries.filter((file) => {
+		const lowered = file.toLowerCase();
+
+		return ADDON_EXTENSIONS.some((suffix) => lowered.endsWith(suffix));
+	});
 }
 
 /**
@@ -176,7 +198,7 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 	};
 
 	const pool = poolDir();
-	const poolJars = await listJars(pool);
+	const poolJars = await listAddons(pool);
 	const insts = managedInstances(cfg);
 
 	const poolHashes = new Map<string, string>();
@@ -194,7 +216,7 @@ export async function scan(cfg: ClusterConfig, lock: PluginsLock): Promise<ScanR
 	for (const [name, inst] of Object.entries(insts)) {
 		// a hybrid runs two ecosystems, so both of its directories are scanned
 		for (const { dir, path } of instanceAddonDirs(inst)) {
-			for (const jar of await listJars(path)) {
+			for (const jar of await listAddons(path)) {
 				const hash = await sha512File(join(path, jar));
 				const found: InstanceJar = { instance: name, dir, actual: jar, hash };
 
@@ -434,14 +456,60 @@ export function assignedVersion(entry: PluginEntry, instance: string): string | 
 	return entry.pins?.[instance] ?? entry.assign?.[instance] ?? entry.installed?.versionNumber;
 }
 
+/**
+ * Drop every reference to an instance from the lockfile: explicit targets, the
+ * auto-resolved version assignment and any hand-set pin.
+ *
+ * A deleted instance that stays in a target list is not inert. It fails the next
+ * `plugins apply` for that entry, since applying validates the whole list, which
+ * leaves the reference unremovable through the CLI that created it; and an
+ * instance later recreated under the same name silently inherits a pin nobody
+ * set for it.
+ *
+ * @returns how many entries mentioned the instance
+ */
+export function forgetInstancePlugins(lock: PluginsLock, instance: string): number {
+	let touched = 0;
+
+	for (const entry of Object.values(lock.plugins)) {
+		const targets = entry.targets.filter((target) => target !== instance);
+		const mentioned =
+			targets.length !== entry.targets.length ||
+			entry.assign?.[instance] !== undefined ||
+			entry.pins?.[instance] !== undefined;
+
+		if (!mentioned) {
+			continue;
+		}
+
+		entry.targets = targets;
+		delete entry.assign?.[instance];
+		delete entry.pins?.[instance];
+		touched++;
+	}
+
+	return touched;
+}
+
 /** Pool subdirectory holding the non-primary builds. */
-function variantsDir(): string {
+export function variantsDir(): string {
 	return join(poolDir(), "versions");
 }
 
-/** File name of a pooled variant, with anything path-unsafe folded to `_`. */
-function variantFileName(name: string, versionNumber: string): string {
-	return `${name}@${versionNumber.replace(/[^\w.+-]/g, "_")}.jar`;
+/**
+ * File name of a pooled variant, with anything path-unsafe folded to `_`.
+ *
+ * The family decides the extension, and defaults to the one every upstream
+ * index publishes: only an in-house build is pooled in any other form.
+ */
+export function variantFileName(
+	name: string,
+	versionNumber: string,
+	family: PluginFamily = "paper",
+): string {
+	const safe = versionNumber.replace(/[^\w.+-]/g, "_");
+
+	return `${name}@${safe}${FAMILY_EXTENSIONS[family]}`;
 }
 
 /** One resolved version group: these targets should run this provider version. */
@@ -658,6 +726,17 @@ export async function checkUpdates(
 				return true;
 			}
 
+			// A group can keep every target on the version it already runs and still
+			// have work to do, because which *slot* that version occupies is decided
+			// per update: whichever group is newest takes the pool primary. So when a
+			// group that is not the primary has no pooled variant, its build is about
+			// to stop being the primary and has nowhere else to live. Skipping it here
+			// is what leaves a whole game line pointing at a jar it cannot run - which
+			// is the normal shape of an entry once one family spans two MC lines.
+			if (!group.isPrimary && !entry.variants?.[group.version.version_number]) {
+				return true;
+			}
+
 			// same version number but a different jar: the provider re-published the
 			// build (only detectable when it publishes a sha512, i.e. modrinth)
 			const published = primaryFile(group.version).hashes.sha512;
@@ -752,9 +831,17 @@ export async function applyUpdate(lock: PluginsLock, cand: UpdateCandidate): Pro
 	lock.plugins[cand.name] = entry;
 }
 
-/** Drop pooled variants no pin/assign references anymore. */
+/**
+ * Drop pooled variants no pin/assign references anymore.
+ *
+ * In-house entries are exempt. Pruning rests on a variant being re-downloadable,
+ * which is true of a provider's build and false of one the luna workspace
+ * produced: a variant exists there because a whole game line needs it, not
+ * because some instance asked for it, so dropping it before the first instance
+ * on that line is created means it can only come back by rebuilding.
+ */
 function pruneVariants(name: string, entry: PluginEntry): void {
-	if (!entry.variants) {
+	if (!entry.variants || entry.source === "luna") {
 		return;
 	}
 
@@ -1033,12 +1120,29 @@ export function compatReport(
 export interface DeployAction {
 	instance: string;
 	file: string;
-	action: "updated" | "installed" | "unchanged" | "renamed" | "missing-variant" | "config" | "error";
+	action:
+		| "updated"
+		| "installed"
+		| "unchanged"
+		| "renamed"
+		| "missing-variant"
+		| "incompatible"
+		| "config"
+		// a pumpkin component's capabilities, consented to on the operator's
+		// behalf because the server would otherwise prompt an empty console
+		| "permissions"
+		| "error";
 	detail?: string;
 }
 
-/** Source jar for one target: the pool primary, a pooled variant, or nothing yet. */
-type DeploySource = { src: string; version?: string } | { missing: string };
+/**
+ * Source jar for one target: the pool primary, a pooled variant, nothing yet, or
+ * nothing that runs on this backend's MC version.
+ */
+type DeploySource =
+	| { src: string; version?: string }
+	| { missing: string }
+	| { incompatible: string[] };
 
 /** Copy pool jars to instance plugin folders according to each entry's targets.
  *  Targets pinned/assigned to an older version receive that pooled variant
@@ -1095,11 +1199,16 @@ export async function deploy(
 						coversMc(variant.gameVersions, mc),
 					);
 
-					if (fit) {
-						version = fit.versionNumber;
-						entry.assign ??= {};
-						entry.assign[target] = version;
+					if (!fit) {
+						// nothing pooled runs here, and the build says so itself. Copying it
+						// anyway is how a backend ends up refusing to boot over a mod it was
+						// handed; report it and leave whatever it already has in place.
+						return { incompatible: assigned };
 					}
+
+					version = fit.versionNumber;
+					entry.assign ??= {};
+					entry.assign[target] = version;
 				}
 			}
 
@@ -1151,6 +1260,20 @@ export async function deploy(
 				continue;
 			}
 
+			if ("incompatible" in resolved) {
+				actions.push({
+					instance: target,
+					file: entry.file,
+					action: "incompatible",
+					detail: t("core.plugins.noPooledBuildForMc", {
+						mc: inst.mcVersion ?? "?",
+						versions: resolved.incompatible.join(", "),
+					}),
+				});
+
+				continue;
+			}
+
 			const src = resolved.src;
 
 			if (!hashCache.has(src)) {
@@ -1167,7 +1290,7 @@ export async function deploy(
 			const dest = join(addonDir, entry.file);
 
 			// remove wrong-case duplicates
-			const duplicates = (await listJars(addonDir)).filter(
+			const duplicates = (await listAddons(addonDir)).filter(
 				(jar) => jar.toLowerCase() === entry.file.toLowerCase() && jar !== entry.file,
 			);
 
@@ -1227,6 +1350,28 @@ export async function deploy(
 					(result.detail ? ` (${result.detail})` : ""),
 			});
 		}
+
+		// a pumpkin component the operator has not consented to is skipped at
+		// startup, so deploying one has to record the consent as well
+		const inst = insts[instance];
+
+		if (inst) {
+			for (const consent of await syncConsent(inst)) {
+				if (consent.outcome === "already") {
+					continue;
+				}
+
+				actions.push({
+					instance,
+					file: consent.file,
+					action: "permissions",
+					detail:
+						consent.outcome === "granted"
+							? t("core.plugins.permissionsGranted")
+							: t("core.plugins.permissionsUnknown"),
+				});
+			}
+		}
 	}
 
 	return actions;
@@ -1271,10 +1416,10 @@ export async function installFromProvider(
 	family: Exclude<PluginFamily, "universal">,
 	targets: string[],
 ): Promise<{ name: string; entry: PluginEntry; resolution: EntryResolution }> {
-	// standardized scheme: key <plugin>@<family>, pool file <plugin>@<family>.jar
+	// standardized scheme: key <plugin>@<family>, pool file <plugin>@<family><ext>
 	const plugin = project.slug.toLowerCase();
 	const name = `${plugin}@${family}`;
-	const file = `${name}.jar`;
+	const file = addonFileName(name, family);
 	const remote = remoteRefFor(provider, project);
 	const versions = await getVersions(remote, projectTypeFor(family), loadersFor(family));
 
@@ -1387,7 +1532,7 @@ export async function uploadJar(
 
 	const buf = decodeJar(opts.dataBase64);
 	const name = `${plugin}@${opts.family}`;
-	const file = `${name}.jar`;
+	const file = addonFileName(name, opts.family);
 
 	await mkdir(poolDir(), { recursive: true });
 	await Bun.write(join(poolDir(), file), buf);

@@ -13,7 +13,6 @@ import * as admin from "../../client/core/admin";
 import * as screen from "../../client/core/screen";
 import { syncVelocityToml } from "../../client/core/proxy";
 import { ensurePortAllocations } from "../../client/core/ports";
-import { validateRuntimeId } from "../../client/core/runtimes";
 import { deploy, compatReport } from "../../client/core/plugins";
 import { hasProvider, newestRelease, SOFTWARE_IDS, traitsOf } from "../../client/core/software";
 import { listMcVersions } from "../../client/core/services/software";
@@ -420,7 +419,7 @@ command({
 
 		const view = new ProgressView(progress).start();
 
-		let forwarding: { installed: boolean; slug?: string } = { installed: false };
+		let forwarding: { installed: boolean; slug?: string; required: string[] } = { installed: false, required: [] };
 
 		try {
 			const res = await admin.createInstance(cfg, name, {
@@ -522,6 +521,10 @@ command({
 					port: pc.cyan(String(res.port)),
 				}),
 			);
+
+			if (forwarding.required.length) {
+				info(t("core.admin.requiredAddonsInstalled", { mods: forwarding.required.join(", ") }));
+			}
 
 			if (forwarding.slug) {
 				info(t("core.admin.forwardingModInstalled", { mod: forwarding.slug }));
@@ -977,34 +980,19 @@ command({
 
 		switch (key) {
 			case "memory":
-				instance.memory = value;
-				break;
-
 			case "profile":
-				if (!cfg.javaProfiles[value]) {
-					throw new UsageError(t("cli.instance.config.unknownProfile", { name: value }));
-				}
-
-				instance.profile = value;
-				break;
-
 			case "java":
-				instance.java = value;
-				break;
-
-			case "runtime": {
-				const bad = validateRuntimeId(value);
-
-				if (bad) {
-					throw new UsageError(bad);
+			case "runtime":
+			case "javaArgs":
+				// one validated path for the registry fields, shared with the console
+				try {
+					admin.applyInstanceOptions(cfg, name, {
+						[key]: key === "javaArgs" ? parseJavaArgs(value) : value,
+					});
+				} catch (err) {
+					throw new UsageError((err as Error).message);
 				}
 
-				instance.runtime = value;
-				break;
-			}
-
-			case "javaArgs":
-				admin.setJavaArgs(cfg, name, parseJavaArgs(value));
 				break;
 
 			case "autoRestart": {
@@ -1014,21 +1002,17 @@ command({
 					throw new UsageError(t("cli.instance.config.notABoolean", { value }));
 				}
 
-				// only stored when it departs from the default, so an untouched
-				// instance keeps the registry entry it has always had
-				instance.autoRestart = on ? undefined : false;
+				admin.applyInstanceOptions(cfg, name, { autoRestart: on });
 				break;
 			}
 
 			case "restartDelay": {
-				const seconds = Number.parseInt(value, 10);
-				const bad = inst.validateRestartDelay(seconds);
-
-				if (bad) {
-					throw new UsageError(bad);
+				try {
+					admin.applyInstanceOptions(cfg, name, { restartDelay: Number.parseInt(value, 10) });
+				} catch (err) {
+					throw new UsageError((err as Error).message);
 				}
 
-				instance.restartDelay = seconds === inst.DEFAULT_RESTART_DELAY ? undefined : seconds;
 				break;
 			}
 

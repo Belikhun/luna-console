@@ -667,6 +667,14 @@ icon[data-icon="puzzle"]::after {
 	content: "\e443";
 }
 
+icon[data-icon="hammer"]::after {
+	content: "\f6e3";
+}
+
+icon[data-icon="pumpkin"]::after {
+	content: "\f707";
+}
+
 icon[data-icon="users"]::after {
 	content: "\f0c0";
 }

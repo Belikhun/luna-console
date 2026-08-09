@@ -23,8 +23,13 @@ export async function POST({ request }) {
 	// deploy may auto-assign an MC-fit variant to an instance; persist it
 	await saveLock(lock);
 
+	// missing-variant and incompatible both mean nothing was copied, so neither
+	// counts as a change and neither can make an instance need a restart
 	const changed = actions.filter(
-		(action) => action.action !== 'unchanged' && action.action !== 'missing-variant'
+		(action) =>
+			action.action !== 'unchanged' &&
+			action.action !== 'missing-variant' &&
+			action.action !== 'incompatible'
 	);
 
 	const statuses = await getAllStatuses(cfg);

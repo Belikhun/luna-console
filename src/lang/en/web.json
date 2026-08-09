@@ -677,6 +677,13 @@
 		"gbOfGb": "{used} GB of {total} GB",
 		"tpsOf20": "{tps} of 20 TPS"
 	},
+	"software": {
+		"channelRelease": "Release",
+		"channelSnapshot": "Snapshot",
+		"channelPrerelease": "Pre-release",
+		"channelNightly": "Nightly",
+		"channelExperimental": "Experimental"
+	},
 	"schedules": {
 		"loadFailed": "Could not load schedules",
 		"onceAt": "once at {time}",

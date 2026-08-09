@@ -2,7 +2,10 @@
 // Proprietary software: use, copying, modification and distribution are
 // prohibited without written permission. See LICENSE at the repository root.
 
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 
 import type { ClusterConfig } from "./types";
 import { instanceDir } from "./config";
@@ -147,9 +150,31 @@ export async function readVelocityServers(cfg: ClusterConfig): Promise<Record<st
 	return servers;
 }
 
-/** The proxy's modern-forwarding secret, shared with every backend. */
+/**
+ * The proxy's modern-forwarding secret, shared with every backend.
+ *
+ * Velocity writes this file itself on its first start, but luna reads it
+ * *before* that: the secret goes into a backend's forwarding config when the
+ * instance is created, and into the proxy's own environment when it is started.
+ * On a cluster that has never run the proxy neither of those can happen, so a
+ * missing file is generated here rather than reported - which is what velocity
+ * would do a moment later anyway, with the same 12 random bytes.
+ */
 export async function readForwardingSecret(cfg: ClusterConfig): Promise<string> {
 	const path = join(instanceDir(cfg.proxy), "forwarding.secret");
 
-	return (await Bun.file(path).text()).trim();
+	if (existsSync(path)) {
+		const existing = (await Bun.file(path).text()).trim();
+
+		if (existing) {
+			return existing;
+		}
+	}
+
+	const secret = randomBytes(12).toString("base64url");
+
+	await mkdir(dirname(path), { recursive: true });
+	await Bun.write(path, secret);
+
+	return secret;
 }

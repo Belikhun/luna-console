@@ -11,13 +11,16 @@ import type * as core from "../../core/admin";
 
 import { call, jobCall } from "../rpc";
 
-export { setJavaArgs } from "../../core/admin";
+// pure registry edits: they change the cluster config the caller already holds
+// and the caller saves it, so there is nothing for the daemon to do
+export { applyInstanceOptions, setJavaArgs } from "../../core/admin";
 export type {
 	AdoptOptions,
 	AdoptResult,
 	CreateOptions,
 	CreateResult,
 	InstanceDetection,
+	InstanceOptionUpdate,
 	SetVersionOptions,
 	SetVersionResult,
 } from "../../core/admin";

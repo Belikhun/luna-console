@@ -12,21 +12,46 @@
  * jar apart from the source tree it came from.
  */
 
-import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import type { ClusterConfig, LunaSourceConfig, PluginEntry, PluginsLock } from "./types";
+import type {
+	ClusterConfig,
+	LunaSourceConfig,
+	PluginEntry,
+	PluginFamily,
+	PluginsLock,
+	PluginVariant,
+} from "./types";
+import { PLUGIN_FAMILIES } from "./types";
 import { t } from "../shared/i18n";
-import { instanceDir, managedInstances, poolDir } from "./config";
+import { addonDirForFamily, instanceDir, managedInstances, poolDir } from "./config";
 import type { ProgressReporter } from "./progress";
 import { effectiveTargets } from "./families";
-import { entryNameFor } from "./plugins";
+import { addonFileName, assignedVersion, entryNameFor, variantFileName, variantsDir } from "./plugins";
+import { unzipRead } from "./pluginstate";
 import { sha512File } from "./services/download";
 
 /** Platforms whose artifacts are pooled for this cluster. */
-export const LUNA_PLATFORMS = ["paper", "velocity", "neoforge"] as const;
+export const LUNA_PLATFORMS = ["paper", "velocity", "neoforge", "fabric", "pumpkin"] as const;
+
+/**
+ * Platforms whose builds are their own plugin family. Everything else pools as
+ * `paper`, which is what every bukkit-API software loads.
+ */
+const PLATFORM_FAMILIES = new Set<string>(["velocity", "neoforge", "fabric", "pumpkin"]);
+
+/**
+ * Platforms gradle does not build.
+ *
+ * Pumpkin plugins are Rust WebAssembly components, so cargo builds them and the
+ * workspace's own `pumpkin/build.sh` stages them; asking gradle for a shadow jar
+ * of a crate would just fail. The script also writes the permissions manifest
+ * beside each component, which `luna` needs to pre-approve a deployment.
+ */
+const NON_GRADLE_PLATFORMS = new Set<string>(["pumpkin"]);
 
 /** Gradle task that produces the shadow jars. */
 export const LUNA_BUILD_TASK = "shadowJar";
@@ -59,24 +84,48 @@ export function outputDir(source: Required<LunaSourceConfig>, platform: string):
 export interface LunaModule {
 	/** Gradle project name, e.g. "luna-core-paper" */
 	name: string;
-	/** paper | velocity | neoforge | api */
+	/** paper | velocity | neoforge | fabric | api */
 	platform: string;
 	/** Shadow jar file name in output/<platform>/, or undefined for api-only modules */
 	file?: string;
 	/** Standardized name the jar is pooled under, `<plugin>@<family>.jar` */
 	poolFile?: string;
+	/** Game-line tag when this module is an alternative build of the same plugin */
+	variant?: string;
 }
 
 /**
+ * A module built for one game line rather than for the plugin's whole range,
+ * named `<plugin>-mc<major>-<platform>`.
+ *
+ * One family can need more than one build of the same plugin: fabric's 26.x line
+ * ships the game unobfuscated, so a mod built for 1.20-1.21 cannot run there and
+ * the workspace produces a second jar from the same sources. Both are the same
+ * plugin, so both pool under one entry - the untagged build as the primary and
+ * each tagged one as a variant, which is the mechanism that already picks a build
+ * per instance by MC version.
+ */
+const VARIANT_MODULE = /^(.+)-(mc\d+)$/;
+
+/**
  * The pool name of a module's artifact under the standardized scheme:
- * `<plugin>@<family>.jar`. The plugin identity drops the platform suffix and
- * the `-backend` marker (luna-auth-backend is luna-auth's paper module).
+ * `<plugin>@<family>.jar`. The plugin identity drops the platform suffix, the
+ * `-backend` marker (luna-auth-backend is luna-auth's paper module) and any
+ * game-line tag, since every build of a plugin shares one entry.
  */
 export function poolFileFor(base: string, platform: string): string {
-	const plugin = base.endsWith("-backend") ? base.slice(0, -8) : base;
-	const family = platform === "velocity" || platform === "neoforge" ? platform : "paper";
+	const untagged = VARIANT_MODULE.exec(base)?.[1] ?? base;
+	const plugin = untagged.endsWith("-backend") ? untagged.slice(0, -8) : untagged;
+	const family = familyForPlatform(platform);
 
-	return `${plugin}@${family}.jar`;
+	// a pumpkin build is a wasm component, not a jar, and the pool name has to
+	// say so: it is the name the server looks for in its own plugins directory
+	return addonFileName(`${plugin}@${family}`, family);
+}
+
+/** The plugin family a platform's artifacts are pooled under. */
+export function familyForPlatform(platform: string): PluginFamily {
+	return PLATFORM_FAMILIES.has(platform) ? (platform as PluginFamily) : "paper";
 }
 
 /**
@@ -101,16 +150,18 @@ export async function listModules(source: Required<LunaSourceConfig>): Promise<L
 	const velocityExtras = new Set(["luna-pack", "luna-auth", "luna-vault", "luna-glyph"]);
 	const neoForgeExtras = new Set(["luna-core-messaging"]);
 
-	return names.map((name) => {
+	const gradle: LunaModule[] = names.map((name) => {
 		if (name.endsWith("-api")) {
 			return { name, platform: "api" };
 		}
 
 		const platform = name.endsWith("-neoforge") || neoForgeExtras.has(name)
 			? "neoforge"
-			: name.endsWith("-velocity") || velocityExtras.has(name)
-				? "velocity"
-				: "paper";
+			: name.endsWith("-fabric")
+				? "fabric"
+				: name.endsWith("-velocity") || velocityExtras.has(name)
+					? "velocity"
+					: "paper";
 
 		const base = name.endsWith(`-${platform}`) ? name.slice(0, -platform.length - 1) : name;
 
@@ -119,8 +170,53 @@ export async function listModules(source: Required<LunaSourceConfig>): Promise<L
 			platform,
 			file: `${base}-${platform}-all.jar`,
 			poolFile: poolFileFor(base, platform),
+			variant: VARIANT_MODULE.exec(base)?.[2],
 		};
 	});
+
+	return [...gradle, ...(await listPumpkinModules(source))];
+}
+
+/**
+ * The workspace's pumpkin components, read from its cargo workspace.
+ *
+ * These are invisible to `settings.gradle.kts` because gradle does not build
+ * them, so they are enumerated from `pumpkin/Cargo.toml` instead. A member that
+ * does not build a `cdylib` is a library the components share, not a plugin, so
+ * it is skipped exactly as an `-api` gradle module is.
+ */
+async function listPumpkinModules(source: Required<LunaSourceConfig>): Promise<LunaModule[]> {
+	const workspace = join(source.dir, "pumpkin", "Cargo.toml");
+
+	if (!existsSync(workspace)) {
+		return [];
+	}
+
+	const manifest = await Bun.file(workspace).text();
+	const members = manifest.match(/^members\s*=\s*\[([^\]]*)\]/m)?.[1] ?? "";
+	const modules: LunaModule[] = [];
+
+	for (const member of [...members.matchAll(/"([^"]+)"/g)].map((match) => match[1]!)) {
+		const crate = join(source.dir, "pumpkin", member, "Cargo.toml");
+
+		if (!existsSync(crate)) {
+			continue;
+		}
+
+		if (!/crate-type\s*=\s*\[[^\]]*"cdylib"/.test(await Bun.file(crate).text())) {
+			continue;
+		}
+
+		modules.push({
+			name: member,
+			platform: "pumpkin",
+			// cargo turns a crate's dashes into underscores for the artefact
+			file: `${member.replace(/-/g, "_")}.wasm`,
+			poolFile: poolFileFor(member, "pumpkin"),
+		});
+	}
+
+	return modules;
 }
 
 export interface LunaBuildStamp {
@@ -215,12 +311,6 @@ export async function build(
 	const started = Date.now();
 	const log: string[] = [];
 
-	const proc = Bun.spawn(["sh", wrapper, ...tasks, "--console=plain"], {
-		cwd: source.dir,
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-
 	const drain = async (stream: ReadableStream<Uint8Array>): Promise<void> => {
 		const decoder = new TextDecoder();
 		let pending = "";
@@ -246,9 +336,39 @@ export async function build(
 		}
 	};
 
-	await Promise.all([drain(proc.stdout), drain(proc.stderr)]);
+	/** Run one build command to completion, streaming it into the shared log. */
+	const run = async (cmd: string[]): Promise<number> => {
+		const spawned = Bun.spawn(cmd, { cwd: source.dir, stdout: "pipe", stderr: "pipe" });
 
-	const exitCode = await proc.exited;
+		await Promise.all([drain(spawned.stdout), drain(spawned.stderr)]);
+
+		return await spawned.exited;
+	};
+
+	// the cargo platforms first, and only when this build covers them: they are a
+	// separate toolchain, and a failure there should be read before gradle's
+	// output buries it
+	for (const platform of source.platforms.filter((entry) => NON_GRADLE_PLATFORMS.has(entry))) {
+		const script = join(source.dir, platform, "build.sh");
+
+		if (!existsSync(script)) {
+			continue;
+		}
+
+		const code = await run(["sh", script]);
+
+		if (code !== 0) {
+			return {
+				ok: false,
+				exitCode: code,
+				log,
+				tookMs: Date.now() - started,
+				stamp: await buildStamp(source),
+			};
+		}
+	}
+
+	const exitCode = await run(["sh", wrapper, ...tasks, "--console=plain"]);
 
 	return {
 		ok: exitCode === 0,
@@ -270,6 +390,43 @@ export interface LunaArtifact {
 	sha512: string;
 	sizeBytes: number;
 	builtAt: Date;
+	/** Game-line tag when this jar is an alternative build of the same plugin */
+	variant?: string;
+	/** MC versions this build declares it runs on */
+	gameVersions?: string[];
+}
+
+/**
+ * The MC versions an in-house jar says it covers, read from `luna-plugin.json`
+ * at its root.
+ *
+ * A pooled jar from a provider carries its game versions in the entry the
+ * provider's API filled in; an in-house one has nobody to ask, so a build that
+ * covers only part of its plugin's range declares it itself. Saying nothing
+ * means unconstrained, which is what a jar serving its whole family does.
+ */
+async function declaredGameVersions(path: string): Promise<string[] | undefined> {
+	const text = await unzipRead(path, "luna-plugin.json");
+
+	if (!text) {
+		return undefined;
+	}
+
+	try {
+		const parsed = JSON.parse(text) as { gameVersions?: unknown };
+
+		if (!Array.isArray(parsed.gameVersions)) {
+			return undefined;
+		}
+
+		const versions = parsed.gameVersions.filter(
+			(entry): entry is string => typeof entry === "string" && entry.length > 0,
+		);
+
+		return versions.length ? versions : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -303,6 +460,8 @@ export async function artifacts(source: Required<LunaSourceConfig>): Promise<Lun
 			sha512: await sha512File(path),
 			sizeBytes: info.size,
 			builtAt: info.mtime,
+			variant: module.variant,
+			gameVersions: await declaredGameVersions(path),
 		});
 	}
 
@@ -346,12 +505,76 @@ export interface SyncEntry {
 }
 
 /**
+ * Replace a plugin's pooled build for one game line.
+ *
+ * The tag is what identifies the build across rebuilds; the version around it
+ * changes with every commit. So the previous jar for the same tag is removed
+ * rather than left to accumulate, and any instance auto-assigned to it is moved
+ * onto the replacement, which is the same build for the same game line and the
+ * only one that still exists. A hand-set pin is left pointing at the version it
+ * named, so deploy reports it as missing instead of quietly moving it.
+ */
+async function replaceVariantBuild(
+	entry: PluginEntry,
+	tag: string,
+	variant: PluginVariant,
+): Promise<void> {
+	for (const [versionNumber, previous] of Object.entries(entry.variants ?? {})) {
+		if (versionNumber === variant.versionNumber || !versionNumber.endsWith(`+${tag}`)) {
+			continue;
+		}
+
+		await rm(join(variantsDir(), previous.file), { force: true });
+
+		delete entry.variants![versionNumber];
+
+		for (const [instance, assigned] of Object.entries(entry.assign ?? {})) {
+			if (assigned === versionNumber) {
+				entry.assign![instance] = variant.versionNumber;
+			}
+		}
+	}
+
+	entry.variants ??= {};
+	entry.variants[variant.versionNumber] = variant;
+}
+
+/** Suffix of the capability manifest a pumpkin component is built with. */
+const MANIFEST_SUFFIX = ".permissions.json";
+
+/**
+ * Carry a component's capability manifest into the pool beside it.
+ *
+ * A pumpkin component is only loadable if the operator has consented to the
+ * capabilities it asks for, and luna consents on their behalf when it deploys
+ * (nothing is attached to a screen session to answer the server's prompt). It
+ * can only do that from the list the build recorded, so the manifest has to
+ * travel with the artefact rather than staying in the workspace. Nothing else
+ * builds one, and its absence is not an error: a jar simply has none.
+ */
+async function copyManifest(sourcePath: string, targetPath: string): Promise<void> {
+	const manifest = `${sourcePath}${MANIFEST_SUFFIX}`;
+
+	if (!existsSync(manifest)) {
+		return;
+	}
+
+	await copyFile(manifest, `${targetPath}${MANIFEST_SUFFIX}`);
+}
+
+/**
  * Copy freshly built jars into the shared pool and update their lockfile entries.
  *
  * A jar whose pooled copy already has the same hash is left alone, so syncing is
  * idempotent and does not churn `pooledAt`. Jars with no lockfile entry are
  * registered as `source: "luna"` with no targets; deliberately not deployed
  * anywhere until the operator picks targets with `plugins apply`.
+ *
+ * A plugin built once per game line pools as one entry: the untagged build is the
+ * primary and each tagged one a variant, so the per-instance version resolution
+ * that already picks a build by MC version picks these too. That ordering is why
+ * primaries are handled first - a variant has nothing to attach to until its
+ * plugin's entry exists.
  */
 export async function sync(
 	lock: PluginsLock,
@@ -364,7 +587,7 @@ export async function sync(
 
 	await mkdir(pool, { recursive: true });
 
-	for (const artifact of built) {
+	for (const artifact of built.filter((candidate) => !candidate.variant)) {
 		const name = entryNameFor(artifact.poolFile);
 		const target = join(pool, artifact.poolFile);
 		const pooled = existsSync(target) ? await sha512File(target) : undefined;
@@ -373,17 +596,13 @@ export async function sync(
 		let action: SyncAction = pooled === artifact.sha512 ? "unchanged" : pooled ? "updated" : "pooled";
 
 		if (!entry) {
-			const identity = name.match(/^(.+)@(paper|velocity|universal|neoforge)$/);
+			const identity = name.match(new RegExp(`^(.+)@(${PLUGIN_FAMILIES.join("|")})$`));
 
 			entry = {
 				file: artifact.poolFile,
 				source: "luna",
 				plugin: identity?.[1] ?? name,
-				family:
-					(identity?.[2] as PluginEntry["family"] | undefined) ??
-					(artifact.platform === "velocity" || artifact.platform === "neoforge"
-						? artifact.platform
-						: "paper"),
+				family: (identity?.[2] as PluginEntry["family"] | undefined) ?? familyForPlatform(artifact.platform),
 				autoUpdate: false,
 				targets: [],
 			};
@@ -394,6 +613,7 @@ export async function sync(
 
 		if (pooled !== artifact.sha512) {
 			await copyFile(artifact.path, target);
+			await copyManifest(artifact.path, target);
 
 			// content changed; the cached descriptor and log names are stale
 			delete entry.aliases;
@@ -401,7 +621,12 @@ export async function sync(
 		}
 
 		entry.source = "luna";
-		entry.installed = { ...entry.installed, sha512: artifact.sha512, versionNumber: version };
+		entry.installed = {
+			...entry.installed,
+			sha512: artifact.sha512,
+			versionNumber: version,
+			gameVersions: artifact.gameVersions,
+		};
 
 		entry.luna = {
 			module: artifact.module,
@@ -419,6 +644,45 @@ export async function sync(
 			file: artifact.poolFile,
 			action,
 			version,
+			unassigned: entry.targets.length === 0,
+		});
+	}
+
+	for (const artifact of built.filter((candidate) => candidate.variant)) {
+		const name = entryNameFor(artifact.poolFile);
+		const entry = lock.plugins[name];
+
+		// no entry means the plugin's primary build is missing from output/, which
+		// `status` already reports against that module; an extra build of a plugin
+		// that is not pooled has nothing to be an extra build of
+		if (!entry) {
+			continue;
+		}
+
+		const versionNumber = `${version}+${artifact.variant}`;
+		const file = variantFileName(name, versionNumber);
+		const target = join(variantsDir(), file);
+		const pooled = existsSync(target) ? await sha512File(target) : undefined;
+
+		await mkdir(variantsDir(), { recursive: true });
+
+		if (pooled !== artifact.sha512) {
+			await copyFile(artifact.path, target);
+		}
+
+		await replaceVariantBuild(entry, artifact.variant!, {
+			versionNumber,
+			sha512: artifact.sha512,
+			file,
+			gameVersions: artifact.gameVersions,
+		});
+
+		results.push({
+			name,
+			module: artifact.module,
+			file,
+			action: pooled === artifact.sha512 ? "unchanged" : pooled ? "updated" : "pooled",
+			version: versionNumber,
 			unassigned: entry.targets.length === 0,
 		});
 	}
@@ -485,8 +749,35 @@ export async function status(
 			continue;
 		}
 
-		const targets = effectiveTargets(cfg, lock, name);
-		const pooledHash = entry.installed?.sha512;
+		// a game-line module produced one of the entry's variants, not its primary,
+		// so that is the pooled build its row is about
+		const pooled = module.variant
+			? Object.entries(entry.variants ?? {}).find(([key]) => key.endsWith(`+${module.variant}`))?.[1]
+			: undefined;
+
+		if (module.variant && !pooled) {
+			rows.push({
+				module: module.name,
+				platform: module.platform,
+				name,
+				file: module.file,
+				state: artifact ? "stale-pool" : "not-built",
+				builtAt: artifact?.builtAt,
+				targets: [],
+				drifted: [],
+			});
+
+			continue;
+		}
+
+		const pooledHash = pooled?.sha512 ?? entry.installed?.sha512;
+		const pooledVersion = pooled?.versionNumber ?? entry.installed?.versionNumber;
+
+		// every instance the entry covers, narrowed to the ones running this build
+		const targets = effectiveTargets(cfg, lock, name).filter(
+			(target) => assignedVersion(entry, target) === pooledVersion,
+		);
+
 		const drifted: string[] = [];
 
 		for (const target of targets) {
@@ -496,14 +787,14 @@ export async function status(
 				continue;
 			}
 
-			const plugDir = join(instanceDir(inst), "plugins");
+			const addonDir = join(instanceDir(inst), addonDirForFamily(entry.family));
 
-			// deploy() skips instances with no plugins/ folder, so neither does drift
-			if (!existsSync(plugDir)) {
+			// deploy() skips instances with no addon folder, so neither does drift
+			if (!existsSync(addonDir)) {
 				continue;
 			}
 
-			const deployed = join(plugDir, entry.file);
+			const deployed = join(addonDir, entry.file);
 
 			if (!existsSync(deployed) || (await sha512File(deployed)) !== pooledHash) {
 				drifted.push(target);
@@ -522,9 +813,9 @@ export async function status(
 			module: module.name,
 			platform: module.platform,
 			name,
-			file: entry.file,
+			file: pooled?.file ?? entry.file,
 			state,
-			pooledVersion: entry.installed?.versionNumber,
+			pooledVersion,
 			builtAt: artifact?.builtAt,
 			targets,
 			drifted,

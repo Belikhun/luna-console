@@ -12,7 +12,7 @@
  * its own output as progress rather than sitting silent for a minute.
  */
 
-import { chmod, rm } from "node:fs/promises";
+import { chmod, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -100,6 +100,11 @@ export async function installBuild(
 	opts: InstallBuildOptions = {},
 ): Promise<void> {
 	const reporter = opts.reporter;
+
+	// creating an instance makes the directory first, but changing the version of
+	// one that was registered and never provisioned does not - and that landed as
+	// a bare ENOENT from the download's writer
+	await mkdir(dir, { recursive: true });
 
 	if (build.kind === "installer") {
 		if (!opts.java) {

@@ -772,7 +772,6 @@
 			"notClearable": "{key} không thể bỏ trống; nó luôn phải có giá trị",
 			"cleared": "đã xoá {name}.{key} (áp dụng ở lần khởi động lại)",
 			"settingsHint": "thiết lập máy chủ nằm trong server.properties: {command}",
-			"unknownProfile": "không biết profile: {name}",
 			"keyNotFound": "không thấy khóa \"{key}\" trong server.properties",
 			"appliesOnRestart": "(áp dụng ở lần khởi động lại sau)"
 		},

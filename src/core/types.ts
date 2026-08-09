@@ -291,7 +291,7 @@ export type PluginSource = ProviderId | "luna" | "manual";
  * alike. Which families a given software accepts is one column of
  * `SOFTWARE_TRAITS` (core/software.ts), not a rule spelled out per call site.
  */
-export type PluginFamily = "paper" | "velocity" | "universal" | "neoforge" | "fabric" | "forge";
+export type PluginFamily = "paper" | "velocity" | "universal" | "neoforge" | "fabric" | "forge" | "pumpkin";
 
 /** Every family, in the order they are offered. */
 export const PLUGIN_FAMILIES: PluginFamily[] = [
@@ -301,6 +301,7 @@ export const PLUGIN_FAMILIES: PluginFamily[] = [
 	"neoforge",
 	"fabric",
 	"forge",
+	"pumpkin",
 ];
 
 /** What the jar says about itself, read from its own descriptor. */

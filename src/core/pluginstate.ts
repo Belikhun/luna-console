@@ -37,7 +37,7 @@ import {
 } from "./families";
 import { assignedVersion, instanceAddonDir, instanceAddonDirs } from "./plugins";
 import { getStatus, type InstanceStatus } from "./instances";
-import { traitsOf } from "./software";
+import { ADDON_EXTENSIONS, traitsOf } from "./software";
 
 /** Rotated files walked back at most, looking for the boot marker. */
 const MAX_ROTATIONS = 6;
@@ -75,22 +75,31 @@ export interface BootSession {
 	complete: boolean;
 	/** Software that wrote the log, which decides how a line is attributed */
 	software: Software;
-	/** Whether the server announced it had finished starting up ("Done (Xs)!") */
+	/** Whether the server announced it had finished starting up */
 	startupComplete: boolean;
 	/** When latest.log was last written (epoch ms), absent when there is no such file */
 	writtenAt?: number;
 }
 
 /**
- * The line every one of paper, velocity and neoforge prints once startup is
- * over. It is what promotes a quietly-loaded addon from `loading` to `running`:
- * most addons never announce themselves, so the server finishing is the only
- * evidence that their loading finished too.
+ * The line a server prints once startup is over. It is what promotes a quietly
+ * loaded addon from `loading` to `running`: most addons never announce
+ * themselves, so the server finishing is the only evidence that their loading
+ * finished too.
+ *
+ * The wording is the software's own (`Done (12.345s)!` on everything with a
+ * vanilla ancestry, `Started server; took 1351ms` on pumpkin), so it comes from
+ * the traits table rather than being a constant here; a hardcoded vanilla
+ * phrase leaves every pumpkin addon stuck on `loading` forever.
  */
-const STARTUP_COMPLETE = /\bDone \([^)]*\)!/;
+function startupComplete(software: Software, lines: string[]): boolean {
+	const marker = traitsOf(software).readyMarker;
+
+	return lines.some((line) => marker.test(line));
+}
 
 /** Read one member of a jar (jars are zip files); undefined when absent. */
-async function unzipRead(jar: string, member: string): Promise<string | undefined> {
+export async function unzipRead(jar: string, member: string): Promise<string | undefined> {
 	const proc = Bun.spawn(["unzip", "-p", jar, member], {
 		stdout: "pipe",
 		stderr: "ignore",
@@ -144,13 +153,20 @@ interface JarInfo {
 
 /**
  * Read what a jar says about itself: `plugin.yml` / `paper-plugin.yml` for
- * bukkit-side builds, `velocity-plugin.json` for the proxy side, and
- * `neoforge.mods.toml` for neoforge mods. Later sources fill gaps rather than
- * overwrite, so a universal jar keeps its bukkit name but gains the velocity id.
+ * bukkit-side builds, `velocity-plugin.json` for the proxy side,
+ * `neoforge.mods.toml` for neoforge mods and `fabric.mod.json` for fabric ones.
+ * Later sources fill gaps rather than overwrite, so a universal jar keeps its
+ * bukkit name but gains the velocity id.
  */
 async function readJarInfo(path: string): Promise<JarInfo> {
 	const meta: PluginMeta = {};
 	const aliases: string[] = [];
+
+	// Every descriptor below is a zip member, and a pumpkin component is a bare
+	// WebAssembly file; probing one spawns unzip five times to learn nothing.
+	if (!path.toLowerCase().endsWith(".jar")) {
+		return { meta, aliases };
+	}
 
 	const claim = (name?: string): void => {
 		if (name && !aliases.includes(name)) {
@@ -206,6 +222,41 @@ async function readJarInfo(path: string): Promise<JarInfo> {
 
 			if (!meta.authors?.length && json.authors?.length) {
 				meta.authors = json.authors;
+			}
+		} catch {
+			// not valid JSON; some shaded jars carry junk under that path
+		}
+	}
+
+	const fabric = await unzipRead(path, "fabric.mod.json");
+
+	if (fabric) {
+		try {
+			const json = JSON.parse(fabric) as {
+				id?: string;
+				name?: string;
+				version?: string;
+				description?: string;
+				contact?: { homepage?: string };
+				authors?: (string | { name?: string })[];
+			};
+
+			claim(json.name);
+			// the id is what the loader's mod roster prints, and it is regularly
+			// not the display name ("LunaCore" ships as "lunacore"), so a build
+			// whose pool name follows the display name is only recognisable in a
+			// log through this
+			claim(json.id);
+			meta.name ??= json.name;
+			meta.id ??= json.id;
+			meta.version ??= json.version;
+			meta.description ??= json.description;
+			meta.website ??= json.contact?.homepage;
+
+			if (!meta.authors?.length && json.authors?.length) {
+				meta.authors = json.authors
+					.map((author) => (typeof author === "string" ? author : author.name))
+					.filter((author): author is string => Boolean(author));
 			}
 		} catch {
 			// not valid JSON; some shaded jars carry junk under that path
@@ -383,7 +434,7 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 			lines,
 			complete: false,
 			software: inst.software,
-			startupComplete: lines.some((line) => STARTUP_COMPLETE.test(line)),
+			startupComplete: startupComplete(inst.software, lines),
 			...(writtenAt !== undefined ? { writtenAt } : {}),
 		};
 	}
@@ -394,12 +445,21 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 		lines: session,
 		complete: true,
 		software: inst.software,
-		startupComplete: session.some((line) => STARTUP_COMPLETE.test(line)),
+		startupComplete: startupComplete(inst.software, session),
 		...(writtenAt !== undefined ? { writtenAt } : {}),
 	};
 }
 
-const SEVERITY = /\[[^\]]*\/(WARN|ERROR)\]|\[(WARN|ERROR)\]:/;
+/**
+ * The level in a log line, across the layouts luna reads. Log4j puts it behind
+ * the thread (`[main/WARN]`), some layouts bracket it alone and follow it with a
+ * colon (`[WARN]: `), and pumpkin's own logger brackets it alone with nothing
+ * after it (`[WARN] `). The last of those is anchored to the start of the line
+ * on purpose: with neither a thread nor a colon there is nothing left to tell it
+ * apart from a message quoting a bracketed level, and the line opening with it
+ * is what does.
+ */
+const SEVERITY = /\[[^\]]*\/(WARN|ERROR)\]|\[(WARN|ERROR)\]:|^\[(WARN|ERROR)\]/;
 
 /** Severity of one log line, when it carries one. */
 function severityOf(line: string): "warn" | "error" | undefined {
@@ -409,7 +469,7 @@ function severityOf(line: string): "warn" | "error" | undefined {
 		return undefined;
 	}
 
-	return (match[1] ?? match[2])!.toLowerCase() as "warn" | "error";
+	return (match[1] ?? match[2] ?? match[3])!.toLowerCase() as "warn" | "error";
 }
 
 /**
@@ -418,6 +478,41 @@ function severityOf(line: string): "warn" | "error" | undefined {
  * bracket, up to the slash.
  */
 const NEOFORGE_LOGGER = /^\[[^\]]*\]\s*\[[^\]]*\]\s*\[([^\]/]*)\//;
+
+/**
+ * Characters that continue a plugin name, for pumpkin's whole-token test. A dot
+ * is deliberately *not* one: the name is followed by its file extension in the
+ * paths pumpkin prints (`./plugins/luna-core.wasm`), and a name has to match
+ * there too.
+ */
+const NAME_CHAR = /[a-z0-9_-]/;
+
+/**
+ * Whether a pumpkin line names one of the aliases, as a whole token.
+ *
+ * Pumpkin names a plugin in prose rather than in a layout field; quoted
+ * (`Permission denied for plugin "luna-core"`), bare before its version
+ * (`Loaded luna-core (0.1.0)`), or inside the component's path. So the test is
+ * a substring one, bounded at both ends, and the boundary is what earns its
+ * keep: an unbounded `includes` would credit every `luna-core-messaging` line
+ * to `luna-core`.
+ */
+function namesAlias(lowerLine: string, alias: string): boolean {
+	let at = lowerLine.indexOf(alias);
+
+	while (at !== -1) {
+		const before = lowerLine[at - 1];
+		const after = lowerLine[at + alias.length];
+
+		if (!(before && NAME_CHAR.test(before)) && !(after && NAME_CHAR.test(after))) {
+			return true;
+		}
+
+		at = lowerLine.indexOf(alias, at + 1);
+	}
+
+	return false;
+}
 
 /**
  * Whether a line is attributed to one of the aliases.
@@ -430,9 +525,20 @@ const NEOFORGE_LOGGER = /^\[[^\]]*\]\s*\[[^\]]*\]\s*\[([^\]/]*)\//;
  * alone, and matched whole; a prefix test would file every `LunaCoreMessaging`
  * line under `LunaCore`. A multi-platform mod commonly names its logger after
  * the platform class, so a trailing loader suffix is stripped before comparing.
+ *
+ * Pumpkin has neither: its logging interface takes a message and nothing else,
+ * so a *plugin's own* lines are indistinguishable from the server's and can
+ * never be attributed. What is attributable is the set the server writes *about*
+ * a plugin, which is the set the warning and error tallies are made of anyway.
  */
 function attributed(lowerLine: string, lowerAliases: string[], software: Software): boolean {
-	if (traitsOf(software).logGrammar !== "modlauncher") {
+	const grammar = traitsOf(software).logGrammar;
+
+	if (grammar === "pumpkin") {
+		return lowerAliases.some((alias) => namesAlias(lowerLine, alias));
+	}
+
+	if (grammar !== "modlauncher") {
 		return lowerAliases.some((alias) => lowerLine.includes(`[${alias}]`));
 	}
 
@@ -515,6 +621,19 @@ function claimsReady(lowerLine: string): boolean {
 	return READY_HINTS.some((hint) => lowerLine.includes(hint));
 }
 
+/**
+ * Fabric loader's roster header, and one of its entries.
+ *
+ * The loader prints "Loading 47 mods:" and then one line per mod, indented and
+ * drawn as a tree - "\t- lunacore 0.1.0-SNAPSHOT", nested dependencies under
+ * "\t   |-- fabric-api-base 0.4.42". The id comes first there, where every other
+ * loader puts it last, which is the whole reason this grammar exists: matched
+ * against the modlauncher rule, a fabric roster says nothing about any mod and
+ * every one of them reports as unknown.
+ */
+const FABRIC_ROSTER_HEADER = /loading \d+ mods?:/;
+const FABRIC_ROSTER_ENTRY = /^\s*(?:[|\\]--|-)\s*([a-z0-9_.-]+)(?:\s+\S+)?$/;
+
 /** Load, ready and failure evidence for one addon in a session. */
 function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
@@ -529,13 +648,19 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 	//; "\t\tLunaCore 0.1.0-SNAPSHOT (lunacore)". Absence only means "not there"
 	// when the roster was captured at all, so its two guaranteed members double
 	// as the marker that it is in the session.
-	let roster = grammar !== "modlauncher";
+	// Absence only means "not there" when the roster was captured at all, so each
+	// loader that prints one carries its own marker for having reached it.
+	let roster = grammar !== "modlauncher" && grammar !== "fabric";
 
 	for (const rawLine of session.lines) {
 		const lower = rawLine.trimEnd().toLowerCase();
 		const mine = attributed(lower, lowerAliases, software);
 
 		if (grammar === "modlauncher" && (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)"))) {
+			roster = true;
+		}
+
+		if (grammar === "fabric" && FABRIC_ROSTER_HEADER.test(lower)) {
 			roster = true;
 		}
 
@@ -565,6 +690,29 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 				}
 
 				if (lower.includes(`loaded plugin ${alias} `)) {
+					loading = true;
+				}
+			} else if (grammar === "fabric") {
+				if (FABRIC_ROSTER_ENTRY.exec(lower)?.[1] === alias) {
+					loading = true;
+				}
+			} else if (grammar === "pumpkin") {
+				// the consent prompt is answered before anything is initialised, so
+				// a refused component never reaches the loader at all; that refusal
+				// is the failure an operator most needs to see named
+				if (lower.includes(`permission denied for plugin "${alias}"`)) {
+					return "errored";
+				}
+
+				if (
+					lower.includes(`failed to initialize plugin ${alias}`) ||
+					(lower.includes("failed to load plugin from") && mine)
+				) {
+					return "errored";
+				}
+
+				// "Loaded luna-core (0.1.0)": pumpkin prints it once on_load returns
+				if (lower.includes(`loaded ${alias} (`)) {
 					loading = true;
 				}
 			} else if (lower.endsWith(`(${alias})`)) {
@@ -641,7 +789,12 @@ async function unmanagedAddons(inst: InstanceConfig, lock: PluginsLock): Promise
 		const files = await readdir(path);
 
 		found.push(
-			...files.filter((file) => file.toLowerCase().endsWith(".jar") && !managed.has(file.toLowerCase())),
+			...files.filter((file) => {
+				const lower = file.toLowerCase();
+
+				// a pumpkin component is a .wasm, so the extension is the family's
+				return ADDON_EXTENSIONS.some((ext) => lower.endsWith(ext)) && !managed.has(lower);
+			}),
 		);
 	}
 

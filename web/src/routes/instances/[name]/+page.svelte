@@ -9,6 +9,7 @@
 	import { goto } from '$app/navigation';
 	import { api, post, patch, del } from '$lib/api';
 	import { fmtDuration, fmtBytes, fmtDateTime } from '$lib/format';
+	import SoftwareLabel from '$lib/components/SoftwareLabel.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -26,6 +27,7 @@
 	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { hasProvider, traitsOf } from '$core/software';
+	import { channelOf } from '$lib/components/software';
 	import type { Software } from '$core/types';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
@@ -963,7 +965,7 @@
 
 		return [
 			{ id: 'state', label: t('web.instanceDetail.instanceState') },
-			{ label: t('web.instanceDetail.software'), value: `${inst.software} ${inst.mcVersion ?? ''}` },
+			{ id: 'software', label: t('web.instanceDetail.software') },
 			{ label: t('web.instanceDetail.pingVersion'), value: inst.pingVersion },
 			{ label: t('web.instanceDetail.gameAddress'), value: inst.address, copyable: true, style: 'mono' },
 			{ label: t('web.instanceDetail.memoryHeap'), value: inst.memory },
@@ -1458,7 +1460,11 @@
 			<OverviewCell label="Data packs ({datapackTotal})" segments={datapackSegments} />
 		{/if}
 		<OverviewCell label={t('web.instanceDetail.software')}>
-			{inst.software} {inst.mcVersion ?? ''}
+			<SoftwareLabel
+				software={inst.software}
+				version={inst.mcVersion}
+				channel={channelOf(inst.mcVersion)}
+			/>
 		</OverviewCell>
 		<OverviewCell label={t('web.instanceDetail.players')}>
 			{inst.players ? `${inst.players.online} / ${inst.players.max}` : '–'}
@@ -1497,6 +1503,12 @@
 					{#snippet custom(cell)}
 						{#if cell.id === 'state'}
 							<StatusBadge state={inst.state} />
+						{:else if cell.id === 'software'}
+							<SoftwareLabel
+								software={inst.software}
+								version={inst.mcVersion}
+								channel={channelOf(inst.mcVersion)}
+							/>
 						{:else if cell.id === 'cpu'}
 							{#if inst.cpu == null}
 								<span class="dim">–</span>

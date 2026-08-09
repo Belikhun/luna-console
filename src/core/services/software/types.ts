@@ -44,6 +44,14 @@ export interface SoftwareBuild {
 	/** Whatever the provider publishes; `downloadToFile` verifies what it can */
 	hashes: KnownHashes;
 	kind: BuildKind;
+	/**
+	 * The java feature release this build refuses to start without, when the
+	 * provider states one. It is preferred over `suggestedFeature`, which can
+	 * only infer a floor from a Minecraft version: a proxy's version is not one,
+	 * and a build that raises the floor ahead of the game (velocity 4 wants 25
+	 * while every MC release still runs on 21) is invisible to any inference.
+	 */
+	javaMinimum?: number;
 }
 
 /** Which build to resolve. Everything absent means "newest stable". */

@@ -14,7 +14,8 @@ import { t } from "../shared/i18n";
 import { mkdir, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { ensureDataDir } from "../core/config";
+import { clusterPath, ensureDataDir, saveCluster } from "../core/config";
+import { starterCluster } from "../shared/bootstrap";
 import { appendJournal, setJournalMachine, type JournalLevel } from "../core/journal";
 import { configureProviders } from "../core/services/providers";
 import { resolveDaemonConfig, type DaemonConfig } from "./config";
@@ -81,6 +82,18 @@ export async function runDaemon(): Promise<void> {
 	// the hub's sync watcher opens this directly, and `watch` throws on a missing
 	// directory; a fresh follower has no state until its first sync lands
 	await ensureDataDir();
+
+	// A primary cannot run without a registry, and every core call assumes one is
+	// there - an unseeded root surfaces as an unreadable error deep inside the
+	// first sampler tick rather than as "there is no cluster here". Seeding it is
+	// the daemon's job when the operator named the root explicitly: `luna setup`
+	// does it for a host install, and a container has no installer to run.
+	// A follower is left alone; its registry arrives over the cluster link.
+	if (dcfg.mode !== "follower" && !existsSync(clusterPath())) {
+		await saveCluster(starterCluster());
+
+		console.log(t("daemon.seededRegistry", { path: clusterPath() }));
+	}
 
 	if (existsSync(dcfg.socket)) {
 		if (await socketAlive(dcfg.socket)) {

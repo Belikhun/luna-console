@@ -171,12 +171,22 @@ export async function startInstanceTracked(
 			? progress.child(t("core.lifecycle.phaseRuntimeInstall"), 4)
 			: undefined;
 
-	const boot = progress.child(t("core.lifecycle.phaseJava"), 1);
+	// pumpkin is a native binary: there is no JVM to wait for, and saying so
+	// on every start of one is the kind of wrong that makes an operator doubt
+	// the rest of the tree
+	const boot = progress.child(
+		traits.usesJava ? t("core.lifecycle.phaseJava") : t("core.lifecycle.phaseProcess"),
+		1,
+	);
 	const server = progress.child(
 		isProxy ? t("core.lifecycle.phaseProxyBoot") : t("core.lifecycle.phaseServerBoot"),
 		2,
 	);
-	const datapacks = isProxy ? undefined : progress.child(t("core.lifecycle.phaseDatapacks"), 1);
+	// a server that never mentions its pack registry cannot be reported on; the
+	// phase is left out rather than completed on evidence that was never there
+	const datapacks = traits.announcesDataPacks
+		? progress.child(t("core.lifecycle.phaseDatapacks"), 1)
+		: undefined;
 	const plugins = isProxy ? undefined : progress.child(t("core.lifecycle.phasePlugins"), 2);
 	const world = isProxy ? undefined : progress.child(t("core.lifecycle.phaseWorld"), 3);
 
@@ -193,7 +203,10 @@ export async function startInstanceTracked(
 		() => instances.startInstance(cfg, name),
 	);
 
-	boot.info(0.6, t("core.lifecycle.waitingJvm"));
+	boot.info(
+		0.6,
+		traits.usesJava ? t("core.lifecycle.waitingJvm") : t("core.lifecycle.waitingProcess"),
+	);
 
 	let done = false;
 	let doneIn = "";
@@ -215,7 +228,7 @@ export async function startInstanceTracked(
 
 		if (lines.length > 0 && !sawOutput) {
 			sawOutput = true;
-			boot.complete(t("core.lifecycle.jvmUp"));
+			boot.complete(traits.usesJava ? t("core.lifecycle.jvmUp") : t("core.lifecycle.processUp"));
 		}
 
 		for (const line of lines) {
@@ -301,20 +314,17 @@ export async function startInstanceTracked(
 				continue;
 			}
 
-			const loading = /Loading server plugin (\S+)/.exec(line);
+			// how an addon announces itself is the software's own wording, so the
+			// line comes from the traits table; hardcoding bukkit's leaves every
+			// mod loader and pumpkin reporting "no plugins logged" on every start
+			const addon = traits.addonLoadMarker?.exec(line);
 
-			if (loading && plugins) {
+			if (addon && plugins) {
 				pluginCount += 1;
-				plugins.info(creep(pluginCount), t("core.lifecycle.loadingPlugin", { name: loading[1] ?? "" }));
-
-				continue;
-			}
-
-			const enabling = /\[(\S+?)\] Enabling (\S+)/.exec(line);
-
-			if (enabling && plugins) {
-				pluginCount += 1;
-				plugins.info(creep(pluginCount), t("core.lifecycle.enablingPlugin", { name: enabling[2] ?? "" }));
+				plugins.info(
+					creep(pluginCount),
+					t("core.lifecycle.loadingPlugin", { name: addon[1] ?? addon[2] ?? "" }),
+				);
 
 				continue;
 			}

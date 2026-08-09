@@ -4,6 +4,7 @@
 	"followerNeedsPrimary": "follower mode requires primary.address (or LUNA_PRIMARY_ADDRESS)",
 	"followerNotConnected": "follower \"{name}\" is not connected",
 	"rootMissing": "cluster root does not exist: {root}",
+	"seededRegistry": "seeded an empty cluster registry at {path}",
 	"alreadyRunning": "a daemon is already running on {socket}",
 	"noClusterLink": "no cluster link",
 	"removeFailed": "daemon {daemon} could not remove {name}: {detail}",

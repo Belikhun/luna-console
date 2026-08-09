@@ -9,6 +9,7 @@
 	import { api, type InstanceRow } from '$lib/api';
 	import { fmtDuration } from '$lib/format';
 	import { SOFTWARE_IDS, traitsOf } from '$core/software';
+	import SoftwareLabel from '$lib/components/SoftwareLabel.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -636,7 +637,7 @@
 							<span class="dim">–</span>
 						{/if}
 					{:else if col === 'software'}
-						{row.software}
+						<SoftwareLabel software={row.software} short />
 					{:else if col === 'version'}
 						{row.mcVersion ?? '–'}
 					{:else if col === 'port'}

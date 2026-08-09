@@ -5,7 +5,8 @@
 import { json, error } from '@sveltejs/kit';
 
 import { loadCluster, saveCluster, loadLock, saveLock, managedInstances } from '$core/config';
-import { setJavaArgs, setPort, setServerProperty, setVersion } from '$core/admin';
+import { applyInstanceOptions, setPort, setServerProperty, setVersion } from '$core/admin';
+import type { InstanceOptionUpdate } from '$core/admin';
 import {
 	SERVER_SETTINGS,
 	SETTING_GROUPS,
@@ -14,15 +15,9 @@ import {
 	readServerProperties,
 	validateSettings
 } from '$core/settings';
-import { inventory, javaSelection, suggestedFeature, validateRuntimeId } from '$core/runtimes';
+import { inventory, javaSelection, suggestedFeature } from '$core/runtimes';
 import { syncVelocityToml } from '$core/proxy';
-import {
-	DEFAULT_RESTART_DELAY,
-	autoRestartOf,
-	getStatus,
-	restartDelayOf,
-	validateRestartDelay
-} from '$core/instances';
+import { autoRestartOf, getStatus, restartDelayOf } from '$core/instances';
 import { compatReport, deploy } from '$core/plugins';
 import { instanceGroupNames } from '$core/families';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
@@ -102,71 +97,48 @@ export async function PATCH({ params, request }) {
 		throw error(404, 'unknown instance');
 	}
 
-	const changed: string[] = [];
 	const rejected: Array<{ key: string; error: string }> = [];
 
+	// every registry field goes through one validated core path, the same one the
+	// CLI's `instance config` uses; nothing is written unless all of it passes
+	const update: InstanceOptionUpdate = {};
+
 	if (body.memory) {
-		inst.memory = body.memory;
-		changed.push('memory');
+		update.memory = String(body.memory);
 	}
 
 	if (body.profile) {
-		if (!cfg.javaProfiles[body.profile]) {
-			throw error(400, `unknown profile ${body.profile}`);
-		}
-
-		inst.profile = body.profile;
-		changed.push('profile');
+		update.profile = String(body.profile);
 	}
 
 	if (body.java !== undefined) {
-		inst.java = body.java || undefined;
-		changed.push('java');
-	}
-
-	if (body.autoRestart !== undefined) {
-		// stored only when it departs from the default, so an untouched instance
-		// keeps the registry entry it has always had
-		inst.autoRestart = body.autoRestart ? undefined : false;
-		changed.push('autoRestart');
-	}
-
-	if (body.restartDelay !== undefined) {
-		const seconds = Number(body.restartDelay);
-		const bad = validateRestartDelay(seconds);
-
-		if (bad) {
-			throw error(400, bad);
-		}
-
-		inst.restartDelay = seconds === DEFAULT_RESTART_DELAY ? undefined : seconds;
-		changed.push('restartDelay');
+		update.java = String(body.java) || null;
 	}
 
 	if (body.runtime !== undefined) {
-		const id = String(body.runtime);
-		const bad = id ? validateRuntimeId(id) : undefined;
+		update.runtime = String(body.runtime) || null;
+	}
 
-		if (bad) {
-			throw error(400, bad);
-		}
+	if (body.autoRestart !== undefined) {
+		update.autoRestart = !!body.autoRestart;
+	}
 
-		inst.runtime = id || undefined;
-		changed.push('runtime');
+	if (body.restartDelay !== undefined) {
+		update.restartDelay = Number(body.restartDelay);
 	}
 
 	if (body.javaArgs !== undefined) {
-		const args = Array.isArray(body.javaArgs)
+		update.javaArgs = Array.isArray(body.javaArgs)
 			? body.javaArgs.map(String)
 			: parseJavaArgs(String(body.javaArgs));
+	}
 
-		try {
-			setJavaArgs(cfg, name, args);
-		} catch (err) {
-			throw error(400, (err as Error).message);
-		}
+	let changed: string[] = [];
 
-		changed.push(args.length ? `javaArgs (${args.length} flag(s))` : 'javaArgs (cleared)');
+	try {
+		changed = applyInstanceOptions(cfg, name, update).changed;
+	} catch (err) {
+		throw error(400, (err as Error).message);
 	}
 
 	if (body.port) {

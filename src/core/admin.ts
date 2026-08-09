@@ -6,9 +6,9 @@ import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
-import type { ClusterConfig, InstanceConfig, PluginsLock, Software } from "./types";
-import { addonDirsOf, instanceDir, managedInstances, root } from "./config";
-import { installFromProvider, projectTypeFor } from "./plugins";
+import type { ClusterConfig, InstanceConfig, PluginFamily, PluginsLock, ProviderId, Software } from "./types";
+import { addonDirsOf, instanceDir, loadLock, managedInstances, root, saveLock } from "./config";
+import { forgetInstancePlugins, installFromProvider, projectTypeFor } from "./plugins";
 import { getProject } from "./services/providers";
 import { installBuild } from "./services/software/install";
 import { resolveBuild } from "./services/software/registry";
@@ -29,9 +29,16 @@ import {
 } from "./ports";
 import { getConfValue, setConfValue } from "./confedit";
 import { forgetInstance } from "./configfiles";
+import { DEFAULT_RESTART_DELAY, validateRestartDelay } from "./instances";
 import { loadEnv, saveEnv, unsetInstanceScope } from "./environment";
 import { ProgressReporter } from "./progress";
-import { ensureRuntime, javaSelection, resolveJavaPath, validateRuntimeId } from "./runtimes";
+import {
+	ensureJavaFloor,
+	ensureRuntime,
+	javaSelection,
+	resolveJavaPath,
+	validateRuntimeId,
+} from "./runtimes";
 import { SERVER_SETTINGS, validateJavaArgs, validateSettings } from "./settings";
 import { buildPlatform } from "../version";
 import { t } from "../shared/i18n";
@@ -756,6 +763,24 @@ async function buildInstance(
 		await mkdir(join(dir, "config"), { recursive: true });
 	}
 
+	// Before anything is launched, and before an installer build needs a java of
+	// its own: the game version's floor rose four times, most recently to 25 for
+	// the 26.x line, and the machine's own java is whatever the image happened to
+	// ship. A caller that named a runtime is left with it.
+	if (traits.usesJava && !opts.runtime) {
+		// the outcome is reported on the step's own node, not the parent's: the
+		// parent's message is overwritten by whatever it reports next, and this is
+		// exactly the line an operator needs to still be able to read afterwards
+		const step = fetching.child(t("core.admin.javaFloorStep"), 2);
+		const floor = await ensureJavaFloor(cfg, inst, step, build.javaMinimum);
+
+		if (floor.outcome === "pinned") {
+			step.complete(t("core.admin.javaPinned", { runtime: floor.id!, feature: floor.needed }));
+		} else if (floor.outcome === "unavailable") {
+			step.warn(1, t("core.admin.javaFloorUnmet", { feature: floor.needed }));
+		}
+	}
+
 	fetching.info(0.02, t("core.admin.resolvingBuild", { project: software, version: build.buildId }));
 
 	await installBuild(dir, traits.binaryName ?? build.fileName, build, {
@@ -807,23 +832,27 @@ async function buildInstance(
 }
 
 /**
- * Install the forwarding mod an instance's software needs to sit behind the
- * proxy, if it needs one and does not already have it.
+ * Pool the addons an instance's software cannot do without: whatever its
+ * ecosystem requires to boot at all, plus the forwarding mod that lets it sit
+ * behind the proxy.
  *
- * A mod loader has no native support for velocity's modern forwarding: without
- * this the backend refuses every proxied login, which is not a state worth
- * handing an operator who asked for a registered instance. Idempotent, and a
- * no-op for the software that reads a forwarding config of its own.
+ * Two different needs, one pass, because they fail the same way and at the same
+ * moment. A mod loader has no native support for velocity's modern forwarding,
+ * so without that mod the backend refuses every proxied login; and a loader that
+ * ships no game API of its own cannot resolve *any* of the mods luna installs -
+ * its own core included - so without that one the server will not start. Neither
+ * is a state worth handing an operator who asked for a working instance.
  *
- * The jar lands in the pool targeted at this instance; the caller's deploy pass
- * is what copies it in, exactly as for any other addon.
+ * Idempotent, and a no-op for a software that needs neither. The jars land in
+ * the pool targeted at this instance; the caller's deploy pass is what copies
+ * them in, exactly as for any other addon.
  */
 export async function ensureForwardingMod(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
 	name: string,
 	reporter?: ProgressReporter,
-): Promise<{ installed: boolean; slug?: string }> {
+): Promise<{ installed: boolean; slug?: string; required: string[] }> {
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
@@ -832,6 +861,15 @@ export async function ensureForwardingMod(
 
 	const traits = traitsOf(inst.software);
 	const mod = traits.forwardingMod;
+	const family = familyForDir(inst.software, "mods");
+	const required: string[] = [];
+
+	// these come first: they are what the forwarding mod itself depends on
+	for (const addon of traits.requiredAddons ?? []) {
+		if (await poolAddonFor(cfg, lock, name, family, addon.provider, addon.slug)) {
+			required.push(addon.slug);
+		}
+	}
 
 	// a standalone instance gets neither the mod nor its config: nothing is
 	// forwarding to it, and a config keyed with the cluster secret is not
@@ -839,7 +877,7 @@ export async function ensureForwardingMod(
 	if (!mod || !inst.proxy?.register) {
 		reporter?.settle();
 
-		return { installed: false };
+		return { installed: false, required };
 	}
 
 	// the config is written every time: an instance that already has the mod
@@ -847,35 +885,50 @@ export async function ensureForwardingMod(
 	await mkdir(join(instanceDir(inst), "config"), { recursive: true });
 	await Bun.write(join(instanceDir(inst), mod.configFile), mod.config(await readForwardingSecret(cfg)));
 
-	const family = familyForDir(inst.software, "mods");
-	const key = `${mod.slug}@${family}`;
-	const existing = lock.plugins[key];
+	reporter?.info(0.2, t("core.admin.installingForwardingMod", { mod: mod.slug }));
+
+	const installed = await poolAddonFor(cfg, lock, name, family, mod.provider, mod.slug);
+
+	reporter?.complete(
+		t(installed ? "core.admin.forwardingModInstalled" : "core.admin.forwardingModPooled", { mod: mod.slug }),
+	);
+
+	return { installed, slug: mod.slug, required };
+}
+
+/**
+ * Make one provider addon available to an instance, and say whether that meant
+ * downloading it. An entry already in the lockfile is only given this instance
+ * as another target: the jar is shared by every instance of the ecosystem, so
+ * pooling it a second time would be a second copy of the same file.
+ */
+async function poolAddonFor(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	name: string,
+	family: Exclude<PluginFamily, "universal">,
+	provider: ProviderId,
+	slug: string,
+): Promise<boolean> {
+	const existing = lock.plugins[`${slug}@${family}`];
 
 	if (existing) {
-		// already pooled by another instance of the same ecosystem; this one only
-		// has to become a target of it
 		if (!existing.targets.includes(name)) {
 			existing.targets.push(name);
 		}
 
-		reporter?.complete(t("core.admin.forwardingModPooled", { mod: mod.slug }));
-
-		return { installed: false, slug: mod.slug };
+		return false;
 	}
 
-	reporter?.info(0.2, t("core.admin.installingForwardingMod", { mod: mod.slug }));
-
-	const project = await getProject(mod.provider, mod.slug, projectTypeFor(family));
+	const project = await getProject(provider, slug, projectTypeFor(family));
 
 	if (!project) {
-		throw new Error(t("core.admin.forwardingModMissing", { mod: mod.slug }));
+		throw new Error(t("core.admin.forwardingModMissing", { mod: slug }));
 	}
 
-	await installFromProvider(cfg, lock, mod.provider, project, family, [name]);
+	await installFromProvider(cfg, lock, provider, project, family, [name]);
 
-	reporter?.complete(t("core.admin.forwardingModInstalled", { mod: mod.slug }));
-
-	return { installed: true, slug: mod.slug };
+	return true;
 }
 
 /**
@@ -1000,9 +1053,164 @@ export async function setVersion(
 		inst.loaderVersion = build.loaderVersion;
 	}
 
+	// a version bump can cross a java floor (1.20.5 and 26.1 both raised one, and
+	// velocity 4 raised its own without any MC release moving), and an instance
+	// that was fine a moment ago would then refuse to boot
+	if (traits.usesJava && !inst.runtime) {
+		const step = progress.child(t("core.admin.javaFloorStep"), 1);
+		const floor = await ensureJavaFloor(cfg, inst, step, build.javaMinimum);
+
+		if (floor.outcome === "pinned") {
+			step.complete(t("core.admin.javaPinned", { runtime: floor.id!, feature: floor.needed }));
+		} else if (floor.outcome === "unavailable") {
+			step.warn(1, t("core.admin.javaFloorUnmet", { feature: floor.needed }));
+		}
+	}
+
 	progress.complete(`${from ?? "?"} → ${build.mcVersion} (build ${build.buildId})`);
 
 	return { from, to: build.mcVersion ?? build.buildId, build, backedUpJar: backup };
+}
+
+/** How much heap an instance may ask for: a number and a unit, nothing else. */
+const MEMORY_VALUE = /^\d+[kKmMgG]$/;
+
+/**
+ * The instance fields a caller may change after creation. An explicit `null`
+ * clears one, which is not the same as leaving it out: omitted means "leave it
+ * alone", null means "go back to whatever the profile or the machine decides".
+ */
+export interface InstanceOptionUpdate {
+	memory?: string;
+	profile?: string;
+	runtime?: string | null;
+	java?: string | null;
+	javaArgs?: string[];
+	autoRestart?: boolean;
+	restartDelay?: number;
+}
+
+/**
+ * Change an instance's own settings: the ones in the registry rather than in
+ * `server.properties`.
+ *
+ * Everything is validated before anything is written, so a rejected field cannot
+ * leave the instance half-updated. Nothing here touches disk - these reach the
+ * server through the run script, which is regenerated on the next start - so the
+ * caller saves the cluster config and says so.
+ *
+ * Returns the names of the fields that actually changed value, which is what a
+ * caller reports; a field set to what it already held is not one of them.
+ */
+export function applyInstanceOptions(
+	cfg: ClusterConfig,
+	name: string,
+	update: InstanceOptionUpdate,
+): { changed: string[] } {
+	const inst = managedInstances(cfg)[name];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name }));
+	}
+
+	const traits = traitsOf(inst.software);
+
+	// same rule create applies: a server with no JVM has nothing to point these at
+	if (!traits.usesJava && (update.runtime || update.java || update.javaArgs?.length)) {
+		throw new Error(t("core.admin.softwareHasNoJava", { software: inst.software }));
+	}
+
+	if (update.memory !== undefined && !MEMORY_VALUE.test(update.memory.trim())) {
+		throw new Error(t("core.admin.badMemory", { value: update.memory }));
+	}
+
+	if (update.profile !== undefined && !cfg.javaProfiles[update.profile]) {
+		throw new Error(t("core.instances.unknownProfile", { name: update.profile }));
+	}
+
+	if (update.runtime) {
+		const problem = validateRuntimeId(update.runtime);
+
+		if (problem) {
+			throw new Error(problem);
+		}
+	}
+
+	if (update.java) {
+		if (!isAbsolute(update.java)) {
+			throw new Error(t("core.admin.javaPathNotAbsolute", { path: update.java }));
+		}
+	}
+
+	if (update.javaArgs) {
+		const problem = validateJavaArgs(update.javaArgs);
+
+		if (problem) {
+			throw new Error(problem);
+		}
+	}
+
+	if (update.restartDelay !== undefined) {
+		const problem = validateRestartDelay(update.restartDelay);
+
+		if (problem) {
+			throw new Error(problem);
+		}
+	}
+
+	const changed: string[] = [];
+
+	const set = <K extends keyof InstanceConfig>(key: K, value: InstanceConfig[K]): void => {
+		if (inst[key] === value) {
+			return;
+		}
+
+		if (value === undefined) {
+			delete inst[key];
+		} else {
+			inst[key] = value;
+		}
+
+		changed.push(key);
+	};
+
+	if (update.memory !== undefined) {
+		set("memory", update.memory.trim());
+	}
+
+	if (update.profile !== undefined) {
+		set("profile", update.profile);
+	}
+
+	if (update.runtime !== undefined) {
+		set("runtime", update.runtime || undefined);
+	}
+
+	if (update.java !== undefined) {
+		set("java", update.java || undefined);
+	}
+
+	if (update.autoRestart !== undefined) {
+		// stored only when it departs from the default, so an untouched instance
+		// keeps the registry entry it has always had
+		set("autoRestart", update.autoRestart ? undefined : false);
+	}
+
+	if (update.restartDelay !== undefined) {
+		set("restartDelay", update.restartDelay === DEFAULT_RESTART_DELAY ? undefined : update.restartDelay);
+	}
+
+	if (update.javaArgs) {
+		const before = inst.javaArgs?.join(" ") ?? "";
+
+		setJavaArgs(cfg, name, update.javaArgs);
+
+		if ((inst.javaArgs?.join(" ") ?? "") !== before) {
+			changed.push("javaArgs");
+		}
+	}
+
+	return { changed };
 }
 
 /**
@@ -1173,6 +1381,17 @@ export async function deleteInstance(
 
 	if (forgotten) {
 		progress.info(0.97, t("core.admin.droppedConfigs", { count: forgotten }));
+	}
+
+	// same reasoning for the lockfile, plus one of its own: a target list holding a
+	// name the registry no longer knows fails validation on the next `plugins
+	// apply`, which is the only verb that could have taken it back out
+	const lock = await loadLock();
+	const untargeted = forgetInstancePlugins(lock, name);
+
+	if (untargeted) {
+		await saveLock(lock);
+		progress.info(0.98, t("core.admin.droppedPluginTargets", { count: untargeted }));
 	}
 
 	const env = await loadEnv();

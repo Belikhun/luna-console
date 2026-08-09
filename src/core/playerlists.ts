@@ -13,9 +13,10 @@
  * on its next save, which is exactly the kind of ghost change this avoids.
  *
  * Name → UUID resolution for offline edits prefers the instance's own
- * `usercache.json` (what the server itself believes) and falls back to the
- * offline-mode UUID derivation, which is correct for this cluster because the
- * backends run behind the proxy with `online-mode=false`.
+ * `usercache.json` (what the server itself believes) and falls back to deriving
+ * the offline-mode UUID, which is right for this cluster because the backends
+ * run behind the proxy with `online-mode=false`. That derivation is the
+ * software's own, not one rule: see `offlineUuid`.
  */
 
 import { createHash } from "node:crypto";
@@ -25,7 +26,8 @@ import { join } from "node:path";
 import { instanceDir, managedInstances } from "./config";
 import { readProperties, upsertProperty } from "./confedit";
 import { getStatus, sendCommand } from "./instances";
-import type { ClusterConfig } from "./types";
+import { traitsOf } from "./software";
+import type { ClusterConfig, Software } from "./types";
 import { t } from "../shared/i18n";
 
 /** The four access lists and the file each one lives in. */
@@ -109,17 +111,33 @@ export interface AccessChangeResult {
 	error?: string;
 }
 
-/** Compute the offline-mode UUID vanilla derives from a player name. */
-export function offlineUuid(name: string): string {
+/** Lay 16 bytes out as a UUID. */
+function formatUuid(bytes: Buffer): string {
+	const hex = bytes.toString("hex");
+
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * The UUID a server derives from a player name when authentication is off.
+ *
+ * The scheme is the software's, not a constant: vanilla and its descendants hash
+ * `OfflinePlayer:<name>` with MD5 into a v3 UUID, and pumpkin takes the first 16
+ * bytes of SHA-256 over the bare name. Both are stable, and they disagree, so a
+ * whitelist entry written with the wrong one names a player who never connects.
+ */
+export function offlineUuid(name: string, software: Software): string {
+	if (traitsOf(software).offlineIdentity === "pumpkin") {
+		return formatUuid(createHash("sha256").update(name, "utf8").digest().subarray(0, 16));
+	}
+
 	const hash = createHash("md5").update(`OfflinePlayer:${name}`, "utf8").digest();
 
 	// UUID v3: overwrite the version and variant nibbles per RFC 4122.
 	hash[6] = (hash[6]! & 0x0f) | 0x30;
 	hash[8] = (hash[8]! & 0x3f) | 0x80;
 
-	const hex = hash.toString("hex");
-
-	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+	return formatUuid(hash);
 }
 
 /** Read one of the JSON list files, tolerating absence and malformed content. */
@@ -303,7 +321,9 @@ async function applyToFile(
 		return;
 	}
 
-	const uuid = (await usercacheLookup(dir, change.target)) ?? offlineUuid(change.target);
+	const software = managedInstances(cfg)[name]?.software ?? "paper";
+	const uuid =
+		(await usercacheLookup(dir, change.target)) ?? offlineUuid(change.target, software);
 
 	if (change.list === "whitelist") {
 		const entries = await readListFile<WhitelistEntry>(dir, ACCESS_LIST_FILES.whitelist);

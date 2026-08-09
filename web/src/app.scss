@@ -76,6 +76,31 @@
 	--src-luna: #a179f2;
 	--src-manual: var(--warning);
 
+	// What a server runs, from Modrinth's platform palette - the same source the
+	// marks come from, so a software's icon and its name carry one colour.
+	// Their *dark* set, not the light one: Modrinth publishes both, and the dark
+	// values are already lifted to read on a panel like these rather than on
+	// white. Pumpkin and the mohist family are not on Modrinth, so those two are
+	// house tints matching what their own artwork reads as, marked as such.
+	--sw-paper: #eeaaaa;
+	--sw-folia: #a5e388;
+	--sw-velocity: #83d5ef;
+	--sw-purpur: #c3abf7;
+	--sw-fabric: #dbb69b;
+	--sw-forge: #959eef;
+	--sw-neoforge: #f99e6b;
+	--sw-pumpkin: #ff9642; // house tint: it is a pumpkin
+	--sw-mohist: #7dd3a0; // house tint: youer and asyncyouer share a project
+
+	// How finished a build claims to be. A release is the ordinary case and
+	// carries no badge, so its tint is only for the rare screen that names it;
+	// the rest climb from "newer than stable" to "do not run this".
+	--chan-release: var(--success);
+	--chan-snapshot: var(--warning);
+	--chan-prerelease: #ffc859;
+	--chan-nightly: #ea5b6f;
+	--chan-experimental: var(--src-luna);
+
 	// control metrics: 28px controls, 20px pill radius, 2px control borders
 	--control-h: 1.75rem;
 	--radius-container: 1rem;

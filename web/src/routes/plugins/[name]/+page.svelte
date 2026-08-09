@@ -5,6 +5,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
 	import { FAMILY_DIRS } from '$core/software';
+	import SoftwareLabel from '$lib/components/SoftwareLabel.svelte';
 	import type { PluginFamily } from '$core/types';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -533,7 +534,7 @@
 						{:else if col === 'state'}
 							<StatusBadge state={USAGE_STATE[status?.state] ?? 'unknown'} />
 						{:else if col === 'env'}
-							{row.software}{row.mcVersion ? ` ${row.mcVersion}` : ''}
+							<SoftwareLabel software={row.software} version={row.mcVersion} />
 						{:else if col === 'family'}
 							{row.family}
 						{:else if col === 'version'}

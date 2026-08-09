@@ -58,9 +58,14 @@ function readScalar(yaml: string, section: string, key: string): string | undefi
 }
 
 /**
- * Resolve the proxy's Luna API base URL and token. Cached for the process; both
- * come from files that only change when the proxy is reconfigured, which requires a
- * restart anyway.
+ * Resolve the proxy's Luna API base URL and token. A working answer is cached for
+ * the process; both come from files that only change when the proxy is
+ * reconfigured, which requires a restart anyway.
+ *
+ * A *failed* one is not cached. Installing LunaCore on a proxy that was running
+ * without it is an ordinary thing to do, and caching "not installed" would make
+ * the daemon keep saying so until someone restarted it - long after the file it
+ * looked for appeared.
  */
 export async function endpoint(proxyDir = "proxy"): Promise<LunaEndpoint> {
 	if (cached) {
@@ -93,13 +98,17 @@ export async function endpoint(proxyDir = "proxy"): Promise<LunaEndpoint> {
 				? "proxy/forwarding.secret is missing or empty"
 				: undefined;
 
-	cached = {
+	const resolved: LunaEndpoint = {
 		baseUrl: `http://${DEFAULT_HOST}:${port}${prefix.startsWith("/") ? prefix : `/${prefix}`}`,
 		secret,
 		problem,
 	};
 
-	return cached;
+	if (!problem) {
+		cached = resolved;
+	}
+
+	return resolved;
 }
 
 /** Forget the cached endpoint, so the next call re-reads the proxy's config. */

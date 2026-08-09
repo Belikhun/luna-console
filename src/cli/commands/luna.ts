@@ -198,12 +198,12 @@ async function runSync(
 		ok(t("cli.luna.poolMatches"));
 	}
 
-	const unassigned = results.filter((entry) => entry.unassigned);
+	// a plugin built once per game line pools as several artifacts under one entry,
+	// and it is the entry that has targets, so name it once
+	const unassigned = [...new Set(results.filter((entry) => entry.unassigned).map((entry) => entry.name))];
 
 	if (unassigned.length) {
-		warn(
-			t("cli.luna.noTargets", { names: unassigned.map((entry) => entry.name).join(", ") }),
-		);
+		warn(t("cli.luna.noTargets", { names: unassigned.join(", ") }));
 	}
 
 	return results;

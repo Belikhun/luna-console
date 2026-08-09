@@ -4,6 +4,7 @@
 	"followerNeedsPrimary": "chế độ follower cần primary.address (hoặc LUNA_PRIMARY_ADDRESS)",
 	"followerNotConnected": "follower \"{name}\" chưa kết nối",
 	"rootMissing": "gốc cụm không tồn tại: {root}",
+	"seededRegistry": "đã tạo registry cụm rỗng tại {path}",
 	"alreadyRunning": "đã có daemon chạy trên {socket}",
 	"noClusterLink": "không có liên kết cụm",
 	"removeFailed": "daemon {daemon} không xóa được {name}: {detail}",

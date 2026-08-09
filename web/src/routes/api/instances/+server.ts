@@ -187,7 +187,7 @@ export async function POST({ request }) {
 		const ports = reporter.child('Port allocations', 1);
 		const proxy = reporter.child('Proxy registration', 1);
 
-		let forwarding: { installed: boolean; slug?: string } = { installed: false };
+		let forwarding: { installed: boolean; slug?: string; required: string[] } = { installed: false, required: [] };
 
 		try {
 			const res = await createInstance(cfg, body.name, {
@@ -291,6 +291,7 @@ export async function POST({ request }) {
 				port: res.port,
 				build: res.build.buildId,
 				forwardingMod: forwarding.slug ?? null,
+				requiredAddons: forwarding.required,
 				pluginsDeployed: changed,
 				velocityUpdated
 			};

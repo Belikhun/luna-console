@@ -13,7 +13,7 @@ import { ProgressReporter } from "./progress";
 import * as adoptium from "./services/adoptium";
 import { downloadToFile, reportBytes } from "./services/download";
 import * as graalvm from "./services/graalvm";
-import { mcVersionParts, traitsOf } from "./software";
+import { isDateScheme, mcVersionParts, traitsOf } from "./software";
 import type {
 	AvailableRuntime,
 	ClusterConfig,
@@ -120,18 +120,25 @@ export function validateRuntimeId(id: string): string | undefined {
 
 /**
  * The Java feature release a Minecraft version needs. Mojang raised the floor
- * three times: 1.17 moved to 16, 1.18 to 17 and 1.20.5 to 21. The floor is
- * answered with the release luna would actually install, so 1.17 resolves to 17
- * rather than the long-withdrawn 16.
+ * four times: 1.17 moved to 16, 1.18 to 17, 1.20.5 to 21 and 26.1 to 25. The
+ * floor is answered with the release luna would actually install, so 1.17
+ * resolves to 17 rather than the long-withdrawn 16.
  *
  * Two version schemes are in circulation. Everything Mojang shipped as
- * `1.<minor>` is read by its minor; the date-based scheme that arrived with
- * 26.2 starts at a year, is newer than anything in the table, and so takes the
- * newest release without further inspection.
+ * `1.<minor>` is read by its minor; the date-based scheme is read as one step,
+ * because the whole line so far declares the same floor.
+ *
+ * A version luna cannot place answers 21, which is what a software carrying no
+ * MC requirement (a proxy) gets: guessing higher would put every proxy on a
+ * runtime it has no use for.
  */
 export function suggestedFeature(mcVersion?: string): number {
 	if (!mcVersion) {
 		return 21;
+	}
+
+	if (isDateScheme(mcVersion)) {
+		return 25;
 	}
 
 	const [major, minor, patch = 0] = mcVersionParts(mcVersion);
@@ -588,6 +595,121 @@ export async function ensureRuntime(
  * way into a start, which is what lets an operator point an instance at a
  * runtime the machine has never held and simply start it.
  */
+/**
+ * The java feature release a binary provides, or undefined when it cannot be
+ * asked (missing, not executable, unrecognisable output).
+ *
+ * The JVM prints `openjdk version "25.0.4" …`, and `java version "1.8.0_432"`
+ * before 9, so the quoted version's leading `1.` is the old scheme's prefix and
+ * the feature is the component after it.
+ */
+export async function javaFeatureOf(javaPath: string): Promise<number | undefined> {
+	const line = await javaVersionLine(javaPath);
+	const quoted = line?.match(/"([^"]+)"/)?.[1];
+
+	if (!quoted) {
+		return undefined;
+	}
+
+	const feature = runtimeFeature(quoted);
+
+	return Number.isFinite(feature) && feature > 0 ? feature : undefined;
+}
+
+/** What an instance's java is, against what its game version needs. */
+export interface JavaFloorCheck {
+	/** feature release the game version requires */
+	needed: number;
+	/** feature release the instance currently resolves, when it could be determined */
+	have?: number;
+	ok: boolean;
+}
+
+/**
+ * Whether an instance's java is new enough for what it runs.
+ *
+ * `declared` is the build's own statement of its floor, which is the only
+ * reliable one: `suggestedFeature` can do no better than infer from a Minecraft
+ * version, and a proxy's version is not one. Velocity 4 is exactly that case -
+ * it wants java 25 while every MC release still runs on 21 - so the inference
+ * answered 21 and produced a proxy that would not boot. It is taken as a floor
+ * rather than as the answer, so a build that understates it (a launcher jar
+ * compiled low to print a friendlier error) cannot lower the game's own.
+ *
+ * A pinned runtime answers from its own id without spawning anything; a profile
+ * path or the machine's own java has to be asked. An unanswerable java is not
+ * treated as satisfying the floor: the point of the check is to catch a backend
+ * that would refuse to boot, and "cannot tell" is not "fine".
+ */
+export async function checkJavaFloor(
+	cfg: ClusterConfig,
+	inst: InstanceConfig,
+	declared?: number,
+): Promise<JavaFloorCheck> {
+	const needed = Math.max(suggestedFeature(inst.mcVersion), declared ?? 0);
+
+	if (!traitsOf(inst.software).usesJava) {
+		return { needed, ok: true };
+	}
+
+	const selection = javaSelection(cfg, inst);
+	const have =
+		selection.kind === "runtime"
+			? runtimeFeature(parseRuntimeId(selection.id)?.version ?? "")
+			: await javaFeatureOf(resolveJavaPath(cfg, inst));
+
+	return { needed, have, ok: have !== undefined && have >= needed };
+}
+
+/**
+ * Pin and install a managed runtime that meets an instance's java floor, when
+ * whatever it resolves today does not.
+ *
+ * This mutates `inst.runtime` rather than only reporting, because an instance
+ * that cannot start is not a provisioned instance, and because a runtime id
+ * travels with the instance while the machine's own java does not: the same
+ * entry has to resolve on whichever daemon ends up owning it.
+ *
+ * A caller that asked for a specific runtime is left alone - it said what it
+ * wanted. Nothing in the catalog for the needed feature is reported, not
+ * thrown: the instance is otherwise complete and an operator can point it at a
+ * java by hand.
+ */
+export async function ensureJavaFloor(
+	cfg: ClusterConfig,
+	inst: InstanceConfig,
+	reporter?: ProgressReporter,
+	declared?: number,
+): Promise<{ outcome: "ok" | "pinned" | "unavailable"; needed: number; id?: string }> {
+	const floor = await checkJavaFloor(cfg, inst, declared);
+
+	if (floor.ok) {
+		reporter?.settle();
+
+		return { outcome: "ok", needed: floor.needed };
+	}
+
+	const available = await listAvailableRuntimes({ feature: floor.needed });
+
+	// a JRE runs a server and an installer alike, and is less than half the size
+	const pick =
+		available.find((row) => row.vendor === "temurin-jre") ??
+		available.find((row) => row.vendor === "temurin") ??
+		available[0];
+
+	if (!pick) {
+		reporter?.warn(1, t("core.runtimes.noRuntimeForFeature", { feature: floor.needed }));
+
+		return { outcome: "unavailable", needed: floor.needed };
+	}
+
+	inst.runtime = pick.id;
+
+	await ensureRuntime(pick.id, { reporter });
+
+	return { outcome: "pinned", needed: floor.needed, id: pick.id };
+}
+
 export async function ensureInstanceRuntime(
 	cfg: ClusterConfig,
 	name: string,

@@ -677,6 +677,13 @@
 		"gbOfGb": "{used} GB trên {total} GB",
 		"tpsOf20": "{tps} trên 20 TPS"
 	},
+	"software": {
+		"channelRelease": "Bản chính thức",
+		"channelSnapshot": "Bản thử nghiệm",
+		"channelPrerelease": "Bản tiền phát hành",
+		"channelNightly": "Bản hằng đêm",
+		"channelExperimental": "Bản thực nghiệm"
+	},
 	"schedules": {
 		"loadFailed": "Không tải được các lịch",
 		"onceAt": "một lần lúc {time}",

@@ -642,25 +642,40 @@ function coveredByDefault(entry: PluginEntry, family: PluginFamily): boolean {
 	return false;
 }
 
+/**
+ * Where each LunaCore build keeps its config, relative to the instance. The
+ * bukkit build is a plugin and follows the plugin convention; the mod-loader
+ * builds both resolve their loader's config directory, which lands them in the
+ * same place. Velocity is absent on purpose: the proxy's core *is* the heartbeat
+ * endpoint, so it has nothing to point at itself.
+ */
+const LUNA_CORE_CONFIG_FILE: Partial<Record<PluginFamily, string>> = {
+	paper: "plugins/LunaCore/config.yml",
+	neoforge: "config/lunacore/config.yml",
+	fabric: "config/lunacore/config.yml",
+};
+
 /** Config templates seeded once per known entry (DESIGN.md §3.3). */
-const LUNA_CORE_TEMPLATE: PluginEntry["config"] = [
-	{
-		file: "plugins/LunaCore/config.yml",
-		// the bootstrap makes the very first boot heartbeat correctly: without
-		// it the file only exists after that boot, so `set` stays pending-file
-		// and the plugin reports to its bundled default endpoint (or nowhere)
-		write:
-			"# Written by luna before first boot. LunaCore merges its remaining defaults.\n" +
-			"heartbeat:\n" +
-			"  enabled: true\n" +
-			'  endpoint: "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat"\n' +
-			'  serverName: "${LUNA_INSTANCE}"\n',
-		set: {
-			endpoint: "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat",
-			serverName: "${LUNA_INSTANCE}",
+function lunaCoreTemplate(file: string): PluginEntry["config"] {
+	return [
+		{
+			file,
+			// the bootstrap makes the very first boot heartbeat correctly: without
+			// it the file only exists after that boot, so `set` stays pending-file
+			// and the plugin reports to its bundled default endpoint (or nowhere)
+			write:
+				"# Written by luna before first boot. LunaCore merges its remaining defaults.\n" +
+				"heartbeat:\n" +
+				"  enabled: true\n" +
+				'  endpoint: "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat"\n' +
+				'  serverName: "${LUNA_INSTANCE}"\n',
+			set: {
+				endpoint: "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat",
+				serverName: "${LUNA_INSTANCE}",
+			},
 		},
-	},
-];
+	];
+}
 
 const LUCKPERMS_TEMPLATE: PluginEntry["config"] = [
 	{
@@ -672,7 +687,12 @@ const LUCKPERMS_TEMPLATE: PluginEntry["config"] = [
 ];
 
 const SEED_TEMPLATES: Record<string, PluginEntry["config"]> = {
-	"luna-core@paper": LUNA_CORE_TEMPLATE,
+	...Object.fromEntries(
+		Object.entries(LUNA_CORE_CONFIG_FILE).map(([family, file]) => [
+			`luna-core@${family}`,
+			lunaCoreTemplate(file),
+		]),
+	),
 	"luckperms@paper": LUCKPERMS_TEMPLATE,
 };
 

@@ -397,12 +397,15 @@ export async function runDeploy(instances: string[] | undefined, plugin?: string
 	await saveLock(lock);
 	spin.stop();
 
-	for (const action of actions.filter((action) => action.action === "missing-variant")) {
+	// neither one deployed anything, so both are reported as what stopped it
+	const withheld = ["missing-variant", "incompatible"];
+
+	for (const action of actions.filter((action) => withheld.includes(action.action))) {
 		warn(`${action.instance}: ${action.file} · ${action.detail}`);
 	}
 
 	const changed = actions.filter(
-		(action) => action.action !== "unchanged" && action.action !== "missing-variant",
+		(action) => action.action !== "unchanged" && !withheld.includes(action.action),
 	);
 
 	for (const action of changed) {

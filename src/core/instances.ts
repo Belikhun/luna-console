@@ -2,9 +2,10 @@
 // Proprietary software: use, copying, modification and distribution are
 // prohibited without written permission. See LICENSE at the repository root.
 
-import { chmod, rm } from "node:fs/promises";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { cpus } from "node:os";
+import { dirname, join } from "node:path";
 
 import type { ClusterConfig, InstanceConfig } from "./types";
 import { instanceDir, managedInstances } from "./config";
@@ -42,6 +43,24 @@ const JAVA_VAR = '"$LUNA_JAVA"';
 /** Screen session name for an instance, e.g. `luna.lobby`. */
 export function sessionName(cfg: ClusterConfig, name: string): string {
 	return cfg.screenPrefix + name;
+}
+
+/**
+ * The process name to look this instance's server up by.
+ *
+ * Everything on a JVM is `java` whatever jar it was handed; a native server is
+ * its own executable, and that is the name `/proc` carries for it.
+ */
+export function serverProcessName(inst: InstanceConfig): string {
+	const traits = traitsOf(inst.software);
+
+	// only a native software runs under its own name, and one always names its
+	// binary; the software id is what that binary is called anyway
+	if (traits.usesJava) {
+		return "java";
+	}
+
+	return traits.binaryName || inst.software;
 }
 
 /**
@@ -109,6 +128,108 @@ export function argsFileOf(inst: InstanceConfig): string {
 	}
 
 	return resolve(inst);
+}
+
+/**
+ * What the daemon measured about one instance, for a server that cannot
+ * measure itself.
+ *
+ * The names are the heartbeat's, not luna's, because that is what this is: the
+ * missing half of a backend's own heartbeat, handed to it from outside.
+ */
+export interface HostMetrics {
+	/** Whole machine, 0-100 */
+	systemCpuUsagePercent: number;
+	/** This instance's share of the whole machine, 0-100 */
+	processCpuUsagePercent: number;
+	/** Resident set size, which is a native server's answer to heap used */
+	ramUsedBytes: number;
+	/** The instance's configured size: a native server has no other ceiling */
+	ramMaxBytes: number;
+}
+
+/** `4G`, `512M`, `2048` (megabytes) as the registry writes it, in bytes. */
+function memoryBytes(memory: string): number {
+	const match = /^\s*(\d+(?:\.\d+)?)\s*([kmgt]?)b?\s*$/i.exec(memory);
+
+	if (!match) {
+		return 0;
+	}
+
+	const scale: Record<string, number> = {
+		"": 1024 * 1024,
+		k: 1024,
+		m: 1024 * 1024,
+		g: 1024 * 1024 * 1024,
+		t: 1024 * 1024 * 1024 * 1024,
+	};
+
+	return Math.round(Number(match[1]) * (scale[match[2]!.toLowerCase()] ?? 0));
+}
+
+/**
+ * Leave this instance's metrics where its own server can read them.
+ *
+ * Only for software that cannot measure itself (`hostMetricsFile`); everything
+ * else reports from inside and would only be told what it already knows.
+ *
+ * The body is form-encoded with the heartbeat's field names, because a
+ * heartbeat is exactly what it becomes: the backend splices these into the one
+ * it sends. It also means the reader on the other side is the decoder that
+ * already parses heartbeat replies, rather than a second format to keep in step.
+ * `sampledAtEpochMillis` is the one field the heartbeat has no use for; it is
+ * how a backend tells a fresh sample from one left behind by a dead daemon.
+ *
+ * Best-effort by design: this runs every sample cycle, and an instance whose
+ * directory is being deleted underneath it must not take the sampler down.
+ */
+export async function writeHostMetrics(
+	cfg: ClusterConfig,
+	name: string,
+	usage: { systemCpuPercent?: number; cpuPercentOfOneCore?: number; rssMb?: number },
+): Promise<void> {
+	const inst = managedInstances(cfg)[name];
+
+	if (!inst) {
+		return;
+	}
+
+	const relative = traitsOf(inst.software).hostMetricsFile;
+
+	if (!relative) {
+		return;
+	}
+
+	// the sampler counts an instance's CPU against a single core, because that
+	// is what the console's column means; the heartbeat field means share of
+	// the machine, which is what a JVM reports for the same thing
+	const cores = Math.max(1, cpus().length);
+	const metrics: HostMetrics = {
+		systemCpuUsagePercent: round(usage.systemCpuPercent ?? 0),
+		processCpuUsagePercent: round((usage.cpuPercentOfOneCore ?? 0) / cores),
+		ramUsedBytes: Math.round((usage.rssMb ?? 0) * 1024 * 1024),
+		ramMaxBytes: memoryBytes(inst.memory),
+	};
+
+	const body = new URLSearchParams({
+		sampledAtEpochMillis: String(Date.now()),
+		...Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, String(value)])),
+	}).toString();
+
+	const target = join(instanceDir(inst), relative);
+
+	try {
+		await mkdir(dirname(target), { recursive: true });
+		await writeFile(target, `${body}\n`, "utf8");
+	} catch {
+		// the backend keeps its last sample and drops it once it goes stale;
+		// there is nothing here worth failing a sample cycle over
+	}
+}
+
+/** One decimal, clamped to a percentage. */
+function round(percent: number): number {
+	return Math.min(100, Math.max(0, Math.round(percent * 10) / 10));
 }
 
 /**
@@ -339,7 +460,7 @@ export async function getStatus(cfg: ClusterConfig, name: string): Promise<Insta
 
 	const [hasSession, pid] = await Promise.all([
 		screen.sessionExists(session),
-		screen.javaPidFor(dir),
+		screen.serverPidFor(dir, serverProcessName(inst)),
 	]);
 
 	const up = hasSession && pid !== undefined;
@@ -459,14 +580,15 @@ export async function stopInstance(
 	await Bun.write(join(dir, NORESTART), "");
 	await rm(join(dir, RESTARTING), { force: true });
 
-	const pid = await screen.javaPidFor(dir);
+	const processName = serverProcessName(inst);
+	const pid = await screen.serverPidFor(dir, processName);
 	let forced = false;
 
 	if (pid !== undefined) {
 		await screen.stuff(session, stopCommand(inst));
 
 		while (Date.now() - started < timeoutMs) {
-			const alive = await screen.javaPidFor(dir);
+			const alive = await screen.serverPidFor(dir, processName);
 
 			if (alive === undefined || alive !== pid) {
 				break;
@@ -475,7 +597,7 @@ export async function stopInstance(
 			await Bun.sleep(500);
 		}
 
-		if ((await screen.javaPidFor(dir)) === pid) {
+		if ((await screen.serverPidFor(dir, processName)) === pid) {
 			process.kill(pid, "SIGTERM");
 			await Bun.sleep(3000);
 			forced = true;
@@ -491,8 +613,8 @@ export async function stopInstance(
 		await screen.quit(session);
 	}
 
-	// Kill any respawned java (legacy start loop won the race): <1s old, pre-world-load.
-	const respawned = await screen.javaPidFor(dir);
+	// Kill a respawned server (legacy start loop won the race): <1s old, pre-world-load.
+	const respawned = await screen.serverPidFor(dir, processName);
 
 	if (respawned !== undefined && respawned !== pid) {
 		try {

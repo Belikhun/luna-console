@@ -1,0 +1,139 @@
+# Copyright (c) 2026 Belikhun. All rights reserved.
+# Proprietary software: use, copying, modification and distribution are
+# prohibited without written permission. See LICENSE at the repository root.
+
+# Development cluster.
+#
+# A whole luna cluster - daemon, console, registry, plugin pool and every
+# instance it starts - inside containers, on its own volume, reachable only on
+# loopback. Nothing here can see the production cluster at /mnt/shulker/mrds:
+# the daemon's root is a named volume, its socket lives inside that volume, and
+# its screen sessions belong to the container's PID namespace. That is the point
+# of running it this way rather than with LUNA_ROOT and LUNA_SOCKET on the host,
+# where a mistyped flag still reaches the live daemon.
+#
+#   docker compose -f deploy/docker-compose.dev.yml up -d --build
+#   docker compose -f deploy/docker-compose.dev.yml exec luna luna instances
+#
+# Console on http://127.0.0.1:8430, proxy on 127.0.0.1:25566. Every published
+# port is offset from the production defaults so both can run on one host.
+#
+# The console and the proxy both bind loopback by default. To reach either from
+# another machine on the LAN, publish it wider - it is a disposable cluster, but
+# it is still a console, and the proxy is still a server anyone could join:
+#
+#   CONSOLE_BIND=0.0.0.0 PROXY_BIND=0.0.0.0 \
+#     docker compose -f deploy/docker-compose.dev.yml up -d
+#
+# The instances run as screen sessions inside the daemon container, so rebuilding
+# it (`up -d --build`) stops them; `luna start --all` brings them back.
+#
+# To throw it away and start clean:
+#   docker compose -f deploy/docker-compose.dev.yml down -v
+
+name: luna-dev
+
+x-image: &image
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  image: luna-console:dev
+
+services:
+  # A fresh volume has no registry; the daemon seeds one on first boot, so there
+  # is nothing to bootstrap here.
+  luna:
+    <<: *image
+    container_name: luna-dev-daemon
+    restart: unless-stopped
+    command: ["daemon", "run"]
+
+    environment:
+      LUNA_MODE: primary
+      LUNA_DAEMON_NAME: dev
+      LUNA_ROOT: /data
+      LUNA_LISTEN: 0.0.0.0:8331
+      # a fixed value on purpose: this cluster is loopback-only and disposable,
+      # and a generated token would have to be threaded through .env before the
+      # environment could be brought up in one command
+      LUNA_TOKEN: luna-dev-token-not-for-production
+      LUNA_SOCKET: /data/run/daemon.sock
+      # the in-house jars are built on the host (the image carries a JRE, not a
+      # JDK, so gradle cannot run in here); `luna luna sync` reads output/ from
+      # this mount, and `luna luna build` is the one subcommand that will not work
+      LUNA_PLUGINS_DIR: /luna-plugins
+
+    volumes:
+      - cluster:/data
+      - ${LUNA_PLUGINS_DIR:-${HOME}/luna-plugins}:/luna-plugins:ro
+
+    ports:
+      - "127.0.0.1:8431:8331"
+      # loopback by default like the console, and widened the same way, because
+      # testing a client flow needs a client and it is rarely on this machine:
+      #   PROXY_BIND=0.0.0.0 docker compose -f deploy/docker-compose.dev.yml up -d
+      - "${PROXY_BIND:-127.0.0.1}:25566:25565"
+
+    stop_grace_period: 2m
+
+    healthcheck:
+      test: ["CMD", "luna", "daemon", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  console:
+    <<: *image
+    container_name: luna-dev-console
+    restart: unless-stopped
+    depends_on:
+      - luna
+    command: ["web", "--host", "0.0.0.0", "--port", "8330"]
+
+    environment:
+      LUNA_ROOT: /data
+      LUNA_SOCKET: /data/run/daemon.sock
+
+    volumes:
+      - cluster:/data
+
+    ports:
+      - "${CONSOLE_BIND:-127.0.0.1}:8430:8330"
+
+  # The player directory, which the luna velocity plugins migrate a schema into
+  # at boot. Without it lunacore, lunaauth and lunamessenger all fail their
+  # migrations and the proxy refuses every login with "auth is still starting",
+  # so a cluster meant for testing the auth flow needs one to test anything.
+  #
+  # Point the proxy's plugins at it by host name rather than 127.0.0.1, which is
+  # what a config copied from production says:
+  #   luna send proxy ... is no use here; edit
+  #   /data/proxy/plugins/lunacore/config.yml -> database.host: luna-dev-mariadb
+  mariadb:
+    image: mariadb:11.4
+    container_name: luna-dev-mariadb
+    restart: unless-stopped
+
+    environment:
+      # empty-password root is deliberate and matches what the plugins' default
+      # config expects; this database is loopback-only and disposable
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+      MARIADB_DATABASE: luna
+
+    volumes:
+      - database:/var/lib/mysql
+
+    ports:
+      - "127.0.0.1:3406:3306"
+
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  cluster:
+  database:

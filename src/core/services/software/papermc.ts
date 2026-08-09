@@ -74,6 +74,30 @@ async function legacyLatestBuild(project: string, version: string): Promise<Part
 }
 
 /**
+ * The java feature release Fill says a version needs, when it says one.
+ *
+ * PaperMC publishes this per version, which is the only place the requirement
+ * is actually stated: velocity 4 needs java 25 while every Minecraft release
+ * still runs on 21, so nothing derived from a game version can know it. A
+ * missing or unreadable answer is `undefined`, not a guess - the caller falls
+ * back to `suggestedFeature`, and a floor invented here would be worse than
+ * the inference it replaced.
+ */
+async function fillJavaMinimum(project: string, version: string): Promise<number | undefined> {
+	const url = `https://fill.papermc.io/v3/projects/${project}/versions/${version}`;
+	const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+
+	if (!res.ok) {
+		return undefined;
+	}
+
+	const data: any = await res.json();
+	const minimum = Number(data?.version?.java?.version?.minimum);
+
+	return Number.isFinite(minimum) && minimum > 0 ? minimum : undefined;
+}
+
+/**
  * Every Minecraft version a project publishes builds for. Fill v3 returns
  * either a flat array or a map grouped by major line, depending on the project.
  */
@@ -122,8 +146,13 @@ export const client: SoftwareProviderClient = {
 		const project = software;
 		const version = spec.mcVersion;
 
-		const info =
-			(await fillLatestBuild(project, version)) ?? (await legacyLatestBuild(project, version));
+		// both reads hit the same API, and neither depends on the other
+		const [info, javaMinimum] = await Promise.all([
+			fillLatestBuild(project, version).then(
+				(build) => build ?? legacyLatestBuild(project, version),
+			),
+			fillJavaMinimum(project, version),
+		]);
 
 		if (!info) {
 			throw new Error(t("core.services.noBuild", { project, version }));
@@ -137,6 +166,7 @@ export const client: SoftwareProviderClient = {
 			fileName: info.fileName!,
 			hashes: info.hashes ?? {},
 			kind: "jar",
+			...(javaMinimum ? { javaMinimum } : {}),
 		};
 	},
 };

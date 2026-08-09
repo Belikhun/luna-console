@@ -20,7 +20,7 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { readProperties } from "./confedit";
+import { getConfValue } from "./confedit";
 import { expandTargets, instanceDir, managedInstances, root } from "./config";
 import { groupsWith, memberInstances } from "./families";
 import {
@@ -55,20 +55,25 @@ export function datapacksDir(): string {
 }
 
 /**
- * The world directory data packs load from, resolved through the instance's
- * own `level-name`; a renamed world (survival, lobby) moves the folder with it.
+ * The world directory data packs load from, resolved through the instance's own
+ * level name; a renamed world (survival, lobby) moves the folder with it.
+ *
+ * Which file and key hold that name is a trait, because it is not the same one
+ * everywhere: a JVM server reads `level-name` from `server.properties`, pumpkin
+ * reads `default_level_name` from its own TOML. Getting it wrong writes the
+ * packs into a directory the server never opens, and nothing complains.
  */
 export async function worldDatapacksDir(inst: InstanceConfig): Promise<string> {
 	const dir = instanceDir(inst);
-	let level = "world";
+	const source = traitsOf(inst.software).levelName;
 
-	try {
-		const props = await readProperties(join(dir, "server.properties"));
-
-		level = props["level-name"]?.trim() || "world";
-	} catch {
-		// a fresh instance has no properties yet; vanilla defaults to "world"
+	if (!source) {
+		throw new Error(t("core.datapacks.noWorld", { name: inst.dir }));
 	}
+
+	// a fresh instance has no config yet, and the server's own default applies
+	const named = await getConfValue(join(dir, source.file), source.format, source.key);
+	const level = named?.trim() || source.fallback;
 
 	return join(dir, level, "datapacks");
 }
@@ -76,7 +81,7 @@ export async function worldDatapacksDir(inst: InstanceConfig): Promise<string> {
 /** Instances that have a world to load data packs from (everything but the proxy). */
 function worldInstances(cfg: ClusterConfig): Record<string, InstanceConfig> {
 	const entries = Object.entries(managedInstances(cfg)).filter(
-		([, inst]) => !traitsOf(inst.software).isProxy,
+		([, inst]) => traitsOf(inst.software).levelName !== undefined,
 	);
 
 	return Object.fromEntries(entries);

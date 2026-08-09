@@ -20,6 +20,7 @@ import type { BackendCard } from "../core/services/luna";
 import type { ClusterConfig } from "../core/types";
 
 import { pushEvent } from "./events";
+import { currentHealth } from "./health";
 import { isPrimary, ownsInstance } from "./identity";
 import { getAllStatusesRouted, getStatusRouted } from "./rpc";
 
@@ -297,6 +298,14 @@ async function sampleOnce(): Promise<void> {
 			if (rec.history.length > MAX_SAMPLES) {
 				rec.history.splice(0, rec.history.length - MAX_SAMPLES);
 			}
+
+			// A server that cannot measure itself gets this cycle's figures left
+			// in its own directory; for everything else this returns at once.
+			await instances.writeHostMetrics(cfg, status.name, {
+				systemCpuPercent: currentHealth()?.cpuPct,
+				cpuPercentOfOneCore: sample.cpu,
+				rssMb: sample.rssMb,
+			});
 		}
 	} catch (err) {
 		// a fresh follower has no cluster.json until its first sync lands
@@ -513,9 +522,11 @@ export function statusChecks(st: CoreStatus): StatusCheck[] {
 		{
 			name: "Process check",
 			ok: st.javaPid !== undefined,
+			// worded for the software rather than for java: a native server has no
+			// JVM, and "no java process" would read as a fault on a healthy one
 			detail: st.javaPid
-				? `java process ${st.javaPid} inside screen session`
-				: "screen session present but no java process",
+				? `${instances.serverProcessName(st.inst)} process ${st.javaPid} inside screen session`
+				: `screen session present but no ${instances.serverProcessName(st.inst)} process`,
 		},
 		{
 			name: "Port reachability",
