@@ -35,13 +35,13 @@ import { unzipRead } from "./pluginstate";
 import { sha512File } from "./services/download";
 
 /** Platforms whose artifacts are pooled for this cluster. */
-export const LUNA_PLATFORMS = ["paper", "velocity", "neoforge", "fabric", "pumpkin"] as const;
+export const LUNA_PLATFORMS = ["paper", "velocity", "neoforge", "forge", "fabric", "pumpkin"] as const;
 
 /**
  * Platforms whose builds are their own plugin family. Everything else pools as
  * `paper`, which is what every bukkit-API software loads.
  */
-const PLATFORM_FAMILIES = new Set<string>(["velocity", "neoforge", "fabric", "pumpkin"]);
+const PLATFORM_FAMILIES = new Set<string>(["velocity", "neoforge", "forge", "fabric", "pumpkin"]);
 
 /**
  * Platforms gradle does not build.
@@ -155,13 +155,17 @@ export async function listModules(source: Required<LunaSourceConfig>): Promise<L
 			return { name, platform: "api" };
 		}
 
+		// -neoforge is tested first because a module named for it also ends in
+		// "forge"; classic forge is the narrower `-forge` suffix.
 		const platform = name.endsWith("-neoforge") || neoForgeExtras.has(name)
 			? "neoforge"
-			: name.endsWith("-fabric")
-				? "fabric"
-				: name.endsWith("-velocity") || velocityExtras.has(name)
-					? "velocity"
-					: "paper";
+			: name.endsWith("-forge")
+				? "forge"
+				: name.endsWith("-fabric")
+					? "fabric"
+					: name.endsWith("-velocity") || velocityExtras.has(name)
+						? "velocity"
+						: "paper";
 
 		const base = name.endsWith(`-${platform}`) ? name.slice(0, -platform.length - 1) : name;
 

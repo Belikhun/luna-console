@@ -37,7 +37,7 @@ import {
 } from "./families";
 import { assignedVersion, instanceAddonDir, instanceAddonDirs } from "./plugins";
 import { getStatus, type InstanceStatus } from "./instances";
-import { ADDON_EXTENSIONS, traitsOf } from "./software";
+import { ADDON_EXTENSIONS, traitsOf, type LogGrammar } from "./software";
 
 /** Rotated files walked back at most, looking for the boot marker. */
 const MAX_ROTATIONS = 6;
@@ -473,11 +473,26 @@ function severityOf(line: string): "warn" | "error" | undefined {
 }
 
 /**
- * Logger name of a neoforge line. Its log4j layout is
- * `[time] [thread/LEVEL] [Logger/MARKER]: message`, so the logger is the third
- * bracket, up to the slash.
+ * Logger name of a log4j line, for the layouts that carry one: neoforge writes
+ * `[time] [thread/LEVEL] [Logger/MARKER]: message` and velocity the same thing
+ * without the marker, so the logger is the third bracket, up to whichever of
+ * the slash or the closing bracket comes first.
  */
-const NEOFORGE_LOGGER = /^\[[^\]]*\]\s*\[[^\]]*\]\s*\[([^\]/]*)\//;
+const LOG4J_LOGGER = /^\[[^\]]*\]\s*\[[^\]]*\]\s*\[([^\]/]*)[/\]]/;
+
+/**
+ * The platform suffix a multi-platform addon appends to its logger name, per
+ * grammar: `LunaCoreVelocity` and `LunaCoreNeoForge` are both `luna-core`.
+ *
+ * A grammar listed here names its addon in the logger *field*; one that is
+ * absent names it in the message body instead, and is matched as a substring.
+ * That is the whole difference between the two rules, so membership of this map
+ * is what selects them.
+ */
+const LOGGER_SUFFIX: Partial<Record<LogGrammar, RegExp>> = {
+	modlauncher: /(neo)?forge$/,
+	velocity: /velocity$/,
+};
 
 /**
  * Characters that continue a plugin name, for pumpkin's whole-token test. A dot
@@ -517,14 +532,18 @@ function namesAlias(lowerLine: string, alias: string): boolean {
 /**
  * Whether a line is attributed to one of the aliases.
  *
- * Bukkit prefixes the message itself with `[Name]`, so a substring test is the
- * whole rule there. ModLauncher does not: the mod is named in the layout's
- * logger field (`[LunaCore/]`), and the message body regularly mentions *other*
- * mods ("Registering events for 'lunacore'"), which a substring test would
- * happily credit to the wrong mod. So a mod loader is matched on the logger
- * alone, and matched whole; a prefix test would file every `LunaCoreMessaging`
- * line under `LunaCore`. A multi-platform mod commonly names its logger after
- * the platform class, so a trailing loader suffix is stripped before comparing.
+ * Bukkit and fabric prefix the message itself with `[Name]`, so a substring
+ * test is the whole rule there. ModLauncher and velocity do not: the addon is
+ * named in the layout's logger field (`[LunaCore/]`, `[LunaCoreVelocity]`), and
+ * the message body regularly mentions *other* addons ("Registering events for
+ * 'lunacore'"), which a substring test would happily credit to the wrong one.
+ * Velocity is the worse of the two, because it also names each plugin's
+ * scheduler threads after that plugin, and most of a boot runs on whichever
+ * plugin's pool got there first - matching anywhere in the line would file the
+ * entire startup under LuckPerms. So both are matched on the logger alone, and
+ * matched whole; a prefix test would file every `LunaCoreMessaging` line under
+ * `LunaCore`. A multi-platform addon commonly names its logger after the
+ * platform class, so a trailing suffix is stripped before comparing.
  *
  * Pumpkin has neither: its logging interface takes a message and nothing else,
  * so a *plugin's own* lines are indistinguishable from the server's and can
@@ -538,17 +557,19 @@ function attributed(lowerLine: string, lowerAliases: string[], software: Softwar
 		return lowerAliases.some((alias) => namesAlias(lowerLine, alias));
 	}
 
-	if (grammar !== "modlauncher") {
+	const suffix = LOGGER_SUFFIX[grammar];
+
+	if (!suffix) {
 		return lowerAliases.some((alias) => lowerLine.includes(`[${alias}]`));
 	}
 
-	const logger = lowerLine.match(NEOFORGE_LOGGER)?.[1];
+	const logger = lowerLine.match(LOG4J_LOGGER)?.[1];
 
 	if (!logger) {
 		return false;
 	}
 
-	const bare = logger.replace(/(neo)?forge$/, "");
+	const bare = logger.replace(suffix, "");
 
 	return lowerAliases.some((alias) => logger === alias || bare === alias);
 }

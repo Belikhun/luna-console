@@ -652,6 +652,7 @@ function coveredByDefault(entry: PluginEntry, family: PluginFamily): boolean {
 const LUNA_CORE_CONFIG_FILE: Partial<Record<PluginFamily, string>> = {
 	paper: "plugins/LunaCore/config.yml",
 	neoforge: "config/lunacore/config.yml",
+	forge: "config/lunacore/config.yml",
 	fabric: "config/lunacore/config.yml",
 };
 

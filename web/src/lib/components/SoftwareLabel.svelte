@@ -49,11 +49,15 @@
 	const mark = $derived(SOFTWARE_MARKS[software as Software]);
 
 	/**
-	 * The version, unless the badge beside it already says the same word.
+	 * The version, minus whatever the badge beside it already says.
 	 *
 	 * Pumpkin's only version *is* `nightly`, so printing both left the row
-	 * reading "Pumpkin nightly NIGHTLY". The badge wins: it is the one that
-	 * carries the colour and says what the string means.
+	 * reading "Pumpkin nightly NIGHTLY"; velocity's builds carry the channel as
+	 * a suffix (`4.1.0-SNAPSHOT`), which read as "4.1.0-SNAPSHOT SNAPSHOT". The
+	 * badge wins either way: it is the one that carries the colour and says
+	 * what the string means. A version that merely *implies* the channel
+	 * (`24w14a`, `1.21.2-pre1`) is kept whole, because it still identifies
+	 * which build this is.
 	 */
 	const versionText = $derived.by(() => {
 		const text = version?.trim();
@@ -62,7 +66,16 @@
 			return text;
 		}
 
-		return text.toLowerCase() === channel.toLowerCase() ? undefined : text;
+		if (text.toLowerCase() === channel.toLowerCase()) {
+			return undefined;
+		}
+
+		const suffix = `-${channel.toLowerCase()}`;
+		if (text.toLowerCase().endsWith(suffix)) {
+			return text.slice(0, -suffix.length);
+		}
+
+		return text;
 	});
 
 	// Indexed rather than looked up through `traitsOf`, which throws: an id luna
