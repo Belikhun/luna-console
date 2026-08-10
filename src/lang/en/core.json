@@ -47,6 +47,7 @@
 		"pumpkinConfigWritten": "wrote pumpkin.toml with the forwarding secret",
 		"installingForwardingMod": "installing {mod} for proxy logins",
 		"forwardingModInstalled": "{mod} installed for proxy logins",
+		"forwardingSecretWritten": "forwarding secret written to {mod}'s config; the mod itself does not run on this MC line, so proxied logins stay off",
 		"requiredAddonsInstalled": "installed required addon(s) for this loader: {mods}",
 		"forwardingModPooled": "{mod} already pooled; targeting this instance",
 		"forwardingModMissing": "the forwarding mod {mod} could not be found upstream",
@@ -405,7 +406,7 @@
 			"noPublishedBuilds": "{software} has no published builds yet",
 			"noAssetForPlatform": "{software} publishes no build for {platform}",
 			"badLoaderVersion": "cannot read a Minecraft version out of loader build {version}",
-			"forgeTooOld": "forge for {version} predates the installer layout luna launches; {oldest} is the oldest supported",
+			"forgeUnserved": "forge for {version} is not a line luna serves: {oldest} and newer use the modern layout, and {legacy}.x is the only legacy line with luna mods built for it",
 			"phaseDownload": "Download installer",
 			"phaseInstall": "Run installer",
 			"runningInstaller": "running the loader installer",
@@ -413,7 +414,8 @@
 			"downloaded": "downloaded",
 			"installerFailed": "the installer exited with code {code}: {detail}",
 			"installerNeedsJava": "{software} installs through its own installer, which needs a java binary",
-			"installerNoArgsFile": "the installer wrote no {file}; the pack cannot be launched"
+			"installerNoArgsFile": "the installer wrote no {file}; the pack cannot be launched",
+			"installerNoJar": "the installer left no jar matching {pattern}; the server cannot be launched"
 		},
 		"downloadedSoFar": "{mb} MB",
 		"downloadedOf": "{mb} / {total} MB"

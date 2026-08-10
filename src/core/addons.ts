@@ -223,7 +223,7 @@ export async function adoptInstanceAddons(
 	}
 
 	// a proxy has no world, so it has no data packs to account for
-	if (!traitsOf(inst.software).isProxy) {
+	if (!traitsOf(inst.software, inst.mcVersion).isProxy) {
 		const worldDir = await worldDatapacksDir(inst);
 
 		if (existsSync(worldDir)) {

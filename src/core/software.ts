@@ -90,7 +90,7 @@ const PROPERTIES_LEVEL: LevelNameSource = {
  * attribution. Several softwares share one grammar, which is the point: the
  * parser branches on the grammar, never on the software.
  */
-export type LogGrammar = "bukkit" | "velocity" | "modlauncher" | "fabric" | "pumpkin" | "generic";
+export type LogGrammar = "bukkit" | "velocity" | "modlauncher" | "fml" | "fabric" | "pumpkin" | "generic";
 
 /** An addon the ecosystem cannot run luna's own mods without. */
 export interface RequiredAddon {
@@ -108,6 +108,10 @@ export interface ForwardingMod {
 	 *  the shape of its own config, so it travels with the mod rather than as a
 	 *  branch on its slug somewhere else. */
 	config: (secret: string) => string;
+	/** Write the config and stop there: the mod itself is not installable on
+	 *  this line, but the file it reads is also where luna-core finds the
+	 *  forwarding secret it authenticates the heartbeat with. */
+	configOnly?: boolean;
 }
 
 /** Everything that differs between one server software and another. */
@@ -174,6 +178,16 @@ export interface SoftwareTraits {
 	libraryPath?: string;
 	/** Argument file for `argsfile`, relative to the instance directory */
 	argsFile?: (inst: InstanceConfig) => string;
+	/**
+	 * The jar an `installer` build leaves behind, for a software that launches from
+	 * one rather than from an argument file.
+	 *
+	 * Its name carries the version the installer wrote, which a constant
+	 * `binaryName` cannot spell, so the install step matches this and renames the
+	 * result. Only the pre-1.17 loaders need it; everything newer is launched
+	 * through `argsFile` instead, and the two are mutually exclusive.
+	 */
+	installedJar?: RegExp;
 	/** Where the daemon drops this instance's own CPU and memory, relative to
 	 *  the instance directory, for a server that cannot measure itself.
 	 *
@@ -196,6 +210,19 @@ export interface SoftwareTraits {
  * the top of the session.
  */
 const MODLAUNCHER_BOOT = /ModLauncher running:/;
+
+/**
+ * Legacy FML's banner, for the 1.12.2 line, which predates ModLauncher entirely -
+ * that regex never matches a log of this era. Same constraint as above: it has to
+ * sit before the mod roster, and FML prints this before it scans the mods folder.
+ */
+const FML_BOOT = /Forge Mod Loader version [\d.]+ for Minecraft/;
+
+// Legacy FML has no per-mod load line to match on. The `UCHIJAAAA lunacore{0.1.0}`
+// table every 1.12.2 operator knows is printed into a *crash report*, not into
+// latest.log; a healthy boot says only "has identified 5 mods to load" and then names
+// them once, together, inside one bracketed list. So this era carries no
+// `addonLoadMarker` at all - see the note on that trait for why omitting is right.
 
 /**
  * Bukkit announces a plugin twice on the way up: once as it reads the jar, once
@@ -514,6 +541,72 @@ export const SOFTWARE_TRAITS: Record<Software, SoftwareTraits> = Object.fromEntr
 	]),
 ) as Record<Software, SoftwareTraits>;
 
+/**
+ * Classic forge on the 1.12 line: a different launcher era of the same
+ * software, not a different software.
+ *
+ * The registry stores `forge` for both eras and the MC version decides which
+ * traits apply, the same way it already decides which pooled build deploys.
+ * These are the overrides; everything not listed here reads from the `forge`
+ * row unchanged.
+ *
+ * Why they differ: that era's installer writes a runnable universal jar and no
+ * `unix_args.txt`, so the launch is `kind: "jar"` with no args file and no
+ * libraries path; it runs on legacy FML rather than ModLauncher, so the boot
+ * marker and the log grammar are FML's; data packs did not exist until 1.13;
+ * and PCF on this line additionally needs MixinBooter plus a patched proxy, so
+ * the forwarding mod is not auto-installed the way it is on 1.20.1.
+ */
+const FORGE_LEGACY_OVERRIDES: Partial<SoftwareTraits> = {
+	kind: "jar",
+	// the installer produces forge-<mc>-<loader>.jar; the install step renames
+	// it, because a trait is a constant and that name is not
+	binaryName: "server.jar",
+	argsFile: undefined,
+	libraryPath: undefined,
+	// PCF itself is not installed on this line (it additionally needs MixinBooter
+	// and a patched proxy), but its config file is still written: that file is
+	// where luna-core reads the forwarding secret, and without it a legacy
+	// backend cannot authenticate its heartbeat to the proxy
+	forwardingMod: { ...FORGE_PROXY, configOnly: true },
+	bootMarker: FML_BOOT,
+	logGrammar: "fml",
+	// deliberately no addonLoadMarker: FML names its mods once, in a list, not
+	// one per line, so a per-mod progress phase here would be invented
+	addonLoadMarker: undefined,
+	// data packs arrived in 1.13; claiming a phase that never logs would report
+	// progress nothing in the log supports
+	announcesDataPacks: false,
+	// A current installer writes `forge-1.12.2-14.23.5.2859.jar`; older ones of
+	// the same era wrote `-universal` on the end, and both spellings are still in
+	// the wild. Anchoring on the `forge-` prefix covers them and, importantly,
+	// does not match the `minecraft_server.1.12.2.jar` sitting beside it - that
+	// one is the vanilla jar the forge launcher reads, not the launch target.
+	installedJar: /^forge-.+\.jar$/,
+};
+
+const FORGE_LEGACY_TRAITS: SoftwareTraits = {
+	...(SOFTWARE_TRAITS.forge as SoftwareTraits),
+	...FORGE_LEGACY_OVERRIDES,
+	usesJava: true,
+};
+
+/**
+ * Whether an MC version is forge's legacy-FML era. The launcher changed at
+ * 1.13 (and forge skipped straight to 1.14), so everything at or below 1.12
+ * is the old world; luna only provisions 1.12.x of it, and the provider is
+ * what enforces that floor.
+ */
+export function isLegacyForge(software: Software, mcVersion: string | undefined): boolean {
+	if (software !== "forge" || !mcVersion) {
+		return false;
+	}
+
+	const minor = Number(mcVersion.split(".")[1]);
+
+	return Number.isFinite(minor) && minor <= 12;
+}
+
 /** Every software id, in the order they are offered. */
 export const SOFTWARE_IDS: Software[] = Object.keys(SOFTWARE_TRAITS) as Software[];
 
@@ -596,12 +689,25 @@ export function hasLoaderVersions(software: Software): boolean {
 	return Boolean(traitsOf(software).pinsLoaderVersion);
 }
 
-/** What differs about one software. */
-export function traitsOf(software: Software): SoftwareTraits {
+/**
+ * What differs about one software.
+ *
+ * Forge is the one software whose launch-facing traits depend on the MC
+ * version: at or below 1.12 it is the legacy-FML era, with a different launch
+ * shape, boot marker and log grammar. Callers reading any of those pass the
+ * instance's `mcVersion`; callers reading era-independent facts (addon dirs,
+ * families, proxy-ness, java-ness) may omit it, and every other software
+ * ignores it entirely.
+ */
+export function traitsOf(software: Software, mcVersion?: string): SoftwareTraits {
 	const traits = SOFTWARE_TRAITS[software];
 
 	if (!traits) {
 		throw new Error(t("core.software.unknown", { software }));
+	}
+
+	if (isLegacyForge(software, mcVersion)) {
+		return FORGE_LEGACY_TRAITS;
 	}
 
 	return traits;

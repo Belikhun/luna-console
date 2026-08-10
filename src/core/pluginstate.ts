@@ -75,6 +75,8 @@ export interface BootSession {
 	complete: boolean;
 	/** Software that wrote the log, which decides how a line is attributed */
 	software: Software;
+	/** Its MC version: forge's log grammar depends on the era, not just the id */
+	mcVersion?: string;
 	/** Whether the server announced it had finished starting up */
 	startupComplete: boolean;
 	/** When latest.log was last written (epoch ms), absent when there is no such file */
@@ -92,8 +94,8 @@ export interface BootSession {
  * the traits table rather than being a constant here; a hardcoded vanilla
  * phrase leaves every pumpkin addon stuck on `loading` forever.
  */
-function startupComplete(software: Software, lines: string[]): boolean {
-	const marker = traitsOf(software).readyMarker;
+function startupComplete(software: Software, mcVersion: string | undefined, lines: string[]): boolean {
+	const marker = traitsOf(software, mcVersion).readyMarker;
 
 	return lines.some((line) => marker.test(line));
 }
@@ -382,7 +384,7 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 	}
 
 	const logsDir = join(instanceDir(inst), "logs");
-	const marker = traitsOf(inst.software).bootMarker;
+	const marker = traitsOf(inst.software, inst.mcVersion).bootMarker;
 
 	let text = "";
 	let writtenAt: number | undefined;
@@ -434,7 +436,8 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 			lines,
 			complete: false,
 			software: inst.software,
-			startupComplete: startupComplete(inst.software, lines),
+			...(inst.mcVersion ? { mcVersion: inst.mcVersion } : {}),
+			startupComplete: startupComplete(inst.software, inst.mcVersion, lines),
 			...(writtenAt !== undefined ? { writtenAt } : {}),
 		};
 	}
@@ -445,7 +448,8 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 		lines: session,
 		complete: true,
 		software: inst.software,
-		startupComplete: startupComplete(inst.software, session),
+		...(inst.mcVersion ? { mcVersion: inst.mcVersion } : {}),
+		startupComplete: startupComplete(inst.software, inst.mcVersion, session),
 		...(writtenAt !== undefined ? { writtenAt } : {}),
 	};
 }
@@ -489,10 +493,34 @@ const LOG4J_LOGGER = /^\[[^\]]*\]\s*\[[^\]]*\]\s*\[([^\]/]*)[/\]]/;
  * That is the whole difference between the two rules, so membership of this map
  * is what selects them.
  */
+/**
+ * Nothing to strip. Legacy FML gives a mod's logger the mod id verbatim
+ * (`[lunacore]`), because on that line a mod *is* its id - there is no
+ * `LunaCoreForge` platform class naming the logger, since there is only one
+ * platform. `replace(/$/, "")` leaves the name alone, which is the honest way to say
+ * "this grammar uses the logger field, and the field needs no cleaning".
+ */
+const NO_SUFFIX = /$/;
+
 const LOGGER_SUFFIX: Partial<Record<LogGrammar, RegExp>> = {
 	modlauncher: /(neo)?forge$/,
 	velocity: /velocity$/,
+	fml: NO_SUFFIX,
 };
+
+/**
+ * The one line a healthy 1.12.2 boot names every loaded mod on:
+ * `Attempting connection with missing mods [minecraft, mcp, FML, forge, lunacore] at SERVER`.
+ *
+ * "missing" is about the *client* not having them, not about them failing to load -
+ * it is the server listing what a joining client would need. That makes it the only
+ * per-mod evidence in latest.log, because the `UCHIJAAAA` state table everyone
+ * associates with FML is written into crash reports and never into the log.
+ */
+const FML_MOD_LIST = /attempting connection with missing mods \[([^\]]*)\]/;
+
+/** FML's mod count, which is what proves the roster was reached at all. */
+const FML_ROSTER_HEADER = /forge mod loader has (identified|successfully loaded) \d+ mods/;
 
 /**
  * Characters that continue a plugin name, for pumpkin's whole-token test. A dot
@@ -550,8 +578,8 @@ function namesAlias(lowerLine: string, alias: string): boolean {
  * never be attributed. What is attributable is the set the server writes *about*
  * a plugin, which is the set the warning and error tallies are made of anyway.
  */
-function attributed(lowerLine: string, lowerAliases: string[], software: Software): boolean {
-	const grammar = traitsOf(software).logGrammar;
+function attributed(lowerLine: string, lowerAliases: string[], session: BootSession): boolean {
+	const grammar = traitsOf(session.software, session.mcVersion).logGrammar;
 
 	if (grammar === "pumpkin") {
 		return lowerAliases.some((alias) => namesAlias(lowerLine, alias));
@@ -590,7 +618,7 @@ export function pluginLogReport(session: BootSession, aliases: string[]): Plugin
 	for (const line of session.lines) {
 		const lower = line.toLowerCase();
 
-		if (!attributed(lower, lowerAliases, session.software)) {
+		if (!attributed(lower, lowerAliases, session)) {
 			continue;
 		}
 
@@ -658,8 +686,7 @@ const FABRIC_ROSTER_ENTRY = /^\s*(?:[|\\]--|-)\s*([a-z0-9_.-]+)(?:\s+\S+)?$/;
 /** Load, ready and failure evidence for one addon in a session. */
 function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
-	const software = session.software;
-	const grammar = traitsOf(software).logGrammar;
+	const grammar = traitsOf(session.software, session.mcVersion).logGrammar;
 
 	let loading = false;
 	let ready = false;
@@ -671,17 +698,21 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 	// as the marker that it is in the session.
 	// Absence only means "not there" when the roster was captured at all, so each
 	// loader that prints one carries its own marker for having reached it.
-	let roster = grammar !== "modlauncher" && grammar !== "fabric";
+	let roster = grammar !== "modlauncher" && grammar !== "fabric" && grammar !== "fml";
 
 	for (const rawLine of session.lines) {
 		const lower = rawLine.trimEnd().toLowerCase();
-		const mine = attributed(lower, lowerAliases, software);
+		const mine = attributed(lower, lowerAliases, session);
 
 		if (grammar === "modlauncher" && (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)"))) {
 			roster = true;
 		}
 
 		if (grammar === "fabric" && FABRIC_ROSTER_HEADER.test(lower)) {
+			roster = true;
+		}
+
+		if (grammar === "fml" && FML_ROSTER_HEADER.test(lower)) {
 			roster = true;
 		}
 
@@ -715,6 +746,18 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 				}
 			} else if (grammar === "fabric") {
 				if (FABRIC_ROSTER_ENTRY.exec(lower)?.[1] === alias) {
+					loading = true;
+				}
+			} else if (grammar === "fml") {
+				// legacy FML names the mod it could not construct, and the phase it
+				// died in, on one line: "caught exception from lunacore"
+				if (lower.includes(`caught exception from ${alias}`)) {
+					return "errored";
+				}
+
+				const listed = FML_MOD_LIST.exec(lower)?.[1];
+
+				if (listed && listed.split(",").some((id) => id.trim() === alias)) {
 					loading = true;
 				}
 			} else if (grammar === "pumpkin") {

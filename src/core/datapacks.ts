@@ -65,7 +65,7 @@ export function datapacksDir(): string {
  */
 export async function worldDatapacksDir(inst: InstanceConfig): Promise<string> {
 	const dir = instanceDir(inst);
-	const source = traitsOf(inst.software).levelName;
+	const source = traitsOf(inst.software, inst.mcVersion).levelName;
 
 	if (!source) {
 		throw new Error(t("core.datapacks.noWorld", { name: inst.dir }));
@@ -81,7 +81,7 @@ export async function worldDatapacksDir(inst: InstanceConfig): Promise<string> {
 /** Instances that have a world to load data packs from (everything but the proxy). */
 function worldInstances(cfg: ClusterConfig): Record<string, InstanceConfig> {
 	const entries = Object.entries(managedInstances(cfg)).filter(
-		([, inst]) => traitsOf(inst.software).levelName !== undefined,
+		([, inst]) => traitsOf(inst.software, inst.mcVersion).levelName !== undefined,
 	);
 
 	return Object.fromEntries(entries);

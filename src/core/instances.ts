@@ -52,7 +52,7 @@ export function sessionName(cfg: ClusterConfig, name: string): string {
  * its own executable, and that is the name `/proc` carries for it.
  */
 export function serverProcessName(inst: InstanceConfig): string {
-	const traits = traitsOf(inst.software);
+	const traits = traitsOf(inst.software, inst.mcVersion);
 
 	// only a native software runs under its own name, and one always names its
 	// binary; the software id is what that binary is called anyway
@@ -69,7 +69,7 @@ export function serverProcessName(inst: InstanceConfig): string {
  * is a mistake worth naming rather than an empty string to concatenate.
  */
 export function jarName(inst: InstanceConfig): string {
-	const name = traitsOf(inst.software).binaryName;
+	const name = traitsOf(inst.software, inst.mcVersion).binaryName;
 
 	if (!name) {
 		throw new Error(t("core.instances.noBinary", { software: inst.software }));
@@ -112,7 +112,7 @@ export function validateRestartDelay(seconds: number): string | undefined {
 
 /** Console command that shuts this software down gracefully. */
 export function stopCommand(inst: InstanceConfig): string {
-	return traitsOf(inst.software).stopCommand;
+	return traitsOf(inst.software, inst.mcVersion).stopCommand;
 }
 
 /**
@@ -121,7 +121,7 @@ export function stopCommand(inst: InstanceConfig): string {
  * is the only supported way to boot such a server; there is no runnable `-jar`.
  */
 export function argsFileOf(inst: InstanceConfig): string {
-	const resolve = traitsOf(inst.software).argsFile;
+	const resolve = traitsOf(inst.software, inst.mcVersion).argsFile;
 
 	if (!resolve) {
 		throw new Error(t("core.instances.noArgsFile", { software: inst.software }));
@@ -194,7 +194,7 @@ export async function writeHostMetrics(
 		return;
 	}
 
-	const relative = traitsOf(inst.software).hostMetricsFile;
+	const relative = traitsOf(inst.software, inst.mcVersion).hostMetricsFile;
 
 	if (!relative) {
 		return;
@@ -253,7 +253,7 @@ function round(percent: number): number {
  * instance, and `.luna-env` is sourced above the loop that runs this line.
  */
 export function buildJavaCommand(cfg: ClusterConfig, inst: InstanceConfig): string {
-	const traits = traitsOf(inst.software);
+	const traits = traitsOf(inst.software, inst.mcVersion);
 
 	if (!traits.usesJava) {
 		return `./${jarName(inst)}`;

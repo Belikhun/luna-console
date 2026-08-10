@@ -100,6 +100,8 @@ export const SOFTWARE_COLORS: Partial<Record<Software, string>> = {
 	purpur: 'var(--sw-purpur)',
 	fabric: 'var(--sw-fabric)',
 	forge: 'var(--sw-forge)',
+	// the 1.12.2 line is the same project, so it carries the same accent; what tells
+	// the two apart on screen is the version beside the name, not a second colour
 	neoforge: 'var(--sw-neoforge)',
 	pumpkin: 'var(--sw-pumpkin)',
 	youer: 'var(--sw-mohist)',

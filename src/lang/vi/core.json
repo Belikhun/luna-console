@@ -47,6 +47,7 @@
 		"pumpkinConfigWritten": "đã ghi pumpkin.toml kèm khoá forwarding",
 		"installingForwardingMod": "đang cài {mod} để đăng nhập qua proxy",
 		"forwardingModInstalled": "đã cài {mod} để đăng nhập qua proxy",
+		"forwardingSecretWritten": "đã ghi forwarding secret vào config của {mod}; bản thân mod không chạy trên dòng MC này nên đăng nhập qua proxy vẫn tắt",
 		"requiredAddonsInstalled": "đã cài addon bắt buộc cho loader này: {mods}",
 		"forwardingModPooled": "{mod} đã có trong pool; thêm instance này làm đích",
 		"forwardingModMissing": "không tìm thấy mod forwarding {mod} ở nguồn",
@@ -405,7 +406,7 @@
 			"noPublishedBuilds": "{software} chưa phát hành build nào",
 			"noAssetForPlatform": "{software} không phát hành build cho {platform}",
 			"badLoaderVersion": "không đọc được phiên bản Minecraft từ build loader {version}",
-			"forgeTooOld": "forge cho {version} cũ hơn bố cục installer mà luna khởi chạy; {oldest} là bản cũ nhất được hỗ trợ",
+			"forgeUnserved": "forge cho {version} không thuộc dòng nào luna phục vụ: {oldest} trở lên dùng bố cục hiện đại, và {legacy}.x là dòng legacy duy nhất có mod luna",
 			"phaseDownload": "Tải installer",
 			"phaseInstall": "Chạy installer",
 			"runningInstaller": "đang chạy installer của loader",
@@ -413,7 +414,8 @@
 			"downloaded": "đã tải xong",
 			"installerFailed": "installer thoát với mã {code}: {detail}",
 			"installerNeedsJava": "{software} cài qua installer riêng, cần một tệp thực thi java",
-			"installerNoArgsFile": "installer không ghi {file}; không thể khởi chạy gói này"
+			"installerNoArgsFile": "installer không ghi {file}; không thể khởi chạy gói này",
+			"installerNoJar": "installer không để lại jar khớp {pattern}; không thể khởi chạy máy chủ"
 		},
 		"downloadedSoFar": "{mb} MB",
 		"downloadedOf": "{mb} / {total} MB"

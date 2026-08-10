@@ -203,8 +203,8 @@ export async function inspectInstanceDir(path: string): Promise<InstanceDetectio
 		detection.memory = memory;
 	}
 
-	// both forge flavours install the same way and differ only in where their
-	// library tree lands, which the traits row already names
+	// modern loaders are recognised by the library tree their installer wrote;
+	// legacy forge has none, so it is probed separately by its universal jar
 	for (const software of SOFTWARE_IDS) {
 		const libraryPath = traitsOf(software).libraryPath;
 
@@ -701,7 +701,6 @@ async function buildInstance(
 ): Promise<CreateResult> {
 	const { dir, port, fetching, writing } = ctx;
 	const software = opts.software ?? "paper";
-	const traits = traitsOf(software);
 
 	const build = await resolveBuild(software, {
 		...(opts.mcVersion ? { mcVersion: opts.mcVersion } : {}),
@@ -710,6 +709,10 @@ async function buildInstance(
 		// is the one a native build has to match
 		platform: buildPlatform(),
 	});
+
+	// after the build resolves, not before: forge's launch traits depend on the
+	// era the resolved MC version belongs to
+	const traits = traitsOf(software, build.mcVersion);
 
 	// the registry entry is assembled before the install, because an installer
 	// build needs the java this instance resolves in order to run at all
@@ -784,8 +787,11 @@ async function buildInstance(
 	fetching.info(0.02, t("core.admin.resolvingBuild", { project: software, version: build.buildId }));
 
 	await installBuild(dir, traits.binaryName ?? build.fileName, build, {
-		...(traits.kind === "argsfile" ? { java: await installerJava(cfg, inst, fetching) } : {}),
-		...(traits.kind === "argsfile" ? { expectArgsFile: traits.argsFile!(inst) } : {}),
+		// an installer needs a JVM whatever the launch shape is: the legacy line runs
+		// one too, it just leaves a jar behind instead of an argument file
+		...(build.kind === "installer" ? { java: await installerJava(cfg, inst, fetching) } : {}),
+		...(traits.argsFile ? { expectArgsFile: traits.argsFile(inst) } : {}),
+		...(traits.installedJar ? { expectJar: traits.installedJar } : {}),
 		reporter: fetching,
 	});
 
@@ -852,14 +858,14 @@ export async function ensureForwardingMod(
 	lock: PluginsLock,
 	name: string,
 	reporter?: ProgressReporter,
-): Promise<{ installed: boolean; slug?: string; required: string[] }> {
+): Promise<{ installed: boolean; slug?: string; required: string[]; configOnly?: boolean }> {
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
 		throw new Error(t("core.instances.unknown", { name }));
 	}
 
-	const traits = traitsOf(inst.software);
+	const traits = traitsOf(inst.software, inst.mcVersion);
 	const mod = traits.forwardingMod;
 	const family = familyForDir(inst.software, "mods");
 	const required: string[] = [];
@@ -884,6 +890,15 @@ export async function ensureForwardingMod(
 	// pooled may still be missing it, and it is what carries the secret
 	await mkdir(join(instanceDir(inst), "config"), { recursive: true });
 	await Bun.write(join(instanceDir(inst), mod.configFile), mod.config(await readForwardingSecret(cfg)));
+
+	// legacy forge: the file above is all luna can deliver (the mod itself needs
+	// a patched proxy on this line), and it is what luna-core reads the heartbeat
+	// secret from - so the write happens, the install does not
+	if (mod.configOnly) {
+		reporter?.settle();
+
+		return { installed: false, slug: mod.slug, required, configOnly: true };
+	}
 
 	reporter?.info(0.2, t("core.admin.installingForwardingMod", { mod: mod.slug }));
 
@@ -989,9 +1004,6 @@ export async function setVersion(
 		throw new Error(t("core.instances.unknown", { name }));
 	}
 
-	// an unprovisionable software is refused by `resolveBuild` below, in the one
-	// message every caller of it already reports
-	const traits = traitsOf(inst.software);
 	const progress = reporter ?? new ProgressReporter(`set-version ${name}`);
 
 	progress.info(0.05, t("core.admin.resolvingBuild", {
@@ -1007,6 +1019,11 @@ export async function setVersion(
 
 	const dir = instanceDir(inst);
 	const from = inst.mcVersion;
+
+	// the *target* version's traits, not the current one's: a forge move across
+	// the 1.13 boundary changes the launch shape, and the branch below has to
+	// follow the era the instance is moving to
+	const traits = traitsOf(inst.software, build.mcVersion ?? inst.mcVersion);
 
 	if (traits.kind === "argsfile") {
 		// the loader version is what decides which library tree boots, so the
@@ -1036,7 +1053,18 @@ export async function setVersion(
 	}
 
 	try {
-		await installBuild(dir, traits.binaryName ?? build.fileName, build, { reporter: progress });
+		// java for the installer resolves against the target version, so a move
+		// onto the legacy line runs its installer under the java 8 it needs
+		const target: InstanceConfig = { ...inst, mcVersion: build.mcVersion, loaderVersion: build.loaderVersion };
+
+		await installBuild(dir, traits.binaryName ?? build.fileName, build, {
+			// the legacy loaders reach here too: a jar-kind launch whose build is
+			// still an installer, which needs a JVM and leaves a versioned jar to
+			// rename over the one just backed up
+			...(build.kind === "installer" ? { java: await installerJava(cfg, target, progress) } : {}),
+			...(traits.installedJar ? { expectJar: traits.installedJar } : {}),
+			reporter: progress,
+		});
 	} catch (err) {
 		progress.error(progress.progress, t("core.admin.downloadRolledBack"));
 
@@ -1113,7 +1141,7 @@ export function applyInstanceOptions(
 		throw new Error(t("core.instances.unknown", { name }));
 	}
 
-	const traits = traitsOf(inst.software);
+	const traits = traitsOf(inst.software, inst.mcVersion);
 
 	// same rule create applies: a server with no JVM has nothing to point these at
 	if (!traits.usesJava && (update.runtime || update.java || update.javaArgs?.length)) {
@@ -1258,7 +1286,7 @@ export async function setPort(cfg: ClusterConfig, name: string, port: number): P
 
 	// velocity's port lives in velocity.toml, which proxy sync owns; a backend
 	// keeps it wherever its own config puts it
-	const portConfig = traitsOf(inst.software).portConfig;
+	const portConfig = traitsOf(inst.software, inst.mcVersion).portConfig;
 
 	if (portConfig === "properties") {
 		const props = join(instanceDir(inst), "server.properties");

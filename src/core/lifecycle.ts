@@ -159,7 +159,7 @@ export async function startInstanceTracked(
 	// the phases below are the whole story; the root adds nothing of its own
 	progress.weighOwn(0);
 
-	const traits = traitsOf(inst.software);
+	const traits = traitsOf(inst.software, inst.mcVersion);
 	const isProxy = traits.isProxy;
 	const selection = javaSelection(cfg, inst);
 
@@ -437,7 +437,7 @@ export async function stopInstanceTracked(
 
 	progress.weighOwn(0);
 
-	const isProxy = traitsOf(inst.software).isProxy;
+	const isProxy = traitsOf(inst.software, inst.mcVersion).isProxy;
 	const plugins = isProxy ? undefined : progress.child(t("core.lifecycle.phasePlugins"), 2);
 	const worlds = isProxy ? undefined : progress.child(t("core.lifecycle.phaseWorlds"), 2);
 	const exit = progress.child(t("core.lifecycle.phaseExit"), 1);

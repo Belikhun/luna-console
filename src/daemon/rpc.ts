@@ -874,14 +874,24 @@ let daemonDetailProvider: (name: string) => Promise<unknown> = async (name: stri
 
 /**
  * Provider behind `daemon.upgradeDaemon`; replaced by the hub on a primary,
- * which is the only role that can reach another daemon.
+ * which is the only role that can reach another daemon. Without a hub the one
+ * daemon this process can still upgrade is itself, which is what a CLI on a
+ * follower host is asking for.
  */
 let upgradeSender: (
 	name: string,
 	force: boolean,
 	reporter?: ProgressReporter,
-) => Promise<unknown> = async () => {
-	throw new Error(t("daemon.primaryOnlyUpgrade"));
+) => Promise<unknown> = async (
+	name: string,
+	force: boolean,
+	reporter?: ProgressReporter,
+) => {
+	if (name !== daemonName()) {
+		throw new Error(t("daemon.primaryOnlyUpgrade"));
+	}
+
+	return await upgrade.selfUpgrade(force, reporter);
 };
 
 /** Swap in the hub's follower upgrade sender. */

@@ -31,6 +31,15 @@ const MAVEN = "https://maven.minecraftforge.net/net/minecraftforge/forge";
 /** Oldest Minecraft version whose forge installs the way luna launches it. */
 const OLDEST_SUPPORTED = "1.17";
 
+/**
+ * Oldest Minecraft version of the legacy era luna will provision.
+ *
+ * Forge published back to 1.1, but the ports below this are their own projects: 1.7.x
+ * needs UniMixins rather than MixinBooter, and luna has no mod built for any of them.
+ * Serving a version nothing can run on is worse than refusing it.
+ */
+const OLDEST_LEGACY = "1.12";
+
 /** Whether a Minecraft version's forge uses the installer + argument file layout. */
 function isSupportedMcVersion(mcVersion: string): boolean {
 	const parts = mcVersionParts(mcVersion);
@@ -41,6 +50,19 @@ function isSupportedMcVersion(mcVersion: string): boolean {
 	}
 
 	return (parts[1] ?? 0) >= 17;
+}
+
+/**
+ * Whether a Minecraft version belongs to the legacy line luna builds mods for.
+ *
+ * Deliberately the 1.12 line alone rather than everything `isSupportedMcVersion`
+ * rejects. The two predicates are not complements: 1.13-1.16 are neither the modern
+ * layout nor a line luna has a mod for, so both clients refuse them.
+ */
+function isLegacyMcVersion(mcVersion: string): boolean {
+	const parts = mcVersionParts(mcVersion);
+
+	return (parts[0] ?? 0) === 1 && (parts[1] ?? 0) === 12;
 }
 
 /** Promoted builds, keyed `<mc>-latest` / `<mc>-recommended`. */
@@ -84,6 +106,21 @@ function splitVersion(version: string): { mcVersion: string; loaderVersion: stri
 	return { mcVersion: version.slice(0, at), loaderVersion: version.slice(at + 1) };
 }
 
+/**
+ * Whether luna will provision this version at all: the modern installer layout,
+ * or the 1.12 line the legacy trunk builds for. The gap between them (1.13-1.16)
+ * is neither, and refusing it beats serving a version nothing can run on.
+ */
+function serves(mcVersion: string): boolean {
+	return isSupportedMcVersion(mcVersion) || isLegacyMcVersion(mcVersion);
+}
+
+/**
+ * Forge's publishing has not changed in fifteen years - the same promotions file, the
+ * same maven layout, the same installer URL - so both launcher eras share one client.
+ * What differs once installed is what the installer left behind for the launch to
+ * use, and that lives in the traits table (`isLegacyForge`), not here.
+ */
 export const client: SoftwareProviderClient = {
 	id: "forge",
 	async listMcVersions(): Promise<string[]> {
@@ -93,7 +130,7 @@ export const client: SoftwareProviderClient = {
 		for (const key of Object.keys(promos)) {
 			const mcVersion = key.replace(/-(latest|recommended)$/, "");
 
-			if (mcVersion !== key && isSupportedMcVersion(mcVersion)) {
+			if (mcVersion !== key && serves(mcVersion)) {
 				mcVersions.add(mcVersion);
 			}
 		}
@@ -126,9 +163,13 @@ export const client: SoftwareProviderClient = {
 	async resolveBuild(software: Software, spec: ResolvedBuildSpec): Promise<SoftwareBuild> {
 		const mcVersion = spec.mcVersion;
 
-		if (!isSupportedMcVersion(mcVersion)) {
+		if (!serves(mcVersion)) {
 			throw new Error(
-				t("core.services.software.forgeTooOld", { version: mcVersion, oldest: OLDEST_SUPPORTED }),
+				t("core.services.software.forgeUnserved", {
+					version: mcVersion,
+					oldest: OLDEST_SUPPORTED,
+					legacy: OLDEST_LEGACY,
+				}),
 			);
 		}
 

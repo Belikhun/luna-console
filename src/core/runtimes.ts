@@ -166,6 +166,42 @@ export function suggestedFeature(mcVersion?: string): number {
 	return 21;
 }
 
+/**
+ * The newest java a game version can still run on, when it has a ceiling at all.
+ *
+ * A floor alone is not enough for the old lines, and the failure is silent in the
+ * worst way: `suggestedFeature("1.12.2")` is 8, a machine's java 21 satisfies "at
+ * least 8", and the instance is provisioned looking healthy right up to the moment
+ * it refuses to boot. 1.12.2 launches through LaunchWrapper, whose ASM predates the
+ * module system and cannot read a class file it has never heard of; 1.13-1.16 run on
+ * 8 or 11 but not 17.
+ *
+ * Everything from 1.17 on states its own floor and has no ceiling worth enforcing, so
+ * this answers undefined there rather than inventing an upper bound that a newer JVM
+ * would then fail.
+ */
+export function maximumFeature(mcVersion?: string): number | undefined {
+	if (!mcVersion || isDateScheme(mcVersion)) {
+		return undefined;
+	}
+
+	const [major, minor] = mcVersionParts(mcVersion);
+
+	if (major !== 1 || !minor) {
+		return undefined;
+	}
+
+	if (minor <= 12) {
+		return 8;
+	}
+
+	if (minor <= 16) {
+		return 11;
+	}
+
+	return undefined;
+}
+
 // -- selection (pure; resolves identically on a client) ----------------------
 
 /**
@@ -620,6 +656,8 @@ export async function javaFeatureOf(javaPath: string): Promise<number | undefine
 export interface JavaFloorCheck {
 	/** feature release the game version requires */
 	needed: number;
+	/** newest feature release it can still run on, when the line has a ceiling */
+	atMost?: number;
 	/** feature release the instance currently resolves, when it could be determined */
 	have?: number;
 	ok: boolean;
@@ -647,6 +685,7 @@ export async function checkJavaFloor(
 	declared?: number,
 ): Promise<JavaFloorCheck> {
 	const needed = Math.max(suggestedFeature(inst.mcVersion), declared ?? 0);
+	const atMost = maximumFeature(inst.mcVersion);
 
 	if (!traitsOf(inst.software).usesJava) {
 		return { needed, ok: true };
@@ -658,7 +697,11 @@ export async function checkJavaFloor(
 			? runtimeFeature(parseRuntimeId(selection.id)?.version ?? "")
 			: await javaFeatureOf(resolveJavaPath(cfg, inst));
 
-	return { needed, have, ok: have !== undefined && have >= needed };
+	// too new is as fatal as too old on the legacy lines, and far easier to arrive at
+	// by accident: the machine's own java is newer than everything luna provisions
+	const withinRange = have !== undefined && have >= needed && (atMost === undefined || have <= atMost);
+
+	return { needed, ...(atMost !== undefined ? { atMost } : {}), have, ok: withinRange };
 }
 
 /**
@@ -687,6 +730,15 @@ export async function ensureJavaFloor(
 		reporter?.settle();
 
 		return { outcome: "ok", needed: floor.needed };
+	}
+
+	// a build declaring a floor above what its game line can run is a contradiction
+	// nothing here can resolve; pinning either end would produce an instance that
+	// still cannot start, so it is reported instead
+	if (floor.atMost !== undefined && floor.needed > floor.atMost) {
+		reporter?.warn(1, t("core.runtimes.noRuntimeForFeature", { feature: floor.needed }));
+
+		return { outcome: "unavailable", needed: floor.needed };
 	}
 
 	const available = await listAvailableRuntimes({ feature: floor.needed });

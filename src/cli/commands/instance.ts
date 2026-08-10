@@ -419,7 +419,7 @@ command({
 
 		const view = new ProgressView(progress).start();
 
-		let forwarding: { installed: boolean; slug?: string; required: string[] } = { installed: false, required: [] };
+		let forwarding: { installed: boolean; slug?: string; required: string[]; configOnly?: boolean } = { installed: false, required: [] };
 
 		try {
 			const res = await admin.createInstance(cfg, name, {
@@ -526,7 +526,9 @@ command({
 				info(t("core.admin.requiredAddonsInstalled", { mods: forwarding.required.join(", ") }));
 			}
 
-			if (forwarding.slug) {
+			if (forwarding.slug && forwarding.configOnly) {
+				info(t("core.admin.forwardingSecretWritten", { mod: forwarding.slug }));
+			} else if (forwarding.slug) {
 				info(t("core.admin.forwardingModInstalled", { mod: forwarding.slug }));
 			}
 

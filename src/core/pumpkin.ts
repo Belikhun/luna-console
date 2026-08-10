@@ -59,7 +59,7 @@ export interface ConsentResult {
  * result per component found, empty for software that is not Pumpkin.
  */
 export async function syncConsent(inst: InstanceConfig): Promise<ConsentResult[]> {
-	if (traitsOf(inst.software).kind !== "native") {
+	if (traitsOf(inst.software, inst.mcVersion).kind !== "native") {
 		return [];
 	}
 
