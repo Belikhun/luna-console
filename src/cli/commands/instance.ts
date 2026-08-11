@@ -25,6 +25,7 @@ import {
 	SETTING_GROUPS,
 	applySettings,
 	editableSettingKeys,
+	parseJavaAgents,
 	parseJavaArgs,
 	readServerProperties,
 	settingSpec,
@@ -861,10 +862,24 @@ const REGISTRY_KEYS = [
 	"java",
 	"runtime",
 	"javaArgs",
+	"javaAgents",
 	"autoRestart",
 	"restartDelay",
 	"port",
 ];
+
+/** The list-valued registry fields arrive as one argv string; the rest are plain. */
+function registryValue(key: string, value: string): string | string[] {
+	if (key === "javaArgs") {
+		return parseJavaArgs(value);
+	}
+
+	if (key === "javaAgents") {
+		return parseJavaAgents(value);
+	}
+
+	return value;
+}
 
 command({
 	path: ["instance", "config"],
@@ -905,6 +920,10 @@ command({
 					delete instance.javaArgs;
 					break;
 
+				case "javaAgents":
+					delete instance.javaAgents;
+					break;
+
 				case "autoRestart":
 					delete instance.autoRestart;
 					break;
@@ -931,6 +950,7 @@ command({
 				["java", instance.java ?? pc.dim(t("cli.instance.config.profileDefault"))],
 				["runtime", instance.runtime ?? pc.dim(t("cli.instance.config.profileDefault"))],
 				["javaArgs", instance.javaArgs?.join(" ") ?? pc.dim(`(${t("cli.common.none")})`)],
+				["javaAgents", instance.javaAgents?.join(" ") ?? pc.dim(`(${t("cli.common.none")})`)],
 				[
 					"autoRestart",
 					inst.autoRestartOf(instance)
@@ -965,6 +985,7 @@ command({
 				java: instance.java,
 				runtime: instance.runtime,
 				javaArgs: instance.javaArgs?.join(" "),
+				javaAgents: instance.javaAgents?.join(" "),
 				autoRestart: inst.autoRestartOf(instance) ? "true" : "false",
 				restartDelay: String(inst.restartDelayOf(instance)),
 			};
@@ -986,11 +1007,10 @@ command({
 			case "java":
 			case "runtime":
 			case "javaArgs":
+			case "javaAgents":
 				// one validated path for the registry fields, shared with the console
 				try {
-					admin.applyInstanceOptions(cfg, name, {
-						[key]: key === "javaArgs" ? parseJavaArgs(value) : value,
-					});
+					admin.applyInstanceOptions(cfg, name, { [key]: registryValue(key, value) });
 				} catch (err) {
 					throw new UsageError((err as Error).message);
 				}

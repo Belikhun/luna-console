@@ -7,11 +7,13 @@ import { existsSync } from "node:fs";
 import { cpus } from "node:os";
 import { dirname, join } from "node:path";
 
-import type { ClusterConfig, InstanceConfig } from "./types";
-import { instanceDir, managedInstances } from "./config";
+import type { ClusterConfig, InstanceConfig, PluginsLock } from "./types";
+import { addonDirForFamily, instanceDir, loadLock, managedInstances } from "./config";
 import { renderManagedFiles } from "./configfiles";
 import { ENV_SCRIPT, loadEnv, renderEnvFile, resolveVars } from "./environment";
 import { ensureInstanceRuntime, isRuntimeInstalled, javaSelection } from "./runtimes";
+import { isJavaAgentJar } from "./archive";
+import { agentAddonKey, agentJarOf, agentOptionsOf } from "./settings";
 import { traitsOf } from "./software";
 import * as screen from "./screen";
 import { ping } from "./ping";
@@ -252,7 +254,51 @@ function round(percent: number): number {
  * builtin the environment file carries, resolved by the daemon that owns the
  * instance, and `.luna-env` is sourced above the loop that runs this line.
  */
-export function buildJavaCommand(cfg: ClusterConfig, inst: InstanceConfig): string {
+/**
+ * Where an agent entry's jar sits, relative to the instance directory, or
+ * undefined when it names an addon the lockfile does not have.
+ *
+ * A path entry already is that answer. An `addon:` entry names a pooled addon
+ * instead, and the jar is wherever deploy puts it: the directory that addon's
+ * family uses, under the lockfile's own file name. That indirection is the whole
+ * point of the form - the operator picks the plugin, and luna keeps the path
+ * right as the plugin is updated, re-familied or moved between addon directories.
+ */
+export function resolveAgentJar(entry: string, lock?: PluginsLock): string | undefined {
+	const addon = agentAddonKey(entry);
+
+	if (addon === undefined) {
+		return agentJarOf(entry);
+	}
+
+	const pooled = lock?.plugins[addon];
+
+	if (!pooled) {
+		return undefined;
+	}
+
+	return `${addonDirForFamily(pooled.family)}/${pooled.file}`;
+}
+
+/**
+ * The `-javaagent:` flag an entry becomes, carrying its options through.
+ *
+ * An addon reference the lockfile cannot answer is rendered verbatim rather than
+ * dropped: this string is also what the instance detail view shows, and an agent
+ * silently missing from it would read as a working command. Refusing to start on
+ * one is `writeRunScript`'s job, where the reason can actually be reported.
+ */
+function agentFlag(entry: string, lock?: PluginsLock): string {
+	const jar = resolveAgentJar(entry, lock) ?? agentJarOf(entry);
+
+	return `-javaagent:${jar}${agentOptionsOf(entry)}`;
+}
+
+export function buildJavaCommand(
+	cfg: ClusterConfig,
+	inst: InstanceConfig,
+	lock?: PluginsLock,
+): string {
 	const traits = traitsOf(inst.software, inst.mcVersion);
 
 	if (!traits.usesJava) {
@@ -281,6 +327,9 @@ export function buildJavaCommand(cfg: ClusterConfig, inst: InstanceConfig): stri
 		// per-instance flags last, so they win over the profile's defaults for any
 		// option the JVM resolves by last-one-wins
 		...(inst.javaArgs ?? []),
+		// agents after the flags they may want to read, and immediately before the
+		// jar, which is where an operator reading the resolved command looks for them
+		...(inst.javaAgents ?? []).map((entry) => agentFlag(entry, lock)),
 	];
 
 	if (traits.kind === "argsfile") {
@@ -340,6 +389,42 @@ export async function writeRunScript(cfg: ClusterConfig, name: string): Promise<
 		throw new Error(t("core.runtimes.notInstalled", { id: selection.id, name }));
 	}
 
+	// a -javaagent: pointing at nothing aborts the JVM before a single line of
+	// server log, so the instance would look like it crashed for no reason; say
+	// what is wrong while there is still something readable to say it in. The
+	// three ways it can be wrong get three answers, because "deploy it" and
+	// "fix the name" are different jobs.
+	const agents = inst.javaAgents ?? [];
+	const lock = agents.some((entry) => agentAddonKey(entry) !== undefined)
+		? await loadLock()
+		: undefined;
+
+	for (const entry of agents) {
+		const addon = agentAddonKey(entry);
+		const jar = resolveAgentJar(entry, lock);
+
+		if (!jar) {
+			throw new Error(t("core.instances.agentAddonUnknown", { addon: addon ?? entry, name }));
+		}
+
+		const path = join(instanceDir(inst), jar);
+
+		if (!existsSync(path)) {
+			throw new Error(
+				addon === undefined
+					? t("core.instances.agentJarMissing", { jar, name })
+					: t("core.instances.agentAddonNotDeployed", { addon, jar, name }),
+			);
+		}
+
+		// the picker offers every addon this instance has, and most addons are not
+		// agents; without this the mistake surfaces as a server that died with no
+		// log at all, because the JVM refuses before it runs anything
+		if (!(await isJavaAgentJar(path))) {
+			throw new Error(t("core.instances.agentNotAnAgent", { jar: addon ?? jar, name }));
+		}
+	}
+
 	const header = `#!/bin/bash
 # Generated by luna. Do not edit; it is regenerated on every start.
 cd "$(dirname "$0")" || exit 1
@@ -374,7 +459,7 @@ RESTART_DELAY=${restartDelayOf(inst)}
 crashes=()
 
 while true; do
-    ${buildJavaCommand(cfg, inst)}
+    ${buildJavaCommand(cfg, inst, lock)}
     code=$?
 
 ${stopCheck("    ")}
@@ -400,7 +485,7 @@ ${stopCheck("    ")}
 done
 `
 		: `${header}
-${buildJavaCommand(cfg, inst)}
+${buildJavaCommand(cfg, inst, lock)}
 code=$?
 
 ${stopCheck("")}

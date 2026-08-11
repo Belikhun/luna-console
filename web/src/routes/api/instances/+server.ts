@@ -8,7 +8,13 @@ import { createInstance, ensureForwardingMod } from '$core/admin';
 import { deploy } from '$core/plugins';
 import { ensurePortAllocations } from '$core/ports';
 import { syncVelocityToml } from '$core/proxy';
-import { parseJavaArgs, validateJavaArgs, validateSettings } from '$core/settings';
+import {
+	parseJavaAgents,
+	parseJavaArgs,
+	validateJavaAgents,
+	validateJavaArgs,
+	validateSettings
+} from '$core/settings';
 import { validateRuntimeId } from '$core/runtimes';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
 import { applyAddonGroups } from '$core/addons';
@@ -121,6 +127,9 @@ export async function POST({ request }) {
 	const javaArgs = Array.isArray(body.javaArgs)
 		? body.javaArgs.map(String)
 		: parseJavaArgs(String(body.javaArgs ?? ''));
+	const javaAgents = Array.isArray(body.javaAgents)
+		? body.javaAgents.map(String)
+		: parseJavaAgents(String(body.javaAgents ?? ''));
 
 	if (typeof body.name !== 'string' || !body.name) {
 		throw error(400, 'name required');
@@ -150,6 +159,12 @@ export async function POST({ request }) {
 
 	if (badArgs) {
 		throw error(400, badArgs);
+	}
+
+	const badAgents = validateJavaAgents(javaAgents);
+
+	if (badAgents) {
+		throw error(400, badAgents);
 	}
 
 	const runtime = body.runtime ? String(body.runtime) : undefined;
@@ -200,6 +215,10 @@ export async function POST({ request }) {
 				register,
 				settings,
 				javaArgs,
+				javaAgents,
+				autoRestart: body.autoRestart === undefined ? undefined : !!body.autoRestart,
+				restartDelay:
+					body.restartDelay === undefined ? undefined : Number(body.restartDelay),
 				runtime,
 				addonGroups: Array.isArray(body.addonGroups) ? body.addonGroups.map(String) : undefined,
 				pluginOverrides:

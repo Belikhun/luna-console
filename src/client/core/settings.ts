@@ -20,6 +20,12 @@ export {
 	validateSettings,
 	parseJavaArgs,
 	validateJavaArgs,
+	parseJavaAgents,
+	validateJavaAgents,
+	agentJarOf,
+	agentAddonKey,
+	agentOptionsOf,
+	ADDON_AGENT_PREFIX,
 } from "../../core/settings";
 export type { SettingSpec, SettingGroup, ApplySettingsResult } from "../../core/settings";
 

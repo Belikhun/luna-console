@@ -6,7 +6,11 @@
 		"unknownProfile": "unknown java profile \"{name}\"",
 		"noLoaderVersion": "neoforge instance has no loaderVersion; cannot locate its argument file",
 		"noBinary": "{software} launches from an argument file, not from a single jar",
-		"noArgsFile": "{software} does not launch from an argument file"
+		"noArgsFile": "{software} does not launch from an argument file",
+		"agentJarMissing": "java agent \"{jar}\" is not in {name}'s directory; the JVM would refuse to start",
+		"agentAddonUnknown": "java agent addon \"{addon}\" is not in the plugin pool; {name} cannot start until it is added or the agent removed",
+		"agentAddonNotDeployed": "java agent addon \"{addon}\" has not been deployed to {name} (expected {jar}); run a deploy, or check the instance's addon groups",
+		"agentNotAnAgent": "java agent \"{jar}\" is not a java agent: its jar declares no Premain-Class, so the JVM would refuse to start {name}"
 	},
 	"admin": {
 		"dirMissing": "directory does not exist: {dir}",
@@ -16,6 +20,7 @@
 		"adoptDirMissing": "{dir} does not exist; adopt runs on the daemon that owns the instance, so the path is resolved against that machine's cluster root",
 		"noPortDetected": "could not determine a port for {name}; pass one explicitly",
 		"noXmx": "no -Xmx found in the directory's launcher; defaulting to 2G",
+		"binaryMissing": "no {binary} in the directory; luna launches exactly that file, so rename (or symlink) the server jar to it before starting",
 		"bindMismatch": "server-ip is \"{bind}\"; a proxied backend here wants {wanted}",
 		"bindEmpty": "server-ip is empty (all interfaces); luna would set 0.0.0.0",
 		"portMismatch": "registered on port {port} but server.properties says {detected}; run `{command}` to align them",
@@ -345,7 +350,14 @@
 				"label": "Prevent proxy connections",
 				"managed": "every connection arrives through velocity by design"
 			}
-		}
+		},
+		"agentFlag": "{flag} is a java agent; attach it in the instance's java agents field instead",
+		"agentNoJar": "\"{entry}\" names no jar (an agent is <jar> or <jar>=<options>)",
+		"agentAbsolute": "\"{jar}\" is an absolute path; a java agent is relative to the instance directory",
+		"agentEscapes": "\"{jar}\" climbs out of the instance directory",
+		"agentNotAJar": "\"{jar}\" is not a .jar",
+		"agentNoAddon": "\"{entry}\" names no addon after \"addon:\"",
+		"agentAddonIsAPath": "\"{addon}\" looks like a path; after \"addon:\" comes an addon name, and luna finds its jar"
 	},
 	"standardize": {
 		"renameConflict": "cannot rename {from} → {to}: an entry with that key already exists",

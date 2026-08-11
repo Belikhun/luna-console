@@ -39,7 +39,7 @@ import {
 	resolveJavaPath,
 	validateRuntimeId,
 } from "./runtimes";
-import { SERVER_SETTINGS, validateJavaArgs, validateSettings } from "./settings";
+import { SERVER_SETTINGS, validateJavaAgents, validateJavaArgs, validateSettings } from "./settings";
 import { buildPlatform } from "../version";
 import { t } from "../shared/i18n";
 
@@ -86,7 +86,24 @@ async function detectLoaderVersion(dir: string, libraryPath: string): Promise<st
 	const builds: string[] = [];
 
 	for (const entry of await readdir(libraries, { withFileTypes: true })) {
-		if (entry.isDirectory() && existsSync(join(libraries, entry.name, "unix_args.txt"))) {
+		if (!entry.isDirectory()) {
+			continue;
+		}
+
+		// modern era: the installer wrote the launch arguments beside the jars
+		if (existsSync(join(libraries, entry.name, "unix_args.txt"))) {
+			builds.push(entry.name);
+			continue;
+		}
+
+		// legacy forge: the same tree, but the version directory holds only the
+		// runnable universal jar (`forge-1.12.2-14.23.5.2859.jar`, older installers
+		// append `-universal`). Only forge's own tree can contain these names, so
+		// the check cannot misfire on neoforge's.
+		if (
+			existsSync(join(libraries, entry.name, `forge-${entry.name}.jar`))
+			|| existsSync(join(libraries, entry.name, `forge-${entry.name}-universal.jar`))
+		) {
 			builds.push(entry.name);
 		}
 	}
@@ -167,8 +184,9 @@ async function detectMemory(dir: string): Promise<string | undefined> {
 
 /**
  * Work out what an existing server directory is, without changing anything in
- * it. NeoForge is recognised by the installer's `libraries/` tree, velocity by
- * its jar, and everything else is assumed to be paper, which is what
+ * it. The forge family is recognised by the installer's `libraries/` tree
+ * (either era: an argument file, or legacy's universal jar), velocity by its
+ * jar, and everything else is assumed to be paper, which is what
  * `version_history.json` then confirms with an MC version.
  *
  * A relative path is resolved against this daemon's cluster root, so callers
@@ -436,6 +454,16 @@ export async function adoptInstance(
 		);
 	}
 
+	// A jar launch runs exactly `-jar <binaryName>`, and a hand-made directory
+	// usually keeps the jar under its distribution name (`forge-1.12.2-….jar`,
+	// `paper-1.20.1-196.jar`). Reported, not renamed: adopt does not write into
+	// the directory, and the operator may be pointing a symlink at it.
+	const binary = traitsOf(inst.software, inst.mcVersion).binaryName;
+
+	if (binary && !existsSync(join(dir, binary))) {
+		notes.push(t("core.admin.binaryMissing", { binary }));
+	}
+
 	// what the directory already contains is accounted for separately, by
 	// `adoptInstanceAddons`; adopt itself never reads or writes an addon
 	notes.push(t("core.admin.addonsUnmanaged", { dir: addonDirsOf(inst.software).join(", ") }));
@@ -547,8 +575,14 @@ export interface CreateOptions {
 	settings?: Record<string, string>;
 	/** extra JVM flags for the generated run script */
 	javaArgs?: string[];
+	/** java agents to attach, `<jar>` or `addon:<key>`, optionally `=<options>` */
+	javaAgents?: string[];
 	/** managed java runtime id; installed on the owning machine at first start */
 	runtime?: string;
+	/** relaunch after an unexpected exit; absent = on */
+	autoRestart?: boolean;
+	/** seconds before relaunching after a crash; absent = the default */
+	restartDelay?: number;
 	/** addon groups beside "default" (which always applies) */
 	addonGroups?: string[];
 	/** per-instance plugin overrides (plugin name → force-add/disable) */
@@ -630,6 +664,20 @@ export async function createInstance(
 
 		if (badArgs) {
 			throw new Error(badArgs);
+		}
+
+		const badAgents = validateJavaAgents(opts.javaAgents ?? []);
+
+		if (badAgents) {
+			throw new Error(badAgents);
+		}
+
+		if (opts.restartDelay !== undefined) {
+			const badDelay = validateRestartDelay(opts.restartDelay);
+
+			if (badDelay) {
+				throw new Error(badDelay);
+			}
 		}
 
 		if (opts.runtime) {
@@ -737,8 +785,21 @@ async function buildInstance(
 		inst.javaArgs = opts.javaArgs;
 	}
 
+	if (opts.javaAgents?.length) {
+		inst.javaAgents = opts.javaAgents;
+	}
+
 	if (opts.runtime) {
 		inst.runtime = opts.runtime;
+	}
+
+	if (opts.autoRestart === false) {
+		inst.autoRestart = false;
+	}
+
+	// absent means the default, so only a departure from it is worth recording
+	if (opts.restartDelay !== undefined && opts.restartDelay !== DEFAULT_RESTART_DELAY) {
+		inst.restartDelay = opts.restartDelay;
 	}
 
 	if (opts.addonGroups?.length) {
@@ -1114,6 +1175,7 @@ export interface InstanceOptionUpdate {
 	runtime?: string | null;
 	java?: string | null;
 	javaArgs?: string[];
+	javaAgents?: string[];
 	autoRestart?: boolean;
 	restartDelay?: number;
 }
@@ -1144,7 +1206,10 @@ export function applyInstanceOptions(
 	const traits = traitsOf(inst.software, inst.mcVersion);
 
 	// same rule create applies: a server with no JVM has nothing to point these at
-	if (!traits.usesJava && (update.runtime || update.java || update.javaArgs?.length)) {
+	const wantsJava =
+		update.runtime || update.java || update.javaArgs?.length || update.javaAgents?.length;
+
+	if (!traits.usesJava && wantsJava) {
 		throw new Error(t("core.admin.softwareHasNoJava", { software: inst.software }));
 	}
 
@@ -1172,6 +1237,14 @@ export function applyInstanceOptions(
 
 	if (update.javaArgs) {
 		const problem = validateJavaArgs(update.javaArgs);
+
+		if (problem) {
+			throw new Error(problem);
+		}
+	}
+
+	if (update.javaAgents) {
+		const problem = validateJavaAgents(update.javaAgents);
 
 		if (problem) {
 			throw new Error(problem);
@@ -1238,6 +1311,16 @@ export function applyInstanceOptions(
 		}
 	}
 
+	if (update.javaAgents) {
+		const before = inst.javaAgents?.join(" ") ?? "";
+
+		setJavaAgents(cfg, name, update.javaAgents);
+
+		if ((inst.javaAgents?.join(" ") ?? "") !== before) {
+			changed.push("javaAgents");
+		}
+	}
+
 	return { changed };
 }
 
@@ -1262,6 +1345,34 @@ export function setJavaArgs(cfg: ClusterConfig, name: string, args: string[]): v
 		inst.javaArgs = args;
 	} else {
 		delete inst.javaArgs;
+	}
+}
+
+/**
+ * Replace an instance's java agents. Registry only, like the flags beside them.
+ *
+ * The jars are not checked for here: an agent is routinely attached before the
+ * jar is put in place, and refusing that would make the order of two unrelated
+ * steps matter. `writeRunScript` is where a missing jar is caught, which is the
+ * last moment it can still be reported instead of aborting the JVM.
+ */
+export function setJavaAgents(cfg: ClusterConfig, name: string, agents: string[]): void {
+	const inst = managedInstances(cfg)[name];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name }));
+	}
+
+	const problem = validateJavaAgents(agents);
+
+	if (problem) {
+		throw new Error(problem);
+	}
+
+	if (agents.length) {
+		inst.javaAgents = agents;
+	} else {
+		delete inst.javaAgents;
 	}
 }
 

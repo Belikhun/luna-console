@@ -900,8 +900,6 @@
 		"minecraftVersion": "Minecraft version",
 		"resourcesNetwork": "Resources & network",
 		"machineHint": "Daemon the instance is created on and runs under; followers mirror the plugin pool from the primary and the proxy routes to them over the LAN. An offline daemon cannot be given work, so it is listed but not selectable.",
-		"extraJvmArgs": "Extra JVM arguments",
-		"jvmArgsHint": "Appended after the profile's own flags, so they win where the JVM takes the last value. Don't restate something the profile already sets (a second garbage collector will refuse to start). Space separated, flags only.",
 		"registerLabel": "Register with the velocity proxy",
 		"registerNote": "Register with the velocity proxy (port auto-allocated, forwarding secret wired, wildcard plugins deployed)",
 		"addonsDescription": "Addon groups applied to the new instance; the default group always is. The table shows how each plugin lands on this platform and Minecraft version; the packs a group carries are applied as the instance is created.",
@@ -1661,13 +1659,6 @@
 		"removesTheGroupFrom": "Removes the group from the registry. Instances stop receiving its addons on their next apply; jars and packs already on disk stay until removed."
 	},
 	"instanceDetail": {
-		"autoRestart": "Auto-restart",
-		"autoRestartHint": "Relaunch the server when it exits unexpectedly. A stop you asked for never relaunches.",
-		"autoRestartOn": "relaunches after a crash",
-		"autoRestartOff": "stays down after a crash",
-		"restartDelay": "Restart delay",
-		"restartDelayHint": "Seconds to wait before relaunching; three consecutive crashes in five minutes stop it either way",
-		"javaRuntime": "Java runtime",
 		"profileDefault": "Profile default",
 		"installsOnStart": "installs on start",
 		"runtimeDefaultHint": "no runtime pinned; the machine's own java runs this instance",
@@ -1848,10 +1839,6 @@
 		"addAnOverride": "Add an override",
 		"hide": "hide",
 		"liveConsole": "Live console",
-		"xmsXmxEG": "-Xms/-Xmx, e.g. 2G",
-		"jvmFlagSetFrom": "JVM flag set from cluster.json",
-		"extraJvmArguments": "Extra JVM arguments",
-		"appendedAfterTheProfile": "Appended after the profile's flags; see the resolved command on the Details tab. Space separated, flags only; -Xmx/-Xms come from the memory field above.",
 		"minecraftVersion": "Minecraft version",
 		"versionChangeBlockedIncompatible": "Version change blocked; incompatible plugins:",
 		"forceAnyway": "Force anyway",
@@ -2950,5 +2937,33 @@
 		"copyMessage": "Copy message",
 		"copied": "{count} entry/entries copied",
 		"pickEntries": "pick at least one entry"
+	},
+	"javaAgents": {
+		"none": "No java agents attached.",
+		"jarPlaceholder": "agent.jar",
+		"optionsPlaceholder": "options (optional)",
+		"add": "Attach",
+		"remove": "Detach this agent",
+		"jarMissing": "\"{jar}\" is not in this instance's directory yet; the JVM will refuse to start until it is.",
+		"pick": "Pick an addon or a jar from this instance",
+		"addonNotHere": "\"{addon}\" is not one of this instance's addons; it will not be deployed here."
+	},
+	"instanceFields": {
+		"memory": "Memory (heap)",
+		"memoryHint": "Becomes -Xms and -Xmx, e.g. 1G, 2G, 4096M.",
+		"javaProfile": "Java profile",
+		"javaProfileHint": "The JVM flag set the run script starts from.",
+		"javaRuntime": "Java runtime",
+		"javaRuntimeHint": "A managed runtime for this instance; the profile decides when left empty.",
+		"autoRestart": "Auto restart",
+		"autoRestartHint": "Relaunch after an unexpected exit. A requested stop never relaunches, whatever this says.",
+		"autoRestartOn": "restarts after a crash",
+		"autoRestartOff": "stays down after a crash",
+		"restartDelay": "Restart delay",
+		"restartDelayHint": "Seconds to wait before relaunching after a crash.",
+		"javaArgs": "Extra JVM arguments",
+		"javaArgsHint": "Appended after the profile's flags. Space separated, flags only; -Xmx/-Xms come from the memory field above.",
+		"javaAgents": "Java agents",
+		"javaAgentsHint": "Loaded into the JVM before the server starts, each as a -javaagent: flag. Pick a pooled addon and luna keeps its path right as it updates; a plain path is for a jar luna does not pool."
 	}
 }

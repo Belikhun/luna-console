@@ -6,7 +6,11 @@
 		"unknownProfile": "không biết profile java \"{name}\"",
 		"noLoaderVersion": "instance neoforge không có loaderVersion; không tìm được tệp tham số của nó",
 		"noBinary": "{software} khởi chạy từ tệp tham số, không phải từ một tệp jar duy nhất",
-		"noArgsFile": "{software} không khởi chạy từ tệp tham số"
+		"noArgsFile": "{software} không khởi chạy từ tệp tham số",
+		"agentJarMissing": "java agent \"{jar}\" không có trong thư mục của {name}; JVM sẽ không khởi động được",
+		"agentAddonUnknown": "addon java agent \"{addon}\" không có trong kho plugin; {name} không khởi động được cho tới khi thêm nó hoặc gỡ agent",
+		"agentAddonNotDeployed": "addon java agent \"{addon}\" chưa được triển khai tới {name} (cần {jar}); hãy chạy deploy, hoặc kiểm tra addon group của instance",
+		"agentNotAnAgent": "java agent \"{jar}\" không phải java agent: jar của nó không khai báo Premain-Class, nên JVM sẽ không khởi động được {name}"
 	},
 	"admin": {
 		"dirMissing": "thư mục không tồn tại: {dir}",
@@ -16,6 +20,7 @@
 		"adoptDirMissing": "{dir} không tồn tại; adopt chạy trên daemon sở hữu instance, nên đường dẫn được tính theo gốc cụm của máy đó",
 		"noPortDetected": "không xác định được cổng cho {name}; truyền rõ một cổng",
 		"noXmx": "không thấy -Xmx trong launcher của thư mục; dùng mặc định 2G",
+		"binaryMissing": "thư mục không có {binary}; luna khởi chạy đúng file đó, nên đổi tên (hoặc symlink) jar máy chủ thành tên này trước khi start",
 		"bindMismatch": "server-ip là \"{bind}\"; backend sau proxy ở đây cần {wanted}",
 		"bindEmpty": "server-ip đang trống (mọi giao diện mạng); luna sẽ đặt 0.0.0.0",
 		"portMismatch": "đăng ký cổng {port} nhưng server.properties ghi {detected}; chạy `{command}` để đồng bộ",
@@ -345,7 +350,14 @@
 				"label": "Chặn kết nối qua proxy",
 				"managed": "mọi kết nối đều đi qua velocity theo thiết kế"
 			}
-		}
+		},
+		"agentFlag": "{flag} là java agent; hãy gắn nó ở trường java agents của instance",
+		"agentNoJar": "\"{entry}\" không chỉ ra jar nào (một agent là <jar> hoặc <jar>=<tuỳ chọn>)",
+		"agentAbsolute": "\"{jar}\" là đường dẫn tuyệt đối; java agent tính tương đối với thư mục instance",
+		"agentEscapes": "\"{jar}\" đi ra ngoài thư mục instance",
+		"agentNotAJar": "\"{jar}\" không phải một .jar",
+		"agentNoAddon": "\"{entry}\" không nêu addon nào sau \"addon:\"",
+		"agentAddonIsAPath": "\"{addon}\" trông như một đường dẫn; sau \"addon:\" là tên addon, luna sẽ tự tìm jar của nó"
 	},
 	"standardize": {
 		"renameConflict": "không đổi tên được {from} → {to}: đã có mục mang khóa đó",

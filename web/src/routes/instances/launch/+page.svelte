@@ -16,12 +16,12 @@
 	import FormGrid from '$lib/components/FormGrid.svelte';
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
 	import GroupsField from '$lib/components/GroupsField.svelte';
+	import InstanceRuntimeFields from '$lib/components/InstanceRuntimeFields.svelte';
+	import type { AgentAddon } from '$lib/components/javaagents';
 	import type { Software } from '$core/types';
 
 	/** how many recent Minecraft versions the picker offers */
 	const VERSION_CHOICES = 25;
-
-	const MEMORY_CHOICES = ['1G', '2G', '4G', '6G', '8G'];
 
 	/** One server software, as /api/software describes it. */
 	interface SoftwareOption {
@@ -47,6 +47,11 @@
 	let profiles: string[] = $state(['aikar']);
 	let register = $state(true);
 	let javaArgs = $state('');
+	let javaAgents: string[] = $state([]);
+	let autoRestart = $state(true);
+	let restartDelay = $state(3);
+	/** pooled addons the selected groups would put on this instance */
+	let agentAddons: AgentAddon[] = $state([]);
 	/** managed runtime id, empty = whatever the java profile resolves */
 	let runtime = $state('');
 	let runtimeIds: string[] = $state([]);
@@ -227,6 +232,54 @@
 		return parts.join(' · ');
 	});
 
+	/**
+	 * The addons this instance would receive, so a java agent can be attached before
+	 * the instance exists. It has to be prospective: an agent-only plugin (Nova is
+	 * the usual example) has to be on the command line from the very first boot, and
+	 * there is no instance yet to read a deployed list off.
+	 *
+	 * This is the same route the group validation table already uses; a disabled
+	 * override or a build that does not fit the MC version would not be deployed, so
+	 * neither is offered.
+	 */
+	async function loadAgentAddons(): Promise<void> {
+		if (!selected?.usesJava) {
+			agentAddons = [];
+			return;
+		}
+
+		const params = new URLSearchParams();
+
+		params.set('groups', addonGroups.join(','));
+		params.set('software', software);
+
+		if (mcVersion) {
+			params.set('mcVersion', mcVersion);
+		}
+
+		if (Object.keys(pluginOverrides).length) {
+			params.set('overrides', JSON.stringify(pluginOverrides));
+		}
+
+		try {
+			const data = await api(`/plugins/validate?${params}`);
+
+			agentAddons = (data.rows as Array<any>)
+				.filter((row) => row.entry && row.deployPath && !row.disabled)
+				.filter((row) => row.status === 'ok' || row.status === 'unverified')
+				.map((row) => ({ key: row.entry, path: row.deployPath, version: row.version ?? null }));
+		} catch {
+			// the picker falls back to free text; nothing here should block creating
+			agentAddons = [];
+		}
+	}
+
+	$effect(() => {
+		// re-read whenever anything that decides the answer moves
+		void [software, mcVersion, addonGroups, pluginOverrides];
+		void loadAgentAddons();
+	});
+
 	/** Every daemon, primary first, with offline ones listed but unpickable. */
 	const daemonOptions = $derived(
 		[...daemons]
@@ -261,7 +314,10 @@
 					register,
 					settings: changedSettings,
 					javaArgs: selected?.usesJava ? javaArgs : '',
+					javaAgents: selected?.usesJava ? javaAgents : [],
 					runtime: selected?.usesJava ? runtime : '',
+					autoRestart,
+					restartDelay,
 					addonGroups,
 					pluginOverrides,
 					// the registry records an owner only for follower-held instances, so
@@ -363,58 +419,29 @@
 	<Panel title={t('web.launch.resourcesNetwork')}>
 		<FormGrid cols={2}>
 			<div class="field">
-				<span class="lbl">{t('web.instances.memoryHeap')}</span>
-				<Select
-					bind:value={memory}
-					width="100%"
-					options={MEMORY_CHOICES.map((size) => ({ value: size, label: size }))}
-				/>
-			</div>
-			{#if selected?.usesJava}
-				<div class="field">
-					<span class="lbl">{t('web.instances.colProfile')}</span>
-					<Select
-						bind:value={profile}
-						width="100%"
-						options={profiles.map((entry) => ({ value: entry, label: entry }))}
-					/>
-				</div>
-				<div class="field">
-					<span class="lbl">{t('web.launch.javaRuntime')}</span>
-					<span class="hint">{t('web.launch.runtimeHint')}</span>
-					<Select
-						bind:value={runtime}
-						width="100%"
-						searchable
-						options={[
-							{ value: '', label: t('web.launch.profileDefault') },
-							...runtimeIds.map((id) => ({ value: id, label: id }))
-						]}
-					/>
-				</div>
-			{/if}
-		</FormGrid>
-		<FormGrid cols={2}>
-			<div class="field">
 				<span class="lbl">{t('web.instances.colMachine')}</span>
 				<span class="hint">{t('web.launch.machineHint')}</span>
 				<Select bind:value={daemon} width="100%" options={daemonOptions} />
 			</div>
 		</FormGrid>
-		{#if selected?.usesJava}
-			<label class="field">
-				<span class="lbl">{t('web.launch.extraJvmArgs')}</span>
-				<span class="hint">{t('web.launch.jvmArgsHint')}</span>
-				<input
-					class="input mono"
-					bind:value={javaArgs}
-					placeholder="-XX:+UseStringDeduplication -Dfile.encoding=UTF-8"
-					disabled={creating}
-				/>
-			</label>
-		{:else}
-			<p class="hint">{t('web.launch.noJavaNote')}</p>
-		{/if}
+		<InstanceRuntimeFields
+			usesJava={selected?.usesJava ?? true}
+			{profiles}
+			runtimeOptions={[
+				{ value: '', label: t('web.launch.profileDefault') },
+				...runtimeIds.map((id) => ({ value: id, label: id }))
+			]}
+			runtimeHint={t('web.launch.runtimeHint')}
+			addons={agentAddons}
+			disabled={creating}
+			bind:memory
+			bind:profile
+			bind:runtime
+			bind:javaArgs
+			bind:javaAgents
+			bind:autoRestart
+			bind:restartDelay
+		/>
 		<label class="reg">
 			<Checkbox
 				checked={register}

@@ -900,8 +900,6 @@
 		"minecraftVersion": "Phiên bản Minecraft",
 		"resourcesNetwork": "Tài nguyên & mạng",
 		"machineHint": "Daemon nơi instance được tạo và chạy; follower sao chép kho plugin từ primary và proxy định tuyến tới chúng qua LAN. Daemon ngoại tuyến không nhận việc được nên chỉ hiển thị chứ không chọn được.",
-		"extraJvmArgs": "Tham số JVM bổ sung",
-		"jvmArgsHint": "Nối sau các cờ của profile, nên chúng thắng ở những chỗ JVM lấy giá trị cuối. Đừng lặp lại thứ profile đã đặt (bộ thu gom rác thứ hai sẽ không khởi động được). Phân tách bằng dấu cách, chỉ nhận cờ.",
 		"registerLabel": "Đăng ký với proxy velocity",
 		"registerNote": "Đăng ký với proxy velocity (tự cấp cổng, nối khóa forwarding, triển khai plugin wildcard)",
 		"addonsDescription": "Các nhóm addon áp cho instance mới; nhóm default luôn được áp. Bảng cho thấy từng plugin áp thế nào trên nền tảng và phiên bản Minecraft này; các gói của nhóm được áp khi instance được tạo.",
@@ -1342,13 +1340,6 @@
 		"addAPool": "Thêm một pool"
 	},
 	"instanceDetail": {
-		"autoRestart": "Tự khởi động lại",
-		"autoRestartHint": "Chạy lại server khi nó thoát ngoài ý muốn. Lệnh dừng do bạn yêu cầu không bao giờ chạy lại.",
-		"autoRestartOn": "chạy lại sau khi sập",
-		"autoRestartOff": "nằm im sau khi sập",
-		"restartDelay": "Độ trễ khởi động lại",
-		"restartDelayHint": "Số giây chờ trước khi chạy lại; ba lần sập liên tiếp trong năm phút vẫn khiến nó dừng hẳn",
-		"javaRuntime": "Java runtime",
 		"profileDefault": "Mặc định theo profile",
 		"installsOnStart": "sẽ cài khi khởi động",
 		"runtimeDefaultHint": "chưa ghim runtime; instance chạy bằng java của máy",
@@ -1529,10 +1520,6 @@
 		"addAnOverride": "Thêm ghi đè",
 		"hide": "ẩn",
 		"liveConsole": "Console trực tiếp",
-		"xmsXmxEG": "-Xms/-Xmx, ví dụ 2G",
-		"jvmFlagSetFrom": "Cờ JVM đặt từ cluster.json",
-		"extraJvmArguments": "Tham số JVM bổ sung",
-		"appendedAfterTheProfile": "Nối sau các cờ của profile; xem lệnh đã phân giải ở tab Chi tiết. Phân tách bằng dấu cách, chỉ nhận cờ; -Xmx/-Xms lấy từ trường bộ nhớ ở trên.",
 		"minecraftVersion": "Phiên bản Minecraft",
 		"versionChangeBlockedIncompatible": "Việc đổi phiên bản bị chặn; các plugin không tương thích:",
 		"forceAnyway": "Vẫn ép",
@@ -2950,5 +2937,33 @@
 		"copyMessage": "Sao chép nội dung",
 		"copied": "Đã sao chép {count} mục",
 		"pickEntries": "hãy chọn ít nhất một mục"
+	},
+	"javaAgents": {
+		"none": "Chưa gắn java agent nào.",
+		"jarPlaceholder": "agent.jar",
+		"optionsPlaceholder": "tuỳ chọn (không bắt buộc)",
+		"add": "Gắn",
+		"remove": "Gỡ agent này",
+		"jarMissing": "\"{jar}\" chưa có trong thư mục của instance này; JVM sẽ không khởi động cho tới khi có nó.",
+		"pick": "Chọn một addon hoặc jar trong instance này",
+		"addonNotHere": "\"{addon}\" không nằm trong addon của instance này; nó sẽ không được triển khai tới đây."
+	},
+	"instanceFields": {
+		"memory": "Bộ nhớ (heap)",
+		"memoryHint": "Trở thành -Xms và -Xmx, ví dụ 1G, 2G, 4096M.",
+		"javaProfile": "Java profile",
+		"javaProfileHint": "Bộ cờ JVM mà script khởi động lấy làm nền.",
+		"javaRuntime": "Java runtime",
+		"javaRuntimeHint": "Runtime do luna quản lý cho instance này; để trống thì profile quyết định.",
+		"autoRestart": "Tự khởi động lại",
+		"autoRestartHint": "Chạy lại sau khi thoát ngoài ý muốn. Lệnh dừng chủ động thì không bao giờ chạy lại, bất kể thiết lập này.",
+		"autoRestartOn": "chạy lại sau khi sập",
+		"autoRestartOff": "nằm im sau khi sập",
+		"restartDelay": "Chờ trước khi chạy lại",
+		"restartDelayHint": "Số giây chờ trước khi chạy lại sau một lần sập.",
+		"javaArgs": "Tham số JVM bổ sung",
+		"javaArgsHint": "Nối sau các cờ của profile. Phân tách bằng dấu cách, chỉ nhận cờ; -Xmx/-Xms lấy từ trường bộ nhớ ở trên.",
+		"javaAgents": "Java agent",
+		"javaAgentsHint": "Được nạp vào JVM trước khi máy chủ khởi động, mỗi cái là một cờ -javaagent:. Chọn một addon trong kho và luna sẽ giữ đúng đường dẫn khi nó cập nhật; đường dẫn thường dành cho jar luna không quản lý."
 	}
 }

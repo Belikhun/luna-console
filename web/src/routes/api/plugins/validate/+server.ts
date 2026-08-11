@@ -4,7 +4,7 @@
 
 import { json, error } from '@sveltejs/kit';
 
-import { loadCluster, loadLock, managedInstances } from '$core/config';
+import { addonDirForFamily, loadCluster, loadLock, managedInstances } from '$core/config';
 import { validateGroups } from '$core/families';
 import type { Software } from '$core/types';
 import { SOFTWARE_IDS } from '$core/software';
@@ -62,7 +62,20 @@ export async function GET({ url }) {
 		}
 	}
 
+	const rows = validateGroups(cfg, lock, { software, mcVersion, groups, instance, overrides });
+
 	return json({
-		rows: validateGroups(cfg, lock, { software, mcVersion, groups, instance, overrides })
+		// where deploy would put each matched build. The java-agent picker in the
+		// launch wizard needs it and has no instance to ask, which is the whole
+		// reason this route answers for a prospective instance in the first place.
+		rows: rows.map((row) => {
+			const pooled = row.entry ? lock.plugins[row.entry] : undefined;
+
+			if (!pooled) {
+				return row;
+			}
+
+			return { ...row, deployPath: `${addonDirForFamily(pooled.family)}/${pooled.file}` };
+		})
 	});
 }

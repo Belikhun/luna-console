@@ -4,13 +4,21 @@
 
 import { json, error } from '@sveltejs/kit';
 
-import { loadCluster, saveCluster, loadLock, saveLock, managedInstances } from '$core/config';
+import {
+	loadCluster,
+	saveCluster,
+	loadLock,
+	saveLock,
+	managedInstances,
+	addonDirForFamily
+} from '$core/config';
 import { applyInstanceOptions, setPort, setServerProperty, setVersion } from '$core/admin';
 import type { InstanceOptionUpdate } from '$core/admin';
 import {
 	SERVER_SETTINGS,
 	SETTING_GROUPS,
 	applySettings,
+	parseJavaAgents,
 	parseJavaArgs,
 	readServerProperties,
 	validateSettings
@@ -19,7 +27,8 @@ import { inventory, javaSelection, suggestedFeature } from '$core/runtimes';
 import { syncVelocityToml } from '$core/proxy';
 import { autoRestartOf, getStatus, restartDelayOf } from '$core/instances';
 import { compatReport, deploy } from '$core/plugins';
-import { instanceGroupNames } from '$core/families';
+import { effectiveTargets, instanceGroupNames } from '$core/families';
+import { traitsOf } from '$core/software';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
 import { applyAddonGroups } from '$core/addons';
 import { pushEvent } from '$lib/server/luna';
@@ -49,12 +58,29 @@ export async function GET({ params }) {
 	const fleet = await inventory(cfg);
 	const machineRuntimes = fleet.find((row) => row.machine === machine)?.runtimes ?? null;
 
+	// the addons this instance is actually given, so the java-agent picker offers
+	// the ones deploy will put there rather than the whole pool: an agent naming an
+	// addon this instance never receives is a server that refuses to start
+	const lock = await loadLock();
+	const addons = Object.entries(lock.plugins)
+		.filter(([key]) => effectiveTargets(cfg, lock, key).includes(params.name))
+		.map(([key, entry]) => ({
+			key,
+			path: `${addonDirForFamily(entry.family)}/${entry.file}`,
+			version: entry.installed?.versionNumber ?? null
+		}));
+
 	return json({
 		memory: inst.memory,
 		profile: inst.profile,
 		java: inst.java ?? null,
 		runtime: inst.runtime ?? null,
 		javaArgs: inst.javaArgs ?? [],
+		javaAgents: inst.javaAgents ?? [],
+		// the server's own jar sits in the same directory the agent picker lists,
+		// and it is the one jar there that can never be an agent
+		binaryName: traitsOf(inst.software, inst.mcVersion).binaryName ?? null,
+		addons,
 		autoRestart: autoRestartOf(inst),
 		restartDelay: restartDelayOf(inst),
 		port: inst.port,
@@ -131,6 +157,12 @@ export async function PATCH({ params, request }) {
 		update.javaArgs = Array.isArray(body.javaArgs)
 			? body.javaArgs.map(String)
 			: parseJavaArgs(String(body.javaArgs));
+	}
+
+	if (body.javaAgents !== undefined) {
+		update.javaAgents = Array.isArray(body.javaAgents)
+			? body.javaAgents.map(String)
+			: parseJavaAgents(String(body.javaAgents));
 	}
 
 	let changed: string[] = [];

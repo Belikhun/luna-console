@@ -3,7 +3,7 @@
 // prohibited without written permission. See LICENSE at the repository root.
 
 import { json, error } from '@sveltejs/kit';
-import { saveCluster } from '$core/config';
+import { saveCluster, loadLock } from '$core/config';
 import { getStatus, buildJavaCommand } from '$core/instances';
 import { deleteInstance } from '$core/admin';
 import { syncVelocityToml } from '$core/proxy';
@@ -28,7 +28,9 @@ export async function GET({ params }) {
 
 	return json({
 		...(await instanceStatus(params.name)),
-		javaCommand: buildJavaCommand(cfg, inst),
+		// with the lockfile, so an agent naming a pooled addon shows the jar it
+		// actually resolves to rather than the reference
+		javaCommand: buildJavaCommand(cfg, inst, await loadLock()),
 		java: inst.java ?? null,
 		hostMemMb: await readHostMemMb()
 	});

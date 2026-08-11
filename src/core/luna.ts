@@ -31,7 +31,7 @@ import { addonDirForFamily, instanceDir, managedInstances, poolDir } from "./con
 import type { ProgressReporter } from "./progress";
 import { effectiveTargets } from "./families";
 import { addonFileName, assignedVersion, entryNameFor, variantFileName, variantsDir } from "./plugins";
-import { unzipRead } from "./pluginstate";
+import { unzipRead } from "./archive";
 import { sha512File } from "./services/download";
 
 /** Platforms whose artifacts are pooled for this cluster. */

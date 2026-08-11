@@ -145,6 +145,9 @@ export interface InstanceConfig {
 	runtime?: string;
 	/** Extra JVM flags for this instance, appended after the profile's own flags */
 	javaArgs?: string[];
+	/** Java agents to attach, each `<jar>` or `<jar>=<options>` with the jar
+	 *  relative to the instance directory. Rendered as `-javaagent:` flags. */
+	javaAgents?: string[];
 	/** Relaunch after an unexpected exit; absent = on. A requested stop never
 	 *  relaunches, whatever this says. */
 	autoRestart?: boolean;

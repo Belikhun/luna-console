@@ -545,6 +545,18 @@ export async function applySettings(
 const RESERVED_JAVA_FLAGS = ["-Xmx", "-Xms", "-jar"];
 
 /**
+ * Agent flags, which have a field of their own (`javaAgents`).
+ *
+ * Accepting them here as well would give one setting two homes: the console
+ * would show an agent attached in a place that cannot list it, check that its
+ * jar exists or remove it individually.
+ */
+const AGENT_JAVA_FLAGS = ["-javaagent:", "-agentpath:", "-agentlib:"];
+
+/** Characters the shell would treat as syntax, in a value that lands unquoted. */
+const SHELL_CHARACTERS = /[;&|<>$`(){}\\"'\s]/;
+
+/**
  * Split a user-entered string into JVM arguments. Arguments are whitespace
  * separated; they end up on one line of the generated `run.sh`, so an argument
  * cannot contain a space anyway.
@@ -563,7 +575,7 @@ export function parseJavaArgs(text: string): string[] {
  */
 export function validateJavaArgs(args: string[]): string | undefined {
 	for (const arg of args) {
-		if (/[;&|<>$`(){}\\"'\s]/.test(arg)) {
+		if (SHELL_CHARACTERS.test(arg)) {
 			return t("core.settings.shellCharacters", { arg });
 		}
 
@@ -571,10 +583,131 @@ export function validateJavaArgs(args: string[]): string | undefined {
 			return t("core.settings.notAFlag", { arg });
 		}
 
+		const agent = AGENT_JAVA_FLAGS.find((flag) => arg.startsWith(flag));
+
+		if (agent) {
+			return t("core.settings.agentFlag", { flag: agent });
+		}
+
 		const reserved = RESERVED_JAVA_FLAGS.find((flag) => arg.startsWith(flag));
 
 		if (reserved) {
 			return t("core.settings.reservedFlag", { flag: reserved });
+		}
+	}
+
+	return undefined;
+}
+
+/**
+ * Split a user-entered string into java agent entries.
+ *
+ * Whitespace separated like the JVM arguments beside them, for the same reason:
+ * one line of the generated `run.sh`, so an entry cannot contain a space. A
+ * newline is whitespace too, which is what lets the console offer a line per
+ * agent while the CLI takes them on one.
+ */
+export function parseJavaAgents(text: string): string[] {
+	return text
+		.split(/\s+/)
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0);
+}
+
+/**
+ * The jar half of an agent entry, i.e. everything before the first `=`.
+ *
+ * `-javaagent:` takes `<jar>=<options>` and the options are the agent's own
+ * business, so only the jar is ever validated or looked for on disk.
+ */
+export function agentJarOf(entry: string): string {
+	const options = entry.indexOf("=");
+
+	return options < 0 ? entry : entry.slice(0, options);
+}
+
+/**
+ * Marks an agent entry that names a pooled addon rather than a path.
+ *
+ * Some plugins only work loaded as an agent (Nova is the usual example), and
+ * those are ordinary lockfile entries: luna downloads, updates and deploys them
+ * like anything else. Naming the addon instead of the jar keeps the two facts in
+ * one place - the plugin's presence on an instance is decided by its groups, and
+ * the agent flag follows whatever that produces.
+ */
+export const ADDON_AGENT_PREFIX = "addon:";
+
+/** The lockfile key an agent entry names, or undefined when it names a path. */
+export function agentAddonKey(entry: string): string | undefined {
+	const jar = agentJarOf(entry);
+
+	if (!jar.startsWith(ADDON_AGENT_PREFIX)) {
+		return undefined;
+	}
+
+	return jar.slice(ADDON_AGENT_PREFIX.length);
+}
+
+/** The `=<options>` tail of an agent entry, empty when it has none. */
+export function agentOptionsOf(entry: string): string {
+	const options = entry.indexOf("=");
+
+	return options < 0 ? "" : entry.slice(options);
+}
+
+/**
+ * Check java agent entries. Two forms, each `<jar>` or `<jar>=<options>`:
+ * `addon:<lockfile key>` for a pooled addon, or a path relative to the instance
+ * directory for a loose jar.
+ *
+ * **Relative on purpose.** `run.sh` runs with the instance directory as its
+ * working directory, so a relative jar resolves against the one place that
+ * travels with the instance; an absolute path would name a location on one
+ * machine, and the instance can be reassigned to a follower that has no such
+ * file. That is also why an entry may not climb out with `..`.
+ *
+ * Whether the addon actually exists is not decided here: the lockfile is not in
+ * scope, and an agent may legitimately be configured before the addon is added.
+ * `writeRunScript` resolves it, which is the last point it can still be reported.
+ */
+export function validateJavaAgents(agents: string[]): string | undefined {
+	for (const entry of agents) {
+		if (SHELL_CHARACTERS.test(entry)) {
+			return t("core.settings.shellCharacters", { arg: entry });
+		}
+
+		const jar = agentJarOf(entry);
+
+		if (!jar) {
+			return t("core.settings.agentNoJar", { entry });
+		}
+
+		const addon = agentAddonKey(entry);
+
+		if (addon !== undefined) {
+			if (!addon) {
+				return t("core.settings.agentNoAddon", { entry });
+			}
+
+			// the key is a lockfile key, not a path; a slash in one means somebody
+			// wrote a path after the prefix and would get a jar that is never found
+			if (addon.includes("/")) {
+				return t("core.settings.agentAddonIsAPath", { addon });
+			}
+
+			continue;
+		}
+
+		if (jar.startsWith("/") || /^[a-zA-Z]:/.test(jar)) {
+			return t("core.settings.agentAbsolute", { jar });
+		}
+
+		if (jar.split("/").includes("..")) {
+			return t("core.settings.agentEscapes", { jar });
+		}
+
+		if (!jar.toLowerCase().endsWith(".jar")) {
+			return t("core.settings.agentNotAJar", { jar });
 		}
 	}
 

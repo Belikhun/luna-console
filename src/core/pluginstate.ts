@@ -27,6 +27,7 @@ import type {
 	Software,
 } from "./types";
 import { t } from "../shared/i18n";
+import { unzipRead } from "./archive";
 import { instanceDir, managedInstances, poolDir } from "./config";
 import {
 	effectiveTargets,
@@ -98,24 +99,6 @@ function startupComplete(software: Software, mcVersion: string | undefined, line
 	const marker = traitsOf(software, mcVersion).readyMarker;
 
 	return lines.some((line) => marker.test(line));
-}
-
-/** Read one member of a jar (jars are zip files); undefined when absent. */
-export async function unzipRead(jar: string, member: string): Promise<string | undefined> {
-	const proc = Bun.spawn(["unzip", "-p", jar, member], {
-		stdout: "pipe",
-		stderr: "ignore",
-	});
-
-	const text = await new Response(proc.stdout).text();
-
-	await proc.exited;
-
-	if (proc.exitCode !== 0 || !text.trim()) {
-		return undefined;
-	}
-
-	return text;
 }
 
 /** One scalar value from a YAML-ish descriptor (top-level `key: value` line). */
@@ -297,6 +280,46 @@ async function readJarInfo(path: string): Promise<JarInfo> {
 		}
 
 		break;
+	}
+
+	// legacy FML (forge <= 1.12): a JSON array at the jar root, one object per
+	// mod. Multi-mod jars front-load their main mod, so the first entry is the
+	// one worth describing.
+	const mcmod = await unzipRead(path, "mcmod.info");
+
+	if (mcmod) {
+		try {
+			// some 1.12-era descriptors wrap the array in {"modList": [...]}
+			const parsed = JSON.parse(mcmod) as
+				| { modid?: string }[]
+				| { modList?: { modid?: string }[] };
+
+			const entry = (Array.isArray(parsed) ? parsed : parsed.modList)?.[0] as {
+				modid?: string;
+				name?: string;
+				version?: string;
+				description?: string;
+				url?: string;
+				authorList?: string[];
+			} | undefined;
+
+			if (entry) {
+				claim(entry.name);
+				claim(entry.modid);
+				meta.name ??= entry.name;
+				meta.id ??= entry.modid;
+				meta.version ??= entry.version;
+				meta.description ??= entry.description?.trim();
+				meta.website ??= entry.url;
+
+				if (!meta.authors?.length && entry.authorList?.length) {
+					meta.authors = entry.authorList.filter(Boolean);
+				}
+			}
+		} catch {
+			// mcmod.info is hand-written JSON more often than not; a jar whose
+			// descriptor does not parse still pools fine, just without metadata
+		}
 	}
 
 	return { meta, aliases: [...new Set(aliases)] };

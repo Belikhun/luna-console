@@ -40,6 +40,7 @@
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
 	import ProgressTree from '$lib/components/ProgressTree.svelte';
 	import GroupsField from '$lib/components/GroupsField.svelte';
+	import InstanceRuntimeFields from '$lib/components/InstanceRuntimeFields.svelte';
 	import Alerts from '$lib/components/Alerts.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
 	import { followJob, type JobView } from '$lib/jobs';
@@ -112,6 +113,7 @@
 	let cfgVersion = $state('');
 	let cfgRuntime = $state('');
 	let cfgJavaArgs = $state('');
+	let cfgJavaAgents: string[] = $state([]);
 	let cfgAutoRestart = $state(true);
 	let cfgRestartDelay = $state(3);
 	let cfgSettings: Record<string, string> = $state({});
@@ -306,6 +308,7 @@
 			cfgVersion = cfgData.mcVersion ?? '';
 			cfgRuntime = cfgData.runtime ?? '';
 			cfgJavaArgs = (cfgData.javaArgs ?? []).join(' ');
+			cfgJavaAgents = [...(cfgData.javaAgents ?? [])];
 			cfgAutoRestart = cfgData.autoRestart !== false;
 			cfgRestartDelay = cfgData.restartDelay ?? 3;
 			cfgSettings = { ...cfgData.settings };
@@ -546,6 +549,10 @@
 
 	const javaArgsDirty = $derived(cfgData !== null && cfgJavaArgs.trim() !== (cfgData.javaArgs ?? []).join(' '));
 
+	const javaAgentsDirty = $derived(
+		cfgData !== null && cfgJavaAgents.join(' ') !== (cfgData.javaAgents ?? []).join(' ')
+	);
+
 	const runtimeDirty = $derived(cfgData !== null && cfgRuntime !== (cfgData.runtime ?? ''));
 
 	const autoRestartDirty = $derived(
@@ -657,6 +664,10 @@
 
 			if (javaArgsDirty) {
 				body.javaArgs = cfgJavaArgs;
+			}
+
+			if (javaAgentsDirty) {
+				body.javaAgents = cfgJavaAgents;
 			}
 
 			if (runtimeDirty) {
@@ -2009,74 +2020,22 @@
 					description={t('web.instanceDetail.memoryProfileAndJvmFlags')}
 				>
 					<div class="cfg">
-						<label class="field">
-							<span class="lbl">{t('web.instanceDetail.memoryHeap')}</span>
-							<span class="hint">{t('web.instanceDetail.xmsXmxEG')}</span>
-							<input class="input" bind:value={cfgMemory} />
-						</label>
-						{#if usesJava}
-							<div class="field">
-								<span class="lbl">{t('web.instanceDetail.javaProfile')}</span>
-								<span class="hint">{t('web.instanceDetail.jvmFlagSetFrom')}</span>
-								<Select
-									bind:value={cfgProfile}
-									width="100%"
-									options={cfgData.profiles.map((entry: string) => ({
-										value: entry, label: entry
-									}))}
-								/>
-							</div>
-							<div class="field">
-								<span class="lbl">{t('web.instanceDetail.javaRuntime')}</span>
-								<span class="hint">{runtimeHint}</span>
-								<Select
-									bind:value={cfgRuntime}
-									width="100%"
-									searchable
-									options={runtimeOptions}
-								/>
-							</div>
-						{/if}
-						<div class="field">
-							<span class="lbl">{t('web.instanceDetail.autoRestart')}</span>
-							<span class="hint">{t('web.instanceDetail.autoRestartHint')}</span>
-							<span class="toggleRow">
-								<Toggle
-									checked={cfgAutoRestart}
-									label={t('web.instanceDetail.autoRestart')}
-									onchange={(on) => (cfgAutoRestart = on)}
-								/>
-								<span class="dim">
-									{cfgAutoRestart
-										? t('web.instanceDetail.autoRestartOn')
-										: t('web.instanceDetail.autoRestartOff')}
-								</span>
-							</span>
-						</div>
-						<label class="field">
-							<span class="lbl">{t('web.instanceDetail.restartDelay')}</span>
-							<span class="hint">{t('web.instanceDetail.restartDelayHint')}</span>
-							<input
-								class="input"
-								type="number"
-								min="0"
-								max="3600"
-								step="1"
-								bind:value={cfgRestartDelay}
-								disabled={!cfgAutoRestart}
-							/>
-						</label>
-						{#if usesJava}
-							<label class="field">
-								<span class="lbl">{t('web.instanceDetail.extraJvmArguments')}</span>
-								<span class="hint">
-									{t('web.instanceDetail.appendedAfterTheProfile')}
-								</span>
-								<input class="input mono" bind:value={cfgJavaArgs} placeholder={t('web.instanceDetail.none')} />
-							</label>
-						{:else}
-							<p class="hint">{t('web.launch.noJavaNote')}</p>
-						{/if}
+						<InstanceRuntimeFields
+							{usesJava}
+							profiles={cfgData.profiles}
+							{runtimeOptions}
+							{runtimeHint}
+							instance={name}
+							binaryName={cfgData.binaryName}
+							addons={cfgData.addons ?? []}
+							bind:memory={cfgMemory}
+							bind:profile={cfgProfile}
+							bind:runtime={cfgRuntime}
+							bind:javaArgs={cfgJavaArgs}
+							bind:javaAgents={cfgJavaAgents}
+							bind:autoRestart={cfgAutoRestart}
+							bind:restartDelay={cfgRestartDelay}
+						/>
 						{#if versionChangeable}
 							<div class="field">
 								<span class="lbl">{t('web.instanceDetail.minecraftVersion')}</span>

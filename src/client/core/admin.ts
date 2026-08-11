@@ -13,7 +13,7 @@ import { call, jobCall } from "../rpc";
 
 // pure registry edits: they change the cluster config the caller already holds
 // and the caller saves it, so there is nothing for the daemon to do
-export { applyInstanceOptions, setJavaArgs } from "../../core/admin";
+export { applyInstanceOptions, setJavaAgents, setJavaArgs } from "../../core/admin";
 export type {
 	AdoptOptions,
 	AdoptResult,
