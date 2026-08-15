@@ -2,7 +2,11 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- No viewport meta on purpose. The console is a desktop layout and is not
+	     going to become a responsive one, so a phone should lay it out at its
+	     natural width and let the user zoom, rather than reflow it into a column
+	     of overlapping panels. The public pages, which *are* responsive, declare
+	     the viewport themselves in their own layout. -->
 		<link rel="stylesheet" href="%sveltekit.assets%/AlbulaPro/AlbulaPro.css" />
 		<link rel="stylesheet" href="%sveltekit.assets%/FontAwesome/FontAwesome.css" />
 		%sveltekit.head%

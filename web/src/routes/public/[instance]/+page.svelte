@@ -904,4 +904,112 @@
 			width: auto;
 		}
 	}
+
+	// On a phone the HUD stops being a HUD.
+	//
+	// Four panels pinned to four corners needs corners to pin to; at this width
+	// they overlap each other and the map both, and shrinking them only makes an
+	// unreadable version of the same collision. So the overlay unwinds into an
+	// ordinary scrolling document: the map keeps the top of the screen at a fixed
+	// height and everything that was floating over it falls into place underneath,
+	// reordered so the name arrives before the world it names.
+	@include below($bp-narrow) {
+		.hud {
+			position: static;
+			display: flex;
+			flex-direction: column;
+			gap: 1rem;
+			min-height: 100vh;
+			padding: 1rem 1rem 1.5rem;
+			overflow: visible;
+		}
+
+		.map,
+		.nomap {
+			position: relative;
+			height: 55vh;
+			border-radius: var(--radius-container);
+			overflow: hidden;
+			flex: none;
+			order: 2;
+		}
+
+		// a server with no rendered world has nothing to fill that with, and on a
+		// phone half a screen of empty wash costs a scroll for no information
+		.nomap {
+			height: 12rem;
+		}
+
+		// it exists to keep white terrain from swallowing panels that sit on the
+		// map; nothing sits on the map any more
+		.scrim {
+			display: none;
+		}
+
+		.tl,
+		.tr,
+		.bl,
+		.right {
+			position: static;
+			inset: auto;
+			width: auto;
+			max-width: none;
+			pointer-events: auto;
+		}
+
+		.tl {
+			order: 1;
+		}
+
+		.tr {
+			order: 3;
+			flex-wrap: wrap;
+		}
+
+		.bl {
+			order: 4;
+		}
+
+		.right {
+			order: 5;
+			align-items: stretch;
+			gap: 1rem;
+		}
+
+		// there is room for it again once nothing is competing for the corner
+		.br {
+			display: flex;
+			width: auto;
+			max-height: 40vh;
+		}
+
+		.title {
+			font-size: 1.5rem;
+		}
+
+		// two by two rather than whatever fits: four across is a few pixels too
+		// wide here, and flex-wrap answers that by leaving the fourth dial centred
+		// under the other three
+		.dials {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 0.75rem;
+			justify-items: center;
+		}
+
+		.facts {
+			flex-wrap: wrap;
+			gap: 0.75rem 0;
+		}
+
+		.indices {
+			flex-direction: column;
+			gap: 0.75rem;
+		}
+
+		.load {
+			flex-wrap: wrap;
+			gap: 0.75rem 1.5rem;
+		}
+	}
 </style>

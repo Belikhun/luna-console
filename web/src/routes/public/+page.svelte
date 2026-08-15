@@ -296,8 +296,48 @@
 	}
 
 	@include below($bp-narrow) {
+		.wrap {
+			padding: 0 1rem;
+		}
+
+		.mast {
+			padding: 1.5rem 0 1.25rem;
+			gap: 0.75rem;
+		}
+
+		// the address is what a visitor came for, so it gets its own line rather
+		// than being squeezed beside the name
 		.join {
 			margin-left: 0;
+			flex-basis: 100%;
+		}
+
+		.who h1 {
+			font-size: 1.5rem;
+		}
+
+		// two by two rather than whatever fits, so the fourth dial is not left
+		// centred on a row of its own
+		.dials {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 0.75rem;
+			justify-items: center;
+		}
+
+		.chart {
+			margin-top: 1rem;
+		}
+
+		// one card per row: two of them at this width leaves the map art too small
+		// to be a picture of anywhere
+		.grid {
+			grid-template-columns: 1fr;
+			gap: 1rem;
+		}
+
+		section {
+			margin-bottom: 1.5rem;
 		}
 	}
 </style>

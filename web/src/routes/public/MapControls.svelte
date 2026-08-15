@@ -455,4 +455,23 @@
 			}
 		}
 	}
+
+	// Off the map and into the flow: a vertical rail belongs against an edge, and
+	// down here there is no edge to hold it. The panel keeps its own width so the
+	// sliders stay usable rather than stretching to the screen.
+	@include below($bp-narrow) {
+		.controls {
+			flex-direction: column-reverse;
+			align-items: stretch;
+		}
+
+		.rail {
+			flex-direction: row;
+			justify-content: space-around;
+		}
+
+		.panel {
+			width: auto;
+		}
+	}
 </style>
