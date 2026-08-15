@@ -2,7 +2,7 @@
 // Proprietary software: use, copying, modification and distribution are
 // prohibited without written permission. See LICENSE at the repository root.
 
-import { readdir, rm, copyFile, mkdir } from "node:fs/promises";
+import { readdir, rm, copyFile, mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
 
@@ -1144,6 +1144,25 @@ type DeploySource =
 	| { missing: string }
 	| { incompatible: string[] };
 
+/**
+ * Put a jar in its place without disturbing a server already running the old one.
+ *
+ * `copyFile` truncates the existing file and rewrites it, and a JVM holds its jars
+ * open for the whole run, reading classes out of them the first time each one is
+ * needed. Rewriting one under a live proxy or backend therefore corrupts what that
+ * process still has open: the next class it reaches vanishes with a
+ * `NoClassDefFoundError` naming a class that is present in the jar on disk, which
+ * reads as a build fault and is not one. Staging beside the target and renaming
+ * leaves the old inode intact until the process restarts, which is exactly what
+ * "restart to apply" has always promised.
+ */
+async function replaceJar(src: string, dest: string): Promise<void> {
+	const staged = `${dest}.luna-new`;
+
+	await copyFile(src, staged);
+	await rename(staged, dest);
+}
+
 /** Copy pool jars to instance plugin folders according to each entry's targets.
  *  Targets pinned/assigned to an older version receive that pooled variant
  *  (written under the same destination file name). */
@@ -1330,7 +1349,7 @@ export async function deploy(
 				continue;
 			}
 
-			await copyFile(src, dest);
+			await replaceJar(src, dest);
 
 			actions.push({ instance: target, file: entry.file, action: "updated", detail });
 		}
