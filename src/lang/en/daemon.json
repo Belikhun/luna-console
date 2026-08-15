@@ -72,7 +72,8 @@
 			"fetching": "fetching {size} from {origin}",
 			"verified": "{size} downloaded and verified",
 			"swapping": "swapping the binary",
-			"restarting": "{from} → {to}; restarting"
+			"restarting": "{from} → {to}; restarting",
+			"console": "web console"
 		},
 		"autoApplying": "auto-upgrade: installing {version} from the {origin}",
 		"autoFailed": "auto-upgrade deferred: {error}"
@@ -105,5 +106,14 @@
 		"ahead": "follower \"{name}\" speaks a newer protocol than this primary; upgrade the primary instead",
 		"pushing": "pushing a recovery upgrade to quarantined follower \"{name}\"",
 		"pushFailed": "recovery upgrade for \"{name}\" did not complete: {error}"
+	},
+	"console": {
+		"extractFailed": "could not unpack the console bundle: {error}",
+		"noBuild": "{asset} contained no build/index.js; not a console bundle",
+		"installed": "console {version} installed",
+		"skipFollower": "no console on a follower; skipped",
+		"noAsset": "{origin} publishes no console bundle; the console is unchanged",
+		"fetching": "fetching the console bundle ({size})",
+		"failed": "console not updated: {error}"
 	}
 }

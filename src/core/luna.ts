@@ -359,7 +359,12 @@ export async function build(
 			continue;
 		}
 
-		const code = await run(["sh", script]);
+		// bash, not sh: these scripts carry a bash shebang and use bash-only syntax
+		// (`set -o pipefail`, `BASH_SOURCE`, arrays), and on a machine where /bin/sh
+		// is dash, running them with `sh` fails on the first line of the first one.
+		// Since the cargo platforms build *before* gradle, that failure took the
+		// whole build with it rather than only the platform that could not build.
+		const code = await run(["bash", script]);
 
 		if (code !== 0) {
 			return {

@@ -30,6 +30,9 @@ export interface DaemonInfo {
 	pid: number;
 	startedAt: number;
 	listen: { host: string; port: number } | null;
+	/** The installed web console, primary only; null when none is installed and
+	 *  the console is being served from a checkout instead */
+	console: { version: string; installedAt: string; origin: string } | null;
 }
 
 /** Local API protocol revision this client speaks. */

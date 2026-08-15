@@ -1006,7 +1006,9 @@
 			"startHint": "start one with {run} or install the service: {install}",
 			"builtAt": "(built {date})",
 			"up": "up {uptime}",
-			"updateAvailable": "{version} available from the {origin}: {command}"
+			"updateAvailable": "{version} available from the {origin}: {command}",
+			"consoleFromSource": "not installed; serving from a source checkout",
+			"consoleStale": "{version} (daemon is {daemon}) - run `luna daemon upgrade` to match them"
 		},
 		"list": {
 			"desc": "List every daemon in the cluster with live state",

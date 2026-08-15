@@ -72,7 +72,8 @@
 			"fetching": "đang tải {size} từ {origin}",
 			"verified": "đã tải và kiểm tra {size}",
 			"swapping": "đang thay binary",
-			"restarting": "{from} → {to}; đang khởi động lại"
+			"restarting": "{from} → {to}; đang khởi động lại",
+			"console": "console web"
 		},
 		"autoApplying": "tự nâng cấp: đang cài {version} từ {origin}",
 		"autoFailed": "hoãn tự nâng cấp: {error}"
@@ -105,5 +106,14 @@
 		"ahead": "follower \"{name}\" dùng giao thức mới hơn primary này; hãy nâng cấp primary trước",
 		"pushing": "đang đẩy bản nâng cấp cứu hộ tới follower bị cách ly \"{name}\"",
 		"pushFailed": "nâng cấp cứu hộ cho \"{name}\" chưa hoàn tất: {error}"
+	},
+	"console": {
+		"extractFailed": "không giải nén được gói console: {error}",
+		"noBuild": "{asset} không có build/index.js; đây không phải gói console",
+		"installed": "đã cài console {version}",
+		"skipFollower": "follower không chạy console; đã bỏ qua",
+		"noAsset": "{origin} không phát hành gói console; console giữ nguyên",
+		"fetching": "đang tải gói console ({size})",
+		"failed": "chưa cập nhật được console: {error}"
 	}
 }

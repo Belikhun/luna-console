@@ -7,9 +7,44 @@ import { join } from "node:path";
 
 import { command, Bail } from "../framework";
 import { pc, info, ok } from "../ui";
-import { root } from "../../client/core/config";
+import { consoleDir, isConsoleDir, root } from "../../client/core/config";
 import { ensureConnected } from "../../client/socket";
 import { t } from "../../shared/i18n";
+
+/**
+ * Which console this machine serves, in the order the candidates are trusted.
+ *
+ * 1. `LUNA_WEB_DIR`, because an operator saying where it is outranks any guess,
+ *    and the container image ships it somewhere else entirely.
+ * 2. `<root>/.web`, the bundle an upgrade installed. This is the *release's*
+ *    console, upgraded from the same release as the binary, and it comes first
+ *    so a machine that has one never silently serves something else.
+ * 3. `<root>/control/web`, the source tree. Only for a checkout: on a machine
+ *    that also has a checkout this used to win by default, which is how a
+ *    console can end up days behind the daemon and give no sign of it.
+ *
+ * `--dev` skips the installed bundle entirely: it runs Vite against sources, and
+ * the installed console is a build output with no sources to run.
+ */
+function resolveWebDir(dev: boolean): string {
+	if (process.env.LUNA_WEB_DIR) {
+		return process.env.LUNA_WEB_DIR;
+	}
+
+	const source = join(root(), "control", "web");
+
+	if (dev) {
+		return source;
+	}
+
+	const installed = consoleDir();
+
+	if (isConsoleDir(installed)) {
+		return installed;
+	}
+
+	return source;
+}
 
 command({
 	path: ["web"],
@@ -31,9 +66,7 @@ command({
 			throw new Bail(t("cli.web.followerHost", { name: daemon.name }));
 		}
 
-		// the console normally lives in the source tree beside the cluster root;
-		// a container image ships it somewhere else entirely, hence the override
-		const webDir = process.env.LUNA_WEB_DIR ?? join(root(), "control", "web");
+		const webDir = resolveWebDir(!!opts.dev);
 		const port = (opts.port as string) ?? "8330";
 		const host = (opts.host as string) ?? "127.0.0.1";
 

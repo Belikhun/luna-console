@@ -26,6 +26,15 @@ export function assetName(platform: string): string {
 	return `luna-${platform}`;
 }
 
+/**
+ * The console bundle published beside the binaries.
+ *
+ * One archive for every platform, because it is javascript: the release
+ * workflow packs `web/build` and `web/package.json`, which is exactly what
+ * `luna web` runs.
+ */
+export const CONSOLE_ASSET = "luna-console.tar.gz";
+
 export interface ReleaseAsset {
 	name: string;
 	url: string;
@@ -45,6 +54,9 @@ export interface ReleaseInfo {
 	asset: ReleaseAsset | null;
 	/** Its `<asset>.sha256` sidecar, when published */
 	digest: ReleaseAsset | null;
+	/** The console bundle, which is platform-independent; null on a release
+	 *  published before the console was shipped as an asset */
+	console: ReleaseAsset | null;
 }
 
 interface GhAsset {
@@ -95,6 +107,7 @@ function toRelease(raw: GhRelease, platform: string): ReleaseInfo {
 		notes: raw.body ?? "",
 		asset: pickAsset(raw.assets, wanted),
 		digest: pickAsset(raw.assets, `${wanted}.sha256`),
+		console: pickAsset(raw.assets, CONSOLE_ASSET),
 	};
 }
 

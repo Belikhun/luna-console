@@ -18,6 +18,7 @@ import { datapacksDir } from "../core/datapacks";
 import * as lunaApi from "../core/services/luna";
 
 import type { DaemonConfig } from "./config";
+import { consoleStamp } from "./console";
 import { getEvents } from "./events";
 import { ownsInstance } from "./identity";
 import { getJob, startJob, watchJob, type JobView } from "./jobs";
@@ -399,6 +400,10 @@ export function buildHandler(
 				pid: process.pid,
 				startedAt,
 				listen: dcfg.listen ?? null,
+				// the console is a separate artifact run by a separate process, so
+				// a stale one is invisible unless something says which it is; this
+				// is that something
+				console: dcfg.mode === "primary" ? await consoleStamp() ?? null : null,
 			});
 		}
 

@@ -1006,7 +1006,9 @@
 			"startHint": "khởi động bằng {run} hoặc cài dịch vụ: {install}",
 			"builtAt": "(dựng lúc {date})",
 			"up": "chạy được {uptime}",
-			"updateAvailable": "{version} có sẵn từ {origin}: {command}"
+			"updateAvailable": "{version} có sẵn từ {origin}: {command}",
+			"consoleFromSource": "chưa cài; đang phục vụ từ mã nguồn",
+			"consoleStale": "{version} (daemon đang {daemon}) - chạy `luna daemon upgrade` để đồng bộ"
 		},
 		"list": {
 			"desc": "Liệt kê mọi daemon trong cụm kèm trạng thái trực tiếp",

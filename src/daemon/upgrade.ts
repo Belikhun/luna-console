@@ -36,6 +36,8 @@ import { ProgressReporter } from "../core/progress";
 import { UPGRADE_JOB_KIND } from "../shared/jobs";
 import { BUILD_AT, VERSION, buildPlatform, buildVersion, isCompiledBinary } from "../version";
 
+import { installConsole } from "./console";
+import { isPrimary } from "./identity";
 import { runningJobs } from "./jobs";
 import { log } from "./index";
 
@@ -68,6 +70,10 @@ export interface UpgradeOffer {
 	/** GitHub only: the release page and its notes */
 	pageUrl?: string;
 	notes?: string;
+	/** GitHub only: the console bundle published in the same release, so the
+	 *  console this daemon serves is upgraded from the same place it is */
+	consoleUrl?: string;
+	consoleSize?: number;
 	/** False when the offer is the build already running (a reinstall, not an upgrade) */
 	newer: boolean;
 }
@@ -265,6 +271,8 @@ async function githubOffer(notes: string[], refresh: boolean): Promise<UpgradeOf
 		origin: `github ${RELEASE_REPO} ${release.tag}`,
 		pageUrl: release.pageUrl,
 		notes: release.notes.slice(0, 2000),
+		consoleUrl: release.console?.url,
+		consoleSize: release.console?.size,
 		newer: compareVersions(release.version, VERSION) > 0,
 	};
 }
@@ -499,6 +507,58 @@ export interface UpgradeResult {
 	restarting: boolean;
 }
 
+/**
+ * Install the console bundle from the release the binary just came from.
+ *
+ * Best-effort by design. The binary has already been swapped by the time this
+ * runs, and a daemon that refused to finish its upgrade because a tarball 404'd
+ * would be trading a stale console for a stuck fleet. A failure is reported into
+ * the tree and recorded, and the console keeps serving what it has - which is
+ * exactly the state everybody was already in before this step existed.
+ *
+ * Skipped entirely on a follower (nothing there serves a console) and on the
+ * primary channel (the offer is a bare binary, with no release to take the
+ * bundle from).
+ */
+async function installConsoleFrom(offer: UpgradeOffer, reporter: ProgressReporter): Promise<void> {
+	if (!isPrimary()) {
+		reporter.complete(t("daemon.console.skipFollower"));
+
+		return;
+	}
+
+	if (!offer.consoleUrl) {
+		// a release published before the console was an asset, or the primary
+		// channel, which serves a binary and nothing else
+		reporter.warn(reporter.progress, t("daemon.console.noAsset", { origin: offer.origin }));
+
+		return;
+	}
+
+	try {
+		reporter.info(0, t("daemon.console.fetching", { size: mb(offer.consoleSize ?? 0) }));
+
+		const response = await fetch(offer.consoleUrl, {
+			headers: process.env.LUNA_GITHUB_TOKEN
+				? { authorization: `Bearer ${process.env.LUNA_GITHUB_TOKEN}` }
+				: {},
+		});
+
+		if (!response.ok) {
+			throw new Error(t("daemon.upgrade.refused", { origin: offer.origin, status: response.status }));
+		}
+
+		const bytes = await readWithProgress(response, offer.consoleSize ?? 0, reporter);
+
+		await installConsole(bytes, offer.version, offer.origin, reporter);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+
+		log(`console: install failed (${message}); the console keeps serving its current bundle`);
+		reporter.error(reporter.progress, t("daemon.console.failed", { error: message }));
+	}
+}
+
 /** An upgrade already running, so two callers cannot race two swaps of one file. */
 let applying: Promise<UpgradeResult> | undefined;
 
@@ -544,6 +604,9 @@ async function runUpgrade(force: boolean, reporter?: ProgressReporter): Promise<
 	const resolving = progress.child(t("daemon.upgrade.steps.resolving"), 2);
 	const fetching = progress.child(t("daemon.upgrade.steps.download"), 12);
 	const installing = progress.child(t("daemon.upgrade.steps.install"), 2);
+	// weighted against the binary by size: the bundle is an order of magnitude
+	// smaller, and on a follower this step does nothing at all
+	const console_ = progress.child(t("daemon.upgrade.steps.console"), 1);
 
 	await preflight.task(
 		{
@@ -637,6 +700,11 @@ async function runUpgrade(force: boolean, reporter?: ProgressReporter): Promise<
 			throw err;
 		}
 	});
+
+	// after the binary, never before: the console is the secondary artifact, and
+	// installing a new one over a binary swap that then failed would leave the
+	// pair mismatched in the direction nobody is watching
+	await installConsoleFrom(offer, console_);
 
 	log(`upgrade: ${current} → ${offer.version}; exiting so the service manager restarts`);
 

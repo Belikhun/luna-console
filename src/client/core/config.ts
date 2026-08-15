@@ -16,7 +16,7 @@ import type { ClusterConfig, InstanceConfig } from "../../core/types";
 import { call } from "../rpc";
 import { clientRoot } from "../socket";
 
-import { DATA_DIR } from "../../core/config";
+import { DATA_DIR, WEB_DIR } from "../../core/config";
 
 export {
 	allInstances,
@@ -26,6 +26,8 @@ export {
 	expandTargets,
 	DATA_DIR,
 	STATE_FILES,
+	WEB_DIR,
+	isConsoleDir,
 } from "../../core/config";
 export type { AddonDir } from "../../core/config";
 
@@ -57,6 +59,11 @@ export function lockPath(): string {
 /** Path of the shared jar pool. */
 export function poolDir(): string {
 	return join(root(), "plugins");
+}
+
+/** The installed web console, resolved against the root the daemon reported. */
+export function consoleDir(): string {
+	return join(root(), WEB_DIR);
 }
 
 /** Path of the archived, compacted per-instance logs. */

@@ -128,6 +128,21 @@ command({
 		info(`pid       ${d.pid} (${t("cli.daemon.status.up", { uptime: uptimeText(d.startedAt) })})`);
 		info(`protocol  ${d.protocol} · ${d.platform}`);
 
+		// the console is a separate artifact served by a separate process, so its
+		// version is the one thing `daemon status` could not previously answer -
+		// and a stale one shows up as missing features rather than as an error
+		if (d.mode === "primary") {
+			if (!d.console) {
+				info(`console   ${pc.dim(t("cli.daemon.status.consoleFromSource"))}`);
+			} else if (d.console.version === d.release) {
+				info(`console   ${d.console.version}`);
+			} else {
+				warn(
+					`console   ${pc.yellow(t("cli.daemon.status.consoleStale", { version: d.console.version, daemon: d.release }))}`,
+				);
+			}
+		}
+
 		if (d.listen) {
 			info(`cluster   ${d.listen.host}:${d.listen.port}`);
 		}

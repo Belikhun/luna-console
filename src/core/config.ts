@@ -22,6 +22,31 @@ export type { AddonDir } from "./types";
 export const DATA_DIR = ".data";
 
 /**
+ * Where the installed web console lives, beside the binary in `.bin/`.
+ *
+ * Dotted for the same reason `.data` is, and in the cluster root for the same
+ * reason the binary is: an upgrade swaps the whole directory by rename, so what
+ * has to be writable is the parent. Keeping it here rather than in the source
+ * tree is what makes the console an artifact of the *release* instead of an
+ * artifact of whichever checkout happened to be on the machine.
+ */
+export const WEB_DIR = ".web";
+
+/** The installed console directory for this cluster root. */
+export function consoleDir(): string {
+	return join(root(), WEB_DIR);
+}
+
+/**
+ * Whether a directory holds a runnable console: adapter-node's entry point is
+ * the one file `luna web` actually spawns, so its absence is what "not
+ * installed" means, not the directory being missing.
+ */
+export function isConsoleDir(dir: string): boolean {
+	return existsSync(join(dir, "build", "index.js"));
+}
+
+/**
  * Every state file the primary owns, by name.
  *
  * What `syncFilePath` recognises as state rather than as an ordinary
