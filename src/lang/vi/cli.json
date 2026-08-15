@@ -129,7 +129,8 @@
 		"username": "tên đăng nhập",
 		"label": "nhãn",
 		"created": "tạo lúc",
-		"field": "trường"
+		"field": "trường",
+		"display": "hiển thị"
 	},
 	"machines": {
 		"unknown": "không biết máy \"{name}\"; các máy đã biết: {known}"
@@ -1628,6 +1629,59 @@
 			"badLevel": "mức không rõ {level}; các mức đã biết là {known}",
 			"none": "nhật ký không có mục nào khớp",
 			"truncated": "đang hiển thị {count} mục khớp mới nhất"
+		}
+	},
+	"public": {
+		"desc": "Trang công khai: đã xuất bản chưa và hiển thị máy chủ nào",
+		"enabled": "Trang công khai đã được xuất bản",
+		"disabled": "Trang công khai đang tắt",
+		"address": "địa chỉ",
+		"title": "tiêu đề",
+		"shown": "hiển thị",
+		"hidden": "ẩn",
+		"head": {
+			"visibility": "Trang công khai"
+		},
+		"summary": "{count} máy chủ xuất hiện trên trang công khai",
+		"noneListedYet": "Chưa có máy chủ nào được liệt kê; dùng `luna public show <instance>`",
+		"stillDisabled": "Trang công khai vẫn đang tắt; dùng `luna public enable`",
+		"nowShown": "{name} hiện đã xuất hiện trên trang công khai",
+		"nowHidden": "{name} không còn xuất hiện trên trang công khai",
+		"needInstance": "cần tên một máy chủ",
+		"arg": {
+			"instance": "Máy chủ cần hiện hoặc ẩn"
+		},
+		"opt": {
+			"address": "Địa chỉ người chơi kết nối, ví dụ mc.example.com",
+			"title": "Tiêu đề hiển thị trên trang",
+			"tagline": "Một dòng dưới tiêu đề"
+		},
+		"enable": {
+			"desc": "Xuất bản trang công khai"
+		},
+		"disable": {
+			"desc": "Gỡ trang công khai xuống"
+		},
+		"show": {
+			"desc": "Đưa một máy chủ lên trang công khai"
+		},
+		"hide": {
+			"desc": "Bỏ một máy chủ khỏi trang công khai"
+		}
+	},
+	"uptime": {
+		"desc": "Lịch sử thời gian hoạt động theo máy chủ",
+		"arg": {
+			"instance": "Máy chủ cần xem; bỏ trống để xem tất cả"
+		},
+		"opt": {
+			"days": "Số ngày lịch sử hiển thị (mặc định 30)"
+		},
+		"badDays": "--days phải là số dương",
+		"head": {
+			"window": "{days} ngày gần nhất",
+			"uptime": "Hoạt động",
+			"stops": "Lần dừng"
 		}
 	}
 }

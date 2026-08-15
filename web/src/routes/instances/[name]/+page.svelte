@@ -30,7 +30,10 @@
 	import { channelOf } from '$lib/components/software';
 	import type { Software } from '$core/types';
 	import Sparkline from '$lib/components/Sparkline.svelte';
+	import UptimeTimeline from '$lib/components/UptimeTimeline.svelte';
+	import type { UptimeSeries } from '$core/uptime';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
+	import DataTable from '$lib/components/DataTable.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import type { DistributionSegment } from '$lib/components/distribution';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -156,7 +159,10 @@
 
 	/** Pack key whose per-instance rule edit is in flight, for the row's button. */
 	let respackBusy = $state('');
-	let metrics: { history: any[]; events: any[] } = $state({ history: [], events: [] });
+	let metrics: { history: any[]; events: any[]; uptime?: UptimeSeries } = $state({
+		history: [],
+		events: []
+	});
 	let logData: { content: string; archives: any[] } = $state({ content: '', archives: [] });
 	/** whether the snapshot behind the log view has been read at least once */
 	let logSnapshotRead = $state(false);
@@ -944,6 +950,9 @@
 	const isUp = $derived(inst && (inst.state === 'running' || inst.state === 'starting'));
 	const checksPassed = $derived(inst ? inst.checks.filter((check: any) => check.ok).length : 0);
 
+	/** The long uptime record; absent until the first metrics fetch lands. */
+	const uptime = $derived(metrics.uptime ?? null);
+
 	const cpuPoints = $derived(metrics.history.map((sample: any) => ({ t: sample.t, v: sample.cpu })));
 	const memPoints = $derived(
 		metrics.history.map((sample: any) => ({ t: sample.t, v: sample.rssMb }))
@@ -966,6 +975,52 @@
 		tpsPoints.some((point: any) => point.v != null) ||
 			heapPoints.some((point: any) => point.v != null)
 	);
+
+	const msptPoints = $derived(metrics.history.map((sample: any) => ({ t: sample.t, v: sample.msptMean })));
+	const chunkPoints = $derived(metrics.history.map((sample: any) => ({ t: sample.t, v: sample.chunks })));
+	const entityPoints = $derived(
+		metrics.history.map((sample: any) => ({
+			t: sample.t,
+			// summed only when at least one half was measured, so a backend that
+			// reports neither leaves a gap rather than a line along zero
+			v:
+				sample.tickingEntities == null && sample.nonTickingEntities == null
+					? undefined
+					: (sample.tickingEntities ?? 0) + (sample.nonTickingEntities ?? 0)
+		}))
+	);
+
+	/**
+	 * Whether this backend reports what its ticks cost.
+	 *
+	 * Only a plugin new enough to measure them does, so the whole group is hidden
+	 * rather than drawn empty: an operator on an older backend should see the
+	 * charts that exist, not five blank ones telling them something is broken.
+	 */
+	const hasTickSeries = $derived(msptPoints.some((point: any) => point.v != null));
+	const hasWorldSeries = $derived(
+		chunkPoints.some((point: any) => point.v != null) || entityPoints.some((point: any) => point.v != null)
+	);
+
+	const worlds = $derived((inst?.worlds ?? []) as Array<Record<string, number | string | null>>);
+
+	// $derived, not a plain array: the headers are t() calls, and a constant would
+	// keep whichever locale it was first built in
+	/** Entities in one world's row, for the share each column shows. */
+	function worldEntities(world: Record<string, number | string | null>): number {
+		return Number(world.tickingEntities ?? 0) + Number(world.nonTickingEntities ?? 0);
+	}
+
+	const worldCols: Column[] = $derived([
+		{ id: 'name', label: t('web.instanceDetail.world') },
+		{ id: 'loadedChunks', label: t('web.instanceDetail.loadedChunks'), align: 'right' },
+		{ id: 'tickingEntities', label: t('web.instanceDetail.ticking'), width: 220 },
+		{ id: 'nonTickingEntities', label: t('web.instanceDetail.nonTicking'), width: 220 }
+	]);
+
+	/** 0-1 indices read better as percentages; absent stays absent. */
+	const apdexPct = $derived(inst?.apdex == null ? null : inst.apdex * 100);
+	const miseryPct = $derived(inst?.misery == null ? null : inst.misery * 100);
 
 	const hostMemMb = $derived(inst?.hostMemMb ?? 0);
 
@@ -1629,6 +1684,20 @@
 				</ResourceTable>
 			</Panel>
 		{:else if tab === 'monitoring'}
+			<!-- the charts below are one hour and die with the daemon; this is the
+			     long record, and the only thing that can answer "was it up on
+			     Tuesday" -->
+			<Panel
+				title={t('web.instanceDetail.uptimeHistory')}
+				description={t('web.instanceDetail.uptimeHistoryDesc')}
+			>
+				{#if uptime}
+					<UptimeTimeline days={uptime.days} pct={uptime.pct} height="2rem" />
+				{:else}
+					<p class="dim">{t('web.instanceDetail.uptimeLoading')}</p>
+				{/if}
+			</Panel>
+			<div class="gap"></div>
 			<div class="charts">
 				<Sparkline points={cpuPoints} label={t('web.instanceDetail.cpuUtilization')} unit="%" color="#42b4ff" />
 				<Sparkline points={memPoints} label={t('web.instanceDetail.memoryRss')} unit=" MB" color="#bf7edb" />
@@ -1642,7 +1711,85 @@
 					<Sparkline points={tpsPoints} label={t('web.instanceDetail.tickRate')} unit=" TPS" color="#e0ca57" maxY={20} />
 					<Sparkline points={heapPoints} label={t('web.instanceDetail.jvmHeap')} unit=" MB" color="#ff9d5c" />
 				{/if}
+				{#if hasTickSeries}
+					<Sparkline points={msptPoints} label={t('web.instanceDetail.tickDuration')} unit=" ms" color="#ff7a7a" />
+				{/if}
+				{#if hasWorldSeries}
+					<Sparkline points={chunkPoints} label={t('web.instanceDetail.loadedChunks')} color="#7ec8e3" />
+					<Sparkline points={entityPoints} label={t('web.instanceDetail.entities')} color="#c9a227" />
+				{/if}
 			</div>
+
+			{#if hasTickSeries || worlds.length}
+				<div class="gap"></div>
+				<Panel
+					title={t('web.instanceDetail.serverLoad')}
+					description={t('web.instanceDetail.serverLoadDesc')}
+				>
+					{#if apdexPct !== null || miseryPct !== null}
+						<div class="indices">
+							{#if apdexPct !== null}
+								<div class="index">
+									<ProgressBar
+										value={apdexPct}
+										left={t('web.instanceDetail.apdex')}
+										right={(apdexPct / 100).toFixed(3)}
+										segmented
+										height="2rem"
+										color={apdexPct >= 95 ? 'success' : apdexPct >= 85 ? 'warning' : 'danger'}
+									/>
+									<p class="dim">{t('web.instanceDetail.apdexHint')}</p>
+								</div>
+							{/if}
+							{#if miseryPct !== null}
+								<div class="index">
+									<!-- the one bar on this page where full is bad, so the tone runs
+									     the other way rather than through `auto` -->
+									<ProgressBar
+										value={miseryPct}
+										left={t('web.instanceDetail.misery')}
+										right={`${miseryPct.toFixed(1)}%`}
+										segmented
+										height="2rem"
+										color={miseryPct <= 2 ? 'success' : miseryPct <= 10 ? 'warning' : 'danger'}
+									/>
+									<p class="dim">{t('web.instanceDetail.miseryHint')}</p>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
+					{#if worlds.length}
+						<DataTable columns={worldCols} rows={worlds} getId={(world: any) => String(world.name)}>
+							{#snippet cell(world: any, col: string)}
+								{#if col === 'name'}
+									{world.name}
+								{:else if world[col] === null || world[col] === undefined}
+									<span class="dim">–</span>
+								{:else if col === 'tickingEntities' || col === 'nonTickingEntities'}
+									<!-- against this world's own entities, not the fleet's: the
+									     question the column answers is how much of what this world
+									     is holding actually costs tick time -->
+									{@const total = worldEntities(world)}
+									{#if total > 0}
+										<ProgressBar
+											compact
+											value={world[col]}
+											max={total}
+											left={world[col].toLocaleString()}
+											color={col === 'tickingEntities' ? 'accent' : 'success'}
+										/>
+									{:else}
+										{world[col].toLocaleString()}
+									{/if}
+								{:else}
+									{world[col].toLocaleString()}
+								{/if}
+							{/snippet}
+						</DataTable>
+					{/if}
+				</Panel>
+			{/if}
 			<p class="dim note">
 				{t('web.instanceDetail.sampledEvery5sBy')}
 				{#if hasHeartbeatSeries}
@@ -2203,6 +2350,18 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
 		gap: 1rem;
+	}
+
+	.indices {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+		gap: 1.25rem 2rem;
+		margin-bottom: 1.25rem;
+
+		.index p {
+			margin: 0.375rem 0 0;
+			font-size: 0.75rem;
+		}
 	}
 
 	.manual {

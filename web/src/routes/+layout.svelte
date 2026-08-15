@@ -26,13 +26,20 @@
 	let { children, data } = $props();
 
 	/**
-	 * The sign-in screen renders on its own, without any of the chrome below: it is
-	 * the one page reachable before there is a session, so the side nav, the global
-	 * search, the terminal drawer and the host vitals all have nothing to talk to.
-	 * A route group would express this too, but at the cost of moving every screen
-	 * in the console into one.
+	 * Screens that render on their own, without any of the chrome below.
+	 *
+	 * The sign-in page is reachable before there is a session, so the side nav,
+	 * the global search, the terminal drawer and the host vitals all have nothing
+	 * to talk to. The public page is the same case for a different reason: it is
+	 * served to visitors who have no account and are not meant to learn that an
+	 * operator's console exists behind it. A route group would express this too,
+	 * but at the cost of moving every screen in the console into one.
 	 */
-	const bare = $derived(page.url.pathname === '/login');
+	const bare = $derived(
+		page.url.pathname === '/login' ||
+			page.url.pathname === '/public' ||
+			page.url.pathname.startsWith('/public/')
+	);
 
 	/** The signed-in account, resolved server-side in `+layout.server.ts`. */
 	const account = $derived(data?.account ?? null);

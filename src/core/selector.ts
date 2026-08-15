@@ -91,6 +91,7 @@ export function draftFromCluster(cfg: ClusterConfig, primaryName: string): Selec
 			software: inst.software,
 			mcVersion: inst.mcVersion,
 			external: !!inst.external,
+			publicListed: inst.publicListed === true,
 		};
 	}
 
@@ -142,6 +143,10 @@ export function applyDraftToCluster(cfg: ClusterConfig, draft: SelectorDraft): v
 		assign(inst, "serverStatusIcons", server.serverStatusIcons);
 		assign(inst, "description", server.description);
 		assign(inst, "selector", server.selector);
+
+		// `assign` deletes a falsy value, which is exactly right here: not listed is
+		// the absence of the flag rather than a `false` stored against every server
+		assign(inst, "publicListed", server.publicListed === true ? true : undefined);
 	}
 }
 

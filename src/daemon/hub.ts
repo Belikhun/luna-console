@@ -39,6 +39,7 @@ import {
 	setCheckSender,
 	setDaemonDetailProvider,
 	setDaemonsProvider,
+	setFleetHistoryProvider,
 	setUpgradeSender,
 	type OpResult,
 	type OpSpec,
@@ -46,6 +47,7 @@ import {
 import { lunaCardsFor, lunaProblem, setRemoteSampleProvider } from "./sampler";
 import { PROTOCOL_VERSION, setRemoteConsole } from "./server";
 import { checkUpgrade, selfUpgrade } from "./upgrade";
+import { forgetInstances, observeStates } from "./uptime";
 import { buildVersion } from "../version";
 
 /**
@@ -318,6 +320,23 @@ function recordHealth(name: string, sample: HealthSample): void {
 	}
 
 	histories.set(name, list);
+}
+
+/**
+ * Every machine's health history: this primary's own, plus each connected
+ * follower's as its samples arrived on the heartbeat.
+ *
+ * A quarantined follower is still included. Its build and this one disagree
+ * about what an op looks like, which says nothing about whether its CPU reading
+ * from five seconds ago was real.
+ */
+function fleetHistories(): HealthSample[][] {
+	const own = healthHistory();
+	const others = [...followers.values()]
+		.map((link) => histories.get(link.name) ?? [])
+		.filter((history) => history.length > 0);
+
+	return own.length ? [own, ...others] : others;
 }
 
 /** Instance names owned by a daemon, per the registry. */
@@ -1194,6 +1213,11 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 
 			link.health = sample;
 			recordHealth(link.name, sample);
+
+			// the primary keeps the whole fleet's uptime record, and this pong is the
+			// only place a follower's instance states arrive; feeding it here is what
+			// makes the record cover machines the primary does not run
+			observeStates(sample.states, sample.t);
 		}
 
 		return;
@@ -1303,6 +1327,12 @@ export const hubWebSocket: Bun.WebSocketHandler<{ kind: string; name?: string }>
 			followers.delete(name);
 			rejectPendingFor(name, `follower "${name}" disconnected`);
 			void persistLastSeen(name, link.lastSeen);
+
+			// a dropped link ends observation; it is not an outage. Without this the
+			// next pong would credit the whole disconnected stretch to whatever state
+			// the follower was last seen in, which is the one thing nobody measured.
+			forgetInstances(Object.keys(link.health?.states ?? {}));
+
 			log(`follower "${name}" disconnected`);
 			pushEvent(daemonEventKey(name), "state", "disconnected");
 		}
@@ -1317,6 +1347,7 @@ export function installHub(dcfg: DaemonConfig, startedAt: number): void {
 	installRouting(resolveRemote, forwardOp);
 	setDaemonsProvider(listDaemons);
 	setDaemonDetailProvider(daemonDetail);
+	setFleetHistoryProvider(fleetHistories);
 	setUpgradeSender(upgradeDaemon);
 	setCheckSender(checkDaemonUpgrade);
 	setRemoteConsole({

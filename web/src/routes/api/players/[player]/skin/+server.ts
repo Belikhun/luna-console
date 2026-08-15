@@ -3,147 +3,21 @@
 // prohibited without written permission. See LICENSE at the repository root.
 
 import { json, error } from '@sveltejs/kit';
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 
 import * as luna from '$core/services/luna';
-import { root } from '$core/config';
+import { forgetSkin, skinResponse } from '$lib/server/skins';
 import { pushEvent } from '$lib/server/luna';
 
 /**
  * GET → the player's raw skin PNG; POST → change or reset it.
  *
- * The texture URL lives base64-encoded inside the game-profile property LunaCore
- * captured at login, and points at textures.minecraft.net; which sends no CORS
- * headers, so the browser could neither read its pixels on a canvas nor cache it
- * per player. Serving it same-origin fixes both.
- *
- * Fetched PNGs are persisted under `<root>/.cache/skins/`, keyed by UUID with
- * the source URL in a sidecar: avatars keep rendering from the disk copy when
- * textures.minecraft.net is unreachable; the console never depends on an
- * external renderer or a live internet connection to draw a face.
+ * The read half lives in `$lib/server/skins`, because the public page serves
+ * the same pixels from the same cache under its own gate. Writing a skin stays
+ * here: it is an operator action and it belongs behind the console's session.
  */
 
-interface CachedSkin {
-	body: ArrayBuffer;
-	fetchedAt: number;
-}
-
-/** Skins change rarely; ten minutes keeps repeat visits free. */
-const CACHE_TTL_MS = 10 * 60 * 1000;
-
-const memory = new Map<string, CachedSkin>();
-
-function cacheDir(): string {
-	return join(root(), '.cache', 'skins');
-}
-
-/** Pull the SKIN url out of the decoded textures payload. */
-function textureUrl(encoded: string): string | undefined {
-	try {
-		const decoded = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
-		const url = decoded?.textures?.SKIN?.url;
-
-		return typeof url === 'string' && url.startsWith('http') ? url : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-function png(body: ArrayBuffer | Buffer): Response {
-	return new Response(body as BodyInit, {
-		headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=300' }
-	});
-}
-
-/** Read the disk copy, optionally only when it was fetched for `url`. */
-async function diskRead(uuid: string, url?: string): Promise<Buffer | undefined> {
-	const file = join(cacheDir(), `${uuid}.png`);
-	const sidecar = join(cacheDir(), `${uuid}.src`);
-
-	if (!existsSync(file)) {
-		return undefined;
-	}
-
-	if (url !== undefined) {
-		const source = existsSync(sidecar) ? (await readFile(sidecar, 'utf8')).trim() : '';
-
-		if (source !== url) {
-			return undefined;
-		}
-	}
-
-	return await readFile(file);
-}
-
-async function diskWrite(uuid: string, url: string, body: ArrayBuffer): Promise<void> {
-	await mkdir(cacheDir(), { recursive: true });
-	await writeFile(join(cacheDir(), `${uuid}.png`), Buffer.from(body));
-	await writeFile(join(cacheDir(), `${uuid}.src`), url);
-}
-
 export async function GET({ params }) {
-	const detail = await luna.registeredPlayer(params.player);
-
-	if (!detail.ok || !detail.data) {
-		throw error(404, detail.error ?? 'player not found');
-	}
-
-	const uuid = detail.data.uuid;
-	const cached = memory.get(uuid);
-
-	if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-		return png(cached.body);
-	}
-
-	const encoded = detail.data.skinTexture;
-	const url = encoded ? textureUrl(encoded) : undefined;
-
-	if (!url) {
-		// no recorded texture; a disk copy from an earlier skin still beats nothing
-		const stale = await diskRead(uuid);
-
-		if (stale) {
-			return png(stale);
-		}
-
-		throw error(404, 'no skin recorded for this player');
-	}
-
-	// disk first: same URL means the pixels cannot have changed
-	const disk = await diskRead(uuid, url);
-
-	if (disk) {
-		memory.set(uuid, { body: disk.buffer.slice(disk.byteOffset, disk.byteOffset + disk.byteLength) as ArrayBuffer, fetchedAt: Date.now() });
-		return png(disk);
-	}
-
-	try {
-		const upstream = await fetch(url, { signal: AbortSignal.timeout(8000) });
-
-		if (!upstream.ok) {
-			throw new Error(`texture server answered ${upstream.status}`);
-		}
-
-		const body = await upstream.arrayBuffer();
-
-		memory.set(uuid, { body, fetchedAt: Date.now() });
-		await diskWrite(uuid, url, body).catch(() => {
-			// a failed disk write only loses the offline copy, not the response
-		});
-
-		return png(body);
-	} catch (err) {
-		// offline or upstream down: serve whatever skin we ever had for them
-		const stale = await diskRead(uuid);
-
-		if (stale) {
-			return png(stale);
-		}
-
-		throw error(502, (err as Error).message);
-	}
+	return await skinResponse(params.player);
 }
 
 /** MineSkin turns an uploaded PNG into signed texture data. */
@@ -254,7 +128,7 @@ export async function POST({ params, request }) {
 
 	if (result.ok && result.data) {
 		// the cached PNG is now stale; the next avatar fetch re-reads the profile
-		memory.delete(result.data.uuid);
+		forgetSkin(result.data.uuid);
 		pushEvent('proxy', 'action', `skin ${mode === 'reset' ? 'reset' : 'changed'} for ${params.player}`);
 	}
 

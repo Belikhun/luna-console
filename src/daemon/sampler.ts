@@ -17,7 +17,8 @@ import { instanceAddress } from "../core/ports";
 import * as instances from "../core/instances";
 import * as luna from "../core/services/luna";
 import type { BackendCard } from "../core/services/luna";
-import type { ClusterConfig } from "../core/types";
+import { traitsOf } from "../core/software";
+import type { ClusterConfig, InstanceConfig } from "../core/types";
 
 import { pushEvent } from "./events";
 import { currentHealth } from "./health";
@@ -52,6 +53,32 @@ export interface MetricSample {
 	tps?: number;
 	heapUsedMb?: number;
 	heapMaxMb?: number;
+	/** Chunks loaded across every world */
+	chunks?: number;
+	tickingEntities?: number;
+	nonTickingEntities?: number;
+	/** Mean and worst tick in the backend's own window, in milliseconds */
+	msptMean?: number;
+	msptMax?: number;
+	/** 0-1 performance index over the backend's ticks */
+	apdex?: number;
+	/** 0-1 share of player-time spent on ticks slow enough to feel */
+	misery?: number;
+}
+
+/**
+ * Copy a heartbeat figure into a sample only when the backend measured it.
+ *
+ * Every one of these fields is absent on a backend whose plugin predates it and
+ * on a platform that cannot count it, and the sample carries the distinction the
+ * whole way: an unset field draws a gap in the chart, a zero draws a floor.
+ */
+function measured(value: number | null | undefined): number | undefined {
+	if (value === null || value === undefined || !Number.isFinite(value)) {
+		return undefined;
+	}
+
+	return value;
 }
 
 interface InstanceRuntime {
@@ -298,6 +325,13 @@ async function sampleOnce(): Promise<void> {
 				sample.tps = backend.metrics.tps;
 				sample.heapUsedMb = Math.round(backend.metrics.ramUsedBytes / 1024 / 1024);
 				sample.heapMaxMb = Math.round(backend.metrics.ramMaxBytes / 1024 / 1024);
+				sample.chunks = measured(backend.metrics.loadedChunks);
+				sample.tickingEntities = measured(backend.metrics.tickingEntities);
+				sample.nonTickingEntities = measured(backend.metrics.nonTickingEntities);
+				sample.msptMean = measured(backend.metrics.tickMeanMillis);
+				sample.msptMax = measured(backend.metrics.tickMaxMillis);
+				sample.apdex = measured(backend.metrics.apdex);
+				sample.misery = measured(backend.metrics.misery);
 
 				sample.players ??= backend.metrics.onlinePlayers;
 			}
@@ -527,7 +561,59 @@ function heartbeatCheck(st: CoreStatus): StatusCheck {
 	};
 }
 
-/** The four health checks the instance detail page renders. */
+/**
+ * Whether the server is keeping up, judged on Apdex rather than on TPS.
+ *
+ * TPS sits pinned at 20 until a server is already in trouble, and reads the same
+ * for a steady 45 ms tick as for one alternating 10 and 90. Apdex is built from
+ * every tick in the backend's window, so it moves while there is still something
+ * an operator can do about it.
+ *
+ * Absent rather than failing when the backend does not report it: a plugin that
+ * predates the field and a server that is genuinely struggling must not look the
+ * same on this page.
+ */
+function tickCheck(st: CoreStatus): StatusCheck | undefined {
+	// a proxy has no game loop, so this is not a check it is failing to satisfy;
+	// it is a question that does not apply, and a pending row would sit there
+	// spinning forever. `levelName` is the trait that says so: the software with
+	// no world directory is the software with no world to tick.
+	if (!ticks(st.inst)) {
+		return undefined;
+	}
+
+	const name = t("daemon.sampler.tickCheck");
+	const backend = lunaCards.get(st.name);
+	const apdex = backend?.online ? backend.metrics.apdex : undefined;
+
+	if (apdex === null || apdex === undefined) {
+		return { name, ok: undefined, detail: t("daemon.sampler.tickNotReported") };
+	}
+
+	const mean = backend?.metrics.tickMeanMillis;
+	const misery = backend?.metrics.misery;
+
+	const parts = [t("daemon.sampler.tickApdex", { apdex: apdex.toFixed(3) })];
+
+	if (mean !== null && mean !== undefined) {
+		parts.push(t("daemon.sampler.tickMean", { mean: mean.toFixed(1) }));
+	}
+
+	if (misery !== null && misery !== undefined) {
+		parts.push(t("daemon.sampler.tickMisery", { misery: (misery * 100).toFixed(1) }));
+	}
+
+	return { name, ok: apdex >= APDEX_OK, detail: parts.join(" · ") };
+}
+
+/**
+ * Where the tick check turns. Apdex is conventionally read against 0.94 as
+ * "fair"; a Minecraft server that misses its 50 ms budget one tick in twenty is
+ * already visibly stuttering, so the bar here is higher than the convention.
+ */
+const APDEX_OK = 0.95;
+
+/** The health checks the instance detail page renders. */
 export function statusChecks(st: CoreStatus): StatusCheck[] {
 	if (st.state === "unknown") {
 		const owner = st.inst.daemon ?? "?";
@@ -547,6 +633,9 @@ export function statusChecks(st: CoreStatus): StatusCheck[] {
 			{ name: "Port reachability", ok: undefined, detail: "Instance is stopped" },
 			{ name: "Server ping", ok: undefined, detail: "Instance is stopped" },
 			{ name: "LunaCore heartbeat", ok: undefined, detail: "Instance is stopped" },
+			...(ticks(st.inst)
+				? [{ name: t("daemon.sampler.tickCheck"), ok: undefined, detail: "Instance is stopped" }]
+				: []),
 		];
 	}
 
@@ -573,7 +662,32 @@ export function statusChecks(st: CoreStatus): StatusCheck[] {
 				: "not answering server-list pings yet",
 		},
 		heartbeatCheck(st),
-	];
+		tickCheck(st),
+	].filter((check): check is StatusCheck => check !== undefined);
+}
+
+/** Whether this software runs a game loop at all; false for a proxy. */
+function ticks(inst: InstanceConfig): boolean {
+	return traitsOf(inst.software, inst.mcVersion).levelName !== undefined;
+}
+
+/**
+ * One heartbeat figure, or null when this backend did not report it.
+ *
+ * The online check comes first because an offline backend reports nothing at
+ * all: its last heartbeat's chunk count is not the current one.
+ */
+function reported(
+	backend: BackendCard | undefined,
+	pick: (metrics: BackendCard["metrics"]) => number | null | undefined,
+): number | null {
+	if (!backend?.online) {
+		return null;
+	}
+
+	const value = pick(backend.metrics);
+
+	return value === undefined || value === null || !Number.isFinite(value) ? null : value;
 }
 
 /** Serialize an instance status for the API. */
@@ -593,6 +707,16 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 		tps: backend?.online ? backend.metrics.tps : null,
 		heapUsedMb: backend?.online ? Math.round(backend.metrics.ramUsedBytes / 1024 / 1024) : null,
 		heapMaxMb: backend?.online ? Math.round(backend.metrics.ramMaxBytes / 1024 / 1024) : null,
+		// current rather than historical: the chart reads the sample history, these
+		// are what the readouts and the world table show right now
+		chunks: reported(backend, (metrics) => metrics.loadedChunks),
+		tickingEntities: reported(backend, (metrics) => metrics.tickingEntities),
+		nonTickingEntities: reported(backend, (metrics) => metrics.nonTickingEntities),
+		msptMean: reported(backend, (metrics) => metrics.tickMeanMillis),
+		msptMax: reported(backend, (metrics) => metrics.tickMaxMillis),
+		apdex: reported(backend, (metrics) => metrics.apdex),
+		misery: reported(backend, (metrics) => metrics.misery),
+		worlds: backend?.online ? (backend.metrics.worlds ?? []) : [],
 		lunaStatus: backend?.status ?? null,
 		lunaDisplayName: backend?.displayName ?? null,
 		lastHeartbeatMs: backend?.lastHeartbeatEpochMillis ?? null,

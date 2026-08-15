@@ -61,6 +61,7 @@ export const STATE_FILES = [
 	"accounts.json",
 	"sessions.json",
 	"schedules.json",
+	"uptime.json",
 ] as const;
 
 /** Whether a directory is a cluster root: it holds the registry. */

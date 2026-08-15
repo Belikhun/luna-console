@@ -22,7 +22,8 @@
 		player,
 		view = 'face',
 		px = 6,
-		bust = 0
+		bust = 0,
+		endpoint = '/api/players'
 	}: {
 		/** UUID or username; whatever the row carries */
 		player: string;
@@ -31,6 +32,12 @@
 		px?: number;
 		/** Bump to bypass the browser's cached copy after a skin change */
 		bust?: number;
+		/**
+		 * Where the skin PNG is served from, as `<base>/<player>/skin`. The
+		 * console's own route is gated, so the public page points this at its
+		 * ungated mirror; the pixels and the cache behind them are the same.
+		 */
+		endpoint?: string;
 	} = $props();
 
 	/**
@@ -225,7 +232,7 @@
 		failed = false;
 
 		const image = new Image();
-		image.src = `/api/players/${encodeURIComponent(player)}/skin${bust ? `?v=${bust}` : ''}`;
+		image.src = `${endpoint}/${encodeURIComponent(player)}/skin${bust ? `?v=${bust}` : ''}`;
 
 		try {
 			await image.decode();

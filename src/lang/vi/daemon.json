@@ -95,7 +95,12 @@
 		"servingTelemetry": "đang phục vụ số liệu; {count} backend đang báo về",
 		"noHeartbeatSince": "không có nhịp tim từ {ago}; plugin đã ngừng báo về",
 		"neverReported": "chưa từng báo về proxy; kiểm tra cấu hình LunaCore",
-		"responding": "đang trả lời; {online}/{max} người chơi"
+		"responding": "đang trả lời; {online}/{max} người chơi",
+		"tickCheck": "Hiệu năng tick",
+		"tickNotReported": "backend này không báo cáo",
+		"tickApdex": "apdex {apdex}",
+		"tickMean": "trung bình {mean}ms",
+		"tickMisery": "khó chịu {misery}%"
 	},
 	"clientUnavailable": "daemon luna chưa chạy trên máy này; khởi động bằng `luna daemon run`, hoặc cài dịch vụ: `luna daemon service install`",
 	"protocolSkew": "giao thức daemon {daemon} không khớp binary này ({client}); khởi động lại daemon từ cùng bản dựng",

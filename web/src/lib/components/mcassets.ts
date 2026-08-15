@@ -11,7 +11,7 @@
  * daemon that builds the registry and the canvas that draws it cannot drift.
  */
 
-import type { McAssetRegistry } from '$shared/mcassets';
+import { materialKey, renderFor, type McAssetRegistry } from '$shared/mcassets';
 
 export type {
 	GuiTransform,
@@ -28,6 +28,26 @@ export { materialKey, renderFor } from '$shared/mcassets';
 let pending: Promise<McAssetRegistry | null> | null = null;
 let cached: McAssetRegistry | null = null;
 
+/**
+ * Where the asset routes live.
+ *
+ * The console reads them through its own gated tree. The public page serves the
+ * same bytes from an ungated mirror, so it points this at that mirror instead;
+ * without it, every block icon on a public card would 401 for a visitor who has
+ * no session, which is all of them.
+ */
+let assetBase = '/api/mc/assets';
+
+/** Point the asset URLs at a different tree; the public page's own mirror. */
+export function setAssetBase(base: string): void {
+	if (base === assetBase) {
+		return;
+	}
+
+	assetBase = base;
+	resetRegistry();
+}
+
 /** The registry, or null when the assets have not been extracted yet. */
 export function loadRegistry(): Promise<McAssetRegistry | null> {
 	if (cached) {
@@ -35,7 +55,7 @@ export function loadRegistry(): Promise<McAssetRegistry | null> {
 	}
 
 	if (!pending) {
-		pending = fetch('/api/mc/assets/registry')
+		pending = fetch(`${assetBase}/registry`)
 			.then((res) => (res.ok ? (res.json() as Promise<McAssetRegistry>) : null))
 			.then((registry) => {
 				cached = registry;
@@ -64,7 +84,7 @@ let assetVersion = '';
 export function textureUrl(path: string): string {
 	const stamp = assetVersion ? `?v=${encodeURIComponent(assetVersion)}` : '';
 
-	return `/api/mc/assets/texture/${path}.png${stamp}`;
+	return `${assetBase}/texture/${path}.png${stamp}`;
 }
 
 /**
@@ -79,11 +99,87 @@ export function unihexUrl(file: string, codepoints: number[]): string {
 	const stamp = assetVersion ? `&v=${encodeURIComponent(assetVersion)}` : '';
 	const list = codepoints.map((codepoint) => codepoint.toString(16)).join(',');
 
-	return `/api/mc/assets/font/${encodeURIComponent(file)}?cps=${list}${stamp}`;
+	return `${assetBase}/font/${encodeURIComponent(file)}?cps=${list}${stamp}`;
 }
 
 /** The chest background the inventory is drawn on. */
 export const CHEST_TEXTURE_URL = '/api/mc/assets/gui';
+
+/**
+ * Which face of a material stands in for it as a flat picture.
+ *
+ * A model carries a texture per named face, and there is no "the" texture; the
+ * side is what a block looks like from eye level, so that is the pick, with the
+ * usual fallbacks behind it for models that name their faces differently.
+ */
+const TILE_FACES = ['side', 'all', 'top', 'north', 'end', 'particle'];
+
+const patternCache = new Map<string, Promise<string | null>>();
+
+/**
+ * One material's texture as a data URI, ready to tile as a CSS background.
+ *
+ * Cropped to the first frame rather than used as the file stands: an animated
+ * texture is a vertical strip of frames, and tiling the strip would repeat a
+ * column of every frame at once instead of the block. Sixteen pixels square
+ * either way, so the caller supplies the scale and `image-rendering: pixelated`.
+ *
+ * Returns null for a material with no drawable texture, which is the caller's
+ * cue to leave the backdrop plain rather than draw a broken one.
+ */
+export function tilePatternUrl(item: string | undefined): Promise<string | null> {
+	const key = materialKey(item);
+	const existing = patternCache.get(key);
+
+	if (existing) {
+		return existing;
+	}
+
+	const promise = buildPattern(item);
+
+	patternCache.set(key, promise);
+
+	return promise;
+}
+
+async function buildPattern(item: string | undefined): Promise<string | null> {
+	const registry = await loadRegistry();
+	const render = renderFor(registry, item);
+
+	if (!render) {
+		return null;
+	}
+
+	const path =
+		render.kind === 'flat'
+			? render.layers?.[0]
+			: TILE_FACES.map((face) => render.textures?.[face]).find(Boolean);
+
+	if (!path) {
+		return null;
+	}
+
+	const image = await loadTexture(path.replace(/^minecraft:/, ''));
+
+	if (!image?.width) {
+		return null;
+	}
+
+	const canvas = document.createElement('canvas');
+	canvas.width = image.width;
+	canvas.height = image.width;
+
+	const ctx = canvas.getContext('2d');
+
+	if (!ctx) {
+		return null;
+	}
+
+	ctx.imageSmoothingEnabled = false;
+	ctx.drawImage(image, 0, 0, image.width, image.width, 0, 0, image.width, image.width);
+
+	return canvas.toDataURL();
+}
 
 const imageCache = new Map<string, Promise<HTMLImageElement | null>>();
 

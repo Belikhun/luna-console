@@ -95,7 +95,12 @@
 		"servingTelemetry": "serving telemetry; {count} backend(s) reporting",
 		"noHeartbeatSince": "no heartbeat since {ago}; the plugin has stopped reporting",
 		"neverReported": "never reported to the proxy; check the LunaCore config",
-		"responding": "responding; {online}/{max} players"
+		"responding": "responding; {online}/{max} players",
+		"tickCheck": "Tick performance",
+		"tickNotReported": "not reported by this backend",
+		"tickApdex": "apdex {apdex}",
+		"tickMean": "mean {mean}ms",
+		"tickMisery": "misery {misery}%"
 	},
 	"clientUnavailable": "luna daemon is not running on this host; start it with `luna daemon run`, or install the service: `luna daemon service install`",
 	"protocolSkew": "daemon protocol {daemon} does not match this binary ({client}); restart the daemon from the same build",

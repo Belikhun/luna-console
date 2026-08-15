@@ -228,6 +228,21 @@ export async function openStream(path: string, signal?: AbortSignal): Promise<Re
 	});
 }
 
+/**
+ * What one world is holding, as the backend counted it.
+ *
+ * Every counter is nullable because a platform that cannot measure one reports
+ * it absent rather than zero: Pumpkin's sandbox can list a world's entities but
+ * has no way to ask how many chunks are resident, and a zero there would draw an
+ * empty world.
+ */
+export interface BackendWorldStats {
+	name: string;
+	loadedChunks: number | null;
+	tickingEntities: number | null;
+	nonTickingEntities: number | null;
+}
+
 export interface BackendMetrics {
 	onlinePlayers: number;
 	maxPlayers: number;
@@ -242,6 +257,24 @@ export interface BackendMetrics {
 	ramUsagePercent: number;
 	uptimeMillis: number;
 	whitelistEnabled: boolean;
+
+	// Everything below arrives only from a backend running a plugin new enough to
+	// report it, so all of it is optional as well as nullable: `undefined` means
+	// the proxy never sent the field, `null` means it did and the backend had not
+	// measured it. Both render as absent; neither is zero.
+
+	/** Chunks loaded across every world. */
+	loadedChunks?: number | null;
+	tickingEntities?: number | null;
+	nonTickingEntities?: number | null;
+	/** Mean and worst tick over the backend's own window. */
+	tickMeanMillis?: number | null;
+	tickMaxMillis?: number | null;
+	/** 0-1; satisfied plus half the tolerating, over every tick in the window. */
+	apdex?: number | null;
+	/** 0-1; the share of player-time that elapsed during ticks slow enough to feel. */
+	misery?: number | null;
+	worlds?: BackendWorldStats[];
 }
 
 export interface BackendCard {

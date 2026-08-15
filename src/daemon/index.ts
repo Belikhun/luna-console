@@ -141,6 +141,14 @@ export async function runDaemon(): Promise<void> {
 	const { ensureHealthSampler } = await import("./health");
 	const { ensureUpgradeWatcher } = await import("./upgrade");
 
+	// before the sampler, not after: the recorder drops observations until its
+	// store is loaded, and the first health sample lands immediately
+	if (dcfg.mode === "primary") {
+		const { ensureUptimeRecorder } = await import("./uptime");
+
+		await ensureUptimeRecorder();
+	}
+
 	// both roles report their own machine's health; a follower's rides the
 	// heartbeat up to the primary, which is where the console reads the fleet
 	ensureHealthSampler();
@@ -200,6 +208,14 @@ export async function runDaemon(): Promise<void> {
 
 		local.stop(true);
 		cluster?.stop(true);
+
+		// the uptime store only reaches disk on a timer, so an orderly exit is the
+		// one chance to keep the minutes since the last flush
+		if (dcfg.mode === "primary") {
+			const { flushUptime } = await import("./uptime");
+
+			await flushUptime();
+		}
 
 		try {
 			await unlink(dcfg.socket);

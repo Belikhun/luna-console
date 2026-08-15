@@ -19,6 +19,7 @@ import { diskUsage } from "../core/cleanup";
 import { root } from "../core/config";
 
 import { instanceCpuPct, instanceRssMb, instanceStates, samplerReady } from "./sampler";
+import { observeStates } from "./uptime";
 
 export interface HealthSample {
 	t: number;
@@ -192,6 +193,12 @@ async function sampleOnce(): Promise<void> {
 	if (history.length > MAX_SAMPLES) {
 		history.splice(0, history.length - MAX_SAMPLES);
 	}
+
+	// the long-term record is fed from the same states this sample already
+	// carries, so uptime costs no extra measurement. A follower's own instances
+	// are folded in on the primary when its samples arrive on the heartbeat pong;
+	// on a follower this call is inert, since only the primary keeps the store.
+	observeStates(sample.states, sample.t);
 }
 
 /** Start the host health sampler once per daemon process. */

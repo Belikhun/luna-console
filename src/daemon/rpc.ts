@@ -44,6 +44,8 @@ import * as mcassetsCore from "../core/mcassets";
 import * as packslockCore from "../core/packslock";
 import * as pluginstateCore from "../core/pluginstate";
 import * as pluginsCore from "../core/plugins";
+import * as publicsiteCore from "../core/publicsite";
+import * as uptimeCore from "../core/uptime";
 import * as respackinfoCore from "../core/respackinfo";
 import * as playerlistsCore from "../core/playerlists";
 import * as respacksCore from "../core/respacks";
@@ -64,6 +66,7 @@ import * as providers from "../core/services/providers";
 import * as events from "./events";
 import * as health from "./health";
 import * as upgrade from "./upgrade";
+import * as uptimeRecorder from "./uptime";
 import type { DaemonRow } from "./hub";
 import { daemonName, machineKey } from "./identity";
 import { buildVersion } from "../version";
@@ -979,6 +982,121 @@ export function setDaemonDetailProvider(provider: (name: string) => Promise<unkn
 	daemonDetailProvider = provider;
 }
 
+/**
+ * Every machine's health history, for the charts that combine the fleet.
+ *
+ * Without a hub there is one machine and it is this one. The primary replaces
+ * this with the hub's view, which also holds each follower's history as its
+ * samples arrive on the heartbeat.
+ */
+let fleetHistoryProvider: () => health.HealthSample[][] = () => [health.healthHistory()];
+
+/** Swap in the hub's fleet-wide health histories. */
+export function setFleetHistoryProvider(provider: () => health.HealthSample[][]): void {
+	fleetHistoryProvider = provider;
+}
+
+/**
+ * Assemble the public page's document.
+ *
+ * The projection itself is core's, and pure; this gathers the parts only a
+ * daemon can reach. The fleet's histories live in the hub, the per-instance
+ * metrics in the sampler, and the uptime record in this process's own store.
+ *
+ * Answers `null` when the page is switched off, so a route has one thing to
+ * check rather than repeating the gate.
+ */
+async function publicSnapshot(): Promise<publicsiteCore.PublicSnapshot | null> {
+	const cfg = await configCore.loadCluster();
+
+	if (!publicsiteCore.publicEnabled(cfg)) {
+		return null;
+	}
+
+	const lock = await configCore.loadLock();
+	const listed = publicsiteCore.publicInstances(cfg).map(([name]) => name);
+
+	const rows = ((await sampler.listStatuses()) as { instances: Array<Record<string, unknown>> })
+		.instances;
+
+	const status: publicsiteCore.PublicSnapshotInput["status"] = {};
+	const metrics: publicsiteCore.PublicSnapshotInput["metrics"] = {};
+
+	for (const name of listed) {
+		const row = rows.find((entry) => entry.name === name);
+		const players = row?.players as { online?: number; max?: number } | null | undefined;
+
+		status[name] = {
+			online: row?.state === "running",
+			players: players?.online ?? null,
+			maxPlayers: players?.max ?? null,
+			tps: (row?.tps as number | null) ?? null,
+			uptimeMs: (row?.uptimeMs as number | null) ?? null,
+			cpu: (row?.cpu as number | null) ?? null,
+			// the JVM's own heap rather than the process's resident size: it is what
+			// the server reports about itself and it comes with a real ceiling, which
+			// is what a gauge needs to have a full end
+			rssMb: (row?.heapUsedMb as number | null) ?? null,
+			memMaxMb: (row?.heapMaxMb as number | null) ?? null,
+			chunks: (row?.chunks as number | null) ?? null,
+			tickingEntities: (row?.tickingEntities as number | null) ?? null,
+			nonTickingEntities: (row?.nonTickingEntities as number | null) ?? null,
+			apdex: (row?.apdex as number | null) ?? null,
+			misery: (row?.misery as number | null) ?? null,
+		};
+
+		metrics[name] = sampler.getHistory(name);
+	}
+
+	const fleet = fleetHistoryProvider();
+
+	return publicsiteCore.buildPublicSnapshot({
+		cfg,
+		lock,
+		fleet,
+		metrics,
+		status,
+		uptime: uptimeRecorder.uptimeStore(),
+		machines: fleet.length,
+		bucketMs: health.SAMPLE_INTERVAL_MS,
+		window: PUBLIC_SERIES_POINTS,
+		now: Date.now(),
+	});
+}
+
+/** Points in each public chart; one hour at the health sampler's cadence. */
+const PUBLIC_SERIES_POINTS = 720;
+
+/**
+ * One instance's uptime timeline, for the console.
+ *
+ * Not gated on the public page: this is the operator's view of the same record,
+ * and it is what the instance and machine screens draw. The store lives on the
+ * primary, so a CLI run on a follower gets an empty window rather than a
+ * partial one, which is the honest answer for a record it does not keep.
+ */
+function uptimeSeries(instance: string, days = uptimeCore.RETENTION_DAYS): uptimeCore.UptimeSeries {
+	return uptimeCore.series(uptimeRecorder.uptimeStore(), instance, days, Date.now());
+}
+
+/**
+ * Where an instance's BlueMap webserver answers, for the console's map proxy.
+ *
+ * Returned only for a listed instance: the public route must not become a way
+ * to reach a private instance's map by knowing its name.
+ */
+async function publicMapEndpoint(instance: string): Promise<publicsiteCore.MapEndpoint | null> {
+	const cfg = await configCore.loadCluster();
+
+	if (!publicsiteCore.publicEnabled(cfg) || !publicsiteCore.isPublicInstance(cfg, instance)) {
+		return null;
+	}
+
+	const lock = await configCore.loadLock();
+
+	return publicsiteCore.mapEndpointFor(cfg, lock, instance) ?? null;
+}
+
 /** Every operation the daemon serves, `<module>.<function>`. */
 export const OPS: Record<string, OpSpec> = {
 	// -- state files ---------------------------------------------------------
@@ -1363,6 +1481,13 @@ export const OPS: Record<string, OpSpec> = {
 	"daemon.lunaProblem": { fn: sampler.lunaProblem },
 	"daemon.pushEvent": { fn: events.pushEvent },
 	"daemon.getEvents": { fn: events.getEvents },
+	// -- the public page ------------------------------------------------------
+	// No cfg/lock echo and no instance routing: the snapshot is read-only, and it
+	// is assembled where the whole fleet is visible, which is only ever here.
+	"publicsite.snapshot": { fn: publicSnapshot },
+	"publicsite.mapEndpoint": { fn: publicMapEndpoint },
+	"publicsite.uptimeSeries": { fn: uptimeSeries },
+
 	"daemon.listDaemons": { fn: () => daemonsProvider() },
 	"daemon.daemonDetail": { fn: (name: string) => daemonDetailProvider(name) },
 	"daemon.health": { fn: health.currentHealth },

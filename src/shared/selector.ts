@@ -157,6 +157,9 @@ export interface SelectorServerDraft {
 	mcVersion?: string;
 	/** True when luna only proxies this server and does not manage its files */
 	external?: boolean;
+	/** Show this server on the public page. The fields above are what it is
+	 *  presented with there, which is why the switch lives beside them. */
+	publicListed?: boolean;
 }
 
 export interface SelectorDraft {

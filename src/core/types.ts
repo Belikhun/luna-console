@@ -185,6 +185,9 @@ export interface InstanceConfig {
 	description?: string[];
 	/** Placement in the GUI and click behaviour; absent = not shown */
 	selector?: InstanceSelectorEntry;
+	/** Show this instance on the public page. Absent = not shown. The fields
+	 *  above are what it is presented with, so opting in adds no new copy. */
+	publicListed?: boolean;
 }
 
 /** Persisted registration of a follower daemon (live state comes from the hub). */
@@ -269,6 +272,27 @@ export interface ClusterConfig {
 	 *  the same id; a new id adds a pool. Read through `poolCatalog`/`poolsFor`
 	 *  (core/ports.ts), which merge in the defaults. */
 	portPools?: PortPool[];
+	/** The public page. Absent, or `enabled: false`, and `/public` does not exist. */
+	publicSite?: PublicSiteConfig;
+}
+
+/**
+ * The cluster's public page: what an unauthenticated visitor sees at `/public`,
+ * and at `mc.belikhun.dev` in production.
+ *
+ * Off unless it says otherwise, and an instance is absent from it unless that
+ * instance opts in (`InstanceConfig.publicListed`). Two switches rather than
+ * one, because "publish a page" and "publish this server" are different
+ * decisions and neither should imply the other.
+ */
+export interface PublicSiteConfig {
+	enabled: boolean;
+	/** Address players type into the client, e.g. "mc.belikhun.dev" */
+	address?: string;
+	/** Heading; falls back to the daemon's name */
+	title?: string;
+	/** One line under the heading */
+	tagline?: string;
 }
 
 /** An upstream platform luna can install addons from (core/services/providers.ts). */

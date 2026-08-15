@@ -21,20 +21,26 @@
 	 */
 	let {
 		size = '1.5rem',
-		glyph = '1rem',
+		glyph,
 		round = true
 	}: {
 		/** the plate */
 		size?: string;
-		/** the mark inside it; roughly ⅔ of the plate, as in the artwork */
+		/** the mark inside it; defaults to the ⅔ the artwork draws it at */
 		glyph?: string;
 		/** a circle, as the favicon; false gives the rounded square of the app icon */
 		round?: boolean;
 	} = $props();
+
+	// derived from the plate rather than defaulting to a fixed length: `size` is a
+	// CSS length in whatever unit the caller had, so the proportion is arithmetic
+	// the browser does. A constant default is how a 3rem plate ends up carrying a
+	// 1rem glyph swimming in the middle of it.
+	const inner = $derived(glyph ?? `calc(${size} * 0.667)`);
 </script>
 
 <span class="lunamark" class:round style:width={size} style:height={size}>
-	<BrandIcon mark={LUNA_PLATE_MARK} size={glyph} />
+	<BrandIcon mark={LUNA_PLATE_MARK} size={inner} />
 </span>
 
 <style lang="scss">

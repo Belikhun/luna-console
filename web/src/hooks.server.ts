@@ -27,6 +27,25 @@ import { SESSION_COOKIE } from '$lib/server/session';
  */
 const PUBLIC_ROUTES = new Set(['/login', '/api/auth/session', '/api/auth/bootstrap']);
 
+/**
+ * Subtrees that are ungated in full: the public page and the endpoints it reads.
+ *
+ * A prefix rather than a list because the page has a route per instance and a
+ * catch-all for the map proxy, and an allowlist that has to be edited whenever a
+ * route is added is an allowlist that will eventually be wrong. The gate these
+ * routes carry instead is their own: every one of them refuses unless the
+ * cluster has the public page switched on, and the per-instance ones refuse
+ * unless that instance opted in.
+ */
+const PUBLIC_PREFIXES = ['/public', '/api/public'];
+
+/** Whether a path is in an ungated subtree. */
+function isPublicPath(pathname: string): boolean {
+	return PUBLIC_PREFIXES.some(
+		(prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+	);
+}
+
 export const handle: Handle = async ({ event, resolve }) => {
 	const token = event.cookies.get(SESSION_COOKIE) ?? null;
 
@@ -51,7 +70,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// route.id is null for anything SvelteKit has no route for; static assets
 	// (the fonts, the icon set) and 404s are not the gate's business
-	const gated = event.route.id !== null && !PUBLIC_ROUTES.has(event.url.pathname);
+	const gated =
+		event.route.id !== null &&
+		!PUBLIC_ROUTES.has(event.url.pathname) &&
+		!isPublicPath(event.url.pathname);
 
 	if (gated && !event.locals.account) {
 		if (event.url.pathname.startsWith('/api/')) {

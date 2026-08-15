@@ -705,6 +705,19 @@
 							/>
 						</div>
 
+						<!-- the same name, colour, material and description carry this server
+						     on the public page, which is why the switch for it lives here
+						     rather than on a screen of its own -->
+						<div class="field">
+							<span class="lbl">{t('web.selector.publicPage')}</span>
+							<Toggle
+								checked={selectedServer.publicListed === true}
+								onchange={(checked) =>
+									editServer(selectedName, (server) => (server.publicListed = checked))}
+							/>
+							<span class="hint">{t('web.selector.publicPageHint')}</span>
+						</div>
+
 						<!--
 							{t('web.selector.oneFieldNotA')}
 						-->

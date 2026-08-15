@@ -18,6 +18,8 @@
 		warningZone = 0,
 		compact = false,
 		transition = true,
+		segmented = false,
+		height,
 		width
 	}: {
 		value?: number;
@@ -31,6 +33,18 @@
 		warningZone?: number;
 		compact?: boolean;
 		transition?: boolean;
+		/**
+		 * Draw the track as repeating fixed-width blocks instead of one solid run.
+		 *
+		 * The blocks are a fixed size rather than a fixed count, so how many there
+		 * are follows the width the bar is given and they stay the same size in every
+		 * bar on the page. The fill is still exactly proportional - a block on the
+		 * boundary is partly filled - so this changes how the bar reads, never what
+		 * it says.
+		 */
+		segmented?: boolean;
+		/** Track height; the default is a rule, a taller one reads as a chart. */
+		height?: string;
 		width?: string;
 	} = $props();
 
@@ -51,7 +65,13 @@
 	const rightText = $derived(right === null ? '' : (right ?? `${Math.round(pct)}%`));
 </script>
 
-<div class="pb" class:compact class:noTransition={!transition} style:width={width}>
+<div
+	class="pb"
+	class:compact
+	class:noTransition={!transition}
+	style:width={width}
+	style:--track-h={height}
+>
 	{#if !compact && (left || rightText)}
 		<div class="caption">
 			<span class="left">{left ?? ''}</span>
@@ -59,7 +79,7 @@
 		</div>
 	{/if}
 	{#if compact && left}<span class="inline-left">{left}</span>{/if}
-	<div class="track">
+	<div class="track" class:segmented>
 		{#if warningZone > 0}<div class="zone" style:width="{warningZone}%"></div>{/if}
 		<div class="bar" data-tone={tone} style:width="{pct}%"></div>
 	</div>
@@ -110,11 +130,37 @@
 		text-align: right;
 	}
 
+	// One mask over the whole track, so the background and the fill are cut into
+	// the same blocks by the same rule; masking the fill alone would leave a solid
+	// bar sitting behind a segmented gutter.
+	//
+	// Absolute lengths rather than a share of the width: a block means the same
+	// thing in a narrow bar and a wide one, and the count is simply however many
+	// fit. A percentage-based repeat would silently make the blocks bigger on a
+	// wider panel, which reads as a different scale for the same number.
+	.track.segmented {
+		--seg-width: 0.375rem;
+		--seg-gap: 0.25rem;
+
+		border-radius: 0;
+		mask-image: repeating-linear-gradient(
+			to right,
+			#000 0,
+			#000 var(--seg-width),
+			transparent var(--seg-width),
+			transparent calc(var(--seg-width) + var(--seg-gap))
+		);
+
+		.bar {
+			border-radius: 0;
+		}
+	}
+
 	.track {
 		position: relative;
 		flex: 1;
 		min-width: 2rem;
-		height: 0.5rem;
+		height: var(--track-h, 0.5rem);
 		border-radius: 0.5rem;
 
 		// the track has to read against both the panel and the table row, so it

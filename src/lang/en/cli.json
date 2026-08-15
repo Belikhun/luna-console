@@ -129,7 +129,8 @@
 		"username": "username",
 		"label": "label",
 		"created": "created",
-		"field": "field"
+		"field": "field",
+		"display": "display"
 	},
 	"machines": {
 		"unknown": "unknown machine \"{name}\"; known machines: {known}"
@@ -1628,6 +1629,59 @@
 			"badLevel": "unknown level {level}; known levels are {known}",
 			"none": "the journal has nothing matching that",
 			"truncated": "showing the newest {count} matching entries"
+		}
+	},
+	"public": {
+		"desc": "Public page: whether it is published and which servers it shows",
+		"enabled": "The public page is published",
+		"disabled": "The public page is off",
+		"address": "address",
+		"title": "title",
+		"shown": "shown",
+		"hidden": "hidden",
+		"head": {
+			"visibility": "Public page"
+		},
+		"summary": "{count} server(s) appear on the public page",
+		"noneListedYet": "No server is listed yet; use `luna public show <instance>`",
+		"stillDisabled": "The public page itself is still off; use `luna public enable`",
+		"nowShown": "{name} now appears on the public page",
+		"nowHidden": "{name} no longer appears on the public page",
+		"needInstance": "an instance name is required",
+		"arg": {
+			"instance": "Instance to show or hide"
+		},
+		"opt": {
+			"address": "Address players connect to, e.g. mc.example.com",
+			"title": "Heading shown on the page",
+			"tagline": "One line under the heading"
+		},
+		"enable": {
+			"desc": "Publish the public page"
+		},
+		"disable": {
+			"desc": "Take the public page down"
+		},
+		"show": {
+			"desc": "List an instance on the public page"
+		},
+		"hide": {
+			"desc": "Remove an instance from the public page"
+		}
+	},
+	"uptime": {
+		"desc": "Uptime history per instance",
+		"arg": {
+			"instance": "Instance to report; all of them when omitted"
+		},
+		"opt": {
+			"days": "Days of history to show (default 30)"
+		},
+		"badDays": "--days must be a positive number",
+		"head": {
+			"window": "Last {days} days",
+			"uptime": "Uptime",
+			"stops": "Stops"
 		}
 	}
 }
