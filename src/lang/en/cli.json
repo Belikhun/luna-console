@@ -1012,12 +1012,14 @@
 			"desc": "List every daemon in the cluster with live state",
 			"oldTag": "(old)",
 			"online": "online",
-			"never": "never"
+			"never": "never",
+			"quarantined": "quarantined"
 		},
 		"show": {
 			"desc": "Health, checks and instance memory of one daemon",
 			"offline": "offline",
-			"behindPrimary": "(behind the primary)"
+			"behindPrimary": "(behind the primary)",
+			"quarantineFix": "run `luna daemon upgrade {name}` to bring it back into the cluster"
 		},
 		"upgrade": {
 			"desc": "Upgrade a daemon, from this primary's binary or the GitHub release",
@@ -1031,7 +1033,8 @@
 			"upgrading": "upgrading {name} ({version})…",
 			"unknownBuild": "unknown build",
 			"fromOrigin": "(from the {origin})",
-			"exitNote": "it exits now; the service manager restarts it on the new build"
+			"exitNote": "it exits now; the service manager restarts it on the new build",
+			"quarantined": "this daemon is quarantined: {reason}"
 		},
 		"remove": {
 			"desc": "Remove a follower daemon's registration",

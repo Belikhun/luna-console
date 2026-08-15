@@ -32,12 +32,12 @@ import type { BackendCard } from "../core/services/luna";
 import { sha512File } from "../core/services/download";
 import type { ClusterConfig, PluginsLock } from "../core/types";
 
-import type { DaemonConfig } from "./config";
+import { selfUpgradesAutomatically, type DaemonConfig } from "./config";
 import { installEventForwarder } from "./events";
 import { currentHealth, hostAddresses } from "./health";
 import { ownsInstance } from "./identity";
 import { log } from "./index";
-import { runOp } from "./rpc";
+import { runOp, setLinkQuarantine } from "./rpc";
 import { setLunaTelemetry } from "./sampler";
 import { PROTOCOL_VERSION } from "./server";
 import { tailFollow, type TailHandle } from "./tail";
@@ -165,6 +165,8 @@ interface PrimaryFrame {
 	/** LunaCore cards for this machine's instances, riding the ping */
 	luna?: BackendCard[];
 	lunaIssue?: string;
+	/** Why the primary refused this build, on a "quarantined" frame */
+	reason?: string;
 }
 
 /** Live console tails feeding the primary's tunnel, keyed by stream id. */
@@ -291,20 +293,48 @@ async function applySync(files: Record<string, string>): Promise<void> {
 	}
 }
 
-/** Once per version: pull the primary's binary after a protocol rejection. */
-let recoveryAttempted = "";
+/**
+ * How long before another go at recovering from a protocol mismatch.
+ *
+ * The reconnect loop retries every couple of seconds and each refusal would
+ * otherwise be another attempt, so without this a fleet-wide protocol bump turns
+ * every stranded follower into a machine hammering GitHub twice a second.
+ */
+const RECOVERY_COOLDOWN_MS = 10 * 60 * 1000;
 
+/** When this process last tried to upgrade its way out of a mismatch. */
+let recoveryAt = 0;
+
+/**
+ * Pull a newer build after the primary refused this one's protocol.
+ *
+ * **Never forced.** It used to be, and forcing takes whatever the preferred
+ * channel is serving even when that is the build already running: a follower
+ * whose fix had not been released yet would install its own version again, exit,
+ * reconnect, be refused, and do it all again about every eleven seconds - for as
+ * long as nobody looked. Unforced, a follower with nothing newer to install
+ * stays up and stays quarantined, which is a state the fleet view can show and
+ * an operator can act on.
+ */
 async function recoverFromProtocolMismatch(): Promise<void> {
-	if (recoveryAttempted === buildVersion()) {
+	if (Date.now() - recoveryAt < RECOVERY_COOLDOWN_MS) {
 		return;
 	}
 
-	recoveryAttempted = buildVersion();
+	if (!selfUpgradesAutomatically(dcfg!)) {
+		log(t("daemon.log.protocolMismatchNoAuto"));
+
+		recoveryAt = Date.now();
+
+		return;
+	}
+
+	recoveryAt = Date.now();
 
 	log(t("daemon.log.protocolMismatch"));
 
 	try {
-		const result = await selfUpgrade(true);
+		const result = await selfUpgrade(false);
 
 		log(`upgrading ${result.from} → ${result.to}`);
 	} catch (err) {
@@ -348,6 +378,19 @@ function connect(): void {
 
 		if (frame.t === "registered") {
 			log(`registered with primary "${frame.name}"`);
+			setLinkQuarantine(undefined);
+
+			return;
+		}
+
+		// the primary kept the socket but will not give this build work; it may
+		// push an upgrade down it, and this end tries for one as well, because
+		// which of the two can reach a new binary depends on the platform
+		if (frame.t === "quarantined") {
+			log(t("daemon.log.quarantined", { reason: frame.reason ?? "?" }));
+			setLinkQuarantine(frame.reason ?? t("daemon.log.quarantined", { reason: "?" }));
+
+			void recoverFromProtocolMismatch();
 
 			return;
 		}
@@ -397,8 +440,12 @@ function connect(): void {
 		stopAllTails();
 
 		// the one automatic upgrade: a protocol mismatch means this build can no
-		// longer talk to the primary at all, and reconnecting cannot fix that
+		// longer talk to the primary at all, and reconnecting cannot fix that.
+		// A primary new enough to quarantine instead of closing says so on an open
+		// socket; this is the same fact arriving from one that is not
 		if (event.reason?.includes("protocol mismatch")) {
+			setLinkQuarantine(event.reason);
+
 			void recoverFromProtocolMismatch();
 		}
 

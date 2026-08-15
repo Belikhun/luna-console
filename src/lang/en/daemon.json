@@ -43,7 +43,8 @@
 		"notProbed": "not probed yet",
 		"nothingToProbe": "no running instance to probe on {host}",
 		"unreachable": "unreachable: {names}",
-		"answering": "{count} port(s) answering on {host}"
+		"answering": "{count} port(s) answering on {host}",
+		"quarantinedBeat": "answering, but the link is refused · last beat {ago} ago"
 	},
 	"upgrade": {
 		"noPrimarySource": "primary: this daemon has no primary to upgrade from",
@@ -72,7 +73,9 @@
 			"verified": "{size} downloaded and verified",
 			"swapping": "swapping the binary",
 			"restarting": "{from} → {to}; restarting"
-		}
+		},
+		"autoApplying": "auto-upgrade: installing {version} from the {origin}",
+		"autoFailed": "auto-upgrade deferred: {error}"
 	},
 	"rootNotFound": "cluster root not found; set root in the daemon config, LUNA_ROOT, or run inside the cluster directory",
 	"log": {
@@ -81,7 +84,11 @@
 		"starting": "luna daemon \"{name}\" ({mode}), root {root}",
 		"noToken": "warning: no cluster token configured; followers cannot authenticate",
 		"shuttingDown": "{signal} received, shutting down",
-		"droppingLink": "follower \"{name}\" missed {count} heartbeats; dropping the link"
+		"droppingLink": "follower \"{name}\" missed {count} heartbeats; dropping the link",
+		"autoUpgradeOn": "auto-upgrade on; a newer build is installed as it is found",
+		"autoUpgradeOff": "auto-upgrade off for this daemon (policy: {policy})",
+		"quarantined": "the primary refused this build: {reason}",
+		"protocolMismatchNoAuto": "protocol mismatch, but auto-upgrade is off; this daemon stays quarantined until upgraded"
 	},
 	"sampler": {
 		"servingTelemetry": "serving telemetry; {count} backend(s) reporting",
@@ -90,5 +97,13 @@
 		"responding": "responding; {online}/{max} players"
 	},
 	"clientUnavailable": "luna daemon is not running on this host; start it with `luna daemon run`, or install the service: `luna daemon service install`",
-	"protocolSkew": "daemon protocol {daemon} does not match this binary ({client}); restart the daemon from the same build"
+	"protocolSkew": "daemon protocol {daemon} does not match this binary ({client}); restart the daemon from the same build",
+	"invalidAutoUpgrade": "invalid autoUpgrade policy: {value} (expected {allowed})",
+	"quarantinedOp": "daemon \"{name}\" is quarantined and cannot be given work: {reason}",
+	"quarantine": {
+		"protocol": "protocol mismatch: hub {hub}, follower {follower}",
+		"ahead": "follower \"{name}\" speaks a newer protocol than this primary; upgrade the primary instead",
+		"pushing": "pushing a recovery upgrade to quarantined follower \"{name}\"",
+		"pushFailed": "recovery upgrade for \"{name}\" did not complete: {error}"
+	}
 }

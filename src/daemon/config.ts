@@ -15,6 +15,26 @@ import { DATA_DIR } from "../core/config";
 
 export type DaemonMode = "primary" | "follower";
 
+/**
+ * How much of an upgrade a daemon is allowed to do without being asked.
+ *
+ * The default is deliberately asymmetric. A follower is a machine nobody logs
+ * into, and one left behind across a protocol bump cannot be reached by the
+ * primary at all, so it has to be able to fix itself; the primary is the machine
+ * an operator is looking at, serves the console, and is the source the fleet
+ * upgrades *from*, so it restarts when somebody says to.
+ *
+ * "off" also stops the primary pushing a recovery upgrade at a follower it has
+ * quarantined: an operator who turned this off means it, and the fleet view now
+ * says why the machine is stuck rather than leaving it to be discovered.
+ */
+export type AutoUpgradePolicy = "off" | "followers" | "all";
+
+const AUTO_UPGRADE_POLICIES: AutoUpgradePolicy[] = ["off", "followers", "all"];
+
+/** What a config that says nothing gets. */
+export const DEFAULT_AUTO_UPGRADE: AutoUpgradePolicy = "followers";
+
 /** TCP listener a primary daemon opens for its followers. */
 export interface DaemonListen {
 	host: string;
@@ -39,6 +59,8 @@ export interface DaemonConfig {
 	 *  advertised to the primary for proxy routing (default: what the primary
 	 *  sees on the socket) */
 	host?: string;
+	/** How much this daemon upgrades on its own (default: "followers") */
+	autoUpgrade?: AutoUpgradePolicy;
 	/** CurseForge API key (console.curseforge.com); the curseforge provider
 	 *  reports itself unavailable without one */
 	curseforgeApiKey?: string;
@@ -146,6 +168,52 @@ function discoverRoot(): string | undefined {
 	return undefined;
 }
 
+/**
+ * Read the auto-upgrade policy, refusing a value it does not recognise.
+ *
+ * A typo here would otherwise fall through to the default and quietly leave a
+ * machine upgrading itself when the config file says it should not.
+ */
+function parseAutoUpgrade(value: string | undefined): AutoUpgradePolicy {
+	if (value === undefined) {
+		return DEFAULT_AUTO_UPGRADE;
+	}
+
+	if (!AUTO_UPGRADE_POLICIES.includes(value as AutoUpgradePolicy)) {
+		throw new Error(
+			t("daemon.invalidAutoUpgrade", { value, allowed: AUTO_UPGRADE_POLICIES.join(", ") }),
+		);
+	}
+
+	return value as AutoUpgradePolicy;
+}
+
+/**
+ * Whether this daemon applies an upgrade it found on its own, with nobody
+ * asking. Never true for an interactive `luna daemon upgrade`, which is a
+ * decision rather than a policy.
+ */
+export function selfUpgradesAutomatically(config: DaemonConfig): boolean {
+	const policy = config.autoUpgrade ?? DEFAULT_AUTO_UPGRADE;
+
+	if (policy === "all") {
+		return true;
+	}
+
+	return policy === "followers" && config.mode === "follower";
+}
+
+/**
+ * Whether this primary pushes an upgrade at a follower it had to quarantine.
+ *
+ * Separate from the question above because the two are genuinely different: the
+ * default is a primary that does not restart itself but does rescue a follower
+ * that can no longer be reached any other way.
+ */
+export function pushesRecoveryUpgrades(config: DaemonConfig): boolean {
+	return (config.autoUpgrade ?? DEFAULT_AUTO_UPGRADE) !== "off";
+}
+
 /** Parse "host:port" or bare "port" into a listen spec. */
 function parseListen(value: string): DaemonListen {
 	const colon = value.lastIndexOf(":");
@@ -160,7 +228,8 @@ function parseListen(value: string): DaemonListen {
 /**
  * Resolve the daemon's configuration: JSON config file first, then environment
  * overrides (`LUNA_MODE`, `LUNA_DAEMON_NAME`, `LUNA_ROOT`, `LUNA_SOCKET`,
- * `LUNA_LISTEN`, `LUNA_TOKEN`, `LUNA_PRIMARY_ADDRESS`), then defaults. A
+ * `LUNA_LISTEN`, `LUNA_TOKEN`, `LUNA_PRIMARY_ADDRESS`, `LUNA_AUTO_UPGRADE`),
+ * then defaults. A
  * missing file plus a discoverable cluster root means "primary with defaults",
  * so a single-host setup needs no configuration at all.
  */
@@ -216,6 +285,7 @@ export async function resolveDaemonConfig(): Promise<DaemonConfig> {
 		token: process.env.LUNA_TOKEN ?? file.token,
 		primary: primaryAddress ? { address: primaryAddress } : undefined,
 		host: process.env.LUNA_HOST ?? file.host,
+		autoUpgrade: parseAutoUpgrade(process.env.LUNA_AUTO_UPGRADE ?? file.autoUpgrade),
 		curseforgeApiKey: process.env.LUNA_CURSEFORGE_KEY ?? file.curseforgeApiKey,
 		configFile,
 	};

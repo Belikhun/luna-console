@@ -346,7 +346,7 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 			return (body?.daemons ?? []).map((daemon) => ({
 				group: 'web.searchGroups.machines',
 				label: String(daemon.name),
-				detail: `${daemon.mode} · ${daemon.online ? 'online' : 'offline'}${daemon.host ? ` · ${daemon.host}` : ''}`,
+				detail: `${daemon.mode} · ${daemon.state ?? (daemon.online ? 'online' : 'offline')}${daemon.host ? ` · ${daemon.host}` : ''}`,
 				href: `/machines/${encodeURIComponent(daemon.name)}`,
 				icon: 'hardDrive'
 			}));

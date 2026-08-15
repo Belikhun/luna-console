@@ -1279,7 +1279,8 @@
 		"cancel": "Hủy",
 		"remove": "Gỡ",
 		"eachOfTheseTakes": "Mỗi máy sẽ lấy binary của primary nếu có, còn không thì lấy bản phát hành GitHub, rồi thoát để dịch vụ khởi động nó lại trên bản mới. Chúng ngoại tuyến trong chốc lát rồi tự kết nối lại.",
-		"alreadyOnThisBuild": "- đang ở đúng bản dựng này, nó sẽ được cài lại"
+		"alreadyOnThisBuild": "- đang ở đúng bản dựng này, nó sẽ được cài lại",
+		"quarantined": "Bị cách ly"
 	},
 	"perms": {
 		"creatingGroup": "Đang tạo nhóm {name}…",
@@ -1846,7 +1847,8 @@
 		"cancel": "Hủy",
 		"upgrade": "Nâng cấp",
 		"byConnectingAgain": "bằng cách kết nối lại.",
-		"remove": "Gỡ"
+		"remove": "Gỡ",
+		"quarantineFix": "Máy vẫn trả lời nhịp tim nhưng bị từ chối mọi việc khác; nâng cấp daemon là cách đưa nó trở lại."
 	},
 	"packDetail": {
 		"testing": "Đang kiểm tra {url}…",

@@ -76,7 +76,9 @@ export async function DELETE({ params }) {
 
 	const live = (await listDaemons()).find((row) => row.name === name);
 
-	if (live?.online) {
+	// a quarantined daemon still holds a socket and would re-register on its next
+	// reconnect, so "connected" here has to mean the link, not its usefulness
+	if (live && live.state !== 'offline') {
 		throw error(409, `daemon "${name}" is currently connected; stop it first`);
 	}
 

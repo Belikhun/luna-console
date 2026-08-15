@@ -16,6 +16,7 @@
 
 import type { ProgressReporter } from "../core/progress";
 import { t } from "../shared/i18n";
+import { PROTOCOL_VERSION } from "../shared/protocol";
 import type {
 	AvailableRuntime,
 	ClusterConfig,
@@ -795,6 +796,25 @@ async function inspectInstanceDirRouted(
 	return await adminCore.inspectInstanceDir(dir);
 }
 
+/** Set while this daemon's primary is refusing its build; see `linkQuarantine`. */
+let quarantineReason: string | undefined;
+
+/**
+ * Record that the primary has quarantined this daemon, or that it has not.
+ *
+ * Called by the follower link. It is what lets `luna daemon list`, run in a
+ * shell on the stranded machine itself, say why nothing is happening; the hub's
+ * own view of the same fact never reaches a daemon it will not talk to.
+ */
+export function setLinkQuarantine(reason: string | undefined): void {
+	quarantineReason = reason;
+}
+
+/** Why this daemon's primary is refusing it, if it is. */
+export function linkQuarantine(): string | undefined {
+	return quarantineReason;
+}
+
 /**
  * Provider behind `daemon.listDaemons`; replaced by the hub on a primary.
  * Without a hub there are no live links to report, so this daemon describes
@@ -804,15 +824,18 @@ let daemonsProvider: () => Promise<unknown> = async () => {
 	const cfg = await configCore.loadCluster();
 	const self = daemonName();
 	const own = health.currentHealth() ?? null;
+	const refused = linkQuarantine();
 
 	const selfRow: DaemonRow = {
 		name: self,
 		mode: "follower",
 		host: null,
 		addresses: health.hostAddresses(),
-		online: true,
+		online: !refused,
+		state: refused ? "quarantined" : "online",
+		quarantine: refused ?? null,
 		version: buildVersion(),
-		protocol: null,
+		protocol: PROTOCOL_VERSION,
 		outdated: false,
 		root: configCore.root(),
 		connectedAt: null,
@@ -836,6 +859,8 @@ let daemonsProvider: () => Promise<unknown> = async () => {
 			host: reg.host,
 			addresses: reg.addresses ?? [],
 			online: false,
+			state: "offline",
+			quarantine: null,
 			version: reg.version ?? null,
 			protocol: null,
 			outdated: false,

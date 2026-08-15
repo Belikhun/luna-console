@@ -1012,12 +1012,14 @@
 			"desc": "Liệt kê mọi daemon trong cụm kèm trạng thái trực tiếp",
 			"oldTag": "(cũ)",
 			"online": "trực tuyến",
-			"never": "chưa từng"
+			"never": "chưa từng",
+			"quarantined": "bị cách ly"
 		},
 		"show": {
 			"desc": "Sức khỏe, các kiểm tra và bộ nhớ instance của một daemon",
 			"offline": "ngoại tuyến",
-			"behindPrimary": "(cũ hơn primary)"
+			"behindPrimary": "(cũ hơn primary)",
+			"quarantineFix": "chạy `luna daemon upgrade {name}` để đưa nó trở lại cụm"
 		},
 		"upgrade": {
 			"desc": "Nâng cấp một daemon, từ binary của primary hoặc bản phát hành GitHub",
@@ -1031,7 +1033,8 @@
 			"upgrading": "đang nâng cấp {name} ({version})…",
 			"unknownBuild": "bản dựng không rõ",
 			"fromOrigin": "(từ {origin})",
-			"exitNote": "nó sẽ thoát ngay; trình quản lý dịch vụ khởi động lại nó trên bản mới"
+			"exitNote": "nó sẽ thoát ngay; trình quản lý dịch vụ khởi động lại nó trên bản mới",
+			"quarantined": "daemon này đang bị cách ly: {reason}"
 		},
 		"remove": {
 			"desc": "Gỡ đăng ký của một daemon follower",

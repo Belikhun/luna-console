@@ -28,7 +28,15 @@
 	import { Notify } from '$lib/notifications.svelte';
 	import { jobFlash } from '$lib/jobflash';
 	import DistributionBar from '$lib/components/DistributionBar.svelte';
-	import { checksFailed, checksPassed, diskPct, fmtGb, latencyTone, memPct } from '$lib/daemons';
+	import {
+		checksFailed,
+		checksPassed,
+		diskPct,
+		fmtGb,
+		latencyTone,
+		linkBadge,
+		memPct
+	} from '$lib/daemons';
 	import { consumersLine, poolsPayload } from '$lib/pools';
 	import type { PortPool } from '$core/types';
 	import type { InfoCell } from '$lib/components/grid';
@@ -357,6 +365,7 @@
 	const health = $derived(row?.health ?? null);
 	const failed = $derived(row ? checksFailed(row) : 0);
 	const passed = $derived(row ? checksPassed(row) : 0);
+	const badge = $derived(row ? linkBadge(row) : { state: 'unknown', label: 'Unknown' });
 
 	const summaryCells: InfoCell[] = $derived.by(() => {
 		if (!row) {
@@ -623,25 +632,26 @@
 {:else if row}
 	<PageHeader title={row.name}>
 		{#snippet extra()}
-			<StatusBadge
-				state={row!.online ? (failed ? 'warning' : 'ok') : 'stopped'}
-				label={row!.online ? (failed ? 'Degraded' : 'Online') : 'Offline'}
-			/>
+			<StatusBadge state={badge.state} label={badge.label} />
 		{/snippet}
 		{#snippet actions()}
 			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="daemon-detail" />
 			<Btn icon="rotate" loading={checking} onclick={() => checkUpgrade(true)}>
 				{t('web.machineDetail.checkForUpdates')}
 			</Btn>
+			<!-- a quarantined daemon keeps this: the upgrade is the one op its link
+			     still accepts, and the only way it rejoins the cluster -->
 			<Btn
 				icon="download"
-				disabled={!row!.online}
-				title={!row!.online ? 'the daemon is not connected' : undefined}
+				disabled={row!.state === 'offline'}
+				title={row!.state === 'offline'
+					? 'the daemon is not connected'
+					: (row!.quarantine ?? undefined)}
 				onclick={() => (upgradeOpen = true)}
 			>
 				{upgradeCheck?.offer ? 'Upgrade daemon' : 'Reinstall binary'}
 			</Btn>
-			{#if row!.mode === 'follower' && !row!.online}
+			{#if row!.mode === 'follower' && row!.state === 'offline'}
 				<Btn variant="danger" icon="trash" onclick={() => (removeOpen = true)}>
 					{t('web.machineDetail.removeRegistration')}
 				</Btn>
@@ -651,10 +661,7 @@
 
 	<OverviewBar title={t('web.machineDetail.machineOverview')}>
 		<OverviewCell label={t('web.machineDetail.status')}>
-			<StatusBadge
-				state={row.online ? (failed ? 'warning' : 'ok') : 'stopped'}
-				label={row.online ? (failed ? 'Degraded' : 'Online') : 'Offline'}
-			/>
+			<StatusBadge state={badge.state} label={badge.label} />
 		</OverviewCell>
 		<OverviewCell
 			label="Health checks ({row.checks.length})"
@@ -698,7 +705,12 @@
 
 	<div class="tabbody">
 		{#if tab === 'details'}
-			{#if !row.online}
+			{#if row.quarantine}
+				<Flash kind="error">
+					{row.quarantine}. {t('web.machineDetail.quarantineFix')}
+				</Flash>
+				<div class="gap"></div>
+			{:else if !row.online}
 				<Flash kind="warning">
 					{t('web.machineDetail.thisDaemonIsNot')}
 				</Flash>
@@ -708,10 +720,7 @@
 				<InfoGrid cells={summaryCells}>
 					{#snippet custom(cell)}
 						{#if cell.id === 'state'}
-							<StatusBadge
-								state={row!.online ? 'ok' : 'stopped'}
-								label={row!.online ? 'Connected' : 'Disconnected'}
-							/>
+							<StatusBadge state={badge.state} label={badge.label} />
 						{:else if cell.id === 'version'}
 							<span class="mono">{row!.version ?? '–'}</span>
 							{#if row!.outdated}

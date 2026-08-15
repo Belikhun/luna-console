@@ -319,24 +319,67 @@ let watchTimer: ReturnType<typeof setTimeout> | undefined;
 const WATCH_DELAY_MS = 60_000;
 
 /**
- * Keep the upgrade answer warm in the background, on the same cadence the
- * GitHub cache expires at. Nothing is ever applied here; a daemon upgrades
- * because somebody asked it to, never because a release appeared.
+ * How soon an automatic upgrade that declined to run is tried again. The common
+ * reason is a job in flight, which is minutes away from finishing, not hours.
  */
-export function ensureUpgradeWatcher(): void {
+const AUTO_RETRY_MS = 15 * 60 * 1000;
+
+/**
+ * Apply an upgrade nobody asked for.
+ *
+ * **Never forced.** Forcing takes whatever the preferred channel is serving even
+ * when it is the build already running, which as an automatic action is a loop:
+ * install the same binary, exit, restart, find it again. Unforced means an
+ * automatic upgrade can only ever move this daemon onto a different build, and a
+ * machine with nothing newer available simply stays where it is and says so.
+ *
+ * @return true when the swap landed and the process is on its way out
+ */
+async function applyAutomatic(offer: UpgradeOffer): Promise<boolean> {
+	log(t("daemon.upgrade.autoApplying", { version: offer.version, origin: offer.origin }));
+
+	try {
+		await selfUpgrade(false);
+
+		return true;
+	} catch (err) {
+		log(t("daemon.upgrade.autoFailed", { error: err instanceof Error ? err.message : String(err) }));
+
+		return false;
+	}
+}
+
+/**
+ * Keep the upgrade answer warm in the background, on the same cadence the GitHub
+ * cache expires at.
+ *
+ * With `autoApply` the same tick also installs what it finds; without it, this
+ * only answers "what could this daemon upgrade to", and applying stays a
+ * decision somebody makes. Which of the two a daemon gets is the
+ * `autoUpgrade` policy in its config, resolved by the caller.
+ */
+export function ensureUpgradeWatcher(autoApply = false): void {
 	if (watchTimer) {
 		return;
 	}
 
 	const tick = async (): Promise<void> => {
+		let nextMs = GITHUB_TTL_MS;
+
 		try {
-			await checkUpgrade(true);
+			const check = await checkUpgrade(true);
+
+			// `check.offer` is the unforced answer: present only when a channel has
+			// a build this daemon is not already running
+			if (autoApply && check.offer && !(await applyAutomatic(check.offer))) {
+				nextMs = AUTO_RETRY_MS;
+			}
 		} catch {
 			// checkUpgrade folds its failures into notes; this catch is for the
 			// unexpected kind, which must not take the timer down with it
 		}
 
-		watchTimer = setTimeout(() => void tick(), GITHUB_TTL_MS);
+		watchTimer = setTimeout(() => void tick(), nextMs);
 	};
 
 	watchTimer = setTimeout(() => void tick(), WATCH_DELAY_MS);
@@ -456,6 +499,9 @@ export interface UpgradeResult {
 	restarting: boolean;
 }
 
+/** An upgrade already running, so two callers cannot race two swaps of one file. */
+let applying: Promise<UpgradeResult> | undefined;
+
 /**
  * Replace this daemon's binary with the best offer and exit.
  *
@@ -463,11 +509,35 @@ export interface UpgradeResult {
  * process keeps the inode it started from, so the swap cannot leave a
  * half-written executable behind for the service manager to start.
  *
- * The four steps are weighted by how long they really take: the download is
- * the whole wait, and it reports per chunk, so the caller's bar moves while the
- * bytes land rather than sitting still for a minute.
+ * A second caller arriving mid-upgrade joins the first rather than starting its
+ * own: there are now three things that can ask for one (an operator, this
+ * daemon's own watcher, and a primary rescuing a quarantined follower), they all
+ * write the same staging path, and two of those overlapping would rename a
+ * half-written file over the binary the service manager is about to start. The
+ * joiner sees no progress frames, which is the right trade against that.
  */
 export async function selfUpgrade(force = false, reporter?: ProgressReporter): Promise<UpgradeResult> {
+	if (applying) {
+		return await applying;
+	}
+
+	applying = runUpgrade(force, reporter);
+
+	try {
+		return await applying;
+	} finally {
+		applying = undefined;
+	}
+}
+
+/**
+ * The upgrade itself.
+ *
+ * The four steps are weighted by how long they really take: the download is the
+ * whole wait, and it reports per chunk, so the caller's bar moves while the
+ * bytes land rather than sitting still for a minute.
+ */
+async function runUpgrade(force: boolean, reporter?: ProgressReporter): Promise<UpgradeResult> {
 	const progress = reporter ?? new ProgressReporter("self-upgrade");
 
 	const preflight = progress.child(t("daemon.upgrade.steps.preflight"), 1);

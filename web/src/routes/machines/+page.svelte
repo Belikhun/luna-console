@@ -18,7 +18,15 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { jobFlash } from '$lib/jobflash';
-	import { checksFailed, checksPassed, diskPct, fmtGb, latencyTone, memPct } from '$lib/daemons';
+	import {
+		checksFailed,
+		checksPassed,
+		diskPct,
+		fmtGb,
+		latencyTone,
+		linkBadge,
+		memPct
+	} from '$lib/daemons';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import type { DaemonRow, UpgradeResult } from '$client/daemon';
@@ -39,7 +47,16 @@
 			options: [
 				{ value: 'any', label: t('web.machines.anyState') },
 				{ value: 'online', label: t('web.machines.online'), match: (row) => row.online },
-				{ value: 'offline', label: t('web.machines.offline'), match: (row) => !row.online },
+				{
+					value: 'offline',
+					label: t('web.machines.offline'),
+					match: (row) => row.state === 'offline'
+				},
+				{
+					value: 'quarantined',
+					label: t('web.machines.quarantined'),
+					match: (row) => row.state === 'quarantined'
+				},
 				{
 					value: 'degraded',
 					label: t('web.machines.degraded'),
@@ -78,13 +95,15 @@
 			{
 				label: row.outdated ? 'Upgrade daemon' : 'Reinstall binary',
 				icon: 'download',
-				disabled: row.mode !== 'follower' || !row.online,
+				// a quarantined daemon is deliberately still upgradable: the upgrade
+				// is the one thing it will still accept, and the only way back
+				disabled: row.mode !== 'follower' || row.state === 'offline',
 				hint:
 					row.mode !== 'follower'
 						? 'the primary is the source of the binary'
-						: !row.online
+						: row.state === 'offline'
 							? 'the daemon is not connected'
-							: undefined,
+							: (row.quarantine ?? undefined),
 				action: () => goto(`/machines/${row.name}`)
 			},
 			{ separator: true },
@@ -105,13 +124,14 @@
 				label: t('web.machines.removeRegistration'),
 				icon: 'trash',
 				color: 'danger',
-				// the primary is not a registration, and a live follower would just
-				// re-register on its next heartbeat
-				disabled: row.mode !== 'follower' || row.online || row.instances.length > 0,
+				// the primary is not a registration, and a follower holding a link -
+				// quarantined or not - would just re-register on its next reconnect
+				disabled:
+					row.mode !== 'follower' || row.state !== 'offline' || row.instances.length > 0,
 				hint:
 					row.mode !== 'follower'
 						? 'this is the primary daemon, not a registration'
-						: row.online
+						: row.state !== 'offline'
 							? 'the daemon is connected; stop it first'
 							: row.instances.length > 0
 								? `it still owns ${row.instances.join(', ')}`
@@ -272,12 +292,16 @@
 	const selRows = $derived(daemons.filter((row) => selected.has(row.name)));
 
 	/**
-	 * A daemon can be handed an upgrade when it is a connected follower: the
+	 * A daemon can be handed an upgrade when it is a follower with a link: the
 	 * primary is the source of the binary, and an offline follower has no link to
 	 * forward the request down.
+	 *
+	 * A quarantined one counts. Its link is refused for everything else, but the
+	 * upgrade op is the frame both builds still agree on, and it is the only way
+	 * that machine rejoins the cluster.
 	 */
 	function upgradable(row: DaemonRow): boolean {
-		return row.mode === 'follower' && row.online;
+		return row.mode === 'follower' && row.state !== 'offline';
 	}
 
 	const selUpgradable = $derived(selRows.filter(upgradable));
@@ -394,11 +418,8 @@
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'state'}
-				{@const failed = checksFailed(row)}
-				<StatusBadge
-					state={row.online ? (failed ? 'warning' : 'ok') : 'stopped'}
-					label={row.online ? (failed ? 'Degraded' : 'Online') : 'Offline'}
-				/>
+				{@const badge = linkBadge(row)}
+				<StatusBadge state={badge.state} label={badge.label} />
 			{:else if col === 'name'}
 				<a href="/machines/{row.name}" onclick={(event) => event.stopPropagation()}>
 					<b>{row.name}</b>

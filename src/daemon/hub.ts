@@ -24,7 +24,7 @@ import { ProgressReporter } from "../core/progress";
 import type { ClusterConfig, DaemonRegistration } from "../core/types";
 import { applySnapshot } from "../shared/progressMirror";
 
-import type { DaemonConfig } from "./config";
+import { pushesRecoveryUpgrades, type DaemonConfig } from "./config";
 import { daemonEventKey, getEvents, pushEvent, type ClusterEvent } from "./events";
 import {
 	currentHealth,
@@ -111,6 +111,9 @@ interface FollowerLink {
 	root: string;
 	version?: string;
 	protocol?: number;
+	/** Why this link is refused for ordinary work; unset on a healthy one. The
+	 *  socket is kept open anyway, so an upgrade can still be pushed down it. */
+	quarantine?: string;
 	connectedAt: number;
 	/** Daemon process start on the follower's own clock */
 	startedAt?: number;
@@ -132,7 +135,16 @@ export interface DaemonRow {
 	host: string | null;
 	/** Every non-loopback IPv4 the daemon reported for itself */
 	addresses: string[];
+	/**
+	 * Whether this daemon can be given work. False for a quarantined one: the
+	 * socket is up, but the two ends do not agree on what an op looks like, so
+	 * anything routed there would be answered by a build reading it differently.
+	 */
 	online: boolean;
+	/** Connected and usable, connected but refused, or not connected at all */
+	state: "online" | "quarantined" | "offline";
+	/** Why the link is quarantined, one line; null when it is not */
+	quarantine: string | null;
 	/** Build identity, e.g. "1.0.0+6ee20ac"; what an upgrade changes */
 	version: string | null;
 	/** Local API revision; what refuses a mismatched client or follower */
@@ -240,6 +252,13 @@ function scheduleBroadcast(): void {
 			const frame = JSON.stringify({ t: "sync", files });
 
 			for (const link of followers.values()) {
+				// a quarantined follower is deliberately left on the state it had
+				// when the link was last good: it is a build that reads these files
+				// differently, and the machine is not being given work anyway
+				if (link.quarantine) {
+					continue;
+				}
+
 				link.ws.send(frame);
 			}
 		})();
@@ -433,6 +452,22 @@ function followerChecks(link: FollowerLink | undefined, registered: DaemonRegist
 		];
 	}
 
+	// a quarantined follower still answers heartbeats and is still probed, so the
+	// rest of the picture is real; only the link itself is broken, and naming the
+	// mismatch is the whole point of showing the machine at all
+	if (link.quarantine) {
+		return [
+			{ name: t("daemon.checks.link"), ok: false, detail: link.quarantine },
+			{
+				name: t("daemon.checks.heartbeat"),
+				ok: link.missed === 0,
+				detail: t("daemon.checks.quarantinedBeat", { ago: agoText(link.lastSeen) }),
+			},
+			reachCheck(link.reach, link.host),
+			resourceCheck(link.health),
+		];
+	}
+
 	const beats: DaemonCheck = {
 		name: t("daemon.checks.heartbeat"),
 		ok: link.missed === 0,
@@ -528,6 +563,8 @@ function primaryRow(cfg: ClusterConfig): DaemonRow {
 		host: hubConfig?.listen ? `${hubConfig.listen.host}:${hubConfig.listen.port}` : null,
 		addresses: hostAddresses(),
 		online: true,
+		state: "online",
+		quarantine: null,
 		version: buildVersion(),
 		protocol: PROTOCOL_VERSION,
 		outdated: false,
@@ -556,13 +593,16 @@ async function listDaemons(): Promise<DaemonRow[]> {
 	for (const name of [...known].sort()) {
 		const link = followers.get(name);
 		const registered = cfg.daemons?.[name];
+		const state = !link ? "offline" : link.quarantine ? "quarantined" : "online";
 
 		rows.push({
 			name,
 			mode: "follower",
 			host: link?.host ?? registered?.host ?? null,
 			addresses: link?.addresses ?? registered?.addresses ?? [],
-			online: !!link,
+			online: state === "online",
+			state,
+			quarantine: link?.quarantine ?? null,
 			version: link?.version ?? registered?.version ?? null,
 			protocol: link?.protocol ?? null,
 			// a follower one build behind still works; the console flags it so
@@ -639,6 +679,15 @@ function resolveRemote(op: string, spec: OpSpec, args: unknown[]): string | unde
 	return owner;
 }
 
+/**
+ * The only ops a quarantined follower is still asked to run.
+ *
+ * Both have been on the wire unchanged since the first release, and both exist
+ * to end the quarantine. Everything else is refused, because an op's shape is
+ * exactly what the two ends have been found to disagree about.
+ */
+const QUARANTINE_OPS = new Set(["daemon.selfUpgrade", "daemon.checkUpgrade"]);
+
 /** Forward one operation to a follower and await its result. */
 function forwardOp(
 	daemon: string,
@@ -652,6 +701,12 @@ function forwardOp(
 		return Promise.reject(new Error(`follower "${daemon}" is not connected`));
 	}
 
+	if (link.quarantine && !QUARANTINE_OPS.has(op)) {
+		return Promise.reject(
+			new Error(t("daemon.quarantinedOp", { name: daemon, reason: link.quarantine })),
+		);
+	}
+
 	const id = `${daemon}:${++requestCounter}`;
 
 	return new Promise<OpResult>((resolve, reject) => {
@@ -659,6 +714,65 @@ function forwardOp(
 
 		link.ws.send(
 			JSON.stringify({ t: "rpc", id, op, args, withProgress: reporter !== undefined }),
+		);
+	});
+}
+
+/** When this hub last pushed a recovery upgrade at each quarantined follower. */
+const recoveryPushes = new Map<string, number>();
+
+/**
+ * A quarantined follower reconnects every couple of seconds, and each attempt
+ * would otherwise be another push; this is what keeps the rescue to one try per
+ * problem rather than a download every reconnect.
+ */
+const RECOVERY_COOLDOWN_MS = 30 * 60 * 1000;
+
+/**
+ * Hand a quarantined follower the upgrade that would end its quarantine.
+ *
+ * This is the one thing a hub does to a follower unprompted, and it exists
+ * because the alternative is a machine nobody can reach: the primary cannot
+ * route work to it, and it has no operator sitting in front of it. The upgrade
+ * op is the frame both builds still agree on, which is what makes it possible at
+ * all.
+ *
+ * Two limits. It only runs when the follower is **behind**; one that is ahead
+ * needs the primary upgraded instead, and handing it an older binary would take
+ * the fleet backwards. And it is never forced, so a follower with nothing newer
+ * to install stays put and stays visibly quarantined, rather than reinstalling
+ * the build it is already running every time it reconnects.
+ */
+function pushRecoveryUpgrade(link: FollowerLink): void {
+	if (!hubConfig || !pushesRecoveryUpgrades(hubConfig)) {
+		return;
+	}
+
+	if (link.protocol !== undefined && link.protocol > PROTOCOL_VERSION) {
+		log(t("daemon.quarantine.ahead", { name: link.name }));
+
+		return;
+	}
+
+	const last = recoveryPushes.get(link.name) ?? 0;
+
+	if (Date.now() - last < RECOVERY_COOLDOWN_MS) {
+		return;
+	}
+
+	recoveryPushes.set(link.name, Date.now());
+
+	log(t("daemon.quarantine.pushing", { name: link.name }));
+	pushEvent(daemonEventKey(link.name), "action", t("daemon.quarantine.pushing", { name: link.name }));
+
+	// a follower that applies this exits immediately, so the call is answered by
+	// a dying socket as often as not; the outcome that matters is the reconnect
+	forwardOp(link.name, "daemon.selfUpgrade", [false]).catch((err: unknown) => {
+		log(
+			t("daemon.quarantine.pushFailed", {
+				name: link.name,
+				error: err instanceof Error ? err.message : String(err),
+			}),
 		);
 	});
 }
@@ -984,11 +1098,18 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 			return;
 		}
 
-		if (frame.protocol !== PROTOCOL_VERSION) {
-			ws.close(1008, `protocol mismatch: hub ${PROTOCOL_VERSION}, follower ${frame.protocol}`);
-
-			return;
-		}
+		// A mismatched protocol used to close the socket here, which was the wrong
+		// half of the problem to solve: the follower is then unreachable by the one
+		// machine able to fix it, and all the fleet view can say is "offline". The
+		// link is kept instead and marked, so the daemon stays visible, keeps
+		// answering heartbeats, and can still be handed the upgrade that ends it.
+		const quarantine =
+			frame.protocol === PROTOCOL_VERSION
+				? undefined
+				: t("daemon.quarantine.protocol", {
+						hub: PROTOCOL_VERSION,
+						follower: frame.protocol ?? "?",
+					});
 
 		const link: FollowerLink = {
 			ws,
@@ -998,6 +1119,7 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 			root: frame.root,
 			version: frame.version,
 			protocol: frame.protocol,
+			quarantine,
 			startedAt: frame.startedAt,
 			connectedAt: Date.now(),
 			lastSeen: Date.now(),
@@ -1015,15 +1137,35 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 
 		await persistRegistration(link);
 
+		// same reason as the primary's own probe at startup: without this the
+		// check reads "not probed yet" until the next 30s round comes around
+		void probeReach(link);
+
+		if (link.quarantine) {
+			// an older build ignores a frame type it does not know, so this is only
+			// read by one new enough to say something useful about it
+			ws.send(
+				JSON.stringify({
+					t: "quarantined",
+					name: hubConfig?.name,
+					protocol: PROTOCOL_VERSION,
+					reason: link.quarantine,
+				}),
+			);
+
+			log(`follower "${link.name}" quarantined: ${link.quarantine}`);
+			pushEvent(daemonEventKey(link.name), "error", link.quarantine);
+
+			pushRecoveryUpgrade(link);
+
+			return;
+		}
+
 		ws.send(JSON.stringify({ t: "registered", name: hubConfig?.name }));
 		await sendSync(link);
 
 		log(`follower "${link.name}" connected from ${link.host} (root ${link.root})`);
 		pushEvent(daemonEventKey(link.name), "state", `connected from ${link.host}`);
-
-		// same reason as the primary's own probe at startup: without this the
-		// check reads "not probed yet" until the next 30s round comes around
-		void probeReach(link);
 
 		return;
 	}

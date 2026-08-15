@@ -380,7 +380,7 @@ export interface InstanceConfig {}
 - Daemon events go into the shared cluster log under the pseudo-instance `daemon:<name>`
   (`daemonEventKey`), never a second log.
 - **Build version ≠ protocol version.** The build version (generated `src/version.ts`: package
-  version + git SHA + build time) is what an upgrade changes; the protocol version is what closes a
+  version + git SHA + build time) is what an upgrade changes; the protocol version is what refuses a
   mismatched link. Report both wherever a daemon is described. The primary serves the binary it is
   itself running (`process.execPath`) at `/files/binary`, and a follower self-upgrades by verified
   download → atomic rename over its own path → exit, so systemd restarts it; never mid-job, never
@@ -388,6 +388,23 @@ export interface InstanceConfig {}
   check, because a follower rejected for protocol skew is exactly the one needing a new binary.
   Self-upgrade refuses outright from a source run: `process.execPath` is the bun interpreter there,
   and overwriting it would take the toolchain with it (`isCompiledBinary()`).
+- **A protocol mismatch quarantines a link; it never closes one.** The hub keeps the socket, marks
+  the follower (`FollowerLink.quarantine`), and still pings and reach-probes it, so the fleet view
+  reports a live machine that has been refused rather than an absent one; the row carries `state`
+  (`online`/`quarantined`/`offline`) and `online` means *usable*, which is why provisioning and
+  removal ask `state`, not `online`. Only `QUARANTINE_OPS` are still forwarded — `daemon.selfUpgrade`
+  and `daemon.checkUpgrade`, the two frames both builds still agree on and the two that end the
+  quarantine — and state sync is withheld, because the build that would receive it reads those files
+  differently. Closing the socket instead is the trap: it strands the follower from the one machine
+  able to fix it, and leaves "offline" as the only thing anybody can be told.
+- **Nothing automatic is ever forced.** `selfUpgrade(force)` takes the preferred channel's build even
+  when that is the build already running, which is a reinstall; as an unattended action that is a
+  loop (install, exit, restart, find it again — the 8 Aug incident, once every eleven seconds for a
+  week). The `autoUpgrade` policy, the follower's mismatch recovery and the hub's rescue push are all
+  unforced, so a machine with nothing newer to install stays put and stays visibly quarantined, which
+  is a state an operator can act on. Forcing stays reserved for somebody typing the command. Both
+  ends also rate-limit (a cooldown on the follower, one push per follower per cooldown on the hub),
+  and `selfUpgrade` joins an in-flight upgrade rather than starting a second swap of the same file.
 - **One binary, and it lives in the cluster root.** `luna setup` installs exactly
   `<root>/.bin/luna`, owned by the service account, and puts that directory on PATH
   (`/etc/profile.d/luna.sh` for login shells, a marked block in the invoking user's
@@ -568,7 +585,8 @@ docker build -t luna .            # the published image (binary + console + JRE 
 
 Daemon config: JSON file (`$LUNA_DAEMON_CONFIG` → `/etc/luna/daemon.json` →
 `~/.config/luna/daemon.json`) with env overrides (`LUNA_MODE`, `LUNA_ROOT`, `LUNA_DAEMON_NAME`,
-`LUNA_SOCKET`, `LUNA_LISTEN`, `LUNA_TOKEN`, `LUNA_PRIMARY_ADDRESS`, `LUNA_HOST`, plus
+`LUNA_SOCKET`, `LUNA_LISTEN`, `LUNA_TOKEN`, `LUNA_PRIMARY_ADDRESS`, `LUNA_HOST`,
+`LUNA_AUTO_UPGRADE` (or `autoUpgrade` in the file: `off` · `followers`, the default · `all`), plus
 `LUNA_WEB_DIR` for a console outside the source tree, `LUNA_CURSEFORGE_KEY` (or `curseforgeApiKey`
 in the file) to unlock the CurseForge provider, and
 `LUNA_RELEASE_REPO`/`LUNA_GITHUB_API`/`LUNA_GITHUB_TOKEN` for the upgrade fallback). A daemon's name

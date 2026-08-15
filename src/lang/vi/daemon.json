@@ -43,7 +43,8 @@
 		"notProbed": "chưa kiểm tra",
 		"nothingToProbe": "không instance nào đang chạy để kiểm tra trên {host}",
 		"unreachable": "không với tới được: {names}",
-		"answering": "{count} cổng đang trả lời trên {host}"
+		"answering": "{count} cổng đang trả lời trên {host}",
+		"quarantinedBeat": "vẫn trả lời, nhưng liên kết bị từ chối · nhịp cuối {ago} trước"
 	},
 	"upgrade": {
 		"noPrimarySource": "primary: daemon này không có primary để nâng cấp từ đó",
@@ -72,7 +73,9 @@
 			"verified": "đã tải và kiểm tra {size}",
 			"swapping": "đang thay binary",
 			"restarting": "{from} → {to}; đang khởi động lại"
-		}
+		},
+		"autoApplying": "tự nâng cấp: đang cài {version} từ {origin}",
+		"autoFailed": "hoãn tự nâng cấp: {error}"
 	},
 	"rootNotFound": "không tìm thấy gốc cụm; đặt root trong cấu hình daemon, LUNA_ROOT, hoặc chạy trong thư mục cụm",
 	"log": {
@@ -81,7 +84,11 @@
 		"starting": "daemon luna \"{name}\" ({mode}), gốc {root}",
 		"noToken": "cảnh báo: chưa cấu hình token cụm; follower không xác thực được",
 		"shuttingDown": "nhận {signal}, đang tắt",
-		"droppingLink": "follower \"{name}\" lỡ {count} nhịp tim; đang bỏ liên kết"
+		"droppingLink": "follower \"{name}\" lỡ {count} nhịp tim; đang bỏ liên kết",
+		"autoUpgradeOn": "đã bật tự nâng cấp; tìm thấy bản mới hơn là cài",
+		"autoUpgradeOff": "daemon này tắt tự nâng cấp (chính sách: {policy})",
+		"quarantined": "primary từ chối bản dựng này: {reason}",
+		"protocolMismatchNoAuto": "lệch giao thức, nhưng tự nâng cấp đang tắt; daemon này bị cách ly cho tới khi được nâng cấp"
 	},
 	"sampler": {
 		"servingTelemetry": "đang phục vụ số liệu; {count} backend đang báo về",
@@ -90,5 +97,13 @@
 		"responding": "đang trả lời; {online}/{max} người chơi"
 	},
 	"clientUnavailable": "daemon luna chưa chạy trên máy này; khởi động bằng `luna daemon run`, hoặc cài dịch vụ: `luna daemon service install`",
-	"protocolSkew": "giao thức daemon {daemon} không khớp binary này ({client}); khởi động lại daemon từ cùng bản dựng"
+	"protocolSkew": "giao thức daemon {daemon} không khớp binary này ({client}); khởi động lại daemon từ cùng bản dựng",
+	"invalidAutoUpgrade": "chính sách autoUpgrade không hợp lệ: {value} (cần {allowed})",
+	"quarantinedOp": "daemon \"{name}\" đang bị cách ly nên không nhận việc: {reason}",
+	"quarantine": {
+		"protocol": "lệch giao thức: hub {hub}, follower {follower}",
+		"ahead": "follower \"{name}\" dùng giao thức mới hơn primary này; hãy nâng cấp primary trước",
+		"pushing": "đang đẩy bản nâng cấp cứu hộ tới follower bị cách ly \"{name}\"",
+		"pushFailed": "nâng cấp cứu hộ cho \"{name}\" chưa hoàn tất: {error}"
+	}
 }

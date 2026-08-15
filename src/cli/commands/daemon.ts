@@ -166,7 +166,11 @@ command({
 			const health = row.health;
 
 			table.push([
-				row.online ? pc.green(Sym.ok) : pc.red(Sym.bad),
+				row.state === "online"
+					? pc.green(Sym.ok)
+					: row.state === "quarantined"
+						? pc.yellow(Sym.bad)
+						: pc.red(Sym.bad),
 				pc.bold(row.name),
 				row.mode,
 				row.host ?? pc.dim("—"),
@@ -178,11 +182,13 @@ command({
 				row.outdated
 					? pc.yellow(`${row.version} ${t("cli.daemon.list.oldTag")}`)
 					: (row.version ?? pc.dim("—")),
-				row.online
+				row.state === "online"
 					? pc.green(t("cli.daemon.list.online"))
-					: row.lastSeen
-						? new Date(row.lastSeen).toLocaleString()
-						: pc.dim(t("cli.daemon.list.never")),
+					: row.state === "quarantined"
+						? pc.yellow(t("cli.daemon.list.quarantined"))
+						: row.lastSeen
+							? new Date(row.lastSeen).toLocaleString()
+							: pc.dim(t("cli.daemon.list.never")),
 			]);
 		}
 
@@ -227,6 +233,10 @@ command({
 
 		if (row.online) {
 			ok(`daemon "${row.name}" · ${row.mode}, ${t("cli.daemon.list.online")}`);
+		} else if (row.quarantine) {
+			warn(`daemon "${row.name}" · ${row.mode}, ${t("cli.daemon.list.quarantined")}`);
+			warn(`          ${row.quarantine}`);
+			info(t("cli.daemon.show.quarantineFix", { name: row.name }));
 		} else {
 			fail(`daemon "${row.name}" · ${row.mode}, ${t("cli.daemon.show.offline")}`);
 		}
@@ -337,8 +347,14 @@ command({
 			throw new Bail(t("cli.daemon.unknown", { name }));
 		}
 
-		if (!row.online) {
+		// a quarantined daemon is the one that most needs this: it is refused for
+		// every other kind of work, and the upgrade is what ends the refusal
+		if (row.state === "offline") {
 			throw new Bail(t("cli.daemon.upgrade.notConnected", { name }));
+		}
+
+		if (row.quarantine) {
+			warn(t("cli.daemon.upgrade.quarantined", { reason: row.quarantine }));
 		}
 
 		if (opts.check) {
@@ -433,7 +449,9 @@ command({
 		const rows = await listDaemons();
 		const live = rows.find((row) => row.name === name);
 
-		if (live?.online) {
+		// a quarantined daemon still holds a socket and would re-register on its
+		// next reconnect, so this asks about the link, not about its usefulness
+		if (live && live.state !== "offline") {
 			throw new Bail(t("cli.daemon.remove.stillConnected", { name }));
 		}
 

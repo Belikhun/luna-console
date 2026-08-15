@@ -1188,7 +1188,8 @@
 		"cancel": "Cancel",
 		"remove": "Remove",
 		"eachOfTheseTakes": "Each of these takes the primary's binary when there is one and the GitHub release otherwise, then exits so its service restarts it on the new build. They go offline for a moment and reconnect on their own.",
-		"alreadyOnThisBuild": "- already on this build, it will be reinstalled"
+		"alreadyOnThisBuild": "- already on this build, it will be reinstalled",
+		"quarantined": "Quarantined"
 	},
 	"packs": {
 		"resourcePacks": "Resource packs",
@@ -2014,7 +2015,8 @@
 		"cancel": "Cancel",
 		"upgrade": "Upgrade",
 		"byConnectingAgain": "by connecting again.",
-		"remove": "Remove"
+		"remove": "Remove",
+		"quarantineFix": "It answers heartbeats but is refused every other kind of work; upgrading the daemon is what brings it back."
 	},
 	"packConfigure": {
 		"theRegistrationTheLunaPack": "The registration the luna-pack proxy plugin reads; saving rewrites the definition and reloads the proxy",

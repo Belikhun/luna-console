@@ -18,7 +18,12 @@ import { clusterPath, ensureDataDir, saveCluster } from "../core/config";
 import { starterCluster } from "../shared/bootstrap";
 import { appendJournal, setJournalMachine, type JournalLevel } from "../core/journal";
 import { configureProviders } from "../core/services/providers";
-import { resolveDaemonConfig, type DaemonConfig } from "./config";
+import {
+	DEFAULT_AUTO_UPGRADE,
+	resolveDaemonConfig,
+	selfUpgradesAutomatically,
+	type DaemonConfig,
+} from "./config";
 import { setDaemonIdentity } from "./identity";
 import { buildHandler, type WsData } from "./server";
 
@@ -140,9 +145,16 @@ export async function runDaemon(): Promise<void> {
 	// heartbeat up to the primary, which is where the console reads the fleet
 	ensureHealthSampler();
 
-	// keeps "what could this daemon upgrade to" answered from memory; the
-	// check itself never applies anything
-	ensureUpgradeWatcher();
+	// keeps "what could this daemon upgrade to" answered from memory, and under
+	// the auto-upgrade policy is also what applies it
+	const autoUpgrade = selfUpgradesAutomatically(dcfg);
+
+	ensureUpgradeWatcher(autoUpgrade);
+	log(
+		autoUpgrade
+			? t("daemon.log.autoUpgradeOn")
+			: t("daemon.log.autoUpgradeOff", { policy: dcfg.autoUpgrade ?? DEFAULT_AUTO_UPGRADE }),
+	);
 
 	if (dcfg.mode === "primary") {
 		if (dcfg.listen) {

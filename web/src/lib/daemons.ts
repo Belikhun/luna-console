@@ -54,6 +54,30 @@ export function latencyTone(ms: number | null): 'accent' | 'warning' | 'danger' 
 	return 'accent';
 }
 
+/**
+ * The badge a daemon's link gets, in one place because three views draw it.
+ *
+ * Quarantined is red rather than amber, and separate from degraded on purpose:
+ * a degraded machine is doing its job with something wrong, a quarantined one is
+ * connected and answering but has been refused the job entirely, so treating the
+ * two alike would hide the more serious of them behind the softer word.
+ */
+export function linkBadge(row: DaemonRow): { state: string; label: string } {
+	if (row.state === 'offline') {
+		return { state: 'stopped', label: 'Offline' };
+	}
+
+	if (row.state === 'quarantined') {
+		return { state: 'error', label: 'Quarantined' };
+	}
+
+	if (checksFailed(row) > 0) {
+		return { state: 'warning', label: 'Degraded' };
+	}
+
+	return { state: 'ok', label: 'Online' };
+}
+
 /** How many of a daemon's checks passed (checks that do not apply do not count). */
 export function checksPassed(row: DaemonRow): number {
 	return row.checks.filter((check) => check.ok === true).length;
