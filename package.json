@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "bun run src/cli/index.ts",
     "build": "bun run scripts/genversion.ts && bun build --compile --minify src/cli/index.ts --outfile dist/luna",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit",
+    "release": "bun run scripts/release.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
