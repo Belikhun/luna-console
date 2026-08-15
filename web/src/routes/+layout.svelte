@@ -7,7 +7,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { browser } from '$app/environment';
+	import { browser, dev } from '$app/environment';
 	import TerminalDrawer from '$lib/components/TerminalDrawer.svelte';
 	import Flashbar from '$lib/components/Flashbar.svelte';
 	import ShellGlyph from '$lib/components/ShellGlyph.svelte';
@@ -146,10 +146,18 @@
 				{ label: t('web.nav.consoleLogs'), href: '/console/logs', icon: 'fileLines' }
 			]
 		},
-		{
-			section: t('web.nav.development'),
-			items: [{ label: t('web.nav.components'), href: '/gallery', icon: 'shapes' }]
-		}
+		// the component gallery is a workbench for building the console, not a way
+		// to operate a cluster, so it only exists in a dev server. `dev` is
+		// resolved at build time, so a production bundle never carries the entry
+		// (the route itself still answers, for anyone who types the path)
+		...(dev
+			? [
+					{
+						section: t('web.nav.development'),
+						items: [{ label: t('web.nav.components'), href: '/gallery', icon: 'shapes' }]
+					}
+				]
+			: [])
 	]);
 
 	/**
@@ -242,7 +250,12 @@
 				<LunaMark size="1.5rem" glyph="1rem" />
 				<span class="dim-sep">|</span>
 				<span class="logo"><Icon name="cube" size="1.125rem" style="solid" /></span>
-				<b>luna</b><span class="dim-sep">|</span><span class="sub">Luna Cluster Console</span>
+				<!-- the name says which console this is: a dev server and the real one
+				     look identical otherwise, and acting on the wrong one is the mistake
+				     worth spending a word of chrome to prevent -->
+				<b class:dev>{dev ? 'luna-dev' : 'luna'}</b><span class="dim-sep">|</span><span
+					class="sub">Luna Cluster Console</span
+				>
 			</a>
 			<GlobalSearch />
 			<div class="region">
@@ -402,6 +415,11 @@
 		&,
 		&:hover {
 			text-decoration: none;
+		}
+
+		// a dev console must not be mistakeable for the production one at a glance
+		b.dev {
+			color: var(--warning);
 		}
 
 		.sub {
