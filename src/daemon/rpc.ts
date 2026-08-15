@@ -180,6 +180,26 @@ async function deployRouted(
 }
 
 /**
+ * Ownership-aware update sweep. The check and the downloads are this daemon's
+ * own work, because the pool lives here; only the deploy phase has instances to
+ * reach, so that is where the routed pair is substituted for core's local one.
+ */
+async function updateRouted(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	opts: {
+		names?: string[];
+		deploy?: boolean;
+		reporter?: ProgressReporter;
+	} = {},
+): Promise<pluginsCore.UpdateOutcome> {
+	return await pluginsCore.updatePlugins(cfg, lock, opts, {
+		deploy: deployRouted,
+		ensurePorts: ensurePortAllocationsRouted,
+	});
+}
+
+/**
  * Ownership-aware data pack deploy, shaped exactly like the plugin deploy
  * above: the local slice runs here, each follower's slice is forwarded whole
  * (the follower mirrors the pool zips it needs first; see follower.ts), and
@@ -1066,6 +1086,12 @@ export const OPS: Record<string, OpSpec> = {
 		reporter: { arg: 3, prop: "reporter" },
 	},
 	"plugins.applyUpdate": { fn: pluginsCore.applyUpdate, lock: 0 },
+	"plugins.update": {
+		fn: updateRouted,
+		cfg: 0,
+		lock: 1,
+		reporter: { arg: 2, prop: "reporter" },
+	},
 	"plugins.pinVersion": { fn: pluginsCore.pinVersion, cfg: 0, lock: 1 },
 	"plugins.ensureVariantForMc": { fn: pluginsCore.ensureVariantForMc, lock: 0 },
 	"plugins.deploy": { fn: deployRouted, cfg: 0, lock: 1, reporter: { arg: 2, prop: "reporter" } },

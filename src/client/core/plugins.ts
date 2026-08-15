@@ -24,9 +24,11 @@ export {
 	unpinVersion,
 } from "../../core/plugins";
 export type {
+	AppliedUpdate,
 	DeployAction,
 	ScanReport,
 	UpdateCandidate,
+	UpdateOutcome,
 	EntryResolution,
 	CompatRow,
 	ResolvedGroup,
@@ -46,6 +48,14 @@ export const checkUpdates = jobCall("plugins.checkUpdates", {
 	kind: "check-updates",
 }) as typeof core.checkUpdates;
 export const applyUpdate = call("plugins.applyUpdate", { lock: 0 }) as typeof core.applyUpdate;
+// check, download and deploy as one operation; a job, so its whole tree (a node
+// per jar, with bytes) reaches the CLI view and the console's flash card alike
+export const updatePlugins = jobCall("plugins.update", {
+	cfg: 0,
+	lock: 1,
+	reporter: { arg: 2, prop: "reporter" },
+	kind: "update-addons",
+}) as typeof core.updatePlugins;
 export const pinVersion = call("plugins.pinVersion", { cfg: 0, lock: 1 }) as typeof core.pinVersion;
 export const ensureVariantForMc = call("plugins.ensureVariantForMc", { lock: 0 }) as typeof core.ensureVariantForMc;
 export const installFromProvider = call("plugins.installFromProvider", { cfg: 0, lock: 1 }) as typeof core.installFromProvider;

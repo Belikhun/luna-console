@@ -13,7 +13,9 @@ import type { AddonDir } from "./config";
 import { addonDirForFamily, addonDirOf, addonDirsOf, expandTargets, instanceDir, managedInstances, poolDir } from "./config";
 import { carriesMcRequirement, effectiveTargets, familyMatches, familyOf, pluginNameOf } from "./families";
 import { ADDON_EXTENSIONS, FAMILY_EXTENSIONS, FAMILY_LOADERS, familyForDir } from "./software";
-import { download, sha512File } from "./services/download";
+import { download, downloadToFile, reportBytes, sha512File } from "./services/download";
+import type { PortAllocation } from "./ports";
+import { ensurePortAllocations } from "./ports";
 import { syncConsent } from "./pumpkin";
 import * as modrinth from "./services/modrinth";
 import type { AddonProject, AddonType, AddonVersion } from "./services/providers";
@@ -29,7 +31,7 @@ import {
 	remoteRefFor,
 	VELOCITY_LOADERS,
 } from "./services/providers";
-import type { ProgressReporter } from "./progress";
+import { ProgressReporter } from "./progress";
 import type { IdentityMatch, IdentityProbe } from "./identify";
 import {
 	autoUpdateDefault,
@@ -781,19 +783,58 @@ export async function checkUpdates(
 	return { candidates, skipped };
 }
 
-/** Download every pending group of a candidate and record assignments. */
-export async function applyUpdate(lock: PluginsLock, cand: UpdateCandidate): Promise<void> {
+/**
+ * Download every pending group of a candidate and record assignments.
+ *
+ * A group is one jar off a provider's CDN, which is the slowest thing an update
+ * does; each gets its own node under `reporter` and streams its byte count into
+ * it, so a mod that takes half a minute says so while it takes it.
+ */
+export async function applyUpdate(
+	lock: PluginsLock,
+	cand: UpdateCandidate,
+	opts: { reporter?: ProgressReporter } = {},
+): Promise<void> {
 	const entry = cand.entry;
+	const progress = opts.reporter ?? new ProgressReporter(cand.name);
 
 	for (const group of cand.pendingGroups) {
 		const file = primaryFile(group.version);
+		const version = group.version.version_number;
+		const fileName = group.isPrimary ? entry.file : variantFileName(cand.name, version);
+
+		if (!group.isPrimary) {
+			await mkdir(variantsDir(), { recursive: true });
+		}
+
+		const dest = join(group.isPrimary ? poolDir() : variantsDir(), fileName);
+
+		// staged and renamed rather than written in place: the destination is the
+		// jar the pool is serving right now, and a hash mismatch makes the stream
+		// delete what it wrote; over the top of `dest` that would take the working
+		// jar with it and leave the entry with nothing to deploy
+		const staged = `${dest}.luna-new`;
+		const step = progress.child(`${cand.name} ${version}`, 1);
+
+		const sha512 = await step.task(
+			{
+				start: t("core.plugins.downloadingJar", { name: cand.name, version }),
+				done: t("core.plugins.downloadedJar", { name: cand.name, version }),
+				failed: t("core.plugins.downloadJarFailed", { name: cand.name, version }),
+			},
+			async (node) =>
+				await downloadToFile(file.url, staged, {
+					expected: file.hashes,
+					onProgress: reportBytes(node),
+				}),
+		);
+
+		await rename(staged, dest);
 
 		if (group.isPrimary) {
-			const sha512 = await download(file.url, join(poolDir(), entry.file), file.hashes);
-
 			entry.installed = {
 				versionId: group.version.id,
-				versionNumber: group.version.version_number,
+				versionNumber: version,
 				sha512,
 				gameVersions: group.version.game_versions,
 			};
@@ -805,30 +846,73 @@ export async function applyUpdate(lock: PluginsLock, cand: UpdateCandidate): Pro
 			continue;
 		}
 
-		const variantFile = variantFileName(cand.name, group.version.version_number);
-
-		await mkdir(variantsDir(), { recursive: true });
-
-		const sha512 = await download(file.url, join(variantsDir(), variantFile), file.hashes);
-
 		entry.variants ??= {};
-		entry.variants[group.version.version_number] = {
+		entry.variants[version] = {
 			versionId: group.version.id,
-			versionNumber: group.version.version_number,
+			versionNumber: version,
 			sha512,
-			file: variantFile,
+			file: fileName,
 			gameVersions: group.version.game_versions,
 		};
 
 		entry.assign ??= {};
 
 		for (const target of group.targets) {
-			entry.assign[target] = group.version.version_number;
+			entry.assign[target] = version;
 		}
 	}
 
 	pruneVariants(cand.name, entry);
 	lock.plugins[cand.name] = entry;
+}
+
+/** One group of one addon, as it was downloaded and assigned. */
+export interface AppliedUpdate {
+	/** Lockfile entry key, e.g. "ViaVersion@paper" */
+	name: string;
+	version: string;
+	targets: string[];
+	/** False when the build was pooled as a variant beside the primary jar */
+	isPrimary: boolean;
+}
+
+/**
+ * Download every candidate that has something pending, reporting one node per
+ * jar. The count is declared up front, so the phase reads as "3 of 15" rather
+ * than jumping to nearly-done the moment the first small jar lands.
+ */
+export async function applyUpdates(
+	lock: PluginsLock,
+	candidates: UpdateCandidate[],
+	opts: { reporter?: ProgressReporter } = {},
+): Promise<AppliedUpdate[]> {
+	const progress = opts.reporter ?? new ProgressReporter("download");
+	const pending = candidates.filter((cand) => cand.pendingGroups.length);
+	const applied: AppliedUpdate[] = [];
+
+	progress.weighOwn(0);
+	progress.expect(pending.reduce((sum, cand) => sum + cand.pendingGroups.length, 0));
+
+	if (!pending.length) {
+		progress.complete(t("core.plugins.nothingToDownload"));
+
+		return applied;
+	}
+
+	for (const cand of pending) {
+		await applyUpdate(lock, cand, { reporter: progress });
+
+		for (const group of cand.pendingGroups) {
+			applied.push({
+				name: cand.name,
+				version: group.version.version_number,
+				targets: group.targets,
+				isPrimary: group.isPrimary,
+			});
+		}
+	}
+
+	return applied;
 }
 
 /**
@@ -1399,6 +1483,120 @@ export async function deploy(
 	}
 
 	return actions;
+}
+
+/** Everything one update sweep did, for the caller to render. */
+export interface UpdateOutcome {
+	applied: AppliedUpdate[];
+	/** Everything the check resolved, so a caller can still report holdbacks */
+	candidates: UpdateCandidate[];
+	/** Entries the check never queried, and why */
+	skipped: Array<{ name: string; reason: string }>;
+	/** Deploy actions; empty when the caller did not ask for a deploy */
+	actions: DeployAction[];
+	/** Plugin port allocations the deploy phase reconciled */
+	ports: PortAllocation[];
+}
+
+/**
+ * How the deploy phase reaches the instances. The defaults are this module's
+ * own pair, which covers the whole cluster when one daemon owns it; the daemon
+ * substitutes its ownership-aware versions, which is what makes an update land
+ * on a follower's backends too. It is a parameter rather than an option so it
+ * can never be sent over the wire: the RPC layer fills it in daemon-side, and a
+ * client only ever passes the three serializable options.
+ */
+export interface UpdateFleet {
+	deploy: (
+		cfg: ClusterConfig,
+		lock: PluginsLock,
+		opts: { instances?: string[]; plugin?: string; reporter?: ProgressReporter },
+	) => Promise<DeployAction[]>;
+	ensurePorts: (cfg: ClusterConfig, lock: PluginsLock) => Promise<PortAllocation[]>;
+}
+
+const LOCAL_FLEET: UpdateFleet = {
+	deploy,
+	ensurePorts: async (cfg, lock) => await ensurePortAllocations(cfg, lock),
+};
+
+/**
+ * Check what has new builds, download them, and optionally push them out.
+ *
+ * One operation with one progress tree, because that is what it is from a
+ * console card or a terminal: a provider round trip per entry, then a jar per
+ * pending group, then a deploy. The weights say which of those actually costs
+ * time; the download dominates, so it holds most of the bar.
+ *
+ * Nothing is saved here. `cfg` and `lock` are mutated in place and the caller
+ * persists them, as everywhere else in this module.
+ */
+export async function updatePlugins(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	opts: { names?: string[]; deploy?: boolean; reporter?: ProgressReporter } = {},
+	fleet: UpdateFleet = LOCAL_FLEET,
+): Promise<UpdateOutcome> {
+	const progress = opts.reporter ?? new ProgressReporter("plugins update");
+
+	progress.weighOwn(0);
+
+	const checking = progress.child(t("core.plugins.phaseCheck"), 2);
+	const downloading = progress.child(t("core.plugins.phaseDownload"), 6);
+	const deploying = opts.deploy ? progress.child(t("core.plugins.phaseDeploy"), 2) : undefined;
+
+	const { candidates, skipped } = await checkUpdates(cfg, lock, opts.names, {
+		reporter: checking,
+	});
+
+	const applied = await applyUpdates(lock, candidates, { reporter: downloading });
+
+	if (!deploying) {
+		return { applied, candidates, skipped, actions: [], ports: [] };
+	}
+
+	if (!applied.length) {
+		deploying.complete(t("core.plugins.nothingToDeploy"));
+
+		return { applied, candidates, skipped, actions: [], ports: [] };
+	}
+
+	// only what this call updated: an unqualified update sweeps the pool, so one
+	// pass over everything is right, but a named one must not push unrelated jars
+	// nobody asked about
+	const wanted = opts.names?.length
+		? [...new Set(applied.map((entry) => entry.name))]
+		: [undefined];
+
+	const actions: DeployAction[] = [];
+
+	deploying.weighOwn(0);
+
+	// the deploys plus the port pass below; declared up front so the phase does
+	// not read as finished the moment the last jar is copied
+	deploying.expect(wanted.length + 1);
+
+	for (const plugin of wanted) {
+		const step = deploying.child(plugin ?? t("core.plugins.everyAddon"), 1);
+
+		actions.push(...(await fleet.deploy(cfg, lock, { plugin, reporter: step })));
+		step.complete();
+	}
+
+	// a jar can arrive on an instance for the first time here, and a plugin that
+	// binds a port needs one before it starts
+	const portStep = deploying.child(t("core.plugins.phasePorts"), 1);
+
+	const ports = await portStep.task(
+		{
+			start: t("core.plugins.reconcilingPorts"),
+			done: t("core.plugins.reconciledPorts"),
+			failed: t("core.plugins.reconcilePortsFailed"),
+		},
+		async () => await fleet.ensurePorts(cfg, lock),
+	);
+
+	return { applied, candidates, skipped, actions, ports };
 }
 
 /**

@@ -103,6 +103,9 @@ let lunaCards = new Map<string, BackendCard>();
 let lunaIssue: string | undefined;
 let sampler: ReturnType<typeof setInterval> | undefined;
 
+/** Whether a pass has finished, so this module's per-instance figures mean something. */
+let sampled = false;
+
 /** Per-instance sampler state, created on first use. */
 function rt(name: string): InstanceRuntime {
 	if (!runtime.has(name)) {
@@ -256,10 +259,16 @@ async function sampleOnce(): Promise<void> {
 
 			const sample: MetricSample = { t: Date.now() };
 
+			// the read that establishes a process's tick baseline has nothing to
+			// diff against, so the sample it would produce carries no CPU figure
+			let priming = false;
+
 			if (status.javaPid) {
 				const usage = await readCpuMem(status.javaPid);
 
 				if (usage) {
+					priming = rec.prevCpu === undefined;
+
 					if (rec.prevCpu) {
 						const ticks = usage.total - rec.prevCpu.total;
 						const elapsed = sample.t - rec.prevCpu.at;
@@ -293,6 +302,15 @@ async function sampleOnce(): Promise<void> {
 				sample.players ??= backend.metrics.onlinePlayers;
 			}
 
+			// Publishing a priming pass opens the series with a hazard band, which
+			// reads as lost data rather than as a run that had not started yet;
+			// the same band reappears mid-chart after every restart, since a
+			// stopped process drops its baseline. One interval later the sample
+			// is complete, so the honest move is to wait for it.
+			if (priming) {
+				continue;
+			}
+
 			rec.history.push(sample);
 
 			if (rec.history.length > MAX_SAMPLES) {
@@ -314,7 +332,21 @@ async function sampleOnce(): Promise<void> {
 		}
 
 		console.error("[sampler]", err);
+	} finally {
+		// whatever a pass found, it has now looked; the health sampler waits on
+		// this before it will publish a machine's total instance memory. A pass
+		// that found nothing is still an answer (a follower with no cluster.json
+		// owns no instances), so this is not gated on the pass succeeding.
+		sampled = true;
 	}
+}
+
+/**
+ * Whether the sampler has completed a pass. Until it has, every per-instance
+ * figure this module reports is absent rather than zero.
+ */
+export function samplerReady(): boolean {
+	return sampled;
 }
 
 /** Start the metrics sampler once per daemon process. */

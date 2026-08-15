@@ -115,7 +115,20 @@
 		"variantNotPooled": "phiên bản {version} chưa có trong kho; chạy plugins update",
 		"noPooledBuildForMc": "không có bản nào trong kho chạy được trên {mc}; các bản đang có khai báo {versions}",
 		"permissionsGranted": "đã duyệt quyền cho instance này",
-		"permissionsUnknown": "không có manifest quyền trong pool; server sẽ hỏi trên console của nó"
+		"permissionsUnknown": "không có manifest quyền trong pool; server sẽ hỏi trên console của nó",
+		"phaseCheck": "Kiểm tra",
+		"phaseDownload": "Tải về",
+		"phaseDeploy": "Triển khai",
+		"phasePorts": "Cổng",
+		"downloadingJar": "đang tải {name} {version}",
+		"downloadedJar": "đã tải {name} {version}",
+		"downloadJarFailed": "không tải được {name} {version}",
+		"nothingToDownload": "không có gì để tải",
+		"nothingToDeploy": "không có gì để triển khai",
+		"everyAddon": "mọi tiện ích",
+		"reconcilingPorts": "đang đối chiếu cổng plugin",
+		"reconciledPorts": "đã đối chiếu cổng plugin",
+		"reconcilePortsFailed": "không đối chiếu được cổng plugin"
 	},
 	"datapacks": {
 		"unknown": "không biết gói dữ liệu: {name}",

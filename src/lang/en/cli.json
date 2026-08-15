@@ -239,9 +239,8 @@
 		"update": {
 			"desc": "Download updates into the pool (then run plugins deploy)",
 			"optDeploy": "also deploy to instances immediately",
-			"downloading": "downloading updates...",
-			"downloadingOne": "downloading {name}...",
-			"deployHint": "pool updated; push to instances with: {command}"
+			"deployHint": "pool updated; push to instances with: {command}",
+			"progress": "Update addons"
 		},
 		"deploy": {
 			"desc": "Sync pool jars to instances per target lists (fixes case mismatches)",

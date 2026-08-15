@@ -18,7 +18,7 @@ import { loadavg, networkInterfaces, uptime } from "node:os";
 import { diskUsage } from "../core/cleanup";
 import { root } from "../core/config";
 
-import { instanceCpuPct, instanceRssMb, instanceStates } from "./sampler";
+import { instanceCpuPct, instanceRssMb, instanceStates, samplerReady } from "./sampler";
 
 export interface HealthSample {
 	t: number;
@@ -60,10 +60,12 @@ let prevCpu: { idle: number; total: number } | undefined;
 let disk: { usedBytes: number; totalBytes: number; at: number } | undefined;
 
 /**
- * Whole-host CPU utilization between this call and the previous one. The first
- * call has no baseline to subtract, so it reports zero.
+ * Whole-host CPU utilization between this call and the previous one. A call
+ * with no baseline to subtract reports nothing rather than zero: a fabricated
+ * 0% is indistinguishable from an idle machine, and the sample carrying it
+ * would sit at the head of every chart as a dip that never happened.
  */
-async function readCpuPct(): Promise<number> {
+async function readCpuPct(): Promise<number | undefined> {
 	try {
 		const text = await readFile("/proc/stat", "utf8");
 		const line = text.slice(0, text.indexOf("\n"));
@@ -78,19 +80,19 @@ async function readCpuPct(): Promise<number> {
 		prevCpu = { idle, total };
 
 		if (!prev) {
-			return 0;
+			return undefined;
 		}
 
 		const deltaTotal = total - prev.total;
 		const deltaIdle = idle - prev.idle;
 
 		if (deltaTotal <= 0) {
-			return 0;
+			return undefined;
 		}
 
 		return Math.round((1 - deltaIdle / deltaTotal) * 1000) / 10;
 	} catch {
-		return 0;
+		return undefined;
 	}
 }
 
@@ -154,6 +156,17 @@ export function hostAddresses(): string[] {
 /** Take one health sample and append it to the history. */
 async function sampleOnce(): Promise<void> {
 	const [cpuPct, mem, usage] = await Promise.all([readCpuPct(), readMem(), readDisk()]);
+
+	// A sample is a measurement, so a pass that cannot take one publishes
+	// nothing. Right after boot that means both halves of it: /proc/stat has no
+	// previous reading to diff against, and the metrics sampler has not finished
+	// its first walk, so every instance's resident size would sum to a zero the
+	// machine is not actually sitting at. Skipping keeps the history honest and
+	// costs one interval of it.
+	if (cpuPct === undefined || !samplerReady()) {
+		return;
+	}
+
 	const load = loadavg();
 	const rss = instanceRssMb();
 

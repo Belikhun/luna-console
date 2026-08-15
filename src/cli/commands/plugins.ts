@@ -31,11 +31,12 @@ import {
 	removeInstanceJars,
 } from "../../client/core/pluginstate";
 import { standardizeNaming } from "../../client/core/standardize";
-import type { PluginFamily } from "../../client/core/types";
+import type { ClusterConfig, PluginFamily } from "../../client/core/types";
 import { FAMILY_DIRS, SOFTWARE_IDS } from "../../client/core/software";
 import { PLUGIN_FAMILIES } from "../../client/core/types";
 import * as providers from "../../client/core/services/providers";
 import { getAllStatuses } from "../../client/core/instances";
+import type { PortAllocation } from "../../client/core/ports";
 import { ensurePortAllocations } from "../../client/core/ports";
 import { parseProvider, printProbe } from "./packs";
 import { t } from "../../shared/i18n";
@@ -331,50 +332,50 @@ command({
 		const cfg = await loadCluster();
 		const lock = await loadLock();
 
-		const progress = new ProgressReporter(t("cli.plugins.checkProgress"));
+		// one job for the whole sweep, so the view shows the check, then a node
+		// per jar with its byte count, then the deploy; the download is the part
+		// that takes minutes and it is the part that used to say nothing
+		const progress = new ProgressReporter(t("cli.plugins.update.progress"));
 		const view = new ProgressView(progress).start();
 
-		const { candidates } = await plugins.checkUpdates(cfg, lock, args.length ? args : undefined, {
-			reporter: progress,
-		});
+		let outcome: plugins.UpdateOutcome;
 
-		view.stop();
+		try {
+			outcome = await plugins.updatePlugins(cfg, lock, {
+				names: args.length ? args : undefined,
+				deploy: opts.deploy === true,
+				reporter: progress,
+			});
+		} finally {
+			view.stop();
+		}
 
-		const updatable = candidates.filter((cand) => cand.pendingGroups.length);
+		await saveLock(lock);
+		await saveCluster(cfg);
 
-		if (!updatable.length) {
+		if (!outcome.applied.length) {
 			ok(t("cli.plugins.upToDate"));
 
 			return;
 		}
 
-		const spin = new Spinner().start(t("cli.plugins.update.downloading"));
+		for (const entry of outcome.applied) {
+			const variant = entry.isPrimary ? "" : pc.dim(` ${t("cli.plugins.variantTag")}`);
 
-		for (const cand of updatable) {
-			spin.update(t("cli.plugins.update.downloadingOne", { name: cand.name }));
-			await plugins.applyUpdate(lock, cand);
+			ok(
+				`${pc.bold(entry.name)} ${pc.green(entry.version)}${variant} ` +
+					`${Sym.arrow} ${entry.targets.join(",")}`,
+			);
 		}
 
-		await saveLock(lock);
-		spin.stop();
-
-		for (const cand of updatable) {
-			for (const group of cand.pendingGroups) {
-				const variant = group.isPrimary ? "" : pc.dim(` ${t("cli.plugins.variantTag")}`);
-
-				ok(
-					`${pc.bold(cand.name)} ${pc.green(group.version.version_number)}${variant} ` +
-						`${Sym.arrow} ${group.targets.join(",")}`,
-				);
-			}
-		}
+		const updatable = outcome.candidates.filter((cand) => cand.pendingGroups.length);
 
 		for (const note of renderCandidates(updatable).notes) {
 			warn(note);
 		}
 
 		if (opts.deploy) {
-			await runDeploy(undefined);
+			await reportDeploy(cfg, outcome.actions, outcome.ports);
 		} else {
 			info(t("cli.plugins.update.deployHint", { command: pc.cyan("luna plugins deploy") }));
 		}
@@ -397,6 +398,20 @@ export async function runDeploy(instances: string[] | undefined, plugin?: string
 	await saveLock(lock);
 	spin.stop();
 
+	await reportDeploy(cfg, actions, ports);
+}
+
+/**
+ * Render what a deploy did: the jars it withheld, the ones it copied, the ports
+ * it could only reserve, and which running instances still have to restart.
+ * Shared by `plugins deploy` and by `plugins update --deploy`, which reaches the
+ * same actions through the update job rather than a deploy of its own.
+ */
+export async function reportDeploy(
+	cfg: ClusterConfig,
+	actions: plugins.DeployAction[],
+	ports: PortAllocation[],
+): Promise<void> {
 	// neither one deployed anything, so both are reported as what stopped it
 	const withheld = ["missing-variant", "incompatible"];
 

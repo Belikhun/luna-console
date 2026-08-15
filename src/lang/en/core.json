@@ -115,7 +115,20 @@
 		"variantNotPooled": "version {version} not pooled; run plugins update",
 		"noPooledBuildForMc": "no pooled build runs on {mc}; the pooled ones declare {versions}",
 		"permissionsGranted": "capabilities approved for this instance",
-		"permissionsUnknown": "no permissions manifest pooled; the server will prompt on its console"
+		"permissionsUnknown": "no permissions manifest pooled; the server will prompt on its console",
+		"phaseCheck": "Check",
+		"phaseDownload": "Download",
+		"phaseDeploy": "Deploy",
+		"phasePorts": "Ports",
+		"downloadingJar": "downloading {name} {version}",
+		"downloadedJar": "{name} {version} downloaded",
+		"downloadJarFailed": "could not download {name} {version}",
+		"nothingToDownload": "nothing to download",
+		"nothingToDeploy": "nothing to deploy",
+		"everyAddon": "every addon",
+		"reconcilingPorts": "reconciling plugin ports",
+		"reconciledPorts": "plugin ports reconciled",
+		"reconcilePortsFailed": "could not reconcile plugin ports"
 	},
 	"datapacks": {
 		"unknown": "unknown data pack: {name}",

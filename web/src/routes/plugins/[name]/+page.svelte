@@ -31,6 +31,7 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { jobFlash } from '$lib/jobflash';
 
 	/**
 	 * One plugin identity in full: its families (one pooled build per platform),
@@ -149,21 +150,41 @@
 			return `${changed} change(s) across ${data.families.length} family build(s).`;
 		});
 
-	const updateNow = () =>
-		run('update', `Updating ${name} to the newest compatible versions…`, async () => {
-			const res = await post('/plugins/update', {
-				names: data.families.map((family: any) => family.key),
-				deploy: true
-			});
+	/**
+	 * Check, download and deploy this addon's family builds. A job, so the card
+	 * shows which jar is downloading rather than sitting on one spinner for as
+	 * long as the transfers take.
+	 */
+	async function updateNow(): Promise<void> {
+		busy = 'update';
 
-			if (!res.applied.length) {
-				return 'Everything already runs the newest compatible version.';
+		const job = await jobFlash({
+			title: `Updating ${name} to the newest compatible versions…`,
+			start: () =>
+				post('/plugins/update', {
+					names: data.families.map((family: any) => family.key),
+					deploy: true
+				}),
+			success: (result) => {
+				const applied = (result as { applied: any[] }).applied;
+
+				return {
+					message: t('web.addonDetail.done'),
+					detail: applied.length
+						? applied
+								.map((entry) => `${entry.name} → ${entry.version} (${entry.targets.join(', ')})`)
+								.join('; ')
+						: 'Everything already runs the newest compatible version.'
+				};
 			}
-
-			return res.applied
-				.map((entry: any) => `${entry.name} → ${entry.version} (${entry.targets.join(', ')})`)
-				.join('; ');
 		});
+
+		busy = '';
+
+		if (job) {
+			await refresh();
+		}
+	}
 
 	/** Force-add / disable / re-enable through the per-instance override. */
 	const setOverride = (instance: string, state: boolean | null, verb: string) =>

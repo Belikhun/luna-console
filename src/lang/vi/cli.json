@@ -239,9 +239,8 @@
 		"update": {
 			"desc": "Tải cập nhật vào kho (rồi chạy plugins deploy)",
 			"optDeploy": "đồng thời triển khai ngay tới các instance",
-			"downloading": "đang tải cập nhật...",
-			"downloadingOne": "đang tải {name}...",
-			"deployHint": "kho đã cập nhật; đẩy tới instance bằng: {command}"
+			"deployHint": "kho đã cập nhật; đẩy tới instance bằng: {command}",
+			"progress": "Cập nhật tiện ích"
 		},
 		"deploy": {
 			"desc": "Đồng bộ jar trong kho tới các instance theo danh sách đích (sửa cả lệch hoa/thường)",

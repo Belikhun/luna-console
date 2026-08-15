@@ -335,31 +335,46 @@
 	 * whatever the daemon's own re-check finds, which is what the toolbar's
 	 * unqualified "Update all" asks for.
 	 */
-	function applyUpdates(names: string[], label: string, flag: string): Promise<void> {
-		return run(flag, t('web.catalog.downloadingDeploying', { label }), async (note) => {
-			const res = await post('/plugins/update', {
-				names: names.length ? names : undefined,
-				deploy: true
-			});
+	async function applyUpdates(names: string[], label: string, flag: string): Promise<void> {
+		busy = flag;
 
-			note.set({
-				level: 'success',
-				message: t('web.catalog.updatedSummary', { groups: res.applied.length, files: res.deployed }),
-				detail: t('web.catalog.restartToLoad'),
-				closeable: true
-			});
+		// a job, not a spinner: this is a provider round trip per entry and then a
+		// jar per pending group, so the card shows the phase it is in and the
+		// bytes of the jar currently landing
+		const job = await jobFlash({
+			title: t('web.catalog.downloadingDeploying', { label }),
+			start: () =>
+				post('/plugins/update', {
+					names: names.length ? names : undefined,
+					deploy: true
+				}),
+			success: (result) => {
+				const outcome = result as { applied: unknown[]; deployed: number };
 
-			updatesOpen = false;
-			updateSel = new Set();
-
-			// the untouched candidates stay on screen, so the Update column keeps
-			// reporting what is still waiting
-			updates = names.length
-				? updates.filter((candidate) => !names.includes(candidate.name))
-				: [];
-
-			await refresh();
+				return {
+					message: t('web.catalog.updatedSummary', {
+						groups: outcome.applied.length,
+						files: outcome.deployed
+					}),
+					detail: t('web.catalog.restartToLoad')
+				};
+			}
 		});
+
+		busy = '';
+
+		if (!job) {
+			return;
+		}
+
+		updatesOpen = false;
+		updateSel = new Set();
+
+		// the untouched candidates stay on screen, so the Update column keeps
+		// reporting what is still waiting
+		updates = names.length ? updates.filter((candidate) => !names.includes(candidate.name)) : [];
+
+		await refresh();
 	}
 
 	const updateAll = () =>
