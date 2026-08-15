@@ -11,7 +11,12 @@ coverage
 *.lcov
 
 # logs
-logs
+# anchored: a bare `logs` matches every directory of that name anywhere in the
+# tree, which silently swallowed three SvelteKit routes (`api/instances/[name]/
+# logs`, `api/console/logs`, `console/logs`). They stayed invisible for as long
+# as the console was only ever built from a working tree that had them, and
+# 404'd the moment it was built from a clean checkout.
+/logs
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
