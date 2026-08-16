@@ -2671,7 +2671,8 @@
 		"cancelRenew": "Sign out instead",
 		"bannerTitle": "One console for the whole cluster",
 		"bannerBody": "Instances, plugins, ports, players and machines, over one daemon. Every change is attributed and recorded.",
-		"bannerFoot": "Luna Cluster Console"
+		"bannerFoot": "Luna Cluster Console",
+		"publicPage": "Public page"
 	},
 	"accounts": {
 		"pageDescription": "Who may sign in to this console, what is signed in right now, and what has been done to those accounts.",

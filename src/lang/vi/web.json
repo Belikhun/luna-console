@@ -2671,7 +2671,8 @@
 		"cancelRenew": "Đăng xuất thay vì vậy",
 		"bannerTitle": "Một console cho cả cụm",
 		"bannerBody": "Instance, plugin, cổng, người chơi và máy chủ, qua một daemon. Mọi thay đổi đều được ghi lại và quy cho người thực hiện.",
-		"bannerFoot": "Luna Cluster Console"
+		"bannerFoot": "Luna Cluster Console",
+		"publicPage": "Trang công khai"
 	},
 	"accounts": {
 		"pageDescription": "Ai được đăng nhập vào console này, ai đang đăng nhập, và những gì đã được làm với các tài khoản đó.",

@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { command, Bail } from "../framework";
 import { pc, info, ok } from "../ui";
-import { consoleDir, isConsoleDir, root } from "../../client/core/config";
+import { consoleDir, isConsoleDir, loadCluster, root } from "../../client/core/config";
 import { ensureConnected } from "../../client/socket";
 import { t } from "../../shared/i18n";
 
@@ -97,6 +97,34 @@ command({
 		 */
 		const proxyEnv: Record<string, string> = {};
 
+		/**
+		 * Which hostname the public page owns, handed to the console so its
+		 * `reroute` hook can serve that domain's root as the public page instead of
+		 * redirecting to /public.
+		 *
+		 * Read from the cluster rather than asked for again: the operator already
+		 * set it with `luna public enable --address`, and a second place to say the
+		 * same thing is a second place for it to be wrong. The `PUBLIC_` prefix is
+		 * SvelteKit's: it is what lets the value reach the browser, which is where
+		 * the other half of that hook runs.
+		 *
+		 * A port is stripped because the browser compares against `url.hostname`.
+		 */
+		const siteEnv: Record<string, string> = {};
+
+		try {
+			const cfg = await loadCluster();
+			const address = cfg.publicSite?.enabled ? (cfg.publicSite.address ?? "") : "";
+			const host = address.trim().replace(/^\w+:\/\//, "").split("/")[0]?.split(":")[0] ?? "";
+
+			if (host) {
+				siteEnv.PUBLIC_LUNA_SITE_HOST = host;
+			}
+		} catch {
+			// the console still serves without it; the public page is then reachable
+			// at /public and only the domain root falls back to the console
+		}
+
 		if (opts["behind-proxy"]) {
 			proxyEnv.ADDRESS_HEADER = "X-Forwarded-For";
 			proxyEnv.XFF_DEPTH = (opts["proxy-depth"] as string) ?? "1";
@@ -118,7 +146,7 @@ command({
 				["bun", "run", "dev", "--", "--port", port, "--host", host, "--strictPort"],
 				{
 					cwd: webDir,
-					env: { ...process.env, LUNA_ROOT: root() },
+					env: { ...process.env, LUNA_ROOT: root(), ...siteEnv },
 					...stdio,
 				},
 			);
@@ -144,6 +172,7 @@ command({
 					PORT: port,
 					HOST: host,
 					BODY_SIZE_LIMIT: process.env.BODY_SIZE_LIMIT ?? "256M",
+					...siteEnv,
 					...proxyEnv,
 				},
 				...stdio,

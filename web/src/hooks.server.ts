@@ -39,10 +39,25 @@ const PUBLIC_ROUTES = new Set(['/login', '/api/auth/session', '/api/auth/bootstr
  */
 const PUBLIC_PREFIXES = ['/public', '/api/public'];
 
-/** Whether a path is in an ungated subtree. */
-function isPublicPath(pathname: string): boolean {
+/**
+ * Whether a request landed in an ungated subtree.
+ *
+ * Keyed on the matched **route**, not on the URL text. The public page is served
+ * at the root of its own domain by the `reroute` hook, which resolves `/` to the
+ * `/public` route without touching the address; the pathname is still `/` by the
+ * time this runs, so a check on the pathname would gate the landing page and
+ * bounce a visitor with no account to the login screen.
+ *
+ * A route id also cannot be talked into matching by a crafted URL, which a
+ * pathname prefix very nearly can.
+ */
+function isPublicRoute(routeId: string | null): boolean {
+	if (routeId === null) {
+		return false;
+	}
+
 	return PUBLIC_PREFIXES.some(
-		(prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+		(prefix) => routeId === prefix || routeId.startsWith(`${prefix}/`)
 	);
 }
 
@@ -73,7 +88,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const gated =
 		event.route.id !== null &&
 		!PUBLIC_ROUTES.has(event.url.pathname) &&
-		!isPublicPath(event.url.pathname);
+		!isPublicRoute(event.route.id);
 
 	if (gated && !event.locals.account) {
 		if (event.url.pathname.startsWith('/api/')) {

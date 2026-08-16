@@ -246,6 +246,12 @@
 
 	<header class="top">
 		<span class="spacer"></span>
+		<!-- the one thing on this screen somebody without an account can actually
+		     use; a player who followed a link here should not hit a dead end -->
+		<a class="tolink" href="/public">
+			<Icon name="globe" size="0.75rem" style="solid" />
+			<span>{t('web.login.publicPage')}</span>
+		</a>
 		<label class="langpick">
 			<Icon name="globe" size="0.75rem" style="solid" />
 			<select
@@ -444,6 +450,25 @@
 
 	.spacer {
 		flex: 1;
+	}
+
+	// sits with the language picker rather than being styled as a link: this is
+	// page chrome, and chrome opts out of the underline body links carry
+	.tolink {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		color: var(--text);
+		font-size: 0.6875rem;
+		text-decoration: none;
+
+		&:hover {
+			color: var(--link);
+		}
+
+		&:focus-visible {
+			@include focus-ring;
+		}
 	}
 
 	// same treatment as the status bar's picker, so the control is recognisably
