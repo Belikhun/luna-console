@@ -332,6 +332,13 @@
 			},
 			{ label: t('web.packDetail.packFormat'), value: manifest.packFormat ?? null },
 			{ label: t('web.packDetail.supportedFormats'), value: manifest.supportedFormats ?? null },
+			{
+				label: t('web.packDetail.formatBounds'),
+				value:
+					manifest.minFormat !== undefined || manifest.maxFormat !== undefined
+						? `${manifest.minFormat ?? '?'} – ${manifest.maxFormat ?? '?'}`
+						: null
+			},
 			{ label: t('web.packDetail.namespaces'), value: manifest.namespaces.join(', ') || null },
 			{ label: t('web.packDetail.modified'), value: detail.modifiedAt ? fmtDateTime(detail.modifiedAt) : null },
 			{ id: 'source', label: t('web.packDetail.source') },
@@ -392,6 +399,17 @@
 			{
 				label: t('web.packDetail.proxySize'),
 				value: resolved?.sizeBytes ? fmtBytes(resolved.sizeBytes) : null
+			},
+			{
+				label: t('web.packDetail.effectiveFormats'),
+				value: resolved?.formats
+					? resolved.formats.min === resolved.formats.max
+						? resolved.formats.min
+						: `${resolved.formats.min} – ${resolved.formats.max}`
+					: null,
+				help: resolved?.formats?.clamped
+					? t('web.packDetail.formatsClamped')
+					: undefined
 			}
 		];
 	});

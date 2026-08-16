@@ -610,6 +610,17 @@ command({
 							: pc.yellow(t("cli.packs.info.notInCatalog")),
 				],
 				[
+					t("cli.packs.info.formats"),
+					resolution.resolved?.formats
+						? (resolution.resolved.formats.min === resolution.resolved.formats.max
+								? resolution.resolved.formats.min
+								: `${resolution.resolved.formats.min}-${resolution.resolved.formats.max}`) +
+							(resolution.resolved.formats.clamped
+								? ` ${pc.yellow(t("cli.packs.info.formatsClamped"))}`
+								: "")
+						: pc.dim("—"),
+				],
+				[
 					t("cli.packs.info.holders"),
 					!holders.available
 						? pc.dim(holders.problem ?? t("cli.packs.info.unavailable"))

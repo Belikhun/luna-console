@@ -50,6 +50,9 @@ export interface PackManifest {
 	packFormat?: number;
 	/** Formats the pack declares support for, as a rendered range */
 	supportedFormats?: string;
+	/** 1.21.9+ format bounds, each an int or a `major.minor` pair, rendered */
+	minFormat?: string;
+	maxFormat?: string;
 	description?: string;
 	/** The pack's own icon as a data URI, when it ships one small enough to show */
 	icon?: string;
@@ -101,6 +104,56 @@ function renderSupportedFormats(value: unknown): string | undefined {
 	}
 
 	return undefined;
+}
+
+/**
+ * The last format the legacy fields alone could describe. 1.21.9 renumbered pack
+ * formats and made `min_format`/`max_format` mandatory for anything claiming to
+ * reach past this, so a pack whose only ceiling is `supported_formats` is refused
+ * outright rather than clamped.
+ */
+const LEGACY_FORMAT_CEILING = 64;
+
+/** Render a `min_format`/`max_format` value: an int, or a `[major, minor]` pair. */
+function renderFormatBound(value: unknown): string | undefined {
+	if (typeof value === "number") {
+		return String(value);
+	}
+
+	if (Array.isArray(value) && typeof value[0] === "number" && typeof value[1] === "number") {
+		return `${value[0]}.${value[1]}`;
+	}
+
+	return undefined;
+}
+
+/** The highest format number the legacy fields claim, across every shape they take. */
+function highestLegacyFormat(pack: Record<string, unknown>): number | undefined {
+	const claims: number[] = [];
+
+	if (typeof pack.pack_format === "number") {
+		claims.push(pack.pack_format);
+	}
+
+	const supported = pack.supported_formats;
+
+	if (typeof supported === "number") {
+		claims.push(supported);
+	} else if (Array.isArray(supported) && typeof supported[1] === "number") {
+		claims.push(supported[1]);
+	} else if (typeof supported === "object" && supported !== null) {
+		const max = (supported as Record<string, unknown>).max_inclusive;
+
+		if (typeof max === "number") {
+			claims.push(max);
+		}
+	}
+
+	if (claims.length === 0) {
+		return undefined;
+	}
+
+	return Math.max(...claims);
 }
 
 /** Read a pack zip's manifest, icon and shape without unpacking the whole thing. */
@@ -158,6 +211,18 @@ export async function readPackManifest(zipPath: string): Promise<PackManifest> {
 			manifest.packFormat = typeof pack.pack_format === "number" ? pack.pack_format : undefined;
 			manifest.description = flattenDescription(pack.description)?.trim() || undefined;
 			manifest.supportedFormats = renderSupportedFormats(pack.supported_formats);
+			manifest.minFormat = renderFormatBound(pack.min_format);
+			manifest.maxFormat = renderFormatBound(pack.max_format);
+
+			const claimed = highestLegacyFormat(pack);
+			const bounded = manifest.minFormat !== undefined && manifest.maxFormat !== undefined;
+
+			if (claimed !== undefined && claimed > LEGACY_FORMAT_CEILING && !bounded) {
+				manifest.problem = t("core.respackinfo.missingFormatBounds", {
+					format: String(claimed),
+					ceiling: String(LEGACY_FORMAT_CEILING),
+				});
+			}
 		} catch (err) {
 			// a pack.mcmeta the client would also reject; worth saying so, but the
 			// rest of the manifest is still good

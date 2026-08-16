@@ -402,6 +402,18 @@ export async function packSessions(): Promise<LunaResult<PackSessionList>> {
 	return await call<PackSessionList>("/packs/sessions");
 }
 
+/**
+ * The format range the proxy filters a pack by: what the zip's pack.mcmeta
+ * declares, normalized. `clamped` marks a legacy declaration whose ceiling the
+ * proxy pulled down to 64, since 1.21.9+ clients reject the file past that.
+ */
+export interface PackFormatInfo {
+	min: string;
+	max: string;
+	source: string;
+	clamped: boolean;
+}
+
 /** One pack as the proxy resolved it: the URL and hash clients are actually given. */
 export interface ResolvedPackInfo {
 	name: string;
@@ -416,6 +428,8 @@ export interface ResolvedPackInfo {
 	sizeBytes: number;
 	available: boolean;
 	unavailableReason: string;
+	/** Absent on packs with no declared range, and on older luna-pack builds */
+	formats?: PackFormatInfo;
 }
 
 export interface PackCatalog {

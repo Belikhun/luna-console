@@ -521,6 +521,8 @@
 			"lastFailure": "last {player}: {status}",
 			"noneInLog": "none in the live log",
 			"onProxy": "on the proxy",
+			"formats": "client formats",
+			"formatsClamped": "(legacy declaration capped at 64; add min_format/max_format to pack.mcmeta)",
 			"resolved": "resolved",
 			"notInCatalog": "not in the running catalog; reload the proxy",
 			"holders": "holders",

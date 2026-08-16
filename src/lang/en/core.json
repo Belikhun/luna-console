@@ -204,6 +204,7 @@
 	},
 	"respackinfo": {
 		"noMcmeta": "no pack.mcmeta; the client will reject this pack",
+		"missingFormatBounds": "declares support for format {format}, past {ceiling}, without min_format and max_format; clients on 1.21.9 and newer reject the pack outright",
 		"builtinNoLog": "the proxy serves packs itself (base-url: built-in); no web server log to read",
 		"builtinLoopback": "the proxy serves packs on loopback (base-url: built-in); clients off this machine cannot reach it"
 	},

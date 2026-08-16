@@ -204,6 +204,7 @@
 	},
 	"respackinfo": {
 		"noMcmeta": "thiếu pack.mcmeta; client sẽ từ chối gói này",
+		"missingFormatBounds": "khai báo hỗ trợ định dạng {format}, vượt quá {ceiling}, nhưng thiếu min_format và max_format; client từ 1.21.9 trở lên sẽ từ chối gói này",
 		"builtinNoLog": "proxy tự phục vụ các gói (base-url: built-in); không có log web server để đọc",
 		"builtinLoopback": "proxy phục vụ gói trên loopback (base-url: built-in); client ngoài máy này không với tới được"
 	},

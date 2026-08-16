@@ -521,6 +521,8 @@
 			"lastFailure": "gần nhất {player}: {status}",
 			"noneInLog": "không có trong log đang chạy",
 			"onProxy": "trên proxy",
+			"formats": "định dạng client",
+			"formatsClamped": "(khai báo kiểu cũ bị giới hạn ở 64; thêm min_format/max_format vào pack.mcmeta)",
 			"resolved": "đã phân giải",
 			"notInCatalog": "không có trong danh mục đang chạy; reload proxy",
 			"holders": "người giữ",
