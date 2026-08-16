@@ -25,11 +25,13 @@ import type {
 	MachineRuntimes,
 	PluginsLock,
 	RuntimeVendor,
+	Software,
 } from "../core/types";
 
 import * as accountsCore from "../core/accounts";
 import * as addonsCore from "../core/addons";
 import * as adminCore from "../core/admin";
+import * as backupsCore from "../core/backups";
 import * as cleanupCore from "../core/cleanup";
 import * as configCore from "../core/config";
 import * as configfilesCore from "../core/configfiles";
@@ -54,8 +56,13 @@ import * as proxyCore from "../core/proxy";
 import * as runtimesCore from "../core/runtimes";
 import * as scheduleCore from "../core/schedule";
 import * as selectorCore from "../core/selector";
+import * as softwareCore from "../core/software";
+import * as stagingCore from "../core/staging";
 import * as screenCore from "../core/screen";
+import * as worldCore from "../core/world";
+import * as worldopsCore from "../core/worldops";
 import * as settingsCore from "../core/settings";
+import * as settingsApply from "../core/settingsapply";
 import * as standardizeCore from "../core/standardize";
 import * as templatesCore from "../core/templates";
 import * as lunaApi from "../core/services/luna";
@@ -257,6 +264,157 @@ async function deployDataPacksRouted(
 	}
 
 	return actions;
+}
+
+/**
+ * The world and backup ops, adapted to the routing convention.
+ *
+ * Every one of these acts on files that live wherever the instance does, so
+ * they must reach the owning daemon, and the dispatcher routes on an argument
+ * index naming the instance. The core functions were written to their own
+ * natural signatures - a backup is identified by its id, not by an instance -
+ * so these wrappers exist purely to put the instance name where the router
+ * looks for it, and to check it against the record afterwards.
+ */
+/**
+ * Read a staged archive against a target that has no instance yet.
+ *
+ * The launch wizard validates a world before the instance it is for exists, so
+ * there is nothing to route on and nothing to read a level name from; the form's
+ * own choices are the target. Deliberately unrouted: an upload always lands on
+ * the primary, so the archive is here, and only the install has to travel.
+ */
+async function scanArchiveFor(
+	token: string,
+	software: Software,
+	mcVersion: string | undefined,
+	level: string,
+): Promise<worldCore.WorldScan & { plan: worldCore.WorldImportPlan }> {
+	const path = await localStagePath(token);
+	const scan = await worldCore.scanWorldArchive(path);
+	const traits = softwareCore.traitsOf(software, mcVersion);
+	const plan = worldCore.planWorldImport(scan, {
+		level: level.trim() || traits.levelName?.fallback || "world",
+		layout: traits.worldLayout ?? "nested",
+		mcVersion,
+	});
+
+	return { ...scan, plan };
+}
+
+async function scanStagedWorld(
+	cfg: ClusterConfig,
+	instance: string,
+	token: string,
+): Promise<worldCore.WorldScan & { plan: worldCore.WorldImportPlan }> {
+	const inst = configCore.managedInstances(cfg)[instance];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name: instance }));
+	}
+
+	const path = await localStagePath(token);
+	const scan = await worldCore.scanWorldArchive(path);
+	const plan = worldCore.planWorldImport(scan, {
+		level: await worldCore.levelNameOf(inst),
+		layout: worldCore.layoutOf(inst),
+		mcVersion: inst.mcVersion,
+	});
+
+	return { ...scan, plan };
+}
+
+async function replaceWorldRouted(
+	cfg: ClusterConfig,
+	instance: string,
+	token: string,
+	opts: worldopsCore.ReplaceWorldOptions & { keepStage?: boolean } = {},
+): Promise<worldopsCore.WorldMutationResult> {
+	const path = await localStagePath(token);
+	const { keepStage, ...rest } = opts;
+
+	const result = await worldopsCore.replaceWorld(cfg, instance, path, rest);
+
+	// the upload has served its purpose; leaving it would double the disk this
+	// world costs until the sweeper eventually noticed
+	if (!keepStage) {
+		await stagingCore.discardStage(token).catch(() => undefined);
+	}
+
+	return result;
+}
+
+async function listBackupsRouted(_cfg: ClusterConfig, instance: string): Promise<backupsCore.BackupEntry[]> {
+	return await backupsCore.listBackups(instance);
+}
+
+async function restoreBackupRouted(
+	cfg: ClusterConfig,
+	instance: string,
+	id: string,
+	opts: backupsCore.RestoreOptions = {},
+): Promise<worldopsCore.WorldMutationResult> {
+	await requireBackupOf(instance, id);
+
+	return await backupsCore.restoreBackup(cfg, id, opts);
+}
+
+async function updateBackupRouted(
+	_cfg: ClusterConfig,
+	instance: string,
+	id: string,
+	patch: { label?: string; note?: string; pinned?: boolean },
+): Promise<backupsCore.BackupEntry> {
+	await requireBackupOf(instance, id);
+
+	return await backupsCore.updateBackup(id, patch);
+}
+
+async function deleteBackupRouted(
+	_cfg: ClusterConfig,
+	instance: string,
+	id: string,
+	actor?: string,
+): Promise<backupsCore.BackupEntry | undefined> {
+	await requireBackupOf(instance, id);
+
+	return await backupsCore.deleteBackup(id, actor);
+}
+
+async function verifyBackupRouted(
+	_cfg: ClusterConfig,
+	instance: string,
+	id: string,
+	reporter?: ProgressReporter,
+): Promise<backupsCore.BackupEntry> {
+	await requireBackupOf(instance, id);
+
+	return await backupsCore.verifyBackup(id, reporter);
+}
+
+async function setKeepRouted(_cfg: ClusterConfig, instance: string, keep: number): Promise<number> {
+	return await backupsCore.setKeepCount(instance, keep);
+}
+
+async function driftRouted(_cfg: ClusterConfig, instance: string): Promise<backupsCore.BackupDrift> {
+	return await backupsCore.backupDrift(instance);
+}
+
+/**
+ * Refuse a backup id that does not belong to the instance it was routed for.
+ *
+ * The routing already sent the call to the right machine, but the id is client
+ * input: without this, a caller could name any instance to get the call routed
+ * somewhere convenient and then act on a different instance's backup.
+ */
+async function requireBackupOf(instance: string, id: string): Promise<backupsCore.BackupEntry> {
+	const entry = await backupsCore.getBackup(id);
+
+	if (!entry || entry.instance !== instance) {
+		throw new Error(t("core.backups.unknown", { id }));
+	}
+
+	return entry;
 }
 
 /**
@@ -1290,6 +1448,40 @@ export const OPS: Record<string, OpSpec> = {
 	"addons.adoptInstanceAddons": { fn: addonsCore.adoptInstanceAddons, cfg: 0, instance: 3 },
 	"providers.search": { fn: providers.searchProvider },
 
+	// -- worlds and backups (helpers above the table) ---------------------------
+	// every one of these acts on one instance's directory, so they route to the
+	// daemon that owns it; the archives never leave the machine they were
+	// written on, which is why the index is not cluster state either
+	"world.info": { fn: worldCore.worldInfo, cfg: 0, instance: 1 },
+	"world.lock": { fn: worldopsCore.worldLock, cfg: 0, instance: 1 },
+	"world.scanStaged": { fn: scanStagedWorld, cfg: 0, instance: 1 },
+	"world.scanArchive": { fn: scanArchiveFor },
+	"world.replace": { fn: replaceWorldRouted, cfg: 0, instance: 1, reporter: { arg: 3, prop: "reporter" } },
+	"world.reset": { fn: worldopsCore.resetWorld, cfg: 0, instance: 1, reporter: { arg: 2, prop: "reporter" } },
+	"world.recover": { fn: worldopsCore.recoverWorldOp, cfg: 0, instance: 1 },
+	"backups.list": { fn: listBackupsRouted, cfg: 0, instance: 1 },
+	"backups.create": {
+		fn: backupsCore.createBackup,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 2, prop: "reporter" },
+	},
+	"backups.restore": { fn: restoreBackupRouted, cfg: 0, instance: 1, reporter: { arg: 3, prop: "reporter" } },
+	"backups.update": { fn: updateBackupRouted, cfg: 0, instance: 1 },
+	"backups.delete": { fn: deleteBackupRouted, cfg: 0, instance: 1 },
+	"backups.verify": { fn: verifyBackupRouted, cfg: 0, instance: 1, reporter: { arg: 3 } },
+	"backups.setKeep": { fn: setKeepRouted, cfg: 0, instance: 1 },
+	"backups.drift": { fn: driftRouted, cfg: 0, instance: 1 },
+	// A schedule's action, run once, through the one implementation of it. The
+	// import is lazy because `daemon/scheduler.ts` reaches back here for `runOp`,
+	// and a static import either way would close the cycle.
+	"schedule.execute": {
+		fn: async (action: scheduleCore.ScheduleAction, instance: string): Promise<string> =>
+			await (await import("./scheduler")).executeScheduleAction(action, instance),
+	},
+	"staging.info": { fn: stagingCore.stageInfo },
+	"staging.discard": { fn: stagingCore.discardStage },
+
 	// -- plugin runtime state ---------------------------------------------------
 	"pluginstate.ensureAliases": { fn: pluginstateCore.ensureAliases, lock: 0 },
 	"pluginstate.readBootSession": { fn: pluginstateCore.readBootSession, cfg: 0, instance: 1 },
@@ -1353,9 +1545,9 @@ export const OPS: Record<string, OpSpec> = {
 	"proxy.readForwardingSecret": { fn: proxyCore.readForwardingSecret, cfg: 0 },
 
 	// -- settings, templates, environment ------------------------------------------
-	"settings.readServerProperties": { fn: settingsCore.readServerProperties, cfg: 0, instance: 1 },
+	"settings.readServerProperties": { fn: settingsApply.readServerProperties, cfg: 0, instance: 1 },
 	"settings.applySettings": {
-		fn: settingsCore.applySettings,
+		fn: settingsApply.applySettings,
 		cfg: 0,
 		instance: 1,
 		reporter: { arg: 3 },
@@ -1529,6 +1721,37 @@ export function installRouting(
 ): void {
 	resolveRemote = resolve;
 	forwardOp = forward;
+}
+
+/**
+ * How this daemon gets hold of a staged world zip it does not have.
+ *
+ * Installed by the follower link, which is the only side that can need it: an
+ * upload always lands on the primary, so a follower asked to import one has to
+ * pull it across first. Left unset on the primary, where the file is already
+ * local and a missing token means the upload really is gone.
+ *
+ * A hook rather than an import because `daemon/follower.ts` imports `runOp`
+ * from here, and reaching back the other way would close the cycle.
+ */
+export let fetchStagedWorld: ((token: string) => Promise<string>) | undefined;
+
+/** Install the staged-world fetcher (follower only). */
+export function installStageFetcher(fetcher: typeof fetchStagedWorld): void {
+	fetchStagedWorld = fetcher;
+}
+
+/** Resolve a staging token to a local path, pulling it down if this is a follower. */
+async function localStagePath(token: string): Promise<string> {
+	if (stagingCore.stageExists(token)) {
+		return stagingCore.stagePath(token);
+	}
+
+	if (fetchStagedWorld) {
+		return await fetchStagedWorld(token);
+	}
+
+	throw new Error(t("daemon.stageMissing", { token }));
 }
 
 /**

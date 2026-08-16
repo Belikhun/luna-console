@@ -3,13 +3,18 @@
 // prohibited without written permission. See LICENSE at the repository root.
 
 /**
- * Bridge mirror of core/settings: the schema and its validation are pure; the
- * server.properties reads/writes happen on the instance's own daemon.
+ * Bridge mirror of core/settings: the schema, and the validation over it.
+ *
+ * Everything here is pure, and nothing here may reach the RPC client - the same
+ * rule `client/core/software.ts` states, and for the same reason. That path
+ * pulls in the unix-socket plumbing and `node:fs`/`node:path` with it, and a
+ * browser bundle cannot have those. The console's own components import this
+ * module (`JavaAgentsField`, `SettingsForm`), so a single `call()` here breaks
+ * every page that renders one.
+ *
+ * The two operations that genuinely need a daemon - reading and writing an
+ * instance's `server.properties` - live in `client/core/services/settings.ts`.
  */
-
-import type * as core from "../../core/settings";
-
-import { call } from "../rpc";
 
 export {
 	SETTING_GROUPS,
@@ -27,9 +32,5 @@ export {
 	agentOptionsOf,
 	ADDON_AGENT_PREFIX,
 } from "../../core/settings";
-export type { SettingSpec, SettingGroup, ApplySettingsResult } from "../../core/settings";
-
-export const readServerProperties = call("settings.readServerProperties", {
-	cfg: 0,
-}) as typeof core.readServerProperties;
-export const applySettings = call("settings.applySettings", { cfg: 0 }) as typeof core.applySettings;
+export type { SettingSpec, SettingGroup } from "../../core/settings";
+export type { ApplySettingsResult, SettingChange } from "../../core/settingsapply";

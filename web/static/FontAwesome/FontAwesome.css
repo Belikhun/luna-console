@@ -1374,3 +1374,31 @@ icon[data-icon="fileLines"]::after {
 icon[data-icon="terminal"]::after {
 	content: "\f120";
 }
+
+icon[data-icon="magnifyingGlass"]::after {
+	content: "\f002";
+}
+
+icon[data-icon="arrowUpRightFromSquare"]::after {
+	content: "\f08e";
+}
+
+icon[data-icon="thumbtack"]::after {
+	content: "\f08d";
+}
+
+icon[data-icon="unlock"]::after {
+	content: "\f09c";
+}
+
+icon[data-icon="eraser"]::after {
+	content: "\f12d";
+}
+
+icon[data-icon="rotateLeft"]::after {
+	content: "\f2ea";
+}
+
+icon[data-icon="shieldCheck"]::after {
+	content: "\f2f7";
+}

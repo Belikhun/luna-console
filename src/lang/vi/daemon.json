@@ -120,5 +120,9 @@
 		"noAsset": "{origin} không phát hành gói console; console giữ nguyên",
 		"fetching": "đang tải gói console ({size})",
 		"failed": "chưa cập nhật được console: {error}"
-	}
+	},
+	"stageTooLarge": "Tệp tải lên vượt quá kích thước thế giới tối đa được phép.",
+	"stageMissing": "Không có thế giới đã chuẩn bị {token} trên máy này.",
+	"stageFetchFailed": "Không tải được thế giới đã chuẩn bị {token} từ máy chính: HTTP {status}",
+	"noPrimaryForStage": "Daemon này không có máy chính để tải thế giới đã chuẩn bị."
 }

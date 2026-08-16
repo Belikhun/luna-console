@@ -45,7 +45,7 @@ import {
 	type OpSpec,
 } from "./rpc";
 import { lunaCardsFor, lunaProblem, setRemoteSampleProvider } from "./sampler";
-import { PROTOCOL_VERSION, setRemoteConsole } from "./server";
+import { PROTOCOL_VERSION, setFollowerEndpoint, setRemoteConsole } from "./server";
 import { checkUpgrade, selfUpgrade } from "./upgrade";
 import { forgetInstances, observeStates } from "./uptime";
 import { buildVersion } from "../version";
@@ -110,6 +110,10 @@ interface FollowerLink {
 	name: string;
 	host: string;
 	addresses: string[];
+	/** The follower's own HTTP port, when its build advertises one. Absent from
+	 *  an older follower, which is why anything reaching back to it must say so
+	 *  rather than assume a default and talk to whatever answers. */
+	listenPort?: number;
 	root: string;
 	version?: string;
 	protocol?: number;
@@ -1080,6 +1084,7 @@ interface FollowerFrame {
 	name?: string;
 	host?: string;
 	addresses?: string[];
+	listenPort?: number;
 	root?: string;
 	version?: string;
 	protocol?: number;
@@ -1353,6 +1358,17 @@ export function installHub(dcfg: DaemonConfig, startedAt: number): void {
 	setRemoteConsole({
 		connected: (daemon) => followers.has(daemon),
 		open: openConsoleStream,
+	});
+	setFollowerEndpoint((daemon: string) => {
+		const link = followers.get(daemon);
+
+		// no port advertised means an older follower; the caller reports the
+		// backup as unreachable rather than guessing a port to talk to
+		if (!link?.listenPort) {
+			return undefined;
+		}
+
+		return `${link.host}:${link.listenPort}`;
 	});
 	setRemoteSampleProvider((daemon, instance) => {
 		const health = followers.get(daemon)?.health;

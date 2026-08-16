@@ -3,6 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 
@@ -13,12 +14,21 @@
 	let {
 		file = $bindable(null),
 		accept = '',
-		hint = t('web.common.dropFile')
+		hint = t('web.common.dropFile'),
+		disabled = false,
+		progress = null,
+		status
 	}: {
 		file?: File | null;
 		/** input `accept` filter, e.g. ".zip"; also applied to dropped files */
 		accept?: string;
 		hint?: string;
+		/** blocks the click and the drop; an upload in flight must not be replaced */
+		disabled?: boolean;
+		/** 0..1 draws a determinate bar along the bottom edge; null draws none */
+		progress?: number | null;
+		/** replaces the dim hint line, for a caller with more to say than a name */
+		status?: Snippet;
 	} = $props();
 
 	let input: HTMLInputElement | undefined = $state();
@@ -41,6 +51,10 @@
 	function onDrop(event: DragEvent): void {
 		event.preventDefault();
 		over = false;
+
+		if (disabled) {
+			return;
+		}
 
 		const dropped = event.dataTransfer?.files?.[0];
 
@@ -67,10 +81,15 @@
 	class="drop"
 	class:over
 	class:filled={!!file}
+	class:busy={progress !== null}
+	{disabled}
 	onclick={() => input?.click()}
 	ondragover={(event) => {
 		event.preventDefault();
-		over = true;
+
+		if (!disabled) {
+			over = true;
+		}
 	}}
 	ondragleave={() => (over = false)}
 	ondrop={onDrop}
@@ -78,11 +97,23 @@
 	{#if file}
 		<Icon name="fileCheck" />
 		<span class="name">{file.name}</span>
-		<span class="dim">{fmtSize(file.size)}</span>
-		<span class="dim swap">click to swap</span>
+		{#if status}
+			{@render status()}
+		{:else}
+			<span class="dim">{fmtSize(file.size)}</span>
+			<span class="dim swap">{t('web.common.clickToSwap')}</span>
+		{/if}
 	{:else}
 		<Icon name="fileArrowUp" style="light" />
-		<span class="dim">{hint}</span>
+		{#if status}
+			{@render status()}
+		{:else}
+			<span class="dim">{hint}</span>
+		{/if}
+	{/if}
+
+	{#if progress !== null}
+		<span class="progress" style:--pct="{Math.round(Math.min(1, Math.max(0, progress)) * 100)}%"></span>
 	{/if}
 </button>
 
@@ -91,6 +122,8 @@
 <style lang="scss">
 	.drop {
 		@include bare-button;
+
+		position: relative;
 
 		display: flex;
 		flex-direction: column;
@@ -128,9 +161,37 @@
 			border-style: solid;
 		}
 
+		// an upload in flight: the zone stops being a control and becomes a
+		// readout, so it loses the pointer without losing its legibility
+		&:disabled {
+			cursor: default;
+			opacity: 1;
+
+			&:hover {
+				border-color: var(--border-input);
+			}
+		}
+
+		&.busy {
+			border-style: solid;
+			overflow: hidden;
+		}
+
 		:global(icon) {
 			font-size: 1.5rem;
 		}
+	}
+
+	// a hairline along the bottom edge rather than a bar in the flow: the zone's
+	// height must not change as an upload starts, or the whole form shifts
+	.progress {
+		position: absolute;
+		left: 0;
+		bottom: 0;
+		width: var(--pct);
+		height: 0.25rem;
+		background: var(--primary);
+		transition: width 0.2s;
 	}
 
 	.name {

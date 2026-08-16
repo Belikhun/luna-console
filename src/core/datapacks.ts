@@ -44,6 +44,7 @@ import type { AddonProject, AddonVersion, AddonVersionFile } from "./services/pr
 import { getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
 import { traitsOf } from "./software";
 import type { AddonGroup, ClusterConfig, InstanceConfig, ProviderId } from "./types";
+import { worldDir } from "./world";
 import { t } from "../shared/i18n";
 
 /** The addon groups a pack operation resolves membership against. */
@@ -58,24 +59,12 @@ export function datapacksDir(): string {
  * The world directory data packs load from, resolved through the instance's own
  * level name; a renamed world (survival, lobby) moves the folder with it.
  *
- * Which file and key hold that name is a trait, because it is not the same one
- * everywhere: a JVM server reads `level-name` from `server.properties`, pumpkin
- * reads `default_level_name` from its own TOML. Getting it wrong writes the
- * packs into a directory the server never opens, and nothing complains.
+ * `worldDir` in `core/world.ts` owns the resolution itself, because the world
+ * directory is not only a data pack question: backup, restore and import all
+ * need the same answer, and two implementations of it would drift.
  */
 export async function worldDatapacksDir(inst: InstanceConfig): Promise<string> {
-	const dir = instanceDir(inst);
-	const source = traitsOf(inst.software, inst.mcVersion).levelName;
-
-	if (!source) {
-		throw new Error(t("core.datapacks.noWorld", { name: inst.dir }));
-	}
-
-	// a fresh instance has no config yet, and the server's own default applies
-	const named = await getConfValue(join(dir, source.file), source.format, source.key);
-	const level = named?.trim() || source.fallback;
-
-	return join(dir, level, "datapacks");
+	return join(await worldDir(inst), "datapacks");
 }
 
 /** Instances that have a world to load data packs from (everything but the proxy). */

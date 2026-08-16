@@ -17,12 +17,11 @@ import type { InstanceOptionUpdate } from '$core/admin';
 import {
 	SERVER_SETTINGS,
 	SETTING_GROUPS,
-	applySettings,
 	parseJavaAgents,
 	parseJavaArgs,
-	readServerProperties,
 	validateSettings
 } from '$core/settings';
+import { applySettings, readServerProperties } from '$core/services/settings';
 import { inventory, javaSelection, suggestedFeature } from '$core/runtimes';
 import { syncVelocityToml } from '$core/proxy';
 import { autoRestartOf, getStatus, restartDelayOf } from '$core/instances';

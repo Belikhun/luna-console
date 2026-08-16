@@ -10,10 +10,20 @@
  */
 
 import { join, normalize } from "node:path";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { t } from "../shared/i18n";
 import { existsSync } from "node:fs";
 
-import { loadCluster, managedInstances, instanceDir, poolDir } from "../core/config";
+/**
+ * Ceiling on one staged world zip.
+ *
+ * Generous, because a real adventure map runs to gigabytes, but finite: this is
+ * the only thing standing between an authenticated upload and a full cluster
+ * root, and a full cluster root takes `cluster.json` down with it.
+ */
+const MAX_STAGE_BYTES = 64 * 1024 * 1024 * 1024;
+
+import { backupsDir, loadCluster, managedInstances, instanceDir, poolDir, stagingDir } from "../core/config";
 import { datapacksDir } from "../core/datapacks";
 import * as lunaApi from "../core/services/luna";
 
@@ -90,6 +100,24 @@ let remoteConsole: RemoteConsole | undefined;
 /** Install the hub's follower console tunnel (primary only). */
 export function setRemoteConsole(tunnel: RemoteConsole): void {
 	remoteConsole = tunnel;
+}
+
+/**
+ * Where a follower's own HTTP API answers, as `host:port`.
+ *
+ * Installed by the hub, which is the only thing that knows: followers dial the
+ * primary, so the reverse direction needs the address the follower advertised
+ * at registration. Undefined for an unknown daemon, and for one whose build
+ * predates advertising a port at all.
+ */
+let followerEndpoint: ((daemon: string) => string | undefined) | undefined;
+
+/** The shared cluster token, kept so a proxied fetch can authenticate itself. */
+let clusterToken: string | undefined;
+
+/** Install the follower address lookup (primary only). */
+export function setFollowerEndpoint(lookup: typeof followerEndpoint): void {
+	followerEndpoint = lookup;
 }
 
 /** SSE stream of an instance's live console; a tail of its latest.log. */
@@ -349,6 +377,235 @@ async function handleDatapackFile(subpath: string): Promise<Response> {
 }
 
 /**
+ * PUT /files/stage/<token>; accept an uploaded world zip, streaming it to disk.
+ *
+ * The body is written chunk by chunk rather than buffered: a world zip is
+ * routinely gigabytes, and `await request.arrayBuffer()` on one would put the
+ * whole thing in the daemon's heap. This is also why a world never travels as
+ * an RPC argument - those are JSON over the socket - and why the ops take a
+ * staging token instead.
+ */
+async function handleStageUpload(request: Request, token: string): Promise<Response> {
+	const clean = stageToken(token);
+
+	if (!clean) {
+		return errorResponse("invalid stage token", 400);
+	}
+
+	if (!request.body) {
+		return errorResponse("empty body", 400);
+	}
+
+	await mkdir(stagingDir(), { recursive: true });
+
+	const path = join(stagingDir(), `${clean}.zip`);
+	const partial = `${path}.part`;
+	const sink = Bun.file(partial).writer();
+
+	// an explicit reader rather than `for await`: a request body is not reliably
+	// async-iterable across Bun's listeners, and when it is not the failure is a
+	// bare "undefined is not a function" thrown a long way from its cause
+	const reader = request.body.getReader();
+	let bytes = 0;
+
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+
+			if (done) {
+				break;
+			}
+
+			bytes += value.byteLength;
+
+			// the console's own body limit is global and generous by necessity, so
+			// the ceiling that actually protects this disk is counted here
+			if (bytes > MAX_STAGE_BYTES) {
+				throw new Error(t("daemon.stageTooLarge"));
+			}
+
+			sink.write(value);
+		}
+
+		await sink.end();
+	} catch (err) {
+		await reader.cancel().catch(() => undefined);
+
+		try {
+			await sink.end();
+		} catch {
+			// the write side is already broken; the partial file goes either way
+		}
+
+		await rm(partial, { force: true });
+
+		console.error("STAGE FAIL", (err as Error)?.stack ?? err);
+
+		return errorResponse(err instanceof Error ? err.message : String(err), 413);
+	}
+
+	// renamed only once it is whole, so a half-uploaded zip can never be picked
+	// up as a complete one by an op that runs while the transfer is still going
+	await rename(partial, path);
+
+	return jsonResponse({ ok: true, token: clean, bytes });
+}
+
+/** GET /files/stage/<token>; hand a staged zip to the follower that needs it. */
+async function handleStageFile(token: string): Promise<Response> {
+	const clean = stageToken(token);
+
+	if (!clean) {
+		return errorResponse("invalid stage token", 400);
+	}
+
+	const path = join(stagingDir(), `${clean}.zip`);
+
+	if (!existsSync(path)) {
+		return errorResponse("no such staged world", 404);
+	}
+
+	return new Response(Bun.file(path));
+}
+
+/**
+ * GET /files/backups/<instance>/<file>; stream one archive to the primary.
+ *
+ * A follower's backups stay on the follower, so this is how the console offers
+ * a download of one. Range requests are honoured because these are commonly
+ * tens of gigabytes and a download that cannot resume is a download that never
+ * finishes.
+ */
+async function handleBackupFile(
+	subpath: string,
+	request: Request,
+	dcfg: DaemonConfig,
+): Promise<Response> {
+	const parts = normalize(subpath).split("/");
+
+	if (parts.length !== 2 || parts.some((part) => part === "" || part === "..")) {
+		return errorResponse("invalid backup path", 400);
+	}
+
+	const [instance, file] = parts as [string, string];
+
+	if (!/^[a-z0-9_-]+$/i.test(instance) || !file.endsWith(".zip") || file.includes("/")) {
+		return errorResponse("invalid backup path", 400);
+	}
+
+	// An archive lives on the machine that owns the instance, and the console
+	// only ever talks to the primary. So when the instance is somebody else's,
+	// this streams it through rather than answering 404: the alternative is a
+	// download button that works for seven instances and not the eighth.
+	const cfg = await loadCluster().catch(() => undefined);
+	const inst = cfg ? managedInstances(cfg)[instance] : undefined;
+
+	if (inst && !ownsInstance(inst)) {
+		return await proxyFollowerBackup(inst.daemon ?? "", instance, file, request);
+	}
+
+	const path = join(backupsDir(), instance, file);
+
+	if (!existsSync(path)) {
+		return errorResponse("no such backup", 404);
+	}
+
+	return rangedFile(path, request);
+}
+
+/** Stream a follower-held archive back through the primary. */
+async function proxyFollowerBackup(
+	daemon: string,
+	instance: string,
+	file: string,
+	request: Request,
+): Promise<Response> {
+	const endpoint = followerEndpoint?.(daemon);
+
+	if (!endpoint) {
+		return errorResponse(t("daemon.backupUnreachable", { daemon: daemon || "?" }), 503);
+	}
+
+	const url = `http://${endpoint}/files/backups/${encodeURIComponent(instance)}/${encodeURIComponent(file)}`;
+	const range = request.headers.get("range");
+
+	const upstream = await fetch(url, {
+		headers: {
+			"x-luna-token": clusterToken ?? "",
+			...(range ? { range } : {}),
+		},
+	}).catch(() => undefined);
+
+	if (!upstream) {
+		return errorResponse(t("daemon.backupUnreachable", { daemon }), 502);
+	}
+
+	const headers = new Headers();
+
+	for (const name of ["content-type", "content-length", "content-range", "accept-ranges"]) {
+		const value = upstream.headers.get(name);
+
+		if (value) {
+			headers.set(name, value);
+		}
+	}
+
+	return new Response(request.method === "HEAD" ? null : upstream.body, {
+		status: upstream.status,
+		headers,
+	});
+}
+
+/** A file response honouring a `Range` header, so a huge download can resume. */
+export async function rangedFile(path: string, request: Request): Promise<Response> {
+	const file = Bun.file(path);
+	const size = file.size;
+	const range = request.headers.get("range");
+	const match = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+
+	if (!match) {
+		return new Response(file, {
+			headers: {
+				"content-type": "application/zip",
+				"accept-ranges": "bytes",
+				"content-length": String(size),
+			},
+		});
+	}
+
+	const startText = match[1] ?? "";
+	const endText = match[2] ?? "";
+
+	// "bytes=-500" is the last 500 bytes, not a range starting at zero
+	const start = startText === "" ? Math.max(0, size - Number(endText || 0)) : Number(startText);
+	const end = startText === "" || endText === "" ? size - 1 : Math.min(Number(endText), size - 1);
+
+	if (!Number.isFinite(start) || start < 0 || start > end || start >= size) {
+		return new Response(null, {
+			status: 416,
+			headers: { "content-range": `bytes */${size}` },
+		});
+	}
+
+	return new Response(file.slice(start, end + 1), {
+		status: 206,
+		headers: {
+			"content-type": "application/zip",
+			"accept-ranges": "bytes",
+			"content-range": `bytes ${start}-${end}/${size}`,
+			"content-length": String(end - start + 1),
+		},
+	});
+}
+
+/** A staging token is opaque and ours; anything else is refused outright. */
+function stageToken(raw: string): string | undefined {
+	const clean = raw.trim();
+
+	return /^[a-z0-9]{8,64}$/.test(clean) ? clean : undefined;
+}
+
+/**
  * Build the daemon's fetch handler. `trusted` marks the unix socket listener;
  * TCP requests must present the shared token instead.
  */
@@ -357,6 +614,8 @@ export function buildHandler(
 	trusted: boolean,
 	startedAt: number,
 ): (request: Request, server: Bun.Server<WsData>) => Promise<Response | undefined> {
+	clusterToken = dcfg.token;
+
 	return async (request: Request, server: Bun.Server<WsData>): Promise<Response | undefined> => {
 		const url = new URL(request.url);
 		const path = url.pathname;
@@ -485,6 +744,20 @@ export function buildHandler(
 
 		if (path.startsWith("/files/pool/")) {
 			return await handlePoolFile(decodeURIComponent(path.slice("/files/pool/".length)));
+		}
+
+		if (path.startsWith("/files/stage/")) {
+			const token = decodeURIComponent(path.slice("/files/stage/".length));
+
+			if (request.method === "PUT" || request.method === "POST") {
+				return await handleStageUpload(request, token);
+			}
+
+			return await handleStageFile(token);
+		}
+
+		if (path.startsWith("/files/backups/")) {
+			return await handleBackupFile(decodeURIComponent(path.slice("/files/backups/".length)), request, dcfg);
 		}
 
 		if (path.startsWith("/files/datapacks/")) {

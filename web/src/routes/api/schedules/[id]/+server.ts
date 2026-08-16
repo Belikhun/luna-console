@@ -5,8 +5,13 @@
 import { json, error } from '@sveltejs/kit';
 
 import { loadCluster, expandTargets } from '$core/config';
-import { startInstance, stopInstance } from '$core/instances';
-import { loadSchedules, recordEvent, saveSchedules, setEnabled } from '$core/schedule';
+import {
+	executeScheduleAction,
+	loadSchedules,
+	recordEvent,
+	saveSchedules,
+	setEnabled
+} from '$core/schedule';
 import { pushEvent } from '$lib/server/luna';
 
 /** PATCH { enabled } → pause or resume a schedule. */
@@ -49,15 +54,10 @@ export async function POST({ params, request }) {
 
 	for (const name of expandTargets(cfg, schedule.instances)) {
 		try {
-			if (schedule.action === 'start') {
-				outcomes.push(`${name}: ${await startInstance(cfg, name)}`);
-			} else if (schedule.action === 'stop') {
-				outcomes.push(`${name}: ${(await stopInstance(cfg, name)).outcome}`);
-			} else {
-				await stopInstance(cfg, name);
-				await startInstance(cfg, name);
-				outcomes.push(`${name}: restarted`);
-			}
+			// the runner's own executor, so a manual run does exactly what the
+			// schedule would have done - including routing to the owning daemon,
+			// which the branch that used to live here did not
+			outcomes.push(`${name}: ${await executeScheduleAction(schedule.action, name)}`);
 		} catch (err) {
 			failures += 1;
 			outcomes.push(`${name}: failed; ${err instanceof Error ? err.message : err}`);

@@ -1683,5 +1683,80 @@
 			"uptime": "Hoạt động",
 			"stops": "Lần dừng"
 		}
+	},
+	"world": {
+		"show": {
+			"desc": "hiển thị thế giới của instance: các chiều, dung lượng và nội dung level.dat",
+			"reading": "đang đọc thế giới",
+			"levelLine": "Minecraft {version} · seed {seed}",
+			"notGenerated": "{name} chưa tạo thế giới nào",
+			"colDimension": "CHIỀU",
+			"colPath": "ĐƯỜNG DẪN",
+			"colSize": "DUNG LƯỢNG",
+			"colRegions": "VÙNG",
+			"freeSpace": "còn {free} trống trên ổ đĩa này",
+			"locked": "đang có thao tác {kind} trên thế giới ({phase}); instance này không thể khởi động"
+		},
+		"reset": {
+			"desc": "xóa thế giới của instance để máy chủ tạo lại",
+			"optYes": "xác nhận; thế giới sẽ bị xóa",
+			"optNoBackup": "bỏ qua bản sao lưu an toàn",
+			"needsYes": "thao tác này xóa thế giới của {name}; thêm --yes để xác nhận",
+			"backingUp": "sao lưu an toàn",
+			"backupLabel": "trước khi đặt lại",
+			"done": "thế giới của {name} đã bị xóa; sẽ được tạo lại ở lần khởi động sau"
+		}
+	},
+	"backup": {
+		"create": {
+			"desc": "lưu trữ thế giới của instance; an toàn khi đang chạy",
+			"optLabel": "tên cho bản sao lưu",
+			"optNote": "ghi chú kèm theo",
+			"done": "đã sao lưu thành {label} · {size} · {files} tệp"
+		},
+		"warning": {
+			"flush-not-confirmed": "máy chủ chưa xác nhận đã lưu xong; kho lưu trữ có thể hơi cũ",
+			"freeze-no-session": "không liên hệ được máy chủ để tạm dừng lưu; kho lưu trữ được tạo nguyên trạng"
+		},
+		"list": {
+			"desc": "liệt kê các bản sao lưu thế giới",
+			"none": "chưa có bản sao lưu",
+			"colInstance": "INSTANCE",
+			"colBackup": "BẢN SAO LƯU",
+			"colTaken": "THỜI ĐIỂM",
+			"colSize": "DUNG LƯỢNG",
+			"colVersion": "PHIÊN BẢN",
+			"colSource": "NGUỒN"
+		},
+		"restore": {
+			"desc": "khôi phục bản sao lưu đè lên thế giới của instance",
+			"optYes": "xác nhận; thế giới hiện tại sẽ bị thay thế",
+			"optNoBackup": "bỏ qua việc sao lưu thế giới hiện tại trước",
+			"needsYes": "thao tác này thay thế thế giới của {name}; thêm --yes để xác nhận",
+			"done": "{name} đã được khôi phục từ {id}"
+		},
+		"verify": {
+			"desc": "đọc lại bản sao lưu và ghi tổng kiểm tra",
+			"working": "đang xác minh kho lưu trữ",
+			"done": "{label} còn nguyên vẹn · {checksum}"
+		},
+		"pin": {
+			"desc": "giữ bản sao lưu khỏi chính sách lưu giữ",
+			"optOff": "bỏ ghim",
+			"pinned": "{label} đã được ghim",
+			"unpinned": "{label} không còn được ghim"
+		},
+		"remove": {
+			"desc": "xóa bản sao lưu và kho lưu trữ của nó",
+			"optYes": "xác nhận việc xóa",
+			"needsYes": "thêm --yes để xóa bản sao lưu",
+			"unknown": "không có bản sao lưu {id}",
+			"done": "đã xóa {label}"
+		},
+		"keep": {
+			"desc": "số bản sao lưu instance này giữ lại",
+			"badCount": "giữ lại ít nhất một bản sao lưu",
+			"done": "{name} giữ {count} bản sao lưu"
+		}
 	}
 }

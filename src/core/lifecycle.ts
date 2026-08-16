@@ -24,6 +24,7 @@ import { ensureInstanceRuntime, isRuntimeInstalled, javaSelection } from "./runt
 import * as screen from "./screen";
 import { traitsOf } from "./software";
 import type { ClusterConfig } from "./types";
+import { readJournal } from "./worldops";
 import { t } from "../shared/i18n";
 
 /** How often the log is polled while a transition is in flight. */
@@ -144,6 +145,16 @@ export async function startInstanceTracked(
 
 	if (!inst) {
 		throw new Error(t("core.instances.unknown", { name }));
+	}
+
+	// The same refusal `startInstance` makes, but before any of the work above
+	// it: this path installs a runtime and renders config files on the way, and
+	// a locked instance should cost nothing rather than a few hundred megabytes
+	// of download followed by a refusal.
+	const lock = await readJournal(instanceDir(inst));
+
+	if (lock) {
+		throw new Error(t("core.instances.worldLocked", { name, kind: lock.kind, phase: lock.phase }));
 	}
 
 	const progress = reporter ?? new ProgressReporter(`start ${name}`);

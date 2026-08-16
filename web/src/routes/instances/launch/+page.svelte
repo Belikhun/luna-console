@@ -19,6 +19,9 @@
 	import InstanceRuntimeFields from '$lib/components/InstanceRuntimeFields.svelte';
 	import type { AgentAddon } from '$lib/components/javaagents';
 	import type { Software } from '$core/types';
+	import { traitsOf } from '$core/software';
+	import WorldUpload from '$lib/components/WorldUpload.svelte';
+	import { isStagedWorldReady, type StagedWorld } from '$lib/components/worldupload';
 
 	/** how many recent Minecraft versions the picker offers */
 	const VERSION_CHOICES = 25;
@@ -178,6 +181,26 @@
 
 	const selected = $derived(softwares.find((entry) => entry.id === software));
 
+	/**
+	 * Whether the chosen software has a world at all.
+	 *
+	 * The `levelName` trait is the codebase's own test for it, and the same one
+	 * the instance page's tabs use; a proxy has none.
+	 */
+	const hasWorld = $derived(traitsOf(software).levelName !== undefined);
+
+	/** A world zip to provision onto, once the wizard has been through it. */
+	let world: StagedWorld | null = $state(null);
+
+	/**
+	 * A world is staged but the operator has not finished checking it.
+	 *
+	 * Blocks the submit rather than being quietly dropped: they picked a file,
+	 * and creating the instance without it would be the one outcome nobody asked
+	 * for.
+	 */
+	const worldPending = $derived(!!world && !isStagedWorldReady(world));
+
 	const nameError = $derived.by(() => {
 		if (!name) {
 			return '';
@@ -224,6 +247,12 @@
 		}
 
 		parts.push(register ? t('web.launch.proxied') : t('web.launch.standalone'));
+
+		parts.push(
+			isStagedWorldReady(world)
+				? t('web.launch.worldSummary', { name: world!.level })
+				: t('web.launch.worldGenerated')
+		);
 
 		if (changedCount) {
 			parts.push(t('web.launch.settingsChanged', { count: changedCount }));
@@ -318,6 +347,10 @@
 					runtime: selected?.usesJava ? runtime : '',
 					autoRestart,
 					restartDelay,
+					// a token, never the bytes: options cross the daemon socket as
+					// JSON, and the archive is already on disk there
+					worldStage: isStagedWorldReady(world) ? world!.token : undefined,
+					worldLevel: isStagedWorldReady(world) ? world!.level : undefined,
 					addonGroups,
 					pluginOverrides,
 					// the registry records an owner only for follower-held instances, so
@@ -341,7 +374,7 @@
 	windowTitle={t('web.nav.launchInstance')}
 	description={t('web.launch.pageDescription')}
 	submitLabel={t('web.nav.launchInstance')}
-	disabled={!name || !!nameError || !mcVersion}
+	disabled={!name || !!nameError || !mcVersion || worldPending}
 	loading={creating}
 	onsubmit={launch}
 >
@@ -415,6 +448,21 @@
 			{/if}
 		</FormGrid>
 	</Panel>
+
+	{#if hasWorld}
+		<Panel title={t('web.launch.worldTitle')} description={t('web.launch.worldHint')}>
+			<WorldUpload
+				bind:value={world}
+				{software}
+				{mcVersion}
+				level={settings['level-name'] ?? ''}
+				disabled={creating}
+				hint={t('web.launch.worldDrop')}
+				confirmLabel={t('web.launch.useThisWorld')}
+			/>
+			<p class="dim worldnote">{t('web.launch.worldOptional')}</p>
+		</Panel>
+	{/if}
 
 	<Panel title={t('web.launch.resourcesNetwork')}>
 		<FormGrid cols={2}>

@@ -1683,5 +1683,80 @@
 			"uptime": "Uptime",
 			"stops": "Stops"
 		}
+	},
+	"world": {
+		"show": {
+			"desc": "show an instance's world: dimensions, size and what level.dat says",
+			"reading": "reading the world",
+			"levelLine": "Minecraft {version} · seed {seed}",
+			"notGenerated": "{name} has not generated a world yet",
+			"colDimension": "DIMENSION",
+			"colPath": "PATH",
+			"colSize": "SIZE",
+			"colRegions": "REGIONS",
+			"freeSpace": "{free} free on this volume",
+			"locked": "a world {kind} is running ({phase}); this instance cannot start"
+		},
+		"reset": {
+			"desc": "delete an instance's world so the server regenerates it",
+			"optYes": "confirm; the world is deleted",
+			"optNoBackup": "skip the safety backup",
+			"needsYes": "this deletes {name}'s world; pass --yes to confirm",
+			"backingUp": "safety backup",
+			"backupLabel": "before reset",
+			"done": "{name}'s world is gone; it regenerates on the next start"
+		}
+	},
+	"backup": {
+		"create": {
+			"desc": "archive an instance's world; safe while it is running",
+			"optLabel": "name for the backup",
+			"optNote": "a note to keep with it",
+			"done": "backed up as {label} · {size} · {files} files"
+		},
+		"warning": {
+			"flush-not-confirmed": "the server never confirmed it had finished saving; the archive may be slightly stale",
+			"freeze-no-session": "the server was not reachable to pause saving; the archive was taken as-is"
+		},
+		"list": {
+			"desc": "list world backups",
+			"none": "no backups yet",
+			"colInstance": "INSTANCE",
+			"colBackup": "BACKUP",
+			"colTaken": "TAKEN",
+			"colSize": "SIZE",
+			"colVersion": "VERSION",
+			"colSource": "SOURCE"
+		},
+		"restore": {
+			"desc": "put a backup back over an instance's world",
+			"optYes": "confirm; the current world is replaced",
+			"optNoBackup": "skip backing up the current world first",
+			"needsYes": "this replaces {name}'s world; pass --yes to confirm",
+			"done": "{name} restored from {id}"
+		},
+		"verify": {
+			"desc": "re-read a backup and record its checksum",
+			"working": "verifying the archive",
+			"done": "{label} is intact · {checksum}"
+		},
+		"pin": {
+			"desc": "keep a backup out of retention's reach",
+			"optOff": "unpin instead",
+			"pinned": "{label} is pinned",
+			"unpinned": "{label} is no longer pinned"
+		},
+		"remove": {
+			"desc": "delete a backup and its archive",
+			"optYes": "confirm the deletion",
+			"needsYes": "pass --yes to delete a backup",
+			"unknown": "no backup {id}",
+			"done": "deleted {label}"
+		},
+		"keep": {
+			"desc": "how many backups this instance keeps",
+			"badCount": "keep at least one backup",
+			"done": "{name} keeps {count} backup(s)"
+		}
 	}
 }

@@ -134,7 +134,8 @@
 				options={[
 					{ value: 'start', label: t('web.scheduleModal.start') },
 					{ value: 'stop', label: t('web.scheduleModal.stop') },
-					{ value: 'restart', label: t('web.scheduleModal.restart') }
+					{ value: 'restart', label: t('web.scheduleModal.restart') },
+					{ value: 'backup', label: t('web.scheduleModal.backupWorld') }
 				]}
 			/>
 		</div>

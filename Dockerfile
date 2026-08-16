@@ -60,8 +60,11 @@ RUN mkdir -p /out/web \
 FROM eclipse-temurin:21-jre-noble AS runtime
 
 # screen: the daemon's process model. procps/iproute2: the probes it runs
-# (pgrep java, ss -tuln). unzip: reading plugin.yml out of a jar. coreutils (df,
-# tail) is essential in the base, so it is not installed again here.
+# (pgrep java, ss -tuln). unzip: reading plugin.yml out of a jar, and extracting
+# a world archive. zip: writing one - a world backup is the only thing luna
+# compresses itself, and without this it works on a host install and fails only
+# in a container. coreutils (df, tail) is essential in the base, so it is not
+# installed again here.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		ca-certificates \
@@ -70,6 +73,7 @@ RUN apt-get update \
 		screen \
 		tini \
 		unzip \
+		zip \
 	&& rm -rf /var/lib/apt/lists/*
 
 # the console is a SvelteKit adapter-node bundle, which needs a JS runtime

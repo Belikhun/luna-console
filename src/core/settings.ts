@@ -10,15 +10,13 @@
  * the file. The keys that wire velocity forwarding are listed too but marked
  * `managed`: they are shown read-only, because editing one silently breaks
  * player logins for the whole backend.
+ *
+ * Schema and validation only, and deliberately nothing else: a Svelte component
+ * imports this to render the configuration tab, so it must not reach a module
+ * that touches a disk. Reading and writing the file lives in `settingsapply.ts`.
  */
 
-import { join } from "node:path";
-
-import type { ClusterConfig, InstanceConfig } from "./types";
 import { t } from "../shared/i18n";
-import { instanceDir, managedInstances } from "./config";
-import { readProperties, upsertProperty } from "./confedit";
-import type { ProgressReporter } from "./progress";
 
 export type SettingType = "text" | "number" | "boolean" | "choice";
 
@@ -433,112 +431,6 @@ export function validateSettings(
 	}
 
 	return problems;
-}
-
-/** Absolute path of an instance's server.properties. */
-function propertiesPath(inst: InstanceConfig): string {
-	return join(instanceDir(inst), "server.properties");
-}
-
-/** Every key/value pair in an instance's server.properties. */
-export async function readServerProperties(
-	cfg: ClusterConfig,
-	name: string,
-): Promise<Record<string, string>> {
-	const inst = managedInstances(cfg)[name];
-
-	if (!inst) {
-		throw new Error(t("core.instances.unknown", { name }));
-	}
-
-	return await readProperties(propertiesPath(inst));
-}
-
-export interface SettingChange {
-	key: string;
-	from?: string;
-	to: string;
-	/** the line was added because the file had no such key yet */
-	appended: boolean;
-}
-
-export interface ApplySettingsResult {
-	changed: SettingChange[];
-	/** values that failed validation, or keys with no spec */
-	rejected: Array<{ key: string; error: string }>;
-	/** already had the requested value */
-	unchanged: string[];
-}
-
-/**
- * Write a batch of settings into an instance's server.properties, validating
- * each against its spec first. Values equal to what is already on disk are
- * skipped, so the result says exactly what the call touched. A rejected value
- * never blocks the rest of the batch; the caller reports both lists.
- */
-export async function applySettings(
-	cfg: ClusterConfig,
-	name: string,
-	values: Record<string, string>,
-	reporter?: ProgressReporter,
-): Promise<ApplySettingsResult> {
-	const inst = managedInstances(cfg)[name];
-
-	if (!inst) {
-		throw new Error(t("core.instances.unknown", { name }));
-	}
-
-	const path = propertiesPath(inst);
-	const current = await readProperties(path);
-
-	const result: ApplySettingsResult = { changed: [], rejected: [], unchanged: [] };
-	const entries = Object.entries(values);
-	let done = 0;
-
-	for (const [key, raw] of entries) {
-		const spec = settingSpec(key);
-		const value = String(raw);
-
-		done += 1;
-
-		const progress = done / Math.max(1, entries.length);
-
-		if (!spec) {
-			result.rejected.push({ key, error: t("core.settings.notEditable", { key }) });
-			reporter?.warn(progress, t("core.settings.skipped", { key }));
-
-			continue;
-		}
-
-		const problem = validateSetting(spec, value);
-
-		if (problem) {
-			result.rejected.push({ key, error: problem });
-			reporter?.warn(progress, problem);
-
-			continue;
-		}
-
-		if (current[key] === value) {
-			result.unchanged.push(key);
-			reporter?.info(progress, t("core.settings.alreadyValue", { key, value }));
-
-			continue;
-		}
-
-		const outcome = await upsertProperty(path, key, value);
-
-		result.changed.push({
-			key,
-			from: current[key],
-			to: value,
-			appended: outcome === "appended"
-		});
-
-		reporter?.okay(progress, `${key} = ${value || "(blank)"}`);
-	}
-
-	return result;
 }
 
 /** JVM flags luna sets from the instance's own fields, so a custom arg cannot restate them. */

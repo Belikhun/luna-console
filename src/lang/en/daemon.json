@@ -120,5 +120,9 @@
 		"noAsset": "{origin} publishes no console bundle; the console is unchanged",
 		"fetching": "fetching the console bundle ({size})",
 		"failed": "console not updated: {error}"
-	}
+	},
+	"stageTooLarge": "The upload exceeds the maximum staged world size.",
+	"stageMissing": "No staged world {token} on this machine.",
+	"stageFetchFailed": "Could not fetch staged world {token} from the primary: HTTP {status}",
+	"noPrimaryForStage": "This daemon has no primary to fetch a staged world from."
 }

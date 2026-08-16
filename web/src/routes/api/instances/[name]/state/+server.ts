@@ -7,6 +7,7 @@ import type { ProgressReporter } from '$core/progress';
 import type { ClusterConfig } from '$core/types';
 import { loadCluster, managedInstances } from '$core/config';
 import { startInstance, stopInstance } from '$core/instances';
+import { worldLock } from '$core/world';
 import {
 	startInstanceTracked,
 	stopInstanceTracked,
@@ -92,6 +93,17 @@ export async function POST({ params, request }) {
 		clearTransition(name);
 	} else {
 		markTransition(name, action === 'stop' ? 'stopping' : 'restarting');
+	}
+
+	// The daemon refuses a locked instance anyway, but doing it here means the
+	// operator sees why on the click rather than watching a job fail a moment
+	// later with the reason buried in a card.
+	if (action !== 'stop') {
+		const lock = await worldLock(cfg, name);
+
+		if (lock) {
+			throw error(409, `a world ${lock.kind} is running on ${name}; it cannot start until that finishes`);
+		}
 	}
 
 	pushEvent(name, 'action', `${action} requested`);

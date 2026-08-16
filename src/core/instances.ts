@@ -17,6 +17,7 @@ import { agentAddonKey, agentJarOf, agentOptionsOf } from "./settings";
 import { traitsOf } from "./software";
 import * as screen from "./screen";
 import { ping } from "./ping";
+import { readJournal } from "./worldops";
 import { t } from "../shared/i18n";
 
 export const NORESTART = ".luna-norestart";
@@ -612,6 +613,20 @@ export async function startInstance(
 
 	if (await screen.sessionExists(session)) {
 		return "already-running";
+	}
+
+	// A world operation in flight - or one a crash left half-finished - means what
+	// is on disk under the level name is not a whole world. This is the only place
+	// that has to be checked, because it is the only path to a screen session: the
+	// tracked lifecycle, the scheduler and every CLI verb come through here.
+	//
+	// It is a separate sentinel from `.luna-norestart` on purpose. `run.sh` deletes
+	// that one on every launch, so a marker living in it could not survive the act
+	// of starting, which is exactly what this one has to do.
+	const lock = await readJournal(instanceDir(inst));
+
+	if (lock) {
+		throw new Error(t("core.instances.worldLocked", { name, kind: lock.kind, phase: lock.phase }));
 	}
 
 	// everything derived from the registry and the env store is rebuilt here, so a

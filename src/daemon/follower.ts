@@ -30,6 +30,7 @@ import type { PacksLock } from "../core/packslock";
 import { ProgressReporter } from "../core/progress";
 import type { BackendCard } from "../core/services/luna";
 import { sha512File } from "../core/services/download";
+import { ensureStagingDir, stagePath } from "../core/staging";
 import type { ClusterConfig, PluginsLock } from "../core/types";
 
 import { selfUpgradesAutomatically, type DaemonConfig } from "./config";
@@ -37,7 +38,7 @@ import { installEventForwarder } from "./events";
 import { currentHealth, hostAddresses } from "./health";
 import { ownsInstance } from "./identity";
 import { log } from "./index";
-import { runOp, setLinkQuarantine } from "./rpc";
+import { installStageFetcher, runOp, setLinkQuarantine } from "./rpc";
 import { setLunaTelemetry } from "./sampler";
 import { PROTOCOL_VERSION } from "./server";
 import { tailFollow, type TailHandle } from "./tail";
@@ -98,6 +99,47 @@ async function ensureMirroredFile(
 /** Fetch one pool file from the primary when missing or hash-mismatched. */
 async function ensurePoolFile(rel: string, sha512: string | undefined): Promise<void> {
 	await ensureMirroredFile("pool", poolDir(), rel, sha512);
+}
+
+/**
+ * Pull a staged world zip down from the primary.
+ *
+ * An upload always lands on the primary, because that is where the console
+ * runs, but the instance it is destined for may be owned by this daemon. The
+ * bytes therefore have to cross the cluster link, and they do it the same way
+ * every other large file does: this side fetches, streaming the response
+ * straight to disk rather than through memory.
+ *
+ * Idempotent. A token already here is left alone, which is what makes a retried
+ * provision cheap.
+ */
+export async function ensureStagedWorld(token: string): Promise<string> {
+	const path = stagePath(token);
+
+	if (existsSync(path)) {
+		return path;
+	}
+
+	if (!dcfg?.primary?.address) {
+		throw new Error(t("daemon.noPrimaryForStage"));
+	}
+
+	await ensureStagingDir();
+
+	const url = `http://${dcfg.primary.address}/files/stage/${encodeURIComponent(token)}`;
+	const response = await fetch(url, {
+		headers: { "x-luna-token": dcfg.token ?? "" },
+	});
+
+	if (!response.ok) {
+		throw new Error(t("daemon.stageFetchFailed", { token, status: String(response.status) }));
+	}
+
+	await Bun.write(path, response);
+
+	log(`stage: fetched ${token}`);
+
+	return path;
 }
 
 /**
@@ -361,6 +403,12 @@ function connect(): void {
 			// on the socket, which is by definition a route that works
 			host: dcfg!.host,
 			addresses: hostAddresses(),
+			// the port this daemon's own HTTP API answers on, so the primary can
+			// reach back for a file rather than only being reached. Optional on
+			// purpose: an older follower simply omits it, and the primary then
+			// reports a follower-held backup as unreachable instead of guessing a
+			// port and serving whatever answers there.
+			listenPort: dcfg!.listen?.port,
 			startedAt,
 			protocol: PROTOCOL_VERSION,
 			version: buildVersion(),
@@ -474,6 +522,10 @@ export function startFollower(config: DaemonConfig, processStartedAt: number): v
 	installEventForwarder((event) => {
 		send({ t: "event", instance: event.instance, kind: event.kind, message: event.message });
 	});
+
+	// an upload lands on the primary, because that is where the console runs; a
+	// world destined for an instance this daemon owns has to be pulled across
+	installStageFetcher(ensureStagedWorld);
 
 	// where a self-upgrade fetches its new binary from
 	setUpgradeSource(config.primary!.address, config.token ?? "");

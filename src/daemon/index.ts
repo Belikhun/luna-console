@@ -59,6 +59,48 @@ async function socketAlive(socket: string): Promise<boolean> {
 	}
 }
 
+/**
+ * Ceiling Bun applies to a request body before the handler ever sees it.
+ *
+ * Its default is 128 MB, which is ample for every other route here and far too
+ * small for the one that accepts a world: a survival map is measured in
+ * gigabytes. Raising it is safe because the staging route counts bytes as it
+ * streams them and stops at its own limit, and every other route parses JSON
+ * whose size is bounded by what wrote it.
+ */
+const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024 * 1024;
+
+/**
+ * Finish or undo any world operation a previous run was killed in the middle of.
+ *
+ * The journal each one leaves is both the record of where it got to and the
+ * lock that keeps the instance from starting, so until this has run, an
+ * interrupted replace holds its instance down. Failures are logged rather than
+ * thrown: one unrecoverable instance must not stop the daemon from serving the
+ * other seven, and the journal it keeps is what leaves it visibly locked.
+ */
+async function recoverInterruptedWorldOps(): Promise<void> {
+	try {
+		const { loadCluster } = await import("../core/config");
+		const { recoverAllWorldOps } = await import("../core/worldops");
+		const { sweepStages } = await import("../core/staging");
+
+		const recovered = await recoverAllWorldOps(await loadCluster());
+
+		for (const entry of recovered) {
+			log(`world: recovered ${entry.instance} (${entry.kind} at ${entry.phase}) - ${entry.outcome}`);
+		}
+
+		const swept = await sweepStages();
+
+		if (swept > 0) {
+			log(`staging: swept ${swept} abandoned upload(s)`);
+		}
+	} catch (err) {
+		log(`world recovery failed: ${err instanceof Error ? err.message : String(err)}`, "error");
+	}
+}
+
 /** Run the daemon until SIGINT/SIGTERM. */
 export async function runDaemon(): Promise<void> {
 	const dcfg = await resolveDaemonConfig();
@@ -131,6 +173,7 @@ export async function runDaemon(): Promise<void> {
 		// listeners take no idleTimeout, but the runtime both applies the 10s
 		// default and honours the override (its own timeout error says to pass it).
 		idleTimeout: 0 as never,
+		maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
 	});
 
 	log(t("daemon.log.starting", { name: dcfg.name, mode: dcfg.mode, root: dcfg.root }));
@@ -176,6 +219,7 @@ export async function runDaemon(): Promise<void> {
 				// same SSE-idle reasoning as the local listener; a forwarded job's
 				// stream crosses this one
 				idleTimeout: 0,
+				maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
 			});
 
 			installHub(dcfg, startedAt);
@@ -202,6 +246,12 @@ export async function runDaemon(): Promise<void> {
 		// the follower samples its own instances; the scheduler stays primary-only
 		ensureSampler();
 	}
+
+	// A world operation interrupted by a crash leaves its instance locked and its
+	// world half-swapped, and the journal it left is the only thing that knows
+	// which. Recovering before anything else can try to start that instance is
+	// the whole point of doing it here rather than lazily.
+	await recoverInterruptedWorldOps();
 
 	const shutdown = async (signal: string): Promise<void> => {
 		log(t("daemon.log.shuttingDown", { signal }));

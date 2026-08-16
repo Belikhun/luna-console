@@ -23,13 +23,12 @@ import { applyAddonGroups } from "../../client/core/addons";
 import {
 	SERVER_SETTINGS,
 	SETTING_GROUPS,
-	applySettings,
 	editableSettingKeys,
 	parseJavaAgents,
 	parseJavaArgs,
-	readServerProperties,
 	settingSpec,
 } from "../../client/core/settings";
+import { applySettings, readServerProperties } from "../../client/core/services/settings";
 import { t } from "../../shared/i18n";
 
 /** Coloured state glyph + label for a status table row. */

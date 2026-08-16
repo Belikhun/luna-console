@@ -39,6 +39,20 @@ export type { UiState, MetricSample, ClusterEvent, StatusCheck } from '$client/d
 
 import * as daemon from '$client/daemon';
 import type { ClusterEvent } from '$client/daemon';
+import { dfetch } from '$client/socket';
+
+/**
+ * Reach the daemon's HTTP API directly, for the routes that move bytes.
+ *
+ * The RPC bridge above carries JSON arguments, which is right for everything
+ * that describes work and wrong for everything that *is* data: a world zip on
+ * the way in and a backup archive on the way out are both measured in
+ * gigabytes, and neither can be serialised into an argument list. Those two go
+ * over the same unix socket as a streamed body instead, and this is the door.
+ */
+export async function daemonFetch(path: string, init?: RequestInit): Promise<Response> {
+	return await dfetch(path, init);
+}
 
 /**
  * Fire-and-forget wrappers: these were synchronous when the state lived in this

@@ -4,32 +4,42 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 
 	let {
 		title,
 		open = $bindable(),
 		wide = false,
+		dismissable = true,
 		children,
 		footer
 	}: {
 		title: string;
 		open: boolean;
 		wide?: boolean;
+		/**
+		 * Whether Escape, the backdrop and the close button dismiss the dialog.
+		 *
+		 * False while the dialog owns work a stray click must not abandon - an
+		 * upload in flight, a step whose answer the caller is about to act on.
+		 * The caller then provides its own way out.
+		 */
+		dismissable?: boolean;
 		children: Snippet;
 		footer?: Snippet;
 	} = $props();
 
 	function onKeydown(event: KeyboardEvent): void {
 		// a child control (an open Select list) may have claimed this Escape
-		if (event.key === 'Escape' && !event.defaultPrevented) {
+		if (event.key === 'Escape' && !event.defaultPrevented && dismissable) {
 			open = false;
 		}
 	}
 
 	/** Only a click on the backdrop itself dismisses; not one inside the dialog. */
 	function onOverlayClick(event: MouseEvent): void {
-		if (event.target === event.currentTarget) {
+		if (event.target === event.currentTarget && dismissable) {
 			open = false;
 		}
 	}
@@ -42,9 +52,11 @@
 		<div class="modal" class:wide role="dialog" aria-label={title}>
 			<div class="hd">
 				<h2>{title}</h2>
-				<button class="x" onclick={() => (open = false)} aria-label="Close">
-					<Icon name="close" size="0.875rem" />
-				</button>
+				{#if dismissable}
+					<button class="x" onclick={() => (open = false)} aria-label={t('web.common.close')}>
+						<Icon name="close" size="0.875rem" />
+					</button>
+				{/if}
 			</div>
 			<div class="bd">{@render children()}</div>
 			{#if footer}

@@ -228,6 +228,10 @@ export async function POST({ request }) {
 							)
 						: undefined,
 				daemon: targetDaemon ?? undefined,
+				// a staging token, not the archive: the world is already on disk
+				// beside the daemon, and a follower pulls its own copy
+				worldStage: body.worldStage ? String(body.worldStage) : undefined,
+				worldLevel: body.worldLevel ? String(body.worldLevel) : undefined,
 				reporter: files
 			});
 

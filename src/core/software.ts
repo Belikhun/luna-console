@@ -77,6 +77,16 @@ export interface LevelNameSource {
 	fallback: string;
 }
 
+/**
+ * Where a server puts the nether and the end relative to its overworld.
+ *
+ * `nested` is vanilla's own layout: one level directory holding `DIM-1` and
+ * `DIM1`. `split` is Bukkit's: three sibling directories, `<level>`,
+ * `<level>_nether` and `<level>_the_end`, each a world root with its own
+ * `level.dat`, with the dimension folder kept inside for the region data.
+ */
+export type WorldLayout = "nested" | "split";
+
 /** `server.properties`, which every JVM server names its world in. */
 const PROPERTIES_LEVEL: LevelNameSource = {
 	file: "server.properties",
@@ -153,6 +163,21 @@ export interface SoftwareTraits {
 	offlineIdentity: OfflineIdentity;
 	/** Where its world directory is named; absent for a proxy, which has none */
 	levelName?: LevelNameSource;
+	/**
+	 * How it lays the non-overworld dimensions out on disk; absent alongside
+	 * `levelName`, for the software that has no world at all.
+	 *
+	 * Vanilla and the loaders built on it keep every dimension inside the one
+	 * level directory, as `<level>/DIM-1` and `<level>/DIM1`. Bukkit split them
+	 * into siblings of it long ago (`<level>_nether/DIM-1`,
+	 * `<level>_the_end/DIM1`, each with its own `level.dat`), and everything
+	 * speaking the Bukkit API inherited that.
+	 *
+	 * It is a trait for the same reason `levelName` is: importing a world means
+	 * writing dimensions into the layout the *target* reads, and getting it
+	 * wrong produces a nether nobody can reach with nothing in any log to say so.
+	 */
+	worldLayout?: WorldLayout;
 	/** First line of a boot; everything below it is one session */
 	bootMarker: RegExp;
 	/** The line where the server says it is up. Capture 1 is how long it took,
@@ -324,6 +349,8 @@ const PAPER_LIKE = {
 	portConfig: "properties",
 	offlineIdentity: "vanilla",
 	levelName: PROPERTIES_LEVEL,
+	// bukkit moved the nether and the end out into siblings of the overworld
+	worldLayout: "split",
 	bootMarker: VANILLA_BOOT,
 	readyMarker: VANILLA_READY,
 	logGrammar: "bukkit",
@@ -349,6 +376,8 @@ const YOUER_LIKE = {
 	portConfig: "properties",
 	offlineIdentity: "vanilla",
 	levelName: PROPERTIES_LEVEL,
+	// it serves the bukkit API, so it lays worlds out the way bukkit does
+	worldLayout: "split",
 	bootMarker: MODLAUNCHER_BOOT,
 	readyMarker: VANILLA_READY,
 	logGrammar: "bukkit",
@@ -427,6 +456,7 @@ const SOFTWARE_ROWS: Record<Software, SoftwareRow> = {
 		portConfig: "properties",
 		offlineIdentity: "vanilla",
 		levelName: PROPERTIES_LEVEL,
+		worldLayout: "nested",
 		bootMarker: FABRIC_BOOT,
 		readyMarker: VANILLA_READY,
 		logGrammar: "fabric",
@@ -450,6 +480,7 @@ const SOFTWARE_ROWS: Record<Software, SoftwareRow> = {
 		portConfig: "properties",
 		offlineIdentity: "vanilla",
 		levelName: PROPERTIES_LEVEL,
+		worldLayout: "nested",
 		bootMarker: MODLAUNCHER_BOOT,
 		readyMarker: VANILLA_READY,
 		logGrammar: "modlauncher",
@@ -475,6 +506,7 @@ const SOFTWARE_ROWS: Record<Software, SoftwareRow> = {
 		portConfig: "properties",
 		offlineIdentity: "vanilla",
 		levelName: PROPERTIES_LEVEL,
+		worldLayout: "nested",
 		bootMarker: MODLAUNCHER_BOOT,
 		readyMarker: VANILLA_READY,
 		logGrammar: "modlauncher",
@@ -500,6 +532,8 @@ const SOFTWARE_ROWS: Record<Software, SoftwareRow> = {
 		portConfig: "pumpkin-toml",
 		offlineIdentity: "pumpkin",
 		levelName: { file: "pumpkin.toml", format: "toml", key: "default_level_name", fallback: "world" },
+		// a reimplementation of vanilla, and it keeps vanilla's directory shape
+		worldLayout: "nested",
 		bootMarker: /Starting Pumpkin /i,
 		// pumpkin reports in whatever unit fits, commonly milliseconds
 		readyMarker: /Started server; took (\d+\s*[a-z]+)/i,

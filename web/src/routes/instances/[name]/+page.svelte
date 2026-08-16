@@ -43,6 +43,22 @@
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
 	import ProgressTree from '$lib/components/ProgressTree.svelte';
 	import GroupsField from '$lib/components/GroupsField.svelte';
+	import WorldUpload from '$lib/components/WorldUpload.svelte';
+	import WorldWizardModal from '$lib/components/WorldWizardModal.svelte';
+	import Modal from '$lib/components/Modal.svelte';
+	import Checkbox from '$lib/components/Checkbox.svelte';
+	import type { StagedWorld, WorldReplaceTarget } from '$lib/components/worldupload';
+	import type { WorldJournal, WorldReport } from '$core/world';
+	import type { BackupEntry } from '$core/backups';
+	import {
+		backupWorldJob,
+		deleteBackup as deleteBackupEntry,
+		replaceWorldJob,
+		resetWorldJob,
+		restoreWorldJob,
+		updateBackup as updateBackupEntry,
+		verifyBackupJob
+	} from '$lib/worldjobs';
 	import InstanceRuntimeFields from '$lib/components/InstanceRuntimeFields.svelte';
 	import Alerts from '$lib/components/Alerts.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
@@ -61,7 +77,7 @@
 	 * a plugin report scans the instance's jars and its boot session, which is
 	 * not something to do every four seconds.
 	 */
-	const REFRESHED_TABS = ['plugins', 'datapacks', 'respacks', 'monitoring', 'checks', 'logs', 'environment'];
+	const REFRESHED_TABS = ['plugins', 'datapacks', 'respacks', 'monitoring', 'checks', 'logs', 'environment', 'world'];
 
 	const LOG_LINE_CHOICES = [100, 200, 500, 1000];
 
@@ -155,6 +171,37 @@
 	let envVars: EnvVar[] = $state([]);
 	/** Secrets revealed this session, dropped on reload */
 	let envRevealed: Record<string, string> = $state({});
+
+	/**
+	 * The instance name as a definite string.
+	 *
+	 * `page.params.name` is optional to the type system even though this route
+	 * cannot match without it, and the world verbs pass it as an argument rather
+	 * than only interpolating it.
+	 */
+	const worldName = $derived(name ?? '');
+
+	let worldReport: WorldReport | null = $state(null);
+	let backups: BackupEntry[] = $state([]);
+	/** The world operation holding this instance, as the daemon reports it */
+	let worldLock: WorldJournal | null = $state(null);
+	let worldStage: StagedWorld | null = $state(null);
+	let replaceOpen = $state(false);
+	let replaceStep = $state(0);
+	let replaceBackupFirst = $state(true);
+	let backupSelection: Set<string> = $state(new Set());
+	let restoreTarget: BackupEntry | null = $state(null);
+	let restoreOpen = $state(false);
+	let restoreBackupFirst = $state(true);
+	let restoreLossAck = $state(false);
+	let renameTarget: BackupEntry | null = $state(null);
+	let renameOpen = $state(false);
+	let renameValue = $state('');
+	let deleteTargets: BackupEntry[] = $state([]);
+	let deleteBackupsOpen = $state(false);
+	let resetOpen = $state(false);
+	let resetConfirm = $state('');
+	let resetBackupFirst = $state(true);
 
 
 	/** Pack key whose per-instance rule edit is in flight, for the row's button. */
@@ -287,6 +334,18 @@
 		if (which === 'respacks') {
 			// the catalog is proxy-global; this tab shows how it lands here
 			instRespacks = (await api('/respacks')).packs;
+		}
+
+		if (which === 'world') {
+			const data = await api(`/instances/${name}/world`);
+
+			worldReport = data.world;
+			backups = data.backups;
+			// the lock comes from the daemon rather than from this page's own job
+			// list: a backup started in another tab, by the CLI or by a schedule
+			// holds the instance just as firmly, and a tab that only knew its own
+			// work would offer verbs the server is about to refuse
+			worldLock = data.lock;
 		}
 
 		if (which === 'monitoring' || which === 'checks') {
@@ -1249,6 +1308,258 @@
 		];
 	}
 
+	// --- world & backups -------------------------------------------------------
+
+	/** Whether a world verb can run at all right now, and why not when it cannot. */
+	const worldBlockedReason = $derived.by(() => {
+		if (worldLock) {
+			return t('web.instanceWorld.lockedBy', { kind: worldLock.kind });
+		}
+
+		if (inst && inst.state !== 'stopped') {
+			return t('web.instanceWorld.stopFirst', { name: worldName });
+		}
+
+		return '';
+	});
+
+	const backupCols: Column[] = $derived([
+		{ id: 'label', label: t('web.instanceWorld.colBackup'), sortable: true, minWidth: 180 },
+		{ id: 'createdAt', label: t('web.instanceWorld.colTaken'), sortable: true, width: 170 },
+		{ id: 'sizeBytes', label: t('web.instanceWorld.colSize'), sortable: true, width: 110, align: 'right' },
+		{ id: 'level', label: t('web.instanceWorld.colLevel'), width: 130 },
+		{ id: 'mcVersion', label: t('web.instanceWorld.colVersion'), width: 110 },
+		{ id: 'trigger', label: t('web.instanceWorld.colSource'), width: 130 },
+		{ id: 'files', label: t('web.instanceWorld.colFiles'), width: 100, align: 'right', hidden: true },
+		{ id: 'checksum', label: t('web.instanceWorld.colChecksum'), hidden: true },
+		{ id: 'note', label: t('web.instanceWorld.colNote'), hidden: true }
+	]);
+
+	/** The selection a row's menu acts on: the whole selection when it is in it. */
+	function backupTargets(row: BackupEntry): BackupEntry[] {
+		if (backupSelection.has(row.id) && backupSelection.size > 1) {
+			return backups.filter((entry) => backupSelection.has(entry.id));
+		}
+
+		return [row];
+	}
+
+	/**
+	 * A backup's verbs, declared once for both the row menu and the panel's
+	 * Actions dropdown.
+	 *
+	 * A verb that cannot apply is disabled with the reason rather than removed,
+	 * and a single-target verb stays in the menu as the selection grows so the
+	 * list does not shift under the cursor.
+	 */
+	function backupActions(rows: BackupEntry[]): ContextMenuItem[] {
+		const one = rows.length === 1 ? rows[0] : undefined;
+		const pickOne = t('web.instanceWorld.pickOne');
+
+		return [
+			{
+				label: t('web.instanceWorld.restoreThis'),
+				icon: 'rotateLeft',
+				disabled: !one || !!worldBlockedReason,
+				hint: !one ? pickOne : worldBlockedReason,
+				action: () => restoreBackup(one!)
+			},
+			{
+				label: t('web.instanceWorld.download'),
+				icon: 'download',
+				disabled: !one,
+				hint: one ? t('web.instanceWorld.downloadHint', { size: fmtBytes(one.sizeBytes) }) : pickOne,
+				action: () => downloadBackup(one!)
+			},
+			{
+				label: one?.pinned ? t('web.instanceWorld.unpin') : t('web.instanceWorld.pin'),
+				icon: 'thumbtack',
+				disabled: !one,
+				hint: !one ? pickOne : t('web.instanceWorld.pinHint'),
+				action: () => void setPinned(one!, !one!.pinned)
+			},
+			{
+				label: t('web.instanceWorld.rename'),
+				icon: 'pen',
+				disabled: !one,
+				hint: pickOne,
+				action: () => renameBackup(one!)
+			},
+			{
+				label: t('web.instanceWorld.verify'),
+				icon: 'shieldCheck',
+				disabled: rows.length === 0,
+				hint: t('web.instanceWorld.verifyHint'),
+				action: () => void verifyBackups(rows)
+			},
+			{ separator: true },
+			{
+				label: t('web.instanceWorld.delete'),
+				icon: 'trash',
+				color: 'danger',
+				disabled: rows.length === 0,
+				action: () => removeBackups(rows)
+			}
+		];
+	}
+
+	/** Take a backup now. Allowed while the server runs; the daemon freezes saves. */
+	async function backupNow(): Promise<void> {
+		await backupWorldJob(worldName);
+		await loadTab('world');
+	}
+
+	/** Ask before putting a backup back; the answer is what the dialog collects. */
+	function restoreBackup(entry: BackupEntry): void {
+		restoreTarget = entry;
+		restoreBackupFirst = true;
+		restoreLossAck = false;
+		restoreOpen = true;
+	}
+
+	async function doRestore(): Promise<void> {
+		const entry = restoreTarget;
+
+		if (!entry) {
+			return;
+		}
+
+		restoreOpen = false;
+
+		await restoreWorldJob(worldName, entry.id, restoreBackupFirst && !!replaceTarget);
+		await refresh({ tabData: true });
+	}
+
+	/**
+	 * A download navigates rather than fetches.
+	 *
+	 * `fetch` plus an object URL is the reflex here and it would hold the whole
+	 * archive in the tab's memory; these run to tens of gigabytes.
+	 */
+	function downloadBackup(entry: BackupEntry): void {
+		window.location.assign(`/api/instances/${worldName}/world/backups/${entry.id}/download`);
+	}
+
+	async function setPinned(entry: BackupEntry, pinned: boolean): Promise<void> {
+		await updateBackupEntry(worldName, entry.id, { pinned });
+		await loadTab('world');
+	}
+
+	function renameBackup(entry: BackupEntry): void {
+		renameTarget = entry;
+		renameValue = entry.label;
+		renameOpen = true;
+	}
+
+	async function doRename(): Promise<void> {
+		const entry = renameTarget;
+
+		if (!entry || !renameValue.trim()) {
+			return;
+		}
+
+		renameOpen = false;
+
+		await updateBackupEntry(worldName, entry.id, { label: renameValue.trim() });
+		await loadTab('world');
+	}
+
+	async function verifyBackups(rows: BackupEntry[]): Promise<void> {
+		for (const entry of rows) {
+			await verifyBackupJob(worldName, entry.id);
+		}
+
+		await loadTab('world');
+	}
+
+	function removeBackups(rows: BackupEntry[]): void {
+		deleteTargets = rows;
+		deleteBackupsOpen = true;
+	}
+
+	/** Delete every backup the dialog listed, then report the outcome once. */
+	async function doRemove(): Promise<void> {
+		const rows = deleteTargets;
+
+		deleteBackupsOpen = false;
+
+		let done = 0;
+
+		for (const entry of rows) {
+			try {
+				await deleteBackupEntry(worldName, entry.id);
+				done++;
+			} catch (err) {
+				Notify.error((err as Error).message);
+			}
+		}
+
+		if (done > 0) {
+			Notify.success(t('web.instanceWorld.deleted', { count: String(done) }));
+		}
+
+		backupSelection = new Set();
+
+		await loadTab('world');
+	}
+
+	/**
+	 * What a replace would destroy, or null when there is nothing there yet.
+	 *
+	 * A first world on an empty instance destroys nothing, and a confirmation
+	 * that claims otherwise is the kind operators learn to click through.
+	 */
+	const replaceTarget = $derived.by((): WorldReplaceTarget | null => {
+		if (!worldReport || worldReport.dimensions.length === 0) {
+			return null;
+		}
+
+		return {
+			instance: worldName,
+			dirs: worldReport.dimensions.map((entry) => entry.path),
+			sizeBytes: worldReport.sizeBytes
+		};
+	});
+
+	/** Open the replace wizard on its first step, with nothing carried over. */
+	function openReplace(): void {
+		worldStage = null;
+		replaceStep = 0;
+		replaceBackupFirst = true;
+		replaceOpen = true;
+	}
+
+	/** The upload has been confirmed in the wizard; install it. */
+	async function replaceFromStage(): Promise<void> {
+		const staged = worldStage;
+
+		if (!staged) {
+			return;
+		}
+
+		replaceOpen = false;
+
+		await replaceWorldJob(worldName, staged.token, {
+			level: staged.level,
+			source: staged.fileName,
+			// nothing to copy when the instance has no world yet, and asking the
+			// daemon for one would fail the replace over an empty directory
+			backupFirst: replaceBackupFirst && !!replaceTarget
+		});
+
+		worldStage = null;
+
+		await refresh({ tabData: true });
+	}
+
+	async function doReset(): Promise<void> {
+		resetOpen = false;
+		resetConfirm = '';
+
+		await resetWorldJob(worldName, resetBackupFirst);
+		await refresh({ tabData: true });
+	}
+
 	const datapackCols: Column[] = $derived([
 		{ id: 'file', label: t('web.instanceDetail.dataPack2'), sortable: true },
 		{ id: 'state', label: t('web.instanceDetail.state'), width: 150 },
@@ -1547,9 +1858,10 @@
 			{ id: 'monitoring', label: t('web.instanceDetail.monitoring') },
 			{ id: 'plugins', label: addonLabel },
 			// a proxy has no world, so the world-scoped tabs do not apply to it
-			...(traitsOf(inst.software as Software).isProxy
+			...(traitsOf(inst.software as Software).isProxy || inst.external
 				? []
 				: [
+						{ id: 'world', label: t('web.instanceDetail.worldAndBackup') },
 						{ id: 'datapacks', label: t('web.instanceDetail.dataPacks') },
 						{ id: 'respacks', label: t('web.instanceDetail.resourcePacks') },
 						{ id: 'access', label: t('web.instanceDetail.playersAccess') }
@@ -1872,6 +2184,147 @@
 					{t('web.instanceDetail.theBootLinesOf')}
 				</p>
 			{/if}
+		{:else if tab === 'world'}
+			{#if worldLock}
+				<Flash kind="warning">
+					{t('web.instanceWorld.lockedBanner', { kind: worldLock.kind, phase: worldLock.phase })}
+				</Flash>
+				<div class="gap"></div>
+			{:else if inst.state !== 'stopped'}
+				<Flash kind="info">{t('web.instanceWorld.runningBanner', { name: worldName })}</Flash>
+				<div class="gap"></div>
+			{/if}
+
+			<Panel title={t('web.instanceWorld.currentWorld')}>
+				{#snippet actions()}
+					<Btn icon="sync" onclick={() => loadTab('world')}>{t('web.instanceDetail.refresh')}</Btn>
+					<Btn
+						icon="eraser"
+						variant="danger"
+						disabled={!!worldBlockedReason}
+						title={worldBlockedReason}
+						onclick={() => (resetOpen = true)}
+					>
+						{t('web.instanceWorld.resetWorld')}
+					</Btn>
+					<Btn
+						icon="upload"
+						variant="danger"
+						disabled={!!worldBlockedReason}
+						title={worldBlockedReason}
+						onclick={openReplace}
+					>
+						{t('web.instanceWorld.replaceWorld')}
+					</Btn>
+					<Btn icon="download" variant="primary" onclick={() => void backupNow()}>
+						{t('web.instanceWorld.backUpNow')}
+					</Btn>
+				{/snippet}
+
+				{#if worldReport}
+					<InfoGrid
+						cells={[
+							{ label: t('web.instanceWorld.levelName'), value: worldReport.level, style: 'mono', copyable: true },
+							{ label: t('web.instanceWorld.layout'), value: t(`web.instanceWorld.layout_${worldReport.layout}`) },
+							{ label: t('web.instanceWorld.totalSize'), value: fmtBytes(worldReport.sizeBytes) },
+							{ label: t('web.instanceWorld.fileCount'), value: worldReport.fileCount.toLocaleString() },
+							{
+								label: t('web.instanceWorld.mcVersion'),
+								value: worldReport.level_dat?.mcVersion ?? t('web.worldWizard.unknown')
+							},
+							{ label: t('web.instanceWorld.seed'), value: worldReport.level_dat?.seed ?? '–', style: 'mono', copyable: true },
+							{
+								label: t('web.instanceWorld.freeSpace'),
+								value: worldReport.freeBytes ? fmtBytes(worldReport.freeBytes) : '–'
+							},
+							{
+								label: t('web.instanceWorld.lastModified'),
+								value: worldReport.modifiedAt ? fmtDateTime(worldReport.modifiedAt) : '–'
+							}
+						]}
+					/>
+
+					{#if worldReport.dimensions.length > 0}
+						<div class="dims">
+							{#each worldReport.dimensions as dim (dim.path)}
+								<div class="dim-row">
+									<span class="dim-name">{t(`web.worldWizard.dim.${dim.kind}`)}</span>
+									<span class="mono dim-path">{dim.path}</span>
+									<span class="dim-meta dim">
+										{t('web.instanceWorld.dimMeta', {
+											size: fmtBytes(dim.sizeBytes),
+											regions: dim.regionFiles.toLocaleString()
+										})}
+									</span>
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<p class="dim note">{t('web.instanceWorld.noWorldYet')}</p>
+					{/if}
+				{:else}
+					<p class="dim">{t('web.common.loading')}</p>
+				{/if}
+			</Panel>
+
+			<div class="gap"></div>
+
+			<Panel title={t('web.instanceWorld.backups')} count={backups.length} flush>
+				{#snippet actions()}
+					<Dropdown
+						label={t('web.instanceWorld.actions')}
+						disabled={backupSelection.size === 0}
+						menu={backupActions(backups.filter((entry) => backupSelection.has(entry.id)))}
+					/>
+				{/snippet}
+
+				<ResourceTable
+					tableId="instance-backups"
+					columns={backupCols}
+					rows={backups}
+					getId={(row) => row.id}
+					selectable="multi"
+					bind:selected={backupSelection}
+					searchValue={(row) => `${row.label} ${row.level} ${row.mcVersion ?? ''} ${row.note ?? ''}`}
+					searchPlaceholder={t('web.instanceWorld.findABackup')}
+					rowActions={(row) => backupActions(backupTargets(row))}
+					rowLabel={(row) => row.label}
+					noun={t('web.instanceWorld.backupNoun')}
+					sortValue={(row, col) => (col === 'createdAt' ? row.createdAt : col === 'sizeBytes' ? row.sizeBytes : row.label)}
+					pageSize={25}
+					emptyTitle={t('web.instanceWorld.noBackups')}
+					emptyText={t('web.instanceWorld.noBackupsHint')}
+				>
+					{#snippet cell(row, col)}
+						{#if col === 'label'}
+							{row.label}
+							{#if row.pinned}
+								<span class="manual">{t('web.instanceWorld.pinned')}</span>
+							{/if}
+							{#if (row.warnings ?? []).length > 0}
+								<span class="manual warn">{t('web.instanceWorld.tornWarning')}</span>
+							{/if}
+						{:else if col === 'createdAt'}
+							{fmtDateTime(row.createdAt)}
+						{:else if col === 'sizeBytes'}
+							{fmtBytes(row.sizeBytes)}
+						{:else if col === 'level'}
+							<span class="mono">{row.level}</span>
+						{:else if col === 'mcVersion'}
+							{row.mcVersion ?? '–'}
+						{:else if col === 'trigger'}
+							{t(`web.instanceWorld.trigger_${row.trigger}`)}
+						{:else if col === 'files'}
+							{row.fileCount.toLocaleString()}
+						{:else if col === 'checksum'}
+							<span class="mono">{row.checksum ? row.checksum.slice(0, 16) : '–'}</span>
+						{:else if col === 'note'}
+							{row.note ?? '–'}
+						{/if}
+					{/snippet}
+				</ResourceTable>
+			</Panel>
+
 		{:else if tab === 'datapacks'}
 			<Panel
 				title="Data packs in {datapackWorld || 'the world'}"
@@ -2291,7 +2744,209 @@
 	ondeleted={() => void goto('/instances')}
 />
 
+<!-- Replacing a world is upload, check, then destroy, and it is one dialog for
+     all three: the upload is the wizard's first step rather than a control on the
+     page, so nothing is staged until somebody has set out to replace something -->
+<WorldWizardModal
+	bind:open={replaceOpen}
+	bind:step={replaceStep}
+	bind:world={worldStage}
+	bind:backupFirst={replaceBackupFirst}
+	target={replaceTarget}
+	confirmLabel={t('web.instanceWorld.replaceWorld')}
+	onconfirm={() => void replaceFromStage()}
+	oncancel={() => (worldStage = null)}
+>
+	{#snippet source()}
+		<WorldUpload
+			bind:value={worldStage}
+			instance={worldName}
+			popup={false}
+			disabled={!!worldBlockedReason}
+			disabledReason={worldBlockedReason}
+		/>
+	{/snippet}
+</WorldWizardModal>
+
+<!-- Restore overwrites the live world with an older one, so it asks the same
+     question the replace wizard's last step asks, in the same order -->
+<Modal title={t('web.instanceWorld.restoreTitle', { name: worldName })} bind:open={restoreOpen}>
+	{#if restoreTarget}
+		<p>
+			{t('web.instanceWorld.restoreLead', {
+				label: restoreTarget.label,
+				taken: fmtDateTime(restoreTarget.createdAt),
+				name: worldName
+			})}
+		</p>
+
+		{#if replaceTarget}
+			<p class="dim">
+				{t('web.instanceWorld.resetConsequence', {
+					dirs: replaceTarget.dirs.join(', '),
+					size: fmtBytes(replaceTarget.sizeBytes)
+				})}
+			</p>
+
+			<label class="resetopt">
+				<Checkbox
+					checked={restoreBackupFirst}
+					label={t('web.instanceWorld.backUpFirst')}
+					onchange={(checked) => (restoreBackupFirst = checked)}
+				/>
+				<span>{t('web.instanceWorld.backUpFirst')}</span>
+			</label>
+
+			{#if !restoreBackupFirst}
+				<Flash kind="warning">{t('web.worldWizard.noBackupWarning')}</Flash>
+
+				<label class="resetopt">
+					<Checkbox
+						checked={restoreLossAck}
+						label={t('web.worldWizard.lossAck')}
+						onchange={(checked) => (restoreLossAck = checked)}
+					/>
+					<span>{t('web.worldWizard.lossAck')}</span>
+				</label>
+			{/if}
+		{/if}
+	{/if}
+
+	{#snippet footer()}
+		<Btn onclick={() => (restoreOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn
+			variant="danger"
+			disabled={!restoreBackupFirst && !restoreLossAck}
+			title={!restoreBackupFirst && !restoreLossAck ? t('web.worldWizard.needLossAck') : ''}
+			onclick={() => void doRestore()}
+		>
+			{t('web.instanceWorld.restoreThis')}
+		</Btn>
+	{/snippet}
+</Modal>
+
+<Modal title={t('web.instanceWorld.renameTitle')} bind:open={renameOpen}>
+	<label class="field">
+		<span class="lbl">{t('web.instanceWorld.renamePrompt')}</span>
+		<input class="input" bind:value={renameValue} />
+	</label>
+
+	{#snippet footer()}
+		<Btn onclick={() => (renameOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn variant="primary" disabled={!renameValue.trim()} onclick={() => void doRename()}>
+			{t('web.common.save')}
+		</Btn>
+	{/snippet}
+</Modal>
+
+<Modal
+	title={t('web.instanceWorld.deleteTitle', { count: String(deleteTargets.length) })}
+	bind:open={deleteBackupsOpen}
+>
+	<p>{t('web.instanceWorld.deleteLead')}</p>
+
+	<ul class="dellist">
+		{#each deleteTargets as entry (entry.id)}
+			<li>
+				{entry.label}
+				<span class="dim">{fmtBytes(entry.sizeBytes)}</span>
+				{#if entry.pinned}
+					<span class="manual">{t('web.instanceWorld.pinned')}</span>
+				{/if}
+			</li>
+		{/each}
+	</ul>
+
+	{#snippet footer()}
+		<Btn onclick={() => (deleteBackupsOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn variant="danger" onclick={() => void doRemove()}>{t('web.common.delete')}</Btn>
+	{/snippet}
+</Modal>
+
+<!-- Reset destroys a world and produces nothing, which is why it is the one verb
+     here that asks the operator to type the word and offers a backup first -->
+<Modal title={t('web.instanceWorld.resetTitle', { name: worldName })} bind:open={resetOpen}>
+	<p>{t('web.instanceWorld.resetLead', { name: worldName })}</p>
+
+	{#if worldReport}
+		<p class="dim">
+			{t('web.instanceWorld.resetConsequence', {
+				dirs: worldReport.dimensions.map((entry) => entry.path).join(', '),
+				size: fmtBytes(worldReport.sizeBytes)
+			})}
+		</p>
+	{/if}
+
+	<p class="dim">{t('web.instanceWorld.resetSeedNote')}</p>
+
+	<label class="resetopt">
+		<Checkbox
+			checked={resetBackupFirst}
+			label={t('web.instanceWorld.backUpFirst')}
+			onchange={(checked) => (resetBackupFirst = checked)}
+		/>
+		<span>{t('web.instanceWorld.backUpFirst')}</span>
+	</label>
+
+	<label class="field">
+		<span class="lbl">{t('web.instanceWorld.typeToConfirm', { word: 'reset' })}</span>
+		<input class="input" bind:value={resetConfirm} placeholder="reset" />
+	</label>
+
+	{#snippet footer()}
+		<Btn onclick={() => (resetOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn variant="danger" disabled={resetConfirm.trim() !== 'reset'} onclick={() => void doReset()}>
+			{t('web.instanceWorld.resetWorld')}
+		</Btn>
+	{/snippet}
+</Modal>
+
 <style lang="scss">
+	// one dimension per line: the three are a set, and a grid would let the end
+	// (which is usually tiny) claim as much width as the overworld
+	.dims {
+		margin-top: 1.25rem;
+		border-top: 0.1rem solid var(--border-divider);
+	}
+
+	.dim-row {
+		display: flex;
+		align-items: baseline;
+		gap: 0.75rem;
+		padding: 0.5rem 0;
+		border-bottom: 0.1rem solid var(--border-divider);
+		font-size: 0.8125rem;
+	}
+
+	.dim-name {
+		width: 6rem;
+		flex: none;
+		font-weight: 700;
+	}
+
+	.dim-path {
+		@include ellipsis;
+
+		flex: 1;
+	}
+
+	.dim-meta {
+		flex: none;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.resetopt {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 1rem 0;
+		cursor: pointer;
+	}
+
+	.warn {
+		color: var(--warning);
+	}
+
 	.tabbody {
 		margin-top: 1rem;
 	}
@@ -2367,6 +3022,22 @@
 	.manual {
 		color: var(--link);
 		font-size: 0.8125rem;
+	}
+
+	// the archives a delete is about to take, so the count in the title is not
+	// the only thing standing between the operator and the wrong ones
+	.dellist {
+		margin: 0.75rem 0 0;
+		padding-left: 1.25rem;
+		font-size: 0.8125rem;
+
+		li + li {
+			margin-top: 0.25rem;
+		}
+
+		.dim {
+			margin-left: 0.5rem;
+		}
 	}
 
 	.note {

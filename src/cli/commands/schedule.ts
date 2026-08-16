@@ -96,7 +96,7 @@ command({
 	desc: t("cli.schedule.create.desc"),
 	args: [{ name: "name", required: true, variadic: true }],
 	opts: [
-		{ flag: "--action", desc: t("cli.schedule.create.optAction"), value: true, complete: async () => ["start", "stop", "restart"] },
+		{ flag: "--action", desc: t("cli.schedule.create.optAction"), value: true, complete: async () => [...sched.SCHEDULE_ACTIONS] },
 		{ flag: "--instances", desc: t("cli.schedule.create.optInstances"), value: true, complete: instanceNames },
 		{ flag: "--at", desc: t("cli.schedule.create.optAt"), value: true },
 		{ flag: "--cron", desc: t("cli.schedule.create.optCron"), value: true },
@@ -111,7 +111,7 @@ command({
 
 		const action = opts.action as sched.ScheduleAction | undefined;
 
-		if (!action || !["start", "stop", "restart"].includes(action)) {
+		if (!action || !sched.isScheduleAction(action)) {
 			throw new UsageError(t("cli.schedule.create.needsAction"));
 		}
 
@@ -235,19 +235,9 @@ command({
 		const outcomes: string[] = [];
 
 		for (const name of expandTargets(cfg, schedule.instances)) {
-			const started = Date.now();
-
-			if (schedule.action === "start") {
-				outcomes.push(`${name}: ${await inst.startInstance(cfg, name)}`);
-			} else if (schedule.action === "stop") {
-				outcomes.push(`${name}: ${(await inst.stopInstance(cfg, name)).outcome}`);
-			} else {
-				await inst.stopInstance(cfg, name);
-				await inst.startInstance(cfg, name);
-				outcomes.push(
-					`${name}: ${t("cli.schedule.run.restarted", { duration: fmtDuration(Date.now() - started) })}`,
-				);
-			}
+			// the runner's own executor: one implementation, and the only one that
+			// routes the work to the daemon that owns the instance
+			outcomes.push(`${name}: ${await sched.executeScheduleAction(schedule.action, name)}`);
 		}
 
 		sched.recordEvent(

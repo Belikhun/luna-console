@@ -10,7 +10,8 @@
 		"agentJarMissing": "java agent \"{jar}\" is not in {name}'s directory; the JVM would refuse to start",
 		"agentAddonUnknown": "java agent addon \"{addon}\" is not in the plugin pool; {name} cannot start until it is added or the agent removed",
 		"agentAddonNotDeployed": "java agent addon \"{addon}\" has not been deployed to {name} (expected {jar}); run a deploy, or check the instance's addon groups",
-		"agentNotAnAgent": "java agent \"{jar}\" is not a java agent: its jar declares no Premain-Class, so the JVM would refuse to start {name}"
+		"agentNotAnAgent": "java agent \"{jar}\" is not a java agent: its jar declares no Premain-Class, so the JVM would refuse to start {name}",
+		"worldLocked": "{name} cannot start: a world {kind} is in progress ({phase})."
 	},
 	"admin": {
 		"dirMissing": "directory does not exist: {dir}",
@@ -57,7 +58,12 @@
 		"forwardingModPooled": "{mod} already pooled; targeting this instance",
 		"forwardingModMissing": "the forwarding mod {mod} could not be found upstream",
 		"badMemory": "\"{value}\" is not a memory size; use a number and a unit, e.g. 2G",
-		"javaPathNotAbsolute": "java path must be absolute, got \"{path}\""
+		"javaPathNotAbsolute": "java path must be absolute, got \"{path}\"",
+		"phaseWorld": "World",
+		"installingWorld": "installing the uploaded world",
+		"worldInstalled": "world installed",
+		"worldStageMissing": "The uploaded world {token} is no longer staged.",
+		"worldRefused": "The uploaded world cannot be used here: {code}."
 	},
 	"configfiles": {
 		"pathEscapes": "path escapes the instance directory: {path}",
@@ -443,7 +449,22 @@
 			"installerNoJar": "the installer left no jar matching {pattern}; the server cannot be launched"
 		},
 		"downloadedSoFar": "{mb} MB",
-		"downloadedOf": "{mb} / {total} MB"
+		"downloadedOf": "{mb} / {total} MB",
+		"nbtTruncated": "Level data ended unexpectedly; the file is truncated or is not NBT.",
+		"nbtTooDeep": "Level data is nested too deeply to be a world file.",
+		"nbtBadLength": "Level data declares a negative length.",
+		"nbtNotCompound": "Level data does not start with a compound tag.",
+		"nbtUnknownTag": "Unknown NBT tag {tag}.",
+		"archiveListFailed": "Could not read the archive: {detail}",
+		"archiveBadName": "The archive holds a file name with a control character in it.",
+		"archiveEmpty": "The archive is empty.",
+		"archiveExtracting": "extracting {done}/{total} files",
+		"archiveExtracted": "extracted {count} files",
+		"archiveExtractFailed": "Extraction failed: {detail}",
+		"archiveNothingToAdd": "There are no files to archive.",
+		"archiveAdding": "archiving {done}/{total} files",
+		"archiveWrote": "wrote {count} files",
+		"archiveCreateFailed": "Could not write the archive: {detail}"
 	},
 	"runtimes": {
 		"idEmpty": "runtime id is empty",
@@ -576,5 +597,68 @@
 		"youer": "Youer",
 		"asyncyouer": "AsyncYouer",
 		"unknown": "unknown server software: {software}"
+	},
+	"staging": {
+		"badToken": "That upload token is not a valid one."
+	},
+	"world": {
+		"noWorld": "{name} has no world of its own.",
+		"noLevelDat": "No level.dat at {path}.",
+		"levelDatTooBig": "level.dat at {path} is far too large to be one.",
+		"levelDatUnreadable": "The world's level.dat could not be read.",
+		"archiveEscapes": "The archive holds an entry that would escape the instance directory: {path}",
+		"archiveIsServerDir": "This looks like a server directory rather than a world; it holds {file}. Zip the world folder itself.",
+		"archiveNoLevelDat": "No level.dat anywhere in the archive; it holds {sample}.",
+		"nothing": "nothing"
+	},
+	"worldops": {
+		"phaseStage": "Prepare the world",
+		"phaseSwap": "Swap it in",
+		"phaseDiscard": "Discard the old world",
+		"staging": "preparing the incoming world",
+		"staged": "world prepared",
+		"swapping": "swapping the world in",
+		"swapped": "world swapped in",
+		"discarding": "discarding the old world",
+		"discarded": "old world discarded",
+		"alreadyRunning": "A {kind} is already running on {name}.",
+		"crossDevice": "{name}'s staging area is on a different filesystem from its world, so the swap could not be atomic.",
+		"notEnoughSpace": "Needs {needed} free, only {free} available; {short} short.",
+		"planBlocked": "This world cannot be installed here: {code}.",
+		"recoveredStage": "{name}: an interrupted world operation was cleaned up; its world was never touched.",
+		"recoveredRetire": "{name}: an interrupted world operation was rolled back; the previous world is live again.",
+		"recoveredInstall": "{name}: an interrupted world operation was completed; the new world is live.",
+		"auditReplaced": "replaced {name}'s world ({level})",
+		"auditReplacedDetail": "from {source} · {files} files, {size} bytes",
+		"auditUnnamedSource": "an uploaded archive",
+		"auditReset": "reset {name}'s world ({level})",
+		"auditResetDetail": "removed {dirs}"
+	},
+	"backups": {
+		"phasePrepare": "Survey the world",
+		"phaseArchive": "Archive it",
+		"phaseFinish": "Record the backup",
+		"phaseSafetyCopy": "Back up the current world",
+		"phaseRestore": "Restore the backup",
+		"scanning": "listing the world's files",
+		"scanned": "world surveyed",
+		"archiving": "writing the archive",
+		"archived": "archive written",
+		"recording": "recording the backup",
+		"recorded": "backup recorded",
+		"noWorldYet": "{name} has not generated a world yet, so there is nothing to back up.",
+		"unknown": "No backup {id}.",
+		"emptyLabel": "A backup needs a name.",
+		"badKeepCount": "Keep at least one backup.",
+		"archiveMissing": "The archive {file} is gone from disk.",
+		"verifying": "verifying {label}",
+		"verified": "archive verified",
+		"verifyCountMismatch": "The archive holds {found} files; the record says {expected}.",
+		"beforeRestoreLabel": "before restoring {label}",
+		"safetyCopyFailed": "The safety backup failed, so the restore was not started: {detail}",
+		"auditCreated": "backed up {name}'s world as {label}",
+		"auditCreatedDetail": "{files} files, {size} bytes",
+		"auditDeleted": "deleted {name}'s backup {label}",
+		"auditRestored": "restored {name}'s world from {label}"
 	}
 }

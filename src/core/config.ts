@@ -62,6 +62,7 @@ export const STATE_FILES = [
 	"sessions.json",
 	"schedules.json",
 	"uptime.json",
+	"backups.json",
 ] as const;
 
 /** Whether a directory is a cluster root: it holds the registry. */
@@ -168,6 +169,22 @@ export function poolDir(): string {
 /** Path of the archived, compacted per-instance logs. */
 export function centralLogsDir(): string {
 	return join(root(), "logs");
+}
+
+/**
+ * Path of the world backup archives, on the machine that owns the instances.
+ *
+ * Never mirrored across the cluster: a backup of `survival` is 29 GB, so it
+ * lives beside the world it came from and the primary reaches a follower's by
+ * proxying that daemon rather than by holding a copy.
+ */
+export function backupsDir(): string {
+	return join(root(), ".backups");
+}
+
+/** Path of the upload staging area, where a world zip lands before it is used. */
+export function stagingDir(): string {
+	return join(root(), ".staging");
 }
 
 /** A cluster-root state file whose single writer is the primary daemon. */

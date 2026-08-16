@@ -40,6 +40,11 @@ import {
 	validateRuntimeId,
 } from "./runtimes";
 import { SERVER_SETTINGS, validateJavaAgents, validateJavaArgs, validateSettings } from "./settings";
+import { stagePath } from "./staging";
+import { layoutOf, planWorldImport, scanWorldArchive } from "./world";
+import type { WorldFinding } from "./world";
+import { materializeWorld } from "./worldops";
+import { listArchive } from "./services/archive";
 import { buildPlatform } from "../version";
 import { t } from "../shared/i18n";
 
@@ -589,6 +594,16 @@ export interface CreateOptions {
 	pluginOverrides?: Record<string, boolean>;
 	/** daemon that will own the instance (absent = the primary's host) */
 	daemon?: string;
+	/**
+	 * Staging token of an uploaded world zip to provision the instance onto.
+	 *
+	 * A token rather than the bytes: options cross the daemon socket as JSON, and
+	 * a world is gigabytes. The file is already on disk under `<root>/.staging`,
+	 * and on a follower-owned instance that daemon pulls its own copy first.
+	 */
+	worldStage?: string;
+	/** level name for an uploaded world; absent uses the instance's own */
+	worldLevel?: string;
 	/** live progress for the caller's renderer */
 	reporter?: ProgressReporter;
 }
@@ -624,6 +639,10 @@ export async function createInstance(
 	const checks = progress.child("Validate request", 1);
 	const fetching = progress.child(t("core.admin.phaseInstallServer", { software }), 6);
 	const writing = progress.child("Write instance files", 2);
+	// weighted heavily and created unconditionally: an uploaded world is usually
+	// the largest thing in the operation, and the progress mirror pairs trees by
+	// position, so a node that only sometimes exists shifts everything after it
+	const world = progress.child(t("core.admin.phaseWorld"), 6);
 
 	// this node's work is entirely its children's, so it contributes none of its own
 	progress.weighOwn(0);
@@ -722,7 +741,7 @@ export async function createInstance(
 	const dir = join(root(), name);
 
 	try {
-		return await buildInstance(cfg, name, opts, { dir, port, fetching, writing });
+		return await buildInstance(cfg, name, opts, { dir, port, fetching, writing, world });
 	} catch (err) {
 		// nothing landed in the registry, so the number goes straight back to its pool
 		releaseReservation(machine, port);
@@ -745,9 +764,10 @@ async function buildInstance(
 		port: number;
 		fetching: ProgressReporter;
 		writing: ProgressReporter;
+		world: ProgressReporter;
 	},
 ): Promise<CreateResult> {
-	const { dir, port, fetching, writing } = ctx;
+	const { dir, port, fetching, writing, world } = ctx;
 	const software = opts.software ?? "paper";
 
 	const build = await resolveBuild(software, {
@@ -893,9 +913,68 @@ async function buildInstance(
 		},
 	);
 
+	// After the config files, because the world's directory name comes out of
+	// `server.properties` and it has only just been written; and before the
+	// registry entry below, so an unreadable archive leaves nothing registered.
+	// The node is created unconditionally and settled when there is no world to
+	// install: the progress mirror pairs the daemon's tree with the client's by
+	// position, so a phase that sometimes does not exist misaligns the rest.
+	if (opts.worldStage) {
+		await importStagedWorld(cfg, name, inst, opts, world);
+	} else {
+		world.settle();
+	}
+
 	cfg.instances[name] = inst;
 
 	return { name, dir, port, build };
+}
+
+/**
+ * Lay an uploaded world into a freshly provisioned instance.
+ *
+ * The instance is not in the registry yet, so this cannot go through the normal
+ * replace path (which resolves everything from `cfg`). It does the same two
+ * things by hand - convert the archive's layout into the target's, then put it
+ * where the server will look - minus the swap protocol, which exists to protect
+ * an existing world and there is none here.
+ */
+async function importStagedWorld(
+	cfg: ClusterConfig,
+	name: string,
+	inst: InstanceConfig,
+	opts: CreateOptions,
+	reporter: ProgressReporter,
+): Promise<void> {
+	const archive = stagePath(opts.worldStage!);
+
+	if (!existsSync(archive)) {
+		throw new Error(t("core.admin.worldStageMissing", { token: opts.worldStage! }));
+	}
+
+	await reporter.task(
+		{ start: t("core.admin.installingWorld"), done: t("core.admin.worldInstalled") },
+		async (step) => {
+			const dir = instanceDir(inst);
+			const level = opts.worldLevel?.trim() || opts.settings?.["level-name"]?.trim() || "world";
+			const scan = await scanWorldArchive(archive);
+			const plan = planWorldImport(scan, {
+				level,
+				layout: layoutOf(inst),
+				mcVersion: inst.mcVersion,
+			});
+
+			const blocking = plan.findings.filter((finding: WorldFinding) => finding.level === "error");
+
+			if (blocking.length > 0) {
+				throw new Error(t("core.admin.worldRefused", { code: blocking[0]!.code }));
+			}
+
+			const listing = await listArchive(archive);
+
+			await materializeWorld(dir, archive, plan, listing.fileCount, step);
+		},
+	);
 }
 
 /**

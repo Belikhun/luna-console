@@ -15,6 +15,7 @@ import { goto } from '$app/navigation';
 import { del, post } from '$lib/api';
 import { attachJobFlash, jobFlash, type JobFlashConfig } from '$lib/jobflash';
 import type { JobView } from '$lib/jobs';
+import { attachWorldJobFlash, isWorldJobKind } from '$lib/worldjobs';
 
 export type StateAction = 'start' | 'stop' | 'restart';
 
@@ -142,6 +143,15 @@ export function deleteInstanceJob(name: string, purge: boolean): Promise<JobView
  * carded here are ignored, so calling this on every poll is safe.
  */
 export function attachInstanceJobFlash(job: JobView): void {
+	// a world job is an instance job as far as this page is concerned; without
+	// this branch a backup started in another tab, by a schedule or from the CLI
+	// would run to completion with nothing on screen to say so
+	if (isWorldJobKind(job.kind)) {
+		attachWorldJobFlash(job);
+
+		return;
+	}
+
 	const configs: Record<string, () => FlashConfig> = {
 		'instance-start': () => stateFlashConfig(job.target, 'start'),
 		'instance-stop': () => stateFlashConfig(job.target, 'stop'),

@@ -20,6 +20,7 @@ import "./commands/profile";
 import "./commands/configs";
 import "./commands/packs";
 import "./commands/schedule";
+import "./commands/world";
 import "./commands/selector";
 import "./commands/publicsite";
 import "./commands/daemon";

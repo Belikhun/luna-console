@@ -31,7 +31,20 @@ const MAX_EVENTS = 500;
  */
 export const MISSED_AFTER_MS = 15 * 60_000;
 
-export type ScheduleAction = "start" | "stop" | "restart";
+export type ScheduleAction = "start" | "stop" | "restart" | "backup";
+
+/**
+ * Every action a schedule can take, in the order a picker should offer them.
+ *
+ * One list, so adding an action is one edit rather than four: the CLI's
+ * completer and validator, the console's `Select`, and the runner all read it.
+ */
+export const SCHEDULE_ACTIONS: ScheduleAction[] = ["start", "stop", "restart", "backup"];
+
+/** Whether a string names a schedule action. */
+export function isScheduleAction(value: string): value is ScheduleAction {
+	return (SCHEDULE_ACTIONS as string[]).includes(value);
+}
 
 export type ScheduleTrigger =
 	| { kind: "at"; at: string }

@@ -25,8 +25,19 @@ let timer: ReturnType<typeof setInterval> | undefined;
 /** a tick can outlast the interval (graceful stops are slow); never overlap */
 let running = false;
 
-/** Execute one action against one instance, returning the outcome line. */
-async function execute(action: ScheduleAction, instance: string): Promise<string> {
+/**
+ * Execute one action against one instance, returning the outcome line.
+ *
+ * Exported because it is the only correct implementation: everything goes
+ * through `runOp`, so a follower-owned instance is acted on by its own daemon.
+ * The console's "run now" and the CLI's `schedule run` used to carry their own
+ * copies of this branch, which meant adding an action was three edits and two
+ * of the three bypassed routing entirely.
+ */
+export async function executeScheduleAction(
+	action: ScheduleAction,
+	instance: string,
+): Promise<string> {
 	const cfg = await loadCluster();
 
 	if (action === "start") {
@@ -37,6 +48,19 @@ async function execute(action: ScheduleAction, instance: string): Promise<string
 		const stopped = await runOp("instances.stopInstance", [cfg, instance]);
 
 		return (stopped.result as { outcome: string }).outcome;
+	}
+
+	if (action === "backup") {
+		// deliberately not stopped first: the daemon freezes saving around the
+		// archive, and a nightly schedule that took the server down for the
+		// duration would be a worse trade than a hot copy
+		const entry = await runOp("backups.create", [
+			cfg,
+			instance,
+			{ trigger: "schedule", label: `scheduled ${new Date().toISOString().slice(0, 16)}` },
+		]);
+
+		return `backed up (${(entry.result as { label?: string }).label ?? "ok"})`;
 	}
 
 	const stopped = await runOp("instances.stopInstance", [cfg, instance]);
@@ -70,7 +94,7 @@ async function tick(): Promise<void> {
 		}
 
 		const cfg = await loadCluster();
-		const events = await runDue(cfg, store, new Date(), execute);
+		const events = await runDue(cfg, store, new Date(), executeScheduleAction);
 
 		await saveSchedules(store);
 

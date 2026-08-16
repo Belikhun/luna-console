@@ -10,7 +10,8 @@
 		"agentJarMissing": "java agent \"{jar}\" không có trong thư mục của {name}; JVM sẽ không khởi động được",
 		"agentAddonUnknown": "addon java agent \"{addon}\" không có trong kho plugin; {name} không khởi động được cho tới khi thêm nó hoặc gỡ agent",
 		"agentAddonNotDeployed": "addon java agent \"{addon}\" chưa được triển khai tới {name} (cần {jar}); hãy chạy deploy, hoặc kiểm tra addon group của instance",
-		"agentNotAnAgent": "java agent \"{jar}\" không phải java agent: jar của nó không khai báo Premain-Class, nên JVM sẽ không khởi động được {name}"
+		"agentNotAnAgent": "java agent \"{jar}\" không phải java agent: jar của nó không khai báo Premain-Class, nên JVM sẽ không khởi động được {name}",
+		"worldLocked": "{name} không thể khởi động: đang có thao tác {kind} trên thế giới ({phase})."
 	},
 	"admin": {
 		"dirMissing": "thư mục không tồn tại: {dir}",
@@ -57,7 +58,12 @@
 		"forwardingModPooled": "{mod} đã có trong pool; thêm instance này làm đích",
 		"forwardingModMissing": "không tìm thấy mod forwarding {mod} ở nguồn",
 		"badMemory": "\"{value}\" không phải kích thước bộ nhớ; dùng một số và một đơn vị, ví dụ 2G",
-		"javaPathNotAbsolute": "đường dẫn java phải là tuyệt đối, nhận được \"{path}\""
+		"javaPathNotAbsolute": "đường dẫn java phải là tuyệt đối, nhận được \"{path}\"",
+		"phaseWorld": "Thế giới",
+		"installingWorld": "đang cài thế giới đã tải lên",
+		"worldInstalled": "đã cài thế giới",
+		"worldStageMissing": "Thế giới đã tải lên {token} không còn trong khu vực chuẩn bị.",
+		"worldRefused": "Không thể dùng thế giới đã tải lên ở đây: {code}."
 	},
 	"configfiles": {
 		"pathEscapes": "đường dẫn thoát khỏi thư mục instance: {path}",
@@ -443,7 +449,22 @@
 			"installerNoJar": "installer không để lại jar khớp {pattern}; không thể khởi chạy máy chủ"
 		},
 		"downloadedSoFar": "{mb} MB",
-		"downloadedOf": "{mb} / {total} MB"
+		"downloadedOf": "{mb} / {total} MB",
+		"nbtTruncated": "Dữ liệu level kết thúc bất ngờ; tệp bị cắt cụt hoặc không phải NBT.",
+		"nbtTooDeep": "Dữ liệu level lồng nhau quá sâu để là một tệp thế giới.",
+		"nbtBadLength": "Dữ liệu level khai báo độ dài âm.",
+		"nbtNotCompound": "Dữ liệu level không bắt đầu bằng thẻ compound.",
+		"nbtUnknownTag": "Thẻ NBT không xác định {tag}.",
+		"archiveListFailed": "Không đọc được kho lưu trữ: {detail}",
+		"archiveBadName": "Kho lưu trữ chứa tên tệp có ký tự điều khiển.",
+		"archiveEmpty": "Kho lưu trữ trống.",
+		"archiveExtracting": "đang giải nén {done}/{total} tệp",
+		"archiveExtracted": "đã giải nén {count} tệp",
+		"archiveExtractFailed": "Giải nén thất bại: {detail}",
+		"archiveNothingToAdd": "Không có tệp nào để lưu trữ.",
+		"archiveAdding": "đang lưu trữ {done}/{total} tệp",
+		"archiveWrote": "đã ghi {count} tệp",
+		"archiveCreateFailed": "Không ghi được kho lưu trữ: {detail}"
 	},
 	"runtimes": {
 		"idEmpty": "id runtime trống",
@@ -576,5 +597,68 @@
 		"youer": "Youer",
 		"asyncyouer": "AsyncYouer",
 		"unknown": "phần mềm máy chủ không xác định: {software}"
+	},
+	"staging": {
+		"badToken": "Mã tải lên đó không hợp lệ."
+	},
+	"world": {
+		"noWorld": "{name} không có thế giới riêng.",
+		"noLevelDat": "Không có level.dat tại {path}.",
+		"levelDatTooBig": "level.dat tại {path} lớn hơn nhiều so với mức hợp lý.",
+		"levelDatUnreadable": "Không đọc được level.dat của thế giới.",
+		"archiveEscapes": "Kho lưu trữ chứa mục sẽ thoát khỏi thư mục instance: {path}",
+		"archiveIsServerDir": "Đây có vẻ là thư mục máy chủ chứ không phải thế giới; nó chứa {file}. Hãy nén chính thư mục thế giới.",
+		"archiveNoLevelDat": "Không có level.dat ở bất kỳ đâu trong kho lưu trữ; nó chứa {sample}.",
+		"nothing": "không có gì"
+	},
+	"worldops": {
+		"phaseStage": "Chuẩn bị thế giới",
+		"phaseSwap": "Hoán đổi vào",
+		"phaseDiscard": "Loại bỏ thế giới cũ",
+		"staging": "đang chuẩn bị thế giới đến",
+		"staged": "đã chuẩn bị thế giới",
+		"swapping": "đang hoán đổi thế giới",
+		"swapped": "đã hoán đổi thế giới",
+		"discarding": "đang loại bỏ thế giới cũ",
+		"discarded": "đã loại bỏ thế giới cũ",
+		"alreadyRunning": "Một thao tác {kind} đang chạy trên {name}.",
+		"crossDevice": "Khu vực chuẩn bị của {name} nằm trên hệ thống tệp khác với thế giới của nó, nên việc hoán đổi không thể nguyên tử.",
+		"notEnoughSpace": "Cần {needed} trống, chỉ còn {free}; thiếu {short}.",
+		"planBlocked": "Không thể cài thế giới này ở đây: {code}.",
+		"recoveredStage": "{name}: đã dọn dẹp thao tác thế giới bị gián đoạn; thế giới của nó chưa hề bị đụng tới.",
+		"recoveredRetire": "{name}: đã hoàn tác thao tác thế giới bị gián đoạn; thế giới trước đó đã hoạt động lại.",
+		"recoveredInstall": "{name}: đã hoàn tất thao tác thế giới bị gián đoạn; thế giới mới đang hoạt động.",
+		"auditReplaced": "đã thay thế thế giới của {name} ({level})",
+		"auditReplacedDetail": "từ {source} · {files} tệp, {size} byte",
+		"auditUnnamedSource": "một kho lưu trữ đã tải lên",
+		"auditReset": "đã đặt lại thế giới của {name} ({level})",
+		"auditResetDetail": "đã xoá {dirs}"
+	},
+	"backups": {
+		"phasePrepare": "Khảo sát thế giới",
+		"phaseArchive": "Lưu trữ",
+		"phaseFinish": "Ghi nhận bản sao lưu",
+		"phaseSafetyCopy": "Sao lưu thế giới hiện tại",
+		"phaseRestore": "Khôi phục bản sao lưu",
+		"scanning": "đang liệt kê tệp của thế giới",
+		"scanned": "đã khảo sát thế giới",
+		"archiving": "đang ghi kho lưu trữ",
+		"archived": "đã ghi kho lưu trữ",
+		"recording": "đang ghi nhận bản sao lưu",
+		"recorded": "đã ghi nhận bản sao lưu",
+		"noWorldYet": "{name} chưa tạo thế giới nào, nên không có gì để sao lưu.",
+		"unknown": "Không có bản sao lưu {id}.",
+		"emptyLabel": "Bản sao lưu cần một tên.",
+		"badKeepCount": "Giữ lại ít nhất một bản sao lưu.",
+		"archiveMissing": "Kho lưu trữ {file} không còn trên đĩa.",
+		"verifying": "đang xác minh {label}",
+		"verified": "đã xác minh kho lưu trữ",
+		"verifyCountMismatch": "Kho lưu trữ chứa {found} tệp; bản ghi nói {expected}.",
+		"beforeRestoreLabel": "trước khi khôi phục {label}",
+		"safetyCopyFailed": "Sao lưu an toàn thất bại nên chưa bắt đầu khôi phục: {detail}",
+		"auditCreated": "đã sao lưu thế giới của {name} thành {label}",
+		"auditCreatedDetail": "{files} tệp, {size} byte",
+		"auditDeleted": "đã xóa bản sao lưu {label} của {name}",
+		"auditRestored": "đã khôi phục thế giới của {name} từ {label}"
 	}
 }

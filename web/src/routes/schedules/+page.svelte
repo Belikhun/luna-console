@@ -32,7 +32,7 @@
 		name: string;
 		description?: string;
 		enabled: boolean;
-		action: 'start' | 'stop' | 'restart';
+		action: 'start' | 'stop' | 'restart' | 'backup';
 		instances: string[];
 		trigger: { kind: 'at'; at: string } | { kind: 'cron'; expr: string } | { kind: 'rate'; minutes: number };
 		maxRuns?: number;
@@ -248,7 +248,7 @@
 			{:else if col === 'name'}
 				<b>{schedule.name}</b>
 			{:else if col === 'action'}
-				{schedule.action}
+				{t(`web.schedules.action_${schedule.action}`)}
 			{:else if col === 'instances'}
 				<span class="mono">{schedule.instances.join(', ')}</span>
 			{:else if col === 'trigger'}

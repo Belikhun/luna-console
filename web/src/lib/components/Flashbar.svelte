@@ -44,10 +44,31 @@
 	const MAX_GHOSTS = 2;
 
 	const items = $derived(Notifications.ordered);
-	const stacked = $derived(Notifications.collapsed && items.length > 1);
-	const shown = $derived(stacked ? items.slice(0, 1) : items);
+
+	/**
+	 * Cards the stack never hides.
+	 *
+	 * Work in flight is the whole reason the bar is on screen. Collapsing to the
+	 * single newest card meant that the moment anything else was raised, a
+	 * running job's spinner, step line and progress bar were replaced by an empty
+	 * sliver - so the longer an operation took, the more likely the user was to
+	 * lose sight of it. A backup or a restore can run for many minutes; it stays
+	 * visible until it settles, at which point it stops being a loading card and
+	 * collapses with everything else.
+	 */
+	const pinned = $derived(items.filter((item) => item.level === 'loading'));
+	const rest = $derived(items.filter((item) => item.level !== 'loading'));
+
+	// only offer collapsing while it would actually hide something: with one error
+	// and three running jobs there is nothing for the counter to fold away
+	const collapsible = $derived(rest.length > 1);
+	const stacked = $derived(Notifications.collapsed && collapsible);
+
+	// the pinned cards render above the collapsed one, because the slivers are
+	// anchored to the bottom of the list and must sit behind its last card
+	const shown = $derived(stacked ? [...pinned, ...rest.slice(0, 1)] : items);
 	const counts = $derived(Notifications.counts);
-	const ghosts = $derived(stacked ? Math.min(items.length - 1, MAX_GHOSTS) : 0);
+	const ghosts = $derived(stacked ? Math.min(rest.length - 1, MAX_GHOSTS) : 0);
 </script>
 
 {#snippet card(item: NotificationItem)}
@@ -137,7 +158,7 @@
 {/snippet}
 
 {#if items.length > 0}
-	<div class="flashbar" class:has-bar={items.length > 1}>
+	<div class="flashbar" class:has-bar={collapsible}>
 		<div class="list" class:stacked>
 			{#each shown as item (item.id)}
 				{@render card(item)}
@@ -145,19 +166,19 @@
 			{#each { length: ghosts } as _unused, i}
 				<div
 					class="ghost"
-					data-level={items[i + 1]?.level ?? items[0]?.level}
+					data-level={rest[i + 1]?.level ?? rest[0]?.level}
 					style:--depth={i + 1}
 				></div>
 			{/each}
 		</div>
 
-		{#if items.length > 1}
+		{#if collapsible}
 			<div class="barrow">
 				<button
 					class="bar"
 					onclick={() => (Notifications.collapsed = !Notifications.collapsed)}
 					aria-expanded={!Notifications.collapsed}
-					aria-label={stacked ? t('web.flash.showAll', { count: items.length }) : t('web.flash.collapse')}
+					aria-label={stacked ? t('web.flash.showAll', { count: rest.length }) : t('web.flash.collapse')}
 				>
 					{#each COUNTER_ORDER as level}
 						<span class="ctr">
@@ -208,15 +229,26 @@
 		flex-direction: column;
 		gap: 0.125rem;
 
-		// Collapsed stack: only the newest card is real; the ones behind show as
-		// slivers stepped *inwards* and down, each darker than the one before, so
-		// the peek reads as receding cards. Only the bottom corners are rounded -
-		// the square tops hide behind the card above. The list padding reserves the
-		// peek so the counter bar still lands on the stack's real bottom edge.
+		// Collapsed stack: the running jobs stay real and sit above the newest
+		// other card; only that last one has slivers behind it, stepped *inwards*
+		// and down and each darker than the one before, so the peek reads as
+		// receding cards. Only the bottom corners are rounded - the square tops
+		// hide behind the card above. The list padding reserves the peek so the
+		// counter bar still lands on the stack's real bottom edge.
+		//
+		// The gap is kept when more than one real card is showing: without it the
+		// pinned cards would butt against the collapsed one and read as a single
+		// tall card rather than as several.
 		&.stacked {
 			position: relative;
 			gap: 0;
 			padding-bottom: 0.5rem;
+
+			// :not(.ghost) so the slivers, which are absolutely positioned against
+			// the last card, are unaffected by the spacing between real ones
+			.flash + .flash {
+				margin-top: 0.125rem;
+			}
 		}
 	}
 
