@@ -23,9 +23,6 @@
 	import WorldUpload from '$lib/components/WorldUpload.svelte';
 	import { isStagedWorldReady, type StagedWorld } from '$lib/components/worldupload';
 
-	/** how many recent Minecraft versions the picker offers */
-	const VERSION_CHOICES = 25;
-
 	/** One server software, as /api/software describes it. */
 	interface SoftwareOption {
 		id: Software;
@@ -423,9 +420,7 @@
 						mcVersion = value;
 						void loadLoaderVersions();
 					}}
-					options={versions
-						.slice(0, VERSION_CHOICES)
-						.map((version) => ({ value: version, label: version }))}
+					options={versions.map((version) => ({ value: version, label: version }))}
 				/>
 				{#if versionError}<span class="err">{versionError}</span>{/if}
 			</div>
@@ -439,9 +434,7 @@
 						searchable
 						options={[
 							{ value: '', label: t('web.launch.loaderNewest') },
-							...loaderVersions
-								.slice(0, VERSION_CHOICES)
-								.map((version) => ({ value: version, label: version }))
+							...loaderVersions.map((version) => ({ value: version, label: version }))
 						]}
 					/>
 				</div>
