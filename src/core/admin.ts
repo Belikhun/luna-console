@@ -650,6 +650,18 @@ export async function createInstance(
 	const machine = opts.daemon ?? PRIMARY_MACHINE;
 	let port = 0;
 
+	// An uploaded world is laid out under its target level name, and the server
+	// only loads what `level-name` points at; folding the name into the settings
+	// writes the two as one fact. Without this the archive lands under its level
+	// while server.properties keeps "world", and the first boot generates a
+	// fresh world beside the import instead of loading it.
+	if (opts.worldStage && opts.worldLevel?.trim()) {
+		opts = {
+			...opts,
+			settings: { ...(opts.settings ?? {}), "level-name": opts.worldLevel.trim() },
+		};
+	}
+
 	await checks.task({ start: `checking ${name}` }, async (step) => {
 		if (managedInstances(cfg)[name] || cfg.instances[name]) {
 			throw new Error(t("core.admin.alreadyExists", { name }));

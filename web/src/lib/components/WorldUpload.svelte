@@ -11,7 +11,7 @@
 	import Flash from './Flash.svelte';
 	import Spinner from './Spinner.svelte';
 	import WorldWizardModal from './WorldWizardModal.svelte';
-	import type { StagedWorld, StagedWorldScan } from './worldupload';
+	import { hasBlockingFinding, type StagedWorld, type StagedWorldScan } from './worldupload';
 
 	/**
 	 * The world-zip input, wherever a world is asked for.
@@ -43,6 +43,8 @@
 		disabledReason = '',
 		popup = true,
 		confirmLabel = t('web.worldUpload.useThisWorld'),
+		offerVersionSwitch = false,
+		onversionswitch,
 		onconfirm,
 		onscanned,
 		ondiscard
@@ -69,6 +71,10 @@
 		popup?: boolean;
 		/** The wizard's final button; "Use this world" or "Replace world" */
 		confirmLabel?: string;
+		/** Offer retargeting the server to the world's version (launch flow only) */
+		offerVersionSwitch?: boolean;
+		/** Fired on confirm when the operator kept the version switch taken */
+		onversionswitch?: (version: string) => void;
 		/** Fired once the operator has confirmed; the parent may now submit */
 		onconfirm?: (staged: StagedWorld) => void;
 		/** Fired when the scan lands, whoever is showing it */
@@ -78,7 +84,11 @@
 
 	let picked: File | null = $state(null);
 	let wizardOpen = $state(false);
+	let switchVersion = $state(true);
 	let aborter: AbortController | undefined;
+
+	/** The target the current scan answered for; a changed target re-asks. */
+	let scannedFor = '';
 
 	/**
 	 * The file the upload effect has already acted on.
@@ -146,6 +156,7 @@
 	/** Upload the picked file, then read it, then hand over to the wizard. */
 	async function begin(file: File): Promise<void> {
 		starting = true;
+		switchVersion = true;
 
 		const started = await post('/worlds/stage', {
 			fileName: file.name,
@@ -216,6 +227,7 @@
 				return;
 			}
 
+			scannedFor = `${software}|${mcVersion}`;
 			value.scan = scan;
 			value.level = scan.plan.targetLevel;
 			value.phase = 'reviewing';
@@ -226,6 +238,58 @@
 			value = errorState(file, (err as Error).message, token);
 		}
 	}
+
+	/**
+	 * Re-read the staged archive against the target as it is now.
+	 *
+	 * The scan's findings are answers about one software and version, so when
+	 * the form's pick changes under a staged world - by hand, or through the
+	 * wizard's own version switch - the old answers are stale: an alert may no
+	 * longer apply, or a new refusal may. A confirmed world that the new target
+	 * refuses goes back to reviewing, which is what keeps the submit blocked.
+	 */
+	async function rescan(): Promise<void> {
+		const staged = value;
+
+		if (!staged?.scan || !software) {
+			return;
+		}
+
+		const token = staged.token;
+
+		try {
+			const query = `software=${encodeURIComponent(software)}&mcVersion=${encodeURIComponent(mcVersion)}&level=${encodeURIComponent(staged.level)}`;
+			const answer = await api(`/worlds/stage/${token}?${query}`);
+			const scan = answer.scan as StagedWorldScan;
+
+			if (!value || value.token !== token) {
+				return;
+			}
+
+			value.scan = scan;
+
+			if (value.phase === 'confirmed' && hasBlockingFinding(scan.plan.findings)) {
+				value.phase = 'reviewing';
+			}
+
+			onscanned?.(value);
+		} catch {
+			// the old scan stays; the daemon re-checks the plan at install anyway
+		}
+	}
+
+	$effect(() => {
+		const key = `${software}|${mcVersion}`;
+		const ready = value?.phase === 'reviewing' || value?.phase === 'confirmed';
+
+		if (!ready || key === scannedFor) {
+			return;
+		}
+
+		scannedFor = key;
+
+		void rescan();
+	});
 
 	function errorState(file: File, message: string, token = ''): StagedWorld {
 		return {
@@ -250,6 +314,14 @@
 
 		value.phase = 'confirmed';
 		wizardOpen = false;
+
+		// taking the switch changes the parent's version field, and the rescan
+		// effect then refreshes the findings against the world's own version
+		const worldVersion = value.scan?.level_dat?.mcVersion ?? '';
+
+		if (offerVersionSwitch && switchVersion && worldVersion && worldVersion !== mcVersion) {
+			onversionswitch?.(worldVersion);
+		}
 
 		onconfirm?.(value);
 	}
@@ -334,6 +406,8 @@
 	<WorldWizardModal
 		bind:open={wizardOpen}
 		bind:world={value}
+		bind:switchVersion
+		{offerVersionSwitch}
 		{confirmLabel}
 		onconfirm={confirm}
 		oncancel={() => (wizardOpen = false)}

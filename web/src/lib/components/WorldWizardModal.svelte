@@ -43,6 +43,8 @@
 		confirmWord = 'replace',
 		busy = false,
 		source,
+		offerVersionSwitch = false,
+		switchVersion = $bindable(true),
 		onconfirm,
 		oncancel
 	}: {
@@ -60,6 +62,14 @@
 		busy?: boolean;
 		/** The archive picker, as a leading step; omitted when one is already staged */
 		source?: Snippet;
+		/**
+		 * Offer to retarget the server to the world's own version. Only a caller
+		 * whose version is still a form field (the launch wizard) can honour it;
+		 * an existing instance's version is not this dialog's to change.
+		 */
+		offerVersionSwitch?: boolean;
+		/** Whether the switch is taken; bindable so the caller acts on it */
+		switchVersion?: boolean;
 		onconfirm: () => void | Promise<void>;
 		oncancel?: () => void;
 	} = $props();
@@ -67,22 +77,45 @@
 	const scan = $derived(world?.scan ?? null);
 	const info = $derived(scan?.level_dat);
 	const findings = $derived(scan?.plan.findings ?? []);
-	const blocked = $derived(hasBlockingFinding(findings));
+
+	const versionFinding = $derived(
+		findings.find(
+			(finding) => finding.code === 'version-newer' || finding.code === 'version-older'
+		)
+	);
+	const worldVersion = $derived(info?.mcVersion ?? '');
+	const switching = $derived(
+		offerVersionSwitch && switchVersion && !!versionFinding && !!worldVersion
+	);
+
+	// a finding about a target the switch is about to replace is moot; showing
+	// it (or blocking on it) would be warning about a server nobody will create
+	const relevant = $derived(
+		switching
+			? findings.filter(
+					(finding) => finding.code !== 'version-newer' && finding.code !== 'version-older'
+				)
+			: findings
+	);
+
+	const blocked = $derived(hasBlockingFinding(relevant));
 
 	/** Findings worth stopping on, and the rest, kept apart on the last step. */
-	const errors = $derived(findings.filter((finding) => finding.level === 'error'));
-	const warnings = $derived(findings.filter((finding) => finding.level === 'warning'));
-	const notes = $derived(findings.filter((finding) => finding.level === 'info'));
+	const errors = $derived(relevant.filter((finding) => finding.level === 'error'));
+	const warnings = $derived(relevant.filter((finding) => finding.level === 'warning'));
+	const notes = $derived(relevant.filter((finding) => finding.level === 'info'));
 
 	let acknowledged = $state(false);
 	let typed = $state('');
 	let lossUnderstood = $state(false);
 
 	// a fresh archive is a fresh decision; an acknowledgement must never carry
-	// over from the world the user looked at a minute ago
+	// over from the world the user looked at a minute ago, and the version
+	// switch starts taken again for the same reason
 	$effect(() => {
 		void world?.token;
 		acknowledged = false;
+		switchVersion = true;
 	});
 
 	// and neither may a destructive confirmation survive the dialog closing:
@@ -326,10 +359,35 @@
 					<Flash kind="info">{say(finding)}</Flash>
 				{/each}
 
-				{#if findings.length === 0}
+				{#if switching}
+					<Flash kind="info">
+						{t('web.worldWizard.switchVersionNote', { version: worldVersion })}
+					</Flash>
+				{/if}
+
+				{#if relevant.length === 0 && !switching}
 					<Flash kind="success">{t('web.worldWizard.noProblems')}</Flash>
 				{/if}
 			</div>
+
+			{#if offerVersionSwitch && versionFinding && worldVersion}
+				<label class="opt">
+					<Checkbox
+						checked={switchVersion}
+						disabled={busy}
+						label={t('web.worldWizard.switchVersion', { version: worldVersion })}
+						onchange={(value) => (switchVersion = value)}
+					/>
+					<span>
+						{t('web.worldWizard.switchVersion', { version: worldVersion })}
+						<span class="dim">
+							{t('web.worldWizard.switchVersionHint', {
+								target: versionFinding.params?.target ?? ''
+							})}
+						</span>
+					</span>
+				</label>
+			{/if}
 
 			{#if needsAck && !blocked}
 				<label class="ack">

@@ -198,6 +198,18 @@
 	 */
 	const worldPending = $derived(!!world && !isStagedWorldReady(world));
 
+	/**
+	 * Whether the wizard may offer switching this form to the world's version.
+	 *
+	 * Only when the provider actually publishes that version; offering a switch
+	 * to a build nobody can download trades one refusal for a later, worse one.
+	 */
+	const worldVersionOfferable = $derived.by(() => {
+		const version = world?.scan?.level_dat?.mcVersion;
+
+		return !!version && versions.includes(version);
+	});
+
 	const nameError = $derived.by(() => {
 		if (!name) {
 			return '';
@@ -452,6 +464,8 @@
 				disabled={creating}
 				hint={t('web.launch.worldDrop')}
 				confirmLabel={t('web.launch.useThisWorld')}
+				offerVersionSwitch={worldVersionOfferable}
+				onversionswitch={(version) => (mcVersion = version)}
 			/>
 			<p class="dim worldnote">{t('web.launch.worldOptional')}</p>
 		</Panel>
