@@ -227,7 +227,7 @@
 			"added": "đã thêm {count} mục vào lockfile",
 			"notOnModrinth": "không có trên modrinth (thủ công)",
 			"lunaPlugin": "plugin luna",
-			"caseMismatches": "tên tệp lệch hoa/thường (những tệp này CHƯA TỪNG nhận cập nhật từ script đồng bộ cũ):",
+			"caseMismatches": "tên tệp lệch hoa/thường (những tệp này chưa từng nhận cập nhật):",
 			"fixedOnDeploy": "(sẽ sửa ở lần triển khai sau)",
 			"recognized": "{count} tệp trên instance là một bản trong kho mang tên khác (đăng ký bằng: luna instance adopt-addons <instance>)",
 			"unmanaged": "{count} jar chỉ có trên instance, không có trong kho; để nguyên tại chỗ (nhận vào bằng: luna plugins adopt <instance> <jar>)",
@@ -1388,7 +1388,7 @@
 		"unknown": "không biết lịch: {id}",
 		"nextShort": "lần tới {time}",
 		"list": {
-			"desc": "Liệt kê các lịch chạy (bộ chạy nằm trong daemon)",
+			"desc": "Liệt kê các lịch chạy",
 			"empty": "chưa có lịch nào; tạo mới bằng: luna schedule create",
 			"neverRan": "chưa chạy lần nào",
 			"runnerNote": "các lần chạy được daemon kích hoạt"
@@ -1478,7 +1478,7 @@
 		}
 	},
 	"web": {
-		"desc": "Chạy bảng điều khiển web (ứng dụng SvelteKit trong control/web)",
+		"desc": "Chạy bảng điều khiển web (chỉ máy primary; mặc định 127.0.0.1:8330)",
 		"optPort": "cổng lắng nghe (mặc định 8330)",
 		"optHost": "địa chỉ bind (mặc định 127.0.0.1)",
 		"optDev": "chạy vite dev server thay vì bản dựng production",

@@ -719,7 +719,10 @@
 						</div>
 
 						<!--
-							{t('web.selector.oneFieldNotA')}
+							One field, not a row per line: the lines are a paragraph an admin
+							writes and re-orders, and a control per line made moving one a retype.
+							A blank line is a blank lore line, which is how the templates space
+							their blocks; so only an empty field is no description at all.
 						-->
 						<div class="field">
 							<MiniMessageInput

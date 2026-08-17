@@ -227,7 +227,7 @@
 			"added": "added {count} lockfile entries",
 			"notOnModrinth": "not on modrinth (manual)",
 			"lunaPlugin": "luna plugin",
-			"caseMismatches": "filename case mismatches (these NEVER received updates from the old sync script):",
+			"caseMismatches": "filename case mismatches (these jars never received updates):",
 			"fixedOnDeploy": "(fixed on next deploy)",
 			"recognized": "{count} instance file(s) are a pooled build under another name (register with: luna instance adopt-addons <instance>)",
 			"unmanaged": "{count} instance-only jars not in the pool; left where they are (adopt with: luna plugins adopt <instance> <jar>)",
@@ -1388,7 +1388,7 @@
 		"unknown": "unknown schedule: {id}",
 		"nextShort": "next {time}",
 		"list": {
-			"desc": "List schedules (the runner lives in the web console server)",
+			"desc": "List schedules",
 			"empty": "no schedules; create one with: luna schedule create",
 			"neverRan": "never ran",
 			"runnerNote": "runs fire from the daemon"
@@ -1478,7 +1478,7 @@
 		}
 	},
 	"web": {
-		"desc": "Start the web console (SvelteKit app in control/web)",
+		"desc": "Start the web console (primary only; default 127.0.0.1:8330)",
 		"optPort": "listen port (default 8330)",
 		"optHost": "bind address (default 127.0.0.1)",
 		"optDev": "run the vite dev server instead of the production build",

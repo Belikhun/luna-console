@@ -140,6 +140,7 @@
 	let serverVersions: string[] = $state([]);
 	let saving = $state(false);
 	let versionJob: JobView | null = $state(null);
+	let versionJobOpen = $state(false);
 	let deleteOpen = $state(false);
 	let scheduleOpen = $state(false);
 	let versionConflict: any[] = $state([]);
@@ -690,9 +691,10 @@
 		);
 	});
 
-	/** Follow a version-change job to its end, keeping its tree on screen. */
+	/** Follow a version-change job to its end, keeping its tree in the progress dialog. */
 	async function trackVersionJob(job: JobView, note: ReturnType<typeof Notify.loading>): Promise<void> {
 		versionJob = job;
+		versionJobOpen = true;
 
 		const done = await followJob(job.id, (view) => {
 			versionJob = view;
@@ -717,6 +719,7 @@
 		saving = true;
 		versionConflict = [];
 		versionJob = null;
+		versionJobOpen = false;
 
 		const note = Notify.loading(t('web.instanceDetail.savingConfig', { name: name ?? '' }));
 
@@ -2668,12 +2671,6 @@
 						<Btn variant="primary" loading={saving} onclick={saveConfig}>{t('web.instanceDetail.saveChanges')}</Btn>
 					</div>
 				</Panel>
-				{#if versionJob}
-					<div class="gap"></div>
-					<Panel title={t('web.instanceDetail.versionChange')} description={t('web.instanceDetail.liveFromTheSameReporter')}>
-						<ProgressTree root={versionJob.progress} state={versionJob.state} />
-					</Panel>
-				{/if}
 				<div class="gap"></div>
 				<Panel
 					title={t('web.instanceDetail.addonGroups')}
@@ -2735,6 +2732,10 @@
 {/if}
 
 <ScheduleQuickModal bind:open={scheduleOpen} instances={name ? [name] : []} />
+
+<Modal title={t('web.instanceDetail.versionChange')} bind:open={versionJobOpen}>
+	<ProgressTree root={versionJob?.progress ?? null} state={versionJob?.state} />
+</Modal>
 
 <!-- deleting from here has nowhere to stay: the page it is on is about to stop
      existing, so the list is where the job's card is followed from -->
