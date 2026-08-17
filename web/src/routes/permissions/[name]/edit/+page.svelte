@@ -15,6 +15,7 @@
 	import Select from '$lib/components/Select.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -482,6 +483,7 @@
 			<div class="chips">
 				{#each members as member}
 					<a class="chip" href="/players/{member.uuid}">
+						<PlayerSkin player={member.uuid} view="face" px={2} />
 						{member.username || member.uuid}
 					</a>
 				{:else}

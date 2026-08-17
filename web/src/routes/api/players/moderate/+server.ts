@@ -26,7 +26,45 @@ export interface ModerationOutcome {
 	target: string;
 	instance: string;
 	ok: boolean;
+	/** false when the command was sent but the server has not persisted it yet */
+	verified?: boolean;
 	error?: string;
+}
+
+/**
+ * A target as the callers send it: the display name plus, when the caller
+ * knows it, the exact profile id, so the action lands on that profile even
+ * when two share the name. Bare strings stay accepted.
+ */
+interface ModerationTarget {
+	name: string;
+	uuid?: string;
+}
+
+function parseTargets(raw: unknown): ModerationTarget[] {
+	if (!Array.isArray(raw)) {
+		return [];
+	}
+
+	const out: ModerationTarget[] = [];
+
+	for (const entry of raw) {
+		if (typeof entry === 'string' && entry) {
+			out.push({ name: entry });
+			continue;
+		}
+
+		if (entry && typeof entry === 'object') {
+			const name = String((entry as any).name ?? '');
+			const uuid = (entry as any).uuid ? String((entry as any).uuid) : undefined;
+
+			if (name || uuid) {
+				out.push({ name: name || uuid!, ...(uuid ? { uuid } : {}) });
+			}
+		}
+	}
+
+	return out;
 }
 
 /**
@@ -42,7 +80,7 @@ export async function POST({ request }) {
 	const body = await request.json();
 	const action = String(body.action ?? '');
 	const reason = String(body.reason ?? '');
-	const targets = Array.isArray(body.targets) ? body.targets.map(String) : [];
+	const targets = parseTargets(body.targets);
 
 	if (!action) {
 		throw error(400, 'action is required');
@@ -56,17 +94,24 @@ export async function POST({ request }) {
 
 	if (action === 'kick') {
 		for (const target of targets) {
-			const result = await luna.kick(target, reason);
+			// LunaCore's resolvePlayer takes a UUID or a name; the id wins
+			const result = await luna.kick(target.uuid ?? target.name, reason);
 
 			outcomes.push({
-				target,
+				target: target.name,
 				instance: '',
 				ok: result.ok,
 				...(result.ok ? {} : { error: result.error ?? 'kick failed' })
 			});
 
 			if (result.ok) {
-				void luna.recordModeration({ action: 'kick', targetName: target, actor: 'console', reason });
+				void luna.recordModeration({
+					action: 'kick',
+					targetName: target.name,
+					...(target.uuid ? { targetUuid: target.uuid } : {}),
+					actor: 'console',
+					reason
+				});
 			}
 		}
 
@@ -102,7 +147,8 @@ export async function POST({ request }) {
 			const change: AccessChange = {
 				list: verb.list,
 				action: verb.action,
-				target,
+				target: target.name,
+				...(target.uuid && verb.list !== 'ban-ips' ? { uuid: target.uuid } : {}),
 				reason,
 				actor: 'console'
 			};
@@ -112,13 +158,14 @@ export async function POST({ request }) {
 
 				applied.push(result);
 				outcomes.push({
-					target,
+					target: target.name,
 					instance: name,
 					ok: result.ok,
+					...(result.verified === false ? { verified: false } : {}),
 					...(result.ok ? {} : { error: result.error ?? 'change failed' })
 				});
 			} catch (err) {
-				outcomes.push({ target, instance: name, ok: false, error: (err as Error).message });
+				outcomes.push({ target: target.name, instance: name, ok: false, error: (err as Error).message });
 			}
 		}
 
@@ -127,7 +174,8 @@ export async function POST({ request }) {
 		if (succeeded.length > 0) {
 			void luna.recordModeration({
 				action,
-				targetName: target,
+				targetName: target.name,
+				...(target.uuid && verb.list !== 'ban-ips' ? { targetUuid: target.uuid } : {}),
 				actor: 'console',
 				reason,
 				server: succeeded.join(', ')

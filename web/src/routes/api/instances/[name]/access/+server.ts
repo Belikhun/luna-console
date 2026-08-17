@@ -61,7 +61,7 @@ export async function POST({ params, request }) {
 		throw error(400, `unknown list: ${list}`);
 	}
 
-	if (action !== 'add' && action !== 'remove') {
+	if (action !== 'add' && action !== 'remove' && action !== 'update') {
 		throw error(400, `unknown action: ${action}`);
 	}
 
@@ -75,7 +75,11 @@ export async function POST({ params, request }) {
 		target,
 		reason: String(body.reason ?? ''),
 		actor: 'console',
-		...(body.level !== undefined ? { level: Number(body.level) } : {})
+		...(body.uuid ? { uuid: String(body.uuid) } : {}),
+		...(body.level !== undefined ? { level: Number(body.level) } : {}),
+		...(body.bypassesPlayerLimit !== undefined
+			? { bypassesPlayerLimit: Boolean(body.bypassesPlayerLimit) }
+			: {})
 	};
 
 	const result = await applyAccessChange(cfg, params.name, change);
@@ -88,6 +92,7 @@ export async function POST({ params, request }) {
 		void luna.recordModeration({
 			action: `${list}-${action}`,
 			targetName: target,
+			...(change.uuid ? { targetUuid: change.uuid } : {}),
 			actor: 'console',
 			reason: change.reason,
 			server: params.name

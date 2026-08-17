@@ -3,7 +3,7 @@
 // prohibited without written permission. See LICENSE at the repository root.
 
 import { command, Bail, UsageError } from "../framework";
-import { pc, Sym, ok, printTable, fmtDuration } from "../ui";
+import { pc, Sym, ok, warn, printTable, fmtDuration } from "../ui";
 import { instanceNames } from "../completers";
 import { loadCluster } from "../../client/core/config";
 import * as playerlists from "../../client/core/playerlists";
@@ -101,6 +101,7 @@ command({
 	opts: [
 		{ flag: "--reason", desc: t("cli.players.accessAdd.optReason"), value: true },
 		{ flag: "--level", desc: t("cli.players.accessAdd.optLevel"), value: true },
+		{ flag: "--uuid", desc: t("cli.players.optUuid"), value: true },
 	],
 
 	handler: async (args, opts) => {
@@ -111,6 +112,7 @@ command({
 			list,
 			action: "add",
 			target: args[2]!,
+			uuid: (opts.uuid as string) || undefined,
 			reason: (opts.reason as string) ?? "",
 			level: opts.level ? Number(opts.level) : undefined,
 			actor: "cli",
@@ -120,8 +122,75 @@ command({
 			throw new Bail(result.error ?? t("cli.players.notApplied"));
 		}
 
+		if (result.verified === false) {
+			warn(t("cli.players.unconfirmed", {
+				target: result.target,
+				list: result.list,
+				instance: result.instance,
+			}));
+
+			return;
+		}
+
 		ok(
 			t("cli.players.accessAdd.done", {
+				target: result.target,
+				list: result.list,
+				instance: result.instance,
+				method: result.method,
+			}),
+		);
+	},
+});
+
+command({
+	path: ["access", "update"],
+	desc: t("cli.players.accessUpdate.desc"),
+	args: [
+		{ name: "instance", required: true, complete: instanceNames },
+		{ name: "list", required: true, complete: async () => [...LIST_NAMES] },
+		{ name: "target", required: true },
+	],
+	opts: [
+		{ flag: "--reason", desc: t("cli.players.accessUpdate.optReason"), value: true },
+		{ flag: "--level", desc: t("cli.players.accessUpdate.optLevel"), value: true },
+		{ flag: "--bypass-limit", desc: t("cli.players.accessUpdate.optBypass"), value: true },
+		{ flag: "--uuid", desc: t("cli.players.optUuid"), value: true },
+	],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const list = parseList(args[1]!);
+
+		const bypass = opts["bypass-limit"] as string | undefined;
+
+		const result = await playerlists.applyAccessChange(cfg, args[0]!, {
+			list,
+			action: "update",
+			target: args[2]!,
+			uuid: (opts.uuid as string) || undefined,
+			reason: (opts.reason as string) ?? "",
+			level: opts.level ? Number(opts.level) : undefined,
+			bypassesPlayerLimit: bypass === undefined ? undefined : bypass === "true",
+			actor: "cli",
+		});
+
+		if (!result.ok) {
+			throw new Bail(result.error ?? t("cli.players.notApplied"));
+		}
+
+		if (result.verified === false) {
+			warn(t("cli.players.unconfirmed", {
+				target: result.target,
+				list: result.list,
+				instance: result.instance,
+			}));
+
+			return;
+		}
+
+		ok(
+			t("cli.players.accessUpdate.done", {
 				target: result.target,
 				list: result.list,
 				instance: result.instance,
@@ -139,8 +208,9 @@ command({
 		{ name: "list", required: true, complete: async () => [...LIST_NAMES] },
 		{ name: "target", required: true },
 	],
+	opts: [{ flag: "--uuid", desc: t("cli.players.optUuid"), value: true }],
 
-	handler: async (args) => {
+	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const list = parseList(args[1]!);
 
@@ -148,11 +218,22 @@ command({
 			list,
 			action: "remove",
 			target: args[2]!,
+			uuid: (opts.uuid as string) || undefined,
 			actor: "cli",
 		});
 
 		if (!result.ok) {
 			throw new Bail(result.error ?? t("cli.players.notApplied"));
+		}
+
+		if (result.verified === false) {
+			warn(t("cli.players.unconfirmed", {
+				target: result.target,
+				list: result.list,
+				instance: result.instance,
+			}));
+
+			return;
 		}
 
 		ok(

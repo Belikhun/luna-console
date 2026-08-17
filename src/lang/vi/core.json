@@ -661,5 +661,11 @@
 		"auditCreatedDetail": "{files} tệp, {size} byte",
 		"auditDeleted": "đã xóa bản sao lưu {label} của {name}",
 		"auditRestored": "đã khôi phục thế giới của {name} từ {label}"
+	},
+	"playerlists": {
+		"notInList": "{target} không có trong danh sách {list}",
+		"nameNeeded": "không có tên người chơi nào được ghi cho {uuid}; lệnh console và mục mới cần tên, hãy cung cấp thêm tên",
+		"opEditNeedsStop": "máy chủ giữ ops.json khi đang chạy; dừng instance để sửa operator",
+		"whitelistHasNoFields": "mục whitelist không có gì để sửa"
 	}
 }

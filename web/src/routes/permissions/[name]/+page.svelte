@@ -21,7 +21,8 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
+	import PlayerName from '$lib/components/PlayerName.svelte';
+	import PlayerPicker from '$lib/components/PlayerPicker.svelte';
 	import NodeEditorModal from '$lib/components/NodeEditorModal.svelte';
 	import type { NodeSpec } from '$lib/components/nodes';
 	import Modal from '$lib/components/Modal.svelte';
@@ -701,10 +702,7 @@
 			>
 				{#snippet cell(member, col)}
 					{#if col === 'username'}
-						<span class="who">
-							<PlayerSkin player={member.uuid} view="face" px={3} />
-							<a href="/players/{member.uuid}"><b>{member.username || member.uuid}</b></a>
-						</span>
+						<PlayerName player={member.uuid} name={member.username} />
 					{:else if col === 'uuid'}
 						<span class="mono dim">{member.uuid}</span>
 					{/if}
@@ -716,12 +714,14 @@
 
 <NodeEditorModal bind:open={nodeEditorOpen} node={nodeBeingEdited} {servers} onsubmit={(spec) => void saveNode(spec)} />
 
-<Modal title="Add a member to {name}" bind:open={addMemberOpen}>
-	<label class="field">
+<Modal title={t('web.permGroup.addMemberTitle', { name })} bind:open={addMemberOpen}>
+	<div class="field">
 		<span class="lbl">{t('web.permGroup.player')}</span>
 		<span class="hint">{t('web.permGroup.nameOrUuidResolved')}</span>
-		<input class="input" bind:value={addMemberName} placeholder={t('web.permGroup.eGBelikhun')} />
-	</label>
+		{#key addMemberOpen}
+			<PlayerPicker bind:value={addMemberName} />
+		{/key}
+	</div>
 	{#snippet footer()}
 		<Btn onclick={() => (addMemberOpen = false)}>{t('web.permGroup.cancel')}</Btn>
 		<Btn variant="primary" disabled={!addMemberName.trim()} onclick={doAddMember}>{t('web.permGroup.addMember')}</Btn>
@@ -759,12 +759,6 @@
 		flex-direction: column;
 		gap: 1rem;
 		margin-top: 1rem;
-	}
-
-	.who {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
 	}
 
 	.parents {

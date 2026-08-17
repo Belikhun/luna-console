@@ -29,6 +29,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import PlayerSkin3D from '$lib/components/PlayerSkin3D.svelte';
+	import PlayerName from '$lib/components/PlayerName.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import NodeEditorModal from '$lib/components/NodeEditorModal.svelte';
 	import type { NodeSpec } from '$lib/components/nodes';
@@ -640,7 +641,7 @@
 		kickOpen = false;
 
 		await act(
-			() => post('/luna/admin', { action: 'kick', player: detail?.username, reason: kickReason }),
+			() => post('/luna/admin', { action: 'kick', player: detail?.uuid ?? detail?.username, reason: kickReason }),
 			`Disconnecting ${detail?.username}…`,
 			`${detail?.username} disconnected`
 		);
@@ -658,7 +659,7 @@
 		}
 
 		await act(
-			() => post('/luna/admin', { action: 'message', player: detail?.username, message: text }),
+			() => post('/luna/admin', { action: 'message', player: detail?.uuid ?? detail?.username, message: text }),
 			`Sending a message to ${detail?.username}…`,
 			`Message delivered to ${detail?.username}`
 		);
@@ -670,7 +671,13 @@
 		transferOpen = false;
 
 		await act(
-			() => post('/luna/admin', { action: 'transfer', player: detail?.username, server: transferTo }),
+			() =>
+				post('/luna/admin', {
+					action: 'transfer',
+					// resolve by profile id; two profiles can share the name
+					player: detail?.uuid ?? detail?.username,
+					server: transferTo
+				}),
 			`Moving ${detail?.username} to ${transferTo}…`,
 			`${detail?.username} moved to ${transferTo}`
 		);
@@ -681,26 +688,40 @@
 
 		const label = ACTION_LABELS[moderateAction] ?? moderateAction;
 
+		let unconfirmed: string[] = [];
+
 		await act(
 			async () => {
 				const result = await post('/players/moderate', {
 					action: moderateAction,
-					targets: [detail?.username],
+					targets: [{ name: detail?.username, uuid: detail?.uuid }],
 					instances: moderateInstances,
 					reason: moderateReason
 				});
 
-				const failed = (result.outcomes ?? []).filter((outcome: any) => !outcome.ok);
+				const outcomes: any[] = result.outcomes ?? [];
+				const failed = outcomes.filter((outcome) => !outcome.ok);
 
 				if (failed.length > 0) {
 					throw new Error(failed.map((outcome: any) => `${outcome.instance}: ${outcome.error}`).join('; '));
 				}
+
+				unconfirmed = outcomes
+					.filter((outcome) => outcome.verified === false)
+					.map((outcome) => String(outcome.instance));
 
 				return result;
 			},
 			`${label} ${detail?.username}…`,
 			`${label} applied on ${moderateInstances.length} instance(s)`
 		);
+
+		if (unconfirmed.length > 0) {
+			Notify.warning(t('web.players.someUnconfirmed', { label, count: unconfirmed.length }), {
+				detail: unconfirmed.join(', '),
+				closeable: true
+			});
+		}
 
 		await loadModeration(true);
 	}
@@ -1289,9 +1310,10 @@
 								{#if entry.system}
 									<span class="dim">{t('web.playerDetail.system')}</span>
 								{:else if entry.counterpartyUuid}
-									<a href="/players/{entry.counterpartyUuid}">
-										{entry.counterpartyName || entry.counterpartyUuid}
-									</a>
+									<PlayerName
+										player={entry.counterpartyUuid}
+										name={entry.counterpartyName}
+									/>
 								{:else}
 									{entry.counterpartyName}
 								{/if}

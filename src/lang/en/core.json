@@ -661,5 +661,11 @@
 		"auditCreatedDetail": "{files} files, {size} bytes",
 		"auditDeleted": "deleted {name}'s backup {label}",
 		"auditRestored": "restored {name}'s world from {label}"
+	},
+	"playerlists": {
+		"notInList": "{target} is not in the {list} list",
+		"nameNeeded": "no player name is recorded for {uuid}; console commands and new entries need one, so give the name as well",
+		"opEditNeedsStop": "the server owns ops.json while it runs; stop the instance to edit an operator",
+		"whitelistHasNoFields": "a whitelist entry has nothing to edit"
 	}
 }

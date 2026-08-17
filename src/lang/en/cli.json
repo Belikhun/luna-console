@@ -814,6 +814,15 @@
 			"desc": "Remove a player (or IP) from one of an instance's access lists",
 			"done": "{target} removed from {list} on {instance} ({method})"
 		},
+		"unconfirmed": "{target}: sent to {instance}, but {list} has not shown the change yet; the server saves the list lazily, check again shortly or read its console",
+		"optUuid": "exact profile id, when two entries share a name; a bare UUID also works as the target itself",
+		"accessUpdate": {
+			"desc": "Edit an existing entry: a ban's reason, or an operator's level and limit bypass",
+			"optReason": "new ban reason; pass an empty value to clear it",
+			"optLevel": "new op permission level (1-4)",
+			"optBypass": "whether the operator joins past the player limit (true or false)",
+			"done": "{target} updated in {list} on {instance} ({method})"
+		},
 		"whitelist": {
 			"desc": "Turn an instance's whitelist on or off",
 			"badState": "expected \"on\" or \"off\", got \"{value}\"",

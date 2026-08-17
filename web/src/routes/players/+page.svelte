@@ -23,7 +23,7 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
-	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
+	import PlayerName from '$lib/components/PlayerName.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
@@ -69,7 +69,7 @@
 	/** The bulk-moderation dialog: one verb applied to the selection. */
 	let moderateOpen = $state(false);
 	let moderateAction = $state('');
-	let moderateTargets: string[] = $state([]);
+	let moderateTargets: Array<{ name: string; uuid: string }> = $state([]);
 	let moderateInstances: string[] = $state([]);
 	let moderateReason = $state('');
 
@@ -198,7 +198,7 @@
 	/** Open the moderation dialog for one verb over a set of players. */
 	function openModerate(action: string, targets: Player[]): void {
 		moderateAction = action;
-		moderateTargets = targets.map((player) => player.username);
+		moderateTargets = targets.map((player) => ({ name: player.username, uuid: player.uuid }));
 		moderateInstances = action === 'kick' ? [] : [...instances];
 		moderateReason = '';
 		moderateOpen = true;
@@ -313,11 +313,26 @@
 				reason: moderateReason
 			});
 
-			const outcomes: Array<{ ok: boolean; target: string; instance: string; error?: string }> =
-				result.outcomes ?? [];
+			const outcomes: Array<{
+				ok: boolean;
+				verified?: boolean;
+				target: string;
+				instance: string;
+				error?: string;
+			}> = result.outcomes ?? [];
 			const failed = outcomes.filter((outcome) => !outcome.ok);
+			const unconfirmed = outcomes.filter((outcome) => outcome.ok && outcome.verified === false);
 
-			if (failed.length === 0) {
+			if (failed.length === 0 && unconfirmed.length > 0) {
+				note.set({
+					level: 'warning',
+					message: t('web.players.someUnconfirmed', { label, count: unconfirmed.length }),
+					detail: unconfirmed
+						.map((outcome) => `${outcome.target}${outcome.instance ? ` @ ${outcome.instance}` : ''}`)
+						.join('\n'),
+					closeable: true
+				});
+			} else if (failed.length === 0) {
 				note.set({
 					level: 'success',
 					message: t('web.players.appliedTo', { label, count: moderateTargets.length }),
@@ -404,10 +419,7 @@
 		>
 			{#snippet cell(player, col)}
 				{#if col === 'username'}
-					<span class="who">
-						<PlayerSkin player={player.uuid} view="face" px={3} />
-						<a href="/players/{player.uuid}"><b>{player.username}</b></a>
-					</span>
+					<PlayerName player={player.uuid} name={player.username} />
 				{:else if col === 'status'}
 					{#if player.online}
 						<span class="status">
@@ -452,7 +464,7 @@
 
 <Modal title={t('web.players.modalTitle', { label: ACTION_LABELS[moderateAction] ?? moderateAction, count: moderateTargets.length })} bind:open={moderateOpen}>
 	<p class="targets">
-		{moderateTargets.join(', ')}
+		{moderateTargets.map((target) => target.name).join(', ')}
 	</p>
 
 	{#if needsInstances}
@@ -493,12 +505,6 @@
 		flex-direction: column;
 		gap: 1rem;
 		margin-top: 1rem;
-	}
-
-	.who {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
 	}
 
 	.status {

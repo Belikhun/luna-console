@@ -814,6 +814,15 @@
 			"desc": "Bỏ một người chơi (hoặc IP) khỏi một danh sách truy cập của instance",
 			"done": "đã bỏ {target} khỏi {list} trên {instance} ({method})"
 		},
+		"unconfirmed": "{target}: đã gửi tới {instance}, nhưng {list} chưa hiện thay đổi; máy chủ lưu danh sách trễ, kiểm tra lại sau hoặc xem console của nó",
+		"optUuid": "id hồ sơ chính xác, khi hai mục trùng tên; cũng có thể đưa thẳng UUID làm đích",
+		"accessUpdate": {
+			"desc": "Sửa một mục sẵn có: lý do của lệnh cấm, hoặc cấp và quyền vượt giới hạn của operator",
+			"optReason": "lý do cấm mới; truyền giá trị rỗng để xóa",
+			"optLevel": "cấp quyền op mới (1-4)",
+			"optBypass": "operator có được vào khi máy chủ đầy hay không (true hoặc false)",
+			"done": "đã cập nhật {target} trong {list} trên {instance} ({method})"
+		},
 		"whitelist": {
 			"desc": "Bật hoặc tắt whitelist của một instance",
 			"badState": "cần \"on\" hoặc \"off\", nhận được \"{value}\"",

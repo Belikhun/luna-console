@@ -22,7 +22,7 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
-	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
+	import PlayerName from '$lib/components/PlayerName.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
@@ -258,7 +258,7 @@
 		}
 
 		await act(
-			{ action: 'kick', player: player.username, reason: kickReason },
+			{ action: 'kick', player: player.uuid, reason: kickReason },
 			`Disconnecting ${player.username}…`,
 			() => `${player.username} disconnected`
 		);
@@ -277,7 +277,7 @@
 		}
 
 		await act(
-			{ action: 'message', player: player.username, message: text },
+			{ action: 'message', player: player.uuid, message: text },
 			`Sending a message to ${player.username}…`,
 			() => `Message delivered to ${player.username}`
 		);
@@ -295,7 +295,7 @@
 		}
 
 		await act(
-			{ action: 'transfer', player: player.username, server: transferTo },
+			{ action: 'transfer', player: player.uuid, server: transferTo },
 			`Moving ${player.username} to ${transferTo}…`,
 			(data) => `${player.username} moved to ${data.server ?? transferTo}`
 		);
@@ -446,10 +446,7 @@
 		>
 			{#snippet cell(player, col)}
 				{#if col === 'username'}
-					<span class="who">
-						<PlayerSkin player={player.uuid} view="face" px={3} />
-						<a href="/players/{player.uuid}"><b>{player.username}</b></a>
-					</span>
+					<PlayerName player={player.uuid} name={player.username} />
 				{:else if col === 'server'}
 					<a href="/instances/{player.server}">{player.server}</a>
 				{:else if col === 'session'}
@@ -601,12 +598,6 @@
 		flex-direction: column;
 		gap: 1rem;
 		margin-top: 1rem;
-	}
-
-	.who {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
 	}
 
 	// latency bands, the same three-step scale as the instances table's TPS column
