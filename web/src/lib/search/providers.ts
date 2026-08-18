@@ -77,6 +77,13 @@ const pages = (): SearchHit[] => [
 	},
 	{
 		group: 'web.searchGroups.pages',
+		label: t('web.nav.moderation'),
+		detail: t('web.searchPages.moderation'),
+		href: '/players/moderation',
+		icon: 'gavel'
+	},
+	{
+		group: 'web.searchGroups.pages',
 		label: t('web.nav.permissionGroups'),
 		detail: t('web.searchPages.permissions'),
 		href: '/permissions',

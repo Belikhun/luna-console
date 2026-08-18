@@ -34,6 +34,8 @@ export type {
 	PlayerChatPage,
 	ModerationEntry,
 	ModerationPage,
+	ModerationLogEntry,
+	ModerationLogPage,
 	ModerationRecord,
 	PermissionNode,
 	PermissionGroupSummary,
@@ -68,6 +70,7 @@ export const registeredPlayer = call("lunaApi.registeredPlayer") as typeof core.
 export const playerSessions = call("lunaApi.playerSessions") as typeof core.playerSessions;
 export const playerChat = call("lunaApi.playerChat") as typeof core.playerChat;
 export const playerModeration = call("lunaApi.playerModeration") as typeof core.playerModeration;
+export const moderationLog = call("lunaApi.moderationLog") as typeof core.moderationLog;
 export const recordModeration = call("lunaApi.recordModeration") as typeof core.recordModeration;
 export const permissionGroups = call("lunaApi.permissionGroups") as typeof core.permissionGroups;
 export const permissionGroup = call("lunaApi.permissionGroup") as typeof core.permissionGroup;

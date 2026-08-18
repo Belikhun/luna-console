@@ -104,6 +104,7 @@
 			items: [
 				{ label: t('web.nav.playersList'), href: '/players', icon: 'users' },
 				{ label: t('web.nav.onlinePlayers'), href: '/players/online', icon: 'userPortrait' },
+				{ label: t('web.nav.moderation'), href: '/players/moderation', icon: 'gavel' },
 				{ label: t('web.nav.permissionGroups'), href: '/permissions', icon: 'key' }
 			]
 		},
@@ -233,9 +234,10 @@
 			return /^\/instances(?!\/launch|\/selector)/.test(page.url.pathname);
 		}
 
-		// "Online players" is its own nav entry, so /players must not claim it
+		// "Online players" and "Moderation" are their own nav entries, so
+		// /players must not claim them
 		if (href === '/players') {
-			return /^\/players(?!\/online)/.test(page.url.pathname);
+			return /^\/players(?!\/online|\/moderation)/.test(page.url.pathname);
 		}
 
 		return page.url.pathname === href || page.url.pathname.startsWith(href + '/');

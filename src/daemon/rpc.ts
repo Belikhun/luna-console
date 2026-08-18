@@ -1644,6 +1644,7 @@ export const OPS: Record<string, OpSpec> = {
 	"lunaApi.playerSessions": { fn: lunaApi.playerSessions },
 	"lunaApi.playerChat": { fn: lunaApi.playerChat },
 	"lunaApi.playerModeration": { fn: lunaApi.playerModeration },
+	"lunaApi.moderationLog": { fn: lunaApi.moderationLog },
 	"lunaApi.recordModeration": { fn: lunaApi.recordModeration },
 	"lunaApi.permissionGroups": { fn: lunaApi.permissionGroups },
 	"lunaApi.permissionGroup": { fn: lunaApi.permissionGroup },

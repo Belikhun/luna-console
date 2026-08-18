@@ -737,6 +737,51 @@ export async function playerModeration(
 	);
 }
 
+export interface ModerationLogEntry extends ModerationEntry {
+	targetUuid: string;
+	targetName: string;
+}
+
+export interface ModerationLogPage {
+	total: number;
+	offset: number;
+	limit: number;
+	/** Distinct actions present in the whole log, for filter menus */
+	actions: string[];
+	entries: ModerationLogEntry[];
+}
+
+/**
+ * A page of the whole network's moderation history, newest first, across every
+ * target. `search` matches the target's name or id and the actor; `action`
+ * narrows to one verb. Needs a LunaCore build serving GET /moderation/log.
+ */
+export async function moderationLog(
+	opts: { search?: string; action?: string; limit?: number; offset?: number } = {},
+): Promise<LunaResult<ModerationLogPage>> {
+	const params = new URLSearchParams();
+
+	if (opts.search) {
+		params.set("search", opts.search);
+	}
+
+	if (opts.action) {
+		params.set("action", opts.action);
+	}
+
+	if (opts.limit !== undefined) {
+		params.set("limit", String(opts.limit));
+	}
+
+	if (opts.offset !== undefined) {
+		params.set("offset", String(opts.offset));
+	}
+
+	const suffix = params.size > 0 ? `?${params.toString()}` : "";
+
+	return await call<ModerationLogPage>(`/moderation/log${suffix}`);
+}
+
 export interface ModerationRecord {
 	action: string;
 	targetName?: string;
