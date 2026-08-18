@@ -25,6 +25,7 @@
 	import type { InfoCell } from '$lib/components/grid';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
+	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { hasProvider, traitsOf } from '$core/software';
 	import { channelOf } from '$lib/components/software';
@@ -1148,30 +1149,41 @@
 		];
 	});
 
+	// the registration dialog behind the network tab's edit action
+	let proxyEditOpen = $state(false);
+
 	const proxyCells: InfoCell[] = $derived.by(() => {
 		if (!inst) {
 			return [];
 		}
 
-		const registered = inst.proxy?.register
-			? 'yes'
-			: name === 'proxy'
-				? '(is the proxy)'
-				: 'no';
-
-		const priority =
-			inst.proxy?.priority !== undefined
-				? [{ label: t('web.instanceDetail.tryListPriority'), value: String(inst.proxy.priority) }]
-				: [];
-
-		const forcedHosts = inst.proxy?.forcedHosts?.length
-			? [{ label: t('web.instanceDetail.forcedHosts'), value: inst.proxy.forcedHosts.join(', ') }]
-			: [];
+		// the proxy has no registration of its own; every other row shows its
+		// three registration facts, dashed when unset, so an edit has visible
+		// feedback
+		if (name === 'proxy') {
+			return [
+				{
+					label: t('web.instanceDetail.registeredInVelocity'),
+					value: t('web.instanceDetail.isTheProxy')
+				}
+			];
+		}
 
 		return [
-			{ label: t('web.instanceDetail.registeredInVelocity'), value: registered },
-			...priority,
-			...forcedHosts
+			{
+				label: t('web.instanceDetail.registeredInVelocity'),
+				value: inst.proxy?.register
+					? t('web.instanceDetail.registeredYes')
+					: t('web.instanceDetail.registeredNo')
+			},
+			{
+				label: t('web.instanceDetail.tryListPriority'),
+				value: inst.proxy?.priority !== undefined ? String(inst.proxy.priority) : null
+			},
+			{
+				label: t('web.instanceDetail.forcedHosts'),
+				value: inst.proxy?.forcedHosts?.length ? inst.proxy.forcedHosts.join(', ') : null
+			}
 		];
 	});
 
@@ -2483,8 +2495,20 @@
 			</Panel>
 			<div class="gap"></div>
 			<Panel title={t('web.instanceDetail.proxyRegistration')}>
+				{#snippet actions()}
+					{#if name !== 'proxy'}
+						<Btn icon="route" onclick={() => (proxyEditOpen = true)}>
+							{t('web.instanceDetail.editRegistration')}
+						</Btn>
+					{/if}
+				{/snippet}
 				<InfoGrid cells={proxyCells} />
 			</Panel>
+			<ProxyRegistrationModal
+				bind:open={proxyEditOpen}
+				instance={name ?? ''}
+				oncommitted={() => void refresh()}
+			/>
 		{:else if tab === 'environment'}
 			<Panel
 				title={t('web.instanceDetail.environment')}

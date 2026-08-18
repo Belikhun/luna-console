@@ -208,6 +208,11 @@
 		"builtinNoLog": "the proxy serves packs itself (base-url: built-in); no web server log to read",
 		"builtinLoopback": "the proxy serves packs on loopback (base-url: built-in); clients off this machine cannot reach it"
 	},
+	"proxy": {
+		"notRegistrable": "{name} is not a registrable instance (unknown, or the proxy itself)",
+		"badPriority": "try-list priority must be a whole number between 0 and 9999, got {value}",
+		"badHost": "not a valid forced hostname: \"{host}\""
+	},
 	"ports": {
 		"noPool": "{machine} has no \"{pool}\" port pool and no range was given",
 		"noRange": "no port pool or range to acquire from",

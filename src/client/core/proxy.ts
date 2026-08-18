@@ -12,6 +12,11 @@ import type { ClusterConfig } from "../../core/types";
 import { call } from "../rpc";
 import { clientRoot } from "../socket";
 
+// pure registry edit: it changes the cluster config the caller already holds
+// and the caller saves it, so there is nothing for the daemon to do
+export { setProxyRegistration } from "../../core/proxy";
+export type { ProxyRegistrationUpdate } from "../../core/proxy";
+
 /** Absolute path of the proxy's velocity.toml (on the daemon's host). */
 export function velocityTomlPath(cfg: ClusterConfig): string {
 	return join(clientRoot(), cfg.proxy.dir, "velocity.toml");

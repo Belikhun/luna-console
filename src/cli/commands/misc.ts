@@ -5,7 +5,8 @@
 import { Bail, UsageError, command } from "../framework";
 import { pc, Sym, ok, warn, info, printTable, fmtBytes, Spinner } from "../ui";
 import { loadCluster, saveCluster, loadLock } from "../../client/core/config";
-import { syncVelocityToml, readVelocityServers } from "../../client/core/proxy";
+import { setProxyRegistration, syncVelocityToml, readVelocityServers } from "../../client/core/proxy";
+import { instanceNames } from "../completers";
 import {
 	auditPorts,
 	clusterMachines,
@@ -70,6 +71,146 @@ command({
 			ok(t("cli.proxy.sync.reloaded"));
 		} else {
 			warn(t("cli.proxy.sync.proxyDown"));
+		}
+	},
+});
+
+command({
+	path: ["proxy", "register"],
+	desc: t("cli.proxy.register.desc"),
+	args: [{ name: "instance", required: true, complete: instanceNames }],
+	opts: [
+		{ flag: "--on", desc: t("cli.proxy.register.optOn") },
+		{ flag: "--off", desc: t("cli.proxy.register.optOff") },
+		{ flag: "--priority", value: true, desc: t("cli.proxy.register.optPriority") },
+		{ flag: "--no-try", desc: t("cli.proxy.register.optNoTry") },
+		{ flag: "--hosts", value: true, desc: t("cli.proxy.register.optHosts") },
+		{ flag: "--sync", desc: t("cli.proxy.register.optSync") },
+		{ flag: "--reload", desc: t("cli.proxy.register.optReload") },
+	],
+
+	handler: async (args, opts) => {
+		const name = args[0]!;
+		const cfg = await loadCluster();
+		const inst = cfg.instances[name];
+
+		if (!inst) {
+			throw new UsageError(t("cli.proxy.register.unknownInstance", { name }));
+		}
+
+		if (opts.on && opts.off) {
+			throw new UsageError(t("cli.proxy.register.onOffClash"));
+		}
+
+		if (opts.priority !== undefined && opts["no-try"]) {
+			throw new UsageError(t("cli.proxy.register.tryClash"));
+		}
+
+		const editing =
+			opts.on !== undefined ||
+			opts.off !== undefined ||
+			opts.priority !== undefined ||
+			opts["no-try"] !== undefined ||
+			opts.hosts !== undefined;
+
+		// with nothing to change, the command answers what is registered today
+		if (!editing) {
+			const reg = inst.proxy;
+
+			printTable(
+				[
+					[
+						t("cli.proxy.register.stateLabel"),
+						reg?.register
+							? pc.green(t("cli.proxy.register.registered"))
+							: pc.dim(t("cli.proxy.register.notRegistered")),
+					],
+					[
+						t("cli.proxy.register.priorityLabel"),
+						reg?.priority !== undefined
+							? String(reg.priority)
+							: pc.dim(t("cli.proxy.register.notInTry")),
+					],
+					[
+						t("cli.proxy.register.hostsLabel"),
+						reg?.forcedHosts?.length ? reg.forcedHosts.join(", ") : pc.dim("—"),
+					],
+				],
+				{ indent: "  " },
+			);
+
+			info(t("cli.proxy.register.showHint"));
+
+			return;
+		}
+
+		let priority: number | null | undefined;
+
+		if (opts["no-try"]) {
+			priority = null;
+		} else if (opts.priority !== undefined) {
+			priority = parseInt(String(opts.priority));
+
+			if (!Number.isFinite(priority)) {
+				throw new UsageError(
+					t("cli.proxy.register.badPriority", { value: String(opts.priority) }),
+				);
+			}
+		}
+
+		let result: { changed: string[] };
+
+		try {
+			result = setProxyRegistration(cfg, name, {
+				register: opts.on ? true : opts.off ? false : undefined,
+				priority,
+				forcedHosts:
+					opts.hosts !== undefined
+						? String(opts.hosts)
+								.split(",")
+								.map((host) => host.trim())
+								.filter(Boolean)
+						: undefined,
+			});
+		} catch (err) {
+			throw new Bail((err as Error).message);
+		}
+
+		if (!result.changed.length) {
+			info(t("cli.proxy.register.noChanges", { name }));
+		} else {
+			await saveCluster(cfg);
+			ok(t("cli.proxy.register.saved", { name, fields: result.changed.join(", ") }));
+		}
+
+		if (!opts.sync) {
+			if (result.changed.length) {
+				info(t("cli.proxy.register.syncHint"));
+			}
+
+			return;
+		}
+
+		const res = await syncVelocityToml(cfg, false);
+
+		if (res.changed) {
+			ok(`${t("cli.proxy.sync.updated")} ${pc.dim(t("cli.proxy.sync.backupNote"))}`);
+		} else {
+			ok(t("cli.proxy.sync.inSync"));
+		}
+
+		if (opts.reload) {
+			const status = await getStatus(cfg, "proxy");
+			const reloaded =
+				status.state !== "stopped" && (await sendCommand(cfg, "proxy", "velocity reload"));
+
+			if (reloaded) {
+				ok(t("cli.proxy.sync.reloaded"));
+			} else {
+				warn(t("cli.proxy.sync.proxyDown"));
+			}
+		} else if (res.changed) {
+			info(t("cli.proxy.sync.applyHint"));
 		}
 	},
 });

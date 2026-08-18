@@ -7,9 +7,10 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 
-import type { ClusterConfig } from "./types";
+import type { ClusterConfig, ProxyRegistration } from "./types";
 import { instanceDir } from "./config";
 import { instanceAddress } from "./ports";
+import { t } from "../shared/i18n";
 
 /** Path of the proxy's velocity.toml. */
 export function velocityTomlPath(cfg: ClusterConfig): string {
@@ -148,6 +149,106 @@ export async function readVelocityServers(cfg: ClusterConfig): Promise<Record<st
 	}
 
 	return servers;
+}
+
+export interface ProxyRegistrationUpdate {
+	register?: boolean;
+	/** New try-list priority; null takes the instance out of the try list. */
+	priority?: number | null;
+	/** Replacement forced-host list; an empty array clears it. */
+	forcedHosts?: string[];
+}
+
+// velocity matches forced hosts literally against what the client asked for,
+// so anything that is not a plain hostname could never route a player
+const FORCED_HOST = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
+
+/** Lowercased, trimmed hostname; throws when velocity could never be asked for it. */
+function normalizeForcedHost(host: string): string {
+	const clean = host.trim().toLowerCase();
+
+	if (!clean || !FORCED_HOST.test(clean)) {
+		throw new Error(t("core.proxy.badHost", { host: host.trim() }));
+	}
+
+	return clean;
+}
+
+/**
+ * Change how an instance is registered with the velocity proxy: whether it is
+ * in [servers] at all, where it sits in the try list, and which hostnames are
+ * force-routed to it.
+ *
+ * Registry only, and everything is validated before anything is written: the
+ * caller saves the cluster config and runs `syncVelocityToml` to land the
+ * change in velocity.toml. Returns the fields that actually changed value
+ * (a field set to what it already held is not one of them) and the resulting
+ * registration, absent when the instance ends up with no proxy block at all.
+ */
+export function setProxyRegistration(
+	cfg: ClusterConfig,
+	name: string,
+	update: ProxyRegistrationUpdate,
+): { changed: string[]; registration?: ProxyRegistration } {
+	// the proxy itself lives outside cfg.instances, so "proxy" lands here too:
+	// velocity cannot be registered with itself
+	const inst = cfg.instances[name];
+
+	if (!inst) {
+		throw new Error(t("core.proxy.notRegistrable", { name }));
+	}
+
+	if (typeof update.priority === "number") {
+		if (!Number.isInteger(update.priority) || update.priority < 0 || update.priority > 9999) {
+			throw new Error(t("core.proxy.badPriority", { value: String(update.priority) }));
+		}
+	}
+
+	const hosts =
+		update.forcedHosts !== undefined
+			? [...new Set(update.forcedHosts.map(normalizeForcedHost))]
+			: undefined;
+
+	const current: ProxyRegistration = inst.proxy ?? { register: false };
+	const next: ProxyRegistration = { register: update.register ?? current.register };
+
+	const priority =
+		update.priority === undefined
+			? current.priority
+			: update.priority ?? undefined;
+
+	if (priority !== undefined) {
+		next.priority = priority;
+	}
+
+	const forcedHosts = hosts ?? current.forcedHosts ?? [];
+
+	if (forcedHosts.length) {
+		next.forcedHosts = forcedHosts;
+	}
+
+	const changed: string[] = [];
+
+	if (next.register !== current.register) {
+		changed.push("register");
+	}
+
+	if (next.priority !== current.priority) {
+		changed.push("priority");
+	}
+
+	if ((next.forcedHosts ?? []).join(",") !== (current.forcedHosts ?? []).join(",")) {
+		changed.push("forcedHosts");
+	}
+
+	// a block saying only "not registered" is the same as no block at all
+	if (!next.register && next.priority === undefined && !next.forcedHosts?.length) {
+		delete inst.proxy;
+	} else {
+		inst.proxy = next;
+	}
+
+	return { changed, registration: inst.proxy };
 }
 
 /**

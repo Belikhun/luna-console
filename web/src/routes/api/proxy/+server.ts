@@ -15,13 +15,24 @@ export async function GET() {
 	const preview = await syncVelocityToml(cfg, true);
 	const onDisk = await readVelocityServers(cfg);
 
+	// every backend's registration rides along, registered or not: it is what
+	// the edit dialog prefills from and what the register picker offers
+	const instances = Object.entries(cfg.instances).map(([name, inst]) => ({
+		name,
+		external: !!inst.external,
+		register: inst.proxy?.register ?? false,
+		priority: inst.proxy?.priority ?? null,
+		forcedHosts: inst.proxy?.forcedHosts ?? []
+	}));
+
 	return json({
 		changed: preview.changed,
 		preview: preview.diffPreview,
 		desired: preview.servers,
 		onDisk,
 		tryList: preview.tryList,
-		forcedHosts: preview.forcedHosts
+		forcedHosts: preview.forcedHosts,
+		instances
 	});
 }
 

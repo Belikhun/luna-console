@@ -147,6 +147,30 @@
 			"applyHint": "khởi động lại proxy hoặc chạy với --reload để áp dụng",
 			"reloaded": "đã gửi lệnh `velocity reload` tới proxy",
 			"proxyDown": "proxy chưa chạy; cấu hình sẽ áp dụng ở lần khởi động sau"
+		},
+		"register": {
+			"desc": "Xem hoặc thay đổi đăng ký velocity của một instance",
+			"optOn": "đăng ký instance với proxy",
+			"optOff": "gỡ đăng ký instance khỏi proxy",
+			"optPriority": "vị trí trong danh sách try; số nhỏ kết nối trước",
+			"optNoTry": "đưa instance ra khỏi danh sách try",
+			"optHosts": "các hostname bắt buộc, phân cách bằng dấu phẩy; giá trị rỗng sẽ xóa hết",
+			"optSync": "ghi velocity.toml sau đó",
+			"optReload": "chạy velocity reload sau khi đồng bộ",
+			"unknownInstance": "không biết instance: {name}",
+			"onOffClash": "--on và --off mâu thuẫn với nhau",
+			"tryClash": "--priority và --no-try mâu thuẫn với nhau",
+			"badPriority": "--priority phải là số nguyên, nhận được {value}",
+			"stateLabel": "đăng ký",
+			"registered": "đã đăng ký",
+			"notRegistered": "chưa đăng ký",
+			"priorityLabel": "ưu tiên try",
+			"notInTry": "không trong danh sách try",
+			"hostsLabel": "host bắt buộc",
+			"showHint": "thay đổi bằng --on/--off, --priority/--no-try và --hosts",
+			"noChanges": "{name}: đăng ký đã đúng như vậy sẵn",
+			"saved": "{name}: đã cập nhật {fields}",
+			"syncHint": "chạy `luna proxy sync` (hoặc thêm --sync) để ghi vào velocity.toml"
 		}
 	},
 	"ports": {

@@ -16,6 +16,7 @@
 	import { Notify } from '$lib/notifications.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { goto } from '$app/navigation';
@@ -33,6 +34,10 @@
 	let busy = $state(false);
 	let loading = $state(false);
 	let lastUpdated: number | null = $state(null);
+
+	// the registration dialog: an empty target offers the instance picker
+	let regOpen = $state(false);
+	let regTarget = $state('');
 
 	const columns: Column[] = $derived([
 		{ id: 'server', label: t('web.proxy.colServer'), width: 180 },
@@ -91,24 +96,36 @@
 
 	onMount(refresh);
 
+	/** The registry entry behind a route row; a stale velocity.toml line has none. */
+	function instanceOf(server: string): any | undefined {
+		return (data?.instances ?? []).find((entry: any) => entry.name === server);
+	}
+
+	function editRegistration(server: string): void {
+		regTarget = server;
+		regOpen = true;
+	}
+
 	/** A route's verbs. A row named in velocity.toml but not in the registry has
-	 *  no instance page to open, so its menu is only the copy actions. */
+	 *  no registration to edit, so its menu is only the copy actions. */
 	function rowActions(row: RouteRow): ContextMenuItem[] {
 		const target = row.to ?? row.address;
-		const known = row.state !== 'remove';
+		const entry = instanceOf(row.server);
 
 		return [
 			{
+				// an external server has no instance page; its registration is
+				// still editable below
 				label: t('web.cleanup.openInstance', { name: row.server }),
 				icon: 'server',
-				disabled: !known,
+				disabled: !entry || entry.external,
 				action: () => goto(`/instances/${row.server}`)
 			},
 			{
 				label: t('web.proxy.editRegistration'),
 				icon: 'route',
-				disabled: !known,
-				action: () => goto(`/instances/${row.server}?tab=network`)
+				disabled: !entry,
+				action: () => editRegistration(row.server)
 			},
 			{ separator: true },
 			{
@@ -163,6 +180,16 @@
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="proxy" />
 		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Btn
+			icon="plus"
+			disabled={!data}
+			onclick={() => {
+				regTarget = '';
+				regOpen = true;
+			}}
+		>
+			{t('web.proxy.registerServer')}
+		</Btn>
 		<label class="reload">
 			<Checkbox
 				checked={reload}
@@ -227,6 +254,13 @@
 		</Panel>
 	</div>
 {/if}
+
+<ProxyRegistrationModal
+	bind:open={regOpen}
+	instance={regTarget}
+	choices={data?.instances ?? []}
+	oncommitted={() => void refresh()}
+/>
 
 <style lang="scss">
 	.reload {

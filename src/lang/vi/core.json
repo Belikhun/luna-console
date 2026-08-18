@@ -208,6 +208,11 @@
 		"builtinNoLog": "proxy tự phục vụ các gói (base-url: built-in); không có log web server để đọc",
 		"builtinLoopback": "proxy phục vụ gói trên loopback (base-url: built-in); client ngoài máy này không với tới được"
 	},
+	"proxy": {
+		"notRegistrable": "{name} không phải là instance có thể đăng ký (không tồn tại, hoặc chính là proxy)",
+		"badPriority": "độ ưu tiên trong danh sách try phải là số nguyên từ 0 đến 9999, nhận được {value}",
+		"badHost": "hostname bắt buộc không hợp lệ: \"{host}\""
+	},
 	"ports": {
 		"noPool": "{machine} không có pool cổng \"{pool}\" và cũng không có dải nào được truyền",
 		"noRange": "không có pool cổng hoặc dải nào để cấp",

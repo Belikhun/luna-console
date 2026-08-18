@@ -147,6 +147,30 @@
 			"applyHint": "restart the proxy or run with --reload to apply",
 			"reloaded": "sent `velocity reload` to the proxy",
 			"proxyDown": "proxy not running; the config applies on next start"
+		},
+		"register": {
+			"desc": "Show or change an instance's velocity registration",
+			"optOn": "register the instance with the proxy",
+			"optOff": "deregister the instance from the proxy",
+			"optPriority": "try-list position; lower connects first",
+			"optNoTry": "take the instance out of the try list",
+			"optHosts": "comma-separated forced hostnames; an empty value clears them",
+			"optSync": "write velocity.toml afterwards",
+			"optReload": "run velocity reload after the sync",
+			"unknownInstance": "unknown instance: {name}",
+			"onOffClash": "--on and --off contradict each other",
+			"tryClash": "--priority and --no-try contradict each other",
+			"badPriority": "--priority must be a whole number, got {value}",
+			"stateLabel": "registration",
+			"registered": "registered",
+			"notRegistered": "not registered",
+			"priorityLabel": "try priority",
+			"notInTry": "not in the try list",
+			"hostsLabel": "forced hosts",
+			"showHint": "change it with --on/--off, --priority/--no-try and --hosts",
+			"noChanges": "{name}: the registration already reads that way",
+			"saved": "{name}: updated {fields}",
+			"syncHint": "run `luna proxy sync` (or pass --sync) to land it in velocity.toml"
 		}
 	},
 	"ports": {
