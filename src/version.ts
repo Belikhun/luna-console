@@ -7,7 +7,7 @@
  * (DESIGN.md §4.7). The checked-in values are what a from-source run reports.
  */
 
-export const VERSION = "1.5.7";
+export const VERSION = "1.5.8";
 
 /** Short git SHA of the tree the binary was built from, "dev" from source. */
 export const COMMIT = "f496fd9";
