@@ -2556,6 +2556,7 @@
 		"chatCommands": "Chat & commands",
 		"permissions": "Permissions",
 		"moderation": "Moderation",
+		"filterType": "Filter type",
 		"chatAndCommands": "Chat and commands",
 		"chatOnly": "Chat only",
 		"commandsOnly": "Commands only",

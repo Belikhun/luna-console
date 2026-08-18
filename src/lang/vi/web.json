@@ -1806,6 +1806,7 @@
 		"chatCommands": "Chat & lệnh",
 		"permissions": "Quyền",
 		"moderation": "Kiểm duyệt",
+		"filterType": "Lọc loại",
 		"chatAndCommands": "Chat và lệnh",
 		"chatOnly": "Chỉ chat",
 		"commandsOnly": "Chỉ lệnh",

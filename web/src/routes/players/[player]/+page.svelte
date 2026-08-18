@@ -1072,7 +1072,7 @@
 
 	const chatCols: Column[] = $derived([
 		{ id: 'time', label: t('web.playerDetail.time'), width: 180, sortable: true },
-		{ id: 'type', label: t('web.playerDetail.type'), width: 120 },
+		{ id: 'type', label: t('web.playerDetail.type'), width: 140 },
 		{ id: 'server', label: t('web.playerDetail.backend'), width: 130 },
 		{ id: 'content', label: t('web.playerDetail.content') }
 	]);
@@ -1381,17 +1381,6 @@
 			</Panel>
 		{:else if tab === 'chat'}
 			<Panel flush>
-				<div class="chatfilter">
-					<Select
-						bind:value={chatType}
-						options={[
-							{ value: '', label: t('web.playerDetail.chatAndCommands') },
-							{ value: 'chat', label: t('web.playerDetail.chatOnly') },
-							{ value: 'command', label: t('web.playerDetail.commandsOnly') }
-						]}
-						onchange={() => void loadChat(true)}
-					/>
-				</div>
 				<ResourceTable
 					tableId="player-chat"
 					columns={chatCols}
@@ -1405,6 +1394,19 @@
 					emptyTitle={t('web.playerDetail.nothingRecorded')}
 					emptyText={t('web.playerDetail.chatAndCommandsAreRecorded')}
 				>
+					{#snippet toolbar()}
+						<Select
+							label={t('web.playerDetail.filterType')}
+							bind:value={chatType}
+							width="14rem"
+							options={[
+								{ value: '', label: t('web.playerDetail.chatAndCommands') },
+								{ value: 'chat', label: t('web.playerDetail.chatOnly') },
+								{ value: 'command', label: t('web.playerDetail.commandsOnly') }
+							]}
+							onchange={() => void loadChat(true)}
+						/>
+					{/snippet}
 					{#snippet cell(entry, col)}
 						{#if col === 'time'}
 							<span class="mono dim">{fmtDateTime(entry.atEpochMillis)}</span>
@@ -1856,12 +1858,6 @@
 		justify-content: center;
 		padding: 0.75rem;
 		border-top: 0.1rem solid var(--border-divider);
-	}
-
-	.chatfilter {
-		display: flex;
-		justify-content: flex-end;
-		padding: 0.75rem 1rem 0;
 	}
 
 	.content {
