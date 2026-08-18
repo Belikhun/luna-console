@@ -274,8 +274,11 @@ async function check(options: Options, current: string): Promise<void> {
  * in, and its value is what a from-source run reports - so a bump that touched
  * only `package.json` would leave `luna version` lying until someone next built.
  *
- * Only `VERSION` is rewritten. `COMMIT` and `BUILD_AT` describe a build, and the
- * commit this is about to create does not exist yet; the build stamps them.
+ * `COMMIT` and `BUILD_AT` are reset to their from-source state ("dev", empty):
+ * the release commit cannot carry its own SHA, and every build stamps the real
+ * values before compiling. Leaving them alone let an accidentally committed
+ * stamp survive the bump, so a release commit described some older build
+ * (v1.5.8 shipped saying COMMIT f496fd9, a build from two days earlier).
  */
 async function writeVersion(version: string, current: string): Promise<void> {
 	const pkg = await Bun.file(PACKAGE_PATH).text();
@@ -286,14 +289,15 @@ async function writeVersion(version: string, current: string): Promise<void> {
 	}
 
 	const versionSource = await Bun.file(VERSION_PATH).text();
-	const bumpedSource = versionSource.replace(
-		/export const VERSION = "[^"]*";/,
-		`export const VERSION = "${version}";`,
-	);
 
-	if (bumpedSource === versionSource) {
+	if (!/export const VERSION = "[^"]*";/.test(versionSource)) {
 		fail("could not find the VERSION constant in src/version.ts");
 	}
+
+	const bumpedSource = versionSource
+		.replace(/export const VERSION = "[^"]*";/, `export const VERSION = "${version}";`)
+		.replace(/export const COMMIT = "[^"]*";/, `export const COMMIT = "dev";`)
+		.replace(/export const BUILD_AT = "[^"]*";/, `export const BUILD_AT = "";`);
 
 	// the repo is CRLF everywhere; a generator must not be the one file that isn't
 	await Bun.write(PACKAGE_PATH, crlf(bumpedPkg));

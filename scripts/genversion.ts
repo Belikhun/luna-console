@@ -6,11 +6,17 @@
  * Bake the build identity into `src/version.ts` before compiling, so the binary
  * knows what it is (DESIGN.md §4.7). Run by `bun run build`; running it by hand
  * is harmless — it only rewrites the three constants.
+ *
+ * `--restore` writes the canonical from-source state back instead (COMMIT
+ * "dev", BUILD_AT empty). The build script runs it after compiling, so a build
+ * never leaves its own stamp in the working tree — a committed stamp is what
+ * made release commits carry a two-day-old COMMIT (v1.5.8 said f496fd9).
  */
 
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
+const restore = process.argv.includes("--restore");
 
 /**
  * Short SHA of the tree being built, or "dev" outside a git checkout — which is
@@ -43,8 +49,8 @@ const pkg = (await Bun.file(join(ROOT, "package.json")).json()) as { version?: s
 // the release workflow builds from a tag, which is the authority on the version
 // there — package.json is what a local build uses
 const version = process.env.LUNA_VERSION?.replace(/^v/, "") || (pkg.version ?? "0.0.0");
-const commit = await gitCommit();
-const buildAt = new Date().toISOString();
+const commit = restore ? "dev" : await gitCommit();
+const buildAt = restore ? "" : new Date().toISOString();
 
 const path = join(ROOT, "src", "version.ts");
 const source = await Bun.file(path).text();
@@ -57,4 +63,8 @@ const updated = source
 // the repo is CRLF everywhere; a generator must not be the one file that isn't
 await Bun.write(path, updated.replace(/(?<!\r)\n/g, "\r\n"));
 
-console.log(`version.ts → ${version}+${commit} (${buildAt})`);
+if (restore) {
+	console.log(`version.ts → ${version} (restored to from-source state)`);
+} else {
+	console.log(`version.ts → ${version}+${commit} (${buildAt})`);
+}
