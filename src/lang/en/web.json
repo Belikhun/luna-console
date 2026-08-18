@@ -868,8 +868,9 @@
 		"applyFailed": "Could not apply proxy configuration",
 		"pageDescription": "velocity.toml [servers] and [forced-hosts] are generated from cluster.json; review and apply",
 		"reloadAfter": "Run velocity reload after apply",
-		"runWord": "Run",
-		"afterApply": "after apply",
+		"confirmTitle": "Sync velocity.toml",
+		"confirmLead": "Rewrite the [servers] and [forced-hosts] sections of velocity.toml from the registry? The previous file is kept as velocity.toml.bak.",
+		"confirmLeadInSync": "velocity.toml already matches the registry; syncing will change nothing.",
 		"sync": "Sync velocity.toml",
 		"differs": "velocity.toml differs from cluster.json; review the changes below and apply.",
 		"matches": "velocity.toml matches the instance registry.",
@@ -884,7 +885,6 @@
 		"emptyList": "(empty)",
 		"forcedHosts": "forced hosts:",
 		"generatedToml": "Generated TOML sections",
-		"velocityReload": "velocity reload",
 		"registerServer": "Register a server"
 	},
 	"proxyReg": {

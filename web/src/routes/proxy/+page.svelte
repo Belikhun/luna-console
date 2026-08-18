@@ -17,6 +17,7 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { goto } from '$app/navigation';
@@ -38,6 +39,9 @@
 	// the registration dialog: an empty target offers the instance picker
 	let regOpen = $state(false);
 	let regTarget = $state('');
+
+	// the sync confirmation; the reload choice lives in there too
+	let syncOpen = $state(false);
 
 	const columns: Column[] = $derived([
 		{ id: 'server', label: t('web.proxy.colServer'), width: 180 },
@@ -190,15 +194,9 @@
 		>
 			{t('web.proxy.registerServer')}
 		</Btn>
-		<label class="reload">
-			<Checkbox
-				checked={reload}
-				label={t('web.proxy.reloadAfter')}
-				onchange={(value) => (reload = value)}
-			/>
-			{t('web.proxy.runWord')} <code class="inline">{t('web.proxy.velocityReload')}</code> {t('web.proxy.afterApply')}
-		</label>
-		<Btn variant="primary" loading={busy} disabled={!data} onclick={apply}>{t('web.proxy.sync')}</Btn>
+		<Btn variant="primary" loading={busy} disabled={!data} onclick={() => (syncOpen = true)}>
+			{t('web.proxy.sync')}
+		</Btn>
 	{/snippet}
 </PageHeader>
 
@@ -262,12 +260,31 @@
 	oncommitted={() => void refresh()}
 />
 
+<ConfirmModal
+	bind:open={syncOpen}
+	title={t('web.proxy.confirmTitle')}
+	lead={t(data?.changed ? 'web.proxy.confirmLead' : 'web.proxy.confirmLeadInSync')}
+	confirmLabel={t('web.proxy.sync')}
+	danger={false}
+	onconfirm={() => void apply()}
+>
+	<label class="reload">
+		<Checkbox
+			checked={reload}
+			label={t('web.proxy.reloadAfter')}
+			onchange={(value) => (reload = value)}
+		/>
+		{t('web.proxy.reloadAfter')}
+	</label>
+</ConfirmModal>
+
 <style lang="scss">
 	.reload {
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
 		font-size: 0.875rem;
+		cursor: pointer;
 	}
 
 	.cols {

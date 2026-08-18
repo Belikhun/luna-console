@@ -868,8 +868,9 @@
 		"applyFailed": "Không áp dụng được cấu hình proxy",
 		"pageDescription": "[servers] và [forced-hosts] của velocity.toml được tạo từ cluster.json; xem lại rồi áp dụng",
 		"reloadAfter": "Chạy velocity reload sau khi áp dụng",
-		"runWord": "Chạy",
-		"afterApply": "sau khi áp dụng",
+		"confirmTitle": "Đồng bộ velocity.toml",
+		"confirmLead": "Ghi lại phần [servers] và [forced-hosts] của velocity.toml từ sổ đăng ký? Tệp trước đó được giữ ở velocity.toml.bak.",
+		"confirmLeadInSync": "velocity.toml đã khớp với sổ đăng ký; đồng bộ sẽ không thay đổi gì.",
 		"sync": "Đồng bộ velocity.toml",
 		"differs": "velocity.toml lệch so với cluster.json; xem các thay đổi bên dưới rồi áp dụng.",
 		"matches": "velocity.toml khớp với sổ đăng ký instance.",
@@ -884,7 +885,6 @@
 		"emptyList": "(trống)",
 		"forcedHosts": "host bắt buộc:",
 		"generatedToml": "Các phần TOML được tạo",
-		"velocityReload": "velocity reload",
 		"registerServer": "Đăng ký máy chủ"
 	},
 	"proxyReg": {
