@@ -233,6 +233,7 @@
 		"mustBeOneOf": "{key} must be one of: {allowed}",
 		"mustBeSingleLine": "{key} must be a single line",
 		"notEditable": "{key} is not an editable server setting",
+		"badKey": "\"{key}\" is not a usable properties key; use letters, digits, dots, dashes and underscores",
 		"skipped": "skipped {key}",
 		"alreadyValue": "{key} already {value}",
 		"shellCharacters": "\"{arg}\" contains characters the shell would interpret; flags only",

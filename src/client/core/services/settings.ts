@@ -23,3 +23,11 @@ export const readServerProperties = call("settings.readServerProperties", {
 export const applySettings = call("settings.applySettings", {
 	cfg: 0,
 }) as typeof core.applySettings;
+
+export const setRawProperty = call("settings.setRawProperty", {
+	cfg: 0,
+}) as typeof core.setRawProperty;
+
+export const deleteRawProperty = call("settings.deleteRawProperty", {
+	cfg: 0,
+}) as typeof core.deleteRawProperty;

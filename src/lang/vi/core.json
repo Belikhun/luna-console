@@ -233,6 +233,7 @@
 		"mustBeOneOf": "{key} phải là một trong: {allowed}",
 		"mustBeSingleLine": "{key} phải nằm trên một dòng",
 		"notEditable": "{key} không phải thiết lập máy chủ sửa được",
+		"badKey": "\"{key}\" không dùng được làm khóa properties; chỉ dùng chữ, số, dấu chấm, gạch ngang và gạch dưới",
 		"skipped": "đã bỏ qua {key}",
 		"alreadyValue": "{key} vốn là {value}",
 		"shellCharacters": "\"{arg}\" chứa ký tự mà shell sẽ diễn giải; chỉ nhận cờ",

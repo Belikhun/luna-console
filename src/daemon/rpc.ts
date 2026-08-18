@@ -1546,6 +1546,8 @@ export const OPS: Record<string, OpSpec> = {
 
 	// -- settings, templates, environment ------------------------------------------
 	"settings.readServerProperties": { fn: settingsApply.readServerProperties, cfg: 0, instance: 1 },
+	"settings.setRawProperty": { fn: settingsApply.setRawProperty, cfg: 0, instance: 1 },
+	"settings.deleteRawProperty": { fn: settingsApply.deleteRawProperty, cfg: 0, instance: 1 },
 	"settings.applySettings": {
 		fn: settingsApply.applySettings,
 		cfg: 0,

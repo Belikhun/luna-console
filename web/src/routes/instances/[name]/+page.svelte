@@ -26,6 +26,7 @@
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
+	import ServerProperties from '$lib/components/ServerProperties.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { hasProvider, traitsOf } from '$core/software';
 	import { channelOf } from '$lib/components/software';
@@ -1757,10 +1758,6 @@
 		{ id: 'kind', label: t('web.instanceDetail.type'), width: 120 },
 		{ id: 'message', label: t('web.instanceDetail.event2') }
 	]);
-	const propCols: Column[] = $derived([
-		{ id: 'key', label: t('web.instanceDetail.property2'), width: 300 },
-		{ id: 'value', label: t('web.instanceDetail.value') }
-	]);
 </script>
 
 <svelte:head><title>{name} | Luna Console</title></svelte:head>
@@ -2721,35 +2718,9 @@
 					/>
 				</Panel>
 				<div class="gap"></div>
-				<Panel
-					title={t('web.instanceDetail.serverProperties')}
-					description={t('web.instanceDetail.everyKeyOnDiskIncluding')}
-					flush
-				>
-					<ResourceTable
-						tableId="instance-properties"
-						columns={propCols}
-						rows={Object.entries(cfgData.serverProperties).map(([key, value]) => ({
-							key,
-							value: String(value)
-						}))}
-						getId={(row) => row.key}
-						searchValue={(row) => `${row.key} ${row.value}`}
-						searchPlaceholder={t('web.instanceDetail.findAProperty')}
-						searchWidth="20rem"
-						noun={t('web.instanceDetail.property')}
-						paging={false}
-						maxHeight="20rem"
-					>
-						{#snippet cell(row, col)}
-							{#if col === 'key'}
-								<span class="mono">{row.key}</span>
-							{:else}
-								<span class="mono dim">{row.value}</span>
-							{/if}
-						{/snippet}
-					</ResourceTable>
-				</Panel>
+				<!-- the raw table owns its own reads and writes; the reload keeps the
+				     settings form above it honest when a key they share is edited -->
+				<ServerProperties instance={name ?? ''} onchanged={() => void loadTab('config')} />
 			{/if}
 		{/if}
 	</div>

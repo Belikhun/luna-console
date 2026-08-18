@@ -787,6 +787,14 @@
 			"unset": "chưa đặt",
 			"appliesOnRestart": "áp dụng ở lần khởi động lại sau"
 		},
+		"properties": {
+			"desc": "Xem hoặc thay đổi các khóa server.properties thô của một instance",
+			"optRemove": "xóa dòng của khóa thay vì đặt giá trị",
+			"empty": "{name} chưa có khóa server.properties nào",
+			"hasSpec": "(có trường thiết lập)",
+			"notPresent": "{name} không có khóa server.properties \"{key}\"",
+			"removedFrom": "đã gỡ (trước là {value})"
+		},
 		"config": {
 			"on": "bật",
 			"off": "tắt",

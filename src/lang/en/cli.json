@@ -787,6 +787,14 @@
 			"unset": "unset",
 			"appliesOnRestart": "applies on next restart"
 		},
+		"properties": {
+			"desc": "Show or change an instance's raw server.properties keys",
+			"optRemove": "remove the key's line instead of setting it",
+			"empty": "{name} has no server.properties keys yet",
+			"hasSpec": "(has a settings field)",
+			"notPresent": "{name} has no server.properties key \"{key}\"",
+			"removedFrom": "removed (was {value})"
+		},
 		"config": {
 			"on": "on",
 			"off": "off",

@@ -22,7 +22,7 @@ import { join } from "node:path";
 import type { ClusterConfig, InstanceConfig } from "./types";
 import { t } from "../shared/i18n";
 import { instanceDir, managedInstances } from "./config";
-import { readProperties, upsertProperty } from "./confedit";
+import { deleteProperty, readProperties, upsertProperty } from "./confedit";
 import type { ProgressReporter } from "./progress";
 import { settingSpec, validateSetting } from "./settings";
 
@@ -43,6 +43,109 @@ export async function readServerProperties(
 	}
 
 	return await readProperties(propertiesPath(inst));
+}
+
+// what readProperties can round-trip; anything else would never parse back
+const PROPERTY_KEY = /^[A-Za-z0-9._-]+$/;
+
+export interface RawPropertyResult {
+	key: string;
+	from?: string;
+	to: string;
+	/** false when the file already held exactly this value */
+	changed: boolean;
+	/** the line was added because the file had no such key yet */
+	appended: boolean;
+}
+
+/**
+ * Write one raw server.properties key, spec'd or not; the escape hatch behind
+ * the configuration tab's properties table and the only path that may *add* a
+ * key the schema does not know.
+ *
+ * The schema still has the last word where it has one: a value with a spec is
+ * validated against it, and a managed key is refused outright, because a raw
+ * path around that guard would break the same velocity logins the guard
+ * exists for. The value lands Java-escaped through `upsertProperty`.
+ */
+export async function setRawProperty(
+	cfg: ClusterConfig,
+	name: string,
+	key: string,
+	value: string,
+): Promise<RawPropertyResult> {
+	const inst = managedInstances(cfg)[name];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name }));
+	}
+
+	if (!PROPERTY_KEY.test(key)) {
+		throw new Error(t("core.settings.badKey", { key }));
+	}
+
+	if (/[\r\n]/.test(value)) {
+		throw new Error(t("core.settings.mustBeSingleLine", { key }));
+	}
+
+	const spec = settingSpec(key);
+
+	if (spec) {
+		const problem = validateSetting(spec, value);
+
+		if (problem) {
+			throw new Error(problem);
+		}
+	}
+
+	const path = propertiesPath(inst);
+	const current = await readProperties(path);
+
+	if (current[key] === value) {
+		return { key, from: current[key], to: value, changed: false, appended: false };
+	}
+
+	const outcome = await upsertProperty(path, key, value);
+
+	return {
+		key,
+		from: current[key],
+		to: value,
+		changed: true,
+		appended: outcome === "appended",
+	};
+}
+
+/**
+ * Remove one raw key's line from server.properties. A managed key is refused
+ * with the same reason writing one is; anything else is fine to drop, the
+ * server just boots with its own default. Returns the removed value, or an
+ * `existed: false` result when the file had no such line.
+ */
+export async function deleteRawProperty(
+	cfg: ClusterConfig,
+	name: string,
+	key: string,
+): Promise<{ key: string; existed: boolean; removed?: string }> {
+	const inst = managedInstances(cfg)[name];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name }));
+	}
+
+	if (!PROPERTY_KEY.test(key)) {
+		throw new Error(t("core.settings.badKey", { key }));
+	}
+
+	const spec = settingSpec(key);
+
+	if (spec?.managed) {
+		throw new Error(t("core.settings.managedError", { key, reason: t(spec.managed) }));
+	}
+
+	const removed = await deleteProperty(propertiesPath(inst), key);
+
+	return { key, existed: removed !== undefined, removed };
 }
 
 export interface SettingChange {

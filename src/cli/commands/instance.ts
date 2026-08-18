@@ -28,7 +28,12 @@ import {
 	parseJavaArgs,
 	settingSpec,
 } from "../../client/core/settings";
-import { applySettings, readServerProperties } from "../../client/core/services/settings";
+import {
+	applySettings,
+	deleteRawProperty,
+	readServerProperties,
+	setRawProperty,
+} from "../../client/core/services/settings";
 import { t } from "../../shared/i18n";
 
 /** Coloured state glyph + label for a status table row. */
@@ -849,6 +854,107 @@ command({
 
 		ok(
 			`${name}.${key}: ${pc.dim(change.from ?? t("cli.instance.settings.unset"))} ${Sym.arrow} ${pc.cyan(change.to)}` +
+				`${note} ${pc.dim(t("cli.instance.settings.appliesOnRestart"))}`,
+		);
+	},
+});
+
+command({
+	path: ["instance", "properties"],
+	desc: t("cli.instance.properties.desc"),
+	args: [
+		{ name: "instance", required: true, complete: instanceNames },
+		{ name: "key" },
+		{ name: "value", variadic: true },
+	],
+	opts: [{ flag: "--remove", desc: t("cli.instance.properties.optRemove") }],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+		const [name, key, ...rest] = args as [string, string?, ...string[]];
+
+		if (!managedInstances(cfg)[name]) {
+			throw new UsageError(t("cli.env.unknownInstance", { name }));
+		}
+
+		const current = await readServerProperties(cfg, name);
+
+		if (!key) {
+			const keys = Object.keys(current).sort();
+
+			if (!keys.length) {
+				info(t("cli.instance.properties.empty", { name }));
+
+				return;
+			}
+
+			printTable(
+				keys.map((entry) => [
+					entry,
+					current[entry] || pc.dim(t("cli.instance.settings.blank")),
+					settingSpec(entry) ? pc.dim(t("cli.instance.properties.hasSpec")) : "",
+				]),
+				{ indent: "  " },
+			);
+
+			return;
+		}
+
+		if (opts.remove) {
+			let result: Awaited<ReturnType<typeof deleteRawProperty>>;
+
+			try {
+				result = await deleteRawProperty(cfg, name, key);
+			} catch (err) {
+				throw new Bail((err as Error).message);
+			}
+
+			if (!result.existed) {
+				info(t("cli.instance.properties.notPresent", { name, key }));
+
+				return;
+			}
+
+			ok(
+				`${name}.${key} ${pc.dim(t("cli.instance.properties.removedFrom", { value: result.removed || t("cli.instance.settings.blank") }))} ` +
+					pc.dim(t("cli.instance.settings.appliesOnRestart")),
+			);
+
+			return;
+		}
+
+		// a value may legitimately contain spaces (motd), so the rest of argv is it
+		if (rest.length === 0) {
+			if (current[key] === undefined) {
+				info(t("cli.instance.properties.notPresent", { name, key }));
+
+				return;
+			}
+
+			console.log(current[key]);
+
+			return;
+		}
+
+		const value = rest.join(" ");
+		let result: Awaited<ReturnType<typeof setRawProperty>>;
+
+		try {
+			result = await setRawProperty(cfg, name, key, value);
+		} catch (err) {
+			throw new Bail((err as Error).message);
+		}
+
+		if (!result.changed) {
+			info(t("cli.instance.settings.already", { name, key, value: pc.cyan(value) }));
+
+			return;
+		}
+
+		const note = result.appended ? pc.dim(` ${t("cli.instance.settings.keyAdded")}`) : "";
+
+		ok(
+			`${name}.${key}: ${pc.dim(result.from ?? t("cli.instance.settings.unset"))} ${Sym.arrow} ${pc.cyan(result.to || t("cli.instance.settings.blank"))}` +
 				`${note} ${pc.dim(t("cli.instance.settings.appliesOnRestart"))}`,
 		);
 	},

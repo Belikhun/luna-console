@@ -137,6 +137,40 @@ export async function setConfValue(
 }
 
 /**
+ * Remove a properties key's line entirely, leaving every other line untouched.
+ * Returns the (unescaped) value the line held, or undefined when the file has
+ * no such key. Properties format only: the sectioned formats cannot lose a
+ * line without knowing its block.
+ */
+export async function deleteProperty(path: string, key: string): Promise<string | undefined> {
+	if (!existsSync(path)) {
+		return undefined;
+	}
+
+	const text = await Bun.file(path).text();
+	const lines = text.split("\n");
+
+	// the same per-line shape readProperties parses, so the two agree on what a
+	// key's line is
+	const index = lines.findIndex((line) => {
+		const pair = line.match(/^([A-Za-z0-9._-]+)\s*=(.*)$/);
+
+		return pair?.[1] === key;
+	});
+
+	if (index < 0) {
+		return undefined;
+	}
+
+	const removed = unescapeProperty(lines[index]!.match(/=(.*)$/)![1]!.trim());
+
+	lines.splice(index, 1);
+	await Bun.write(path, lines.join("\n"));
+
+	return removed;
+}
+
+/**
  * Set a properties key, appending the line when the file has no such key yet.
  *
  * Paper only writes out the keys it knows about, and a freshly created instance
