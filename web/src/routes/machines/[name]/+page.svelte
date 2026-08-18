@@ -25,6 +25,7 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { jobFlash } from '$lib/jobflash';
 	import DistributionBar from '$lib/components/DistributionBar.svelte';
@@ -479,6 +480,10 @@
 	/** Secrets revealed this session, dropped on reload */
 	let revealedVars: Record<string, string> = $state({});
 
+	let overrideRemoveOpen = $state(false);
+	/** the override the remove dialog is about; set by the remove verb, read on confirm */
+	let overrideToRemove = $state<MachineVar | null>(null);
+
 	async function loadEnvironment(): Promise<void> {
 		if (!name) {
 			return;
@@ -547,8 +552,15 @@
 		revealedVars = next;
 	}
 
-	async function removeVar(entry: MachineVar): Promise<void> {
-		if (!confirm(`Remove the ${entry.name} override on ${name}?\n\nInstances on this machine fall back to the cluster-wide value.`)) {
+	function removeVar(entry: MachineVar): void {
+		overrideToRemove = entry;
+		overrideRemoveOpen = true;
+	}
+
+	async function removeVarConfirmed(): Promise<void> {
+		const entry = overrideToRemove;
+
+		if (!entry) {
 			return;
 		}
 
@@ -1161,6 +1173,18 @@
 		{/snippet}
 	</Modal>
 {/if}
+
+<ConfirmModal
+	bind:open={overrideRemoveOpen}
+	title={t('web.machineDetail.removeOverrideTitle', { name: overrideToRemove?.name ?? '' })}
+	lead={t('web.machineDetail.removeOverrideLead', {
+		name: overrideToRemove?.name ?? '',
+		machine: name ?? ''
+	})}
+	notes={[t('web.machineDetail.removeOverrideNote')]}
+	confirmLabel={t('web.common.remove')}
+	onconfirm={() => void removeVarConfirmed()}
+/>
 
 <style lang="scss">
 	.tabbody {

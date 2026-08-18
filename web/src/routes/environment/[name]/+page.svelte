@@ -22,6 +22,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -98,6 +99,10 @@
 	 */
 	let revealed: Record<string, string> = $state({});
 
+	let removeOpen = $state(false);
+	/** the scope the remove dialog is about; set by the remove verb, read on confirm */
+	let removeRow = $state<ScopeRow | null>(null);
+
 	function scopeKey(row: { scope: string; target?: string | null }): string {
 		return `${row.scope}:${row.target ?? ''}`;
 	}
@@ -142,13 +147,22 @@
 		revealed = next;
 	}
 
-	async function removeScope(row: ScopeRow): Promise<void> {
-		const where =
-			row.scope === 'global'
-				? 'from every instance in the cluster'
-				: `from ${row.scope} ${row.targetLabel}`;
+	/** Where this scope's value applies, for the dialog and the outcome toast. */
+	function whereOf(row: ScopeRow): string {
+		return row.scope === 'global'
+			? t('web.env.fromEverywhere')
+			: t('web.env.fromScope', { scope: row.scope, target: row.targetLabel ?? '' });
+	}
 
-		if (!confirm(`Remove ${name} ${where}?`)) {
+	function removeScope(row: ScopeRow): void {
+		removeRow = row;
+		removeOpen = true;
+	}
+
+	async function removeScopeConfirmed(): Promise<void> {
+		const row = removeRow;
+
+		if (!row) {
 			return;
 		}
 
@@ -161,7 +175,7 @@
 
 		try {
 			await del(`/env?name=${encodeURIComponent(name)}${query}`);
-			Notify.success(`${name} removed ${where}`, {
+			Notify.success(t('web.envDetail.removed', { name, where: whereOf(row) }), {
 				detail: t('web.envDetail.instancesKeepTheOldValue')
 			});
 
@@ -172,7 +186,7 @@
 				await goto('/environment');
 			}
 		} catch (err) {
-			Notify.error(`Could not remove ${name}`, { detail: (err as Error).message });
+			Notify.error(t('web.envDetail.removeFailed', { name }), { detail: (err as Error).message });
 		}
 	}
 
@@ -607,6 +621,14 @@
 		{/if}
 	</div>
 {/if}
+
+<ConfirmModal
+	bind:open={removeOpen}
+	title={t('web.envDetail.removeTitle', { name })}
+	lead={removeRow ? t('web.envDetail.removeLead', { name, where: whereOf(removeRow) }) : ''}
+	confirmLabel={t('web.common.remove')}
+	onconfirm={() => void removeScopeConfirmed()}
+/>
 
 <style lang="scss">
 	.tabbody {

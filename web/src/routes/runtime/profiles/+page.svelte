@@ -14,6 +14,7 @@
 	import Btn from '$lib/components/Btn.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
@@ -39,6 +40,10 @@
 	let loading = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let selected: Set<string> = $state(new Set());
+
+	let removeOpen = $state(false);
+	/** the profile the delete dialog is about; set by the delete verb, read on confirm */
+	let removeRow = $state<ProfileRow | null>(null);
 
 	async function refresh(): Promise<void> {
 		loading = true;
@@ -84,8 +89,15 @@
 		return query ? `/runtime/profiles/new?${query}` : '/runtime/profiles/new';
 	}
 
-	async function remove(row: ProfileRow): Promise<void> {
-		if (!confirm(t('web.profiles.removeConfirm', { name: row.name }))) {
+	function remove(row: ProfileRow): void {
+		removeRow = row;
+		removeOpen = true;
+	}
+
+	async function removeConfirmed(): Promise<void> {
+		const row = removeRow;
+
+		if (!row) {
 			return;
 		}
 
@@ -235,6 +247,14 @@
 		{/snippet}
 	</ResourceTable>
 </Panel>
+
+<ConfirmModal
+	bind:open={removeOpen}
+	title={t('web.profiles.removeTitle', { name: removeRow?.name ?? '' })}
+	lead={t('web.profiles.removeLead', { name: removeRow?.name ?? '' })}
+	confirmLabel={t('web.common.delete')}
+	onconfirm={() => void removeConfirmed()}
+/>
 
 <style lang="scss">
 	// the table's own cells carry every style this screen needs; the form that

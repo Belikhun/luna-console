@@ -16,6 +16,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
@@ -65,6 +66,11 @@
 	let loading = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let selected: Set<string> = $state(new Set());
+
+	let removeOpen = $state(false);
+	/** the rows the remove dialog is about; set by the remove verbs, read on confirm */
+	let removeRows: RuntimeRow[] = $state([]);
+	let removeForce = $state(false);
 	let busy = $state('');
 
 	// install dialog
@@ -325,11 +331,9 @@
 				// keep, so the verb targets the free ones and says how many that is
 				hint: free.length === 0 ? t('web.runtimes.allInUse') : undefined,
 				action: () => {
-					if (!confirm(t('web.runtimes.removeConfirm', { count: free.length }))) {
-						return;
-					}
-
-					void removeMany(free, false);
+					removeRows = free;
+					removeForce = false;
+					removeOpen = true;
 				}
 			},
 			{
@@ -339,11 +343,9 @@
 				disabled: used.length === 0,
 				hint: used.length === 0 ? t('web.runtimes.noneInUse') : undefined,
 				action: () => {
-					if (!confirm(t('web.runtimes.removeForceConfirm', { count: used.length }))) {
-						return;
-					}
-
-					void removeMany(used, true);
+					removeRows = used;
+					removeForce = true;
+					removeOpen = true;
 				}
 			}
 		];
@@ -508,6 +510,17 @@
 		</Btn>
 	{/snippet}
 </Modal>
+
+<ConfirmModal
+	bind:open={removeOpen}
+	title={t('web.runtimes.removeTitle')}
+	lead={removeForce
+		? t('web.runtimes.removeForceLead', { count: removeRows.length })
+		: t('web.runtimes.removeLead', { count: removeRows.length })}
+	notes={removeForce ? [t('web.runtimes.removeForceNote')] : []}
+	confirmLabel={t('web.common.remove')}
+	onconfirm={() => void removeMany(removeRows, removeForce)}
+/>
 
 <style lang="scss">
 	.install {

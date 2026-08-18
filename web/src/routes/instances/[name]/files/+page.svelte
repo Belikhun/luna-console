@@ -18,6 +18,7 @@
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import CodeEditor from '$lib/components/CodeEditor.svelte';
 	import type { EditorSelection } from '$lib/components/codeeditor';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -71,6 +72,10 @@
 	/** What was loaded, so "unsaved" is a comparison rather than a flag to maintain */
 	let pristine = $state('');
 	let loadingFile = $state(false);
+
+	let discardOpen = $state(false);
+	/** the file waiting behind the discard dialog; opened once the edit is let go */
+	let pendingOpen = $state<DirEntry | null>(null);
 	let saving = $state(false);
 	/** Show the rendered result instead of the template (managed files only) */
 	let preview = $state(false);
@@ -123,11 +128,17 @@
 		}
 	}
 
-	async function openFile(entry: DirEntry): Promise<void> {
-		if (dirty && !confirm(`Discard unsaved changes to ${current?.path}?`)) {
+	function openFile(entry: DirEntry): void {
+		if (dirty) {
+			pendingOpen = entry;
+			discardOpen = true;
 			return;
 		}
 
+		void loadFile(entry);
+	}
+
+	async function loadFile(entry: DirEntry): Promise<void> {
 		loadingFile = true;
 		preview = false;
 
@@ -667,6 +678,18 @@
 		</Btn>
 	{/snippet}
 </Modal>
+
+<ConfirmModal
+	bind:open={discardOpen}
+	title={t('web.instanceFiles.discardTitle')}
+	lead={t('web.instanceFiles.discardLead', { path: current?.path ?? '' })}
+	confirmLabel={t('web.common.discard')}
+	onconfirm={() => {
+		if (pendingOpen) {
+			void loadFile(pendingOpen);
+		}
+	}}
+/>
 
 <style lang="scss">
 	.split {

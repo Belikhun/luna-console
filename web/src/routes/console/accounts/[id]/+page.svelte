@@ -16,6 +16,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
@@ -71,7 +72,12 @@
 	let passwordOpen = $state(false);
 	let keyOpen = $state(false);
 	let linkOpen = $state(false);
+	let deleteOpen = $state(false);
 	let busy = $state(false);
+
+	let identityRemoveOpen = $state(false);
+	/** the identity the remove dialog is about; set by the row verb, read on confirm */
+	let identityToRemove = $state<IdentityRow | null>(null);
 
 	// password form
 	let currentPassword = $state('');
@@ -275,8 +281,15 @@
 		}
 	}
 
-	async function removeIdentity(row: IdentityRow): Promise<void> {
-		if (!confirm(t('web.accountDetail.removeIdentityConfirm', { label: row.label }))) {
+	function removeIdentity(row: IdentityRow): void {
+		identityToRemove = row;
+		identityRemoveOpen = true;
+	}
+
+	async function removeIdentityConfirmed(): Promise<void> {
+		const row = identityToRemove;
+
+		if (!row) {
 			return;
 		}
 
@@ -289,11 +302,7 @@
 		}
 	}
 
-	async function removeAccount(): Promise<void> {
-		if (!confirm(t('web.accountDetail.deleteConfirm', { name: detail!.account.username }))) {
-			return;
-		}
-
+	async function removeAccountConfirmed(): Promise<void> {
 		try {
 			await del(`/accounts/${detail!.account.id}`);
 			Notify.success(t('web.accountDetail.deleted', { name: detail!.account.username }));
@@ -350,7 +359,9 @@
 						color: 'danger',
 						disabled: detail.self,
 						hint: detail.self ? t('web.accounts.notYourself') : undefined,
-						action: removeAccount
+						action: () => {
+							deleteOpen = true;
+						}
 					}
 				]
 	);
@@ -749,6 +760,24 @@
 			</Btn>
 		{/snippet}
 	</Modal>
+
+	<ConfirmModal
+		bind:open={identityRemoveOpen}
+		title={t('web.accountDetail.removeIdentityTitle', { label: identityToRemove?.label ?? '' })}
+		lead={t('web.accountDetail.removeIdentityLead', { label: identityToRemove?.label ?? '' })}
+		notes={[t('web.accountDetail.removeIdentityNote')]}
+		confirmLabel={t('web.accountDetail.removeIdentity')}
+		onconfirm={() => void removeIdentityConfirmed()}
+	/>
+
+	<ConfirmModal
+		bind:open={deleteOpen}
+		title={t('web.accountDetail.deleteTitle', { name: detail.account.username })}
+		lead={t('web.accountDetail.deleteLead', { name: detail.account.username })}
+		notes={[t('web.accountDetail.deleteNote')]}
+		confirmLabel={t('web.common.delete')}
+		onconfirm={() => void removeAccountConfirmed()}
+	/>
 {/if}
 
 <style lang="scss">

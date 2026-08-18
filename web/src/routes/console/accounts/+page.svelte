@@ -18,6 +18,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
@@ -58,6 +59,10 @@
 	let tab = $state('accounts');
 	let selected: Set<string> = $state(new Set());
 	let sessionSelected: Set<string> = $state(new Set());
+
+	let deleteOpen = $state(false);
+	/** the rows the delete dialog is about; set by the delete verb, read on confirm */
+	let deleteRows: AccountRow[] = $state([]);
 
 	async function refresh(): Promise<void> {
 		loading = true;
@@ -147,14 +152,17 @@
 		await runBulk(rows, t('web.accounts.verbRevoke'), (row) => del(`/accounts/${row.id}/sessions`));
 	}
 
-	async function remove(rows: AccountRow[]): Promise<void> {
-		const names = rows.map((row) => row.username).join(', ');
-
-		if (!confirm(t('web.accounts.deleteConfirm', { names, count: rows.length }))) {
+	function remove(rows: AccountRow[]): void {
+		if (rows.length === 0) {
 			return;
 		}
 
-		await runBulk(rows, t('web.accounts.verbDelete'), (row) => del(`/accounts/${row.id}`));
+		deleteRows = rows;
+		deleteOpen = true;
+	}
+
+	async function removeConfirmed(): Promise<void> {
+		await runBulk(deleteRows, t('web.accounts.verbDelete'), (row) => del(`/accounts/${row.id}`));
 	}
 
 	async function revokeSession(row: SessionRow): Promise<void> {
@@ -562,6 +570,15 @@
 		</Panel>
 	{/if}
 </div>
+
+<ConfirmModal
+	bind:open={deleteOpen}
+	title={t('web.accounts.deleteTitle', { count: deleteRows.length })}
+	lead={t('web.accounts.deleteLead', { names: deleteRows.map((row) => row.username).join(', ') })}
+	notes={[t('web.accounts.deleteNote')]}
+	confirmLabel={t('web.common.delete')}
+	onconfirm={() => void removeConfirmed()}
+/>
 
 <style lang="scss">
 	.tabbody {

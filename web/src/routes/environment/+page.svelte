@@ -15,6 +15,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
@@ -51,6 +52,10 @@
 	let loading = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let selected: Set<string> = $state(new Set());
+
+	let removeOpen = $state(false);
+	/** the row the remove dialog is about; set by the remove verb, read on confirm */
+	let removeRow = $state<ValueRow | null>(null);
 	/** Secrets revealed this session, keyed by row id; dropped on reload */
 	let revealed: Record<string, string> = $state({});
 
@@ -142,26 +147,35 @@
 		return '';
 	}
 
-	async function remove(row: ValueRow): Promise<void> {
-		const narrower = rows.filter((entry) => entry.name === row.name && entry.scope !== 'global');
+	/** Where this row's value applies, for the dialog and the outcome toast. */
+	function whereOf(row: ValueRow): string {
+		return row.scope === 'global'
+			? t('web.env.fromEverywhere')
+			: t('web.env.fromScope', { scope: row.scope, target: row.target ?? '' });
+	}
 
-		const warning =
-			row.scope === 'global' && narrower.length
-				? `\n\n${t('web.env.narrowerStay', { count: narrower.length })}`
-				: '';
+	function remove(row: ValueRow): void {
+		removeRow = row;
+		removeOpen = true;
+	}
 
-		const where =
-			row.scope === 'global'
-				? t('web.env.fromEverywhere')
-				: t('web.env.fromScope', { scope: row.scope, target: row.target ?? '' });
+	/** The narrower values a global remove leaves behind; the dialog's warning. */
+	const removeNarrower = $derived(
+		removeRow && removeRow.scope === 'global'
+			? rows.filter((entry) => entry.name === removeRow!.name && entry.scope !== 'global').length
+			: 0
+	);
 
-		if (!confirm(`${t('web.env.removeConfirm', { name: row.name, where })}${warning}`)) {
+	async function removeConfirmed(): Promise<void> {
+		const row = removeRow;
+
+		if (!row) {
 			return;
 		}
 
 		try {
 			await del(`/env?name=${encodeURIComponent(row.name)}${scopeQuery(row)}`);
-			Notify.success(t('web.env.removed', { name: row.name, where }), {
+			Notify.success(t('web.env.removed', { name: row.name, where: whereOf(row) }), {
 				detail: t('web.env.restartNote')
 			});
 			await refresh();
@@ -349,6 +363,17 @@
 		{/snippet}
 	</ResourceTable>
 </Panel>
+
+<ConfirmModal
+	bind:open={removeOpen}
+	title={t('web.env.removeTitle', { name: removeRow?.name ?? '' })}
+	lead={removeRow
+		? t('web.env.removeLead', { name: removeRow.name, where: whereOf(removeRow) })
+		: ''}
+	notes={removeNarrower ? [t('web.env.narrowerStay', { count: removeNarrower })] : []}
+	confirmLabel={t('web.common.remove')}
+	onconfirm={() => void removeConfirmed()}
+/>
 
 <style lang="scss">
 	// the scope vocabulary keeps one colour per layer everywhere it appears

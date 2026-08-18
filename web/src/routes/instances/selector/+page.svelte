@@ -17,7 +17,7 @@
 
 	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
-	import { beforeNavigate } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 
 	import { api, patch, post } from '$lib/api';
 	import { followJob } from '$lib/jobs';
@@ -33,6 +33,7 @@
 	import MiniMessageInput from '$lib/components/MiniMessageInput.svelte';
 	import MinecraftText from '$lib/components/MinecraftText.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import ProgressTree from '$lib/components/ProgressTree.svelte';
@@ -291,11 +292,34 @@
 		void refresh();
 	});
 
-	beforeNavigate(({ cancel }) => {
-		if (dirty && !confirm('You have unsaved selector changes. Leave anyway?')) {
-			cancel();
+	let leaveOpen = $state(false);
+	/** where the cancelled navigation was going, replayed once the leave is confirmed */
+	let leaveTo: URL | null = null;
+	let leaveConfirmed = false;
+
+	beforeNavigate((navigation) => {
+		if (!dirty || leaveConfirmed) {
+			return;
 		}
+
+		// a tab close cannot show custom UI; cancelling raises the browser's own prompt
+		if (navigation.willUnload) {
+			navigation.cancel();
+			return;
+		}
+
+		leaveTo = navigation.to?.url ?? null;
+		navigation.cancel();
+		leaveOpen = true;
 	});
+
+	function leave(): void {
+		leaveConfirmed = true;
+
+		if (leaveTo) {
+			void goto(leaveTo);
+		}
+	}
 
 	/** Mutate the draft through a copy, so `$derived` sees a new object. */
 	function edit(mutate: (next: SelectorDraft) => void): void {
@@ -945,6 +969,14 @@
 <Modal title={t('web.selector.applyingTheSelector')} bind:open={applyOpen}>
 	<ProgressTree root={applyJob?.progress ?? null} state={applyJob?.state} />
 </Modal>
+
+<ConfirmModal
+	bind:open={leaveOpen}
+	title={t('web.selector.leaveTitle')}
+	lead={t('web.selector.leaveLead')}
+	confirmLabel={t('web.selector.leave')}
+	onconfirm={leave}
+/>
 
 <style lang="scss">
 	.layout {
