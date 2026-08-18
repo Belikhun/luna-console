@@ -37,6 +37,7 @@ export type {
 	ModerationLogEntry,
 	ModerationLogPage,
 	ModerationRecord,
+	NetworkIpBan,
 	PermissionNode,
 	PermissionGroupSummary,
 	PermissionGroupDetail,
@@ -72,6 +73,9 @@ export const playerChat = call("lunaApi.playerChat") as typeof core.playerChat;
 export const playerModeration = call("lunaApi.playerModeration") as typeof core.playerModeration;
 export const moderationLog = call("lunaApi.moderationLog") as typeof core.moderationLog;
 export const recordModeration = call("lunaApi.recordModeration") as typeof core.recordModeration;
+export const networkIpBans = call("lunaApi.networkIpBans") as typeof core.networkIpBans;
+export const addNetworkIpBan = call("lunaApi.addNetworkIpBan") as typeof core.addNetworkIpBan;
+export const removeNetworkIpBan = call("lunaApi.removeNetworkIpBan") as typeof core.removeNetworkIpBan;
 export const permissionGroups = call("lunaApi.permissionGroups") as typeof core.permissionGroups;
 export const permissionGroup = call("lunaApi.permissionGroup") as typeof core.permissionGroup;
 export const createPermissionGroup = call("lunaApi.createPermissionGroup") as typeof core.createPermissionGroup;

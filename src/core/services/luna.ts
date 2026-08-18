@@ -833,6 +833,67 @@ export async function recordModeration(
 }
 
 // ---------------------------------------------------------------------------
+// Network-level IP bans, enforced by the proxy at pre-login
+// ---------------------------------------------------------------------------
+
+export interface NetworkIpBan {
+	ip: string;
+	reason: string;
+	actor: string;
+	createdAtEpochMillis: number;
+	/** 0 = permanent */
+	expiresAtEpochMillis: number;
+	/** Refused connection attempts since the ban was placed */
+	hits: number;
+	lastHitAtEpochMillis: number;
+}
+
+/** Every address the proxy refuses at connection time, newest first. */
+export async function networkIpBans(): Promise<LunaResult<{ total: number; bans: NetworkIpBan[] }>> {
+	return await call<{ total: number; bans: NetworkIpBan[] }>("/network/ip-bans");
+}
+
+/**
+ * Ban an address at the network level: the proxy denies it at pre-login, so it
+ * never reaches a backend, the player directory or the chat relay. Recorded in
+ * the moderation log by LunaCore itself.
+ */
+export async function addNetworkIpBan(
+	ip: string,
+	opts: { reason?: string; actor?: string; expiresAt?: number } = {},
+): Promise<LunaResult<NetworkIpBan>> {
+	const form: Record<string, string> = { action: "add", ip };
+
+	if (opts.reason) {
+		form.reason = opts.reason;
+	}
+
+	if (opts.actor) {
+		form.actor = opts.actor;
+	}
+
+	if (opts.expiresAt) {
+		form.expiresAt = String(opts.expiresAt);
+	}
+
+	return await call<NetworkIpBan>("/network/ip-bans", { form });
+}
+
+/** Lift a network-level IP ban. */
+export async function removeNetworkIpBan(
+	ip: string,
+	opts: { actor?: string } = {},
+): Promise<LunaResult<{ ip: string; removed: boolean }>> {
+	const form: Record<string, string> = { action: "remove", ip };
+
+	if (opts.actor) {
+		form.actor = opts.actor;
+	}
+
+	return await call<{ ip: string; removed: boolean }>("/network/ip-bans", { form });
+}
+
+// ---------------------------------------------------------------------------
 // Skins; SkinsRestorer administration through the proxy
 // ---------------------------------------------------------------------------
 

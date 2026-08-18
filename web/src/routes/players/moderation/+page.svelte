@@ -23,6 +23,7 @@
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
 	import PlayerPicker from '$lib/components/PlayerPicker.svelte';
@@ -78,6 +79,16 @@
 		instances: string[];
 	}
 
+	interface NetBanRow {
+		ip: string;
+		reason: string;
+		actor: string;
+		createdAtEpochMillis: number;
+		expiresAtEpochMillis: number;
+		hits: number;
+		lastHitAtEpochMillis: number;
+	}
+
 	interface LogEntry {
 		id: number;
 		action: string;
@@ -102,6 +113,10 @@
 	let ops: OpRow[] = $state([]);
 	let listsProblem = $state('');
 
+	let netBans: NetBanRow[] = $state([]);
+	let netAvailable = $state(true);
+	let netProblem = $state('');
+
 	let logEntries: LogEntry[] = $state([]);
 	let logTotal = $state(0);
 	let logActions: string[] = $state([]);
@@ -116,6 +131,7 @@
 	let selectedWhitelist: Set<string> = $state(new Set());
 	let selectedOps: Set<string> = $state(new Set());
 	let selectedIpBans: Set<string> = $state(new Set());
+	let selectedNetBans: Set<string> = $state(new Set());
 
 	/** Backends whose lists actually arrived; the coverage denominator. */
 	const reporting = $derived(summaries.filter((inst) => !inst.error).map((inst) => inst.name));
@@ -129,6 +145,7 @@
 	const whitelistSelection = $derived(whitelist.filter((row) => selectedWhitelist.has(rowKey(row))));
 	const opSelection = $derived(ops.filter((row) => selectedOps.has(rowKey(row))));
 	const ipBanSelection = $derived(ipBans.filter((row) => selectedIpBans.has(row.ip)));
+	const netBanSelection = $derived(netBans.filter((row) => selectedNetBans.has(row.ip)));
 
 	async function refreshLists(): Promise<void> {
 		try {
@@ -142,6 +159,25 @@
 			listsProblem = '';
 		} catch (err) {
 			listsProblem = (err as Error).message;
+		}
+	}
+
+	async function refreshNetBans(): Promise<void> {
+		try {
+			const data = await api('/moderation/network-ip-bans');
+
+			if (data.available === false) {
+				netAvailable = false;
+				netProblem = data.error ?? 'LunaCore is unreachable';
+				return;
+			}
+
+			netAvailable = true;
+			netProblem = '';
+			netBans = data.bans ?? [];
+		} catch (err) {
+			netAvailable = false;
+			netProblem = (err as Error).message;
 		}
 	}
 
@@ -186,7 +222,7 @@
 	async function refresh(): Promise<void> {
 		loading = true;
 
-		await Promise.all([refreshLists(), refreshLog()]);
+		await Promise.all([refreshLists(), refreshLog(), refreshNetBans()]);
 
 		loading = false;
 		lastUpdated = Date.now();
@@ -312,6 +348,96 @@
 		}
 	}
 
+	// -- network-level IP bans; enforced by the proxy at pre-login --------------
+
+	let netBanOpen = $state(false);
+	let netBanIp = $state('');
+	let netBanReason = $state('');
+	let promoteOpen = $state(false);
+	let promoteRows: IpBanRow[] = $state([]);
+
+	async function doNetworkChange(action: 'add' | 'remove', ips: string[], reason = ''): Promise<void> {
+		const label = action === 'add'
+			? t('web.moderation.actionNetBan')
+			: t('web.moderation.actionNetPardon');
+		const note = Notify.loading(t('web.moderation.applyingTo', { label, count: ips.length }));
+
+		try {
+			const result = await post('/moderation/network-ip-bans', { action, ips, reason });
+
+			const outcomes: Array<{ ip: string; ok: boolean; error?: string }> = result.outcomes ?? [];
+			const failed = outcomes.filter((outcome) => !outcome.ok);
+
+			if (failed.length === 0) {
+				note.set({
+					level: 'success',
+					message: t('web.moderation.appliedTo', { label, count: ips.length }),
+					closeable: true
+				});
+			} else {
+				note.set({
+					level: 'warning',
+					message: t('web.players.partialSucceeded', { label, ok: outcomes.length - failed.length, total: outcomes.length }),
+					detail: failed.map((outcome) => `${outcome.ip}: ${outcome.error}`).join('\n'),
+					closeable: true
+				});
+			}
+
+			await refreshNetBans();
+		} catch (err) {
+			note.set({ level: 'error', message: label, detail: (err as Error).message, closeable: true });
+		}
+	}
+
+	function openNetBan(): void {
+		netBanIp = '';
+		netBanReason = '';
+		netBanOpen = true;
+	}
+
+	function submitNetBan(): void {
+		const ip = netBanIp.trim();
+
+		netBanOpen = false;
+
+		if (!ip) {
+			return;
+		}
+
+		void doNetworkChange('add', [ip], netBanReason.trim());
+	}
+
+	function openPromote(rows: IpBanRow[]): void {
+		promoteRows = rows;
+		promoteOpen = true;
+	}
+
+	function submitPromote(): void {
+		// a lone row carries its reason up; a mixed selection would misattribute one
+		const reason = promoteRows.length === 1 ? (promoteRows[0]?.reason ?? '') : '';
+
+		void doNetworkChange('add', promoteRows.map((row) => row.ip), reason);
+	}
+
+	function netBanActions(rows: NetBanRow[]): ContextMenuItem[] {
+		const none = rows.length === 0;
+
+		return [
+			{
+				label: t('web.moderation.pardonOnNetwork'),
+				icon: 'handshake',
+				disabled: none,
+				action: () => void doNetworkChange('remove', rows.map((row) => row.ip))
+			}
+		];
+	}
+
+	function netBanRowActions(row: NetBanRow): ContextMenuItem[] {
+		const rows = pick(row, netBanSelection, selectedNetBans.has(row.ip));
+
+		return netBanActions(rows);
+	}
+
 	async function toggleWhitelistFor(instance: string, enabled: boolean): Promise<void> {
 		const note = Notify.loading(t(enabled ? 'web.access.turningOn' : 'web.access.turningOff'));
 
@@ -428,6 +554,14 @@
 				icon: 'handshake',
 				disabled: none,
 				action: () => openModerate('pardon-ip', rows.map((row) => ({ name: row.ip })), coveredInstances(rows))
+			},
+			{ separator: true },
+			{
+				label: t('web.moderation.promoteToNetwork'),
+				icon: 'sitemap',
+				color: 'danger',
+				disabled: none,
+				action: () => openPromote(rows)
 			}
 		];
 	}
@@ -502,6 +636,7 @@
 		{ id: 'bans', label: t('web.moderation.tabBans') },
 		{ id: 'whitelist', label: t('web.moderation.tabWhitelist') },
 		{ id: 'ops', label: t('web.moderation.tabOps') },
+		{ id: 'netbans', label: t('web.moderation.tabNetBans') },
 		{ id: 'ipbans', label: t('web.moderation.tabIpBans') }
 	]);
 
@@ -536,6 +671,15 @@
 		{ id: 'level', label: t('web.access.colLevel'), sortable: true, width: 90, align: 'right' },
 		{ id: 'coverage', label: t('web.moderation.colBackends'), sortable: true },
 		{ id: 'uuid', label: 'UUID', hidden: true }
+	]);
+
+	const netBanColumns: Column[] = $derived([
+		{ id: 'ip', label: t('web.access.colAddress'), sortable: true, minWidth: 160 },
+		{ id: 'reason', label: t('web.access.colReason') },
+		{ id: 'actor', label: t('web.moderation.colActor') },
+		{ id: 'created', label: t('web.access.colBanned'), sortable: true },
+		{ id: 'hits', label: t('web.moderation.colHits'), sortable: true, width: 150, align: 'right' },
+		{ id: 'lastHit', label: t('web.moderation.colLastHit'), sortable: true }
 	]);
 
 	const ipBanColumns: Column[] = $derived([
@@ -649,6 +793,25 @@
 		}
 	}
 
+	function netBanSortValue(row: NetBanRow, col: string): string | number | null {
+		switch (col) {
+			case 'ip':
+				return row.ip;
+
+			case 'created':
+				return row.createdAtEpochMillis;
+
+			case 'hits':
+				return row.hits;
+
+			case 'lastHit':
+				return row.lastHitAtEpochMillis;
+
+			default:
+				return null;
+		}
+	}
+
 	function ipBanSortValue(row: IpBanRow, col: string): string | number | null {
 		switch (col) {
 			case 'ip':
@@ -679,6 +842,9 @@
 			case 'ops':
 				return `${selectedOps.size ? `${selectedOps.size}/` : ''}${ops.length}`;
 
+			case 'netbans':
+				return `${selectedNetBans.size ? `${selectedNetBans.size}/` : ''}${netBans.length}`;
+
 			case 'ipbans':
 				return `${selectedIpBans.size ? `${selectedIpBans.size}/` : ''}${ipBans.length}`;
 
@@ -708,6 +874,9 @@
 		{:else if tab === 'ops'}
 			<Dropdown label={t('web.players.actions')} disabled={opSelection.length === 0} menu={opActions(opSelection)} />
 			<Btn variant="primary" icon="plus" onclick={() => openAdd('op')}>{t('web.access.addOperator')}</Btn>
+		{:else if tab === 'netbans'}
+			<Dropdown label={t('web.players.actions')} disabled={netBanSelection.length === 0} menu={netBanActions(netBanSelection)} />
+			<Btn variant="primary" icon="gavel" onclick={openNetBan}>{t('web.moderation.banOnNetwork')}</Btn>
 		{:else if tab === 'ipbans'}
 			<Dropdown label={t('web.players.actions')} disabled={ipBanSelection.length === 0} menu={ipBanActions(ipBanSelection)} />
 			<Btn variant="primary" icon="gavel" onclick={() => openAdd('ban-ip')}>{t('web.access.banAddress')}</Btn>
@@ -730,6 +899,13 @@
 	</OverviewCell>
 	<OverviewCell label={t('web.moderation.bannedPlayers')}>
 		{bans.length}
+	</OverviewCell>
+	<OverviewCell label={t('web.moderation.tabNetBans')}>
+		{#if netAvailable}
+			{netBans.length}
+		{:else}
+			<span class="dim">–</span>
+		{/if}
 	</OverviewCell>
 	<OverviewCell label={t('web.moderation.ipBans')}>
 		{ipBans.length}
@@ -935,6 +1111,53 @@
 				{/snippet}
 			</ResourceTable>
 		</Panel>
+	{:else if tab === 'netbans'}
+		{#if !netAvailable}
+			<Flash kind="warning">
+				<b>{t('web.moderation.netUnavailable')}</b>
+				{netProblem}. {t('web.moderation.netNeedsBuild')}
+			</Flash>
+		{/if}
+
+		<Panel flush>
+			<ResourceTable
+				tableId="moderation-netbans"
+				columns={netBanColumns}
+				rows={netBans}
+				getId={(row) => row.ip}
+				searchValue={(row) => `${row.ip} ${row.reason} ${row.actor}`}
+				searchPlaceholder={t('web.access.findAddress')}
+				selectable="multi"
+				bind:selected={selectedNetBans}
+				rowActions={netBanRowActions}
+				rowLabel={(row) => row.ip}
+				noun={t('web.access.nounIpBan')}
+				sortValue={netBanSortValue}
+				pageSize={25}
+				emptyTitle={t('web.moderation.noNetBans')}
+				emptyText={t('web.moderation.netBansHint')}
+			>
+				{#snippet cell(row, col)}
+					{#if col === 'ip'}
+						<span class="mono"><b>{row.ip}</b></span>
+					{:else if col === 'reason'}
+						{row.reason || '–'}
+					{:else if col === 'actor'}
+						{row.actor || '–'}
+					{:else if col === 'created'}
+						<span class="dim">{row.createdAtEpochMillis ? fmtDateTime(row.createdAtEpochMillis) : '–'}</span>
+					{:else if col === 'hits'}
+						{row.hits || '–'}
+					{:else if col === 'lastHit'}
+						{#if row.lastHitAtEpochMillis}
+							{fmtDateTime(row.lastHitAtEpochMillis)}
+						{:else}
+							<span class="dim">–</span>
+						{/if}
+					{/if}
+				{/snippet}
+			</ResourceTable>
+		</Panel>
 	{:else if tab === 'ipbans'}
 		<Panel flush>
 			<ResourceTable
@@ -981,6 +1204,39 @@
 		</span>
 	{/if}
 {/snippet}
+
+<Modal title={t('web.moderation.netBanTitle')} bind:open={netBanOpen}>
+	<div class="stack">
+		<label class="field">
+			<span class="lbl">{t('web.access.colAddress')}</span>
+			<span class="hint">{t('web.moderation.netBansHint')}</span>
+			<input class="input" bind:value={netBanIp} placeholder={t('web.access.ipAddress')} />
+		</label>
+
+		<label class="field">
+			<span class="lbl">{t('web.access.colReason')}</span>
+			<input class="input" bind:value={netBanReason} placeholder={t('web.access.reasonOptional')} />
+		</label>
+	</div>
+
+	{#snippet footer()}
+		<Btn onclick={() => (netBanOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn variant="danger" icon="gavel" disabled={!netBanIp.trim()} onclick={submitNetBan}>
+			{t('web.moderation.actionNetBan')}
+		</Btn>
+	{/snippet}
+</Modal>
+
+<ConfirmModal
+	bind:open={promoteOpen}
+	title={t('web.moderation.promoteTitle')}
+	lead={t('web.moderation.promoteLead', { count: promoteRows.length })}
+	notes={[t('web.moderation.promoteNote')]}
+	confirmLabel={t('web.moderation.actionNetBan')}
+	onconfirm={submitPromote}
+>
+	<p class="targets">{promoteRows.map((row) => row.ip).join(', ')}</p>
+</ConfirmModal>
 
 <Modal
 	title={t('web.moderation.modalTargets', {

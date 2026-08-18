@@ -471,6 +471,7 @@ function followerChecks(link: FollowerLink | undefined, registered: DaemonRegist
 			},
 			{ name: t("daemon.checks.heartbeat"), ok: undefined, detail: t("daemon.checks.noLink") },
 			{ name: t("daemon.checks.reachability"), ok: undefined, detail: t("daemon.checks.noLink") },
+			buildCheck(registered?.version, false),
 			{ name: t("daemon.checks.headroom"), ok: undefined, detail: t("daemon.checks.noLink") },
 		];
 	}
@@ -487,6 +488,7 @@ function followerChecks(link: FollowerLink | undefined, registered: DaemonRegist
 				detail: t("daemon.checks.quarantinedBeat", { ago: agoText(link.lastSeen) }),
 			},
 			reachCheck(link.reach, link.host),
+			buildCheck(link.version, true),
 			resourceCheck(link.health),
 		];
 	}
@@ -508,15 +510,32 @@ function followerChecks(link: FollowerLink | undefined, registered: DaemonRegist
 		},
 		beats,
 		reachCheck(link.reach, link.host),
+		buildCheck(link.version, true),
 		resourceCheck(link.health),
 	];
 }
 
-/** Connected followers whose build differs from this primary's. */
-function outdatedFollowers(): string[] {
-	return [...followers.values()]
-		.filter((link) => link.version && link.version !== buildVersion())
-		.map((link) => link.name);
+/**
+ * Whether a daemon runs the build this primary runs. The verdict lives on the
+ * daemon that is behind rather than on the primary: a fleet-wide check degraded
+ * the one machine that was current and left every outdated one green, which is
+ * the opposite of what an operator has to act on.
+ */
+function buildCheck(version: string | undefined, linked: boolean): DaemonCheck {
+	const name = t("daemon.checks.build");
+	const current = buildVersion();
+
+	// a registration's version is only what the daemon last reported; with no
+	// link there is nothing saying it still runs it
+	if (!linked || !version) {
+		return { name, ok: undefined, detail: t("daemon.checks.noLink") };
+	}
+
+	if (version !== current) {
+		return { name, ok: false, detail: t("daemon.checks.buildMismatch", { version, current }) };
+	}
+
+	return { name, ok: true, detail: t("daemon.checks.buildMatch", { version }) };
 }
 
 /** The health checks for this primary daemon itself. */
@@ -545,12 +564,9 @@ function primaryChecks(): DaemonCheck[] {
 		},
 		reachCheck(selfReach, LOOPBACK),
 		{
-			name: t("daemon.checks.fleetBuild"),
-			ok: outdatedFollowers().length === 0,
-			detail:
-				outdatedFollowers().length === 0
-					? t("daemon.checks.fleetCurrent", { version: buildVersion() })
-					: t("daemon.checks.fleetBehind", { names: outdatedFollowers().join(", ") }),
+			name: t("daemon.checks.build"),
+			ok: true,
+			detail: t("daemon.checks.buildReference", { version: buildVersion() }),
 		},
 		resourceCheck(currentHealth()),
 	];
