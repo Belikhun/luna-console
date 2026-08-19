@@ -94,7 +94,7 @@
 	.slot {
 		flex: 1 1 0;
 		min-width: 0.1875rem;
-		border-radius: 0.625rem;
+		border-radius: 0.25rem;
 		background: color-mix(in srgb, var(--bg-track) 42%, transparent);
 		display: flex;
 		align-items: flex-end;
@@ -112,7 +112,7 @@
 	i {
 		display: block;
 		width: 100%;
-		border-radius: 0.625rem;
+		border-radius: 0.25rem;
 		background: var(--success);
 
 		&[data-tone='warn'] {
