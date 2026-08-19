@@ -22,19 +22,28 @@ export {
 } from "../../core/publicsite";
 
 export type {
+	MapAccess,
 	MapEndpoint,
+	MapSource,
 	PublicInstanceCard,
 	PublicPoint,
 	PublicSnapshot,
 } from "../../core/publicsite";
 
+export type { MapProviderId } from "../../core/maps";
+
 /** The whole public document, or null when the page is switched off. */
 export const snapshot = call("publicsite.snapshot") as () => Promise<core.PublicSnapshot | null>;
 
-/** Where a listed instance's map answers; null for anything not listed. */
-export const mapEndpoint = call("publicsite.mapEndpoint") as (
+/** Which map a listed instance carries and where; null for anything not listed. */
+export const mapAccess = call("publicsite.mapAccess") as (
 	instance: string,
-) => Promise<core.MapEndpoint | null>;
+) => Promise<core.MapAccess | null>;
+
+/** What one instance's map is and whether it survives a stop; null when it has none. */
+export const mapSource = call("publicsite.mapSource") as (
+	instance: string,
+) => Promise<core.MapSource | null>;
 
 /** One instance's uptime timeline, for the console's own screens. */
 export const uptimeSeries = call("publicsite.uptimeSeries") as (

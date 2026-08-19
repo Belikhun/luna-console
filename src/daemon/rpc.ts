@@ -1238,12 +1238,12 @@ function uptimeSeries(instance: string, days = uptimeCore.RETENTION_DAYS): uptim
 }
 
 /**
- * Where an instance's BlueMap webserver answers, for the console's map proxy.
+ * Which map an instance carries and where it answers, for the console's map proxy.
  *
  * Returned only for a listed instance: the public route must not become a way
  * to reach a private instance's map by knowing its name.
  */
-async function publicMapEndpoint(instance: string): Promise<publicsiteCore.MapEndpoint | null> {
+async function publicMapAccess(instance: string): Promise<publicsiteCore.MapAccess | null> {
 	const cfg = await configCore.loadCluster();
 
 	if (!publicsiteCore.publicEnabled(cfg) || !publicsiteCore.isPublicInstance(cfg, instance)) {
@@ -1252,7 +1252,21 @@ async function publicMapEndpoint(instance: string): Promise<publicsiteCore.MapEn
 
 	const lock = await configCore.loadLock();
 
-	return publicsiteCore.mapEndpointFor(cfg, lock, instance) ?? null;
+	return publicsiteCore.mapAccessFor(cfg, lock, instance) ?? null;
+}
+
+/**
+ * Everything known about one instance's map, for the operator's own screens.
+ *
+ * Not gated on the public page: this is the view that answers "why is there no
+ * map when the server is off", and an operator asks that about instances the
+ * internet never sees.
+ */
+async function mapSource(instance: string): Promise<publicsiteCore.MapSource | null> {
+	const cfg = await configCore.loadCluster();
+	const lock = await configCore.loadLock();
+
+	return (await publicsiteCore.mapSourceFor(cfg, lock, instance)) ?? null;
 }
 
 /** Every operation the daemon serves, `<module>.<function>`. */
@@ -1683,7 +1697,8 @@ export const OPS: Record<string, OpSpec> = {
 	// No cfg/lock echo and no instance routing: the snapshot is read-only, and it
 	// is assembled where the whole fleet is visible, which is only ever here.
 	"publicsite.snapshot": { fn: publicSnapshot },
-	"publicsite.mapEndpoint": { fn: publicMapEndpoint },
+	"publicsite.mapAccess": { fn: publicMapAccess },
+	"publicsite.mapSource": { fn: mapSource, instance: 0 },
 	"publicsite.uptimeSeries": { fn: uptimeSeries },
 
 	"daemon.listDaemons": { fn: () => daemonsProvider() },

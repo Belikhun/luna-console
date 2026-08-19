@@ -12,7 +12,7 @@
 import { join, normalize } from "node:path";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { t } from "../shared/i18n";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 
 /**
  * Ceiling on one staged world zip.
@@ -23,8 +23,10 @@ import { existsSync } from "node:fs";
  */
 const MAX_STAGE_BYTES = 64 * 1024 * 1024 * 1024;
 
-import { backupsDir, loadCluster, managedInstances, instanceDir, poolDir, stagingDir } from "../core/config";
+import { backupsDir, loadCluster, loadLock, managedInstances, instanceDir, poolDir, stagingDir } from "../core/config";
 import { datapacksDir } from "../core/datapacks";
+import { mapProvider, type MapProviderId } from "../core/maps";
+import { mapWebrootFor } from "../core/publicsite";
 import * as lunaApi from "../core/services/luna";
 
 import type { DaemonConfig } from "./config";
@@ -556,6 +558,197 @@ async function proxyFollowerBackup(
 	});
 }
 
+/**
+ * Content types for what a rendered webroot actually holds.
+ *
+ * An allowlist, and everything unlisted is served as bytes: a webroot is a
+ * directory of somebody else's build, and guessing a type for a file nobody
+ * expected is how a `.php` in there ends up being offered as script.
+ */
+const MAP_TYPES: Record<string, string> = {
+	".html": "text/html; charset=utf-8",
+	".js": "text/javascript; charset=utf-8",
+	".css": "text/css; charset=utf-8",
+	".json": "application/json",
+	".webmanifest": "application/manifest+json",
+	".svg": "image/svg+xml",
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+	".txt": "text/plain; charset=utf-8",
+	".ico": "image/x-icon",
+	".woff2": "font/woff2",
+	".ttf": "font/ttf",
+};
+
+/**
+ * GET /files/map/<instance>/<path>; one file out of the instance's rendered map.
+ *
+ * A map plugin's own webserver only answers while the server is running, but the
+ * map it serves is a directory of files that outlives it. This is the door to
+ * those files, so the console can keep showing the last rendered map for an
+ * instance that is stopped rather than an unreachable frame. Which provider is
+ * behind the webroot only matters for what a missing file means; the bytes are
+ * served the same way either way.
+ *
+ * Compression is the plugin's, not ours: with BlueMap's default `compression:
+ * gzip` a tile is on disk as `<name>.prbm.gz` and the webapp still asks for
+ * `<name>.prbm`, exactly as it does against BlueMap itself. The `.gz` sibling is
+ * therefore tried second and handed back untouched, marked with
+ * `x-luna-encoding` rather than `content-encoding`: the console reaches this over
+ * `fetch`, which would silently decompress a body it sees an encoding on, and the
+ * browser is the one that should be doing that.
+ */
+async function handleMapFile(
+	subpath: string,
+	request: Request,
+	method: "GET" | "HEAD",
+): Promise<Response> {
+	const slash = subpath.indexOf("/");
+	const instance = slash === -1 ? subpath : subpath.slice(0, slash);
+	const wanted = slash === -1 ? "" : subpath.slice(slash + 1);
+
+	if (!/^[a-z0-9_-]+$/i.test(instance)) {
+		return errorResponse("invalid map path", 400);
+	}
+
+	const clean = normalize(wanted || "index.html");
+
+	if (clean.startsWith("..") || clean.startsWith("/") || clean.includes("\0")) {
+		return errorResponse("invalid map path", 400);
+	}
+
+	const cfg = await loadCluster().catch(() => undefined);
+	const inst = cfg ? managedInstances(cfg)[instance] : undefined;
+
+	if (!cfg || !inst) {
+		return errorResponse("unknown instance", 404);
+	}
+
+	// the webroot is on the owner's disk, and the console only ever talks to the
+	// primary; a follower's map streams through rather than answering 404, for the
+	// same reason a follower's backup does
+	if (!ownsInstance(inst)) {
+		return await proxyFollowerMap(inst.daemon ?? "", instance, clean, request, method);
+	}
+
+	const lock = await loadLock().catch(() => undefined);
+	const webroot = lock ? await mapWebrootFor(cfg, lock, instance) : undefined;
+
+	if (!webroot) {
+		return errorResponse("no rendered map for this instance", 404);
+	}
+
+	const target = join(webroot.dir, clean);
+
+	// normalize above already refused an escaping path, but the webroot itself is
+	// read out of somebody else's config file, so the containment is asserted here
+	// rather than assumed
+	if (!target.startsWith(`${webroot.dir}/`)) {
+		return errorResponse("invalid map path", 400);
+	}
+
+	// a file, specifically: `Bun.file` on a directory fails deep inside the response
+	// and what reaches the client is a Bun error page with a 500 on it
+	const plain = isFile(target);
+	const packed = !plain && isFile(`${target}.gz`);
+
+	if (!plain && !packed) {
+		return missingMapFile(clean, webroot.provider);
+	}
+
+	const dot = clean.lastIndexOf(".");
+	const suffix = dot === -1 ? "" : clean.slice(dot).toLowerCase();
+
+	const headers = new Headers({
+		"content-type": MAP_TYPES[suffix] ?? "application/octet-stream",
+	});
+
+	if (packed) {
+		headers.set("x-luna-encoding", "gzip");
+	}
+
+	const file = Bun.file(plain ? target : `${target}.gz`);
+
+	headers.set("content-length", String(file.size));
+
+	return new Response(method === "HEAD" ? null : file, { headers });
+}
+
+/** Whether a path is a readable file; a directory is not one. */
+function isFile(path: string): boolean {
+	try {
+		return statSync(path).isFile();
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * What a missing file answers.
+ *
+ * 204 for a tile, matching what the map's own webserver does: a world is mostly
+ * empty and the webapp asks for tiles it cannot know exist, so "nothing rendered
+ * here" is a normal answer rather than an error, and a 404 per unrendered tile
+ * would fill a visitor's console with thousands of them. Anything else is a real
+ * 404. Which paths are tiles is the provider's own business, so it is the
+ * provider that says.
+ */
+function missingMapFile(clean: string, provider: MapProviderId): Response {
+	if (mapProvider(provider).emptyPath.test(clean)) {
+		return new Response(null, { status: 204 });
+	}
+
+	return errorResponse("no such map file", 404);
+}
+
+/** Stream a follower-held map file back through the primary. */
+async function proxyFollowerMap(
+	daemon: string,
+	instance: string,
+	clean: string,
+	request: Request,
+	method: "GET" | "HEAD",
+): Promise<Response> {
+	const endpoint = followerEndpoint?.(daemon);
+
+	if (!endpoint) {
+		return errorResponse(t("daemon.mapUnreachable", { daemon: daemon || "?" }), 503);
+	}
+
+	const path = clean.split("/").map(encodeURIComponent).join("/");
+	const url = `http://${endpoint}/files/map/${encodeURIComponent(instance)}/${path}`;
+
+	const upstream = await fetch(url, {
+		method,
+		headers: { "x-luna-token": clusterToken ?? "" },
+		signal: request.signal,
+	}).catch(() => undefined);
+
+	if (!upstream) {
+		return errorResponse(t("daemon.mapUnreachable", { daemon }), 502);
+	}
+
+	const headers = new Headers();
+
+	// x-luna-encoding travels the whole way: the follower's copy of a tile is the
+	// same gzip the browser will be handed, and decompressing it here to compress
+	// it again would be work nobody asked for
+	for (const name of ["content-type", "content-length", "x-luna-encoding"]) {
+		const value = upstream.headers.get(name);
+
+		if (value) {
+			headers.set(name, value);
+		}
+	}
+
+	return new Response(method === "HEAD" ? null : upstream.body, {
+		status: upstream.status,
+		headers,
+	});
+}
+
 /** A file response honouring a `Range` header, so a huge download can resume. */
 export async function rangedFile(path: string, request: Request): Promise<Response> {
 	const file = Bun.file(path);
@@ -762,6 +955,14 @@ export function buildHandler(
 
 		if (path.startsWith("/files/datapacks/")) {
 			return await handleDatapackFile(decodeURIComponent(path.slice("/files/datapacks/".length)));
+		}
+
+		if (path.startsWith("/files/map/") && (request.method === "GET" || request.method === "HEAD")) {
+			return await handleMapFile(
+				decodeURIComponent(path.slice("/files/map/".length)),
+				request,
+				request.method,
+			);
 		}
 
 		return errorResponse("not found", 404);

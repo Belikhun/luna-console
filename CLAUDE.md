@@ -275,6 +275,19 @@ export interface InstanceConfig {}
   compatible builds are variants in `plugins/versions/<name>@<ver>.jar`, explicit pins win. Updates
   are channel-gated (release/beta/alpha) with a date-based downgrade guard; never let an update move
   an instance backwards or onto a snapshot.
+- **A web map is a provider entry, and the rendered files are the map.** `core/maps.ts` is the
+  registry (BlueMap, Dynmap): which addon slug ships it, where its config lives per platform, which
+  key names its webroot, and which request paths only the running server can answer. Everything above
+  it - the proxy route, the card art, the console's HUD - is provider-agnostic, so a third map is a
+  registry entry plus a `PORT_PRESETS` entry and nothing else. Two questions are kept apart on
+  purpose: `mapAccessFor` says an instance *has* a map (pure, lockfile only, so the public snapshot
+  carries it), `mapEndpointFor` says where it answers *live*, and a null origin is a supported setup
+  rather than a fault - Dynmap's own arrangement for an external webserver is to write its files down
+  and bind nothing. Reading a file tries live first and the rendered webroot second, because the
+  plugin's webserver dies with the server and the tiles do not; a `preferFile` path inverts that for
+  the one file whose generated version names endpoints that stop existing (Dynmap's
+  `standalone/config.js`). A stored player list is emptied on the way out, since a stopped server
+  drawing the last people it saw is a lie a visitor cannot see through.
 - `luna-*` jars are in-house plugins (`source: "luna"` in the lockfile): excluded from Modrinth
   checks, and their deployment mechanism is still to be provided.
 - **Environment values layer one-directionally**: builtin < global < machine < instance
@@ -561,6 +574,7 @@ luna configs ls|show <instance> …     # browse one level · print template or 
 luna configs manage|unmanage <instance> <file>
 luna configs placeholder <instance> <file> NAME value [--all] [--machine m] [--secret]
 luna configs render|readopt <instance> [file]
+luna maps [instance]                  # web maps: provider, address, whether it survives a stop
 luna accounts                     # console accounts: who may sign in to the web console
 luna account show <name>          # one account: fields, identities, lockout state
 luna account add <name> [--password x] [--no-password] [--must-change] [--disabled]

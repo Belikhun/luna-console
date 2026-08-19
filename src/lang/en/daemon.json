@@ -14,6 +14,8 @@
 	"unknownOp": "unknown operation: {op}",
 	"consoleTimeout": "daemon \"{name}\" did not answer the console request; its build may predate console tunnelling",
 	"consoleUnreachable": "daemon \"{name}\" is not connected; its console is unreachable",
+	"backupUnreachable": "backup archive on daemon \"{daemon}\" could not be reached",
+	"mapUnreachable": "daemon \"{daemon}\" is not connected; its rendered map is unreachable",
 	"machineUnreachable": "{machine} is unreachable; its plugin port configuration was not checked",
 	"checks": {
 		"link": "Daemon link",

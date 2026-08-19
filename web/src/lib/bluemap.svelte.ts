@@ -22,6 +22,19 @@
  * map with no buttons.
  */
 
+import {
+	emptyMapState,
+	PROBE_MS,
+	PROBE_TIMEOUT_MS,
+	REFRESH_MS,
+	type MapCapability,
+	type MapLink,
+	type MapState,
+	type MapView
+} from '$lib/maplink';
+
+export type { MapView };
+
 /** What `superSampling` means; BlueMap's own three resolution stages. */
 export const MAP_QUALITIES = [
 	{ value: 0.5, label: 'web.public.map.qualityLow' },
@@ -29,81 +42,24 @@ export const MAP_QUALITIES = [
 	{ value: 2, label: 'web.public.map.qualityHigh' }
 ] as const;
 
-/** The camera modes a map may offer; which of them it does is per map. */
-export type MapView = 'perspective' | 'flat' | 'free';
-
-/** Everything the controls read. A detached link reports `ready: false`. */
-export interface BlueMapState {
-	ready: boolean;
-	/** the map is still streaming tiles in */
-	loading: boolean;
-	/** BlueMap map id currently shown */
-	map: string;
-	view: MapView;
-	/** the modes this map declares; a flat-only map offers one */
-	views: MapView[];
-	quality: number;
-	hires: number;
-	hiresMin: number;
-	hiresMax: number;
-	lowres: number;
-	lowresMin: number;
-	lowresMax: number;
-	sunlight: number;
-	ambient: number;
-	/** hires tiles keep loading while the camera moves */
-	loadWhileMoving: boolean;
-	chunkBorders: boolean;
-	mouseSensitivity: number;
-	invertMouse: boolean;
-	/** uuid of the player the camera is locked to, empty when free */
-	following: string;
-	/** uuids with a live marker, so a row can say whether it is followable */
-	markedPlayers: string[];
-}
-
-function emptyState(): BlueMapState {
-	return {
-		ready: false,
-		loading: false,
-		map: '',
-		view: 'perspective',
-		views: [],
-		quality: 1,
-		hires: 0,
-		hiresMin: 50,
-		hiresMax: 500,
-		lowres: 0,
-		lowresMin: 500,
-		lowresMax: 10_000,
-		sunlight: 0,
-		ambient: 0,
-		loadWhileMoving: true,
-		chunkBorders: false,
-		mouseSensitivity: 1,
-		invertMouse: false,
-		following: '',
-		markedPlayers: []
-	};
-}
-
-/** How often the probe looks for `window.bluemap` while the app boots. */
-const PROBE_MS = 250;
-
-/** Give up after this long; a map that has not booted by now is not going to. */
-const PROBE_TIMEOUT_MS = 30_000;
-
 /**
- * How often the snapshot is re-read.
- *
- * BlueMap's state is a Vue reactive object, which Svelte cannot subscribe to, so
- * the values are pulled rather than pushed. Always, not only while the settings
- * panel is open: the world switcher and the online list both read state that
- * BlueMap changes on its own (a followed player walking into the nether moves
- * the map out from under us), and a pull of a dozen numbers once a second is not
- * worth making conditional.
+ * Everything BlueMap can back, which is every group the controls know about bar
+ * one: it has no second render of the same world, so no style switcher.
  */
-const REFRESH_MS = 1000;
+const CAPS: ReadonlySet<MapCapability> = new Set<MapCapability>([
+	'view',
+	'quality',
+	'detail',
+	'light',
+	'flight',
+	'chunkBorders',
+	'screenshot',
+	'reloadTiles',
+	'resetSettings',
+	'zoom',
+	'recenter',
+	'follow'
+]);
 
 /**
  * Hides BlueMap's own chrome once we have taken over.
@@ -120,9 +76,11 @@ const ZOOM_STEP = 3;
 /** Marker set BlueMap puts its live player markers in. */
 const PLAYER_SET = 'bm-players';
 
-export class BlueMapLink {
+export class BlueMapLink implements MapLink {
 	/** What the controls render from; replaced wholesale so Svelte sees it. */
-	state: BlueMapState = $state(emptyState());
+	state: MapState = $state(emptyMapState());
+
+	readonly caps = CAPS;
 
 	#app: any = null;
 	#frame: HTMLIFrameElement | null = null;
@@ -158,7 +116,7 @@ export class BlueMapLink {
 		this.#refresh = undefined;
 		this.#app = null;
 		this.#frame = null;
-		this.state = emptyState();
+		this.state = emptyMapState();
 	}
 
 	/** Show a different world without reloading the whole application. */
@@ -166,6 +124,14 @@ export class BlueMapLink {
 		return this.#call(() => {
 			void this.#app.switchMap(map);
 		});
+	}
+
+	/**
+	 * Nothing to switch: BlueMap renders one view of a world and the camera modes
+	 * are what change how it looks, which is `setView`.
+	 */
+	switchStyle(): boolean {
+		return false;
 	}
 
 	/** Move the camera in or out by one of BlueMap's own zoom steps. */
@@ -425,12 +391,14 @@ export class BlueMapLink {
 				following: String(followed?.playerUuid ?? ''),
 				markedPlayers: this.#playerMarkers()
 					.map((marker) => String(marker?.playerUuid ?? ''))
-					.filter(Boolean)
+					.filter(Boolean),
+				styles: [],
+				style: ''
 			};
 		} catch {
 			// the iframe navigated out from under us; the next probe re-attaches
 			this.#app = null;
-			this.state = emptyState();
+			this.state = emptyMapState();
 		}
 	}
 

@@ -14,6 +14,8 @@
 	"unknownOp": "không biết thao tác: {op}",
 	"consoleTimeout": "daemon \"{name}\" không trả lời yêu cầu console; bản dựng của nó có thể chưa hỗ trợ đường hầm console",
 	"consoleUnreachable": "daemon \"{name}\" chưa kết nối; console của nó không với tới được",
+	"backupUnreachable": "không với tới được bản lưu trữ trên daemon \"{daemon}\"",
+	"mapUnreachable": "daemon \"{daemon}\" chưa kết nối; bản đồ đã kết xuất của nó không với tới được",
 	"machineUnreachable": "{machine} không liên lạc được; cấu hình cổng plugin của nó chưa được kiểm tra",
 	"checks": {
 		"link": "Liên kết daemon",

@@ -4,7 +4,7 @@
 
 import { error } from '@sveltejs/kit';
 
-import { mapEndpoint } from '$core/publicsite';
+import { fetchMapFile } from '$lib/server/mapfile';
 
 /**
  * GET → an instance's BlueMap, proxied.
@@ -15,6 +15,12 @@ import { mapEndpoint } from '$core/publicsite';
  * the LAN and not routable from outside, and an instance owned by a follower is
  * not even on this machine. Proxying solves all three at once, and means a new
  * mapped instance needs no nginx change.
+ *
+ * It also decouples the map from the server that renders it. `fetchMapFile`
+ * falls back to the rendered files on the owner's disk, so a stopped instance
+ * still has a map here: what a visitor loses is the player markers, not the
+ * world. Which source answered is not something the browser is told, because
+ * there is nothing it could do differently.
  *
  * BlueMap's webapp is mounted under this prefix rather than rewritten: its
  * `index.html` references `./assets/...` and its `settings.json` a relative
@@ -27,77 +33,42 @@ import { mapEndpoint } from '$core/publicsite';
 /** Read-only: the map has no endpoint that should be reachable with a body. */
 const ALLOWED = new Set(['GET', 'HEAD']);
 
-/**
- * Headers worth carrying back. The rest are dropped rather than filtered, since
- * an allowlist cannot leak a header nobody thought about.
- *
- * `content-encoding` and `content-length` are deliberately absent. BlueMap
- * serves its JSON with `Content-Encoding: gzip`, and `fetch` decompresses the
- * body before we ever see it; forwarding the header would tell the browser to
- * gunzip bytes that are already plain, which it reports as a bare "network
- * error" with nothing pointing at the cause. The length is wrong for the same
- * reason, so the response goes back chunked.
- */
-const PASS_THROUGH = ['content-type', 'etag', 'last-modified'];
-
 async function proxy(
 	instance: string,
 	path: string,
 	request: Request,
 	method: 'GET' | 'HEAD'
 ): Promise<Response> {
-	const endpoint = await mapEndpoint(instance);
+	const file = await fetchMapFile(instance, path, {
+		method,
+		range: request.headers.get('range'),
+		signal: request.signal
+	});
 
 	// covers all three refusals with one answer: the page is off, the instance
 	// did not opt in, or it has no map. None of them is worth telling apart to
 	// somebody who is guessing instance names.
-	if (!endpoint) {
+	if (!file) {
 		throw error(404, 'not found');
 	}
 
-	const query = new URL(request.url).search;
-	const target = `http://${endpoint.origin}/${path}${query}`;
-
-	let upstream: Response;
-
-	try {
-		upstream = await fetch(target, {
-			method,
-			// the map server is on the LAN; a slow answer means it is rendering, not
-			// that it is gone, but a request must not hang the console's socket
-			signal: AbortSignal.timeout(20_000),
-			headers: passRange(request)
-		});
-	} catch (err) {
-		throw error(502, `map server unreachable: ${(err as Error).message}`);
-	}
-
-	const headers = new Headers();
-
-	for (const name of PASS_THROUGH) {
-		const value = upstream.headers.get(name);
-
-		if (value) {
-			headers.set(name, value);
-		}
+	if (file.status === 502) {
+		throw error(502, 'map unreachable');
 	}
 
 	// tiles are immutable once rendered and there are thousands of them; letting
 	// the browser keep them is the difference between a map that pans and one
-	// that re-downloads itself
-	headers.set('Cache-Control', upstream.ok ? 'public, max-age=300' : 'no-store');
+	// that re-downloads itself. The live endpoints are exempt: a cached player
+	// list is a map with ghosts on it.
+	file.headers.set(
+		'Cache-Control',
+		file.status < 400 && !path.includes('/live/') ? 'public, max-age=300' : 'no-store'
+	);
 
-	return new Response(method === 'HEAD' ? null : upstream.body, {
-		status: upstream.status,
-		headers
+	return new Response(method === 'HEAD' ? null : file.body, {
+		status: file.status,
+		headers: file.headers
 	});
-}
-
-/** Forward a range request, which is how the webapp fetches parts of a tile. */
-function passRange(request: Request): HeadersInit {
-	const range = request.headers.get('range');
-
-	return range ? { range } : {};
 }
 
 export async function GET({ params, request }) {

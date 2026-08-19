@@ -3190,6 +3190,8 @@
 			"recenter": "Về giữa",
 			"reload": "Tải lại ô bản đồ",
 			"reloadHint": "Tải lại sau khi máy chủ dựng xong bản đồ.",
+			"render": "Kiểu vẽ",
+			"renderHint": "Cùng một thế giới được vẽ theo cách khác.",
 			"reset": "Đặt lại",
 			"screenshot": "Chụp màn hình",
 			"sensitivity": "Tốc độ chuột",

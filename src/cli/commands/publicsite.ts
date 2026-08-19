@@ -13,8 +13,8 @@
 
 import { command, Bail } from "../framework";
 import { instanceNames } from "../completers";
-import { pc, Sym, ok, info, printTable } from "../ui";
-import { loadCluster, saveCluster } from "../../client/core/config";
+import { pc, Sym, ok, info, warn, printTable } from "../ui";
+import { loadCluster, managedInstances, saveCluster } from "../../client/core/config";
 import * as publicsite from "../../client/core/publicsite";
 import { slotTone } from "../../client/core/uptime";
 import { t } from "../../shared/i18n";
@@ -256,5 +256,77 @@ command({
 				t("cli.uptime.head.stops"),
 			],
 		});
+	},
+});
+
+command({
+	path: ["maps"],
+	desc: t("cli.maps.desc"),
+	args: [{ name: "instance", complete: instanceNames }],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const wanted = args[0];
+
+		if (wanted && !managedInstances(cfg)[wanted]) {
+			throw new Bail(t("cli.maps.unknownInstance", { name: wanted }));
+		}
+
+		const names = wanted ? [wanted] : Object.keys(managedInstances(cfg));
+		const rows: string[][] = [];
+		const notes: string[] = [];
+
+		for (const name of names) {
+			const source = await publicsite.mapSource(name);
+
+			if (!source) {
+				continue;
+			}
+
+			rows.push([
+				pc.bold(name),
+				pc.cyan(source.provider),
+				source.origin ? pc.dim(source.origin) : pc.dim(t("cli.maps.filesOnly")),
+				source.webroot ? Sym.ok : Sym.off,
+				source.offlineReady ? Sym.ok : Sym.warn,
+			]);
+
+			// the one thing an operator cannot work out from the table: *why* a map
+			// that is plainly there stops existing the moment the server does
+			if (source.webroot && !source.offlineReady) {
+				notes.push(t("cli.maps.notOfflineReady", { name, provider: source.provider }));
+			}
+
+			if (!source.webroot) {
+				notes.push(t("cli.maps.notRendered", { name }));
+			}
+		}
+
+		if (!rows.length) {
+			info(wanted ? t("cli.maps.noneForInstance", { name: wanted }) : t("cli.maps.none"));
+
+			return;
+		}
+
+		console.log();
+
+		printTable(rows, {
+			head: [
+				t("cli.head.instance"),
+				t("cli.maps.head.map"),
+				t("cli.head.address"),
+				t("cli.maps.head.rendered"),
+				t("cli.maps.head.survivesStop"),
+			],
+		});
+
+		console.log(pc.dim(`\n  ${t("cli.maps.legend", { ok: Sym.ok, off: Sym.off, warn: Sym.warn })}`));
+
+		for (const note of notes) {
+			console.log();
+			warn(note);
+		}
+
+		console.log();
 	},
 });

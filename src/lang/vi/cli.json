@@ -14,6 +14,21 @@
 		"unsupportedShell": "shell không được hỗ trợ: {shell}",
 		"installHint": "# cài đặt: luna completions {shell} >> ~/.{target}"
 	},
+		"maps": {
+			"desc": "bản đồ web: máy chủ nào có, và bản đồ có sống lâu hơn máy chủ hay không",
+			"unknownInstance": "không có instance: {name}",
+			"none": "chưa có instance nào được triển khai plugin bản đồ web",
+			"noneForInstance": "{name} chưa được triển khai plugin bản đồ web",
+			"filesOnly": "chỉ tệp",
+			"legend": "{ok} có  {off} chưa kết xuất  {warn} chỉ khi máy chủ đang chạy",
+			"notOfflineReady": "{name}: bản đồ đã kết xuất không tự đọc được, nên nó biến mất khi máy chủ dừng. {provider} chỉ ghi các tệp mà trang của nó cần khi dùng JsonFileClientUpdateComponent; hãy thay InternalClientUpdateComponent bằng nó trong configuration.txt của plugin rồi khởi động lại.",
+			"notRendered": "{name}: chưa kết xuất gì cả, nên chưa có bản đồ nào để phục vụ cho tới khi máy chủ vẽ ra",
+			"head": {
+				"map": "Bản đồ",
+				"rendered": "Đã kết xuất",
+				"survivesStop": "Sống qua lúc dừng"
+			}
+		},
 	"repl": {
 		"title": "bảng điều khiển tương tác",
 		"hints": "Tab để hoàn thành lệnh · 'help' xem danh sách lệnh · thêm '?' sau lệnh để xem gợi ý · 'exit' để thoát",

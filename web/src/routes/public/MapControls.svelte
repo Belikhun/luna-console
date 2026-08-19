@@ -4,27 +4,40 @@
 
 <script lang="ts">
 	/**
-	 * BlueMap's own controls, drawn in the console's language.
+	 * The embedded map's own controls, drawn in the console's language.
 	 *
-	 * The embedded map ships a full HUD of its own; a burger menu, zoom buttons, a
+	 * Either map ships a full HUD of its own; a burger menu, zoom buttons, a
 	 * compass, a settings page. All of it lands under our panels and none of it
-	 * looks like the rest of this page, so `BlueMapLink` hides it and this draws
-	 * the parts a visitor actually reaches for.
+	 * looks like the rest of this page, so the link hides it and this draws the
+	 * parts a visitor actually reaches for.
+	 *
+	 * Every group is gated on the link's capability set rather than on which map it
+	 * is: BlueMap has render distances and lighting that Dynmap has no concept of,
+	 * Dynmap has three renders of one world that BlueMap has no concept of, and a
+	 * control that cannot do anything is absent rather than disabled - a dead
+	 * slider is a promise the map cannot keep.
 	 *
 	 * Two things BlueMap offers are left out on purpose: its debug overlay, which
 	 * is a frame-time readout for whoever builds BlueMap, and its language picker,
 	 * which only ever spoke to the chrome this page replaced.
 	 */
 	import { t } from '$lib/i18n.svelte';
-	import { MAP_QUALITIES, type BlueMapLink, type MapView } from '$lib/bluemap.svelte';
+	import { MAP_QUALITIES } from '$lib/bluemap.svelte';
+	import type { MapLink, MapView } from '$lib/maplink';
 	import Icon from '$lib/components/Icon.svelte';
 	import Slider from '$lib/components/Slider.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 
-	let { link, fullscreenTarget }: { link: BlueMapLink; fullscreenTarget?: HTMLElement } = $props();
+	let { link, fullscreenTarget }: { link: MapLink; fullscreenTarget?: HTMLElement } = $props();
 
 	let open = $state(false);
 	let fullscreen = $state(false);
+
+	/** Groups that live inside the settings panel, as opposed to on the rail. */
+	const PANEL_CAPS = ['view', 'quality', 'detail', 'light', 'chunkBorders', 'styles'] as const;
+
+	// the gear opens nothing on a map whose every group is absent, so it is not drawn
+	const hasPanel = $derived(PANEL_CAPS.some((cap) => link.caps.has(cap)));
 
 	// deliberately not named `state`: a local of that name makes the compiler read
 	// every `$state` in this file as a store subscription instead of the rune
@@ -71,7 +84,7 @@
 
 {#if map.ready}
 	<div class="controls" class:open>
-		{#if open}
+			{#if open && hasPanel}
 			<div class="panel">
 				<div class="head">
 					<Icon name="sliders" style="solid" size="0.875rem" />
@@ -86,7 +99,7 @@
 				</div>
 
 				<div class="body">
-					{#if map.views.length > 1}
+					{#if link.caps.has('view') && map.views.length > 1}
 						<div class="group">
 							<div class="k">{t('web.public.map.view')}</div>
 							<div class="segs">
@@ -102,80 +115,106 @@
 						</div>
 					{/if}
 
-					<div class="group">
-						<div class="k">{t('web.public.map.quality')}</div>
-						<div class="segs">
-							{#each MAP_QUALITIES as quality (quality.value)}
-								<button
-									aria-pressed={map.quality === quality.value}
-									onclick={() => link.setQuality(quality.value)}
-								>
-									{t(quality.label)}
-								</button>
-							{/each}
+					<!-- one world drawn several ways; Dynmap's flat, surface and cave renders -->
+					{#if link.caps.has('styles') && map.styles.length > 1}
+						<div class="group">
+							<div class="k">{t('web.public.map.render')}</div>
+							<div class="segs">
+								{#each map.styles as style (style.id)}
+									<button
+										aria-pressed={map.style === style.id}
+										onclick={() => link.switchStyle(style.id)}
+									>
+										{style.label}
+									</button>
+								{/each}
+							</div>
+							<div class="hint">{t('web.public.map.renderHint')}</div>
 						</div>
-					</div>
+					{/if}
 
-					<div class="group">
-						<div class="k">{t('web.public.map.detail')}</div>
-						<label>
-							<span>{t('web.public.map.detailNear')}</span>
-							<Slider
-								value={map.hires}
-								min={map.hiresMin}
-								max={map.hiresMax}
-								step={10}
-								unit=" m"
-								onchange={(value) => link.setHires(value)}
-							/>
-						</label>
-						<label>
-							<span>{t('web.public.map.horizon')}</span>
-							<Slider
-								value={map.lowres}
-								min={map.lowresMin}
-								max={map.lowresMax}
-								step={100}
-								unit=" m"
-								onchange={(value) => link.setLowres(value)}
-							/>
-						</label>
-						<div class="row">
-							<span>{t('web.public.map.loadWhileMoving')}</span>
-							<Toggle
-								checked={map.loadWhileMoving}
-								label={t('web.public.map.loadWhileMoving')}
-								onchange={(on) => link.setLoadWhileMoving(on)}
-							/>
+					{#if link.caps.has('quality')}
+						<div class="group">
+							<div class="k">{t('web.public.map.quality')}</div>
+							<div class="segs">
+								{#each MAP_QUALITIES as quality (quality.value)}
+									<button
+										aria-pressed={map.quality === quality.value}
+										onclick={() => link.setQuality(quality.value)}
+									>
+										{t(quality.label)}
+									</button>
+								{/each}
+							</div>
 						</div>
-						<div class="hint">{t('web.public.map.detailHint')}</div>
-					</div>
+					{/if}
 
-					<div class="group">
-						<div class="k">{t('web.public.map.light')}</div>
-						<label>
-							<span>{t('web.public.map.sunlight')}</span>
-							<Slider
-								value={Math.round(map.sunlight * LIGHT_STEPS)}
-								max={LIGHT_STEPS}
-								unit="%"
-								onchange={(value) => link.setSunlight(value / LIGHT_STEPS)}
-							/>
-						</label>
-						<label>
-							<span>{t('web.public.map.ambient')}</span>
-							<Slider
-								value={Math.round(map.ambient * LIGHT_STEPS)}
-								max={LIGHT_STEPS}
-								unit="%"
-								onchange={(value) => link.setAmbient(value / LIGHT_STEPS)}
-							/>
-						</label>
-					</div>
+					{#if link.caps.has('detail')}
+						<div class="group">
+							<div class="k">{t('web.public.map.detail')}</div>
+							<label>
+								<span>{t('web.public.map.detailNear')}</span>
+								<Slider
+									value={map.hires}
+									min={map.hiresMin}
+									max={map.hiresMax}
+									step={10}
+									unit=" m"
+									onchange={(value) => link.setHires(value)}
+								/>
+							</label>
+							<label>
+								<span>{t('web.public.map.horizon')}</span>
+								<Slider
+									value={map.lowres}
+									min={map.lowresMin}
+									max={map.lowresMax}
+									step={100}
+									unit=" m"
+									onchange={(value) => link.setLowres(value)}
+								/>
+							</label>
+							<div class="row">
+								<span>{t('web.public.map.loadWhileMoving')}</span>
+								<Toggle
+									checked={map.loadWhileMoving}
+									label={t('web.public.map.loadWhileMoving')}
+									onchange={(on) => link.setLoadWhileMoving(on)}
+								/>
+							</div>
+							<div class="hint">{t('web.public.map.detailHint')}</div>
+						</div>
+					{/if}
+
+
+					{#if link.caps.has('light')}
+						<div class="group">
+							<div class="k">{t('web.public.map.light')}</div>
+							<label>
+								<span>{t('web.public.map.sunlight')}</span>
+								<Slider
+									value={Math.round(map.sunlight * LIGHT_STEPS)}
+									max={LIGHT_STEPS}
+									unit="%"
+									onchange={(value) => link.setSunlight(value / LIGHT_STEPS)}
+								/>
+							</label>
+							<label>
+								<span>{t('web.public.map.ambient')}</span>
+								<Slider
+									value={Math.round(map.ambient * LIGHT_STEPS)}
+									max={LIGHT_STEPS}
+									unit="%"
+									onchange={(value) => link.setAmbient(value / LIGHT_STEPS)}
+								/>
+							</label>
+						</div>
+					{/if}
+
 
 					<!-- only in free flight: these do nothing in the other two modes, and a
 					     dead control is worse than an absent one -->
-					{#if map.view === 'free'}
+					{#if link.caps.has('flight') && map.view === 'free'}
 						<div class="group">
 							<div class="k">{t('web.public.map.flight')}</div>
 							<label>
@@ -200,57 +239,76 @@
 						</div>
 					{/if}
 
-					<div class="group">
-						<div class="k">{t('web.public.map.world')}</div>
-						<div class="row">
-							<span>{t('web.public.map.chunkBorders')}</span>
-							<Toggle
-								checked={map.chunkBorders}
-								label={t('web.public.map.chunkBorders')}
-								onchange={(on) => link.setChunkBorders(on)}
-							/>
+					{#if link.caps.has('chunkBorders') || link.caps.has('reloadTiles')}
+						<div class="group">
+							<div class="k">{t('web.public.map.world')}</div>
+
+							{#if link.caps.has('chunkBorders')}
+								<div class="row">
+									<span>{t('web.public.map.chunkBorders')}</span>
+									<Toggle
+										checked={map.chunkBorders}
+										label={t('web.public.map.chunkBorders')}
+										onchange={(on) => link.setChunkBorders(on)}
+									/>
+								</div>
+							{/if}
+
+							<div class="verbs">
+								{#if link.caps.has('reloadTiles')}
+									<button onclick={() => link.reloadTiles()}>
+										{t('web.public.map.reload')}
+									</button>
+								{/if}
+								{#if link.caps.has('resetSettings')}
+									<button onclick={() => link.resetSettings()}>
+										{t('web.public.map.reset')}
+									</button>
+								{/if}
+							</div>
+
+							<div class="hint">{t('web.public.map.reloadHint')}</div>
 						</div>
-						<div class="verbs">
-							<button onclick={() => link.reloadTiles()}>
-								{t('web.public.map.reload')}
-							</button>
-							<button onclick={() => link.resetSettings()}>
-								{t('web.public.map.reset')}
-							</button>
-						</div>
-						<div class="hint">{t('web.public.map.reloadHint')}</div>
-					</div>
+					{/if}
 				</div>
 			</div>
 		{/if}
 
 		<div class="rail">
-			<button onclick={() => link.zoom(-1)} title={t('web.public.map.zoomIn')}>
-				<Icon name="plus" style="solid" size="0.875rem" />
-			</button>
-			<button onclick={() => link.zoom(1)} title={t('web.public.map.zoomOut')}>
-				<Icon name="minus" style="solid" size="0.875rem" />
-			</button>
-			<button onclick={() => link.resetCamera()} title={t('web.public.map.recenter')}>
-				<Icon name="compass" style="solid" size="0.9375rem" />
-			</button>
-			<button onclick={() => link.screenshot()} title={t('web.public.map.screenshot')}>
-				<Icon name="camera" style="solid" size="0.9375rem" />
-			</button>
+			{#if link.caps.has('zoom')}
+				<button onclick={() => link.zoom(-1)} title={t('web.public.map.zoomIn')}>
+					<Icon name="plus" style="solid" size="0.875rem" />
+				</button>
+				<button onclick={() => link.zoom(1)} title={t('web.public.map.zoomOut')}>
+					<Icon name="minus" style="solid" size="0.875rem" />
+				</button>
+			{/if}
+			{#if link.caps.has('recenter')}
+				<button onclick={() => link.resetCamera()} title={t('web.public.map.recenter')}>
+					<Icon name="compass" style="solid" size="0.9375rem" />
+				</button>
+			{/if}
+			{#if link.caps.has('screenshot')}
+				<button onclick={() => link.screenshot()} title={t('web.public.map.screenshot')}>
+					<Icon name="camera" style="solid" size="0.9375rem" />
+				</button>
+			{/if}
 			<button
 				onclick={() => void toggleFullscreen()}
 				title={fullscreen ? t('web.public.map.exitFullscreen') : t('web.public.map.fullscreen')}
 			>
 				<Icon name={fullscreen ? 'compress' : 'expand'} style="solid" size="0.9375rem" />
 			</button>
-			<button
-				class:on={open}
-				onclick={() => (open = !open)}
-				title={t('web.public.map.settings')}
-				aria-expanded={open}
-			>
-				<Icon name="sliders" style="solid" size="0.9375rem" />
-			</button>
+			{#if hasPanel}
+				<button
+					class:on={open}
+					onclick={() => (open = !open)}
+					title={t('web.public.map.settings')}
+					aria-expanded={open}
+				>
+					<Icon name="sliders" style="solid" size="0.9375rem" />
+				</button>
+			{/if}
 		</div>
 	</div>
 {/if}

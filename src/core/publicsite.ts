@@ -18,16 +18,19 @@
  */
 
 import { effectiveTargets } from "./families";
-import { managedInstances } from "./config";
+import { instanceDir, managedInstances } from "./config";
+import {
+	MAP_PROVIDERS,
+	resolveMapWebroot,
+	type MapProviderId,
+	type MapWebroot,
+} from "./maps";
 import { instanceAddress, portSpecsFor } from "./ports";
 import { series, type UptimeStore } from "./uptime";
 import type { ClusterConfig, InstanceConfig, PluginsLock, PublicSiteConfig } from "./types";
 
 /** Days of uptime history the public page carries per instance. */
 export const PUBLIC_UPTIME_DAYS = 90;
-
-/** Modrinth slug of the map plugin whose webserver the page embeds. */
-const BLUEMAP_SLUG = "bluemap";
 
 /** Whether the public page exists on this cluster. */
 export function publicEnabled(cfg: ClusterConfig): boolean {
@@ -57,59 +60,171 @@ export function isPublicInstance(cfg: ClusterConfig, name: string): boolean {
 	return cfg.instances[name]?.publicListed === true;
 }
 
-/** Where an instance's BlueMap webserver can be reached. */
+/** Where an instance's own map webserver can be reached. */
 export interface MapEndpoint {
 	/** Host:port of the map's own webserver, on the machine that runs it */
 	origin: string;
+	/** Which map is answering there; the console renders a different HUD per map */
+	provider: MapProviderId;
 	/** Lock key of the entry providing it, e.g. "bluemap@paper" */
 	entry: string;
 }
 
 /**
- * Resolve an instance's BlueMap webserver, or undefined when it has none.
+ * Where an instance's map answers live, or undefined when nothing is listening.
  *
- * Nothing here is configured. An instance has a map when the addon is deployed
- * to it and a port has been allocated for the addon's `web` binding, which are
- * both already recorded: the lockfile says who gets the jar, and the registry
- * says which number was handed out on that machine. The host comes from
- * `instanceAddress`, so an instance on a follower resolves to that follower.
+ * A narrower question than `mapAccessFor`: this one is only about the plugin's
+ * own webserver, so an instance whose map is served purely from its rendered
+ * files answers undefined here and still has a map.
  */
 export function mapEndpointFor(
 	cfg: ClusterConfig,
 	lock: PluginsLock,
 	name: string,
 ): MapEndpoint | undefined {
+	const access = mapAccessFor(cfg, lock, name);
+
+	if (!access?.origin) {
+		return undefined;
+	}
+
+	return { origin: access.origin, provider: access.provider, entry: access.entry };
+}
+
+/** Which map an instance carries, and where it answers live if it does. */
+export interface MapAccess {
+	provider: MapProviderId;
+	/** Lock key of the entry providing it, e.g. "dynmap@forge" */
+	entry: string;
+	/**
+	 * Host:port of the map's own webserver, or null when it binds no port.
+	 *
+	 * Null is a normal, supported setup rather than a broken one. Dynmap's own
+	 * documented arrangement for an external webserver is to write its files down
+	 * and turn its listener off, and luna *is* that external webserver, so an
+	 * instance can carry a perfectly good map with nothing listening: everything
+	 * comes off the rendered files instead.
+	 */
+	origin: string | null;
+}
+
+/**
+ * Which map plugin is deployed to an instance, whether or not it has a port.
+ *
+ * The gate every map route repeats, and the pure one: the lockfile alone answers
+ * it, so the public snapshot can carry it without touching a disk. Where the map
+ * is *reachable* is a second question, and the answer may be "nowhere, read the
+ * files".
+ */
+export function mapAccessFor(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	name: string,
+): MapAccess | undefined {
 	const inst = managedInstances(cfg)[name];
 
 	if (!inst) {
 		return undefined;
 	}
 
-	for (const [key, entry] of Object.entries(lock.plugins)) {
-		if (entry.remote?.slug !== BLUEMAP_SLUG) {
-			continue;
+	for (const provider of MAP_PROVIDERS) {
+		for (const [key, entry] of Object.entries(lock.plugins)) {
+			if (entry.remote?.slug !== provider.slug) {
+				continue;
+			}
+
+			if (!effectiveTargets(cfg, lock, key).includes(name)) {
+				continue;
+			}
+
+			const spec = portSpecsFor(entry)?.find((binding) => binding.protocol === "tcp");
+			const port = spec ? inst.ports?.[`${key}/${spec.id}`] : undefined;
+
+			// the game port is what instanceAddress returns; only its host is wanted,
+			// because the map answers on a port of its own
+			const host = instanceAddress(cfg, inst).split(":")[0];
+
+			return {
+				provider: provider.id,
+				entry: key,
+				origin: port ? `${host}:${port}` : null,
+			};
 		}
-
-		const spec = portSpecsFor(entry)?.find((binding) => binding.protocol === "tcp");
-
-		if (!spec) {
-			continue;
-		}
-
-		const port = inst.ports?.[`${key}/${spec.id}`];
-
-		if (!port || !effectiveTargets(cfg, lock, key).includes(name)) {
-			continue;
-		}
-
-		// the game port is what instanceAddress returns; only its host is wanted,
-		// because the map answers on a port of its own
-		const host = instanceAddress(cfg, inst).split(":")[0];
-
-		return { origin: `${host}:${port}`, entry: key };
 	}
 
 	return undefined;
+}
+
+/**
+ * The rendered webroot of whichever map an instance carries, on this machine.
+ *
+ * The lockfile decides which provider to look for, exactly as `mapEndpointFor`
+ * does, so the two never disagree about what an instance has; the disk decides
+ * whether anything has been rendered.
+ */
+export async function mapWebrootFor(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	name: string,
+): Promise<MapWebroot | undefined> {
+	const inst = managedInstances(cfg)[name];
+
+	if (!inst) {
+		return undefined;
+	}
+
+	const access = mapAccessFor(cfg, lock, name);
+	const provider = access
+		? MAP_PROVIDERS.find((entry) => entry.id === access.provider)
+		: undefined;
+
+	if (!provider) {
+		return undefined;
+	}
+
+	return await resolveMapWebroot(instanceDir(inst), provider);
+}
+
+/**
+ * What is known about an instance's map without opening it: which provider, where
+ * it answers live, and whether the rendered files can be served on their own.
+ *
+ * One call rather than three because every caller wants the same picture, and
+ * because "has a map" and "has a map that survives a stop" are different
+ * questions that a single boolean kept conflating.
+ */
+export interface MapSource {
+	provider: MapProviderId;
+	entry: string;
+	/** Null when the map binds no port of its own; the files are then the only source */
+	origin: string | null;
+	/** Absent when nothing is rendered on the owning machine, or it is not local */
+	webroot?: string;
+	/** Whether the rendered files boot without the server; false needs the server */
+	offlineReady: boolean;
+}
+
+/** Resolve one instance's map source; local disk facts included. */
+export async function mapSourceFor(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	name: string,
+): Promise<MapSource | undefined> {
+	const access = mapAccessFor(cfg, lock, name);
+
+	if (!access) {
+		return undefined;
+	}
+
+	const webroot = await mapWebrootFor(cfg, lock, name);
+
+	return {
+		provider: access.provider,
+		entry: access.entry,
+		origin: access.origin,
+		webroot: webroot?.dir,
+		offlineReady: webroot?.offlineReady ?? false,
+	};
 }
 
 // -- the wire payload -----------------------------------------------------------
@@ -150,6 +265,8 @@ export interface PublicInstanceCard {
 	misery: number | null;
 	/** Whether an embeddable map exists; never where it lives */
 	hasMap: boolean;
+	/** Which map it is, so the page draws that map's controls; null when there is none */
+	mapProvider: MapProviderId | null;
 	uptime: { days: Array<{ d: string; up: number; seen: number }>; pct: number | null };
 }
 
@@ -290,6 +407,7 @@ export function buildPublicSnapshot(input: PublicSnapshotInput): PublicSnapshot 
 	for (const [name, inst] of listed) {
 		const status = input.status[name];
 		const window = series(input.uptime, name, PUBLIC_UPTIME_DAYS, input.now);
+		const map = mapAccessFor(input.cfg, input.lock, name);
 
 		if (status?.online) {
 			online += 1;
@@ -324,7 +442,8 @@ export function buildPublicSnapshot(input: PublicSnapshotInput): PublicSnapshot 
 			nonTickingEntities: status?.nonTickingEntities ?? null,
 			apdex: status?.apdex ?? null,
 			misery: status?.misery ?? null,
-			hasMap: mapEndpointFor(input.cfg, input.lock, name) !== undefined,
+			hasMap: map !== undefined,
+			mapProvider: map?.provider ?? null,
 			// stops are dropped on the way out: an operator wants the incident count,
 			// a visitor wants to know whether it was up
 			uptime: {

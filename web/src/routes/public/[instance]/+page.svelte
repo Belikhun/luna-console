@@ -9,6 +9,8 @@
 	import { fmtDuration } from '$lib/format';
 	import { followPublic } from '$lib/public.svelte';
 	import { BlueMapLink } from '$lib/bluemap.svelte';
+	import { DynmapLink } from '$lib/dynmap.svelte';
+	import type { MapLink } from '$lib/maplink';
 	import { tilePatternUrl } from '$lib/components/mcassets';
 	import CopyValue from '$lib/components/CopyValue.svelte';
 	import Gauge from '$lib/components/Gauge.svelte';
@@ -62,20 +64,31 @@
 	 * The document the iframe loads, assigned once per instance.
 	 *
 	 * Deliberately not derived from `world`: re-assigning `src` reloads the whole
-	 * application, and a world switch goes through `BlueMapLink` instead, which
-	 * moves the camera without throwing the loaded tiles away.
+	 * application, and a world switch goes through the link instead, which moves
+	 * the view without throwing the loaded tiles away.
 	 */
 	let mapSrc = $state('');
 	let frame: HTMLIFrameElement | undefined = $state();
 	let hud: HTMLElement | undefined = $state();
 
-	const link = new BlueMapLink();
+	/**
+	 * The handle on whichever map this server runs.
+	 *
+	 * One per provider because they are not the same kind of application, and
+	 * rebuilt when the provider changes rather than when the instance does: the two
+	 * links hide different chrome and read different objects, so the wrong one
+	 * attaches to a map it will never recognise and silently reports `ready: false`
+	 * for as long as the visitor stays.
+	 */
+	const link: MapLink = $derived(
+		data.card.mapProvider === 'dynmap' ? new DynmapLink() : new BlueMapLink()
+	);
 
 	/**
 	 * Which world is on screen.
 	 *
-	 * BlueMap's own answer wins over the one this page last asked for: following a
-	 * player through a portal switches the map without going through the switcher,
+	 * The map's own answer wins over the one this page last asked for: following a
+	 * player through a portal switches the world without going through the switcher,
 	 * and a pressed state that still names the overworld would be lying.
 	 */
 	const shown = $derived(link.state.ready && link.state.map ? link.state.map : world);
@@ -118,13 +131,6 @@
 	});
 
 	/**
-	 * Show a different world.
-	 *
-	 * Through the link when it has one, which keeps the page and the camera alive;
-	 * by reloading the frame at that world's hash when it does not, which is what
-	 * happens if BlueMap has not finished booting yet.
-	 */
-	/**
 	 * Lock the map onto a player, or let go of the one it is holding.
 	 *
 	 * The whole row is the control rather than a button inside it: following is
@@ -141,6 +147,13 @@
 		await link.followPlayer(uuid);
 	}
 
+	/**
+	 * Show a different world.
+	 *
+	 * Through the link when it has one, which keeps the loaded tiles alive; by
+	 * reloading the frame at that world when it does not, which is what happens if
+	 * the map has not finished booting yet.
+	 */
 	function selectWorld(name: string): void {
 		if (name === world) {
 			return;
@@ -149,7 +162,7 @@
 		world = name;
 
 		if (!link.switchMap(name)) {
-			mapSrc = `${mapBase}/index.html#${name}`;
+			mapSrc = embedUrl(data.card.mapProvider ?? '', name);
 		}
 	}
 
@@ -214,20 +227,20 @@
 		};
 	});
 
-	// the worlds come from /art rather than from BlueMap's own settings.json,
-	// because that file lists them in no useful order; /art has already sorted
-	// them the way BlueMap's menu does, so the switcher opens on the overworld
-	// instead of whichever map happens to be first
+	// the worlds come from /art rather than from the map's own catalog, because
+	// neither provider lists them in an order a page can trust; /art has already
+	// picked the overworld, so the switcher opens there instead of on whichever
+	// world happens to be first
 	$effect(() => {
 		const name = data.card.name;
-		const hasMap = data.card.hasMap;
+		const provider = data.card.mapProvider;
 		let alive = true;
 
 		worlds = [];
 		world = '';
 		mapSrc = '';
 
-		if (!hasMap) {
+		if (!provider) {
 			return;
 		}
 
@@ -238,10 +251,10 @@
 				const response = await fetch(`/api/public/map/${encodeURIComponent(name)}/art`);
 
 				if (response.ok) {
-					const art = (await response.json()) as { worlds?: string[]; map?: string };
+					const art = (await response.json()) as { worlds?: string[]; world?: string };
 
 					worlds = art.worlds ?? [];
-					resolved = art.map ?? worlds[0] ?? '';
+					resolved = art.world ?? worlds[0] ?? '';
 				}
 			} catch {
 				// no world switcher, but the map itself still loads at its default
@@ -252,20 +265,40 @@
 			}
 
 			world = resolved;
-
-			// `index.html` rather than the bare directory: the webapp's own paths are
-			// relative to the document, and SvelteKit strips a trailing slash, which
-			// would send every asset request one level too high. The world goes in
-			// the hash, which is where BlueMap reads it from.
-			mapSrc = resolved
-				? `${mapBase}/index.html#${resolved}`
-				: `${mapBase}/index.html`;
+			mapSrc = embedUrl(provider, resolved);
 		})();
 
 		return () => {
 			alive = false;
 		};
 	});
+
+	/**
+	 * The document the frame loads for one provider, opened on one world.
+	 *
+	 * `index.html` rather than the bare directory in both cases: each webapp's own
+	 * paths are relative to the document, and SvelteKit strips a trailing slash,
+	 * which would send every asset request one level too high.
+	 *
+	 * Where the world goes differs. BlueMap reads it from the fragment. Dynmap reads
+	 * query parameters, and takes `nopanel` there too, which is its own way of not
+	 * building the sidebar this page replaces - better than hiding one that exists,
+	 * and unlike its `nogui` it still loads the components that draw player markers
+	 * and the spawn marker onto the map.
+	 */
+	function embedUrl(provider: string, name: string): string {
+		if (provider === 'dynmap') {
+			const query = new URLSearchParams({ nopanel: 'true' });
+
+			if (name) {
+				query.set('worldname', name);
+			}
+
+			return `${mapBase}/index.html?${query}`;
+		}
+
+		return name ? `${mapBase}/index.html#${name}` : `${mapBase}/index.html`;
+	}
 </script>
 
 <svelte:head>

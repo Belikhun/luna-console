@@ -73,6 +73,22 @@ export const DEFAULT_PORT_POOLS: readonly PortPool[] = [
 	},
 ];
 
+/** Dynmap's web binding, differing only in where that platform keeps its config. */
+function dynmapWeb(configDir: string): PortBindingSpec {
+	return {
+		id: "web",
+		protocol: "tcp",
+		scope: "instance",
+		pool: "map",
+		range: [8100, 8199],
+		config: {
+			file: `${configDir}/configuration.txt`,
+			format: "yaml",
+			key: "webserver-port",
+		},
+	};
+}
+
 /** Built-in port binding presets for known plugins, keyed by "<provider-slug>:<side>". */
 export const PORT_PRESETS: Record<string, PortBindingSpec[]> = {
 	"simple-voice-chat:paper": [
@@ -119,6 +135,15 @@ export const PORT_PRESETS: Record<string, PortBindingSpec[]> = {
 			},
 		},
 	],
+
+	// Dynmap's own webserver, one entry per platform because the same mod keeps its
+	// data directory somewhere different on each: a plugin's files go under
+	// `plugins/`, a mod's beside the world. The file itself is `configuration.txt`
+	// on all of them and its syntax is YAML whatever the extension suggests.
+	"dynmap:paper": [dynmapWeb("plugins/dynmap")],
+	"dynmap:forge": [dynmapWeb("dynmap")],
+	"dynmap:neoforge": [dynmapWeb("dynmap")],
+	"dynmap:fabric": [dynmapWeb("dynmap")],
 };
 
 /** Port specs for a lock entry: explicit declaration wins, then slug+loader preset. */

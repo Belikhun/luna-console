@@ -14,6 +14,21 @@
 		"unsupportedShell": "unsupported shell: {shell}",
 		"installHint": "# install: luna completions {shell} >> ~/.{target}"
 	},
+		"maps": {
+			"desc": "web maps: which servers have one, and whether it outlives the server",
+			"unknownInstance": "unknown instance: {name}",
+			"none": "no instance has a web map plugin deployed",
+			"noneForInstance": "{name} has no web map plugin deployed",
+			"filesOnly": "files only",
+			"legend": "{ok} yes  {off} nothing rendered yet  {warn} only while the server runs",
+			"notOfflineReady": "{name}: the rendered map cannot be read on its own, so it disappears while the server is stopped. {provider} writes the files its page needs only under JsonFileClientUpdateComponent; swap InternalClientUpdateComponent for it in the plugin's configuration.txt and restart.",
+			"notRendered": "{name}: nothing has been rendered yet, so there is no map to serve until the server draws one",
+			"head": {
+				"map": "Map",
+				"rendered": "Rendered",
+				"survivesStop": "Survives a stop"
+			}
+		},
 	"repl": {
 		"title": "interactive console",
 		"hints": "Tab to complete · 'help' for commands · '?' after a command for hints · 'exit' to leave",

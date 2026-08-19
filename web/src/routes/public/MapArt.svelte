@@ -4,21 +4,26 @@
 
 <script lang="ts">
 	/**
-	 * A server card's artwork: four BlueMap lowres tiles in a 2x2 around spawn.
+	 * A server card's artwork: four of the map's own coarse tiles in a 2x2 around
+	 * spawn.
 	 *
-	 * Each tile PNG is colour on the top half and a heightmap on the bottom, so
-	 * `object-position: top` over a square box crops away the half that is not a
-	 * picture. That crop is the whole trick; there is no image processing on the
-	 * server, and the browser caches the tiles like any other image.
+	 * Which four is the server's business, not this component's: `/art` answers
+	 * with tile URLs already, because the two map plugins address their tiles
+	 * nothing like each other and a card that knew the difference would grow a
+	 * branch per provider.
+	 *
+	 * BlueMap's coarse tiles are colour on the top half and a heightmap on the
+	 * bottom, so `crop` cuts away the half that is not a picture. That crop is the
+	 * whole trick; there is no image processing on the server, and the browser
+	 * caches the tiles like any other image.
 	 */
 	import { onMount } from 'svelte';
 
 	let { instance }: { instance: string } = $props();
 
 	interface Art {
-		map: string;
-		lod: number;
-		tiles: Array<{ x: number; z: number }>;
+		tiles: string[];
+		crop: boolean;
 	}
 
 	let art: Art | null = $state(null);
@@ -36,14 +41,14 @@
 		}
 	});
 
-	const src = (tile: { x: number; z: number }): string =>
-		`/api/public/map/${encodeURIComponent(instance)}/maps/${art!.map}/tiles/${art!.lod}/x${tile.x}/z${tile.z}.png`;
+	const src = (tile: string): string =>
+		`/api/public/map/${encodeURIComponent(instance)}/${tile}`;
 </script>
 
 {#if art}
 	<div class="tiles">
-		{#each art.tiles as tile (`${tile.x},${tile.z}`)}
-			<img src={src(tile)} alt="" loading="lazy" />
+		{#each art.tiles as tile (tile)}
+			<img class:crop={art.crop} src={src(tile)} alt="" loading="lazy" />
 		{/each}
 	</div>
 {/if}
@@ -64,8 +69,11 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-		// top half only: the bottom half of every lowres tile is the heightmap
-		object-position: top;
 		aspect-ratio: 1 / 1;
+
+		// top half only: the bottom half of every BlueMap lowres tile is a heightmap
+		&.crop {
+			object-position: top;
+		}
 	}
 </style>

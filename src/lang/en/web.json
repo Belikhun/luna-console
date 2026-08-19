@@ -3190,6 +3190,8 @@
 			"recenter": "Recentre",
 			"reload": "Reload tiles",
 			"reloadHint": "Reload after a render finishes on the server.",
+			"render": "Render",
+			"renderHint": "The same world drawn a different way.",
 			"reset": "Reset",
 			"screenshot": "Screenshot",
 			"sensitivity": "Mouse speed",
