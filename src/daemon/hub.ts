@@ -1393,7 +1393,11 @@ export function installHub(dcfg: DaemonConfig, startedAt: number): void {
 			return undefined;
 		}
 
-		return { cpu: health.instanceCpu?.[instance], rssMb: health.instanceRssMb?.[instance] };
+		return {
+			cpu: health.instanceCpu?.[instance],
+			rssMb: health.instanceRssMb?.[instance],
+			cpuCores: health.cpuCores,
+		};
 	});
 
 	void refreshClusterCache();

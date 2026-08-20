@@ -31,11 +31,12 @@ export {
 	instanceStatus,
 	getHistory,
 	readHostMemMb,
+	instanceThreads,
 	lunaProblem,
 	getEvents
 } from '$client/daemon';
 
-export type { UiState, MetricSample, ClusterEvent, StatusCheck } from '$client/daemon';
+export type { UiState, MetricSample, ClusterEvent, StatusCheck, ThreadReport, ThreadSample } from '$client/daemon';
 
 import * as daemon from '$client/daemon';
 import type { ClusterEvent } from '$client/daemon';

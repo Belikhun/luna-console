@@ -10,6 +10,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { cpus } from "node:os";
 import { t } from "../shared/i18n";
 
 import { instanceDir, loadCluster, managedInstances } from "../core/config";
@@ -108,6 +109,8 @@ const lastStatuses = new Map<string, CoreStatus>();
 export interface RemoteSample {
 	cpu?: number;
 	rssMb?: number;
+	/** Cores of the machine the instance runs on, not of this one. */
+	cpuCores?: number;
 }
 
 /**
@@ -703,6 +706,10 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 	const cpu = own ? (latest?.cpu ?? null) : (remote?.cpu ?? null);
 	const rssMb = own ? (latest?.rssMb ?? null) : (remote?.rssMb ?? null);
 
+	// the ceiling belongs to the machine the instance runs on, so a follower's
+	// core count travels with its sample rather than being read off this host
+	const cpuCores = own ? hostCpuCores() : (remote?.cpuCores ?? null);
+
 	return {
 		tps: backend?.online ? backend.metrics.tps : null,
 		heapUsedMb: backend?.online ? Math.round(backend.metrics.ramUsedBytes / 1024 / 1024) : null,
@@ -736,6 +743,7 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 		players: st.players ?? null,
 		pingVersion: st.pingVersion ?? null,
 		cpu,
+		cpuCores,
 		rssMb,
 		ports: st.inst.ports ?? {},
 		proxy: st.inst.proxy ?? null,
@@ -744,6 +752,23 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 		dir: instanceDir(st.inst),
 		checks: statusChecks(st),
 	};
+}
+
+let hostCores = 0;
+
+/**
+ * Cores of this machine, cached: it cannot change while the daemon runs.
+ *
+ * A per-instance CPU figure is percent of one core, so this is the ceiling a
+ * gauge has to scale against; without it a threaded server reads as pegged at
+ * 100% from its second busy thread onwards.
+ */
+export function hostCpuCores(): number {
+	if (!hostCores) {
+		hostCores = Math.max(1, cpus().length);
+	}
+
+	return hostCores;
 }
 
 let hostMemMb = 0;

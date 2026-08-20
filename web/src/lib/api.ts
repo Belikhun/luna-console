@@ -107,11 +107,33 @@ export interface InstanceRow {
 	players: { online: number; max: number } | null;
 	pingVersion: string | null;
 	cpu: number | null;
+	/**
+	 * Cores of the machine this instance runs on. `cpu` is percent of one core, so
+	 * this is what a gauge has to scale against; null when its owner has not
+	 * reported yet.
+	 */
+	cpuCores: number | null;
 	rssMb: number | null;
 	/** From LunaCore's heartbeat; null when the plugin is not reporting for this instance */
 	tps: number | null;
 	heapUsedMb: number | null;
 	heapMaxMb: number | null;
+	/** Tick duration, ms; the figure TPS hides once a server is below 20 */
+	msptMean: number | null;
+	msptMax: number | null;
+	/** What the server is holding; null on a platform that cannot count it */
+	chunks: number | null;
+	tickingEntities: number | null;
+	nonTickingEntities: number | null;
+	/** Tick-health indices, 0-1 */
+	apdex: number | null;
+	misery: number | null;
+	worlds: Array<{
+		name: string;
+		loadedChunks: number | null;
+		tickingEntities: number | null;
+		nonTickingEntities: number | null;
+	}>;
 	/** ONLINE | MAINT | OFFLINE as the proxy sees it */
 	lunaStatus: string | null;
 	lunaDisplayName: string | null;

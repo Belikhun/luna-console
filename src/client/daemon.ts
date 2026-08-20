@@ -19,6 +19,7 @@ import type {
 	UpgradeResult,
 } from "../daemon/upgrade";
 import type { MetricSample, StatusCheck, UiState } from "../daemon/sampler";
+import type { ThreadReport, ThreadSample } from "../daemon/threads";
 import type { ProgressReporter } from "../core/progress";
 import { UPGRADE_JOB_KIND } from "../shared/jobs";
 
@@ -35,6 +36,8 @@ export type {
 	MetricSample,
 	ReachResult,
 	StatusCheck,
+	ThreadReport,
+	ThreadSample,
 	UiState,
 	UpgradeCheck,
 	UpgradeChannel,
@@ -63,6 +66,17 @@ export const markTransition = call("daemon.markTransition") as (
 export const clearTransition = call("daemon.clearTransition") as (name: string) => Promise<void>;
 
 export const readHostMemMb = call("daemon.readHostMemMb") as () => Promise<number>;
+
+/**
+ * Per-thread CPU of an instance's process, sampled over a window on its owner.
+ *
+ * Null when the instance is not running, is external, or lives on a machine whose
+ * daemon is unreachable: there is no `/proc` entry to walk in any of those cases.
+ */
+export const instanceThreads = call("daemon.instanceThreads") as (
+	name: string,
+	windowMs?: number,
+) => Promise<ThreadReport | null>;
 
 export const lunaProblem = call("daemon.lunaProblem") as () => Promise<string | undefined>;
 

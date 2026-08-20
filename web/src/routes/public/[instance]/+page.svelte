@@ -6,7 +6,7 @@
 	import { onMount } from 'svelte';
 
 	import { t } from '$lib/i18n.svelte';
-	import { fmtDuration } from '$lib/format';
+	import { fmtDuration, cpuCeiling } from '$lib/format';
 	import { followPublic } from '$lib/public.svelte';
 	import { BlueMapLink } from '$lib/bluemap.svelte';
 	import { DynmapLink } from '$lib/dynmap.svelte';
@@ -373,10 +373,16 @@
 			/>
 			<!-- the uptime dial used to sit here; the 90-day timeline right below says
 			     what it said, in more detail, so this is CPU and heap instead -->
+			<!-- scaled to the whole machine, not one core: a threaded server passes 100%
+			     of a core routinely, and a dial pegged there reads the same at 120% as
+			     at 600% -->
 			<Gauge
 				value={card.cpu}
+				max={cpuCeiling(card.cpuCores)}
 				label={t('web.public.cpu')}
-				footnote={t('web.public.ofOneCore')}
+				footnote={card.cpuCores && card.cpuCores > 1
+					? t('web.public.ofCores', { count: String(card.cpuCores) })
+					: t('web.public.ofOneCore')}
 				size="7.5rem"
 			/>
 			<Gauge

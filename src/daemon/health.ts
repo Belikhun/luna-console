@@ -18,13 +18,19 @@ import { loadavg, networkInterfaces, uptime } from "node:os";
 import { diskUsage } from "../core/cleanup";
 import { root } from "../core/config";
 
-import { instanceCpuPct, instanceRssMb, instanceStates, samplerReady } from "./sampler";
+import { hostCpuCores, instanceCpuPct, instanceRssMb, instanceStates, samplerReady } from "./sampler";
 import { observeStates } from "./uptime";
 
 export interface HealthSample {
 	t: number;
 	/** Whole-host CPU utilization since the previous sample, percent */
 	cpuPct: number;
+	/**
+	 * Cores this machine has, which is the ceiling `instanceCpu` is measured
+	 * against: a per-process figure is percent of *one* core, so a threaded
+	 * server legitimately reads well past 100 and a gauge capped there is a lie.
+	 */
+	cpuCores: number;
 	memUsedMb: number;
 	memTotalMb: number;
 	/** Usage of the filesystem holding the cluster root */
@@ -174,6 +180,7 @@ async function sampleOnce(): Promise<void> {
 	const sample: HealthSample = {
 		t: Date.now(),
 		cpuPct,
+		cpuCores: hostCpuCores(),
 		memUsedMb: mem.usedMb,
 		memTotalMb: mem.totalMb,
 		diskUsedBytes: usage.usedBytes,

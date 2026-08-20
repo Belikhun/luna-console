@@ -8,7 +8,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, post, patch, del } from '$lib/api';
-	import { fmtDuration, fmtBytes, fmtDateTime } from '$lib/format';
+	import { fmtDuration, fmtBytes, fmtDateTime, cpuCeiling, fmtCpuPct } from '$lib/format';
 	import SoftwareLabel from '$lib/components/SoftwareLabel.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -23,6 +23,8 @@
 	import Panel from '$lib/components/Panel.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import type { InfoCell } from '$lib/components/grid';
+	import type { OverviewDetail, OverviewNode } from '$lib/components/nodeoverview';
+	import type { ThreadReport, ThreadSample } from '$client/daemon';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
@@ -32,6 +34,7 @@
 	import { channelOf } from '$lib/components/software';
 	import type { Software } from '$core/types';
 	import Sparkline from '$lib/components/Sparkline.svelte';
+	import NodeOverview from '$lib/components/NodeOverview.svelte';
 	import UptimeTimeline from '$lib/components/UptimeTimeline.svelte';
 	import type { UptimeSeries } from '$core/uptime';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
@@ -213,6 +216,17 @@
 		history: [],
 		events: []
 	});
+	/**
+	 * Per-thread CPU of the running process; null until the first report lands.
+	 *
+	 * Held apart from `metrics` on purpose: a report is a rate, so the daemon has
+	 * to hold the call open for the length of its window, and the charts beside it
+	 * must not wait a second on something they do not read.
+	 */
+	let threads: ThreadReport | null = $state(null);
+	let threadsPending = $state(false);
+	/** Why there is no report, when the owner had something to say about it. */
+	let threadsReason: string | null = $state(null);
 	let logData: { content: string; archives: any[] } = $state({ content: '', archives: [] });
 	/** whether the snapshot behind the log view has been read at least once */
 	let logSnapshotRead = $state(false);
@@ -299,6 +313,33 @@
 		}
 	}
 
+	/**
+	 * Read a fresh thread report.
+	 *
+	 * Guarded against overlap: the call outlives a fast refresh tick, and two in
+	 * flight at once would double the /proc walking to show one of the answers.
+	 */
+	async function loadThreads(): Promise<void> {
+		if (threadsPending) {
+			return;
+		}
+
+		threadsPending = true;
+
+		try {
+			const data = await api(`/instances/${name}/threads`);
+
+			threads = data.report;
+			threadsReason = data.reason ?? null;
+		} catch (err) {
+			// a stopped instance or an unreachable owner; the panel says so itself
+			threads = null;
+			threadsReason = err instanceof Error ? err.message : null;
+		} finally {
+			threadsPending = false;
+		}
+	}
+
 	/** Each tab loads its own data the first time it is shown, and on refresh. */
 	async function loadTab(which: string): Promise<void> {
 		// The stream owns both of these tabs whenever it is up; this fetch is the
@@ -353,6 +394,13 @@
 
 		if (which === 'monitoring' || which === 'checks') {
 			metrics = await api(`/instances/${name}/metrics`);
+		}
+
+		// deliberately not awaited: the thread report is measured over a window, so it
+		// lands about a second after everything else on the tab, and the charts have
+		// no reason to hold for it
+		if (which === 'monitoring') {
+			void loadThreads();
 		}
 
 		// While following, the stream is the body of the view, and a refresh tick
@@ -1087,6 +1135,114 @@
 	const miseryPct = $derived(inst?.misery == null ? null : inst.misery * 100);
 
 	const hostMemMb = $derived(inst?.hostMemMb ?? 0);
+
+	/**
+	 * How a `/proc` state letter is named and shaded in the thread grid.
+	 *
+	 * Keys rather than translated text, so one entry serves every locale; the
+	 * renderer calls t() on the label. Sleeping and idle stay track-coloured
+	 * because they are the normal case for most of a JVM's threads and colouring
+	 * them would drown out the few that are actually spending CPU.
+	 */
+	const THREAD_STATES: Record<string, { label: string; color: string }> = {
+		R: { label: 'web.threads.stateRunning', color: 'var(--link)' },
+		S: { label: 'web.threads.stateSleeping', color: 'var(--bg-track)' },
+		D: { label: 'web.threads.stateBlocked', color: 'var(--warning)' },
+		Z: { label: 'web.threads.stateZombie', color: 'var(--error)' },
+		T: { label: 'web.threads.stateStopped', color: 'var(--warning)' },
+		t: { label: 'web.threads.stateTraced', color: 'var(--warning)' },
+		I: { label: 'web.threads.stateIdle', color: 'var(--bg-track)' }
+	};
+
+	/**
+	 * Cool to hot across one core. The scale is fixed at 0-100 rather than derived
+	 * from the data: a thread cannot pass a single core, and a relative scale would
+	 * repaint an idle server's busiest thread bright red.
+	 */
+	const THREAD_RAMP = ['var(--bg-track)', 'var(--link)', 'var(--warning)', 'var(--error)'];
+
+	/** A thread at or above this is worth naming in the busiest list. */
+	const THREAD_BUSY_PCT = 1;
+
+	/** Nanoseconds at the scale a scheduling figure actually lands on. */
+	function fmtNs(value: number | null): string {
+		if (value === null) {
+			return '–';
+		}
+
+		if (value < 1_000_000) {
+			return `${(value / 1000).toFixed(0)} µs`;
+		}
+
+		return `${(value / 1_000_000).toFixed(1)} ms`;
+	}
+
+	const threadNodes: OverviewNode[] = $derived.by(() => {
+		if (!threads) {
+			return [];
+		}
+
+		return threads.threads.map((thread) => {
+			const state = THREAD_STATES[thread.state] ?? {
+				label: 'web.threads.stateUnknown',
+				color: 'var(--bg-track)'
+			};
+
+			const details: OverviewDetail[] = [
+				{ key: t('web.threads.threadId'), value: String(thread.tid), mono: true },
+				{
+					key: t('web.threads.userSystem'),
+					value: `${thread.userCpu.toFixed(1)}% / ${thread.systemCpu.toFixed(1)}%`
+				},
+				{
+					key: t('web.threads.lastCore'),
+					value: thread.lastCore === null ? '–' : `#${thread.lastCore}`
+				},
+				{ key: t('web.threads.onCpu'), value: fmtNs(thread.runNs) },
+				{ key: t('web.threads.waited'), value: fmtNs(thread.waitNs) },
+				{
+					key: t('web.threads.ctxSwitches'),
+					value:
+						thread.voluntaryCtx === null
+							? '–'
+							: t('web.threads.ctxPair', {
+									voluntary: String(thread.voluntaryCtx),
+									involuntary: String(thread.involuntaryCtx ?? 0)
+								})
+				},
+				{ key: t('web.threads.priority'), value: `${thread.priority} / ${thread.nice}` },
+				{ key: t('web.threads.aliveFor'), value: fmtDuration(thread.lifetimeMs) }
+			];
+
+			// only when there were any: a zero row on every one of a few hundred cards
+			// is noise, and a fault count that is not zero is the interesting case
+			if (thread.minorFaults > 0 || thread.majorFaults > 0) {
+				details.push({
+					key: t('web.threads.pageFaults'),
+					value: `${thread.minorFaults} / ${thread.majorFaults}`
+				});
+			}
+
+			return {
+				label: thread.name,
+				value: thread.cpu,
+				status: t(state.label),
+				statusColor: state.color,
+				details
+			};
+		});
+	});
+
+	const busiestThreads: ThreadSample[] = $derived.by(() => {
+		if (!threads) {
+			return [];
+		}
+
+		return threads.threads.filter((thread) => thread.cpu >= THREAD_BUSY_PCT);
+	});
+
+	/** Full CPU of the machine this instance runs on; see cpuCeiling(). */
+	const cpuMax = $derived(cpuCeiling(inst?.cpuCores));
 
 	const summaryCells: InfoCell[] = $derived.by(() => {
 		if (!inst) {
@@ -1903,7 +2059,14 @@
 							{#if inst.cpu == null}
 								<span class="dim">–</span>
 							{:else}
-								<ProgressBar compact value={inst.cpu} color="auto" width="10rem" />
+								<ProgressBar
+									compact
+									value={inst.cpu}
+									max={cpuMax}
+									color="auto"
+									right={fmtCpuPct(inst.cpu)}
+									width="10rem"
+								/>
 							{/if}
 						{:else if cell.id === 'rss'}
 							{#if inst.rssMb == null}
@@ -2043,6 +2206,72 @@
 					<Sparkline points={entityPoints} label={t('web.instanceDetail.entities')} color="#c9a227" />
 				{/if}
 			</div>
+
+			<!-- the whole-process CPU above says how much; this says what is spending it,
+			     which is the difference between a busy server and a broken one -->
+			{#if !inst.external}
+				<div class="gap"></div>
+				<Panel title={t('web.threads.title')} description={t('web.threads.description')}>
+					{#if threads}
+						<div class="threadbar">
+							<span class="stat">
+								<b>{threads.threadCount}</b>
+								{t('web.threads.threadsWord')}
+							</span>
+							<span class="sep">·</span>
+							<span class="stat">
+								<b>{fmtCpuPct(threads.totalCpu)}</b>
+								{t('web.threads.ofCeiling', { ceiling: fmtCpuPct(threads.cores * 100) })}
+							</span>
+							<span class="sep">·</span>
+							<span class="stat">
+								<b>{busiestThreads.length}</b>
+								{t('web.threads.abovePct', { pct: String(THREAD_BUSY_PCT) })}
+							</span>
+							<span class="sep">·</span>
+							<span class="stat dim">
+								{t('web.threads.sampledOver', { ms: String(threads.windowMs) })}
+							</span>
+						</div>
+						<NodeOverview
+							nodes={threadNodes}
+							min={0}
+							max={100}
+							ramp={THREAD_RAMP}
+							legendFormat={(value) => `${value}%`}
+							empty={t('web.threads.none')}
+						/>
+						{#if busiestThreads.length > 0}
+							<div class="busiest">
+								<div class="busiesthead">{t('web.threads.busiest')}</div>
+								{#each busiestThreads as thread (thread.tid)}
+									<div class="busiestrow">
+										<span class="tname">{thread.name}</span>
+										<span class="tid mono dim">#{thread.tid}</span>
+										<ProgressBar
+											compact
+											value={thread.cpu}
+											max={100}
+											color="auto"
+											right={fmtCpuPct(thread.cpu)}
+										/>
+									</div>
+								{/each}
+							</div>
+						{/if}
+						<p class="dim hint">{t('web.threads.nameHint')}</p>
+					{:else if threadsPending}
+						<p class="dim">{t('web.threads.sampling')}</p>
+					{:else}
+						<p class="dim">{t('web.threads.unavailable')}</p>
+						{#if threadsReason}
+							<!-- the owner's own words: on a fleet mid-upgrade this is what says
+							     which machine still needs the new build -->
+							<p class="dim hint mono">{threadsReason}</p>
+						{/if}
+					{/if}
+				</Panel>
+			{/if}
 
 			{#if hasTickSeries || worlds.length}
 				<div class="gap"></div>
@@ -3001,6 +3230,66 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
 		gap: 1rem;
+	}
+
+	.threadbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.375rem;
+		margin-bottom: 0.75rem;
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+
+		b {
+			color: var(--text);
+			font-variant-numeric: tabular-nums;
+		}
+
+		.sep {
+			color: var(--border);
+		}
+	}
+
+	.busiest {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+		margin-top: 1rem;
+	}
+
+	.busiesthead {
+		font-size: 0.75rem;
+		font-weight: 700;
+		color: var(--text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.05rem;
+	}
+
+	// name, id and bar on one line: the grid above answers "what is the shape", this
+	// answers "what are they called", and a wrapping row would lose the pairing
+	.busiestrow {
+		display: grid;
+		grid-template-columns: minmax(6rem, 12rem) 5rem 1fr;
+		align-items: center;
+		gap: 0.75rem;
+
+		.tname {
+			font-size: 0.8125rem;
+			color: var(--text);
+
+			@include ellipsis;
+		}
+
+		.tid {
+			font-size: 0.75rem;
+		}
+	}
+
+	.hint {
+		margin-top: 0.75rem;
+		margin-bottom: 0;
+		font-size: 0.75rem;
 	}
 
 	.indices {

@@ -56,3 +56,25 @@ export function fmtTime(t: number): string {
 export function fmtDateTime(t: number): string {
 	return new Date(t).toLocaleString('en-GB');
 }
+
+/**
+ * Ceiling a per-instance CPU figure is measured against, percent.
+ *
+ * An instance's CPU is percent of *one* core, so a threaded server reads well
+ * past 100: a 366% survival backend is nearly four cores' worth of work, not a
+ * fault. A bar scaled to 100 pegs from the second busy thread onwards and then
+ * reports every busy server as identical, so the denominator is the machine's
+ * whole capacity instead.
+ *
+ * @param cores cores of the machine the instance runs on; unknown counts as one,
+ *   which keeps the old single-core scale rather than inventing headroom
+ * @returns the maximum to give a gauge, always at least 100
+ */
+export function cpuCeiling(cores: number | null | undefined): number {
+	return Math.max(1, Number(cores) || 1) * 100;
+}
+
+/** A CPU percentage as shown: one decimal, so a busy server is not rounded flat. */
+export function fmtCpuPct(value: number): string {
+	return `${Math.round(value * 10) / 10}%`;
+}

@@ -78,6 +78,7 @@ import type { DaemonRow } from "./hub";
 import { daemonName, machineKey } from "./identity";
 import { buildVersion } from "../version";
 import * as sampler from "./sampler";
+import * as threads from "./threads";
 
 export interface OpSpec {
 	// the registry spans every core signature, so the map is untyped by design;
@@ -1191,6 +1192,7 @@ async function publicSnapshot(): Promise<publicsiteCore.PublicSnapshot | null> {
 			tps: (row?.tps as number | null) ?? null,
 			uptimeMs: (row?.uptimeMs as number | null) ?? null,
 			cpu: (row?.cpu as number | null) ?? null,
+			cpuCores: (row?.cpuCores as number | null) ?? null,
 			// the JVM's own heap rather than the process's resident size: it is what
 			// the server reports about itself and it comes with a real ceiling, which
 			// is what a gauge needs to have a full end
@@ -1687,6 +1689,9 @@ export const OPS: Record<string, OpSpec> = {
 	// process state is still read where the process actually is.
 	"daemon.instanceStatus": { fn: sampler.instanceStatus },
 	"daemon.getHistory": { fn: sampler.getHistory, instance: 0 },
+	// instance-routed, unlike instanceStatus above: this one walks /proc, and the
+	// process only has a /proc entry on the machine that owns it
+	"daemon.instanceThreads": { fn: threads.instanceThreads, instance: 0 },
 	"daemon.markTransition": { fn: sampler.markTransition },
 	"daemon.clearTransition": { fn: sampler.clearTransition },
 	"daemon.readHostMemMb": { fn: sampler.readHostMemMb },

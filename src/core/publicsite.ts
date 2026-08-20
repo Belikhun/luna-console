@@ -253,6 +253,8 @@ export interface PublicInstanceCard {
 	uptimeMs: number | null;
 	/** Process CPU, as a percentage of one core */
 	cpu: number | null;
+	/** Cores of the machine it runs on, so a reader can scale `cpu` against them */
+	cpuCores: number | null;
 	/** Resident size and the instance's configured ceiling, in MB */
 	memUsedMb: number | null;
 	memMaxMb: number | null;
@@ -361,6 +363,7 @@ export interface PublicSnapshotInput {
 			tps: number | null;
 			uptimeMs: number | null;
 			cpu?: number | null;
+			cpuCores?: number | null;
 			rssMb?: number | null;
 			memMaxMb?: number | null;
 			chunks?: number | null;
@@ -435,6 +438,7 @@ export function buildPublicSnapshot(input: PublicSnapshotInput): PublicSnapshot 
 			tps: status?.tps ?? null,
 			uptimeMs: status?.uptimeMs ?? null,
 			cpu: status?.cpu ?? null,
+			cpuCores: status?.cpuCores ?? null,
 			memUsedMb: status?.rssMb ?? null,
 			memMaxMb: status?.memMaxMb ?? null,
 			chunks: status?.chunks ?? null,

@@ -7,7 +7,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, type InstanceRow } from '$lib/api';
-	import { fmtDuration } from '$lib/format';
+	import type { DistributionSegment } from '$lib/components/distribution';
+	import { fmtDuration, cpuCeiling, fmtCpuPct } from '$lib/format';
 	import { SOFTWARE_IDS, traitsOf } from '$core/software';
 	import SoftwareLabel from '$lib/components/SoftwareLabel.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
@@ -27,6 +28,7 @@
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import DistributionBar from '$lib/components/DistributionBar.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
 	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -419,6 +421,55 @@
 		];
 	}
 
+	/**
+	 * A tick's budget at 20 TPS. The bar is scaled to it rather than to the worst
+	 * sample, so a healthy server reads as a quarter-full bar every time instead of
+	 * as whatever its own peak happened to be.
+	 */
+	const TICK_BUDGET_MS = 50;
+
+	/**
+	 * Entities split by whether they are ticked.
+	 *
+	 * The split is the useful part: non-ticking entities are nearly free, so a total
+	 * on its own cannot tell a heavy farm from a warehouse full of item frames.
+	 */
+	const entitySegments: DistributionSegment[] = $derived.by(() => {
+		if (!one) {
+			return [];
+		}
+
+		const segments: DistributionSegment[] = [];
+
+		if (one.tickingEntities != null) {
+			segments.push({
+				key: 'ticking',
+				label: t('web.instances.tickingEntities'),
+				count: one.tickingEntities,
+				color: 'var(--warning)'
+			});
+		}
+
+		if (one.nonTickingEntities != null) {
+			segments.push({
+				key: 'nonticking',
+				label: t('web.instances.nonTickingEntities'),
+				count: one.nonTickingEntities,
+				color: 'var(--link)'
+			});
+		}
+
+		return segments;
+	});
+
+	/**
+	 * How stale the heartbeat figures are, ms.
+	 *
+	 * Null when the plugin has never reported: an absent heartbeat and a very old
+	 * one mean different things, and both differ from "reported a second ago".
+	 */
+	const telemetryAge = $derived(one?.lastHeartbeatMs ? Date.now() - one.lastHeartbeatMs : null);
+
 	const detailCells: InfoCell[] = $derived.by(() => {
 		if (!one) {
 			return [];
@@ -426,6 +477,12 @@
 
 		return [
 			{ id: 'state', label: t('web.instances.colState') },
+			// what the proxy thinks, which is what a player actually meets; a running
+			// backend held in maintenance is invisible in the state above
+			{
+				label: t('web.instances.networkStatus'),
+				value: one.lunaStatus || t('web.instances.notReporting')
+			},
 			{ label: t('web.instances.colSoftware'), value: `${one.software} ${one.mcVersion ?? ''}` },
 			{
 				label: t('web.instances.colMachine'),
@@ -433,13 +490,30 @@
 				href: (one.daemon ?? hostName) ? `/machines/${one.daemon ?? hostName}` : undefined
 			},
 			{ label: t('web.instances.gameAddress'), value: one.address, copyable: true, style: 'mono' },
-			{ label: t('web.instances.memoryHeap'), value: one.memory },
-			{ label: t('web.instances.colProfile'), value: one.profile },
-			{ label: t('web.instances.colPid'), value: one.javaPid },
-			{ label: t('web.instances.colUptime'), value: fmtDuration(one.uptimeMs) },
 			{
 				label: t('web.instances.colPlayers'),
 				value: one.players ? `${one.players.online}/${one.players.max}` : null
+			},
+			{ label: t('web.instances.colUptime'), value: fmtDuration(one.uptimeMs) },
+			{ label: t('web.instances.memoryHeap'), value: one.memory },
+			{ label: t('web.instances.colProfile'), value: one.profile },
+			{
+				label: t('web.instances.cpuCores'),
+				value: one.cpuCores === null ? null : String(one.cpuCores)
+			},
+			{ label: t('web.instances.colPid'), value: one.javaPid },
+			// how old the figures below are: a stale heartbeat is why a panel shows a
+			// healthy 20 TPS for a server that stopped answering minutes ago
+			{
+				label: t('web.instances.telemetry'),
+				value:
+					telemetryAge === null
+						? t('web.instances.notReporting')
+						: t('web.instances.agoOf', { age: fmtDuration(telemetryAge) })
+			},
+			{
+				label: t('web.instances.protocol'),
+				value: one.pingVersion
 			},
 			{ label: t('web.instances.directory'), value: one.dir, copyable: true, style: 'mono' }
 		];
@@ -652,7 +726,13 @@
 						{#if row.cpu == null}
 							<span class="dim">–</span>
 						{:else}
-							<ProgressBar compact value={row.cpu} color="auto" right="{row.cpu}%" />
+							<ProgressBar
+								compact
+								value={row.cpu}
+								max={cpuCeiling(row.cpuCores)}
+								color="auto"
+								right={fmtCpuPct(row.cpu)}
+							/>
 						{/if}
 					{:else if col === 'rss'}
 						{#if row.rssMb == null}
@@ -724,17 +804,15 @@
 			/>
 			<div class="detailbody">
 				{#if detailTab === 'details'}
-					<InfoGrid
-						cells={detailCells}
-						columns={panelLocation === 'right' ? [2, 2, 1] : [4, 3, 2]}
-					>
-						{#snippet custom(cell)}
-							{#if cell.id === 'state'}<StatusBadge state={one.state} />{/if}
-						{/snippet}
-					</InfoGrid>
 					{#if one.state === 'running'}
 						<div class="meters">
-							<ProgressBar left={t('web.instances.cpuUtilization')} value={one.cpu ?? 0} color="auto" />
+							<ProgressBar
+								left={t('web.instances.cpuUtilization')}
+								value={one.cpu ?? 0}
+								max={cpuCeiling(one.cpuCores)}
+								color="auto"
+								right={fmtCpuPct(one.cpu ?? 0)}
+							/>
 							<ProgressBar
 								left={t('web.instances.residentMemory')}
 								value={one.rssMb ?? 0}
@@ -760,8 +838,55 @@
 									right={t('web.instances.gbOfGb', { used: (one.heapUsedMb / 1024).toFixed(1), total: (one.heapMaxMb / 1024).toFixed(1) })}
 								/>
 							{/if}
+							<!-- the figure TPS stops being able to express: TPS floors at 20 while
+							     tick duration keeps climbing, so a server at 20 TPS and 45 ms is
+							     already one bad chunk away from stuttering -->
+							{#if one.msptMean != null}
+								<ProgressBar
+									left={t('web.instances.tickDuration')}
+									value={one.msptMean}
+									max={TICK_BUDGET_MS}
+									color={one.msptMean <= 25 ? 'success' : one.msptMean <= 40 ? 'warning' : 'danger'}
+									right={t('web.instances.msMeanMax', {
+										mean: one.msptMean.toFixed(1),
+										max: one.msptMax == null ? '–' : one.msptMax.toFixed(1)
+									})}
+								/>
+							{/if}
 						</div>
+
+						{#if entitySegments.length > 0 || one.chunks != null}
+							<div class="worldload">
+								<div class="loadhead">
+									{t('web.instances.worldLoad')}
+									{#if one.chunks != null}
+										<span class="dim">
+											{t('web.instances.chunksLoaded', { count: one.chunks.toLocaleString() })}
+										</span>
+									{/if}
+									{#if one.worlds.length > 0}
+										<span class="dim">
+											{t('web.instances.worldCount', { count: String(one.worlds.length) })}
+										</span>
+									{/if}
+								</div>
+								{#if entitySegments.length > 0}
+									<DistributionBar
+										segments={entitySegments}
+										empty={t('web.instances.noEntities')}
+									/>
+								{/if}
+							</div>
+						{/if}
 					{/if}
+					<InfoGrid
+						cells={detailCells}
+						columns={panelLocation === 'right' ? [2, 2, 1] : [4, 3, 2]}
+					>
+						{#snippet custom(cell)}
+							{#if cell.id === 'state'}<StatusBadge state={one.state} />{/if}
+						{/snippet}
+					</InfoGrid>
 				{:else if detailTab === 'checks'}
 					{#each one.checks as check}
 						<div class="checkrow">
@@ -799,14 +924,43 @@
 />
 
 <style lang="scss">
+	// first in the tab: the live figures are what changes and what the panel is
+	// opened for, so the identity grid sits under them rather than above
 	.meters {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(12rem, 20rem));
+		grid-template-columns: repeat(auto-fill, minmax(14rem, 20rem));
 		gap: 1rem 2rem;
-		margin-top: 1.25rem;
-		padding-top: 1rem;
-		border-top: 0.1rem solid var(--border-divider);
+		margin-bottom: 1.25rem;
 	}
+
+	.worldload {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+		margin-bottom: 1.25rem;
+		padding-bottom: 1.25rem;
+		border-bottom: 0.1rem solid var(--border-divider);
+	}
+
+	.loadhead {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.75rem;
+		font-size: 0.75rem;
+		font-weight: 700;
+		color: var(--text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.05rem;
+
+		// the counts beside the heading are data, not part of the label
+		.dim {
+			font-weight: 400;
+			text-transform: none;
+			letter-spacing: normal;
+		}
+	}
+
 	.hint {
 		margin-top: 1rem;
 		text-align: center;
