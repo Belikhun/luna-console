@@ -1717,6 +1717,7 @@
 		"heldByLunavaultOnThe": "Do LunaVault trên proxy giữ; nguồn sự thật của mạng về số dư",
 		"findInTransactions": "Tìm trong giao dịch",
 		"transaction": "giao dịch",
+		"newestRecordsShown": "Đang hiển thị {shown} bản ghi mới nhất trong tổng số {total}.",
 		"noTransactions": "Không có giao dịch nào",
 		"everyPaymentRewardAndAdmin": "Mọi khoản thanh toán, thưởng và điều chỉnh của admin mà LunaVault ghi cho người chơi này đều hiện ở đây.",
 		"findBackend": "Tìm backend",

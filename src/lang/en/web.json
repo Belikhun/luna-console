@@ -2467,6 +2467,7 @@
 		"heldByLunavaultOnThe": "Held by LunaVault on the proxy; the network's source of truth for balances",
 		"findInTransactions": "Find in transactions",
 		"transaction": "transaction",
+		"newestRecordsShown": "Showing the newest {shown} of {total} records.",
 		"noTransactions": "No transactions",
 		"everyPaymentRewardAndAdmin": "Every payment, reward and admin adjustment LunaVault records for this player appears here.",
 		"findBackend": "Find backend",

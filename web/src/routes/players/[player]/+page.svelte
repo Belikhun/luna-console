@@ -169,11 +169,15 @@
 		atEpochMillis: number;
 	}
 
-	/** Page size for the log tabs; "Load more" appends another page. */
-	const LOG_PAGE = 100;
+	/** Rows per request; LunaCore clamps a log page to 200 whatever is asked for. */
+	const LOG_PAGE = 200;
 
-	/** Transactions per request; LunaVault pages this one by page index, not offset. */
-	const VAULT_PAGE = 50;
+	/**
+	 * Newest rows a log tab keeps. The tables page, sort and search over what they
+	 * are handed, so a tab loads the whole record instead of growing a "load more"
+	 * button under it; the cap is what stops years of chat arriving in one screen.
+	 */
+	const LOG_LIMIT = 2000;
 
 	/** Default lifetime offered for a temporary password, in minutes. */
 	const DEFAULT_TEMP_MINUTES = 1440;
@@ -261,8 +265,6 @@
 	let vaultProblem = $state('');
 	let vaultTx: VaultTx[] = $state([]);
 	let vaultTotal = $state(0);
-	/** Index of the last page fetched, so "Load more" asks for the next one. */
-	let vaultPage = $state(0);
 
 	// permissions editor state
 	let groupPick = $state('');
@@ -340,10 +342,32 @@
 		}
 	}
 
-	async function loadVaultTransactions(reset: boolean): Promise<void> {
-		const wanted = reset ? 0 : vaultPage + 1;
+	/**
+	 * Fetch the rest of a log whose first request already reported its total,
+	 * newest first and capped at `LOG_LIMIT` rows. The endpoints clamp a request
+	 * to `LOG_PAGE` rows however many are asked for, so a complete record is
+	 * several requests; they are independent, so they go out together.
+	 */
+	async function restOfLog<T>(
+		total: number,
+		loaded: number,
+		fetchPage: (offset: number) => Promise<T[]>
+	): Promise<T[]> {
+		const wanted = Math.min(total, LOG_LIMIT);
+		const offsets: number[] = [];
+
+		for (let offset = loaded; offset < wanted; offset += LOG_PAGE) {
+			offsets.push(offset);
+		}
+
+		const pages = await Promise.all(offsets.map((offset) => fetchPage(offset)));
+
+		return pages.flat().slice(0, wanted - loaded);
+	}
+
+	async function loadVaultTransactions(): Promise<void> {
 		const data = await api(
-			`/players/${encodeURIComponent(ref)}/vault/transactions?page=${wanted}&pageSize=${VAULT_PAGE}`
+			`/players/${encodeURIComponent(ref)}/vault/transactions?page=0&pageSize=${LOG_PAGE}`
 		);
 
 		if (data.available === false) {
@@ -351,45 +375,90 @@
 		}
 
 		vaultTotal = data.totalCount ?? 0;
-		vaultPage = data.page ?? 0;
-		vaultTx = reset ? (data.entries ?? []) : [...vaultTx, ...(data.entries ?? [])];
+
+		// LunaVault pages this log by page index rather than by row offset
+		const lastPage = Math.min(data.maxPage ?? 0, Math.ceil(LOG_LIMIT / LOG_PAGE) - 1);
+		const pages: number[] = [];
+
+		for (let index = 1; index <= lastPage; index++) {
+			pages.push(index);
+		}
+
+		const rest = await Promise.all(
+			pages.map(async (index): Promise<VaultTx[]> => {
+				const more = await api(
+					`/players/${encodeURIComponent(ref)}/vault/transactions?page=${index}&pageSize=${LOG_PAGE}`
+				);
+
+				return more.available === false ? [] : (more.entries ?? []);
+			})
+		);
+
+		vaultTx = [...(data.entries ?? []), ...rest.flat()];
 	}
 
-	async function loadSessions(reset: boolean): Promise<void> {
-		const offset = reset ? 0 : sessions.length;
-		const data = await api(`/players/${encodeURIComponent(ref)}/sessions?limit=${LOG_PAGE}&offset=${offset}`);
+	async function loadSessions(): Promise<void> {
+		const data = await api(`/players/${encodeURIComponent(ref)}/sessions?limit=${LOG_PAGE}&offset=0`);
 
 		if (data.available === false) {
 			return;
 		}
 
 		sessionsTotal = data.total ?? 0;
-		sessions = reset ? (data.sessions ?? []) : [...sessions, ...(data.sessions ?? [])];
+
+		const first: Session[] = data.sessions ?? [];
+		const rest = await restOfLog<Session>(sessionsTotal, first.length, async (offset) => {
+			const more = await api(
+				`/players/${encodeURIComponent(ref)}/sessions?limit=${LOG_PAGE}&offset=${offset}`
+			);
+
+			return more.available === false ? [] : (more.sessions ?? []);
+		});
+
+		sessions = [...first, ...rest];
 	}
 
-	async function loadChat(reset: boolean): Promise<void> {
-		const offset = reset ? 0 : chat.length;
+	async function loadChat(): Promise<void> {
 		const type = chatType ? `&type=${chatType}` : '';
-		const data = await api(`/players/${encodeURIComponent(ref)}/chat?limit=${LOG_PAGE}&offset=${offset}${type}`);
+		const data = await api(`/players/${encodeURIComponent(ref)}/chat?limit=${LOG_PAGE}&offset=0${type}`);
 
 		if (data.available === false) {
 			return;
 		}
 
 		chatTotal = data.total ?? 0;
-		chat = reset ? (data.entries ?? []) : [...chat, ...(data.entries ?? [])];
+
+		const first: ChatEntry[] = data.entries ?? [];
+		const rest = await restOfLog<ChatEntry>(chatTotal, first.length, async (offset) => {
+			const more = await api(
+				`/players/${encodeURIComponent(ref)}/chat?limit=${LOG_PAGE}&offset=${offset}${type}`
+			);
+
+			return more.available === false ? [] : (more.entries ?? []);
+		});
+
+		chat = [...first, ...rest];
 	}
 
-	async function loadModeration(reset: boolean): Promise<void> {
-		const offset = reset ? 0 : moderation.length;
-		const data = await api(`/players/${encodeURIComponent(ref)}/moderation?limit=${LOG_PAGE}&offset=${offset}`);
+	async function loadModeration(): Promise<void> {
+		const data = await api(`/players/${encodeURIComponent(ref)}/moderation?limit=${LOG_PAGE}&offset=0`);
 
 		if (data.available === false) {
 			return;
 		}
 
 		moderationTotal = data.total ?? 0;
-		moderation = reset ? (data.entries ?? []) : [...moderation, ...(data.entries ?? [])];
+
+		const first: ModEntry[] = data.entries ?? [];
+		const rest = await restOfLog<ModEntry>(moderationTotal, first.length, async (offset) => {
+			const more = await api(
+				`/players/${encodeURIComponent(ref)}/moderation?limit=${LOG_PAGE}&offset=${offset}`
+			);
+
+			return more.available === false ? [] : (more.entries ?? []);
+		});
+
+		moderation = [...first, ...rest];
 	}
 
 	async function loadPermissions(): Promise<void> {
@@ -420,15 +489,15 @@
 	/** Fetch the data a tab renders, the first time it is opened. */
 	async function loadTab(id: string, force = false): Promise<void> {
 		if (id === 'sessions' && (force || sessions.length === 0)) {
-			await loadSessions(true);
+			await loadSessions();
 		} else if (id === 'chat' && (force || chat.length === 0)) {
-			await loadChat(true);
+			await loadChat();
 		} else if (id === 'moderation' && (force || moderation.length === 0)) {
-			await loadModeration(true);
+			await loadModeration();
 		} else if (id === 'permissions' && (force || !permsLoaded)) {
 			await loadPermissions();
 		} else if (id === 'economy' && (force || vaultTx.length === 0)) {
-			await loadVaultTransactions(true);
+			await loadVaultTransactions();
 		}
 	}
 
@@ -723,7 +792,7 @@
 			});
 		}
 
-		await loadModeration(true);
+		await loadModeration();
 	}
 
 	const skinModeValid = $derived.by(() => {
@@ -787,7 +856,7 @@
 			});
 
 			await refresh();
-			await loadModeration(true);
+			await loadModeration();
 		} catch (err) {
 			note.set({
 				level: 'error',
@@ -816,7 +885,7 @@
 		);
 
 		noteText = '';
-		await loadModeration(true);
+		await loadModeration();
 	}
 
 	// --------------------------------------------------------- account security
@@ -837,7 +906,7 @@
 			`Password cleared; ${detail?.username} registers a new one with /register`
 		);
 
-		await loadModeration(true);
+		await loadModeration();
 	}
 
 	/**
@@ -873,7 +942,7 @@
 			});
 
 			await loadAuth();
-			await loadModeration(true);
+			await loadModeration();
 		} catch (err) {
 			note.set({
 				level: 'error',
@@ -1266,6 +1335,8 @@
 					<InfoGrid cells={vaultCells} columns={[4, 2, 1]} />
 				</Panel>
 
+				<div class="gap"></div>
+
 				<Panel flush>
 					<ResourceTable
 						tableId="player-transactions"
@@ -1325,11 +1396,12 @@
 						{/snippet}
 					</ResourceTable>
 					{#if vaultTx.length < vaultTotal}
-						<div class="more">
-							<Btn onclick={() => void loadVaultTransactions(false)}>
-								Load more ({vaultTx.length}/{vaultTotal})
-							</Btn>
-						</div>
+						<p class="capped dim">
+							{t('web.playerDetail.newestRecordsShown', {
+								shown: vaultTx.length,
+								total: vaultTotal
+							})}
+						</p>
 					{/if}
 				</Panel>
 			{/if}
@@ -1372,11 +1444,12 @@
 					{/snippet}
 				</ResourceTable>
 				{#if sessions.length < sessionsTotal}
-					<div class="more">
-						<Btn onclick={() => void loadSessions(false)}>
-							Load more ({sessions.length}/{sessionsTotal})
-						</Btn>
-					</div>
+					<p class="capped dim">
+						{t('web.playerDetail.newestRecordsShown', {
+							shown: sessions.length,
+							total: sessionsTotal
+						})}
+					</p>
 				{/if}
 			</Panel>
 		{:else if tab === 'chat'}
@@ -1404,7 +1477,7 @@
 								{ value: 'chat', label: t('web.playerDetail.chatOnly') },
 								{ value: 'command', label: t('web.playerDetail.commandsOnly') }
 							]}
-							onchange={() => void loadChat(true)}
+							onchange={() => void loadChat()}
 						/>
 					{/snippet}
 					{#snippet cell(entry, col)}
@@ -1423,9 +1496,9 @@
 					{/snippet}
 				</ResourceTable>
 				{#if chat.length < chatTotal}
-					<div class="more">
-						<Btn onclick={() => void loadChat(false)}>Load more ({chat.length}/{chatTotal})</Btn>
-					</div>
+					<p class="capped dim">
+						{t('web.playerDetail.newestRecordsShown', { shown: chat.length, total: chatTotal })}
+					</p>
 				{/if}
 			</Panel>
 		{:else if tab === 'permissions'}
@@ -1556,11 +1629,12 @@
 					{/snippet}
 				</ResourceTable>
 				{#if moderation.length < moderationTotal}
-					<div class="more">
-						<Btn onclick={() => void loadModeration(false)}>
-							Load more ({moderation.length}/{moderationTotal})
-						</Btn>
-					</div>
+					<p class="capped dim">
+						{t('web.playerDetail.newestRecordsShown', {
+							shown: moderation.length,
+							total: moderationTotal
+						})}
+					</p>
 				{/if}
 			</Panel>
 		{/if}
@@ -1853,10 +1927,11 @@
 		height: 1rem;
 	}
 
-	.more {
-		display: flex;
-		justify-content: center;
-		padding: 0.75rem;
+	// the cap is a fact about the table above it, not an invitation to click
+	.capped {
+		margin: 0;
+		padding: 0.75rem 1.25rem;
+		font-size: 0.8125rem;
 		border-top: 0.1rem solid var(--border-divider);
 	}
 
