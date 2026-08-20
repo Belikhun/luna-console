@@ -511,6 +511,34 @@ Wiring rules:
   creating action last as `primary`. Actions apply to the table selection, an unavailable action is
   **disabled with the reason** rather than hidden, destructive ones confirm, and a bulk action
   reports per-target outcomes.
+- **A player's avatar is rendered here.**
+  `/api/public/avatar/<kind>/<size>/<subject>.png` is the ungated endpoint other software points at
+  (luna-messenger's Discord webhooks, and anything else that only has a URL); `/api/avatar/...` is
+  the console's own, behind the session. Both answer the six renders `face`, `front`, `frontfull`,
+  `head`, `bust`, `full`, plus `skin` and `processedskin`, in the grammar and the framing of the
+  hosted service the messenger used to call, so switching a webhook over is a change of host.
+  Everything below the route lives in `web/src/lib/server/imaging/`: a PNG codec (`png.ts`, because
+  Bun decodes no images and a native decoder would have to build for two architectures inside the
+  published image), the vanilla skin processing (`skin.ts`: a 64×32 skin unfolded, base layers forced
+  opaque, an overlay that is opaque everywhere erased, arm width read from the four columns a slim
+  skin leaves empty, and read **before** the opaque pass that would overwrite them), the model as
+  boxes carrying the skin's own UV net (`model.ts`), and a software rasteriser with a z-buffer,
+  back-to-front drawing and supersampled edges (`render.ts`). **Nothing is shaded**: a skin is
+  painted with its lighting already in it, and the reference service's output measures as texture
+  colours passed straight through; what makes a render read as three-dimensional is the perspective,
+  the silhouette, the slight A-pose of the arms and the ground shadow. The framing constants are
+  measured against that reference rather than invented, which is why they are not round numbers.
+  A subject is a username, a UUID, a Mojang texture id or a default-skin name; **the default skins
+  are referenced by texture id**, which is the hash of the file, and fetched from Mojang's texture
+  server on first use, so none of their artwork is stored in this repository, and a player with no
+  recorded skin (or a UUID nobody has seen) renders the default that UUID would get in game instead
+  of a broken image. Renders are cached in memory and under `<root>/.cache/avatars/`, keyed by the
+  skin's texture URL so that changing a skin invalidates by itself, with that key as the ETag; a
+  burst of joins draws each avatar once. Options are the same service's: `?no=shadow,helmet,overlay`
+  (`cape` and `ears` are accepted and already true, since neither is drawn), `?y=`/`?p=`/`?r=` in
+  degrees relative to the render's own angle, `?slim`/`?wide`, `?autocrop`. Two deviations are
+  deliberate: only PNG is encoded, so `.webp` and `.jxl` answer 415 rather than serving PNG bytes
+  under a name that promises otherwise, and capes and Ears features are not drawn at all.
 - **Global search indexes every object.** The index is a provider registry, so a new kind of object
   means a new provider, never a branch inside `GlobalSearch.svelte`
   (`web/src/lib/search/providers.ts`). Objects with no detail route link to `?q=<term>`, which
