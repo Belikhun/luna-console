@@ -59,6 +59,17 @@ export interface MapProviderSpec {
 	 * the file it writes.
 	 */
 	offlineMarker?: string;
+	/**
+	 * Config line that must be present, and uncommented, for those files to keep
+	 * being written.
+	 *
+	 * The marker alone lies. Dynmap leaves its json-file output behind when the
+	 * component that wrote it is switched off, so a webroot can hold a bootstrap
+	 * naming documents that stopped being updated - a map that loads and shows a
+	 * frozen world while reporting itself fit to serve. Requiring the component too
+	 * is the difference between "these files exist" and "these files are current".
+	 */
+	offlineRequires?: RegExp;
 	/** Requests only the running server can answer */
 	livePath: RegExp;
 	/**
@@ -108,6 +119,7 @@ export const MAP_PROVIDERS: readonly MapProviderSpec[] = [
 		webrootDefault: "web",
 		index: "index.html",
 		offlineMarker: "standalone/config.js",
+		offlineRequires: /^[ \t]*-[ \t]*class:[ \t]*org\.dynmap\.JsonFileClientUpdateComponent[ \t]*$/m,
 		preferFile: /^standalone\/config\.js$/,
 		// the `up/` tree is the internal update component, which is the plugin
 		// answering out of memory; in json-file mode the page never asks for it
@@ -166,7 +178,8 @@ export async function resolveMapWebroot(
 			continue;
 		}
 
-		const value = await configuredWebroot(base, provider);
+		const config = await readConfig(base, provider);
+		const value = configuredWebroot(config, provider);
 		const from = provider.webrootBase === "config" ? base : instanceDir;
 		const dir = isAbsolute(value) ? resolve(value) : resolve(from, value);
 
@@ -174,14 +187,42 @@ export async function resolveMapWebroot(
 			continue;
 		}
 
+		const written = !provider.offlineMarker || existsSync(join(dir, provider.offlineMarker));
+		const current = !provider.offlineRequires || provider.offlineRequires.test(config);
+
 		return {
 			provider: provider.id,
 			dir,
-			offlineReady: !provider.offlineMarker || existsSync(join(dir, provider.offlineMarker)),
+			offlineReady: written && current,
 		};
 	}
 
 	return undefined;
+}
+
+/**
+ * The first of a provider's config files that reads, or an empty string.
+ *
+ * One read serves both questions asked of it - where the webroot is, and whether
+ * the provider is configured to keep its files current - so the file is not
+ * opened twice.
+ */
+async function readConfig(base: string, provider: MapProviderSpec): Promise<string> {
+	for (const file of provider.configFiles) {
+		const path = join(base, file);
+
+		if (!existsSync(path)) {
+			continue;
+		}
+
+		try {
+			return await readFile(path, "utf8");
+		} catch {
+			continue;
+		}
+	}
+
+	return "";
 }
 
 /**
@@ -193,29 +234,9 @@ export async function resolveMapWebroot(
  * risk. Commented-out lines are the defaults the plugin shipped, so only an
  * uncommented one counts.
  */
-async function configuredWebroot(base: string, provider: MapProviderSpec): Promise<string> {
-	for (const file of provider.configFiles) {
-		const path = join(base, file);
+function configuredWebroot(config: string, provider: MapProviderSpec): string {
+	const key = provider.webrootKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = new RegExp(`^[ \\t]*${key}[ \\t]*[:=][ \\t]*"?([^"\\r\\n]+?)"?[ \\t]*$`, "m").exec(config);
 
-		if (!existsSync(path)) {
-			continue;
-		}
-
-		let body: string;
-
-		try {
-			body = await readFile(path, "utf8");
-		} catch {
-			continue;
-		}
-
-		const key = provider.webrootKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		const match = new RegExp(`^[ \\t]*${key}[ \\t]*[:=][ \\t]*"?([^"\\r\\n]+?)"?[ \\t]*$`, "m").exec(body);
-
-		if (match?.[1]) {
-			return match[1];
-		}
-	}
-
-	return provider.webrootDefault;
+	return match?.[1] || provider.webrootDefault;
 }
