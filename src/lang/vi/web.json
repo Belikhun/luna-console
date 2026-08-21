@@ -1818,6 +1818,9 @@
 		"account": "Tài khoản",
 		"economy": "Kinh tế",
 		"playHistory": "Lịch sử chơi",
+		"playCalendar": "Lịch chơi",
+		"playCalendarHint": "Giờ chơi mỗi ngày, lấy từ các phiên nạp ở dưới. Phiên chạy qua nửa đêm được tính cho cả hai ngày.",
+		"noPlayDays": "Chưa có gì để vẽ",
 		"chatCommands": "Chat & lệnh",
 		"permissions": "Quyền",
 		"moderation": "Kiểm duyệt",
@@ -3532,5 +3535,34 @@
 		"stateTraced": "Đang bị theo dõi",
 		"stateIdle": "Rảnh",
 		"stateUnknown": "Không rõ"
+	},
+	"calendar": {
+		"weekday": {
+			"mon": "T2",
+			"tue": "T3",
+			"wed": "T4",
+			"thu": "T5",
+			"fri": "T6",
+			"sat": "T7",
+			"sun": "CN"
+		},
+		"month": {
+			"jan": "Th1",
+			"feb": "Th2",
+			"mar": "Th3",
+			"apr": "Th4",
+			"may": "Th5",
+			"jun": "Th6",
+			"jul": "Th7",
+			"aug": "Th8",
+			"sep": "Th9",
+			"oct": "Th10",
+			"nov": "Th11",
+			"dec": "Th12"
+		},
+		"date": "{day} {month} {year}",
+		"less": "Ít",
+		"more": "Nhiều",
+		"busiest": "ngày cao nhất {value}"
 	}
 }

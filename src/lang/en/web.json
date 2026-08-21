@@ -2568,6 +2568,9 @@
 		"account": "Account",
 		"economy": "Economy",
 		"playHistory": "Play history",
+		"playCalendar": "Play calendar",
+		"playCalendarHint": "Playtime per day, from the sessions loaded below. A session running past midnight counts toward both days.",
+		"noPlayDays": "Nothing to draw yet",
 		"chatCommands": "Chat & commands",
 		"permissions": "Permissions",
 		"moderation": "Moderation",
@@ -3532,5 +3535,34 @@
 		"stateTraced": "Traced",
 		"stateIdle": "Idle",
 		"stateUnknown": "Unknown"
+	},
+	"calendar": {
+		"weekday": {
+			"mon": "Mon",
+			"tue": "Tue",
+			"wed": "Wed",
+			"thu": "Thu",
+			"fri": "Fri",
+			"sat": "Sat",
+			"sun": "Sun"
+		},
+		"month": {
+			"jan": "Jan",
+			"feb": "Feb",
+			"mar": "Mar",
+			"apr": "Apr",
+			"may": "May",
+			"jun": "Jun",
+			"jul": "Jul",
+			"aug": "Aug",
+			"sep": "Sep",
+			"oct": "Oct",
+			"nov": "Nov",
+			"dec": "Dec"
+		},
+		"date": "{day} {month} {year}",
+		"less": "Less",
+		"more": "More",
+		"busiest": "busiest day {value}"
 	}
 }

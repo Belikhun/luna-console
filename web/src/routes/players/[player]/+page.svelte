@@ -17,6 +17,9 @@
 	import MultiSelect from '$lib/components/MultiSelect.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
+	import CalendarGraph from '$lib/components/CalendarGraph.svelte';
+	import type { CalendarDay, CalendarPoint } from '$lib/components/calendargraph';
+	import type { OverviewDetail } from '$lib/components/nodeoverview';
 	import type { Column } from '$lib/components/table';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
@@ -1132,6 +1135,60 @@
 		await loadPermissions();
 	}
 
+	// GitHub-style ramp for the play calendar: an empty day has to read as empty,
+	// so the low stop is the panel's own hover tint rather than the lighter track.
+	const PLAY_RAMP = ['var(--bg-hover)', 'var(--success)'];
+
+	/**
+	 * Play sessions as one reading per day each session touched, so the calendar
+	 * shades a day by the time actually played on it: a session running past
+	 * midnight is split at the boundary instead of being credited whole to the day
+	 * it started in, which is what a long night would otherwise look like.
+	 */
+	const playPoints: CalendarPoint[] = $derived.by(() => {
+		const points: CalendarPoint[] = [];
+
+		for (const session of sessions) {
+			const startAt = session.connectedAtEpochMillis;
+
+			// an open session is still running, so it counts up to now; a closed one
+			// with no disconnect timestamp falls back to its own recorded duration
+			const endAt = session.open
+				? Date.now()
+				: session.disconnectedAtEpochMillis > startAt
+					? session.disconnectedAtEpochMillis
+					: startAt + Math.max(0, session.durationMillis);
+
+			if (endAt <= startAt) {
+				// a session with nothing on the clock still says the player was here
+				points.push({ at: startAt, value: 0 });
+				continue;
+			}
+
+			let cursor = startAt;
+
+			while (cursor < endAt) {
+				const date = new Date(cursor);
+				const midnight = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime();
+				const until = Math.min(endAt, midnight);
+
+				points.push({ at: cursor, value: until - cursor });
+				cursor = until;
+			}
+		}
+
+		return points;
+	});
+
+	// the range ends today rather than at the last session, so a player who
+	// stopped playing shows the gap since instead of ending on their last day
+	const playRangeEnd = $derived(sessions.length > 0 ? Date.now() : null);
+
+	// how many sessions made up the day's total, which the duration alone hides
+	const playDayDetails = $derived((day: CalendarDay): OverviewDetail[] => [
+		{ key: t('web.playerDetail.sessions'), value: String(day.count), mono: true }
+	]);
+
 	const sessionCols: Column[] = $derived([
 		{ id: 'connected', label: t('web.playerDetail.connected'), sortable: true },
 		{ id: 'server', label: t('web.playerDetail.backend'), sortable: true },
@@ -1406,6 +1463,20 @@
 				</Panel>
 			{/if}
 		{:else if tab === 'sessions'}
+			<Panel
+				title={t('web.playerDetail.playCalendar')}
+				description={t('web.playerDetail.playCalendarHint')}
+			>
+				<CalendarGraph
+					points={playPoints}
+					to={playRangeEnd}
+					ramp={PLAY_RAMP}
+					valueFormat={(value) => (value > 0 ? fmtDuration(value) : '0s')}
+					dayDetails={playDayDetails}
+					empty={t('web.playerDetail.noPlayDays')}
+				/>
+			</Panel>
+			<div class="gap"></div>
 			<Panel flush>
 				<ResourceTable
 					tableId="player-sessions"
