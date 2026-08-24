@@ -1290,7 +1290,7 @@ export const OPS: Record<string, OpSpec> = {
 	"admin.inspectInstanceDir": { fn: inspectInstanceDirRouted },
 	"admin.setVersion": { fn: adminCore.setVersion, cfg: 0, instance: 1, reporter: { arg: 3 } },
 	"admin.ensureForwardingMod": { fn: adminCore.ensureForwardingMod, cfg: 0, lock: 1, instance: 2 },
-	"admin.setPort": { fn: adminCore.setPort, cfg: 0 },
+	"admin.setPort": { fn: adminCore.setPort, cfg: 0, instance: 1 },
 	"admin.getServerProperty": { fn: adminCore.getServerProperty, cfg: 0, instance: 1 },
 	"admin.setServerProperty": { fn: adminCore.setServerProperty, cfg: 0, instance: 1 },
 	"admin.deleteInstance": {

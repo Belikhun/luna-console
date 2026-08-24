@@ -671,9 +671,12 @@ const READY_HINTS = [
 	"running",
 	"is ready",
 	"enabled successfully",
-	// LunaCore and friends log in Vietnamese
+	// LunaCore and friends log in Vietnamese. "đã sẵn sàng" is the phrase every
+	// luna module except the core itself announces with, so leaving it out reported
+	// a whole modded backend as unknown while the core alone read as running.
 	"đã khởi động",
 	"khởi động thành công",
+	"đã sẵn sàng",
 ];
 
 /**
