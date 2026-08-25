@@ -116,15 +116,47 @@
 	let inst: any = $state(null);
 	let tab = $state('details');
 
+	/** The addon directories this software keeps; every addon noun follows from them. */
+	const addonDirs = $derived(
+		inst ? traitsOf(inst.software as Software).addonDirs : ['plugins']
+	);
+
+	/** Whether every addon here is a mod, which is what a lone `mods/` means. */
+	const modsOnly = $derived(addonDirs.length === 1 && addonDirs[0] === 'mods');
+
+	/** Whether this one runs both ecosystems, and so cannot be named after either. */
+	const hybrid = $derived(addonDirs.length > 1);
+
 	// a mod loader keeps its addons in mods/, so the tab is called what the
 	// operator will look for; a hybrid runs both ecosystems and says so. The rows
 	// and the API behind them are the same either way.
-	const addonLabel = $derived.by(() => {
-		const dirs = inst ? traitsOf(inst.software as Software).addonDirs : ['plugins'];
-		const names = dirs.map((dir) => (dir === 'mods' ? 'Mods' : 'Plugins'));
+	const addonLabel = $derived(
+		hybrid
+			? t('web.instanceDetail.addonsBoth')
+			: modsOnly
+				? t('web.instanceDetail.addonsMods')
+				: t('web.instanceDetail.addonsPlugins')
+	);
 
-		return names.join(' & ') || 'Plugins';
-	});
+	/**
+	 * The unmanaged panel names the kind it actually lists.
+	 *
+	 * "Addons" is the word for the tab, not for the thing in the directory: on a
+	 * mod loader every row here is a mod, and the heading is what an operator
+	 * scans before deciding the panel is about something else.
+	 */
+	const unmanagedTitle = $derived(
+		hybrid
+			? t('web.instanceDetail.unmanagedBoth')
+			: modsOnly
+				? t('web.instanceDetail.unmanagedMods')
+				: t('web.instanceDetail.unmanagedPlugins')
+	);
+
+	/** Singular noun for the unmanaged table's own search and empty copy. */
+	const unmanagedNoun = $derived(
+		modsOnly ? t('web.catalogKinds.mod') : t('web.catalogKinds.plugin')
+	);
 
 	/** Whether java profiles, runtimes and JVM flags mean anything for this one. */
 	const usesJava = $derived(!inst || traitsOf(inst.software as Software).usesJava);
@@ -1519,7 +1551,9 @@
 		// descriptor carries, and showing it pushed the alerts column off the panel
 		{ id: 'authors', label: t('web.addonDetail.authors'), minWidth: 140, hidden: true },
 		{ id: 'size', label: t('web.instanceDetail.size'), sortable: true, width: 110 },
-		{ id: 'alerts', label: t('web.instanceDetail.alerts'), sortable: true, width: 200 }
+		// 230 like the managed table's, not 200: it is the last column, and the
+		// eight characters that do not fit are the ones naming the count
+		{ id: 'alerts', label: t('web.instanceDetail.alerts'), sortable: true, width: 230 }
 	]);
 
 	/** Sort keys for the unmanaged table's columns that render as more than text. */
@@ -1545,16 +1579,21 @@
 	 * per-instance override, and it says why the log has nothing to report rather
 	 * than what the log saw, so it is shown in place of the phase.
 	 */
-	const PLUGIN_STATE_BADGE: Record<string, { state: string; label: string }> = {
+	// $derived, not a plain const: these labels are t() calls, and a record built
+	// once keeps the locale it was first rendered in
+	const PLUGIN_STATE_BADGE: Record<string, { state: string; label: string }> = $derived({
 		running: { state: 'running', label: t('web.instanceDetail.running') },
 		loading: { state: 'loading', label: t('web.instanceDetail.loading') },
 		errored: { state: 'failed', label: t('web.instanceDetail.errored') },
 		// deployed, the server listed what it loaded, and this was not in the list;
 		// a warning rather than a failure, because nothing reported an error
 		missing: { state: 'warning', label: t('web.instanceDetail.notLoaded') },
+		// the server is down, so nothing is loaded. Knowledge, not ignorance, and
+		// the reason a stopped instance no longer reports every addon as unknown
+		stopped: { state: 'stopped', label: t('web.instanceDetail.serverStopped') },
 		unknown: { state: 'unknown', label: t('web.instanceDetail.unknown') },
 		disabled: { state: 'stopped', label: t('web.instanceDetail.disabled') }
-	};
+	});
 
 	/**
 	 * The addon phases as a distribution, in the order they read as a lifecycle:
@@ -1575,6 +1614,16 @@
 			// loaded" is the one an operator has to act on, and it used to be
 			// indistinguishable from "luna cannot tell"
 			{ key: 'missing', label: t('web.instanceDetail.notLoaded2'), count: by('missing'), color: 'var(--primary)' },
+			// its own band for the same reason `missing` has one: on a stopped
+			// instance this is every row, and calling that "unknown" told the
+			// operator luna could not tell when the answer was simply "nothing is
+			// loaded, the server is down"
+			{
+				key: 'stopped',
+				label: t('web.instanceDetail.stopped2'),
+				count: by('stopped'),
+				color: 'var(--text-secondary)'
+			},
 			{ key: 'unknown', label: t('web.instanceDetail.unknown2'), count: by('unknown'), color: 'var(--bg-track)' },
 			{
 				key: 'disabled',
@@ -2633,14 +2682,21 @@
 			{#if instUnmanaged.length}
 				<div class="gap"></div>
 				<Panel
-					title={t('web.instanceDetail.unmanagedAddons')}
+					title={unmanagedTitle}
 					count={String(instUnmanaged.length)}
 					description={t('web.instanceDetail.unmanagedAddonsHint')}
+					flush
 				>
-					<DataTable
+					<ResourceTable
+						tableId="instance-unmanaged"
 						columns={unmanagedCols}
 						rows={instUnmanaged}
 						getId={(row) => `${row.dir}/${row.file}`}
+						searchValue={(row) =>
+							`${row.displayName} ${row.file} ${row.dir} ${row.state} ${row.meta?.version ?? ''} ${(row.meta?.authors ?? []).join(' ')}`}
+						searchPlaceholder={t('web.instanceDetail.findUnmanaged', { noun: unmanagedNoun })}
+						noun={unmanagedNoun}
+						pageSize={25}
 						sortValue={unmanagedSortValue}
 					>
 						{#snippet cell(row: UnmanagedAddonRow, col: string)}
@@ -2662,7 +2718,7 @@
 								<Alerts warnings={row.warnings} errors={row.errors} />
 							{/if}
 						{/snippet}
-					</DataTable>
+					</ResourceTable>
 				</Panel>
 			{/if}
 		{:else if tab === 'world'}

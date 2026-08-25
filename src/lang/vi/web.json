@@ -1707,12 +1707,20 @@
 		"worldAndBackup": "Thế giới & Sao lưu",
 		"notLoaded": "Chưa nạp",
 		"notLoaded2": "Chưa nạp",
-		"unmanagedAddons": "Addon không quản lý",
-		"unmanagedAddonsHint": "Các jar trong thư mục riêng của instance này mà không mục nào trong kho nhận. Tên và phiên bản lấy từ chính jar; trạng thái lấy từ log khởi động, giống như addon được quản lý.",
+		"unmanagedAddonsHint": "Các tệp trong thư mục riêng của instance này mà không mục nào trong kho nhận. Tên và phiên bản lấy từ chính tệp; trạng thái lấy từ log khởi động, giống như addon được quản lý.",
 		"addon": "Addon",
 		"buildChange": "Bản dựng server",
 		"addAddon": "Thêm addon…",
-		"addDataPack": "Thêm gói dữ liệu…"
+		"addDataPack": "Thêm gói dữ liệu…",
+		"addonsPlugins": "Plugin",
+		"addonsMods": "Mod",
+		"addonsBoth": "Plugin & Mod",
+		"unmanagedPlugins": "Plugin không được quản lý",
+		"unmanagedMods": "Mod không được quản lý",
+		"unmanagedBoth": "Plugin & mod không được quản lý",
+		"serverStopped": "Đã dừng",
+		"stopped2": "đã dừng",
+		"findUnmanaged": "Tìm {noun} không được quản lý"
 	},
 	"playerDetail": {
 		"issuingTempPassword": "Đang cấp mật khẩu tạm cho {name}…",

@@ -2032,12 +2032,20 @@
 		"worldAndBackup": "World & Backup",
 		"notLoaded": "Not loaded",
 		"notLoaded2": "Not loaded",
-		"unmanagedAddons": "Unmanaged addons",
-		"unmanagedAddonsHint": "Jars in this instance's own directory that no pool entry claims. Their names and versions come from the jars themselves; their state from the boot log, the same way a managed addon's does.",
+		"unmanagedAddonsHint": "Files in this instance's own directory that no pool entry claims. Their names and versions come from the files themselves; their state from the boot log, the same way a managed addon's does.",
 		"addon": "Addon",
 		"buildChange": "Server build",
 		"addAddon": "Add addon…",
-		"addDataPack": "Add data pack…"
+		"addDataPack": "Add data pack…",
+		"addonsPlugins": "Plugins",
+		"addonsMods": "Mods",
+		"addonsBoth": "Plugins & Mods",
+		"unmanagedPlugins": "Unmanaged plugins",
+		"unmanagedMods": "Unmanaged mods",
+		"unmanagedBoth": "Unmanaged plugins & mods",
+		"serverStopped": "Stopped",
+		"stopped2": "stopped",
+		"findUnmanaged": "Find an unmanaged {noun}"
 	},
 	"instanceFiles": {
 		"configFiles": "Config files",

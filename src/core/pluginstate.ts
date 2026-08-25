@@ -69,8 +69,24 @@ const MAX_SESSION_BYTES = 8 * 1024 * 1024;
  * fact from `unknown` and a far more useful one; it is how a jar that is present
  * but silently never loaded stops looking exactly like a jar luna simply cannot
  * see. Only ever reported off a *complete* roster, so absence really is absence.
+ *
+ * `stopped` is the other half of that correction. A server that is not running
+ * has nothing loaded, and saying so is knowledge, not ignorance - but every row
+ * on a stopped instance used to report `unknown`, which reads as "luna cannot
+ * tell" about the one case luna is certain of. The tell was a stopped instance
+ * whose log ended in a clean, complete startup: the screen said the server had
+ * finished starting and that the state of every addon in it was unknown.
+ * `unknown` is now kept for the cases that really are unknowable - a log that
+ * cannot be attributed to the process that is up, and a roster that rotated out
+ * of reach.
  */
-export type PluginRuntimeState = "unknown" | "loading" | "errored" | "running" | "missing";
+export type PluginRuntimeState =
+	| "unknown"
+	| "loading"
+	| "errored"
+	| "running"
+	| "missing"
+	| "stopped";
 
 /**
  * Lifecycle state the report reasons from. Core can probe `running`, `stopped`,
@@ -970,6 +986,13 @@ async function unmanagedAddons(
 	lock: PluginsLock,
 	/** the boot session to read state from; omitted when only the files are wanted */
 	session?: BootSession,
+	/**
+	 * What to report when there is no attributable session. A managed row reaches
+	 * the same fork through `down`/`stale`, and the two must answer alike or one
+	 * table on the screen calls a stopped server's addons `stopped` while the
+	 * table under it calls them `unknown`.
+	 */
+	unattributed: PluginRuntimeState = "unknown",
 ): Promise<UnmanagedAddonRow[]> {
 	const managed = new Set(
 		Object.values(lock.plugins).map((entry) => entry.file.toLowerCase()),
@@ -1016,7 +1039,7 @@ async function unmanagedAddons(
 				modifiedAt,
 				...(Object.keys(jar.meta).length ? { meta: jar.meta } : {}),
 				displayName: aliases[0]!,
-				state: session ? unmanagedState(session, aliases) : "unknown",
+				state: session ? unmanagedState(session, aliases) : unattributed,
 				warnings: log.warnings,
 				errors: log.errors,
 			});
@@ -1133,7 +1156,15 @@ export async function instancePluginReport(
 
 		let state: PluginRuntimeState;
 
-		if (disabled || down || stale) {
+		if (disabled) {
+			// the override, not a phase: the row carries `disabled` and both the
+			// table and the CLI show that in place of a state
+			state = "unknown";
+		} else if (down) {
+			// nothing is loaded on a server that is not running, and that is a fact
+			// rather than an absence of one
+			state = "stopped";
+		} else if (stale) {
 			state = "unknown";
 		} else {
 			const evidence = loadEvidence(session, aliases);
@@ -1181,8 +1212,14 @@ export async function instancePluginReport(
 		rows: rows.sort((a, b) => a.plugin.localeCompare(b.plugin)),
 		session,
 		// an unmanaged jar's state is read off the same session, so it is only
-		// attributable under the same conditions a managed row's is
-		unmanaged: await unmanagedAddons(inst, lock, down || stale ? undefined : session),
+		// attributable under the same conditions a managed row's is, and it reports
+		// the same thing when it is not
+		unmanaged: await unmanagedAddons(
+			inst,
+			lock,
+			down || stale ? undefined : session,
+			down ? "stopped" : "unknown",
+		),
 	};
 }
 
