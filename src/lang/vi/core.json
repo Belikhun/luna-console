@@ -413,7 +413,8 @@
 		"indexed": "đã lập chỉ mục {count} vật phẩm"
 	},
 	"config": {
-		"unknownTarget": "không biết đích: {target}"
+		"unknownTarget": "không biết đích: {target}",
+		"rootImmutable": "không thể tạo {dir}: thư mục gốc {root} đang mang thuộc tính immutable, nên không thể tạo mới bất cứ thứ gì trong đó. Xoá bằng `sudo chattr -i {root}`, hoặc giữ nguyên và chấp nhận rằng không thể tạo instance trên máy này"
 	},
 	"identify": {
 		"noProject": "{provider} không có dự án {type} \"{project}\"",

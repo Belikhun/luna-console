@@ -413,7 +413,8 @@
 		"indexed": "{count} item(s) indexed"
 	},
 	"config": {
-		"unknownTarget": "unknown target: {target}"
+		"unknownTarget": "unknown target: {target}",
+		"rootImmutable": "cannot create {dir}: the cluster root {root} carries the immutable attribute, so nothing new can be created in it. Clear it with `sudo chattr -i {root}`, or keep it and accept that instances cannot be provisioned on this machine"
 	},
 	"identify": {
 		"noProject": "{provider} has no {type} project \"{project}\"",

@@ -25,10 +25,13 @@ export const DATA_DIR = ".data";
  * Where the installed web console lives, beside the binary in `.bin/`.
  *
  * Dotted for the same reason `.data` is, and in the cluster root for the same
- * reason the binary is: an upgrade swaps the whole directory by rename, so what
- * has to be writable is the parent. Keeping it here rather than in the source
- * tree is what makes the console an artifact of the *release* instead of an
- * artifact of whichever checkout happened to be on the machine.
+ * reason the binary is. Keeping it here rather than in the source tree is what
+ * makes the console an artifact of the *release* instead of an artifact of
+ * whichever checkout happened to be on the machine.
+ *
+ * An upgrade swaps the `build` directory *inside* it rather than swapping this
+ * directory itself, so an install needs nothing in the cluster root to be
+ * writable; see `installConsole`.
  */
 export const WEB_DIR = ".web";
 
@@ -44,6 +47,33 @@ export function consoleDir(): string {
  */
 export function isConsoleDir(dir: string): boolean {
 	return existsSync(join(dir, "build", "index.js"));
+}
+
+/**
+ * Create a directory that has to be an entry in the cluster root itself.
+ *
+ * An instance directory and the console bundle both live directly in the root,
+ * and a root carrying ext4's immutable attribute (`chattr +i`, a common guard
+ * against an accidental `rm -rf`) refuses every new entry in it while leaving
+ * everything underneath writable. `EPERM` names none of that, so an operator is
+ * left with a permission error on a directory whose mode reads `0777` and whose
+ * owner is correct. Say which flag it is and how to clear it.
+ *
+ * Only the root's own entries are worth explaining: a deeper `EPERM` is an
+ * ordinary permission fault and is rethrown untouched.
+ */
+export async function mkdirInRoot(dir: string): Promise<void> {
+	try {
+		await mkdir(dir, { recursive: true });
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code;
+
+		if (code === "EPERM" && dirname(resolve(dir)) === root()) {
+			throw new Error(t("core.config.rootImmutable", { dir, root: root() }));
+		}
+
+		throw err;
+	}
 }
 
 /**

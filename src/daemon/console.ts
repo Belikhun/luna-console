@@ -27,7 +27,7 @@ import { existsSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { consoleDir, isConsoleDir, root } from "../core/config";
+import { consoleDir, isConsoleDir, mkdirInRoot } from "../core/config";
 import type { ProgressReporter } from "../core/progress";
 import { t } from "../shared/i18n";
 
@@ -76,6 +76,15 @@ export function consoleInstalled(): boolean {
  * bundle - a chunk file that exists but is truncated is worse than one that is
  * missing, because the browser caches it.
  *
+ * What is renamed is `build` *inside* the console directory, not the console
+ * directory itself. Both are equally atomic - a rename within one parent either
+ * happened or did not - but the inner one needs no new entry in the cluster
+ * root, and a root is a plausible thing to have frozen with `chattr +i` as a
+ * guard against an accidental `rm -rf`. Staging at `<root>/.web.new` meant every
+ * upgrade on such a machine failed at its first `mkdir` with an `EPERM` naming a
+ * path nobody had touched, while the binary swapped happily because it stages
+ * inside `.bin/`. Keep everything here under the console directory.
+ *
  * `tar` rather than a library: the archive comes from GNU tar in the release
  * workflow, this only ever runs on Linux, and shelling out to the tool that
  * wrote it is fewer moving parts than a decompressor that has to agree with it.
@@ -87,9 +96,15 @@ export async function installConsole(
 	reporter?: ProgressReporter,
 ): Promise<void> {
 	const target = consoleDir();
-	const staging = `${target}.new`;
-	const previous = `${target}.old`;
-	const archive = join(root(), ".luna-console.tar.gz");
+	const staging = join(target, ".stage");
+	const previous = join(target, "build.old");
+	const archive = join(target, ".luna-console.tar.gz");
+	const build = join(target, "build");
+
+	// the one root entry an install still needs, and only on a machine that has
+	// never had a console: `luna setup` makes it, so this is the fresh-install
+	// path rather than the upgrade path
+	await mkdirInRoot(target);
 
 	// a staging directory left by an interrupted upgrade would otherwise have the
 	// new bundle extracted *into* it, mixing two releases in one directory
@@ -114,24 +129,36 @@ export async function installConsole(
 			throw new Error(t("daemon.console.noBuild", { asset: origin }));
 		}
 
+		// rename the old one aside rather than deleting it first: between a delete
+		// and a rename there is a window with no console at all, and the console
+		// service restarts on its own schedule
+		await rm(previous, { recursive: true, force: true });
+
+		if (existsSync(build)) {
+			await rename(build, previous);
+		}
+
+		await rename(join(staging, "build"), build);
+
+		// adapter-node reads the bundle's own package.json at startup, so a stale
+		// one left beside a new build is a runtime failure rather than a cosmetic
+		// mismatch
+		if (existsSync(join(staging, "package.json"))) {
+			await rename(join(staging, "package.json"), join(target, "package.json"));
+		}
+
+		// after the swap, not before it: the stamp names what `build` now holds,
+		// and the two cannot be renamed together once the swap is the inner
+		// directory. A crash in between leaves a new console describing itself as
+		// the old one, which is a wrong answer to "which console is this" and not
+		// a broken console
 		const stamp: ConsoleStamp = {
 			version,
 			installedAt: new Date().toISOString(),
 			origin,
 		};
 
-		await writeFile(join(staging, STAMP_FILE), JSON.stringify(stamp, null, "\t"));
-
-		// rename the old one aside rather than deleting it first: between a delete
-		// and a rename there is a window with no console at all, and the console
-		// service restarts on its own schedule
-		await rm(previous, { recursive: true, force: true });
-
-		if (existsSync(target)) {
-			await rename(target, previous);
-		}
-
-		await rename(staging, target);
+		await writeFile(join(target, STAMP_FILE), JSON.stringify(stamp, null, "\t"));
 		await rm(previous, { recursive: true, force: true });
 
 		log(`console: installed ${version} from ${origin}`);

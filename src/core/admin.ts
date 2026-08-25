@@ -7,7 +7,7 @@ import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 import type { ClusterConfig, InstanceConfig, PluginFamily, PluginsLock, ProviderId, Software } from "./types";
-import { addonDirsOf, instanceDir, loadLock, managedInstances, root, saveLock } from "./config";
+import { addonDirsOf, instanceDir, loadLock, managedInstances, mkdirInRoot, root, saveLock } from "./config";
 import { forgetInstancePlugins, installFromProvider, projectTypeFor } from "./plugins";
 import { getProject } from "./services/providers";
 import { installBuild } from "./services/software/install";
@@ -898,8 +898,9 @@ async function buildInstance(
 
 	// the instance directory in its own right: software with no addon directory
 	// at all (a server with no plugin ecosystem) would otherwise have nothing
-	// create it before the download lands
-	await mkdir(dir, { recursive: true });
+	// create it before the download lands. An instance is an entry in the cluster
+	// root, so this is also where a frozen root stops a provision
+	await mkdirInRoot(dir);
 
 	for (const addonDir of traits.addonDirs) {
 		await mkdir(join(dir, addonDir), { recursive: true });
