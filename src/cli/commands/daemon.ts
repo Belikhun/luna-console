@@ -74,6 +74,18 @@ function printHealth(health: HealthSample): void {
 
 	info(`cpu       ${health.cpuPct}% (load ${health.load1.toFixed(2)} ${health.load5.toFixed(2)} ${health.load15.toFixed(2)})`);
 	info(`memory    ${health.memUsedMb} / ${health.memTotalMb} MB (${memPct})`);
+
+	// a machine with swap off has no line at all: "0 / 0 MB (0%)" reads as swap
+	// that is empty, which is a different thing from swap that does not exist.
+	// A follower too old to report the figure lands here the same way.
+	const swapTotal = health.swapTotalMb ?? 0;
+
+	if (swapTotal > 0) {
+		const swapUsed = health.swapUsedMb ?? 0;
+
+		info(`swap      ${swapUsed} / ${swapTotal} MB (${pctCell(swapUsed, swapTotal)})`);
+	}
+
 	info(`disk      ${gb(health.diskUsedBytes)} / ${gb(health.diskTotalBytes)} (${diskPct})`);
 	info(
 		`inst mem  ${t("cli.daemon.instMem", {

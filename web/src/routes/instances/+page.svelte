@@ -10,6 +10,7 @@
 	import type { DistributionSegment } from '$lib/components/distribution';
 	import { fmtDuration, cpuCeiling, fmtCpuPct } from '$lib/format';
 	import { SOFTWARE_IDS, traitsOf } from '$core/software';
+	import { parseMemoryMb } from '$core/memory';
 	import SoftwareLabel from '$lib/components/SoftwareLabel.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -277,19 +278,9 @@
 		await refresh();
 	}
 
-	/** Heap ceiling in MB, parsed from the configured "4G"/"512M" memory string. */
+	/** Heap ceiling in MB, or 0 when the configured string cannot be read. */
 	function heapMb(memory: string | undefined): number {
-		if (!memory) {
-			return 0;
-		}
-
-		const parsed = /^(\d+(?:\.\d+)?)\s*([gGmM])/.exec(memory);
-
-		if (!parsed) {
-			return 0;
-		}
-
-		return parsed[2]?.toLowerCase() === 'g' ? Number(parsed[1]) * 1024 : Number(parsed[1]);
+		return parseMemoryMb(memory) ?? 0;
 	}
 
 	/** Tick-rate band: 20 is the ceiling, below 15 the server is visibly lagging. */

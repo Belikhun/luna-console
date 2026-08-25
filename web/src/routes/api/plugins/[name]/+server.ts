@@ -4,12 +4,13 @@
 
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock, managedInstances } from '$core/config';
-import { projectTypeFor, removePlugin } from '$core/plugins';
+import { projectTypeFor, removePlugin, setChannel } from '$core/plugins';
 import { effectiveTargets, entriesOf, familyOf, pluginNameOf } from '$core/families';
 import { aliasesOf, displayNameOf, ensureAliases, pluginUsageReport } from '$core/pluginstate';
 import { getAllStatuses } from '$core/instances';
-import { projectUrl, versionUrl } from '$core/services/providers';
+import { isReleaseChannel, projectUrl, versionUrl } from '$core/services/providers';
 import { pushEvent } from '$lib/server/luna';
+import { errorMessage } from '$lib/server/http';
 
 /**
  * GET → everything about one plugin *identity*: its families (one lock entry
@@ -111,7 +112,12 @@ export async function GET({ params }) {
 	});
 }
 
-/** PATCH { autoUpdate?, targets? } */
+/**
+ * PATCH { autoUpdate?, targets?, channel? }
+ *
+ * Setting a channel moves the ceiling and nothing else; the jars follow on the
+ * next update check, which is why this stays a lockfile edit rather than a job.
+ */
 export async function PATCH({ params, request }) {
 	const body = await request.json();
 	const lock = await loadLock();
@@ -129,9 +135,23 @@ export async function PATCH({ params, request }) {
 		entry.targets = body.targets;
 	}
 
+	if (typeof body.channel === 'string') {
+		if (!isReleaseChannel(body.channel)) {
+			throw error(400, `unknown channel: ${body.channel}`);
+		}
+
+		try {
+			setChannel(lock, params.name, body.channel);
+		} catch (err) {
+			// an in-house or unidentified entry has no provider to take a channel
+			// from, and core's message says which of the two it is
+			throw error(409, errorMessage(err));
+		}
+	}
+
 	await saveLock(lock);
 
-	return json({ ok: true });
+	return json({ ok: true, channel: entry.channel ?? 'release' });
 }
 
 /** DELETE ?from=a,b; remove from targets (or everywhere) */

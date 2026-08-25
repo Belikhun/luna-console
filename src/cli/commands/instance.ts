@@ -10,6 +10,7 @@ import type { ClusterConfig, Software } from "../../client/core/types";
 import * as inst from "../../client/core/instances";
 import * as lifecycle from "../../client/core/lifecycle";
 import * as admin from "../../client/core/admin";
+import * as serverbuilds from "../../client/core/serverbuilds";
 import * as screen from "../../client/core/screen";
 import { syncVelocityToml } from "../../client/core/proxy";
 import { ensurePortAllocations } from "../../client/core/ports";
@@ -778,6 +779,119 @@ command({
 			info(t("cli.instance.setVersion.jarKept", { path: pc.dim(res.backedUpJar) }));
 		}
 		info(t("cli.instance.setVersion.updateHint", { command: pc.cyan("luna plugins update --deploy") }));
+	},
+});
+
+command({
+	path: ["instance", "upgrade"],
+	desc: t("cli.instance.upgrade.desc"),
+	args: [{ name: "instance", variadic: true, complete: instanceNames }],
+	opts: [
+		{ flag: "--all", desc: t("cli.instance.upgrade.optAll") },
+		{ flag: "--check", desc: t("cli.instance.upgrade.optCheck") },
+		{ flag: "--yes", desc: t("cli.instance.upgrade.optYes") },
+	],
+
+	handler: async (args, opts) => {
+		const cfg = await loadCluster();
+
+		if (!args.length && !opts.all) {
+			throw new UsageError(t("cli.instance.upgrade.nameOrAll"));
+		}
+
+		const targets = args.length ? args : Object.keys(managedInstances(cfg));
+		const progress = new ProgressReporter(t("cli.instance.upgrade.checking"));
+		const view = new ProgressView(progress).start();
+
+		let checks;
+
+		try {
+			checks = await serverbuilds.checkServerBuilds(cfg, targets, { reporter: progress });
+		} finally {
+			view.stop();
+		}
+
+		const updates = checks.filter((row) => row.update);
+		const rows = checks.map((row) => [
+			pc.bold(row.instance),
+			row.update
+				? `${pc.dim(row.update.from ?? "?")} ${Sym.arrow} ${pc.green(row.update.to)}`
+				: row.current
+					? pc.dim(t("cli.instance.upgrade.current", { build: row.current }))
+					: pc.yellow(row.skipped ?? "?"),
+		]);
+
+		printTable(rows, {
+			head: [t("cli.head.instance"), t("cli.instance.upgrade.headBuild")],
+		});
+
+		if (!updates.length) {
+			ok(t("cli.instance.upgrade.nothing"));
+
+			return;
+		}
+
+		if (opts.check) {
+			info(t("cli.instance.upgrade.applyHint", { command: pc.cyan("luna instance upgrade") }));
+
+			return;
+		}
+
+		// a swap replaces the server binary under a running process, which the JVM
+		// has already mapped; the instance has to be down for the new one to be
+		// what boots next
+		const running: string[] = [];
+
+		for (const row of updates) {
+			const status = await inst.getStatus(cfg, row.instance);
+
+			if (status.state !== "stopped") {
+				running.push(row.instance);
+			}
+		}
+
+		if (running.length) {
+			throw new Bail(t("cli.instance.upgrade.stopFirst", { names: running.join(", ") }));
+		}
+
+		if (!opts.yes) {
+			const { confirm, isCancel } = await import("@clack/prompts");
+			const sure = await confirm({
+				message: t("cli.instance.upgrade.confirm", { count: updates.length }),
+			});
+
+			if (isCancel(sure) || !sure) {
+				info(t("cli.common.aborted"));
+
+				return;
+			}
+		}
+
+		for (const row of updates) {
+			const step = new ProgressReporter(`upgrade ${row.instance}`);
+			const stepView = new ProgressView(step).start();
+
+			try {
+				const res = await serverbuilds.updateServerBuild(cfg, row.instance, step);
+
+				stepView.stop();
+				await saveCluster(cfg);
+
+				ok(
+					`${pc.bold(row.instance)}: ${pc.dim(res.fromBuild ?? "?")} ${Sym.arrow} ` +
+						`${pc.green(res.toBuild)}`,
+				);
+			} catch (err) {
+				stepView.stop();
+
+				warn(
+					t("cli.instance.upgrade.failed", {
+						name: row.instance,
+						error: err instanceof Error ? err.message : String(err),
+					}),
+				);
+			}
+		}
 	},
 });
 

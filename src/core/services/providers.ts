@@ -26,7 +26,14 @@ import * as smithed from "./smithed";
 /** Kinds of addon luna installs from a provider. */
 export type AddonType = "plugin" | "mod" | "resourcepack" | "datapack";
 
-export type ReleaseChannel = "release" | "beta" | "alpha";
+// the channel vocabulary lives in a module with no imports, so a console
+// component can read it without dragging the provider clients (and node:fs)
+// into a browser bundle; re-exported here because this is where every caller
+// already looks for it
+export { isReleaseChannel, RELEASE_CHANNELS } from "../channels";
+export type { ReleaseChannel } from "../channels";
+
+import type { ReleaseChannel } from "../channels";
 
 // The loader vocabulary lives with the family table it describes; re-exported
 // here because every provider client reaches for it through this module.

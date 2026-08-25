@@ -21,6 +21,7 @@
 		disabled = false,
 		label,
 		width = '100%',
+		format,
 		onchange
 	}: {
 		value?: number;
@@ -33,6 +34,12 @@
 		/** accessible name when the field's own label is elsewhere */
 		label?: string;
 		width?: string;
+		/**
+		 * Renders the readout and both end labels, for a range whose numbers are
+		 * not what a reader thinks in: megabytes of heap are dragged in steps of
+		 * 256 but read as "2.2 GB". Takes precedence over `unit`.
+		 */
+		format?: (value: number) => string;
 		onchange?: (value: number) => void;
 	} = $props();
 
@@ -101,11 +108,11 @@
 			{/if}
 		</div>
 		<div class="ends">
-			<span>{min}</span>
-			<span>{max}</span>
+			<span>{format ? format(min) : min}</span>
+			<span>{format ? format(max) : max}</span>
 		</div>
 	</div>
-	<span class="val">{value}{unit}</span>
+	<span class="val">{format ? format(value) : `${value}${unit}`}</span>
 </div>
 
 <style lang="scss">

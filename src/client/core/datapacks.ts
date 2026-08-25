@@ -12,11 +12,15 @@ import type * as core from "../../core/datapacks";
 
 import { call, jobCall } from "../rpc";
 
+// a pure lockfile edit; the caller holds the lock and saves it
+export { updateDataPack } from "../../core/datapacks";
+
 export type {
 	DataPackRow,
 	InstanceDataPackRow,
 	DataPackDeployAction,
 	DataPackUpdate,
+	DataPackPatch,
 	IdentifyDataPackOptions,
 	DataPackIdentityProbe,
 } from "../../core/datapacks";

@@ -5,9 +5,11 @@
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
 	import Select from './Select.svelte';
+	import Slider from './Slider.svelte';
 	import Toggle from './Toggle.svelte';
 	import JavaAgentsField from './JavaAgentsField.svelte';
 	import type { AgentAddon } from './javaagents';
+	import { formatMemoryMb, MEMORY_MIN_MB, MEMORY_STEP_MB, parseMemoryMb } from '$core/memory';
 
 	/**
 	 * How an instance runs: heap, java profile, runtime, JVM flags, java agents
@@ -34,6 +36,8 @@
 		binaryName,
 		addons = [],
 		disabled = false,
+		memoryCapMb,
+		memoryCapNote,
 		memory = $bindable('2G'),
 		profile = $bindable('aikar'),
 		runtime = $bindable(''),
@@ -54,6 +58,15 @@
 		/** pooled addons attachable as agents on this (prospective) instance */
 		addons?: AgentAddon[];
 		disabled?: boolean;
+		/**
+		 * Most heap this instance may be given, MB: the host machine's physical
+		 * memory plus its swap. Absent means the ceiling is unknown (no health
+		 * sample yet, or an external server), and the field stays a text box
+		 * rather than inventing a range.
+		 */
+		memoryCapMb?: number;
+		/** Where the ceiling comes from, named so the number is not a bare assertion */
+		memoryCapNote?: string;
 		memory?: string;
 		profile?: string;
 		runtime?: string;
@@ -62,14 +75,64 @@
 		autoRestart?: boolean;
 		restartDelay?: number;
 	} = $props();
+
+	const memoryMb = $derived(parseMemoryMb(memory));
+
+	/**
+	 * Whether the slider can honestly represent what this instance asks for.
+	 *
+	 * A value above the ceiling would be clamped by the thumb and read as a
+	 * smaller heap than is configured, so those fall back to the text box with
+	 * the reason spelled out; the same guard `SettingsForm` applies to a setting
+	 * whose stored value predates the schema's range.
+	 */
+	const sliderFits = $derived(
+		memoryCapMb !== undefined &&
+			memoryCapMb >= MEMORY_MIN_MB + MEMORY_STEP_MB &&
+			memoryMb !== undefined &&
+			memoryMb >= MEMORY_MIN_MB &&
+			memoryMb <= memoryCapMb
+	);
+
+	/** Configured above what the machine has: worth saying, not worth hiding. */
+	const overCap = $derived(
+		memoryCapMb !== undefined && memoryMb !== undefined && memoryMb > memoryCapMb
+	);
 </script>
 
 <div class="fields">
-	<label class="field">
-		<span class="lbl">{t('web.instanceFields.memory')}</span>
-		<span class="hint">{t('web.instanceFields.memoryHint')}</span>
-		<input class="input" bind:value={memory} {disabled} placeholder="2G" />
-	</label>
+	{#if sliderFits}
+		<div class="field">
+			<span class="lbl">{t('web.instanceFields.memory')}</span>
+			<span class="hint">
+				{memoryCapNote ?? t('web.instanceFields.memorySliderHint')}
+			</span>
+			<Slider
+				value={memoryMb}
+				min={MEMORY_MIN_MB}
+				max={memoryCapMb}
+				step={MEMORY_STEP_MB}
+				{disabled}
+				label={t('web.instanceFields.memory')}
+				format={formatMemoryMb}
+				onchange={(value) => (memory = formatMemoryMb(value))}
+			/>
+		</div>
+	{:else}
+		<label class="field">
+			<span class="lbl">{t('web.instanceFields.memory')}</span>
+			<span class="hint">{t('web.instanceFields.memoryHint')}</span>
+			<input class="input" bind:value={memory} {disabled} placeholder="2G" />
+			{#if overCap}
+				<span class="err">
+					{t('web.instanceFields.memoryOverCap', {
+						cap: formatMemoryMb(memoryCapMb ?? 0),
+						where: memoryCapNote ?? t('web.instanceFields.thisMachine')
+					})}
+				</span>
+			{/if}
+		</label>
+	{/if}
 
 	{#if usesJava}
 		<div class="field">

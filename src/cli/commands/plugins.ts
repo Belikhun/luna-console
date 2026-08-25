@@ -38,7 +38,7 @@ import * as providers from "../../client/core/services/providers";
 import { getAllStatuses } from "../../client/core/instances";
 import type { PortAllocation } from "../../client/core/ports";
 import { ensurePortAllocations } from "../../client/core/ports";
-import { parseProvider, printProbe } from "./packs";
+import { parseChannel, parseProvider, printProbe } from "./packs";
 import { t } from "../../shared/i18n";
 
 /** Coloured label for a lock entry's source. */
@@ -490,6 +490,12 @@ command({
 			value: true,
 			complete: async () => ["modrinth", "curseforge", "hangar"],
 		},
+		{
+			flag: "--channel",
+			desc: t("cli.plugins.add.optChannel"),
+			value: true,
+			complete: async () => [...providers.RELEASE_CHANNELS],
+		},
 	],
 
 	handler: async (args, opts) => {
@@ -557,8 +563,12 @@ command({
 
 		expandTargets(cfg, targets); // validate
 
+		const channel = parseChannel(opts.channel as string | undefined);
+
 		const installSpinner = new Spinner().start(t("cli.plugins.add.installing", { name: project.title }));
-		const res = await plugins.installFromProvider(cfg, lock, provider, project, family, targets);
+		const res = await plugins.installFromProvider(cfg, lock, provider, project, family, targets, {
+			...(channel ? { channel } : {}),
+		});
 
 		await saveLock(lock);
 		installSpinner.stop();
@@ -1054,6 +1064,37 @@ for (const [verb, value] of [
 		},
 	});
 }
+
+command({
+	path: ["plugins", "channel"],
+	desc: t("cli.plugins.channel.desc"),
+	args: [
+		{ name: "plugin", required: true, complete: pluginNames },
+		{ name: "channel", required: true, complete: async () => [...providers.RELEASE_CHANNELS] },
+	],
+	handler: async (args) => {
+		const [name, wanted] = args as [string, string];
+		const channel = parseChannel(wanted);
+
+		if (!channel) {
+			throw new UsageError(t("cli.plugins.channel.badChannel", { value: wanted }));
+		}
+
+		const lock = await loadLock();
+		const res = plugins.setChannel(lock, name, channel);
+
+		await saveLock(lock);
+
+		ok(
+			`${pc.bold(res.name)}: ${t("cli.head.channel")} ${pc.dim(res.from)} ${Sym.arrow} ` +
+				`${channel === "release" ? pc.green(res.to) : pc.yellow(res.to)}`,
+		);
+
+		// the ceiling moved but no jar did, and that gap is where a surprise lives;
+		// name the command that closes it rather than leaving it implied
+		info(t("cli.plugins.channel.applyHint", { command: pc.cyan(`luna plugins update ${name}`) }));
+	},
+});
 
 /** Restart choice shared by group edits: now, a one-shot schedule, or nothing.
  *  Lives here beside the deploy helper; the group commands are in addons.ts. */

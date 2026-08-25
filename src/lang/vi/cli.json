@@ -309,7 +309,8 @@
 			"installed": "đã cài {name} {version}",
 			"holdback": "{name}: không cài trên {targets}; {reason}",
 			"optFamily": "hệ sinh thái của build (paper, velocity, neoforge, fabric, forge)",
-			"badFamily": "family không xác định hoặc không dùng được: {family}"
+			"badFamily": "family không xác định hoặc không dùng được: {family}",
+			"optChannel": "bản kém ổn định nhất được chấp nhận: release, beta hoặc alpha"
 		},
 		"apply": {
 			"desc": "Thêm instance vào danh sách đích của plugin rồi triển khai",
@@ -463,7 +464,12 @@
 			"desc": "Bỏ ánh xạ nhà cung cấp của một plugin (giữ jar và các bản triển khai)",
 			"done": "{name} không còn ánh xạ tới nhà cung cấp; sẽ không kiểm tra cập nhật nữa"
 		},
-		"allOf": "mọi máy chủ {software}"
+		"allOf": "mọi máy chủ {software}",
+		"channel": {
+			"desc": "Đặt mức kém ổn định mà addon chấp nhận từ nguồn của nó",
+			"badChannel": "\"{value}\" không phải kênh; dùng release, beta hoặc alpha",
+			"applyHint": "giới hạn đã đổi nhưng chưa jar nào đổi; tính lại theo nó bằng: {command}"
+		}
 	},
 	"packs": {
 		"unknownProvider": "không biết nhà cung cấp: {name} (cần {known})",
@@ -586,7 +592,8 @@
 			"desc": "Yêu cầu proxy đang chạy đọc lại thư mục packs (lunapack reload)",
 			"sent": "đã gửi lệnh reload tới proxy",
 			"proxyDown": "proxy chưa chạy; các gói sẽ nạp ở lần khởi động sau"
-		}
+		},
+		"unknownChannel": "không biết kênh: {name} (cần {known})"
 	},
 	"datapacks": {
 		"list": {
@@ -628,6 +635,12 @@
 		},
 		"forget": {
 			"desc": "Bỏ ánh xạ nhà cung cấp của một gói dữ liệu (giữ tệp zip và các đích)"
+		},
+		"set": {
+			"desc": "Đổi chính sách cập nhật của gói dữ liệu: kênh và tự cập nhật",
+			"optAuto": "tự cập nhật: true hoặc false",
+			"nothingToSet": "hãy truyền --channel hoặc --auto",
+			"applyHint": "giới hạn đã đổi nhưng chưa zip nào đổi; tính lại theo nó bằng: {command}"
 		}
 	},
 	"addons": {
@@ -790,6 +803,21 @@
 			"jarKept": "jar cũ giữ tại {path}",
 			"updateHint": "tính lại phiên bản plugin cho MC mới: {command}",
 			"optLoaderVersion": "ghim build loader thay vì lấy bản mới nhất"
+		},
+		"upgrade": {
+			"desc": "Cài bản dựng mới nhất của phiên bản MC mà instance đang chạy",
+			"optAll": "mọi instance được quản lý",
+			"optCheck": "báo cáo những gì có sẵn, không cài gì",
+			"optYes": "bỏ qua bước xác nhận",
+			"nameOrAll": "hãy nêu tên một instance, hoặc truyền --all",
+			"checking": "đang kiểm tra bản dựng mới hơn",
+			"headBuild": "bản dựng",
+			"current": "đã mới nhất ({build})",
+			"nothing": "mọi instance đều đang chạy bản dựng mới nhất của phiên bản mình",
+			"applyHint": "cài chúng bằng: {command}",
+			"stopFirst": "hãy dừng các instance này trước; server đang chạy đã map file nhị phân của nó: {names}",
+			"confirm": "cài bản dựng mới hơn cho {count} instance?",
+			"failed": "{name}: {error}"
 		},
 		"settings": {
 			"desc": "Xem hoặc đổi thiết lập máy chủ của instance (difficulty, max-players, pvp, …)",

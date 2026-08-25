@@ -808,6 +808,53 @@ export async function identifyDataPack(
 	return { name, entry, probe, match };
 }
 
+/** The fields of a data pack a caller may edit after install. */
+export interface DataPackPatch {
+	autoUpdate?: boolean;
+	channel?: PackChannel;
+}
+
+/**
+ * Edit a data pack's update policy.
+ *
+ * The counterpart of `updateResourcePack`, and here for the same reason: the
+ * console route used to reach into the lockfile and set these two fields itself,
+ * which meant the rule that `release` is stored as absence lived in a route
+ * rather than beside the data. `release` is deleted rather than written, so a
+ * lockfile diff never fills with fields restating defaults.
+ *
+ * Mutates lock (caller saves).
+ */
+export function updateDataPack(
+	lock: PacksLock,
+	name: string,
+	patch: DataPackPatch,
+): DataPackEntry {
+	const entry = lock.datapacks[name];
+
+	if (!entry) {
+		throw new Error(t("core.datapacks.unknown", { name }));
+	}
+
+	if (patch.channel !== undefined && !entry.remote) {
+		throw new Error(t("core.datapacks.channelUnidentified", { name }));
+	}
+
+	if (patch.autoUpdate !== undefined) {
+		entry.autoUpdate = patch.autoUpdate;
+	}
+
+	if (patch.channel !== undefined) {
+		entry.channel = patch.channel;
+
+		if (entry.channel === "release") {
+			delete entry.channel;
+		}
+	}
+
+	return entry;
+}
+
 /** Drop a data pack's provider mapping, leaving its file and targets alone. */
 export async function forgetDataPackIdentity(
 	lock: PacksLock,

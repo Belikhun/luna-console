@@ -20,6 +20,7 @@
 	import type { AgentAddon } from '$lib/components/javaagents';
 	import type { Software } from '$core/types';
 	import { traitsOf } from '$core/software';
+	import { formatMemoryGb } from '$core/memory';
 	import WorldUpload from '$lib/components/WorldUpload.svelte';
 	import { isStagedWorldReady, type StagedWorld } from '$lib/components/worldupload';
 
@@ -59,7 +60,13 @@
 	let existing: string[] = $state([]);
 	/** the machine the instance will be created on; a daemon name, always set */
 	let daemon = $state('');
-	let daemons: Array<{ name: string; mode: string; online: boolean }> = $state([]);
+	let daemons: Array<{
+		name: string;
+		mode: string;
+		online: boolean;
+		/** physical memory plus swap of that machine, MB; 0 when it has not reported yet */
+		capMb: number;
+	}> = $state([]);
 	let primaryName = $state('');
 
 	let schema: any[] = $state([]);
@@ -84,10 +91,13 @@
 
 		existing = insts.instances.map((inst: any) => inst.name);
 
+		// the health sample is the target machine's own reading, carried up on its
+		// heartbeat pong, so the memory ceiling is that machine's and not this one's
 		daemons = cluster.daemons.map((row: any) => ({
 			name: row.name,
 			mode: row.mode,
-			online: !!row.online
+			online: !!row.online,
+			capMb: (row.health?.memTotalMb ?? 0) + (row.health?.swapTotalMb ?? 0)
 		}));
 
 		// the primary is the default target and the only machine guaranteed to be
@@ -329,6 +339,23 @@
 			}))
 	);
 
+	/**
+	 * The heap ceiling for the machine currently picked, MB, or undefined when
+	 * that machine has not reported a health sample yet; a primary that has only
+	 * just started, or a follower whose first pong has not landed. The field falls
+	 * back to a text box there rather than capping against the wrong machine.
+	 */
+	const memoryCapMb = $derived(daemons.find((row) => row.name === daemon)?.capMb || undefined);
+
+	const memoryCapNote = $derived(
+		memoryCapMb
+			? t('web.instanceFields.memoryCapOn', {
+					machine: daemon,
+					cap: formatMemoryGb(memoryCapMb)
+				})
+			: undefined
+	);
+
 	async function launch(): Promise<void> {
 		creating = true;
 
@@ -489,6 +516,8 @@
 			runtimeHint={t('web.launch.runtimeHint')}
 			addons={agentAddons}
 			disabled={creating}
+			memoryCapMb={memoryCapMb}
+			memoryCapNote={memoryCapNote}
 			bind:memory
 			bind:profile
 			bind:runtime

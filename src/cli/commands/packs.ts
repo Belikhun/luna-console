@@ -58,6 +58,33 @@ export function parseProvider(value: string | undefined): ProviderId {
 	return provider as ProviderId;
 }
 
+/**
+ * A `--channel` value, or undefined when the flag was not passed.
+ *
+ * Undefined and "release" are different answers to the installers: undefined
+ * lets them escalate to beta and then alpha for a project that has never cut a
+ * stable release, while an explicit "release" forbids that. So the flag being
+ * absent must not become a value here.
+ */
+export function parseChannel(value: string | undefined): providers.ReleaseChannel | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	const channel = value.toLowerCase();
+
+	if (!providers.isReleaseChannel(channel)) {
+		throw new UsageError(
+			t("cli.packs.unknownChannel", {
+				name: value,
+				known: providers.RELEASE_CHANNELS.join(", "),
+			}),
+		);
+	}
+
+	return channel;
+}
+
 /** Resolve a slug or free-text query to one provider project, prompting on search. */
 async function resolveProject(
 	query: string,
@@ -877,6 +904,52 @@ command({
 
 	handler: async (args, opts) => {
 		await runDatapackDeploy(args.length ? args : undefined, opts.pack as string | undefined);
+	},
+});
+
+command({
+	path: ["datapacks", "set"],
+	desc: t("cli.datapacks.set.desc"),
+	args: [{ name: "pack", required: true, complete: datapackNames }],
+	opts: [
+		{ flag: "--auto", desc: t("cli.datapacks.set.optAuto"), value: true },
+		{
+			flag: "--channel",
+			desc: t("cli.packs.set.optChannel"),
+			value: true,
+			complete: async () => [...providers.RELEASE_CHANNELS],
+		},
+	],
+
+	handler: async (args, opts) => {
+		const [name] = args as [string];
+		const lock = await loadPacksLock();
+		const channel = parseChannel(opts.channel as string | undefined);
+		const auto = opts.auto === undefined ? undefined : opts.auto === "true";
+
+		if (channel === undefined && auto === undefined) {
+			throw new UsageError(t("cli.datapacks.set.nothingToSet"));
+		}
+
+		const entry = datapacks.updateDataPack(lock, name, {
+			...(auto === undefined ? {} : { autoUpdate: auto }),
+			...(channel ? { channel } : {}),
+		});
+
+		await savePacksLock(lock);
+
+		ok(
+			`${pc.bold(name)}: ${t("cli.head.channel")} ${entry.channel ?? "release"} · ` +
+				`${t("cli.head.auto")} ${entry.autoUpdate ? Sym.ok : Sym.off}`,
+		);
+
+		if (channel) {
+			info(
+				t("cli.datapacks.set.applyHint", {
+					command: pc.cyan(`luna datapacks update ${name} --apply`),
+				}),
+			);
+		}
 	},
 });
 

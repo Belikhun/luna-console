@@ -387,6 +387,12 @@ function pctOf(used: number, total: number): number {
  * cluster-root filesystem are judged together; any one of them at the pressure
  * threshold is what will actually break a start, so the check names the one
  * that is full instead of averaging them into a meaningless number.
+ *
+ * Swap is reported and never judged. A long-lived host parks pages it has not
+ * touched in weeks and never pages them back, so swap sits high on a machine
+ * under no pressure at all; making it a verdict would leave that machine
+ * permanently amber over a number nobody can act on. The figure earns its place
+ * beside the others because it is what says *why* memory looks fine.
  */
 function resourceCheck(health: HealthSample | undefined): DaemonCheck {
 	const name = t("daemon.checks.headroom");
@@ -415,11 +421,24 @@ function resourceCheck(health: HealthSample | undefined): DaemonCheck {
 		return { name, ok: false, detail: problems.join(" · ") };
 	}
 
-	return {
-		name,
-		ok: true,
-		detail: t("daemon.checks.headroomOk", { cpu: health.cpuPct, mem: memPct, disk: diskPct, load: health.load1.toFixed(2) }),
-	};
+	const detail = t("daemon.checks.headroomOk", {
+		cpu: health.cpuPct,
+		mem: memPct,
+		disk: diskPct,
+		load: health.load1.toFixed(2),
+	});
+
+	// a machine with no swap, and a follower too old to report any, both say
+	// nothing rather than "0%", which would read as swap that is merely empty
+	const swapTotal = health.swapTotalMb ?? 0;
+
+	if (swapTotal <= 0) {
+		return { name, ok: true, detail };
+	}
+
+	const swap = t("daemon.checks.swapAt", { pct: pctOf(health.swapUsedMb ?? 0, swapTotal) });
+
+	return { name, ok: true, detail: `${detail} · ${swap}` };
 }
 
 /**
@@ -1397,6 +1416,8 @@ export function installHub(dcfg: DaemonConfig, startedAt: number): void {
 			cpu: health.instanceCpu?.[instance],
 			rssMb: health.instanceRssMb?.[instance],
 			cpuCores: health.cpuCores,
+			memTotalMb: health.memTotalMb,
+			swapTotalMb: health.swapTotalMb,
 		};
 	});
 

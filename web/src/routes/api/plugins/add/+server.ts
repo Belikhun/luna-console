@@ -5,7 +5,7 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock, saveCluster } from '$core/config';
 import { installFromProvider, deploy, projectTypeFor } from '$core/plugins';
-import { getProject } from '$core/services/providers';
+import { getProject, isReleaseChannel } from '$core/services/providers';
 import { ensurePortAllocations } from '$core/ports';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
@@ -13,9 +13,13 @@ import type { PluginFamily, ProviderId } from '$core/types';
 import { PLUGIN_FAMILIES } from '$core/types';
 
 /**
- * POST { slug, family, targets, provider?, id? }; `id` is the provider's
- * project id when the picker knows it (some providers cannot look a project
- * up by slug alone).
+ * POST { slug, family, targets, provider?, id?, channel? }; `id` is the
+ * provider's project id when the picker knows it (some providers cannot look a
+ * project up by slug alone).
+ *
+ * An absent `channel` is not the same as `"release"`: absent lets the installer
+ * fall back to beta and then alpha for a project that has never cut a stable
+ * release, while an explicit value forbids going past it.
  */
 export async function POST({ request }) {
 	const body = await request.json();
@@ -33,8 +37,16 @@ export async function POST({ request }) {
 		throw error(404, `${provider} project "${body.slug ?? body.id}" not found`);
 	}
 
+	const channel = typeof body.channel === 'string' ? body.channel : undefined;
+
+	if (channel !== undefined && !isReleaseChannel(channel)) {
+		throw error(400, `unknown channel: ${channel}`);
+	}
+
 	try {
-		const res = await installFromProvider(cfg, lock, provider, project, family, body.targets);
+		const res = await installFromProvider(cfg, lock, provider, project, family, body.targets, {
+			...(channel ? { channel } : {})
+		});
 
 		await saveLock(lock);
 

@@ -56,6 +56,7 @@ import * as proxyCore from "../core/proxy";
 import * as runtimesCore from "../core/runtimes";
 import * as scheduleCore from "../core/schedule";
 import * as selectorCore from "../core/selector";
+import * as serverbuildsCore from "../core/serverbuilds";
 import * as softwareCore from "../core/software";
 import * as stagingCore from "../core/staging";
 import * as screenCore from "../core/screen";
@@ -188,6 +189,61 @@ async function deployRouted(
 	}
 
 	return actions;
+}
+
+/**
+ * Ownership-aware server-build sweep, shaped like the plugin deploy above.
+ *
+ * The check has to run on the machine that holds the instance: the installed
+ * build is read out of the instance's own `version_history.json` when the
+ * registry has not recorded it, and a native build is resolved against the
+ * platform of the machine that will run it. An unreachable follower fails only
+ * its own instances, each with the reason, because a sweep that drops them looks
+ * like a clean bill of health.
+ */
+async function checkServerBuildsRouted(
+	cfg: ClusterConfig,
+	names?: string[],
+	opts: { reporter?: ProgressReporter } = {},
+): Promise<serverbuildsCore.BuildCheck[]> {
+	const wanted = names?.length ? names : Object.keys(configCore.managedInstances(cfg));
+	const { local, remote } = splitByOwner(cfg, wanted);
+	const checks: serverbuildsCore.BuildCheck[] = [];
+
+	if (local.length > 0) {
+		checks.push(...(await serverbuildsCore.checkServerBuilds(cfg, local, opts)));
+	}
+
+	for (const [daemon, owned] of remote) {
+		try {
+			if (!forwardOp) {
+				throw new Error(t("daemon.noClusterLink"));
+			}
+
+			const outcome = await forwardOp(
+				daemon,
+				"serverbuilds.check",
+				[cfg, owned, {}],
+				opts.reporter,
+			);
+
+			checks.push(...(outcome.result as serverbuildsCore.BuildCheck[]));
+		} catch (err) {
+			const detail = err instanceof Error ? err.message : String(err);
+
+			for (const name of owned) {
+				checks.push({ instance: name, skipped: `daemon ${daemon}: ${detail}` });
+			}
+		}
+	}
+
+	// the sweep answers in the order asked, not in owner order, so a table does
+	// not reshuffle itself depending on which machine holds what
+	const order = new Map(wanted.map((name, index) => [name, index]));
+
+	return checks.sort(
+		(a, b) => (order.get(a.instance) ?? 0) - (order.get(b.instance) ?? 0),
+	);
 }
 
 /**
@@ -1289,6 +1345,17 @@ export const OPS: Record<string, OpSpec> = {
 	"admin.adoptInstance": { fn: adoptInstanceRouted, cfg: 0 },
 	"admin.inspectInstanceDir": { fn: inspectInstanceDirRouted },
 	"admin.setVersion": { fn: adminCore.setVersion, cfg: 0, instance: 1, reporter: { arg: 3 } },
+	// the sweep is routed per owner by its own wrapper, so it carries no instance
+	// index; `serverbuilds.check` is the leaf the wrapper forwards to a follower
+	"serverbuilds.checkAll": { fn: checkServerBuildsRouted, cfg: 0, reporter: { arg: 2, prop: "reporter" } },
+	"serverbuilds.check": { fn: serverbuildsCore.checkServerBuilds, cfg: 0 },
+	"serverbuilds.checkOne": { fn: serverbuildsCore.checkServerBuild, cfg: 0, instance: 1 },
+	"serverbuilds.update": {
+		fn: serverbuildsCore.updateServerBuild,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 2 },
+	},
 	"admin.ensureForwardingMod": { fn: adminCore.ensureForwardingMod, cfg: 0, lock: 1, instance: 2 },
 	"admin.setPort": { fn: adminCore.setPort, cfg: 0, instance: 1 },
 	"admin.getServerProperty": { fn: adminCore.getServerProperty, cfg: 0, instance: 1 },
@@ -1509,6 +1576,20 @@ export const OPS: Record<string, OpSpec> = {
 	},
 	"pluginstate.removeInstanceJars": {
 		fn: pluginstateCore.removeInstanceJars,
+		cfg: 0,
+		lock: 1,
+		instance: 2,
+	},
+	// both read and write files inside the instance directory, so both route to
+	// the machine that holds it
+	"pluginstate.addonCollisions": {
+		fn: pluginstateCore.addonCollisions,
+		cfg: 0,
+		lock: 1,
+		instance: 2,
+	},
+	"pluginstate.supersedeAddons": {
+		fn: pluginstateCore.supersedeAddons,
 		cfg: 0,
 		lock: 1,
 		instance: 2,

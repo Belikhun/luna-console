@@ -36,7 +36,8 @@
 		fmtGb,
 		latencyTone,
 		linkBadge,
-		memPct
+		memPct,
+		swapPct
 	} from '$lib/daemons';
 	import { consumersLine, poolsPayload } from '$lib/pools';
 	import type { PortPool } from '$core/types';
@@ -405,12 +406,21 @@
 					: undefined
 		}))
 	);
+	// undefined rather than 0 for a sample with no swap to report, so the series
+	// breaks where the measurement is missing instead of drawing a floor
+	const swapPoints = $derived(
+		history.map((sample) => ({
+			t: sample.t,
+			v: sample.swapTotalMb ? (sample.swapUsedMb ?? 0) : undefined
+		}))
+	);
 	const latencyPoints = $derived(history.map((sample) => ({ t: sample.t, v: sample.latencyMs })));
 	const instancePoints = $derived(
 		history.map((sample) => ({ t: sample.t, v: sample.instancesRssMb }))
 	);
 
 	const hasLatencySeries = $derived(latencyPoints.some((point) => point.v != null));
+	const hasSwapSeries = $derived(swapPoints.some((point) => point.v != null));
 
 	/** Owned instances joined with the memory and state the daemon reported. */
 	const instanceRows = $derived.by(() => {
@@ -994,6 +1004,16 @@
 						value={memPct(health)}
 						footnote={health ? `${(health.memUsedMb / 1024).toFixed(1)} / ${(health.memTotalMb / 1024).toFixed(0)} GB` : undefined}
 					/>
+					<!-- swap sits beside memory rather than replacing part of it: the two
+					     answer different questions, and a host that looks comfortable on
+					     memory while paging steadily is exactly the case worth seeing -->
+					<Gauge
+						label={t('web.machineDetail.swap')}
+						value={swapPct(health)}
+						footnote={health?.swapTotalMb
+							? `${((health.swapUsedMb ?? 0) / 1024).toFixed(1)} / ${(health.swapTotalMb / 1024).toFixed(0)} GB`
+							: t('web.machineDetail.noSwapConfigured')}
+					/>
 					<Gauge
 						label={t('web.machineDetail.disk')}
 						value={diskPct(health)}
@@ -1024,6 +1044,14 @@
 			<div class="charts">
 				<Sparkline points={cpuPoints} label={t('web.machineDetail.cpuUtilization')} unit="%" color="#42b4ff" maxY={100} />
 				<Sparkline points={memPoints} label={t('web.machineDetail.memoryUsed')} unit=" MB" color="#bf7edb" />
+				{#if hasSwapSeries}
+					<Sparkline
+						points={swapPoints}
+						label={t('web.machineDetail.swapUsed')}
+						unit=" MB"
+						color="#d98b8b"
+					/>
+				{/if}
 				<Sparkline points={diskPoints} label={t('web.machineDetail.diskUsed')} unit="%" color="#ff9d5c" maxY={100} />
 				<Sparkline
 					points={instancePoints}

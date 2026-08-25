@@ -599,7 +599,8 @@
 		"nothingToDownloadShort": "nothing to download",
 		"removeTitle": "Remove {name}",
 		"removeBody": "Removes every family build ({families}) from all target instances and deletes them from the managed pool. Running instances keep them loaded until restart.",
-		"removeEverywhere": "Remove everywhere"
+		"removeEverywhere": "Remove everywhere",
+		"channelHint": "The most unstable release to accept for this addon. Leave on release unless the project only publishes betas."
 	},
 	"catalogKinds": {
 		"plugin": "plugin",
@@ -607,7 +608,8 @@
 		"mod": "mod",
 		"mods": "mods",
 		"pluginsEmpty": "Install one from a provider, or run a scan to adopt the jars already on disk.",
-		"modsEmpty": "Install one from a provider, or upload a jar. A mod loader instance keeps its own mods; only the ones luna pooled appear here."
+		"modsEmpty": "Install one from a provider, or upload a jar. A mod loader instance keeps its own mods; only the ones luna pooled appear here.",
+		"datapack": "data pack"
 	},
 	"searchGroups": {
 		"runtimes": "Java runtimes",
@@ -1312,6 +1314,8 @@
 		"instances": "Instances",
 		"cpu": "CPU",
 		"memory": "Memory",
+		"swap": "Swap",
+		"noSwap": "no swap",
 		"disk": "Disk",
 		"latency": "Latency",
 		"lastSeen": "Last seen",
@@ -1545,7 +1549,9 @@
 		"loadingVersions": "Loading versions…",
 		"onInstances": "On instances",
 		"cancel": "Cancel",
-		"pinDeploy": "Pin & deploy"
+		"pinDeploy": "Pin & deploy",
+		"settingChannel": "Setting the update channel for {name}…",
+		"channelSet": "Update channel set to {channel}. The next update check resolves against it."
 	},
 	"envDetail": {
 		"environmentVariable": "Environment variable",
@@ -1999,6 +2005,15 @@
 		"cancel": "Cancel",
 		"saveChanges": "Save changes",
 		"downloadsTheNewestBuild": "Downloads the newest {software} build for the chosen version and restarts into it.",
+		"serverBuild": "Server build",
+		"serverBuildHint": "A newer build of the same Minecraft version. Nothing about the world or the plugins changes.",
+		"checkForBuild": "Check",
+		"installBuild": "Install",
+		"buildUpToDate": "newest",
+		"buildNeedsStop": "Stop the instance first; a running server has its binary mapped.",
+		"buildCheckFailed": "Could not check for a newer build",
+		"installingBuild": "Installing build {build}",
+		"buildInstallFailed": "Could not install the build",
 		"uptimeHistory": "Uptime history",
 		"uptimeHistoryDesc": "One bar per day; an empty slot is a day the daemon was not watching",
 		"uptimeLoading": "Loading the uptime record…",
@@ -2014,7 +2029,15 @@
 		"tickDuration": "Tick duration",
 		"ticking": "Ticking",
 		"world": "World",
-		"worldAndBackup": "World & Backup"
+		"worldAndBackup": "World & Backup",
+		"notLoaded": "Not loaded",
+		"notLoaded2": "Not loaded",
+		"unmanagedAddons": "Unmanaged addons",
+		"unmanagedAddonsHint": "Jars in this instance's own directory that no pool entry claims. Their names and versions come from the jars themselves; their state from the boot log, the same way a managed addon's does.",
+		"addon": "Addon",
+		"buildChange": "Server build",
+		"addAddon": "Add addon…",
+		"addDataPack": "Add data pack…"
 	},
 	"instanceFiles": {
 		"configFiles": "Config files",
@@ -2092,10 +2115,13 @@
 		"sampledEvery5sOnThe": "Sampled every 5s on the daemon's own machine",
 		"cpu": "CPU",
 		"memory": "Memory",
+		"swap": "Swap",
+		"noSwapConfigured": "no swap configured",
 		"disk": "Disk",
 		"instanceMemory": "Instance memory",
 		"cpuUtilization": "CPU utilization",
 		"memoryUsed": "Memory used",
+		"swapUsed": "Swap used",
 		"diskUsed": "Disk used",
 		"instanceMemoryResident": "Instance memory (resident)",
 		"heartbeatLatency": "Heartbeat latency",
@@ -3156,6 +3182,10 @@
 	"instanceFields": {
 		"memory": "Memory (heap)",
 		"memoryHint": "Becomes -Xms and -Xmx, e.g. 1G, 2G, 4096M.",
+		"memorySliderHint": "Becomes -Xms and -Xmx. The ceiling is this machine's memory plus its swap.",
+		"memoryCapOn": "Becomes -Xms and -Xmx. Capped at {cap}: {machine}'s memory plus its swap.",
+		"memoryOverCap": "More than {where} has ({cap}); the server will refuse to start.",
+		"thisMachine": "this machine",
 		"javaProfile": "Java profile",
 		"javaProfileHint": "The JVM flag set the run script starts from.",
 		"javaRuntime": "Java runtime",
@@ -3564,5 +3594,44 @@
 		"less": "Less",
 		"more": "More",
 		"busiest": "busiest day {value}"
+	},
+	"channel": {
+		"label": "Update channel",
+		"hint": "The most unstable release luna will accept. A ceiling, not a choice: beta accepts release and beta, and the newest of either wins.",
+		"release": "Release only",
+		"beta": "Release and beta",
+		"alpha": "Release, beta and alpha"
+	},
+	"instanceAddon": {
+		"poolLead": "Addons luna already has that {instance} is not getting yet.",
+		"poolSearch": "Find a pooled addon",
+		"poolEmpty": "{instance} already gets every pooled addon of this kind.",
+		"providerSearch": "Search by name",
+		"drop": "Drop a {ext} here, or click to choose one",
+		"poolName": "Pool name",
+		"poolNameHint": "What luna files it under. Lowercase letters, digits, - and _.",
+		"platform": "Platform",
+		"platformHint": "Which ecosystem the build is for; it decides the directory it lands in.",
+		"overwrites": "This replaces the pooled {key}, currently {version}.",
+		"duplicateTitle": "{instance} already has this addon under another name:",
+		"unmanagedTag": "(unmanaged)",
+		"replaceLabel": "Replace it",
+		"replaceOn": "The old copy is removed once the new one is in place, so the server loads it once.",
+		"replaceOff": "Both copies will sit in the directory and the server will try to load the addon twice.",
+		"deployHere": "Deploy to {instance} now",
+		"restartNote": "The addon is pooled either way. A running server loads it on its next restart.",
+		"add": "Add",
+		"adding": "Adding {name}…",
+		"added": "Added {name}",
+		"deployedTo": "Deployed to {instance}.",
+		"pooledOnly": "Pooled only; nothing was deployed.",
+		"superseded": "Removed {files}.",
+		"failed": "Could not add the addon",
+		"titlePool": "Add a pooled {noun} to {instance}",
+		"titleProvider": "Install a {noun} on {instance}",
+		"titleUpload": "Upload a {noun} to {instance}",
+		"menuUpload": "Upload a file…",
+		"menuProvider": "Search {provider}…",
+		"overwritesUnversioned": "This replaces the pooled {key}."
 	}
 }

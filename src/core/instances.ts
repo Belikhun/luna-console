@@ -13,6 +13,7 @@ import { renderManagedFiles } from "./configfiles";
 import { ENV_SCRIPT, loadEnv, renderEnvFile, resolveVars } from "./environment";
 import { ensureInstanceRuntime, isRuntimeInstalled, javaSelection } from "./runtimes";
 import { isJavaAgentJar } from "./archive";
+import { memoryBytes } from "./memory";
 import { agentAddonKey, agentJarOf, agentOptionsOf } from "./settings";
 import { traitsOf } from "./software";
 import * as screen from "./screen";
@@ -149,25 +150,6 @@ export interface HostMetrics {
 	ramUsedBytes: number;
 	/** The instance's configured size: a native server has no other ceiling */
 	ramMaxBytes: number;
-}
-
-/** `4G`, `512M`, `2048` (megabytes) as the registry writes it, in bytes. */
-function memoryBytes(memory: string): number {
-	const match = /^\s*(\d+(?:\.\d+)?)\s*([kmgt]?)b?\s*$/i.exec(memory);
-
-	if (!match) {
-		return 0;
-	}
-
-	const scale: Record<string, number> = {
-		"": 1024 * 1024,
-		k: 1024,
-		m: 1024 * 1024,
-		g: 1024 * 1024 * 1024,
-		t: 1024 * 1024 * 1024 * 1024,
-	};
-
-	return Math.round(Number(match[1]) * (scale[match[2]!.toLowerCase()] ?? 0));
 }
 
 /**

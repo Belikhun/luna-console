@@ -94,6 +94,8 @@
 	},
 	"plugins": {
 		"unknown": "không biết plugin: {name}",
+		"channelNotRemote": "{name} là bản dựng nội bộ; không có nguồn nào để lấy kênh",
+		"channelUnidentified": "{name} chưa được gắn với dự án của nguồn; hãy nhận diện trước rồi mới đặt kênh",
 		"noChannelVersionForMc": "không bản kênh {channel} nào hỗ trợ MC {mc}",
 		"noChannelVersion": "chưa có bản kênh {channel} nào được phát hành",
 		"skipLuna": "plugin luna (triển khai riêng)",
@@ -134,10 +136,12 @@
 		"everyAddon": "mọi tiện ích",
 		"reconcilingPorts": "đang đối chiếu cổng plugin",
 		"reconciledPorts": "đã đối chiếu cổng plugin",
-		"reconcilePortsFailed": "không đối chiếu được cổng plugin"
+		"reconcilePortsFailed": "không đối chiếu được cổng plugin",
+		"notAnAddonFile": "\"{file}\" không phải tên tệp addon; chỉ jar hoặc component đã có trong thư mục addon của instance này mới bị thay thế"
 	},
 	"datapacks": {
 		"unknown": "không biết gói dữ liệu: {name}",
+		"channelUnidentified": "{name} chưa được gắn với dự án của nguồn; hãy nhận diện trước rồi mới đặt kênh",
 		"noWorld": "{name} không có thế giới để chứa gói dữ liệu",
 		"copying": "đang chép {file}",
 		"noVersionForMc": "không phiên bản nào của {slug} hỗ trợ MC {mc}{newest}",
@@ -564,7 +568,11 @@
 		"forcedDown": "{name} bị buộc dừng",
 		"processGone": "tiến trình kết thúc trong {seconds}s",
 		"stoppedIn": "đã dừng trong {seconds}s",
-		"restarted": "đã khởi động lại {name}"
+		"restarted": "đã khởi động lại {name}",
+		"phaseAddonScan": "Quét addon",
+		"scanningAddons": "đang đọc mô tả của addon",
+		"addonsScanned": "{managed} được quản lý, {unmanaged} không quản lý",
+		"addonScanFailed": "không đọc được thư mục addon"
 	},
 	"accounts": {
 		"reservedUsername": "{name} là tên dành riêng: đây là danh tính mà CLI và daemon dùng",
@@ -673,5 +681,12 @@
 		"nameNeeded": "không có tên người chơi nào được ghi cho {uuid}; lệnh console và mục mới cần tên, hãy cung cấp thêm tên",
 		"opEditNeedsStop": "máy chủ giữ ops.json khi đang chạy; dừng instance để sửa operator",
 		"whitelistHasNoFields": "mục whitelist không có gì để sửa"
+	},
+	"serverBuilds": {
+		"skipExternal": "server ngoài được cập nhật ở nơi nó chạy, không phải từ đây",
+		"skipNoProvider": "không có nguồn nào phát hành bản dựng cho {software}; chỉ có thể nhận vào",
+		"skipUnknownBuild": "luna không biết bản dựng nào đang được cài; nâng cấp sẽ ghi lại, và {build} là bản sẽ được cài",
+		"asking": "đang hỏi về {name}",
+		"checked": "đã kiểm tra {count} instance; {updates} có bản dựng mới hơn"
 	}
 }

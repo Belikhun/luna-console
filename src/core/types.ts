@@ -136,6 +136,19 @@ export interface InstanceConfig {
 	 *  loaders (neoforge "21.1.233" → libraries/net/neoforged/neoforge/21.1.233,
 	 *  forge "52.0.20"), fabric's loader, and the hybrids' bundled loader. */
 	loaderVersion?: string;
+	/**
+	 * The provider's own id for the build installed here: a paper build number
+	 * ("127"), a purpur or youer build id, a pumpkin release tag. Written by
+	 * create and by every version change, so "is there a newer build of the same
+	 * Minecraft version" is answerable without downloading anything.
+	 *
+	 * Absent on an instance created before luna recorded it, and on one adopted
+	 * from a directory somebody else installed. `installedBuild` falls back to
+	 * what the instance's own files admit to in that case, so this is a cache of
+	 * a fact rather than the only copy of it. For the args-file loaders it is
+	 * `loaderVersion` and is not stored twice.
+	 */
+	buildId?: string;
 	port: number;
 	memory: string; // "4G"
 	profile: string;

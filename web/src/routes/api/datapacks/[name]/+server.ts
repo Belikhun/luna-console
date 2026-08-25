@@ -5,8 +5,9 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock } from '$core/config';
 import { pruneAddon } from '$core/families';
-import { deployDataPacks, removeDataPack } from '$core/datapacks';
+import { deployDataPacks, removeDataPack, updateDataPack } from '$core/datapacks';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
+import { isReleaseChannel } from '$core/services/providers';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
@@ -30,17 +31,16 @@ export async function PATCH({ params, request }) {
 			entry.targets = body.targets.map((target: unknown) => String(target));
 		}
 
-		if (typeof body.autoUpdate === 'boolean') {
-			entry.autoUpdate = body.autoUpdate;
+		if (typeof body.channel === 'string' && !isReleaseChannel(body.channel)) {
+			throw error(400, `unknown channel: ${body.channel}`);
 		}
 
-		if (body.channel) {
-			entry.channel = body.channel;
-
-			if (entry.channel === 'release') {
-				delete entry.channel;
-			}
-		}
+		// core owns the two update-policy fields, including the rule that
+		// "release" is stored as absence; this route used to reimplement it
+		updateDataPack(lock, params.name, {
+			...(typeof body.autoUpdate === 'boolean' ? { autoUpdate: body.autoUpdate } : {}),
+			...(typeof body.channel === 'string' ? { channel: body.channel } : {})
+		});
 
 		await savePacksLock(lock);
 

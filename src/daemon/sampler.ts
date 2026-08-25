@@ -111,6 +111,10 @@ export interface RemoteSample {
 	rssMb?: number;
 	/** Cores of the machine the instance runs on, not of this one. */
 	cpuCores?: number;
+	/** Physical memory of that machine, MB; the ceiling a heap is picked against */
+	memTotalMb?: number;
+	/** Its swap, MB; zero when it has none, absent from a daemon too old to say */
+	swapTotalMb?: number;
 }
 
 /**
@@ -710,6 +714,14 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 	// core count travels with its sample rather than being read off this host
 	const cpuCores = own ? hostCpuCores() : (remote?.cpuCores ?? null);
 
+	// same reasoning for memory, and it is what caps the heap picker: sizing a
+	// follower's instance against the primary's RAM offers heap that machine
+	// does not have. Own machine reads its live sample rather than the cached
+	// total, so that swap turned on after boot is counted.
+	const localHealth = own ? currentHealth() : undefined;
+	const memTotalMb = own ? (localHealth?.memTotalMb ?? null) : (remote?.memTotalMb ?? null);
+	const swapTotalMb = own ? (localHealth?.swapTotalMb ?? null) : (remote?.swapTotalMb ?? null);
+
 	return {
 		tps: backend?.online ? backend.metrics.tps : null,
 		heapUsedMb: backend?.online ? Math.round(backend.metrics.ramUsedBytes / 1024 / 1024) : null,
@@ -745,6 +757,8 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 		cpu,
 		cpuCores,
 		rssMb,
+		hostMemMb: memTotalMb,
+		hostSwapMb: swapTotalMb,
 		ports: st.inst.ports ?? {},
 		proxy: st.inst.proxy ?? null,
 		external: st.inst.external ?? null,

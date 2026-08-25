@@ -22,6 +22,9 @@ export {
 	resolveEntry,
 	compatReport,
 	unpinVersion,
+	// a pure lockfile edit, like unpinVersion: the caller already holds the lock
+	// and is the one that saves it, so there is nothing for the daemon to do
+	setChannel,
 } from "../../core/plugins";
 export type {
 	AppliedUpdate,

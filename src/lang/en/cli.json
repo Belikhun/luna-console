@@ -309,7 +309,8 @@
 			"installed": "installed {name} {version}",
 			"holdback": "{name}: not installed on {targets}; {reason}",
 			"optFamily": "ecosystem the build is for (paper, velocity, neoforge, fabric, forge)",
-			"badFamily": "unknown or unusable family: {family}"
+			"badFamily": "unknown or unusable family: {family}",
+			"optChannel": "most unstable release to accept: release, beta or alpha"
 		},
 		"apply": {
 			"desc": "Add instances to a plugin's targets and deploy",
@@ -463,10 +464,16 @@
 			"desc": "Drop a plugin's provider mapping (keeps the jar and its deployments)",
 			"done": "{name} is no longer mapped to a provider; updates will not be checked"
 		},
-		"allOf": "every {software} server"
+		"allOf": "every {software} server",
+		"channel": {
+			"desc": "Set how unstable a release an addon will accept from its provider",
+			"badChannel": "\"{value}\" is not a channel; use release, beta or alpha",
+			"applyHint": "the ceiling moved but no jar did; resolve against it with: {command}"
+		}
 	},
 	"packs": {
 		"unknownProvider": "unknown provider: {name} (expected {known})",
+		"unknownChannel": "unknown channel: {name} (expected {known})",
 		"selectRespack": "Select a resource pack",
 		"selectDatapack": "Select a data pack",
 		"required": "required",
@@ -628,6 +635,12 @@
 		},
 		"forget": {
 			"desc": "Drop a data pack's provider mapping (keeps the zip and its targets)"
+		},
+		"set": {
+			"desc": "Change a data pack's update policy: its channel and auto-update",
+			"optAuto": "auto-update: true or false",
+			"nothingToSet": "pass --channel or --auto",
+			"applyHint": "the ceiling moved but no zip did; resolve against it with: {command}"
 		}
 	},
 	"addons": {
@@ -790,6 +803,21 @@
 			"jarKept": "old jar kept at {path}",
 			"updateHint": "re-resolve plugin versions for the new MC: {command}",
 			"optLoaderVersion": "pin the loader build instead of taking the newest"
+		},
+		"upgrade": {
+			"desc": "Install the newest build of the MC version an instance already runs",
+			"optAll": "every managed instance",
+			"optCheck": "report what is available, installing nothing",
+			"optYes": "skip the confirmation",
+			"nameOrAll": "name an instance, or pass --all",
+			"checking": "checking for newer builds",
+			"headBuild": "build",
+			"current": "up to date ({build})",
+			"nothing": "every instance runs the newest build of its version",
+			"applyHint": "install them with: {command}",
+			"stopFirst": "stop these first; a running server has its binary mapped: {names}",
+			"confirm": "install newer builds for {count} instance(s)?",
+			"failed": "{name}: {error}"
 		},
 		"settings": {
 			"desc": "Show or change an instance's server settings (difficulty, max-players, pvp, …)",

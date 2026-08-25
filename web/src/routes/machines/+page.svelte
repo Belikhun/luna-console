@@ -25,7 +25,8 @@
 		fmtGb,
 		latencyTone,
 		linkBadge,
-		memPct
+		memPct,
+		swapPct
 	} from '$lib/daemons';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -150,6 +151,9 @@
 		{ id: 'instances', label: t('web.machines.instances') },
 		{ id: 'cpu', label: t('web.machines.cpu'), width: 130, sortable: true },
 		{ id: 'memory', label: t('web.machines.memory'), width: 165, sortable: true },
+		// hidden by default: most of the fleet runs without swap, and a column of
+		// "no swap" cells costs width the memory and disk bars can use
+		{ id: 'swap', label: t('web.machines.swap'), width: 165, sortable: true, hidden: true },
 		{ id: 'disk', label: t('web.machines.disk'), width: 175, sortable: true },
 		{ id: 'latency', label: t('web.machines.latency'), width: 115, align: 'right', sortable: true },
 		{ id: 'seen', label: t('web.machines.lastSeen'), width: 160 },
@@ -266,6 +270,10 @@
 
 		if (col === 'memory') {
 			return memPct(row.health) ?? -1;
+		}
+
+		if (col === 'swap') {
+			return swapPct(row.health) ?? -1;
 		}
 
 		if (col === 'disk') {
@@ -480,6 +488,23 @@
 							row.health.memTotalMb / 1024
 						).toFixed(0)} GB"
 					/>
+				{:else}
+					<span class="dim">—</span>
+				{/if}
+			{:else if col === 'swap'}
+				{#if row.health?.swapTotalMb}
+					<ProgressBar
+						compact
+						transition={false}
+						value={row.health.swapUsedMb ?? 0}
+						max={row.health.swapTotalMb}
+						color="auto"
+						right="{((row.health.swapUsedMb ?? 0) / 1024).toFixed(1)} / {(
+							row.health.swapTotalMb / 1024
+						).toFixed(0)} GB"
+					/>
+				{:else if row.health}
+					<span class="dim">{t('web.machines.noSwap')}</span>
 				{:else}
 					<span class="dim">—</span>
 				{/if}

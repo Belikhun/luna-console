@@ -22,8 +22,11 @@ export type {
 	PluginLogReport,
 	InstancePluginReport,
 	InstancePluginRow,
+	UnmanagedAddonRow,
 	PluginRuntimeState,
 	ReportLifecycle,
+	AddonCollisionReport,
+	CollidingAddon,
 } from "../../core/pluginstate";
 
 export const ensureAliases = call("pluginstate.ensureAliases", { lock: 0 }) as typeof core.ensureAliases;
@@ -36,3 +39,11 @@ export const removeInstanceJars = call("pluginstate.removeInstanceJars", {
 	cfg: 0,
 	lock: 1,
 }) as typeof core.removeInstanceJars;
+export const addonCollisions = call("pluginstate.addonCollisions", {
+	cfg: 0,
+	lock: 1,
+}) as typeof core.addonCollisions;
+export const supersedeAddons = call("pluginstate.supersedeAddons", {
+	cfg: 0,
+	lock: 1,
+}) as typeof core.supersedeAddons;

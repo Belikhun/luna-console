@@ -599,7 +599,8 @@
 		"nothingToDownloadShort": "không có gì để tải",
 		"removeTitle": "Gỡ {name}",
 		"removeBody": "Gỡ mọi bản theo họ ({families}) khỏi tất cả instance đích và xóa chúng khỏi kho được quản lý. Instance đang chạy vẫn nạp chúng cho tới khi khởi động lại.",
-		"removeEverywhere": "Gỡ ở mọi nơi"
+		"removeEverywhere": "Gỡ ở mọi nơi",
+		"channelHint": "Bản kém ổn định nhất được chấp nhận cho addon này. Cứ để release, trừ khi dự án chỉ phát hành bản beta."
 	},
 	"catalogKinds": {
 		"plugin": "plugin",
@@ -607,7 +608,8 @@
 		"mod": "mod",
 		"mods": "mod",
 		"pluginsEmpty": "Cài từ nhà cung cấp, hoặc chạy quét để nhận các jar sẵn có trên đĩa.",
-		"modsEmpty": "Cài từ nhà cung cấp, hoặc tải lên một jar. Instance mod loader giữ mod riêng của nó; chỉ những mod luna đưa vào kho mới hiện ở đây."
+		"modsEmpty": "Cài từ nhà cung cấp, hoặc tải lên một jar. Instance mod loader giữ mod riêng của nó; chỉ những mod luna đưa vào kho mới hiện ở đây.",
+		"datapack": "gói dữ liệu"
 	},
 	"searchGroups": {
 		"runtimes": "Java runtime",
@@ -1411,6 +1413,8 @@
 		"instances": "Instance",
 		"cpu": "CPU",
 		"memory": "Bộ nhớ",
+		"swap": "Swap",
+		"noSwap": "không có swap",
 		"disk": "Đĩa",
 		"latency": "Độ trễ",
 		"lastSeen": "Thấy lần cuối",
@@ -1610,7 +1614,7 @@
 		"openThePlugin": "Mở plugin",
 		"copyVersion": "Sao chép phiên bản",
 		"dataPack2": "Gói dữ liệu",
-		"size": "Dung lượng",
+		"size": "Kích thước",
 		"manageInThePool": "Quản lý trong kho",
 		"adoptIntoThePool": "Nhận vào kho",
 		"removeFromThisInstance": "Gỡ khỏi instance này",
@@ -1676,6 +1680,15 @@
 		"cancel": "Hủy",
 		"saveChanges": "Lưu thay đổi",
 		"downloadsTheNewestBuild": "Tải build {software} mới nhất cho phiên bản đã chọn rồi khởi động lại vào đó.",
+		"serverBuild": "Bản dựng server",
+		"serverBuildHint": "Bản dựng mới hơn của cùng phiên bản Minecraft. Thế giới và plugin không thay đổi gì.",
+		"checkForBuild": "Kiểm tra",
+		"installBuild": "Cài",
+		"buildUpToDate": "mới nhất",
+		"buildNeedsStop": "Hãy dừng instance trước; server đang chạy đã map file nhị phân của nó.",
+		"buildCheckFailed": "Không kiểm tra được bản dựng mới hơn",
+		"installingBuild": "Đang cài bản dựng {build}",
+		"buildInstallFailed": "Không cài được bản dựng",
 		"uptimeHistory": "Lịch sử hoạt động",
 		"uptimeHistoryDesc": "Mỗi cột là một ngày; ô trống là ngày daemon không theo dõi",
 		"uptimeLoading": "Đang tải bản ghi hoạt động…",
@@ -1691,7 +1704,15 @@
 		"tickDuration": "Thời lượng tick",
 		"ticking": "Đang tick",
 		"world": "Thế giới",
-		"worldAndBackup": "Thế giới & Sao lưu"
+		"worldAndBackup": "Thế giới & Sao lưu",
+		"notLoaded": "Chưa nạp",
+		"notLoaded2": "Chưa nạp",
+		"unmanagedAddons": "Addon không quản lý",
+		"unmanagedAddonsHint": "Các jar trong thư mục riêng của instance này mà không mục nào trong kho nhận. Tên và phiên bản lấy từ chính jar; trạng thái lấy từ log khởi động, giống như addon được quản lý.",
+		"addon": "Addon",
+		"buildChange": "Bản dựng server",
+		"addAddon": "Thêm addon…",
+		"addDataPack": "Thêm gói dữ liệu…"
 	},
 	"playerDetail": {
 		"issuingTempPassword": "Đang cấp mật khẩu tạm cho {name}…",
@@ -1931,10 +1952,13 @@
 		"sampledEvery5sOnThe": "Lấy mẫu mỗi 5s trên chính máy của daemon",
 		"cpu": "CPU",
 		"memory": "Bộ nhớ",
+		"swap": "Swap",
+		"noSwapConfigured": "chưa cấu hình swap",
 		"disk": "Đĩa",
 		"instanceMemory": "Bộ nhớ instance",
 		"cpuUtilization": "Mức dùng CPU",
 		"memoryUsed": "Bộ nhớ đã dùng",
+		"swapUsed": "Swap đã dùng",
 		"diskUsed": "Đĩa đã dùng",
 		"instanceMemoryResident": "Bộ nhớ instance (thường trú)",
 		"heartbeatLatency": "Độ trễ nhịp tim",
@@ -2431,7 +2455,9 @@
 		"loadingVersions": "Đang tải các phiên bản…",
 		"onInstances": "Trên các instance",
 		"cancel": "Hủy",
-		"pinDeploy": "Ghim & triển khai"
+		"pinDeploy": "Ghim & triển khai",
+		"settingChannel": "Đang đặt kênh cập nhật cho {name}…",
+		"channelSet": "Đã đặt kênh cập nhật thành {channel}. Lần kiểm tra cập nhật tới sẽ tính theo nó."
 	},
 	"envDetail": {
 		"environmentVariable": "Biến môi trường",
@@ -3156,6 +3182,10 @@
 	"instanceFields": {
 		"memory": "Bộ nhớ (heap)",
 		"memoryHint": "Trở thành -Xms và -Xmx, ví dụ 1G, 2G, 4096M.",
+		"memorySliderHint": "Trở thành -Xms và -Xmx. Giới hạn là bộ nhớ của máy này cộng swap.",
+		"memoryCapOn": "Trở thành -Xms và -Xmx. Giới hạn {cap}: bộ nhớ của {machine} cộng swap.",
+		"memoryOverCap": "Nhiều hơn mức {where} có ({cap}); server sẽ không khởi động được.",
+		"thisMachine": "máy này",
 		"javaProfile": "Java profile",
 		"javaProfileHint": "Bộ cờ JVM mà script khởi động lấy làm nền.",
 		"javaRuntime": "Java runtime",
@@ -3564,5 +3594,44 @@
 		"less": "Ít",
 		"more": "Nhiều",
 		"busiest": "ngày cao nhất {value}"
+	},
+	"channel": {
+		"label": "Kênh cập nhật",
+		"hint": "Bản kém ổn định nhất mà luna chấp nhận. Đây là giới hạn, không phải lựa chọn: beta nhận cả release và beta, và bản mới nhất trong hai loại sẽ thắng.",
+		"release": "Chỉ release",
+		"beta": "Release và beta",
+		"alpha": "Release, beta và alpha"
+	},
+	"instanceAddon": {
+		"poolLead": "Các addon luna đã có mà {instance} chưa nhận.",
+		"poolSearch": "Tìm addon trong kho",
+		"poolEmpty": "{instance} đã nhận mọi addon cùng loại trong kho.",
+		"providerSearch": "Tìm theo tên",
+		"drop": "Kéo một tệp {ext} vào đây, hoặc bấm để chọn",
+		"poolName": "Tên trong kho",
+		"poolNameHint": "Tên luna dùng để lưu. Chữ thường, số, - và _.",
+		"platform": "Nền tảng",
+		"platformHint": "Bản dựng dành cho hệ sinh thái nào; nó quyết định thư mục đích.",
+		"overwrites": "Việc này sẽ thay thế {key} trong kho, hiện là {version}.",
+		"duplicateTitle": "{instance} đã có addon này dưới tên khác:",
+		"unmanagedTag": "(không quản lý)",
+		"replaceLabel": "Thay thế bản cũ",
+		"replaceOn": "Bản cũ sẽ bị xóa sau khi bản mới vào chỗ, nên server chỉ nạp một lần.",
+		"replaceOff": "Cả hai bản sẽ nằm trong thư mục và server sẽ cố nạp addon hai lần.",
+		"deployHere": "Triển khai tới {instance} ngay",
+		"restartNote": "Addon vẫn được đưa vào kho trong cả hai trường hợp. Server đang chạy sẽ nạp nó ở lần khởi động lại tới.",
+		"add": "Thêm",
+		"adding": "Đang thêm {name}…",
+		"added": "Đã thêm {name}",
+		"deployedTo": "Đã triển khai tới {instance}.",
+		"pooledOnly": "Chỉ đưa vào kho; chưa triển khai gì.",
+		"superseded": "Đã xóa {files}.",
+		"failed": "Không thêm được addon",
+		"titlePool": "Thêm {noun} từ kho vào {instance}",
+		"titleProvider": "Cài {noun} lên {instance}",
+		"titleUpload": "Tải {noun} lên {instance}",
+		"menuUpload": "Tải tệp lên…",
+		"menuProvider": "Tìm trên {provider}…",
+		"overwritesUnversioned": "Việc này sẽ thay thế {key} trong kho."
 	}
 }

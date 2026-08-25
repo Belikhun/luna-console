@@ -26,6 +26,8 @@
 	} from '$lib/components/addons';
 	import Panel from '$lib/components/Panel.svelte';
 	import AddonPicker from '$lib/components/AddonPicker.svelte';
+	import ChannelSelect from '$lib/components/ChannelSelect.svelte';
+	import type { ReleaseChannel } from '$core/channels';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import Modal from '$lib/components/Modal.svelte';
@@ -72,6 +74,7 @@
 	let addId = $state('');
 	let addTargets: string[] = $state([]);
 	let addProvider = $state('modrinth');
+	let addChannel = $state<ReleaseChannel>('release');
 
 	// the Install split-button's provider menu, with live availability
 	let installProviders: AddonProvider[] = $state(
@@ -424,7 +427,11 @@
 				id: addId || undefined,
 				provider: addProvider,
 				family: addFamily,
-				targets: addTargets
+				targets: addTargets,
+				// only sent when it is not the default: absent lets core escalate to
+				// beta then alpha for a project that has never cut a stable release,
+				// which is the behaviour every install had before this control existed
+				channel: addChannel === 'release' ? undefined : addChannel
 			});
 
 			note.set({
@@ -475,6 +482,7 @@
 		addSlug = '';
 		addId = '';
 		addTargets = [];
+		addChannel = 'release';
 	}
 
 	$effect(() => {
@@ -755,6 +763,11 @@
 		{/snippet}
 	</AddonPicker>
 	{#if addSlug}
+		<!-- offered only once something is picked: the channel is a property of the
+		     install, and an empty picker has nothing for it to qualify -->
+		<div class="chan">
+			<ChannelSelect bind:value={addChannel} hint={t('web.catalog.channelHint')} />
+		</div>
 		<div class="tgt">
 			<div class="tgtlbl">{t('web.catalog.applyTo')} <span class="opt">{t('web.catalog.optional')}</span></div>
 			<p class="dim tgthint">{t('web.catalog.poolHintLong')}</p>
@@ -959,6 +972,10 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.375rem;
+	}
+
+	.chan {
+		margin-top: 0.75rem;
 	}
 
 	.tgt {

@@ -17,7 +17,7 @@ import { loadCluster, loadLock, managedInstances, saveLock } from '$core/config'
 import { instanceDataPackReport } from '$core/datapacks';
 import { loadPacksLock } from '$core/packslock';
 import { ensureAliases, instancePluginReport } from '$core/pluginstate';
-import type { InstancePluginRow, ReportLifecycle } from '$core/pluginstate';
+import type { InstancePluginRow, ReportLifecycle, UnmanagedAddonRow } from '$core/pluginstate';
 import type { InstanceDataPackRow } from '$core/datapacks';
 
 import { instanceStatus } from '$lib/server/luna';
@@ -30,7 +30,7 @@ export interface AddonSnapshot {
 	warnings: number;
 	errors: number;
 	/** Addon jars in the instance's directory that luna does not manage */
-	unmanaged: string[];
+	unmanaged: UnmanagedAddonRow[];
 	/** Absent for software with no world of its own (the proxy) */
 	datapacks?: { world: string; rows: InstanceDataPackRow[] };
 }

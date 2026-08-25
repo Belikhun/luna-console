@@ -7,13 +7,7 @@ import { saveCluster, loadLock } from '$core/config';
 import { getStatus, buildJavaCommand } from '$core/instances';
 import { deleteInstance } from '$core/admin';
 import { syncVelocityToml } from '$core/proxy';
-import {
-	loadCluster,
-	managedInstances,
-	instanceStatus,
-	readHostMemMb,
-	pushEvent
-} from '$lib/server/luna';
+import { loadCluster, managedInstances, instanceStatus, pushEvent } from '$lib/server/luna';
 import { startJob } from '$lib/server/jobs';
 import { errorMessage } from '$lib/server/http';
 
@@ -26,13 +20,16 @@ export async function GET({ params }) {
 		throw error(404, `unknown instance: ${params.name}`);
 	}
 
+	// hostMemMb and hostSwapMb come from the status payload, which reads them off
+	// the *owning* machine's health sample. They used to be read here with
+	// readHostMemMb(), which always answers for the daemon the console is attached
+	// to, so every follower-owned instance was measured against the primary's RAM.
 	return json({
 		...(await instanceStatus(params.name)),
 		// with the lockfile, so an agent naming a pooled addon shows the jar it
 		// actually resolves to rather than the reference
 		javaCommand: buildJavaCommand(cfg, inst, await loadLock()),
-		java: inst.java ?? null,
-		hostMemMb: await readHostMemMb()
+		java: inst.java ?? null
 	});
 }
 

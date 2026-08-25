@@ -10,7 +10,9 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, post } from '$lib/api';
+	import { api, post, patch } from '$lib/api';
+	import ChannelSelect from '$lib/components/ChannelSelect.svelte';
+	import type { ReleaseChannel } from '$core/channels';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -136,6 +138,21 @@
 
 		busy = '';
 	}
+
+	/**
+	 * Move one family build onto another release channel.
+	 *
+	 * Deliberately does not update afterwards. The channel is what luna will
+	 * accept from here on; taking a jar off the new ceiling is a separate,
+	 * destructive-ish act, and doing both on one click would mean a dropdown
+	 * silently replaced a deployed build.
+	 */
+	const setFamilyChannel = (family: any, channel: ReleaseChannel) =>
+		run('channel', t('web.addonDetail.settingChannel', { name: family.key }), async () => {
+			await patch(`/plugins/${encodeURIComponent(family.key)}`, { channel });
+
+			return t('web.addonDetail.channelSet', { channel });
+		});
 
 	const deployAll = () =>
 		run('deploy', `Deploying ${name}…`, async () => {
@@ -478,6 +495,17 @@
 					description={family.meta?.description ?? `Pool file ${family.file}`}
 				>
 					{#snippet actions()}
+						<!-- only a provider-mapped build has a channel to set: an in-house
+						     or unmapped jar has no upstream to take one from, and core
+						     refuses it rather than storing a setting that does nothing -->
+						{#if family.remote}
+							<ChannelSelect
+								value={(family.channel ?? 'release') as ReleaseChannel}
+								width="12rem"
+								disabled={!!busy}
+								onchange={(channel) => setFamilyChannel(family, channel)}
+							/>
+						{/if}
 						<Btn
 							icon="link"
 							disabled={family.source === 'luna' || !!busy}
@@ -492,7 +520,6 @@
 							{ id: `src-${family.key}`, label: t('web.addonDetail.source') },
 							{ label: t('web.addonDetail.primaryVersion'), value: family.installed?.versionNumber ?? '?', style: 'mono' },
 							{ label: t('web.addonDetail.declaredVersion'), value: family.meta?.version ?? null, style: 'mono' },
-							{ label: t('web.addonDetail.updateChannel'), value: family.channel },
 							{ label: t('web.addonDetail.autoUpdate'), value: family.autoUpdate ? 'Enabled' : 'Disabled' },
 							{ label: t('web.addonDetail.authors'), value: family.meta?.authors?.join(', ') ?? null },
 							{ id: `web-${family.key}`, label: t('web.addonDetail.website') },

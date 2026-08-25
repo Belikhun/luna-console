@@ -42,6 +42,7 @@
 		"cpuAt": "CPU at {pct}%",
 		"memAt": "memory at {pct}%",
 		"diskAt": "disk at {pct}%",
+		"swapAt": "swap {pct}%",
 		"headroomOk": "CPU {cpu}% · memory {mem}% · disk {disk}% · load {load}",
 		"notProbed": "not probed yet",
 		"nothingToProbe": "no running instance to probe on {host}",

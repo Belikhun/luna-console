@@ -19,6 +19,24 @@ export function memPct(health: HealthSample | null | undefined): number | null {
 	return Math.round((health.memUsedMb / health.memTotalMb) * 100);
 }
 
+/**
+ * Swap utilization of a health sample, percent; null when the machine has no
+ * swap, and null again when the sample came from a daemon too old to report it.
+ *
+ * Null and zero are different answers and the gauges rely on it: a machine with
+ * swap off has nothing to show, while one that has swap and is not touching it
+ * is a fact worth drawing at 0%.
+ */
+export function swapPct(health: HealthSample | null | undefined): number | null {
+	const total = health?.swapTotalMb ?? 0;
+
+	if (total <= 0) {
+		return null;
+	}
+
+	return Math.round(((health?.swapUsedMb ?? 0) / total) * 100);
+}
+
 /** Cluster-root disk utilization of a health sample, percent. */
 export function diskPct(health: HealthSample | null | undefined): number | null {
 	if (!health || health.diskTotalBytes <= 0) {

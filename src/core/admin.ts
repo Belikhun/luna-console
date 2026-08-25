@@ -31,6 +31,7 @@ import { getConfValue, setConfValue } from "./confedit";
 import { forgetInstance } from "./configfiles";
 import { DEFAULT_RESTART_DELAY, validateRestartDelay } from "./instances";
 import { loadEnv, saveEnv, unsetInstanceScope } from "./environment";
+import { assertMemoryValue, MEMORY_FALLBACK } from "./memory";
 import { ProgressReporter } from "./progress";
 import {
 	ensureJavaFloor,
@@ -48,8 +49,15 @@ import { listArchive } from "./services/archive";
 import { buildPlatform } from "../version";
 import { t } from "../shared/i18n";
 
-/** Parse "1.21.11-127-bd74bf6 (MC: 1.21.11)" from version_history.json. */
-export async function detectMcVersion(dir: string): Promise<string | undefined> {
+/**
+ * `currentVersion` out of version_history.json, e.g.
+ * "1.21.11-127-bd74bf6 (MC: 1.21.11)".
+ *
+ * The paper family writes this file itself on every boot, which makes it the one
+ * place a server states what it is actually running rather than what the
+ * registry believes. Velocity, the hybrids and pumpkin write nothing like it.
+ */
+async function versionHistory(dir: string): Promise<string | undefined> {
 	const path = join(dir, "version_history.json");
 
 	if (!existsSync(path)) {
@@ -58,11 +66,49 @@ export async function detectMcVersion(dir: string): Promise<string | undefined> 
 
 	try {
 		const data = await Bun.file(path).json();
-		const version = String(data.currentVersion ?? "").match(/MC:\s*([\d.]+)/);
+		const current = String(data.currentVersion ?? "");
 
-		return version?.[1];
+		return current || undefined;
 	} catch {
 		return undefined;
+	}
+}
+
+/** Parse "1.21.11-127-bd74bf6 (MC: 1.21.11)" from version_history.json. */
+export async function detectMcVersion(dir: string): Promise<string | undefined> {
+	return (await versionHistory(dir))?.match(/MC:\s*([\d.]+)/)?.[1];
+}
+
+/**
+ * The build number out of the same string: the `127` in
+ * "1.21.11-127-bd74bf6 (MC: 1.21.11)".
+ *
+ * This is what makes an update check work on a backend luna did not install.
+ * The middle field is the paper build number, which is exactly what the Fill API
+ * calls a build id, so the two are directly comparable.
+ */
+export async function detectBuildId(dir: string): Promise<string | undefined> {
+	const current = await versionHistory(dir);
+
+	return current?.match(/^[\d.]+-(\d+)-/)?.[1];
+}
+
+/**
+ * Stamp the build a resolved install came from onto the registry entry.
+ *
+ * Skipped for the args-file loaders, whose `buildId` *is* their `loaderVersion`:
+ * storing it twice invites the two to disagree, and `installedBuild` reads the
+ * loader field for them anyway.
+ */
+function recordBuildId(inst: InstanceConfig, build: SoftwareBuild): void {
+	if (traitsOf(inst.software, inst.mcVersion).pinsLoaderVersion) {
+		delete inst.buildId;
+
+		return;
+	}
+
+	if (build.buildId) {
+		inst.buildId = build.buildId;
 	}
 }
 
@@ -800,7 +846,9 @@ async function buildInstance(
 		dir: name,
 		software,
 		port,
-		memory: opts.memory ?? "2G",
+		// validated here rather than trusted: create used to accept any string at
+		// all, so "5 gigs" reached the registry and only failed at the JVM
+		memory: opts.memory ? assertMemoryValue(opts.memory) : MEMORY_FALLBACK,
 		profile: opts.profile ?? "aikar",
 		proxy: { register: opts.register ?? true },
 	};
@@ -812,6 +860,8 @@ async function buildInstance(
 	if (build.loaderVersion) {
 		inst.loaderVersion = build.loaderVersion;
 	}
+
+	recordBuildId(inst, build);
 
 	if (opts.javaArgs?.length) {
 		inst.javaArgs = opts.javaArgs;
@@ -1191,6 +1241,8 @@ export async function setVersion(
 		inst.mcVersion = build.mcVersion;
 		inst.loaderVersion = build.loaderVersion;
 
+		recordBuildId(inst, build);
+
 		progress.complete(`${from ?? "?"} → ${build.mcVersion} (${build.loaderVersion})`);
 
 		return { from, to: build.mcVersion ?? build.buildId, build };
@@ -1233,6 +1285,8 @@ export async function setVersion(
 		inst.loaderVersion = build.loaderVersion;
 	}
 
+	recordBuildId(inst, build);
+
 	// a version bump can cross a java floor (1.20.5 and 26.1 both raised one, and
 	// velocity 4 raised its own without any MC release moving), and an instance
 	// that was fine a moment ago would then refuse to boot
@@ -1251,9 +1305,6 @@ export async function setVersion(
 
 	return { from, to: build.mcVersion ?? build.buildId, build, backedUpJar: backup };
 }
-
-/** How much heap an instance may ask for: a number and a unit, nothing else. */
-const MEMORY_VALUE = /^\d+[kKmMgG]$/;
 
 /**
  * The instance fields a caller may change after creation. An explicit `null`
@@ -1304,8 +1355,8 @@ export function applyInstanceOptions(
 		throw new Error(t("core.admin.softwareHasNoJava", { software: inst.software }));
 	}
 
-	if (update.memory !== undefined && !MEMORY_VALUE.test(update.memory.trim())) {
-		throw new Error(t("core.admin.badMemory", { value: update.memory }));
+	if (update.memory !== undefined) {
+		assertMemoryValue(update.memory);
 	}
 
 	if (update.profile !== undefined && !cfg.javaProfiles[update.profile]) {
@@ -1367,7 +1418,7 @@ export function applyInstanceOptions(
 	};
 
 	if (update.memory !== undefined) {
-		set("memory", update.memory.trim());
+		set("memory", assertMemoryValue(update.memory));
 	}
 
 	if (update.profile !== undefined) {

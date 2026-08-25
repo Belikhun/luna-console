@@ -94,6 +94,8 @@
 	},
 	"plugins": {
 		"unknown": "unknown plugin: {name}",
+		"channelNotRemote": "{name} is an in-house build; there is no provider to take a channel from",
+		"channelUnidentified": "{name} is not mapped to a provider project; identify it first, then set a channel",
 		"noChannelVersionForMc": "no {channel}-channel version supports MC {mc}",
 		"noChannelVersion": "no {channel}-channel version published",
 		"skipLuna": "luna plugin (custom deployment)",
@@ -134,10 +136,12 @@
 		"everyAddon": "every addon",
 		"reconcilingPorts": "reconciling plugin ports",
 		"reconciledPorts": "plugin ports reconciled",
-		"reconcilePortsFailed": "could not reconcile plugin ports"
+		"reconcilePortsFailed": "could not reconcile plugin ports",
+		"notAnAddonFile": "\"{file}\" is not an addon file name; only a jar or component already in this instance's addon directory can be superseded"
 	},
 	"datapacks": {
 		"unknown": "unknown data pack: {name}",
+		"channelUnidentified": "{name} is not mapped to a provider project; identify it first, then set a channel",
 		"noWorld": "{name} has no world to hold data packs",
 		"copying": "copying {file}",
 		"noVersionForMc": "no version of {slug} covers MC {mc}{newest}",
@@ -564,7 +568,11 @@
 		"forcedDown": "{name} was forced down",
 		"processGone": "process gone in {seconds}s",
 		"stoppedIn": "stopped in {seconds}s",
-		"restarted": "{name} restarted"
+		"restarted": "{name} restarted",
+		"phaseAddonScan": "Addon scan",
+		"scanningAddons": "reading addon descriptors",
+		"addonsScanned": "{managed} managed, {unmanaged} unmanaged",
+		"addonScanFailed": "could not read the addon directory"
 	},
 	"accounts": {
 		"reservedUsername": "{name} is reserved: it is the identity the CLI and the daemon act as",
@@ -673,5 +681,12 @@
 		"nameNeeded": "no player name is recorded for {uuid}; console commands and new entries need one, so give the name as well",
 		"opEditNeedsStop": "the server owns ops.json while it runs; stop the instance to edit an operator",
 		"whitelistHasNoFields": "a whitelist entry has nothing to edit"
+	},
+	"serverBuilds": {
+		"skipExternal": "an external server is updated wherever it runs, not from here",
+		"skipNoProvider": "no upstream publishes builds for {software}; it can only be adopted",
+		"skipUnknownBuild": "luna does not know which build is installed; upgrading records it, and {build} is what it would install",
+		"asking": "asking about {name}",
+		"checked": "checked {count} instance(s); {updates} with a newer build"
 	}
 }

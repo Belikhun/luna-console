@@ -18,7 +18,7 @@ import type { PortAllocation } from "./ports";
 import { ensurePortAllocations } from "./ports";
 import { syncConsent } from "./pumpkin";
 import * as modrinth from "./services/modrinth";
-import type { AddonProject, AddonType, AddonVersion } from "./services/providers";
+import type { AddonProject, AddonType, AddonVersion, ReleaseChannel } from "./services/providers";
 import {
 	coversMc,
 	FABRIC_LOADERS,
@@ -1144,6 +1144,54 @@ export function unpinVersion(
 	return removed;
 }
 
+/**
+ * Set how unstable a release this entry will accept from its provider.
+ *
+ * The channel is a **ceiling**, not a selector: `alpha` means release, beta and
+ * alpha are all acceptable and the newest of them wins, which is what makes
+ * "move this onto the beta line" one field rather than a pin per instance.
+ *
+ * `release` is stored as absence, the way every other default in the lockfile
+ * is, so a lockfile diff never fills up with fields restating defaults.
+ *
+ * Nothing is downloaded here. The next `checkUpdates` is what resolves against
+ * the new ceiling, which keeps changing the channel cheap and reversible; and a
+ * change that is only a change of intent should not move jars on its own.
+ *
+ * Mutates lock (caller saves).
+ */
+export function setChannel(
+	lock: PluginsLock,
+	name: string,
+	channel: ReleaseChannel,
+): { name: string; from: ReleaseChannel; to: ReleaseChannel } {
+	const entry = lock.plugins[name];
+
+	if (!entry) {
+		throw new Error(t("core.plugins.unknown", { name }));
+	}
+
+	// an in-house jar has no provider to ask, so a channel on it would be a
+	// setting that never does anything
+	if (entry.source === "luna") {
+		throw new Error(t("core.plugins.channelNotRemote", { name }));
+	}
+
+	if (!entry.remote) {
+		throw new Error(t("core.plugins.channelUnidentified", { name }));
+	}
+
+	const from = entry.channel ?? "release";
+
+	if (channel === "release") {
+		delete entry.channel;
+	} else {
+		entry.channel = channel;
+	}
+
+	return { name, from, to: channel };
+}
+
 export interface CompatRow {
 	plugin: string;
 	version?: string;
@@ -1637,6 +1685,7 @@ export async function installFromProvider(
 	// hand rather than guessed from a search
 	family: Exclude<PluginFamily, "universal">,
 	targets: string[],
+	opts: { channel?: ReleaseChannel } = {},
 ): Promise<{ name: string; entry: PluginEntry; resolution: EntryResolution }> {
 	// standardized scheme: key <plugin>@<family>, pool file <plugin>@<family><ext>
 	const plugin = project.slug.toLowerCase();
@@ -1653,6 +1702,7 @@ export async function installFromProvider(
 		remote,
 		autoUpdate: true,
 		targets,
+		...(opts.channel ? { channel: opts.channel } : {}),
 	};
 
 	// an install with no targets pools the jar and deploys nowhere
@@ -1661,16 +1711,22 @@ export async function installFromProvider(
 			? resolveEntry(cfg, entry, versions)
 			: poolOnlyResolution(entry, versions);
 
-	// Prefer stable releases; fall back to beta, then alpha, for projects that never publish releases.
 	let resolution = resolve();
 
-	for (const channel of ["beta", "alpha"] as const) {
-		if (resolution.groups.length) {
-			break;
-		}
+	// Prefer stable releases; fall back to beta, then alpha, for projects that
+	// never publish releases. An explicitly asked-for channel disables the
+	// fallback: the operator has already said how unstable they will accept, and
+	// escalating past it would install something they ruled out. Same rule the
+	// pack installers follow.
+	if (!opts.channel) {
+		for (const channel of ["beta", "alpha"] as const) {
+			if (resolution.groups.length) {
+				break;
+			}
 
-		entry.channel = channel;
-		resolution = resolve();
+			entry.channel = channel;
+			resolution = resolve();
+		}
 	}
 
 	if (!resolution.groups.length) {

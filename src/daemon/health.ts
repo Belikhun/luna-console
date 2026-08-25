@@ -33,6 +33,15 @@ export interface HealthSample {
 	cpuCores: number;
 	memUsedMb: number;
 	memTotalMb: number;
+	/**
+	 * Swap in use, MB, and how much of it there is. Zero on a machine with no
+	 * swap configured, which is a real answer; **absent** on a sample from a
+	 * follower whose build predates the field, which is not. Every reader has to
+	 * tell those apart, because a pong is forwarded as whatever arrived
+	 * (`{...frame.health}` in the hub) and no default is filled in on the way.
+	 */
+	swapUsedMb?: number;
+	swapTotalMb?: number;
 	/** Usage of the filesystem holding the cluster root */
 	diskUsedBytes: number;
 	diskTotalBytes: number;
@@ -103,22 +112,34 @@ async function readCpuPct(): Promise<number | undefined> {
 	}
 }
 
+interface MemReading {
+	usedMb: number;
+	totalMb: number;
+	swapUsedMb: number;
+	swapTotalMb: number;
+}
+
 /**
- * Host memory. MemAvailable rather than MemFree: the kernel counts the page
- * cache as used, so free alone reads permanently near-full on a file server.
+ * Host memory and swap. MemAvailable rather than MemFree: the kernel counts the
+ * page cache as used, so free alone reads permanently near-full on a file
+ * server. Swap has no such subtlety; SwapTotal minus SwapFree is what is in it.
  */
-async function readMem(): Promise<{ usedMb: number; totalMb: number }> {
+async function readMem(): Promise<MemReading> {
 	try {
 		const text = await readFile("/proc/meminfo", "utf8");
 		const totalKb = Number(/MemTotal:\s+(\d+)/.exec(text)?.[1] ?? 0);
 		const availableKb = Number(/MemAvailable:\s+(\d+)/.exec(text)?.[1] ?? 0);
+		const swapTotalKb = Number(/SwapTotal:\s+(\d+)/.exec(text)?.[1] ?? 0);
+		const swapFreeKb = Number(/SwapFree:\s+(\d+)/.exec(text)?.[1] ?? 0);
 
 		return {
 			usedMb: Math.round((totalKb - availableKb) / 1024),
 			totalMb: Math.round(totalKb / 1024),
+			swapUsedMb: Math.round((swapTotalKb - swapFreeKb) / 1024),
+			swapTotalMb: Math.round(swapTotalKb / 1024),
 		};
 	} catch {
-		return { usedMb: 0, totalMb: 0 };
+		return { usedMb: 0, totalMb: 0, swapUsedMb: 0, swapTotalMb: 0 };
 	}
 }
 
@@ -183,6 +204,8 @@ async function sampleOnce(): Promise<void> {
 		cpuCores: hostCpuCores(),
 		memUsedMb: mem.usedMb,
 		memTotalMb: mem.totalMb,
+		swapUsedMb: mem.swapUsedMb,
+		swapTotalMb: mem.swapTotalMb,
 		diskUsedBytes: usage.usedBytes,
 		diskTotalBytes: usage.totalBytes,
 		load1: load[0] ?? 0,

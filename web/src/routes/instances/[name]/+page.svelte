@@ -15,6 +15,7 @@
 	import Tabs from '$lib/components/Tabs.svelte';
 	import AccessLists from '$lib/components/AccessLists.svelte';
 	import Btn from '$lib/components/Btn.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
@@ -30,7 +31,15 @@
 	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
 	import ServerProperties from '$lib/components/ServerProperties.svelte';
 	import { Notify } from '$lib/notifications.svelte';
-	import { hasProvider, traitsOf } from '$core/software';
+	import { familyForDir, hasProvider, traitsOf } from '$core/software';
+	import InstanceAddonAdd from '$lib/components/InstanceAddonAdd.svelte';
+	import SplitBtn from '$lib/components/SplitBtn.svelte';
+	import type { AddonSource, InstanceAddonKind } from '$lib/components/instanceaddon';
+	import { ADDON_PROVIDERS, type AddonKindType } from '$lib/components/addons';
+	import type { PluginFamily } from '$core/types';
+	import { formatMemoryGb, formatMemoryMb } from '$core/memory';
+	import type { BuildCheck } from '$core/serverbuilds';
+	import type { UnmanagedAddonRow } from '$core/pluginstate';
 	import { channelOf } from '$lib/components/software';
 	import type { Software } from '$core/types';
 	import Sparkline from '$lib/components/Sparkline.svelte';
@@ -150,12 +159,91 @@
 	let scheduleOpen = $state(false);
 	let versionConflict: any[] = $state([]);
 
+	let addonUploadOpen = $state(false);
+	let datapackUploadOpen = $state(false);
+	let addonSource = $state<AddonSource>('pool');
+	let datapackSource = $state<AddonSource>('pool');
+	let addonProvider = $state('modrinth');
+	let datapackProvider = $state('modrinth');
+
+	/** Open the add dialog on one source; the caret picks, the dialog does not. */
+	function openAddon(source: AddonSource, provider = 'modrinth'): void {
+		addonSource = source;
+		addonProvider = provider;
+		addonUploadOpen = true;
+	}
+
+	function openDatapack(source: AddonSource, provider = 'modrinth'): void {
+		datapackSource = source;
+		datapackProvider = provider;
+		datapackUploadOpen = true;
+	}
+
+	/**
+	 * The caret's alternatives: a file, then one entry per provider that hosts this
+	 * kind. Named per provider rather than one "from a provider" entry, so the
+	 * operator lands in the right search instead of picking twice; the same shape
+	 * the pool screens' Install button uses.
+	 */
+	function sourceMenu(
+		kind: AddonKindType,
+		open: (source: AddonSource, provider?: string) => void
+	): ContextMenuItem[] {
+		return [
+			{
+				label: t('web.instanceAddon.menuUpload'),
+				icon: 'fileArrowUp',
+				action: () => open('upload')
+			},
+			{ separator: true, label: '' },
+			...ADDON_PROVIDERS.filter((entry) => entry.types.includes(kind)).map((entry) => ({
+				label: t('web.instanceAddon.menuProvider', { provider: entry.label }),
+				brand: entry.id,
+				action: () => open('provider', entry.id)
+			}))
+		];
+	}
+
+
+	/**
+	 * Platform families this instance can be handed a build for.
+	 *
+	 * Derived from its own addon directories, so a paper backend is offered paper
+	 * (and universal, which is a jar carrying both descriptors) while a modpack is
+	 * offered its loader. A hybrid running both gets both.
+	 */
+	const uploadFamilies = $derived.by((): PluginFamily[] => {
+		if (!inst) {
+			return ['paper'];
+		}
+
+		const dirs = traitsOf(inst.software as Software).addonDirs;
+		const own = dirs.map((dir) => familyForDir(inst.software as Software, dir));
+
+		return [...own, 'universal'];
+	});
+
+	/** Whether this instance's addons are plugins or mods, for the dialog's wording. */
+	const uploadKind = $derived<InstanceAddonKind>(
+		inst && traitsOf(inst.software as Software).addonDirs.includes('mods') ? 'mod' : 'plugin'
+	);
+
+	const addonSourceMenu = $derived(
+		sourceMenu(uploadKind === 'mod' ? 'mod' : 'plugin', openAddon)
+	);
+	const datapackSourceMenu = $derived(sourceMenu('datapack', openDatapack));
+
+	/** Last answer from the build check; null until the operator asks for one. */
+	let buildCheck: BuildCheck | null = $state(null);
+	let buildChecking = $state(false);
+	let buildUpdating = $state(false);
+
 	let instPlugins: any[] = $state([]);
 	let pluginTotals = $state({ warnings: 0, errors: 0, sessionComplete: true });
 	let instDatapacks: any[] = $state([]);
 	let datapackWorld = $state('');
 	/** addon jars in the instance's directory that luna does not manage */
-	let instUnmanaged: string[] = $state([]);
+	let instUnmanaged: UnmanagedAddonRow[] = $state([]);
 	/** addon stream state, in the same vocabulary the log stream uses */
 	let addonLive: 'off' | 'connecting' | 'live' | 'reconnecting' = $state('off');
 	let instRespacks: any[] = $state([]);
@@ -751,7 +839,9 @@
 			note.set({ progress: Math.round(view.progress.progress * 100) });
 		});
 
-		const result = done.result as { from: string | null; to: string; build: number };
+		// a build id is a string for every provider: a paper build number, a forge
+		// loader version, a pumpkin release tag
+		const result = done.result as { from: string | null; to: string; build: string };
 
 		note.set({
 			level: 'success',
@@ -763,6 +853,53 @@
 
 		await refresh();
 		await loadTab('config');
+	}
+
+	/**
+	 * Ask whether a newer build of this instance's own version exists.
+	 *
+	 * Never automatic. The answer costs a provider round trip and is only ever
+	 * acted on deliberately, so nagging every page load would spend requests to
+	 * tell an operator something they did not ask about.
+	 */
+	async function checkBuild(): Promise<void> {
+		buildChecking = true;
+
+		try {
+			buildCheck = await api(`/instances/${name}/build`);
+		} catch (err) {
+			Notify.error(t('web.instanceDetail.buildCheckFailed'), {
+				detail: (err as Error).message
+			});
+		} finally {
+			buildChecking = false;
+		}
+	}
+
+	/** Install the offered build, following the same progress tree a version change uses. */
+	async function applyBuild(): Promise<void> {
+		buildUpdating = true;
+
+		const note = Notify.loading(
+			t('web.instanceDetail.installingBuild', { build: buildCheck?.update?.to ?? '' })
+		);
+
+		try {
+			const res = await post(`/instances/${name}/build`, {});
+
+			await trackVersionJob(res.job, note);
+			await checkBuild();
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: t('web.instanceDetail.buildInstallFailed'),
+				detail: (err as Error).message,
+				progress: null,
+				closeable: true
+			});
+		} finally {
+			buildUpdating = false;
+		}
 	}
 
 	async function saveConfig(): Promise<void> {
@@ -1137,6 +1274,24 @@
 	const hostMemMb = $derived(inst?.hostMemMb ?? 0);
 
 	/**
+	 * Heap ceiling for the machine this instance runs on, MB: its physical memory
+	 * plus its swap. Undefined when that machine has not reported a sample, which
+	 * leaves the memory field a text box rather than capping against a guess.
+	 */
+	const memoryCapMb = $derived(hostMemMb ? hostMemMb + (inst?.hostSwapMb ?? 0) : undefined);
+
+	// a primary-owned instance has no `daemon`, and the primary is the machine the
+	// console itself runs beside, so "this machine" is the honest name for it
+	const memoryCapNote = $derived(
+		memoryCapMb
+			? t('web.instanceFields.memoryCapOn', {
+					machine: inst?.daemon ?? t('web.instanceFields.thisMachine'),
+					cap: formatMemoryGb(memoryCapMb)
+				})
+			: undefined
+	);
+
+	/**
 	 * How a `/proc` state letter is named and shaded in the thread grid.
 	 *
 	 * Keys rather than translated text, so one entry serves every locale; the
@@ -1355,6 +1510,36 @@
 		{ id: 'assign', label: t('web.instanceDetail.assignment'), hidden: true }
 	]);
 
+	const unmanagedCols: Column[] = $derived([
+		{ id: 'name', label: t('web.instanceDetail.addon'), sortable: true },
+		{ id: 'state', label: t('web.instanceDetail.state'), sortable: true, width: 130 },
+		{ id: 'dir', label: t('web.instanceDetail.directory'), sortable: true, width: 130 },
+		{ id: 'version', label: t('web.instanceDetail.version'), width: 140 },
+		// hidden by default: an author list is the widest and least scannable thing a
+		// descriptor carries, and showing it pushed the alerts column off the panel
+		{ id: 'authors', label: t('web.addonDetail.authors'), minWidth: 140, hidden: true },
+		{ id: 'size', label: t('web.instanceDetail.size'), sortable: true, width: 110 },
+		{ id: 'alerts', label: t('web.instanceDetail.alerts'), sortable: true, width: 200 }
+	]);
+
+	/** Sort keys for the unmanaged table's columns that render as more than text. */
+	function unmanagedSortValue(row: UnmanagedAddonRow, col: string): string | number | null {
+		if (col === 'name') {
+			return row.displayName;
+		}
+
+		if (col === 'size') {
+			return row.sizeBytes;
+		}
+
+		// errors before warnings before silence, which is the reason to sort here
+		if (col === 'alerts') {
+			return row.errors * 1000 + row.warnings;
+		}
+
+		return (row as unknown as Record<string, string>)[col] ?? '';
+	}
+
 	/**
 	 * Badge look of each addon phase. "Disabled" is not a phase; it is the
 	 * per-instance override, and it says why the log has nothing to report rather
@@ -1364,6 +1549,9 @@
 		running: { state: 'running', label: t('web.instanceDetail.running') },
 		loading: { state: 'loading', label: t('web.instanceDetail.loading') },
 		errored: { state: 'failed', label: t('web.instanceDetail.errored') },
+		// deployed, the server listed what it loaded, and this was not in the list;
+		// a warning rather than a failure, because nothing reported an error
+		missing: { state: 'warning', label: t('web.instanceDetail.notLoaded') },
 		unknown: { state: 'unknown', label: t('web.instanceDetail.unknown') },
 		disabled: { state: 'stopped', label: t('web.instanceDetail.disabled') }
 	};
@@ -1383,6 +1571,10 @@
 			{ key: 'running', label: t('web.instanceDetail.running2'), count: by('running'), color: 'var(--success)' },
 			{ key: 'loading', label: t('web.instanceDetail.loading2'), count: by('loading'), color: 'var(--warning)' },
 			{ key: 'errored', label: t('web.instanceDetail.errored2'), count: by('errored'), color: 'var(--error)' },
+			// its own band rather than folded into unknown: "deployed and never
+			// loaded" is the one an operator has to act on, and it used to be
+			// indistinguishable from "luna cannot tell"
+			{ key: 'missing', label: t('web.instanceDetail.notLoaded2'), count: by('missing'), color: 'var(--primary)' },
 			{ key: 'unknown', label: t('web.instanceDetail.unknown2'), count: by('unknown'), color: 'var(--bg-track)' },
 			{
 				key: 'disabled',
@@ -2358,6 +2550,15 @@
 					{/if}
 					<Btn icon="sync" onclick={() => loadTab('plugins')}>{t('web.instanceDetail.refresh')}</Btn>
 					<Btn icon="upload" onclick={deployPlugins}>{t('web.instanceDetail.deployToThisInstance')}</Btn>
+					<!-- primary click is the pool, because that is where most of what an
+					     operator wants already is; the other two sources are the caret -->
+					<SplitBtn
+						label={t('web.instanceDetail.addAddon')}
+						icon="plus"
+						primary
+						onclick={() => openAddon('pool')}
+						menu={addonSourceMenu}
+					/>
 				{/snippet}
 				<ResourceTable
 					tableId="instance-plugins"
@@ -2424,6 +2625,45 @@
 				<p class="dim note">
 					{t('web.instanceDetail.theBootLinesOf')}
 				</p>
+			{/if}
+			<!-- a second table rather than rows in the first: these have no version,
+			     no origin and no source, and merging them would add four columns that
+			     are blank for half the rows. They are still addons, and until now the
+			     screen counted them in the bar and then never named one. -->
+			{#if instUnmanaged.length}
+				<div class="gap"></div>
+				<Panel
+					title={t('web.instanceDetail.unmanagedAddons')}
+					count={String(instUnmanaged.length)}
+					description={t('web.instanceDetail.unmanagedAddonsHint')}
+				>
+					<DataTable
+						columns={unmanagedCols}
+						rows={instUnmanaged}
+						getId={(row) => `${row.dir}/${row.file}`}
+						sortValue={unmanagedSortValue}
+					>
+						{#snippet cell(row: UnmanagedAddonRow, col: string)}
+							{#if col === 'name'}
+								<b>{row.displayName}</b>
+								<span class="dim">{row.file}</span>
+							{:else if col === 'state'}
+								{@const badge = PLUGIN_STATE_BADGE[row.state] ?? PLUGIN_STATE_BADGE.unknown}
+								<StatusBadge state={badge.state} label={badge.label} />
+							{:else if col === 'dir'}
+								<span class="mono dim">{row.dir}</span>
+							{:else if col === 'version'}
+								<span class="mono">{row.meta?.version ?? '—'}</span>
+							{:else if col === 'authors'}
+								<span class="dim">{row.meta?.authors?.join(', ') ?? '—'}</span>
+							{:else if col === 'size'}
+								{fmtBytes(row.sizeBytes)}
+							{:else if col === 'alerts'}
+								<Alerts warnings={row.warnings} errors={row.errors} />
+							{/if}
+						{/snippet}
+					</DataTable>
+				</Panel>
 			{/if}
 		{:else if tab === 'world'}
 			{#if worldLock}
@@ -2579,6 +2819,13 @@
 					<Btn icon="sync" onclick={() => loadTab('datapacks')}>{t('web.instanceDetail.refresh')}</Btn>
 					<Btn icon="box" onclick={() => goto('/datapacks')}>{t('web.instanceDetail.managePool')}</Btn>
 					<Btn icon="upload" onclick={deployDatapacks}>{t('web.instanceDetail.deployToThisInstance')}</Btn>
+					<SplitBtn
+						label={t('web.instanceDetail.addDataPack')}
+						icon="plus"
+						primary
+						onclick={() => openDatapack('pool')}
+						menu={datapackSourceMenu}
+					/>
 				{/snippet}
 				<ResourceTable
 					tableId="instance-datapacks"
@@ -2881,6 +3128,8 @@
 							instance={name}
 							binaryName={cfgData.binaryName}
 							addons={cfgData.addons ?? []}
+							{memoryCapMb}
+							{memoryCapNote}
 							bind:memory={cfgMemory}
 							bind:profile={cfgProfile}
 							bind:runtime={cfgRuntime}
@@ -2902,6 +3151,48 @@
 										value: version, label: version
 									}))}
 								/>
+							</div>
+							<!-- the build is a separate row from the version on purpose: taking a
+							     newer build is the routine act and changing version is not, so the
+							     one that happens weekly does not need the version picker touched -->
+							<div class="field">
+								<span class="lbl">{t('web.instanceDetail.serverBuild')}</span>
+								<span class="hint">{t('web.instanceDetail.serverBuildHint')}</span>
+								<div class="build">
+									<span class="buildnow">
+										{#if buildCheck?.update}
+											<span class="dim">{buildCheck.update.from ?? '—'}</span>
+											<!-- `right`, not `arrowRight`: the latter is the chevron, and a
+											     from/to transition wants the long arrow -->
+											<Icon name="right" size="0.75rem" />
+											<b>{buildCheck.update.to}</b>
+										{:else if buildCheck?.current}
+											{buildCheck.current}
+											<span class="dim">{t('web.instanceDetail.buildUpToDate')}</span>
+										{:else if buildCheck?.skipped}
+											<span class="dim">{buildCheck.skipped}</span>
+										{:else}
+											<span class="dim">—</span>
+										{/if}
+									</span>
+									<Btn icon="sync" loading={buildChecking} onclick={checkBuild}>
+										{t('web.instanceDetail.checkForBuild')}
+									</Btn>
+									{#if buildCheck?.update}
+										<Btn
+											variant="primary"
+											icon="download"
+											loading={buildUpdating}
+											disabled={inst.state !== 'stopped'}
+											title={inst.state === 'stopped'
+												? undefined
+												: t('web.instanceDetail.buildNeedsStop')}
+											onclick={applyBuild}
+										>
+											{t('web.instanceDetail.installBuild')}
+										</Btn>
+									{/if}
+								</div>
 							</div>
 						{/if}
 						{#if versionConflict.length}
@@ -2957,7 +3248,14 @@
 
 <ScheduleQuickModal bind:open={scheduleOpen} instances={name ? [name] : []} />
 
-<Modal title={t('web.instanceDetail.versionChange')} bind:open={versionJobOpen}>
+<!-- one modal, two jobs: the tree is identical and the title should not claim a
+     version moved when only the build did -->
+<Modal
+	title={versionJob?.kind === 'instance-build'
+		? t('web.instanceDetail.buildChange')
+		: t('web.instanceDetail.versionChange')}
+	bind:open={versionJobOpen}
+>
 	<ProgressTree root={versionJob?.progress ?? null} state={versionJob?.state} />
 </Modal>
 
@@ -2967,6 +3265,27 @@
 	bind:open={deleteOpen}
 	name={name ?? ''}
 	ondeleted={() => void goto('/instances')}
+/>
+
+<!-- one per kind rather than one dialog with a kind picker: the tab the operator
+     opened it from has already answered which kind this is -->
+<InstanceAddonAdd
+	bind:open={addonUploadOpen}
+	instance={name ?? ''}
+	kind={uploadKind}
+	families={uploadFamilies}
+	source={addonSource}
+	bind:provider={addonProvider}
+	ondone={() => loadTab('plugins')}
+/>
+
+<InstanceAddonAdd
+	bind:open={datapackUploadOpen}
+	instance={name ?? ''}
+	kind="datapack"
+	source={datapackSource}
+	bind:provider={datapackProvider}
+	ondone={() => loadTab('datapacks')}
 />
 
 <!-- Replacing a world is upload, check, then destroy, and it is one dialog for
@@ -3393,5 +3712,23 @@
 		display: flex;
 		gap: 0.5rem;
 		margin-top: 0.625rem;
+	}
+
+	// the build row is a readout plus its verbs, so it wraps rather than squeezing
+	// the "luna does not know which build is installed" sentence into a column
+	.build {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.buildnow {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		min-width: 0;
+		flex: 1;
+		font-variant-numeric: tabular-nums;
 	}
 </style>

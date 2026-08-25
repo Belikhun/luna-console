@@ -15,9 +15,10 @@
 
 import { existsSync } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import type {
+	AddonDir,
 	ClusterConfig,
 	InstanceConfig,
 	PluginEntry,
@@ -28,13 +29,14 @@ import type {
 } from "./types";
 import { t } from "../shared/i18n";
 import { unzipRead } from "./archive";
-import { instanceDir, managedInstances, poolDir } from "./config";
+import { addonDirForFamily, instanceDir, managedInstances, poolDir } from "./config";
 import {
 	effectiveTargets,
 	familyMatches,
 	familyOf,
 	instanceGroupNames,
 	pluginNameOf,
+	setPluginOverride,
 } from "./families";
 import { assignedVersion, instanceAddonDir, instanceAddonDirs } from "./plugins";
 import { getStatus, type InstanceStatus } from "./instances";
@@ -60,8 +62,15 @@ const MAX_SESSION_BYTES = 8 * 1024 * 1024;
  * `running` has two routes on purpose. An addon that logs "started" (or
  * "đã khởi động") says so itself; most say nothing at all, and for those the
  * server's own "Done (Xs)!" is the proof that loading finished.
+ *
+ * `missing` is the one that used to be invisible. It means the log described
+ * this addon's peers and never mentioned it: the jar is deployed, the server
+ * enumerated what it loaded, and this was not in the list. That is a different
+ * fact from `unknown` and a far more useful one; it is how a jar that is present
+ * but silently never loaded stops looking exactly like a jar luna simply cannot
+ * see. Only ever reported off a *complete* roster, so absence really is absence.
  */
-export type PluginRuntimeState = "unknown" | "loading" | "errored" | "running";
+export type PluginRuntimeState = "unknown" | "loading" | "errored" | "running" | "missing";
 
 /**
  * Lifecycle state the report reasons from. Core can probe `running`, `stopped`,
@@ -337,6 +346,34 @@ export function aliasesOf(key: string, entry: PluginEntry): string[] {
 /** The human-facing display name of an entry (first alias). */
 export function displayNameOf(key: string, entry: PluginEntry): string {
 	return aliasesOf(key, entry)[0]!;
+}
+
+/**
+ * One addon's name reduced to the form two spellings of it can be compared in:
+ * lowercased, with everything that is not a letter or a digit removed.
+ *
+ * `LuckPerms`, `luckperms`, `Luck-Perms` and `luck_perms` are one addon, and a
+ * server that loads two of them loads it twice. Stripping the separators is what
+ * lets a jar somebody named `luckperms-bukkit.jar` be recognised as the same
+ * thing as the pooled `luckperms@paper`.
+ */
+function identityKey(value: string): string {
+	return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/** Every spelling that would identify this entry, as comparison keys. */
+function entityKeys(values: Array<string | undefined>): Set<string> {
+	const keys = new Set<string>();
+
+	for (const value of values) {
+		const key = value && identityKey(value);
+
+		if (key) {
+			keys.add(key);
+		}
+	}
+
+	return keys;
 }
 
 /**
@@ -847,12 +884,73 @@ export interface InstancePluginRow {
 	errors: number;
 }
 
+/**
+ * One addon jar in an instance's directory that no lock entry claims.
+ *
+ * Reported as a row rather than a bare file name because an unmanaged addon is
+ * still an addon: it loads, it can fail to load, and it is usually the thing
+ * that broke a modpack. The console counted these and showed none of them, which
+ * meant the jars luna knows least about were also the ones it said least about.
+ */
+export interface UnmanagedAddonRow {
+	file: string;
+	/** Which directory it sits in, so a hybrid's two are told apart */
+	dir: AddonDir;
+	sizeBytes: number;
+	modifiedAt: number;
+	/** Its own descriptor, when it carries one luna can read */
+	meta?: PluginMeta;
+	/** The descriptor's name, else the file name with its extension trimmed */
+	displayName: string;
+	/** Runtime state from the log, judged by the same evidence a managed row uses */
+	state: PluginRuntimeState;
+	warnings: number;
+	errors: number;
+}
+
 export interface InstancePluginReport {
 	rows: InstancePluginRow[];
 	session: BootSession;
 	/** Addon jars in the instance's own directory that no lock entry claims */
-	unmanaged: string[];
+	unmanaged: UnmanagedAddonRow[];
 }
+
+/**
+ * Descriptors already read, keyed by path and by the two stat fields that change
+ * when a jar is replaced.
+ *
+ * Reading one means spawning `unzip` per member per jar, and a modpack's mods
+ * directory holds hundreds. The report behind the console's addon tab redraws
+ * every few seconds, so without this the tab would fork thousands of processes a
+ * minute to re-read files that had not changed.
+ */
+const descriptors = new Map<string, JarInfo>();
+
+/** Descriptor for one jar, read once per version of the file. */
+async function cachedJarInfo(path: string, size: number, mtimeMs: number): Promise<JarInfo> {
+	const key = `${path}:${size}:${Math.round(mtimeMs)}`;
+	const hit = descriptors.get(key);
+
+	if (hit) {
+		return hit;
+	}
+
+	const info = await readJarInfo(path);
+
+	// a jar that has been replaced leaves its old key behind; drop the whole map
+	// rather than track eviction, since it is only ever a few hundred entries and
+	// re-reading is what it already does on a change
+	if (descriptors.size > DESCRIPTOR_CACHE_MAX) {
+		descriptors.clear();
+	}
+
+	descriptors.set(key, info);
+
+	return info;
+}
+
+/** Enough for every jar of a large modpack across a few instances. */
+const DESCRIPTOR_CACHE_MAX = 2000;
 
 /**
  * Addon jars sitting in an instance's directory that luna does not manage -
@@ -862,33 +960,100 @@ export interface InstancePluginReport {
  * `deploy` writes by and costs one directory listing. Deliberately *not* a hash
  * comparison: that is `scan`'s job, and it walks the whole cluster hashing every
  * jar; far too much for something a summary redraws every few seconds.
+ *
+ * The descriptor read is what lets one of these be *named*, which is what makes
+ * its log lines findable: a file called `spark-bukkit.jar` announces itself as
+ * "spark", and nothing matches the two up without opening the jar.
  */
-async function unmanagedAddons(inst: InstanceConfig, lock: PluginsLock): Promise<string[]> {
+async function unmanagedAddons(
+	inst: InstanceConfig,
+	lock: PluginsLock,
+	/** the boot session to read state from; omitted when only the files are wanted */
+	session?: BootSession,
+): Promise<UnmanagedAddonRow[]> {
 	const managed = new Set(
 		Object.values(lock.plugins).map((entry) => entry.file.toLowerCase()),
 	);
 
-	const found: string[] = [];
+	const rows: UnmanagedAddonRow[] = [];
 
 	// a hybrid keeps two directories, and an unmanaged jar in either is still one
-	for (const { path } of instanceAddonDirs(inst)) {
+	for (const { dir, path } of instanceAddonDirs(inst)) {
 		if (!existsSync(path)) {
 			continue;
 		}
 
-		const files = await readdir(path);
+		for (const file of await readdir(path)) {
+			const lower = file.toLowerCase();
 
-		found.push(
-			...files.filter((file) => {
-				const lower = file.toLowerCase();
+			// a pumpkin component is a .wasm, so the extension is the family's
+			if (!ADDON_EXTENSIONS.some((ext) => lower.endsWith(ext)) || managed.has(lower)) {
+				continue;
+			}
 
-				// a pumpkin component is a .wasm, so the extension is the family's
-				return ADDON_EXTENSIONS.some((ext) => lower.endsWith(ext)) && !managed.has(lower);
-			}),
-		);
+			const full = join(path, file);
+			let size = 0;
+			let modifiedAt = 0;
+
+			try {
+				const info = await stat(full);
+
+				size = info.size;
+				modifiedAt = info.mtimeMs;
+			} catch {
+				// vanished between the listing and the stat; a deploy mid-report
+				continue;
+			}
+
+			const jar = await cachedJarInfo(full, size, modifiedAt);
+			const aliases = jar.aliases.length ? jar.aliases : [file.replace(/\.[^.]+$/, "")];
+			const log = session ? pluginLogReport(session, aliases) : EMPTY_LOG;
+
+			rows.push({
+				file,
+				dir,
+				sizeBytes: size,
+				modifiedAt,
+				...(Object.keys(jar.meta).length ? { meta: jar.meta } : {}),
+				displayName: aliases[0]!,
+				state: session ? unmanagedState(session, aliases) : "unknown",
+				warnings: log.warnings,
+				errors: log.errors,
+			});
+		}
 	}
 
-	return found.sort();
+	return rows.sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+const EMPTY_LOG: PluginLogReport = { lines: [], warnings: 0, errors: 0 };
+
+/**
+ * Runtime state of an unmanaged addon.
+ *
+ * The same evidence a managed row uses, minus the deploy-state reasoning it has
+ * no equivalent of: nothing targets an unmanaged jar, so there is no "disabled"
+ * and no assigned version, only what the log says about it.
+ */
+function unmanagedState(session: BootSession, aliases: string[]): PluginRuntimeState {
+	const evidence = loadEvidence(session, aliases);
+
+	switch (evidence) {
+		case "errored":
+			return "errored";
+
+		case "ready":
+			return "running";
+
+		case "loading":
+			return session.startupComplete ? "running" : "loading";
+
+		case "none":
+			return session.complete ? "missing" : "unknown";
+
+		default:
+			return "unknown";
+	}
 }
 
 /**
@@ -980,6 +1145,11 @@ export async function instancePluginReport(
 			} else if (evidence === "loading") {
 				// a quiet addon is only proven up by the server finishing startup
 				state = session.startupComplete ? "running" : "loading";
+			} else if (evidence === "none" && session.complete) {
+				// the roster named this addon's peers and not it. Gated on a complete
+				// session: without the boot marker the log may simply start after the
+				// roster was printed, and absence would then prove nothing.
+				state = "missing";
 			} else {
 				state = "unknown";
 			}
@@ -1010,8 +1180,179 @@ export async function instancePluginReport(
 	return {
 		rows: rows.sort((a, b) => a.plugin.localeCompare(b.plugin)),
 		session,
-		unmanaged: await unmanagedAddons(inst, lock),
+		// an unmanaged jar's state is read off the same session, so it is only
+		// attributable under the same conditions a managed row's is
+		unmanaged: await unmanagedAddons(inst, lock, down || stale ? undefined : session),
 	};
+}
+
+/** One addon already on an instance that a new upload would duplicate. */
+export interface CollidingAddon {
+	/** Lock entry key, absent for a jar nothing manages */
+	key?: string;
+	/** The file as it sits in the instance's directory */
+	file: string;
+	dir: AddonDir;
+	displayName: string;
+	version: string | null;
+}
+
+/**
+ * What putting an addon called `plugin` on `instance` would run into.
+ *
+ * Three different answers, kept apart because they need different handling:
+ * `overwrites` is the same pool key, so the upload replaces it whether anybody
+ * asks or not; `managed` and `unmanaged` are the *same addon under another name*,
+ * which is the case that silently ends up loading twice.
+ */
+export interface AddonCollisionReport {
+	/** Pool entry this would overwrite outright; the key is identical */
+	overwrites?: { key: string; version: string | null };
+	/** Managed entries on this instance that are the same addon under another key */
+	managed: CollidingAddon[];
+	/** Jars in this instance's own directory that are the same addon */
+	unmanaged: CollidingAddon[];
+}
+
+/**
+ * Look for addons already on an instance that a new one would duplicate.
+ *
+ * Asked *before* an upload, so the operator sees "pluginbox already has
+ * LuckPerms 5.5.71 as luckperms@paper" while there is still a decision to make.
+ * Comparison is by identity key over every spelling luna knows: an entry's
+ * plugin name and its descriptor aliases, and for an unmanaged jar the name its
+ * own descriptor gives (which is why the descriptors are parsed at all).
+ *
+ * Reads only; nothing here changes anything.
+ */
+export async function addonCollisions(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	instance: string,
+	opts: { plugin: string; family: PluginFamily },
+): Promise<AddonCollisionReport> {
+	const inst = managedInstances(cfg)[instance];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name: instance }));
+	}
+
+	const wanted = identityKey(opts.plugin);
+	const key = `${opts.plugin.trim().toLowerCase()}@${opts.family}`;
+	const report: AddonCollisionReport = { managed: [], unmanaged: [] };
+
+	if (!wanted) {
+		return report;
+	}
+
+	const existing = lock.plugins[key];
+
+	if (existing) {
+		report.overwrites = { key, version: assignedVersion(existing, instance) ?? null };
+	}
+
+	for (const [entryKey, entry] of Object.entries(lock.plugins)) {
+		// the same key is an overwrite, reported above; a different *family* of the
+		// same addon is a legitimate sibling (paper and velocity builds coexist)
+		if (entryKey === key || familyOf(entry) !== opts.family) {
+			continue;
+		}
+
+		if (!effectiveTargets(cfg, lock, entryKey).includes(instance)) {
+			continue;
+		}
+
+		const keys = entityKeys([pluginNameOf(entryKey, entry), ...aliasesOf(entryKey, entry)]);
+
+		if (keys.has(wanted)) {
+			report.managed.push({
+				key: entryKey,
+				file: entry.file,
+				dir: addonDirForFamily(familyOf(entry)),
+				displayName: displayNameOf(entryKey, entry),
+				version: assignedVersion(entry, instance) ?? null,
+			});
+		}
+	}
+
+	// the boot session is irrelevant here, so the scan runs unattributed: this is
+	// about what is on disk, not about what loaded
+	const loose = await unmanagedAddons(inst, lock);
+
+	for (const row of loose) {
+		const keys = entityKeys([
+			row.displayName,
+			row.meta?.name,
+			row.meta?.id,
+			row.file.replace(/\.[^.]+$/, ""),
+		]);
+
+		if (keys.has(wanted)) {
+			report.unmanaged.push({
+				file: row.file,
+				dir: row.dir,
+				displayName: row.displayName,
+				version: row.meta?.version ?? null,
+			});
+		}
+	}
+
+	return report;
+}
+
+/**
+ * Take superseded copies of an addon off one instance.
+ *
+ * The other half of the collision report: having been told that this instance
+ * already carries the same addon under another name, this is what acts on it. A
+ * managed duplicate is disabled here (its override goes to `false`, so a group
+ * cannot put it back) and its jar removed; an unmanaged one is just a file, and
+ * the file is deleted.
+ *
+ * Deliberately narrow, because it deletes: a name must be a bare file name with
+ * an addon extension, sitting in one of *this instance's* own addon directories.
+ * Nothing else in the RPC surface can remove an arbitrary instance file, and this
+ * is not the place to open that door.
+ *
+ * Mutates cfg and lock (caller saves).
+ */
+export async function supersedeAddons(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	instance: string,
+	opts: { plugins?: string[]; files?: string[] },
+): Promise<{ removed: string[] }> {
+	const inst = managedInstances(cfg)[instance];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name: instance }));
+	}
+
+	const removed: string[] = [];
+
+	for (const plugin of opts.plugins ?? []) {
+		setPluginOverride(cfg, lock, instance, plugin, false);
+		removed.push(...(await removeInstanceJars(cfg, lock, instance, plugin)));
+	}
+
+	for (const file of opts.files ?? []) {
+		// a path, a traversal or a non-addon is refused rather than resolved: the
+		// caller passes what the collision report handed it and nothing else
+		if (file !== basename(file) || !ADDON_EXTENSIONS.some((ext) => file.toLowerCase().endsWith(ext))) {
+			throw new Error(t("core.plugins.notAnAddonFile", { file }));
+		}
+
+		for (const { path } of instanceAddonDirs(inst)) {
+			const full = join(path, file);
+
+			if (existsSync(full)) {
+				await rm(full);
+				removed.push(file);
+			}
+		}
+	}
+
+	return { removed };
 }
 
 export interface PluginUsageRow {

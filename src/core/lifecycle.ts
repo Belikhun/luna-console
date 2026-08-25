@@ -16,9 +16,10 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { instanceDir, managedInstances } from "./config";
+import { instanceDir, loadLock, managedInstances } from "./config";
 import * as instances from "./instances";
 import { ping } from "./ping";
+import { instancePluginReport } from "./pluginstate";
 import { ProgressReporter } from "./progress";
 import { ensureInstanceRuntime, isRuntimeInstalled, javaSelection } from "./runtimes";
 import * as screen from "./screen";
@@ -200,6 +201,14 @@ export async function startInstanceTracked(
 		: undefined;
 	const plugins = isProxy ? undefined : progress.child(t("core.lifecycle.phasePlugins"), 2);
 	const world = isProxy ? undefined : progress.child(t("core.lifecycle.phaseWorld"), 3);
+
+	// Reading every unmanaged jar's descriptor spawns an unzip per member per jar,
+	// which on a modpack is hundreds of processes. Doing it here, once, is what
+	// keeps it out of the console's addon tab: that tab redraws every few seconds
+	// off the same cache, and paying the cost on a start nobody is waiting on
+	// beats paying it on every poll. Weighted 1 against the world's 3, because it
+	// is bounded by a directory listing rather than by chunk generation.
+	const scan = progress.child(t("core.lifecycle.phaseAddonScan"), 1);
 
 	const follower = new LogFollower(join(instanceDir(inst), "logs", "latest.log"));
 
@@ -392,6 +401,27 @@ export async function startInstanceTracked(
 			: t("core.lifecycle.noPluginsLogged"),
 	);
 	world?.complete(t("core.lifecycle.worldReady"));
+
+	// after the roster has been logged, so the state each row gets is the one this
+	// boot actually produced rather than the previous run's
+	await scan.task(
+		{
+			start: t("core.lifecycle.scanningAddons"),
+			failed: t("core.lifecycle.addonScanFailed"),
+		},
+		async () => {
+			const report = await instancePluginReport(cfg, await loadLock(), name);
+
+			scan.report(
+				1,
+				report.unmanaged.length ? "info" : "okay",
+				t("core.lifecycle.addonsScanned", {
+					managed: report.rows.length,
+					unmanaged: report.unmanaged.length,
+				}),
+			);
+		},
+	);
 
 	// "Done" means the server believes it is up; the ping is the outside view
 	const until = Date.now() + PING_CONFIRM_MS;
