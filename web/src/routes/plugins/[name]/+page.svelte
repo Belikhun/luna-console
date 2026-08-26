@@ -495,17 +495,6 @@
 					description={family.meta?.description ?? `Pool file ${family.file}`}
 				>
 					{#snippet actions()}
-						<!-- only a provider-mapped build has a channel to set: an in-house
-						     or unmapped jar has no upstream to take one from, and core
-						     refuses it rather than storing a setting that does nothing -->
-						{#if family.remote}
-							<ChannelSelect
-								value={(family.channel ?? 'release') as ReleaseChannel}
-								width="12rem"
-								disabled={!!busy}
-								onchange={(channel) => setFamilyChannel(family, channel)}
-							/>
-						{/if}
 						<Btn
 							icon="link"
 							disabled={family.source === 'luna' || !!busy}
@@ -521,6 +510,18 @@
 							{ label: t('web.addonDetail.primaryVersion'), value: family.installed?.versionNumber ?? '?', style: 'mono' },
 							{ label: t('web.addonDetail.declaredVersion'), value: family.meta?.version ?? null, style: 'mono' },
 							{ label: t('web.addonDetail.autoUpdate'), value: family.autoUpdate ? 'Enabled' : 'Disabled' },
+							// only a provider-mapped build has a channel to set: an in-house or
+							// unmapped jar has no upstream to take one from, and core refuses it
+							// rather than storing a setting that does nothing
+							...(family.remote
+								? [
+									{
+										id: `chan-${family.key}`,
+										label: t('web.channel.label'),
+										help: t('web.channel.hint')
+									}
+								]
+								: []),
 							{ label: t('web.addonDetail.authors'), value: family.meta?.authors?.join(', ') ?? null },
 							{ id: `web-${family.key}`, label: t('web.addonDetail.website') },
 							{ label: t('web.addonDetail.apiVersion'), value: family.meta?.apiVersion ?? null },
@@ -532,6 +533,14 @@
 						{#snippet custom(cell)}
 							{#if cell.id === `src-${family.key}`}
 								<BrandLink source={family.source} href={family.url} />
+							{:else if cell.id === `chan-${family.key}`}
+								<ChannelSelect
+									bare
+									value={(family.channel ?? 'release') as ReleaseChannel}
+									width="12rem"
+									disabled={!!busy}
+									onchange={(channel) => setFamilyChannel(family, channel)}
+								/>
 							{:else if cell.id === `web-${family.key}`}
 								{#if family.meta?.website}
 									<a href={family.meta.website} target="_blank" rel="noreferrer">

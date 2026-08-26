@@ -26,12 +26,19 @@
 		width = '10rem',
 		/** shown instead of the standard hint, for a screen with more to say */
 		hint,
+		/**
+		 * Render the control on its own, for a host that already names it. An info
+		 * grid cell carries the label in its header and the hint behind its help
+		 * icon, so the field's own two lines would say both a second time.
+		 */
+		bare = false,
 		onchange
 	}: {
 		value?: ReleaseChannel;
 		disabled?: boolean;
 		width?: string;
 		hint?: string;
+		bare?: boolean;
 		onchange?: (value: ReleaseChannel) => void;
 	} = $props();
 
@@ -46,9 +53,7 @@
 	);
 </script>
 
-<div class="field">
-	<span class="lbl">{t('web.channel.label')}</span>
-	<span class="hint">{hint ?? t('web.channel.hint')}</span>
+{#snippet control()}
 	<Select
 		{value}
 		{width}
@@ -59,4 +64,14 @@
 			onchange?.(value);
 		}}
 	/>
-</div>
+{/snippet}
+
+{#if bare}
+	{@render control()}
+{:else}
+	<div class="field">
+		<span class="lbl">{t('web.channel.label')}</span>
+		<span class="hint">{hint ?? t('web.channel.hint')}</span>
+		{@render control()}
+	</div>
+{/if}
