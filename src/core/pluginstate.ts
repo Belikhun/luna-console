@@ -1065,7 +1065,80 @@ interface ScannedLine {
 }
 
 /**
- * Scans, memoised on the session they describe.
+ * A session with every addon-independent question already answered, and an index
+ * from a name to the lines that mention it.
+ *
+ * Scanning each line once was the first half of making this cheap; the second is
+ * not visiting lines that can say nothing about the addon being asked about.
+ * Attribution is the bulk of the work and it is a whole-token comparison against
+ * a small set of tokens the line carries, so it inverts cleanly: extract every
+ * token a line could be attributed by, once, and an addon then looks up its own
+ * lines instead of walking all of them. On sunlitvalley that is a few dozen lines
+ * per mod rather than 5 713, across 315 mods.
+ */
+interface SessionIndex {
+	lines: ScannedLine[];
+	/**
+	 * Token → indices of the lines that token attributes.
+	 *
+	 * The tokens are exactly what `attributed` used to compare against, so the
+	 * lookup is the same test with the loop turned inside out. Empty for pumpkin,
+	 * whose attribution is a bounded substring search rather than a field.
+	 */
+	byToken: Map<string, number[]>;
+	/** Whether attribution has to fall back to walking every line (pumpkin) */
+	scanAll: boolean;
+	/**
+	 * Indices of lines that could match one of the grammar's phrase needles,
+	 * selected on the fixed half of each phrase.
+	 *
+	 * Those needles embed an alias, so they cannot be indexed by token - but the
+	 * words around it are constant, and only a handful of a session's lines carry
+	 * them. Absent for modlauncher, which has no phrase needles at all.
+	 */
+	needleLines: number[];
+	/** Trailing `(modid)` of a modlauncher roster line → its indices */
+	byRosterTail: Map<string, number[]>;
+	/** Mod ids named by a fabric or legacy-FML roster line */
+	rosterIds: Set<string>;
+	/** Whether the session reached a roster at all, which makes absence meaningful */
+	rosterReached: boolean;
+}
+
+/**
+ * The fixed half of each grammar's phrase needles. A line without one of these
+ * cannot match any needle, so only these lines are kept as candidates.
+ */
+const NEEDLE_ANCHORS: Partial<Record<LogGrammar, string[]>> = {
+	bukkit: [
+		"error occurred",
+		"could not load",
+		"loading server plugin ",
+		"enabling ",
+		"disabling ",
+	],
+	velocity: [
+		"can't create plugin",
+		"can't create module for plugin",
+		"can't load plugin",
+		"unable to load plugin",
+		"loaded plugin ",
+	],
+	fabric: ["could not execute entrypoint stage", "due to errors, provided by"],
+	fml: ["caught exception from"],
+	pumpkin: [
+		"permission denied for plugin",
+		"failed to initialize plugin",
+		"failed to load plugin from",
+		"loaded ",
+	],
+};
+
+/** Every bracketed token in a line, which is what bukkit and fabric attribute by. */
+const BRACKETED = /\[([^\]]*)\]/g;
+
+/**
+ * Indexes, memoised on the session they describe.
  *
  * A `WeakMap` rather than a parameter threaded through every caller: the report
  * hands the same session object to `pluginLogReport` and `loadEvidence` several
@@ -1073,11 +1146,11 @@ interface ScannedLine {
  * to know it exists. Keyed weakly so a session is collected normally once the
  * report that built it is done.
  */
-const scans = new WeakMap<BootSession, ScannedLine[]>();
+const indexes = new WeakMap<BootSession, SessionIndex>();
 
-/** The session's lines with their addon-independent parts already computed. */
-function scanSession(session: BootSession): ScannedLine[] {
-	const hit = scans.get(session);
+/** The session, scanned and indexed. */
+function indexSession(session: BootSession): SessionIndex {
+	const hit = indexes.get(session);
 
 	if (hit) {
 		return hit;
@@ -1085,7 +1158,35 @@ function scanSession(session: BootSession): ScannedLine[] {
 
 	const grammar = traitsOf(session.software, session.mcVersion).logGrammar;
 	const suffix = LOGGER_SUFFIX[grammar];
-	const scanned: ScannedLine[] = [];
+	const anchors = NEEDLE_ANCHORS[grammar] ?? [];
+
+	const built: SessionIndex = {
+		lines: [],
+		byToken: new Map(),
+		scanAll: grammar === "pumpkin",
+		needleLines: [],
+		byRosterTail: new Map(),
+		rosterIds: new Set(),
+		// Deliberately *not* including `discoveredComplete`: a roster read out of the
+		// software's own separate log licenses `missing` only for an addon it could
+		// have named by id, which is `rosterVerdict`'s asymmetry and not a fact about
+		// the session. Folding it in here reported two jars with no descriptor as
+		// `missing` when the honest answer is `unknown`.
+		rosterReached: grammar !== "modlauncher" && grammar !== "fabric" && grammar !== "fml",
+	};
+
+	const remember = (map: Map<string, number[]>, token: string, index: number): void => {
+		const at = map.get(token);
+
+		if (at) {
+			// a token repeats on consecutive lines constantly (one logger, many lines)
+			if (at[at.length - 1] !== index) {
+				at.push(index);
+			}
+		} else {
+			map.set(token, [index]);
+		}
+	};
 
 	for (const raw of session.lines) {
 		const lower = raw.trimEnd().toLowerCase();
@@ -1104,12 +1205,20 @@ function scanSession(session: BootSession): ScannedLine[] {
 			scan.severity = severity;
 		}
 
+		const index = built.lines.length;
+
 		if (suffix) {
 			const logger = LOG4J_LOGGER.exec(lower)?.[1];
 
 			if (logger !== undefined) {
 				scan.logger = logger;
 				scan.bare = logger.replace(suffix, "");
+
+				remember(built.byToken, logger, index);
+
+				if (scan.bare !== logger) {
+					remember(built.byToken, scan.bare, index);
+				}
 
 				if (logger.includes(".")) {
 					const tail: string[] = [];
@@ -1125,20 +1234,105 @@ function scanSession(session: BootSession): ScannedLine[] {
 					}
 
 					scan.tail = tail;
+
+					for (const segment of tail) {
+						remember(built.byToken, segment, index);
+					}
+				}
+			}
+		} else if (!built.scanAll) {
+			// bukkit and fabric name the addon in a bracket of the message itself, and
+			// `[alias]` is a whole bracket, so indexing every bracket's contents is the
+			// same test rather than an approximation of it
+			BRACKETED.lastIndex = 0;
+
+			let match = BRACKETED.exec(lower);
+
+			while (match) {
+				remember(built.byToken, match[1]!, index);
+
+				match = BRACKETED.exec(lower);
+			}
+		}
+
+		if (anchors.some((anchor) => lower.includes(anchor))) {
+			built.needleLines.push(index);
+		}
+
+		// session-level facts the per-addon loop used to re-derive on every pass
+		if (!built.rosterReached) {
+			if (grammar === "modlauncher") {
+				if (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)")) {
+					built.rosterReached = true;
+				}
+			} else if (grammar === "fabric") {
+				if (FABRIC_ROSTER_HEADER.test(lower)) {
+					built.rosterReached = true;
+				}
+			} else if (grammar === "fml" && FML_ROSTER_HEADER.test(lower)) {
+				built.rosterReached = true;
+			}
+		}
+
+		if (grammar === "modlauncher" && lower.endsWith(")")) {
+			const opened = lower.lastIndexOf("(");
+
+			if (opened !== -1) {
+				remember(built.byRosterTail, lower.slice(opened + 1, -1), index);
+			}
+		} else if (grammar === "fabric") {
+			const listed = FABRIC_ROSTER_ENTRY.exec(lower)?.[1];
+
+			if (listed !== undefined) {
+				built.rosterIds.add(listed);
+			}
+		} else if (grammar === "fml") {
+			const listed = FML_MOD_LIST.exec(lower)?.[1];
+
+			if (listed) {
+				for (const id of listed.split(",")) {
+					built.rosterIds.add(id.trim());
 				}
 			}
 		}
 
-		scanned.push(scan);
+		built.lines.push(scan);
 	}
 
-	scans.set(session, scanned);
+	indexes.set(session, built);
 
-	return scanned;
+	return built;
 }
 
 /** Shared empty tail, so a line with a plain logger allocates no array. */
 const EMPTY_TAIL: string[] = [];
+
+/**
+ * The lines one addon's aliases attribute, as ascending indices.
+ *
+ * Merged across aliases rather than concatenated, because an addon whose logger
+ * and whose stripped logger both index the same line would otherwise count it
+ * twice in its own warning tally.
+ */
+function attributedLines(index: SessionIndex, lowerAliases: string[]): number[] {
+	if (lowerAliases.length === 1) {
+		// the common case by far, and the one where the index needs no merging
+		return index.byToken.get(lowerAliases[0]!) ?? EMPTY_INDICES;
+	}
+
+	const seen = new Set<number>();
+
+	for (const alias of lowerAliases) {
+		for (const at of index.byToken.get(alias) ?? EMPTY_INDICES) {
+			seen.add(at);
+		}
+	}
+
+	return [...seen].sort((a, b) => a - b);
+}
+
+/** Shared empty index list, so an addon with no lines allocates nothing. */
+const EMPTY_INDICES: number[] = [];
 
 export interface PluginLogReport {
 	lines: string[];
@@ -1150,21 +1344,31 @@ export interface PluginLogReport {
 export function pluginLogReport(session: BootSession, aliases: string[]): PluginLogReport {
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
 	const grammar = traitsOf(session.software, session.mcVersion).logGrammar;
+	const index = indexSession(session);
 	const lines: string[] = [];
 	let warnings = 0;
 	let errors = 0;
 
-	for (const line of scanSession(session)) {
-		if (!attributed(line, lowerAliases, grammar)) {
-			continue;
-		}
-
+	const take = (line: ScannedLine): void => {
 		lines.push(line.raw);
 
 		if (line.severity === "warn") {
 			warnings += 1;
 		} else if (line.severity === "error") {
 			errors += 1;
+		}
+	};
+
+	if (index.scanAll) {
+		// pumpkin names a plugin in prose, so there is no field to index
+		for (const line of index.lines) {
+			if (attributed(line, lowerAliases, grammar)) {
+				take(line);
+			}
+		}
+	} else {
+		for (const at of attributedLines(index, lowerAliases)) {
+			take(index.lines[at]!);
 		}
 	}
 
@@ -1422,8 +1626,6 @@ interface GrammarNeedles {
 	couldNotLoad?: string[];
 	/** Any of these means the loader announced it */
 	loading: string[];
-	/** Modlauncher's roster line ends with the mod id in brackets */
-	rosterTail: string[];
 }
 
 /** The needles for one addon under one grammar. */
@@ -1433,7 +1635,7 @@ function grammarNeedles(
 	file: string | undefined,
 ): GrammarNeedles {
 	const lowerFile = file?.toLowerCase();
-	const needles: GrammarNeedles = { fatal: [], loading: [], rosterTail: [] };
+	const needles: GrammarNeedles = { fatal: [], loading: [] };
 
 	switch (grammar) {
 		case "bukkit":
@@ -1501,11 +1703,9 @@ function grammarNeedles(
 			break;
 
 		default:
+			// modlauncher has no phrase needles at all: it names a mod in the logger
+			// field and in its roster's trailing `(modid)`, both of which are indexed
 			break;
-	}
-
-	if (grammar === "modlauncher") {
-		needles.rosterTail = lowerAliases.map((alias) => `(${alias})`);
 	}
 
 	return needles;
@@ -1536,29 +1736,25 @@ function loadEvidence(
 	let loading = verdict === "hit";
 	let ready = false;
 
-	// A mod loader has no per-mod "enabling" line. What modlauncher does print is
-	// a roster of everything it constructed, one line per mod ending in the mod id
-	//; "\t\tLunaCore 0.1.0-SNAPSHOT (lunacore)". Absence only means "not there"
-	// when the roster was captured at all, so its two guaranteed members double
-	// as the marker that it is in the session.
-	// Absence only means "not there" when the roster was captured at all, so each
-	// loader that prints one carries its own marker for having reached it.
-	//
-	// A separate-log roster licenses the same conclusion, but only for an addon it
-	// could have named by id: `rosterVerdict` is where that asymmetry lives.
-	let roster =
-		verdict === "absent" ||
-		(grammar !== "modlauncher" && grammar !== "fabric" && grammar !== "fml");
+	// Absence only means "not there" when a roster was captured at all, which is a
+	// fact about the session rather than about this addon, so the index settles it
+	// once. A separate-log roster licenses the same conclusion, but only for an
+	// addon it could have named by id: `rosterVerdict` is where that lives.
+	const index = indexSession(session);
+	const roster = verdict === "absent" || index.rosterReached;
 
-	// Every needle below embeds an alias, so building them inside the line loop
-	// meant allocating a handful of strings per line per alias - on this scale,
-	// millions of them. They do not change as the lines go by.
+	// Every needle below embeds an alias, so building them inside a line loop meant
+	// allocating a handful of strings per line per alias. They do not change as the
+	// lines go by.
 	const needles = grammarNeedles(grammar, lowerAliases, file);
 
-	for (const line of scanSession(session)) {
-		const lower = line.lower;
-		const mine = attributed(line, lowerAliases, grammar);
+	// The addon's own lines. Everything gated on `mine` below only ever looked at
+	// these, and on a modpack they are a few dozen of several thousand.
+	const mineLines = index.scanAll
+		? index.lines.filter((line) => attributed(line, lowerAliases, grammar))
+		: attributedLines(index, lowerAliases).map((at) => index.lines[at]!);
 
+	for (const line of mineLines) {
 		// An addon's own logger reporting that it failed is the case the report
 		// used to lose: nothing else in the session contradicts it, the server
 		// finishes starting regardless, and the row read `running`.
@@ -1569,23 +1765,31 @@ function loadEvidence(
 		// at WARN; requiring ERROR or FATAL is what separates "I gave up" from "I
 		// carried on without it", and a false `errored` is a worse answer than the
 		// `unknown` it would replace.
-		if (mine && line.severity === "error" && claimsFatal(line.plain)) {
+		if (line.severity === "error" && claimsFatal(line.plain)) {
 			return "errored";
 		}
 
-		if (!roster) {
-			if (grammar === "modlauncher") {
-				if (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)")) {
-					roster = true;
+		// pumpkin's "failed to load plugin from <path>" names a path, so the only
+		// handle on which component it was is the attribution
+		if (needles.fatalWhenMine) {
+			for (const needle of needles.fatalWhenMine) {
+				if (line.lower.includes(needle)) {
+					return "errored";
 				}
-			} else if (grammar === "fabric") {
-				if (FABRIC_ROSTER_HEADER.test(lower)) {
-					roster = true;
-				}
-			} else if (grammar === "fml" && FML_ROSTER_HEADER.test(lower)) {
-				roster = true;
 			}
 		}
+
+		if (!ready && claimsReady(line.lower)) {
+			ready = true;
+		}
+	}
+
+	// The phrase needles are the half that cannot be attributed - bukkit logs a
+	// plugin's enable failure on the *server's* logger, naming the plugin only in
+	// the message - so they are tested against the lines carrying one of the
+	// grammar's fixed anchors instead of against all of them.
+	for (const at of index.needleLines) {
+		const lower = index.lines[at]!.lower;
 
 		for (const needle of needles.fatal) {
 			if (lower.includes(needle)) {
@@ -1593,11 +1797,8 @@ function loadEvidence(
 			}
 		}
 
-		// Bukkit's enable failure is logged by the *server*, not by the plugin, so
-		// it carries no `[Name]` field and `attributed` cannot see it: the plugin is
-		// named in the message instead, as its "full name" (`Name vX`). Paper wraps
-		// ten variants of the same message in "(in the plugin loader)", which is why
-		// the prefix is matched loosely rather than spelled out.
+		// Paper wraps ten variants of the same enable failure in "(in the plugin
+		// loader)", which is why the prefix is matched loosely rather than spelled out.
 		if (needles.enableFailure && BUKKIT_ENABLE_FAILURE.test(lower)) {
 			for (const needle of needles.enableFailure) {
 				if (lower.includes(needle)) {
@@ -1616,16 +1817,6 @@ function loadEvidence(
 			}
 		}
 
-		// pumpkin's "failed to load plugin from <path>" names a path, so the only
-		// handle on which component it was is the attribution
-		if (mine && needles.fatalWhenMine) {
-			for (const needle of needles.fatalWhenMine) {
-				if (lower.includes(needle)) {
-					return "errored";
-				}
-			}
-		}
-
 		if (!loading) {
 			for (const needle of needles.loading) {
 				if (lower.includes(needle)) {
@@ -1635,35 +1826,16 @@ function loadEvidence(
 				}
 			}
 		}
+	}
 
-		// the two roster grammars whose entry is a whole-line shape rather than a
-		// phrase, so they cannot be reduced to a substring needle
-		if (!loading) {
-			if (grammar === "fabric") {
-				const listed = FABRIC_ROSTER_ENTRY.exec(lower)?.[1];
-
-				if (listed !== undefined && lowerAliases.includes(listed)) {
-					loading = true;
-				}
-			} else if (grammar === "fml") {
-				const listed = FML_MOD_LIST.exec(lower)?.[1];
-
-				if (listed && listed.split(",").some((id) => lowerAliases.includes(id.trim()))) {
-					loading = true;
-				}
-			} else if (grammar === "modlauncher" && lower.endsWith(")")) {
-				for (const needle of needles.rosterTail) {
-					if (lower.endsWith(needle)) {
-						loading = true;
-
-						break;
-					}
-				}
-			}
-		}
-
-		if (mine && !ready && claimsReady(lower)) {
-			ready = true;
+	// The roster entries, which are a whole-line shape rather than a phrase: fabric
+	// and legacy FML name their ids, and modlauncher closes each line on the mod id
+	// in brackets. All three are indexed, so this is a lookup rather than a scan.
+	if (!loading) {
+		if (grammar === "fabric" || grammar === "fml") {
+			loading = lowerAliases.some((alias) => index.rosterIds.has(alias));
+		} else if (grammar === "modlauncher") {
+			loading = lowerAliases.some((alias) => index.byRosterTail.has(alias));
 		}
 	}
 
@@ -1717,6 +1889,14 @@ export interface UnmanagedAddonRow {
 	meta?: PluginMeta;
 	/** The descriptor's name, else the file name with its extension trimmed */
 	displayName: string;
+	/**
+	 * The names it logs under, which is what its log lines are found by.
+	 *
+	 * Carried on the row because nothing else can recompute it: they come from the
+	 * jar's own descriptor, and a caller wanting this addon's log lines would
+	 * otherwise have to reopen the jar to learn what to look for.
+	 */
+	aliases: string[];
 	/** Runtime state from the log, judged by the same evidence a managed row uses */
 	state: PluginRuntimeState;
 	warnings: number;
@@ -1843,6 +2023,7 @@ async function unmanagedAddons(
 				modifiedAt,
 				...(Object.keys(jar.meta).length ? { meta: jar.meta } : {}),
 				displayName: aliases[0]!,
+				aliases,
 				state: session ? unmanagedState(session, aliases, file, identified, jar.nested) : unattributed,
 				warnings: log.warnings,
 				errors: log.errors,
@@ -2033,6 +2214,59 @@ export async function instancePluginReport(
 			down || stale ? undefined : session,
 			down ? "stopped" : "unknown",
 		),
+	};
+}
+
+/** One unmanaged addon jar with the log lines the session attributes to it. */
+export interface UnmanagedAddonLog {
+	row: UnmanagedAddonRow;
+	lines: string[];
+	warnings: number;
+	errors: number;
+	/** Whether the boot marker was found; without it, earlier lines are missing */
+	sessionComplete: boolean;
+}
+
+/**
+ * One unmanaged addon's log activity in the current boot session.
+ *
+ * A function of its own rather than something a caller assembles from the report,
+ * because the aliases it has to search by come from the jar's own descriptor and
+ * the jar lives on the machine that runs the instance. Assembling it caller-side
+ * meant shipping the aliases out on every one of a modpack's several hundred rows
+ * and trusting them to come back, which answers wrongly rather than not at all
+ * when the two ends disagree - a dialog reporting "nothing logged" beside a row
+ * reporting 322 errors.
+ *
+ * Undefined when no such file is there, which the caller reports as a 404 rather
+ * than as an empty log.
+ */
+export async function unmanagedAddonLog(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	instance: string,
+	file: string,
+	dir?: AddonDir,
+): Promise<UnmanagedAddonLog | undefined> {
+	const { unmanaged, session } = await instancePluginReport(cfg, lock, instance);
+	const wanted = file.toLowerCase();
+
+	const row = unmanaged.find(
+		(entry) => entry.file.toLowerCase() === wanted && (!dir || entry.dir === dir),
+	);
+
+	if (!row) {
+		return undefined;
+	}
+
+	const log = pluginLogReport(session, row.aliases);
+
+	return {
+		row,
+		lines: log.lines,
+		warnings: log.warnings,
+		errors: log.errors,
+		sessionComplete: session.complete,
 	};
 }
 

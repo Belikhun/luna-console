@@ -28,6 +28,14 @@
 	import type { ThreadReport, ThreadSample } from '$client/daemon';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
+	import UnmanagedAddonLog from '$lib/components/UnmanagedAddonLog.svelte';
+	import {
+		DEFAULT_INSTANCE_TAB,
+		INSTANCE_TABS,
+		INSTANCE_TAB_LABELS,
+		instanceTabPath,
+		isInstanceTab
+	} from '$lib/components/instancetabs';
 	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
 	import ServerProperties from '$lib/components/ServerProperties.svelte';
@@ -116,7 +124,51 @@
 	const name = $derived(page.params.name);
 
 	let inst: any = $state(null);
-	let tab = $state('details');
+	/**
+	 * The open tab, which is the last path segment.
+	 *
+	 * Derived rather than held: the URL is the single source of truth, so the back
+	 * button, a pasted link and a middle-clicked tab all land on the same place. An
+	 * unknown segment falls back to the default rather than 404ing, because the tab
+	 * set depends on the software - a proxy has no world - and a link that was valid
+	 * for one instance should not be a dead end on another.
+	 */
+	const tab = $derived.by(() => {
+		const wanted = page.params.tab;
+
+		if (!isInstanceTab(wanted)) {
+			return DEFAULT_INSTANCE_TAB;
+		}
+
+		// Which tabs exist depends on the software, and that is not known until the
+		// instance loads - so until it does the URL is taken at its word rather than
+		// bounced to the default and back. Once it is known, a tab that does not
+		// apply here falls back: `/instances/proxy/world` renders Details, because a
+		// proxy has no world.
+		if (inst && !instanceTabs.some((entry) => entry.id === wanted)) {
+			return DEFAULT_INSTANCE_TAB;
+		}
+
+		return wanted;
+	});
+
+	/**
+	 * Put the URL back in step when the tab it names does not apply here.
+	 *
+	 * The fallback above fixes what is *rendered*; this fixes what the address bar
+	 * and the breadcrumb say, which would otherwise still claim "World & Backup" on
+	 * a proxy. `replaceState` because the bad URL is not a place worth going back
+	 * to - it was a link that did not fit this instance.
+	 */
+	$effect(() => {
+		const wanted = page.params.tab;
+
+		if (!name || !inst || wanted === undefined || tab === wanted) {
+			return;
+		}
+
+		void goto(instanceTabPath(name, tab), { replaceState: true, noScroll: true });
+	});
 
 	/** The addon directories this software keeps; every addon noun follows from them. */
 	const addonDirs = $derived(
@@ -139,6 +191,31 @@
 				? t('web.instanceDetail.addonsMods')
 				: t('web.instanceDetail.addonsPlugins')
 	);
+
+	/**
+	 * The tab bar, each entry carrying its own path.
+	 *
+	 * `$derived` because the labels are `t()` calls, which have to be re-read when
+	 * the locale changes, and because which tabs exist depends on the software: a
+	 * proxy and an external server have no world, so the world-scoped tabs do not
+	 * apply to them.
+	 */
+	/** Tabs that only exist on something with a world of its own. */
+	const WORLD_TABS = new Set<string>(['world', 'datapacks', 'respacks', 'access']);
+
+	const instanceTabs = $derived.by(() => {
+		const worldless = !inst || traitsOf(inst.software as Software).isProxy || inst.external;
+
+		return INSTANCE_TABS.filter(
+			(id) => !worldless || !WORLD_TABS.has(id)
+		).map((id) => ({
+			id,
+			// the addon tab is the one whose name depends on the software
+			label: id === 'plugins' ? addonLabel : t(INSTANCE_TAB_LABELS[id]),
+			href: instanceTabPath(name ?? '', id)
+		}));
+	});
+
 
 	/**
 	 * The unmanaged panel names the kind it actually lists.
@@ -759,13 +836,6 @@
 
 	onMount(() => {
 		logFollow = localStorage.getItem(LOG_FOLLOW_KEY) === '1';
-
-		// the instances table deep-links into a tab
-		const urlTab = page.url.searchParams.get('tab');
-
-		if (urlTab) {
-			tab = urlTab;
-		}
 
 		void refresh();
 
@@ -1584,6 +1654,30 @@
 		{ id: 'alerts', label: t('web.instanceDetail.alerts'), sortable: true, width: 230 }
 	]);
 
+	/** The unmanaged addon whose boot-session log is open, if any. */
+	let unmanagedLogRow = $state<UnmanagedAddonRow | null>(null);
+	let unmanagedLogOpen = $state(false);
+
+	/**
+	 * An unmanaged addon's verbs.
+	 *
+	 * Only one so far, and it is the one the table could not answer before: these
+	 * rows carry a warning and error count with no way to see what produced it. A
+	 * context menu rather than a column, like every other table here.
+	 */
+	function unmanagedActions(row: UnmanagedAddonRow): ContextMenuItem[] {
+		return [
+			{
+				label: t('web.instanceDetail.viewLogActivity'),
+				icon: 'fileLines',
+				action: () => {
+					unmanagedLogRow = row;
+					unmanagedLogOpen = true;
+				}
+			}
+		];
+	}
+
 	/** Sort keys for the unmanaged table's columns that render as more than text. */
 	function unmanagedSortValue(row: UnmanagedAddonRow, col: string): string | number | null {
 		if (col === 'name') {
@@ -2302,28 +2396,7 @@
 		</OverviewCell>
 	</OverviewBar>
 
-	<Tabs
-		tabs={[
-			{ id: 'details', label: t('web.instanceDetail.details') },
-			{ id: 'checks', label: t('web.instanceDetail.statusAndAlarms') },
-			{ id: 'monitoring', label: t('web.instanceDetail.monitoring') },
-			{ id: 'plugins', label: addonLabel },
-			// a proxy has no world, so the world-scoped tabs do not apply to it
-			...(traitsOf(inst.software as Software).isProxy || inst.external
-				? []
-				: [
-						{ id: 'world', label: t('web.instanceDetail.worldAndBackup') },
-						{ id: 'datapacks', label: t('web.instanceDetail.dataPacks') },
-						{ id: 'respacks', label: t('web.instanceDetail.resourcePacks') },
-						{ id: 'access', label: t('web.instanceDetail.playersAccess') }
-					]),
-			{ id: 'network', label: t('web.instanceDetail.networking') },
-			{ id: 'environment', label: t('web.instanceDetail.environment') },
-			{ id: 'logs', label: t('web.instanceDetail.logs') },
-			{ id: 'config', label: t('web.instanceDetail.configuration') }
-		]}
-		bind:active={tab}
-	/>
+	<Tabs tabs={instanceTabs} active={tab} />
 
 	<div class="tabbody">
 		{#if tab === 'details'}
@@ -2745,6 +2818,12 @@
 						noun={unmanagedNoun}
 						pageSize={25}
 						sortValue={unmanagedSortValue}
+						rowActions={unmanagedActions}
+						rowLabel={(row: UnmanagedAddonRow) => row.displayName}
+						onRowClick={(row: UnmanagedAddonRow) => {
+							unmanagedLogRow = row;
+							unmanagedLogOpen = true;
+						}}
 					>
 						{#snippet cell(row: UnmanagedAddonRow, col: string)}
 							{#if col === 'name'}
@@ -3387,6 +3466,15 @@
 	bind:open={deleteOpen}
 	name={name ?? ''}
 	ondeleted={() => void goto('/instances')}
+/>
+
+<!-- the log of an addon luna does not manage. Its state vocabulary is passed in
+     rather than duplicated, so the badge in the dialog is the badge in the row -->
+<UnmanagedAddonLog
+	bind:open={unmanagedLogOpen}
+	instance={name ?? ''}
+	row={unmanagedLogRow}
+	stateBadge={PLUGIN_STATE_BADGE}
 />
 
 <!-- one per kind rather than one dialog with a kind picker: the tab the operator

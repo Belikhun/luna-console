@@ -23,6 +23,7 @@ export type {
 	InstancePluginReport,
 	InstancePluginRow,
 	UnmanagedAddonRow,
+	UnmanagedAddonLog,
 	PluginRuntimeState,
 	ReportLifecycle,
 	AddonCollisionReport,
@@ -35,6 +36,10 @@ export const instancePluginReport = call("pluginstate.instancePluginReport", {
 	cfg: 0,
 	lock: 1,
 }) as typeof core.instancePluginReport;
+export const unmanagedAddonLog = call("pluginstate.unmanagedAddonLog", {
+	cfg: 0,
+	lock: 1,
+}) as typeof core.unmanagedAddonLog;
 export const removeInstanceJars = call("pluginstate.removeInstanceJars", {
 	cfg: 0,
 	lock: 1,

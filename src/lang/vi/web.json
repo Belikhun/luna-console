@@ -1728,6 +1728,8 @@
 		"packContentBroken": "Gói đã nạp, nhưng máy chủ từ chối một phần nội dung",
 		"noneInstalled": "chưa cài gì",
 		"loadingShort": "đang tải\u2026",
+		"viewLogActivity": "Xem hoạt động log",
+		"addons": "Addon",
 		"readingBootLog": "Đang đọc log khởi động\u2026",
 		"noManagedAddons": "Không có addon nào được quản lý ở đây",
 		"stateComesFromThe": "Trạng thái đọc từ log khởi động của máy chủ, trên chính máy đang chạy nó."
@@ -2840,6 +2842,16 @@
 		"autoscroll": "Tự cuộn",
 		"backToInstance": "Về lại instance",
 		"send": "Gửi"
+	},
+	"unmanagedLog": {
+		"title": "Addon không được quản lý",
+		"version": "Phiên bản",
+		"modId": "Mã addon",
+		"authors": "Tác giả",
+		"logsUnder": "Ghi log dưới tên",
+		"reading": "Đang đọc log của phiên này…",
+		"nothingLogged": "Addon này không ghi gì trong phiên khởi động hiện tại.",
+		"bootLinesRotated": "Các dòng khởi động của phiên này đã bị xoay khỏi cửa sổ log, nên hoạt động sớm hơn có thể bị thiếu."
 	},
 	"instancePlugin": {
 		"pluginOnThisInstance": "Plugin trên instance này",

@@ -7,6 +7,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { instanceTabPath } from '$lib/components/instancetabs';
 	import { api, post } from '$lib/api';
 	import { fmtBytes, fmtDateTime, fmtDuration } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -481,7 +482,7 @@
 			{
 				label: t('web.packDetail.openInstance'),
 				icon: 'server',
-				action: () => goto(`/instances/${row.name}?tab=respacks`)
+				action: () => goto(instanceTabPath(row.name, 'respacks'))
 			}
 		];
 	}
@@ -809,7 +810,7 @@
 				>
 					{#snippet cell(row, col)}
 						{#if col === 'name'}
-							<a href="/instances/{row.name}?tab=respacks">{row.name}</a>
+							<a href={instanceTabPath(row.name, 'respacks')}>{row.name}</a>
 						{:else if col === 'served'}
 							{#if row.served}
 								<StatusBadge state="ok" label={t('web.packDetail.yes')} />

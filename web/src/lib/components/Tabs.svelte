@@ -3,21 +3,42 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	/**
+	 * A tab bar. A tab carrying an `href` is rendered as a real link rather than a
+	 * button, which is what lets it be opened in a new tab, copied, or named in a
+	 * breadcrumb; without one it stays a button that only flips `active`.
+	 *
+	 * Both shapes are kept because not every tab bar addresses a URL - some sit
+	 * inside a dialog, where there is nowhere to navigate to.
+	 */
 	let {
 		tabs,
 		active = $bindable()
-	}: { tabs: Array<{ id: string; label: string }>; active: string } = $props();
+	}: {
+		tabs: Array<{ id: string; label: string; href?: string }>;
+		active: string;
+	} = $props();
 </script>
 
 <div class="tabs" role="tablist">
 	{#each tabs as tab}
-		<button
-			role="tab"
-			class="tab"
-			class:active={active === tab.id}
-			aria-selected={active === tab.id}
-			onclick={() => (active = tab.id)}
-		>{tab.label}</button>
+		{#if tab.href}
+			<a
+				role="tab"
+				class="tab"
+				class:active={active === tab.id}
+				aria-selected={active === tab.id}
+				href={tab.href}
+			>{tab.label}</a>
+		{:else}
+			<button
+				role="tab"
+				class="tab"
+				class:active={active === tab.id}
+				aria-selected={active === tab.id}
+				onclick={() => (active = tab.id)}
+			>{tab.label}</button>
+		{/if}
 	{/each}
 </div>
 
@@ -33,8 +54,11 @@
 		overflow-y: hidden;
 	}
 
+	// `a.tab` opts out of the chrome-link styling on purpose: a tab is chrome, and
+	// the underline convention is for links that navigate *within* content
 	.tab {
 		position: relative;
+		display: inline-block;
 		background: none;
 		border: none;
 		color: var(--text-heading);
@@ -44,6 +68,7 @@
 		padding: 0.625rem 1rem;
 		cursor: pointer;
 		white-space: nowrap;
+		text-decoration: none;
 
 		&::after {
 			content: '';

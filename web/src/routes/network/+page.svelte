@@ -21,6 +21,7 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { consumersLine } from '$lib/pools';
 	import { goto } from '$app/navigation';
+	import { instanceTabPath } from '$lib/components/instancetabs';
 
 	let ports: any[] = $state([]);
 	let issues: any[] = $state([]);
@@ -192,7 +193,7 @@
 			{
 				label: t('web.ports.openNetworking'),
 				icon: 'sitemap',
-				action: () => goto(`/instances/${row.owner}?tab=network`)
+				action: () => goto(instanceTabPath(row.owner, 'network'))
 			},
 			{ separator: true },
 			{

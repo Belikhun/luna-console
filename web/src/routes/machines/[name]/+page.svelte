@@ -7,6 +7,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { instanceTabPath } from '$lib/components/instancetabs';
 	import { api, del, post, put } from '$lib/api';
 	import { fmtDateTime, fmtDuration } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -453,7 +454,7 @@
 			{
 				label: t('web.machineDetail.monitoring'),
 				icon: 'chartLine',
-				action: () => goto(`/instances/${entry.instance}?tab=monitoring`)
+				action: () => goto(instanceTabPath(entry.instance, 'monitoring'))
 			},
 			{
 				label: t('web.machineDetail.serialConsole'),

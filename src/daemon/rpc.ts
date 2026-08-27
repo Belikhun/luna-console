@@ -1574,6 +1574,12 @@ export const OPS: Record<string, OpSpec> = {
 		lock: 1,
 		instance: 2,
 	},
+	"pluginstate.unmanagedAddonLog": {
+		fn: pluginstateCore.unmanagedAddonLog,
+		cfg: 0,
+		lock: 1,
+		instance: 2,
+	},
 	"pluginstate.removeInstanceJars": {
 		fn: pluginstateCore.removeInstanceJars,
 		cfg: 0,

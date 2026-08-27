@@ -7,6 +7,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { instanceTabPath } from '$lib/components/instancetabs';
 	import { api, post } from '$lib/api';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
@@ -166,7 +167,7 @@
 {#if data}
 	<PageHeader title={plugin ?? ''} info>
 		{#snippet extra()}
-			<span class="crumb dim">{t('web.instancePlugin.on')} <a href="/instances/{instance}?tab=plugins">{instance}</a></span>
+			<span class="crumb dim">{t('web.instancePlugin.on')} <a href={instanceTabPath(instance ?? '', 'plugins')}>{instance}</a></span>
 			<StatusBadge state={badge.state} label={badge.label} />
 		{/snippet}
 		{#snippet actions()}

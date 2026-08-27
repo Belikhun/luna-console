@@ -2053,6 +2053,8 @@
 		"packContentBroken": "The pack loaded, but the server refused some of its contents",
 		"noneInstalled": "none installed",
 		"loadingShort": "loading\u2026",
+		"viewLogActivity": "View log activity",
+		"addons": "Addons",
 		"readingBootLog": "Reading the boot log\u2026",
 		"noManagedAddons": "No managed addons here",
 		"stateComesFromThe": "State comes from the server's own boot log, read on the machine that runs it."
@@ -2840,6 +2842,16 @@
 		"autoscroll": "Autoscroll",
 		"backToInstance": "Back to instance",
 		"send": "Send"
+	},
+	"unmanagedLog": {
+		"title": "Unmanaged addon",
+		"version": "Version",
+		"modId": "Addon id",
+		"authors": "Authors",
+		"logsUnder": "Logs under",
+		"reading": "Reading this session's log…",
+		"nothingLogged": "This addon logged nothing in the current boot session.",
+		"bootLinesRotated": "The boot lines of this session have rotated out of the log window, so earlier activity may be missing."
 	},
 	"instancePlugin": {
 		"pluginOnThisInstance": "Plugin on this instance",

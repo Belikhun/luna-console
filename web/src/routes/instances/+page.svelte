@@ -6,6 +6,7 @@
 	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { instanceTabPath } from '$lib/components/instancetabs';
 	import { api, type InstanceRow } from '$lib/api';
 	import type { DistributionSegment } from '$lib/components/distribution';
 	import { fmtDuration, cpuCeiling, fmtCpuPct } from '$lib/format';
@@ -367,22 +368,22 @@
 					{
 						label: t('web.nav.plugins'),
 						icon: 'plug',
-						action: () => goto(`/instances/${row.name}?tab=plugins`)
+						action: () => goto(instanceTabPath(row.name, 'plugins'))
 					},
 					{
 						label: t('web.instances.configuration'),
 						icon: 'sliders',
-						action: () => goto(`/instances/${row.name}?tab=config`)
+						action: () => goto(instanceTabPath(row.name, 'config'))
 					},
 					{
 						label: t('web.instances.networking'),
 						icon: 'sitemap',
-						action: () => goto(`/instances/${row.name}?tab=network`)
+						action: () => goto(instanceTabPath(row.name, 'network'))
 					},
 					{
 						label: t('web.instances.logs'),
 						icon: 'scroll',
-						action: () => goto(`/instances/${row.name}?tab=logs`)
+						action: () => goto(instanceTabPath(row.name, 'logs'))
 					}
 				]
 			},

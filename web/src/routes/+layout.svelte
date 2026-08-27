@@ -19,6 +19,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { del } from '$lib/api';
+	import { INSTANCE_TAB_LABELS, isInstanceTab } from '$lib/components/instancetabs';
 	import { fmtBytes } from '$lib/format';
 	import { LANGUAGES, currentLanguage, switchLanguage, t } from '$lib/i18n.svelte';
 	import { tooltip } from '$lib/tooltip.svelte';
@@ -207,21 +208,105 @@
 		location.href = '/login';
 	}
 
+	/**
+	 * Route patterns that have a page of their own.
+	 *
+	 * The crumb trail is derived from the URL, and **not every prefix of a URL is a
+	 * page**: `/instances/<name>/plugins/<plugin>` is one, `/instances/<name>/plugins`
+	 * is not - the addon list is a tab on the instance page. Linking every prefix
+	 * blindly sent people to a 404, and that path was not the only one shaped like
+	 * it: `/runtime` and `/addons` are both linked prefixes with no page either.
+	 *
+	 * Held as route ids so a dynamic segment matches structurally rather than by
+	 * value. A page missing from this list only loses its crumb link, which is the
+	 * safe direction to be wrong in - so add to it when you add a page, and nothing
+	 * breaks if you forget.
+	 */
+	const PAGE_ROUTES = new Set([
+		'/addons/groups',
+		'/addons/groups/[name]',
+		'/addons/groups/new',
+		'/cleanup',
+		'/console/accounts',
+		'/console/accounts/[id]',
+		'/console/accounts/[id]/edit',
+		'/console/accounts/new',
+		'/console/logs',
+		'/datapacks',
+		'/environment',
+		'/environment/[name]',
+		'/environment/new',
+		'/gallery',
+		'/instances',
+		'/instances/launch',
+		'/instances/[name]',
+		'/instances/[name]/[[tab]]',
+		'/instances/[name]/plugins',
+		'/instances/[name]/console',
+		'/instances/[name]/files',
+		'/instances/[name]/plugins/[plugin]',
+		'/instances/selector',
+		'/machines',
+		'/machines/[name]',
+		'/mods',
+		'/network',
+		'/network/pools',
+		'/packs',
+		'/packs/[key]',
+		'/packs/[key]/configure',
+		'/permissions',
+		'/permissions/[name]',
+		'/permissions/[name]/edit',
+		'/players',
+		'/players/moderation',
+		'/players/online',
+		'/players/[player]',
+		'/plugins',
+		'/plugins/[name]',
+		'/proxy',
+		'/public',
+		'/public/[instance]',
+		'/runtime/java',
+		'/runtime/profiles',
+		'/runtime/profiles/new',
+		'/schedules',
+		'/schedules/new'
+	]);
+
 	const crumbs = $derived.by(() => {
 		const parts = page.url.pathname.split('/').filter(Boolean);
+		// the matching route id, which is what says whether a segment is a literal
+		// or a value; null on an error page, where nothing below claims otherwise
+		const pattern = (page.route.id ?? '').split('/').filter(Boolean);
 		const out: Array<{ label: string; href: string }> = [{ label: 'Luna', href: '/' }];
-		let acc = '';
 
-		for (const part of parts) {
-			acc += `/${part}`;
+		let path = '';
+		let route = '';
 
-			// only a word gets title-cased: an opaque path segment (an account id, a
-			// player UUID) is not a noun, and "Acc_1f6835d0fd52a988" reads as a shout
-			const label = /^[a-z]+$/.test(part)
-				? part.charAt(0).toUpperCase() + part.slice(1)
-				: part;
+		for (let index = 0; index < parts.length; index += 1) {
+			const part = parts[index]!;
+			const literal = pattern[index];
+			const dynamic = literal === undefined || literal.startsWith('[');
 
-			out.push({ label, href: acc });
+			path += `/${part}`;
+			route += `/${literal ?? part}`;
+
+			// An instance tab is a path segment whose slug is not its name: `respacks`
+			// is "Resource packs". It is the one dynamic segment with a name of its
+			// own, so it is looked up rather than derived from the text.
+			const tabLabel =
+				literal === '[[tab]]' && isInstanceTab(part) ? t(INSTANCE_TAB_LABELS[part]) : undefined;
+
+			// A static segment is a route literal and reads as a noun, so it is
+			// title-cased. A dynamic one is a *value* - an instance name, an account id
+			// - and is shown exactly as it is configured: the instance called
+			// `survival` is not called `Survival`, and shouting it makes the crumb
+			// disagree with every other place the name appears.
+			const label =
+				tabLabel ??
+				(!dynamic && /^[a-z]+$/.test(part) ? part.charAt(0).toUpperCase() + part.slice(1) : part);
+
+			out.push({ label, href: PAGE_ROUTES.has(route) ? path : '' });
 		}
 
 		return out;
@@ -312,8 +397,8 @@
 				{#if i > 0}
 					<span class="sep"><Icon name="arrowRight" size="0.625rem" /></span>
 				{/if}
-				{#if i === crumbs.length - 1}
-					<span class="here">{crumb.label}</span>
+				{#if i === crumbs.length - 1 || !crumb.href}
+					<span class="here" class:plain={i !== crumbs.length - 1}>{crumb.label}</span>
 				{:else}
 					<a href={crumb.href}>{crumb.label}</a>
 				{/if}
@@ -507,6 +592,13 @@
 		.here {
 			color: var(--text-secondary);
 			text-decoration: none;
+		}
+
+		// a segment with no page of its own: still part of the path, but there is
+		// nowhere to go, so it must not look clickable and must not look current
+		// either
+		.here.plain {
+			color: var(--text-disabled);
 		}
 	}
 
