@@ -52,11 +52,20 @@
 		void refresh();
 	});
 
-	/** Addon phases, plus the override that explains an absent one. */
+	/**
+	 * Addon phases, plus the override that explains an absent one.
+	 *
+	 * Kept in step with `PLUGIN_STATE_BADGE` on the instance page: `missing` and
+	 * `stopped` used to be absent here and fell through to `unknown`, so a screen
+	 * that had just told the operator an addon never loaded said "Unknown" the
+	 * moment they clicked into it.
+	 */
 	const STATE_BADGE: Record<string, { state: string; label: string }> = {
 		running: { state: 'running', label: t('web.instancePlugin.running') },
 		loading: { state: 'loading', label: t('web.instancePlugin.loading') },
 		errored: { state: 'failed', label: t('web.instancePlugin.errored') },
+		missing: { state: 'warning', label: t('web.instancePlugin.notLoaded') },
+		stopped: { state: 'stopped', label: t('web.instancePlugin.serverStopped') },
 		unknown: { state: 'unknown', label: t('web.instancePlugin.unknown') },
 		disabled: { state: 'stopped', label: t('web.instancePlugin.disabled') }
 	};

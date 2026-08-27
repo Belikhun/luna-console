@@ -30,6 +30,9 @@ import {
 	instancePluginReport,
 	removeInstanceJars,
 } from "../../client/core/pluginstate";
+import { instanceDataPackReport } from "../../client/core/datapacks";
+import type { InstanceDataPackRow } from "../../client/core/datapacks";
+import { loadPacksLock } from "../../client/core/packslock";
 import { standardizeNaming } from "../../client/core/standardize";
 import type { ClusterConfig, PluginFamily } from "../../client/core/types";
 import { FAMILY_DIRS, SOFTWARE_IDS } from "../../client/core/software";
@@ -386,11 +389,47 @@ command({
  * Push pool jars to the instances, then reconcile plugin port allocations. Shared
  * by `plugins deploy` and by every command that changes the pool.
  */
+/**
+ * One lockfile key from whatever the operator typed: a key already
+ * (`luckperms@paper`), or a plugin name that resolves to exactly one.
+ *
+ * A name covering several families is ambiguous and is refused with both keys
+ * named, rather than one of them being picked: deploying the paper build when
+ * the forge one was meant writes a jar into a directory where it cannot load.
+ */
+function resolveEntryKey(lock: Awaited<ReturnType<typeof loadLock>>, plugin: string): string {
+	if (lock.plugins[plugin]) {
+		return plugin;
+	}
+
+	const keys = entriesOf(lock, plugin);
+
+	if (keys.length === 1) {
+		return keys[0]!;
+	}
+
+	if (!keys.length) {
+		throw new UsageError(t("cli.plugins.deploy.unknownPlugin", { name: plugin }));
+	}
+
+	throw new UsageError(
+		t("cli.plugins.deploy.ambiguousPlugin", { name: plugin, keys: keys.join(", ") }),
+	);
+}
+
 export async function runDeploy(instances: string[] | undefined, plugin?: string): Promise<void> {
 	const cfg = await loadCluster();
 	const lock = await loadLock();
+
+	// `deploy` filters on the lockfile *key* (`luckperms@paper`), while every other
+	// command takes the plugin name (`luckperms`). Passing a name matched nothing,
+	// deployed nothing, and reported "all instances already in sync" - a success
+	// message for a no-op, which is how a genuinely undeployed jar can be looked
+	// straight at and missed. Resolve the name here, and refuse what names nothing.
+	const key = plugin ? resolveEntryKey(lock, plugin) : undefined;
+
 	const spin = new Spinner().start(t("cli.plugins.deploy.deploying"));
-	const actions = await plugins.deploy(cfg, lock, { instances, plugin });
+	const actions = await plugins.deploy(cfg, lock, { instances, plugin: key });
 	const ports = await ensurePortAllocations(cfg, lock);
 
 	await saveCluster(cfg);
@@ -1402,7 +1441,13 @@ command({
 			await saveLock(lock);
 		}
 
-		const { rows, session } = await instancePluginReport(cfg, lock, instance);
+		const { rows, session, unmanaged } = await instancePluginReport(cfg, lock, instance);
+
+		// A pack fails on its own terms - unreadable zip, refused format, contents
+		// the server would not parse - and none of that shows up in the addon rows,
+		// so the one screen that answers "what is actually loaded here" has to
+		// answer it for packs too. A world-less instance (the proxy) has none.
+		const packs = await instanceDataPacks(cfg, instance);
 
 		spin.stop();
 
@@ -1446,17 +1491,96 @@ command({
 
 		console.log();
 
+		if (packs.length) {
+			printTable(
+				packs.map((pack) => [
+					pack.file,
+					stateGlyph(pack.state, false),
+					pack.warnings ? pc.yellow(String(pack.warnings)) : pc.dim("0"),
+					pack.errors ? pc.red(String(pack.errors)) : pc.dim("0"),
+					pack.managed ? pc.dim(pack.name ?? "") : pc.cyan(t("cli.plugins.state.unmanagedTag")),
+				]),
+				{
+					head: [
+						t("cli.head.dataPack"),
+						t("cli.head.state"),
+						t("cli.head.warn"),
+						t("cli.head.err"),
+						t("cli.head.pack"),
+					],
+				},
+			);
+
+			console.log();
+		}
+
+		// One line rather than a row each: a modpack's mods directory is hundreds of
+		// jars luna does not manage, and printing them all would bury the table
+		// above. The counts are what say whether anything in there needs looking at.
+		if (unmanaged.length) {
+			const byState = new Map<string, number>();
+
+			for (const row of unmanaged) {
+				byState.set(row.state, (byState.get(row.state) ?? 0) + 1);
+			}
+
+			const summary = [...byState.entries()]
+				.sort(([a], [b]) => a.localeCompare(b))
+				.map(([state, count]) => `${count} ${stateGlyph(state, false)}`)
+				.join(pc.dim(" · "));
+
+			info(t("cli.plugins.state.unmanagedSummary", { count: unmanaged.length, summary }));
+		}
+
 		if (!session.complete) {
 			warn(t("cli.plugins.state.incompleteSession"));
 		}
 
-		const troubled = rows.filter((row) => row.state === "errored" || row.errors > 0);
+		const troubled = [
+			...rows.filter((row) => row.state === "errored" || row.errors > 0),
+			...unmanaged.filter((row) => row.state === "errored" || row.errors > 0),
+			...packs.filter((pack) => pack.state === "errored" || pack.errors > 0),
+		];
 
 		if (troubled.length) {
 			warn(t("cli.plugins.state.troubled", { count: troubled.length, name: instance }));
+
+			// Named, because a count alone leaves the operator to find them: these
+			// are the rows that changed the answer from "everything is running".
+			for (const row of troubled.slice(0, TROUBLED_SHOWN)) {
+				const label = "plugin" in row ? row.plugin : row.file;
+
+				console.log(`    ${pc.red(Sym.bad)} ${label} ${pc.dim(row.state)}`);
+			}
+
+			if (troubled.length > TROUBLED_SHOWN) {
+				console.log(pc.dim(`    …and ${troubled.length - TROUBLED_SHOWN} more`));
+			}
 		}
 	},
 });
+
+/** How many troubled addons `plugins state` names before summarising the rest. */
+const TROUBLED_SHOWN = 10;
+
+/**
+ * An instance's data packs with their runtime state, or none when it has no
+ * world to hold any. The proxy is the case that matters: it throws rather than
+ * returning an empty list, and a state report must not fail over that.
+ */
+async function instanceDataPacks(
+	cfg: ClusterConfig,
+	instance: string,
+): Promise<InstanceDataPackRow[]> {
+	try {
+		const groups = (await loadLock()).groups;
+		const report = await instanceDataPackReport(cfg, await loadPacksLock(), instance, groups);
+
+		return report.rows;
+	} catch {
+		return [];
+	}
+}
 
 command({
 	path: ["plugins", "standardize"],

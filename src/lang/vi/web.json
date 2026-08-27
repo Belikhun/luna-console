@@ -1720,7 +1720,12 @@
 		"unmanagedBoth": "Plugin & mod không được quản lý",
 		"serverStopped": "Đã dừng",
 		"stopped2": "đã dừng",
-		"findUnmanaged": "Tìm {noun} không được quản lý"
+		"findUnmanaged": "Tìm {noun} không được quản lý",
+		"loaded": "Đã nạp",
+		"packContentErrors": "Lỗi nội dung",
+		"packRefused": "Máy chủ không đọc được gói này",
+		"packNotRead": "Đã triển khai, nhưng máy chủ chưa báo là đã đọc",
+		"packContentBroken": "Gói đã nạp, nhưng máy chủ từ chối một phần nội dung"
 	},
 	"playerDetail": {
 		"issuingTempPassword": "Đang cấp mật khẩu tạm cho {name}…",
@@ -2856,7 +2861,9 @@
 		"pluginDetails": "Chi tiết plugin",
 		"liveConsole": "Console trực tiếp",
 		"nothingLoggedByThis": "Plugin này chưa ghi gì trong phiên hiện tại.",
-		"theBootLinesOf": "Các dòng khởi động của phiên này đã bị xoay khỏi cửa sổ log; hoạt động sớm có thể thiếu trong danh sách trên."
+		"theBootLinesOf": "Các dòng khởi động của phiên này đã bị xoay khỏi cửa sổ log; hoạt động sớm có thể thiếu trong danh sách trên.",
+		"notLoaded": "Chưa nạp",
+		"serverStopped": "Máy chủ đã tắt"
 	},
 	"splitBtn": {
 		"moreOptions": "{label}: thêm tùy chọn"

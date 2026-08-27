@@ -2045,7 +2045,12 @@
 		"unmanagedBoth": "Unmanaged plugins & mods",
 		"serverStopped": "Stopped",
 		"stopped2": "stopped",
-		"findUnmanaged": "Find an unmanaged {noun}"
+		"findUnmanaged": "Find an unmanaged {noun}",
+		"loaded": "Loaded",
+		"packContentErrors": "Content errors",
+		"packRefused": "The server could not read this pack",
+		"packNotRead": "Deployed, but the server never reported reading it",
+		"packContentBroken": "The pack loaded, but the server refused some of its contents"
 	},
 	"instanceFiles": {
 		"configFiles": "Config files",
@@ -2856,7 +2861,9 @@
 		"pluginDetails": "Plugin details",
 		"liveConsole": "Live console",
 		"nothingLoggedByThis": "Nothing logged by this plugin in the current session.",
-		"theBootLinesOf": "The boot lines of this session have rotated out of the log window; early activity may be missing from the list above."
+		"theBootLinesOf": "The boot lines of this session have rotated out of the log window; early activity may be missing from the list above.",
+		"notLoaded": "Not loaded",
+		"serverStopped": "Server stopped"
 	},
 	"splitBtn": {
 		"moreOptions": "{label}: more options"

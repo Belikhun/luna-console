@@ -20,6 +20,7 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
+import { packContents } from "./archive";
 import { getConfValue } from "./confedit";
 import { expandTargets, instanceDir, managedInstances, root } from "./config";
 import { groupsWith, memberInstances } from "./families";
@@ -42,6 +43,9 @@ import {
 } from "./identify";
 import type { AddonProject, AddonVersion, AddonVersionFile } from "./services/providers";
 import { getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
+import { getStatus } from "./instances";
+import { readBootSession } from "./pluginstate";
+import type { BootSession, PluginRuntimeState, ReportLifecycle } from "./pluginstate";
 import { traitsOf } from "./software";
 import type { AddonGroup, ClusterConfig, InstanceConfig, ProviderId } from "./types";
 import { worldDir } from "./world";
@@ -162,6 +166,142 @@ export interface InstanceDataPackRow {
 	autoUpdate?: boolean;
 	/** The world's copy differs from the pool; a deploy is pending */
 	stale: boolean;
+	/**
+	 * What the server's own log says became of it, in the same vocabulary an
+	 * addon row uses.
+	 *
+	 * A pack used to carry deploy state only - present, targeted, stale - which
+	 * answers "did luna put it there" and says nothing about whether the server
+	 * could read it. A pack whose `pack.mcmeta` is missing, whose format is
+	 * refused, or whose recipes do not parse sits on disk looking perfectly
+	 * deployed, and that was the whole of what the console showed.
+	 *
+	 * `loading` is never reported: a pack is read at boot or not at all.
+	 */
+	state: PluginRuntimeState;
+	/** Warnings and errors the session attributes to this pack */
+	warnings: number;
+	errors: number;
+}
+
+/**
+ * How the server names a pack in its log, for a pack that is a file in the
+ * world's datapacks folder: vanilla prefixes the id with `file/`, and a
+ * mod-provided one with `mod:` instead.
+ */
+function packLogIds(file: string): string[] {
+	const bare = file.replace(/\.zip$/i, "");
+
+	return [`file/${file}`, `file/${bare}`, file, bare].map((id) => id.toLowerCase());
+}
+
+/**
+ * Lines that name a pack the server could not read at all.
+ *
+ * `Failed to load datapacks, can't proceed with server load` is deliberately not
+ * here: it is the *consequence*, logged once for the whole set and naming
+ * nothing, and the pack that caused it is named by one of these on a line above.
+ * Matching it would mark every pack in the world broken because one of them was.
+ */
+const PACK_REFUSED = [
+	"missing data pack",
+	"failed to read pack",
+	"failed to open pack",
+	"incompatible pack",
+];
+
+/**
+ * How a broken *piece of content* is reported. Capture 1 is the namespace, which
+ * `packContents` maps back to the pack that shipped it.
+ *
+ * Both quoting styles are matched because the wording changed mid-1.21: up to
+ * 1.21 it is `Couldn't parse data file x from y`, from 1.21.10 it is
+ * `Couldn't parse data file 'x' from 'y'`. The advancement form disappeared
+ * entirely in 1.20.5+ when advancements moved to codecs, so it is matched for
+ * the older backends that still print it.
+ */
+const PACK_CONTENT_ERRORS: RegExp[] = [
+	/couldn't parse data file '?([a-z0-9_.-]+):/,
+	/parsing error loading (?:custom|built-in) advancement '?([a-z0-9_.-]+):/,
+	/parsing error loading recipe '?([a-z0-9_.-]+):/,
+	/couldn't parse loot table '?([a-z0-9_.-]+):/,
+	/couldn't read tag list '?([a-z0-9_.-]+):/,
+];
+
+/**
+ * Runtime state of one pack, from the boot session.
+ *
+ * Two independent kinds of failure, and they mean different things to whoever is
+ * reading the screen. The server could not *read the pack* - no `pack.mcmeta`, a
+ * format it refuses, a zip it cannot open - which is a packaging problem; or it
+ * read the pack and could not parse something *inside* it, which is a content
+ * problem in a pack that is otherwise installed correctly. Both land on
+ * `errored`, and the error tally is what separates one broken recipe from a pack
+ * that never loaded.
+ */
+function packState(
+	session: BootSession,
+	file: string,
+	namespaces: string[],
+): { state: PluginRuntimeState; warnings: number; errors: number } {
+	const ids = packLogIds(file);
+	const owned = new Set(namespaces);
+
+	let refused = false;
+	let missing = false;
+	let warnings = 0;
+	let errors = 0;
+
+	for (const rawLine of session.lines) {
+		const line = rawLine.toLowerCase();
+		let mine = false;
+
+		if (PACK_REFUSED.some((phrase) => line.includes(phrase)) && ids.some((id) => line.includes(id))) {
+			mine = true;
+
+			// "missing" is its own answer: the pack is enabled in the world's
+			// level.dat and is not on disk, which is a different fix from a pack the
+			// server choked on
+			if (line.includes("missing data pack")) {
+				missing = true;
+			} else {
+				refused = true;
+			}
+		}
+
+		if (!mine && owned.size) {
+			for (const pattern of PACK_CONTENT_ERRORS) {
+				const namespace = pattern.exec(line)?.[1];
+
+				if (namespace && owned.has(namespace)) {
+					mine = true;
+					refused = true;
+
+					break;
+				}
+			}
+		}
+
+		if (!mine) {
+			continue;
+		}
+
+		if (/\/warn\]|\[warn\]/.test(line)) {
+			warnings += 1;
+		} else {
+			errors += 1;
+		}
+	}
+
+	if (refused) {
+		return { state: "errored", warnings, errors };
+	}
+
+	if (missing) {
+		return { state: "missing", warnings, errors };
+	}
+
+	return { state: "running", warnings, errors };
 }
 
 /**
@@ -169,12 +309,17 @@ export interface InstanceDataPackRow {
  * stale against the pool) and unmanaged zips someone dropped in by hand, listed
  * so they can be adopted into the pool rather than silently ignored.
  * Runs on the instance's owner; the world is on that machine's disk.
+ *
+ * `opts.state` is the instance's lifecycle as the caller knows it, exactly as
+ * for the addon report: without it the instance is probed, which cannot see a
+ * stop that has only just been asked for.
  */
 export async function instanceDataPackReport(
 	cfg: ClusterConfig,
 	lock: PacksLock,
 	instance: string,
 	groups?: AddonGroups,
+	opts: { state?: ReportLifecycle } = {},
 ): Promise<{ world: string; rows: InstanceDataPackRow[] }> {
 	const inst = worldInstances(cfg)[instance];
 
@@ -194,18 +339,50 @@ export async function instanceDataPackReport(
 	const byFile = new Map(Object.entries(lock.datapacks).map(([name, entry]) => [entry.file, name]));
 	const seen = new Set<string>();
 
+	// Nothing is loaded on a server that is not running, and a log untouched since
+	// the process began cannot describe it - the same two questions the addon
+	// report asks, answered the same way, so one tab cannot call a pack `running`
+	// while the tab beside it calls its plugins `stopped`.
+	const status = await getStatus(cfg, instance);
+	const lifecycle = opts.state ?? status.state;
+	const down = lifecycle === "stopped" || lifecycle === "unknown";
+	const session = down ? undefined : await readBootSession(cfg, instance);
+	const startedAt = status.uptimeMs !== undefined ? Date.now() - status.uptimeMs : undefined;
+	const stale =
+		session !== undefined &&
+		startedAt !== undefined &&
+		session.writtenAt !== undefined &&
+		session.writtenAt < startedAt;
+
+	const readState = async (
+		file: string,
+		path: string,
+	): Promise<{ state: PluginRuntimeState; warnings: number; errors: number }> => {
+		if (down) {
+			return { state: "stopped", warnings: 0, errors: 0 };
+		}
+
+		if (!session || stale) {
+			return { state: "unknown", warnings: 0, errors: 0 };
+		}
+
+		const { namespaces } = await packContents(path);
+
+		return packState(session, file, namespaces);
+	};
+
 	for (const file of files.sort()) {
 		const name = byFile.get(file);
 		const entry = name ? lock.datapacks[name] : undefined;
 		const size = (await stat(join(dir, file))).size;
 
-		let stale = false;
+		let drifted = false;
 
 		if (entry) {
 			const poolPath = join(datapacksDir(), entry.file);
 
 			if (existsSync(poolPath)) {
-				stale = (await sha512File(join(dir, file))) !== (await sha512File(poolPath));
+				drifted = (await sha512File(join(dir, file))) !== (await sha512File(poolPath));
 			}
 
 			seen.add(entry.file);
@@ -221,7 +398,8 @@ export async function instanceDataPackReport(
 			versionNumber: entry?.installed?.versionNumber,
 			source: entry?.source,
 			autoUpdate: entry?.autoUpdate,
-			stale,
+			stale: drifted,
+			...(await readState(file, join(dir, file))),
 		});
 	}
 
@@ -242,6 +420,12 @@ export async function instanceDataPackReport(
 			source: entry.source,
 			autoUpdate: entry.autoUpdate,
 			stale: false,
+			// targeted but not deployed: the server was never given it, so there is
+			// nothing for the log to have said. Not `missing`, which is the server
+			// naming a pack it wanted and could not find.
+			state: down ? "stopped" : "unknown",
+			warnings: 0,
+			errors: 0,
 		});
 	}
 

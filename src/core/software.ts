@@ -188,6 +188,18 @@ export interface SoftwareTraits {
 	 *  capture 1 or 2 is its name. Absent when the software says nothing per
 	 *  addon, which a progress phase then reports as such rather than inventing. */
 	addonLoadMarker?: RegExp;
+	/**
+	 * Where this software enumerates every addon file it found, when that roster
+	 * is not in `latest.log`.
+	 *
+	 * Absent for everything whose roster is in the session already (bukkit names
+	 * each plugin as it enables it, fabric prints a tree, legacy FML one
+	 * bracketed list). It exists for the modlauncher line, which prints **no**
+	 * roster to `latest.log` at all: without this, a forge mod that neither
+	 * announces itself nor fails is indistinguishable from a mod luna cannot see,
+	 * and a 240-mod pack reports 232 addons as `unknown`.
+	 */
+	addonRoster?: AddonRoster;
 	/** Whether it announces the vanilla data pack registry as it loads (a new
 	 *  pack, then recipe and advancement counts). A server reimplemented from
 	 *  scratch logs none of that, and a phase that completes anyway is claiming
@@ -226,6 +238,44 @@ export interface SoftwareTraits {
 	/** Upstream publishes no stable release yet, so the operator is told */
 	experimental?: boolean;
 }
+
+/**
+ * A roster of addon files in a log of its own: which file to read, the line that
+ * names one file and the ids it carried, and how far in to bother looking.
+ */
+export interface AddonRoster {
+	/** Log file holding it, relative to the instance directory */
+	file: string;
+	/** One roster line: capture 1 the file name, capture 2 its comma-separated ids */
+	line: RegExp;
+	/**
+	 * Bytes of that file read at most.
+	 *
+	 * Discovery is the first thing a loader does, so the roster sits in the first
+	 * fraction of a debug log that then grows for the rest of the run (measured:
+	 * the last roster line of a 240-mod pack ends at 480 KB of an eventual 5 MB,
+	 * and a 620-mod pack is comparable). Reading the whole file on every console
+	 * poll would be most of a megabyte per addon tab redraw for lines that cannot
+	 * be there.
+	 */
+	scanBytes: number;
+}
+
+/**
+ * ModLauncher's own discovery line, in `logs/debug.log`:
+ * `Found valid mod file luna-core@forge.jar with {lunacore} mods - versions {0.1.0}`
+ * (logger `…moddiscovery.ModFileInfo/LOADING`, level DEBUG).
+ *
+ * Forge 1.20.1 and NeoForge 1.21.1 write it identically, which is why one entry
+ * serves both. The file name is the half that matters most: an unmanaged jar is
+ * identified by its file and usually logs nothing at all, so this is the only
+ * evidence that names it.
+ */
+const MODLAUNCHER_ROSTER: AddonRoster = {
+	file: "logs/debug.log",
+	line: /Found valid mod file (.+?) with \{([^}]*)\} mods/,
+	scanBytes: 4 * 1024 * 1024,
+};
 
 /**
  * ModLauncher's banner: the true first line of a forge-family run. It has to
@@ -485,6 +535,7 @@ const SOFTWARE_ROWS: Record<Software, SoftwareRow> = {
 		readyMarker: VANILLA_READY,
 		logGrammar: "modlauncher",
 		addonLoadMarker: MODLAUNCHER_ADDON,
+		addonRoster: MODLAUNCHER_ROSTER,
 		announcesDataPacks: true,
 		provider: "forge",
 		pinsLoaderVersion: true,
@@ -511,6 +562,7 @@ const SOFTWARE_ROWS: Record<Software, SoftwareRow> = {
 		readyMarker: VANILLA_READY,
 		logGrammar: "modlauncher",
 		addonLoadMarker: MODLAUNCHER_ADDON,
+		addonRoster: MODLAUNCHER_ROSTER,
 		announcesDataPacks: true,
 		provider: "neoforge",
 		pinsLoaderVersion: true,

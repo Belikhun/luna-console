@@ -145,7 +145,8 @@
 		"label": "nhãn",
 		"created": "tạo lúc",
 		"field": "trường",
-		"display": "hiển thị"
+		"display": "hiển thị",
+		"dataPack": "GÓI DỮ LIỆU"
 	},
 	"machines": {
 		"unknown": "không biết máy \"{name}\"; các máy đã biết: {known}"
@@ -289,7 +290,9 @@
 			"portReserved": "{instance}: cổng {port} giữ cho {key}",
 			"portNote": "(cấu hình xuất hiện sau lần khởi động đầu; chạy lại deploy)",
 			"inSync": "mọi instance đã đồng bộ sẵn",
-			"needRestart": "các instance đang chạy có jar mới (khởi động lại để áp dụng): {names}"
+			"needRestart": "các instance đang chạy có jar mới (khởi động lại để áp dụng): {names}",
+			"unknownPlugin": "không có addon nào tên \"{name}\"; chạy `luna plugins list` để xem danh sách",
+			"ambiguousPlugin": "\"{name}\" tồn tại trên nhiều nền tảng ({keys}); hãy nêu rõ bản cần dùng"
 		},
 		"add": {
 			"desc": "Cài một plugin hoặc mod từ nhà cung cấp (slug, hoặc từ khóa tìm kiếm)",
@@ -435,7 +438,9 @@
 			"reading": "đang đọc phiên khởi động của {name}...",
 			"disabled": "đã tắt",
 			"incompleteSession": "không thấy mốc khởi động trong cửa sổ xoay vòng log; trạng thái nạp ngoài cửa sổ hiển thị là không rõ",
-			"troubled": "{count} plugin báo lỗi; xem bằng: luna logs {name}"
+			"troubled": "{count} plugin báo lỗi; xem bằng: luna logs {name}",
+			"unmanagedTag": "không quản lý",
+			"unmanagedSummary": "{count} addon không do luna quản lý: {summary}"
 		},
 		"standardize": {
 			"desc": "Chuyển mọi mục sang cách đặt tên <plugin>@<family> (kho, lockfile, cổng, instance)",

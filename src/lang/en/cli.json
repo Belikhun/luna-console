@@ -145,7 +145,8 @@
 		"label": "label",
 		"created": "created",
 		"field": "field",
-		"display": "display"
+		"display": "display",
+		"dataPack": "DATA PACK"
 	},
 	"machines": {
 		"unknown": "unknown machine \"{name}\"; known machines: {known}"
@@ -289,7 +290,9 @@
 			"portReserved": "{instance}: port {port} reserved for {key}",
 			"portNote": "(config appears after first boot; rerun deploy)",
 			"inSync": "all instances already in sync",
-			"needRestart": "running instances with updated jars (restart to apply): {names}"
+			"needRestart": "running instances with updated jars (restart to apply): {names}",
+			"unknownPlugin": "no managed addon called \"{name}\"; run `luna plugins list` to see the names",
+			"ambiguousPlugin": "\"{name}\" exists for more than one platform ({keys}); name the one you mean"
 		},
 		"add": {
 			"desc": "Install a plugin or mod from a provider (slug, or search query)",
@@ -435,7 +438,9 @@
 			"reading": "reading {name}'s boot session...",
 			"disabled": "disabled",
 			"incompleteSession": "boot marker not found within the log-rotation window; load states past the window read as unknown",
-			"troubled": "{count} plugin(s) reported errors; inspect with: luna logs {name}"
+			"troubled": "{count} plugin(s) reported errors; inspect with: luna logs {name}",
+			"unmanagedTag": "unmanaged",
+			"unmanagedSummary": "{count} unmanaged addon(s): {summary}"
 		},
 		"standardize": {
 			"desc": "Migrate every entry to the <plugin>@<family> naming scheme (pool, lockfile, ports, instances)",

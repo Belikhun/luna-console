@@ -1973,9 +1973,14 @@
 		await refresh({ tabData: true });
 	}
 
+	// `state` is the deploy question (did luna put it there, is it current) and
+	// `loaded` the runtime one (could the server read it). They are separate
+	// columns because they fail independently: a pack can be perfectly in sync and
+	// still be a pack the server threw out.
 	const datapackCols: Column[] = $derived([
 		{ id: 'file', label: t('web.instanceDetail.dataPack2'), sortable: true },
 		{ id: 'state', label: t('web.instanceDetail.state'), width: 150 },
+		{ id: 'loaded', label: t('web.instanceDetail.loaded'), width: 150 },
 		{ id: 'version', label: t('web.instanceDetail.version') },
 		{ id: 'size', label: t('web.instanceDetail.size'), width: 100, align: 'right' },
 		{ id: 'source', label: t('web.instanceDetail.source'), minWidth: 140 }
@@ -2925,6 +2930,22 @@
 								/>
 							{:else}
 								<StatusBadge state="ok" label={t('web.instanceDetail.inSync')} />
+							{/if}
+						{:else if col === 'loaded'}
+							{@const badge = PLUGIN_STATE_BADGE[row.state] ?? PLUGIN_STATE_BADGE.unknown}
+							<StatusBadge
+								state={badge.state}
+								label={badge.label}
+								detail={row.state === 'errored'
+									? row.errors
+										? t('web.instanceDetail.packContentBroken')
+										: t('web.instanceDetail.packRefused')
+									: row.state === 'unknown' && row.present
+										? t('web.instanceDetail.packNotRead')
+										: undefined}
+							/>
+							{#if row.errors}
+								<span class="manual">{row.errors} {t('web.instanceDetail.packContentErrors')}</span>
 							{/if}
 						{:else if col === 'version'}
 							<span class="mono">{row.versionNumber ?? '–'}</span>

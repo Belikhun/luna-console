@@ -28,7 +28,7 @@ import type {
 	Software,
 } from "./types";
 import { t } from "../shared/i18n";
-import { unzipRead } from "./archive";
+import { nestedJarNames, unzipRead } from "./archive";
 import { addonDirForFamily, instanceDir, managedInstances, poolDir } from "./config";
 import {
 	effectiveTargets,
@@ -107,6 +107,31 @@ export interface BootSession {
 	startupComplete: boolean;
 	/** When latest.log was last written (epoch ms), absent when there is no such file */
 	writtenAt?: number;
+	/**
+	 * Addon files the loader reported discovering, each mapped to the ids it
+	 * carried, for the software whose roster is in a log of its own
+	 * (`SoftwareTraits.addonRoster`). Empty for everything else, and for a roster
+	 * that could not be read.
+	 *
+	 * A plain record rather than a Map because the session crosses the daemon RPC
+	 * boundary as JSON.
+	 *
+	 * Optional, like the two fields below, because it does: a follower running an
+	 * older build answers this op without them, and the report has to keep working
+	 * against one rather than throwing halfway through a mixed-build rollout.
+	 */
+	discovered?: Record<string, string[]>;
+	/** Whether that roster was read at all, which is what makes absence meaningful */
+	discoveredComplete?: boolean;
+	/**
+	 * Addon ids and names the loader itself declared broken, lowercased.
+	 *
+	 * Parsed once per session rather than per addon, because the evidence is a
+	 * multi-line block (modlauncher's `LoadingFailedException` encloses one line
+	 * per offending mod) and re-parsing it for each of a modpack's several
+	 * hundred rows would walk the same block hundreds of times.
+	 */
+	failed?: string[];
 }
 
 /**
@@ -159,6 +184,12 @@ function yamlAuthors(text: string): string[] {
 interface JarInfo {
 	meta: PluginMeta;
 	aliases: string[];
+	/**
+	 * Base names of the jars packaged inside it, when it is a jar-in-jar
+	 * container. These are the names a mod loader's roster prints, because it
+	 * extracts and loads the payload rather than the container.
+	 */
+	nested: string[];
 }
 
 /**
@@ -175,7 +206,7 @@ async function readJarInfo(path: string): Promise<JarInfo> {
 	// Every descriptor below is a zip member, and a pumpkin component is a bare
 	// WebAssembly file; probing one spawns unzip five times to learn nothing.
 	if (!path.toLowerCase().endsWith(".jar")) {
-		return { meta, aliases };
+		return { meta, aliases, nested: [] };
 	}
 
 	const claim = (name?: string): void => {
@@ -347,7 +378,7 @@ async function readJarInfo(path: string): Promise<JarInfo> {
 		}
 	}
 
-	return { meta, aliases: [...new Set(aliases)] };
+	return { meta, aliases: [...new Set(aliases)], nested: await nestedJarNames(path) };
 }
 
 /** The names an entry goes by in logs, its cached aliases or the plugin name. */
@@ -446,6 +477,117 @@ async function rotatedLogs(logsDir: string): Promise<string[]> {
 }
 
 /**
+ * Rosters already parsed, keyed by path and the session-identifying first line.
+ *
+ * A debug log grows for the whole run, so its size and mtime change between two
+ * console polls seconds apart while the roster near its top does not; keying on
+ * either would miss the cache every time and re-read megabytes.
+ */
+const rosters = new Map<string, { discovered: Record<string, string[]>; complete: boolean }>();
+
+/** Bytes read to identify the session, which is all the first line takes. */
+const ROSTER_KEY_BYTES = 4096;
+
+/** A handful of instances, each with one roster; nothing like the jar cache. */
+const ROSTER_CACHE_MAX = 64;
+
+/**
+ * The addon files a loader reported discovering, from the log it writes them to.
+ *
+ * This exists because the modlauncher line prints no roster into `latest.log`:
+ * a forge mod that neither announces itself nor fails leaves nothing in the
+ * session at all, and every such mod reported as `unknown` (measured on a
+ * 240-mod pack: 232 of 233 unmanaged rows). Forge and NeoForge both write the
+ * roster to `logs/debug.log` instead, keyed by **file name**, which is the one
+ * identifier an unmanaged jar always has.
+ *
+ * Scoped to the last boot marker in the scanned prefix. Forge truncates the
+ * debug log per boot, so in practice the whole prefix is this run; but log4j can
+ * still roll it mid-run, and a roster left over from the previous boot would
+ * otherwise be read as this one's.
+ */
+async function readAddonRoster(
+	inst: InstanceConfig,
+): Promise<{ discovered: Record<string, string[]>; complete: boolean }> {
+	const traits = traitsOf(inst.software, inst.mcVersion);
+	const roster = traits.addonRoster;
+
+	if (!roster) {
+		return EMPTY_ROSTER;
+	}
+
+	const path = join(instanceDir(inst), roster.file);
+
+	if (!existsSync(path)) {
+		return EMPTY_ROSTER;
+	}
+
+	const handle = Bun.file(path);
+
+	let key: string;
+
+	try {
+		const head = await handle.slice(0, ROSTER_KEY_BYTES).text();
+
+		key = `${path}:${head.split(/\r?\n/, 1)[0] ?? ""}`;
+	} catch {
+		// unreadable is not the same as absent, but it answers the same way
+		return EMPTY_ROSTER;
+	}
+
+	const hit = rosters.get(key);
+
+	if (hit) {
+		return hit;
+	}
+
+	let lines: string[];
+
+	try {
+		lines = (await handle.slice(0, roster.scanBytes).text()).split(/\r?\n/);
+	} catch {
+		return EMPTY_ROSTER;
+	}
+
+	let start = 0;
+
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		if (traits.bootMarker.test(lines[index]!)) {
+			start = index;
+
+			break;
+		}
+	}
+
+	const discovered: Record<string, string[]> = {};
+
+	for (let index = start; index < lines.length; index += 1) {
+		const match = roster.line.exec(lines[index]!);
+
+		if (!match) {
+			continue;
+		}
+
+		discovered[match[1]!.trim()] = match[2]!
+			.split(",")
+			.map((id) => id.trim())
+			.filter(Boolean);
+	}
+
+	const result = { discovered, complete: Object.keys(discovered).length > 0 };
+
+	if (rosters.size > ROSTER_CACHE_MAX) {
+		rosters.clear();
+	}
+
+	rosters.set(key, result);
+
+	return result;
+}
+
+const EMPTY_ROSTER = { discovered: {}, complete: false };
+
+/**
  * Reconstruct the current boot session of an instance: latest.log, extended
  * backwards through rotated files until the boot marker appears (log4j rolls
  * latest.log at midnight, so a long-running server's boot lines usually live
@@ -507,26 +649,19 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 		}
 	}
 
-	if (start === -1) {
-		return {
-			lines,
-			complete: false,
-			software: inst.software,
-			...(inst.mcVersion ? { mcVersion: inst.mcVersion } : {}),
-			startupComplete: startupComplete(inst.software, inst.mcVersion, lines),
-			...(writtenAt !== undefined ? { writtenAt } : {}),
-		};
-	}
-
-	const session = lines.slice(start);
+	const roster = await readAddonRoster(inst);
+	const session = start === -1 ? lines : lines.slice(start);
 
 	return {
 		lines: session,
-		complete: true,
+		complete: start !== -1,
 		software: inst.software,
 		...(inst.mcVersion ? { mcVersion: inst.mcVersion } : {}),
 		startupComplete: startupComplete(inst.software, inst.mcVersion, session),
 		...(writtenAt !== undefined ? { writtenAt } : {}),
+		discovered: roster.discovered,
+		discoveredComplete: roster.complete,
+		failed: loaderFailures(inst.software, inst.mcVersion, session),
 	};
 }
 
@@ -538,8 +673,14 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
  * on purpose: with neither a thread nor a colon there is nothing left to tell it
  * apart from a message quoting a bracketed level, and the line opening with it
  * is what does.
+ *
+ * FATAL is read as an error rather than a level of its own: log4j's own scale
+ * puts it above ERROR, every writer of it means "and now we stop", and the
+ * tallies an operator reads are warnings and errors. What FATAL additionally
+ * does is prove a *failure* rather than a complaint, which `FATAL_LEVEL` below
+ * is what tests for.
  */
-const SEVERITY = /\[[^\]]*\/(WARN|ERROR)\]|\[(WARN|ERROR)\]:|^\[(WARN|ERROR)\]/;
+const SEVERITY = /\[[^\]]*\/(WARN|ERROR|FATAL)\]|\[(WARN|ERROR|FATAL)\]:|^\[(WARN|ERROR|FATAL)\]/;
 
 /** Severity of one log line, when it carries one. */
 function severityOf(line: string): "warn" | "error" | undefined {
@@ -549,7 +690,217 @@ function severityOf(line: string): "warn" | "error" | undefined {
 		return undefined;
 	}
 
-	return (match[1] ?? match[2] ?? match[3])!.toLowerCase() as "warn" | "error";
+	const level = (match[1] ?? match[2] ?? match[3])!.toLowerCase();
+
+	return level === "warn" ? "warn" : "error";
+}
+
+/**
+ * Minecraft's colour codes, which forge writes into the *message* of its mod
+ * loading errors (`Mod §elunacore§r only supports §3voicechat§r`). They have to
+ * come out before anything can be matched, or every mod id in that block carries
+ * a stray `§e` on the front.
+ */
+const COLOUR_CODES = /§./g;
+
+/** A log line reduced to something matchable: no colour codes, lowercased. */
+function plain(line: string): string {
+	return line.replace(COLOUR_CODES, "").toLowerCase();
+}
+
+/**
+ * The loader's aggregated failure header. What follows is one entry per
+ * offending mod, and the two loader families lay it out differently.
+ *
+ * Forge (1.16 through 1.21), and NeoForge up to 1.20.6, joins the entries into a
+ * bracketed list and leaves Minecraft's colour codes in - they survive because
+ * the text reaches the log as an exception *message*, which the layout's
+ * `%minecraftFormatting{…}{strip}` never touches:
+ *
+ * ```
+ * net.minecraftforge.fml.LoadingFailedException: Loading errors encountered: [
+ * 	Mod §elunacore§r only supports §3voicechat§r §o2.5.0 or above§r
+ * §7Currently, §3voicechat§r§7 is §o1.20.1-2.5.34
+ * ]
+ * ```
+ *
+ * NeoForge 1.21 and up replaced the class and the shape: no brackets, one `- `
+ * entry per line, continuations indented two further spaces, colour codes
+ * stripped by the loader itself, and possibly a second `Loading warnings
+ * encountered:` section after it that must **not** be read as failure.
+ *
+ * ```
+ * net.neoforged.fml.ModLoadingException: Loading errors encountered:
+ * 	- Mod delightlib requires neoforge 21.1.228 or above
+ * 	  Currently, neoforge is 21.1.222
+ * ```
+ *
+ * The first was captured verbatim from a real refusal on this cluster; the
+ * second matters because a NeoForge 1.21 backend runs here too. This block is
+ * the only place the loader names *which* mod stopped the boot - the lines
+ * around it (`Failed to start the minecraft server`, the crash-report path) say
+ * a mod did and never which.
+ */
+const LOADER_FATAL_HEADER = /loading errors encountered:/;
+
+/** The warnings section that follows it on NeoForge; not failures. */
+const LOADER_WARNING_HEADER = /loading warnings encountered:/;
+
+/**
+ * How a mod is named inside that block, and in the loader's other per-mod
+ * failures. Each is matched against a colour-stripped, lowercased line, with any
+ * leading `- ` list marker already removed.
+ *
+ * Every capture is a mod **id** except the parenthesised display form
+ * (`LunaCore (lunacore) has failed to load correctly`), where both halves are
+ * taken: the id is what a lockfile alias matches, the display name is what an
+ * unmanaged jar's descriptor gives.
+ */
+const LOADER_FAILURE_NAMES: RegExp[] = [
+	// "Mod <id> requires <dep> …" / "Mod <id> only supports <dep> …" - the
+	// capture is the *requiring* mod, which is the one that failed
+	/^mod\s+([a-z0-9_.-]+)\s+(?:requires|only supports|is present in multiple files)/,
+	/\(([a-z0-9_.-]+)\)\s+has failed to load/,
+	/\(([a-z0-9_.-]+)\)\s+encountered an error (?:during|while)/,
+	/mixin application of \S+ from .*\(([a-z0-9_.-]+)\)\s+has failed/,
+	/failed to create mod instance\.\s*modid:\s*([a-z0-9_.-]+)/,
+	/failed to apply mixin\..*modid:\s*([a-z0-9_.-]+)/,
+	/failed to register automatic subscribers\.\s*modid:\s*([a-z0-9_.-]+)/,
+	/caught exception (?:during|while) [^,]*?(?:for|from) mod(?:id)?\s+([a-z0-9_.-]+)/,
+	// ModSorter's discovery-time table: the mod that asked is the broken one,
+	// not the dependency it asked for
+	/requested by:\s*'([a-z0-9_.-]+)'/,
+	// legacy FML names the mod it could not construct
+	/caught exception from\s+([a-z0-9_.-]+)/,
+];
+
+/**
+ * Mixin failures that are terminal, as opposed to the many that are not.
+ *
+ * A mixin whose target is absent is *skipped*, and both the loader and the mod
+ * carry on: `@Mixin target … was not found`, `@Redirect conflict. Skipping …`
+ * and `Mixin config … not applied as required mod 'create' is missing` are all
+ * routine on a large modpack (the 240-mod pack here logs a hundred of them a
+ * boot) and none of them breaks anything. Only an *apply* failure or a critical
+ * injection failure stops the mod, so the ` from mod <id>` attribution is only
+ * read off a line that says one of those happened.
+ */
+const MIXIN_FATAL = /mixin apply failed|failed during apply|critical injection failure/;
+
+/** How the mixin fork attributes a mixin to its owner: `… from mod <modid>`. */
+const MIXIN_OWNER = /from mod ([a-z0-9_.-]+)/;
+
+/**
+ * Addons the loader itself declared broken, as lowercased ids and names.
+ *
+ * Kept separate from the per-addon walk for two reasons. The evidence is a block
+ * rather than a line, so it can only be read in order; and it is one block for
+ * the whole session, so parsing it once instead of once per row saves a modpack's
+ * several hundred repeats of the same scan.
+ *
+ * A failure the loader announces outranks everything else the session says about
+ * that addon. This is the case the report used to get wrong: the server goes on
+ * to print `Done (…)!` on a *later* boot attempt, or the addon logged an
+ * encouraging line before dying, and a row whose mod never loaded reported
+ * `running`.
+ */
+function loaderFailures(
+	software: Software,
+	mcVersion: string | undefined,
+	lines: string[],
+): string[] {
+	const grammar = traitsOf(software, mcVersion).logGrammar;
+
+	if (grammar !== "modlauncher" && grammar !== "fml") {
+		return [];
+	}
+
+	const failed = new Set<string>();
+
+	const claim = (text: string): void => {
+		// the list marker is part of the layout, not of the entry
+		const entry = text.replace(/^[\s\t]*[-*]\s+/, "").trim();
+
+		for (const pattern of LOADER_FAILURE_NAMES) {
+			const match = pattern.exec(entry);
+
+			if (!match) {
+				continue;
+			}
+
+			for (const name of match.slice(1)) {
+				if (name) {
+					failed.add(name);
+				}
+			}
+
+			return;
+		}
+	};
+
+	let inBlock = false;
+
+	for (const rawLine of lines) {
+		const line = plain(rawLine);
+
+		if (LOADER_FATAL_HEADER.test(line)) {
+			inBlock = true;
+
+			// Forge carries the list open-bracket on the header and its first entry
+			// on the next line; NeoForge 1.21 inlines the issue after the colon, as
+			// it also does on "Error during pre-loading phase: <issue>"
+			claim(line.slice(line.indexOf("encountered:") + "encountered:".length).replace(/^\s*\[/, ""));
+
+			continue;
+		}
+
+		if (inBlock) {
+			// Forge closes with a bracket of its own; NeoForge just stops, so the
+			// stack frames that follow the throwable, and its warnings section, are
+			// what end the block there
+			if (/^\s*\]/.test(rawLine) || /^\s*at\s+\S/.test(rawLine) || LOADER_WARNING_HEADER.test(line)) {
+				inBlock = false;
+
+				continue;
+			}
+
+			claim(line);
+
+			continue;
+		}
+
+		// "Error during pre-loading phase" carries the issue inline on NeoForge
+		if (line.includes("error during pre-loading phase:")) {
+			claim(line.slice(line.indexOf("phase:") + "phase:".length));
+
+			continue;
+		}
+
+		// A mixin that failed to apply is attributed by the mixin's own name, which
+		// the loader's fork suffixes with the owning mod
+		if (MIXIN_FATAL.test(line)) {
+			const owner = MIXIN_OWNER.exec(line)?.[1];
+
+			if (owner) {
+				failed.add(owner);
+			}
+
+			continue;
+		}
+
+		// the per-mod failures the loader prints outside any block
+		if (
+			line.includes("has failed to load") ||
+			line.includes("failed to create mod instance") ||
+			line.includes("failed to apply mixin") ||
+			line.includes("caught exception") ||
+			line.includes("requested by:")
+		) {
+			claim(line);
+		}
+	}
+
+	return [...failed];
 }
 
 /**
@@ -675,7 +1026,22 @@ function attributed(lowerLine: string, lowerAliases: string[], session: BootSess
 
 	const bare = logger.replace(suffix, "");
 
-	return lowerAliases.some((alias) => logger === alias || bare === alias);
+	// A great many mods hand log4j their main class rather than a name, so the
+	// logger arrives fully qualified: `insane96mcp.insanelib.InsaneLib` for the
+	// mod `insanelib`, `com.armilp.ezvcsurvival.EZVCSurvival` for `ezvcsurvival`.
+	// The last segment is the class, and a mod's main class is named after the mod
+	// often enough to be worth trying; the package segment before it is the same
+	// name again just as often. Matched whole, like the plain form, so
+	// `…LunaCoreMessaging` still cannot be credited to `luna-core`.
+	const segments = logger.includes(".") ? logger.split(".").filter(Boolean) : [];
+	const tail = segments.slice(-2);
+
+	return lowerAliases.some(
+		(alias) =>
+			logger === alias ||
+			bare === alias ||
+			tail.some((segment) => segment === alias || segment.replace(suffix, "") === alias),
+	);
 }
 
 export interface PluginLogReport {
@@ -724,12 +1090,20 @@ const READY_HINTS = [
 	"running",
 	"is ready",
 	"enabled successfully",
+	// LuckPerms says it the other way round - "Successfully enabled. (took 23601ms)"
+	// - and with only the phrase above, the one addon on a modded backend that
+	// states plainly that it came up was still reported as unknown.
+	"successfully enabled",
+	"successfully loaded",
+	"initialized",
+	"initialised",
 	// LunaCore and friends log in Vietnamese. "đã sẵn sàng" is the phrase every
 	// luna module except the core itself announces with, so leaving it out reported
 	// a whole modded backend as unknown while the core alone read as running.
 	"đã khởi động",
 	"khởi động thành công",
 	"đã sẵn sàng",
+	"đã nạp",
 ];
 
 /**
@@ -760,14 +1134,202 @@ function claimsReady(lowerLine: string): boolean {
  * every one of them reports as unknown.
  */
 const FABRIC_ROSTER_HEADER = /loading \d+ mods?:/;
-const FABRIC_ROSTER_ENTRY = /^\s*(?:[|\\]--|-)\s*([a-z0-9_.-]+)(?:\s+\S+)?$/;
+
+/**
+ * One entry of it. The prefix is what the loader draws to nest a dependency, and
+ * it repeats per level: `\t- appleskin 3.0.7`, then `\t   |-- kuma_api 21.10.5`,
+ * then `\t   |    |-- net_kyori_adventure-api 4.25.0`. Matching only one level of
+ * it (the old `^\s*`) meant every transitively-bundled library reported as
+ * `unknown`, which on a fabric pack is most of the mods directory.
+ */
+const FABRIC_ROSTER_ENTRY = /^[\s|\\]*(?:[|\\]--|-)\s*([a-z0-9_.-]+)(?:\s+\S+)?$/;
+
+/**
+ * Phrases that, on a line **attributed to the addon**, mean it is broken rather
+ * than merely complaining.
+ *
+ * This is the half of the report that was missing: an addon whose own logger
+ * printed a stack trace, and which the server then outlived, was reported
+ * `running` on the strength of the server having finished starting. The server
+ * finishing says nothing about whether one addon inside it died - most platforms
+ * carry on quite happily without a mod that threw during setup.
+ *
+ * Deliberately narrow. Every entry here is terminal by construction: a linkage
+ * error means the class the addon needs is not there, an unhandled or uncaught
+ * exception means nothing caught it, and "failed to" is the platforms' own
+ * phrasing for giving up. Words that merely *sound* bad ("error", "could not")
+ * are left out, because addons log both while recovering perfectly well - a
+ * missing optional integration, a config key falling back to its default - and
+ * an addon reported broken for a warning it handled is worse than one reported
+ * `unknown`.
+ */
+const FATAL_HINTS = [
+	"unhandled exception",
+	"uncaught exception",
+	"exception in thread",
+	"failed to load",
+	"failed to initialize",
+	"failed to initialise",
+	"failed to enable",
+	"failed to start",
+	"noclassdeffounderror",
+	"classnotfoundexception",
+	"nosuchmethoderror",
+	"nosuchfielderror",
+	"unsupportedclassversionerror",
+	"incompatibleclasschangeerror",
+	"exceptionininitializererror",
+	// bukkit's own wording when a plugin's onEnable threw; the plugin is left
+	// loaded but disabled, which is exactly the state that used to read as running
+	"error occurred while enabling",
+];
+
+/** Whether a line attributed to an addon says the addon itself failed. */
+function claimsFatal(plainLine: string): boolean {
+	return FATAL_HINTS.some((hint) => plainLine.includes(hint));
+}
+
+/**
+ * Whether the loader's own failure list names this addon.
+ *
+ * Matched against both the aliases and the addon's file name, because the two
+ * grammars name it differently: modlauncher's block names the mod *id*, while a
+ * jar nothing manages is only ever identified by its file.
+ */
+function declaredFailed(session: BootSession, lowerAliases: string[], file?: string): boolean {
+	// a follower on an older build answers this op without the field
+	const declared = session.failed ?? [];
+
+	if (!declared.length) {
+		return false;
+	}
+
+	if (declared.some((name) => lowerAliases.includes(name))) {
+		return true;
+	}
+
+	if (!file) {
+		return false;
+	}
+
+	// the roster is what turns a file back into the ids inside it
+	const ids = rosterIdsFor(session, file);
+
+	return ids.some((id) => declared.includes(id));
+}
+
+/**
+ * The ids the loader's roster says a given addon file carried, lowercased.
+ *
+ * The lookup is case-insensitive because a deployed jar's name is whatever the
+ * operator or the provider spelled it (`Atlas Lib-1.20.1-1.1.12.jar`), and the
+ * lockfile's copy of that name need not agree on case.
+ */
+function rosterIdsFor(session: BootSession, file: string): string[] {
+	const wanted = file.toLowerCase();
+
+	for (const [name, ids] of Object.entries(session.discovered ?? {})) {
+		if (name.toLowerCase() === wanted) {
+			return ids.map((id) => id.toLowerCase());
+		}
+	}
+
+	return [];
+}
+
+/**
+ * What the loader's own roster says about one addon.
+ *
+ * hit          the roster names its file, or one of the ids it declares
+ * absent       the roster was read, could have named this addon, and did not
+ * inconclusive there is no roster, or the only handle on this addon is a file
+ *              name - which proves presence when it matches and nothing at all
+ *              when it does not
+ */
+type RosterVerdict = "hit" | "absent" | "inconclusive";
+
+/**
+ * Read the roster for one addon.
+ *
+ * The asymmetry is the whole point: **a file name can prove presence but never
+ * absence.** A loader is free to rewrite the name it rosters, and modlauncher
+ * does it constantly - it extracts nested mod jars under their inner name
+ * (`kotlinforforge-4.11.0-all.jar` is rostered as `kffmod-4.11.0.jar`,
+ * `Connector-1.0.0-beta.47+1.20.1.jar` as `…-mod.jar`) and remaps others onto a
+ * suffixed one (`ResistanceBalancer-(NEO)FORGE-1.0.0_mapped_srg_1.20.1.jar`).
+ * All four are loaded and working; all four are absent from the roster under the
+ * name on disk. Reporting those `missing` would be a confident accusation
+ * against four healthy mods, which is worse than admitting ignorance.
+ *
+ * So absence is only ever concluded from an **id the addon declares about
+ * itself**, read out of its own descriptor. `identified` is what says we have
+ * one: without it the aliases are a file name with its extension trimmed, and
+ * that is not evidence of anything.
+ */
+function rosterVerdict(
+	session: BootSession,
+	lowerAliases: string[],
+	file: string | undefined,
+	identified: boolean,
+	/** Base names of the jars packaged inside it, which the loader rosters instead */
+	nested: string[] = [],
+): RosterVerdict {
+	if (!session.discoveredComplete) {
+		return "inconclusive";
+	}
+
+	for (const name of file ? [file, ...nested] : nested) {
+		if (rosterIdsFor(session, name).length) {
+			return "hit";
+		}
+	}
+
+	for (const ids of Object.values(session.discovered ?? {})) {
+		if (ids.some((id) => lowerAliases.includes(id.toLowerCase()))) {
+			return "hit";
+		}
+	}
+
+	return identified ? "absent" : "inconclusive";
+}
+
+/** What the caller knows about one addon, beyond the names it logs under. */
+interface AddonIdentity {
+	/** Its file in the instance's addon directory */
+	file?: string;
+	/**
+	 * Whether the aliases came from the addon's own descriptor rather than from
+	 * its file name. Only a self-declared id can prove the roster's silence
+	 * means absence; see `rosterVerdict`.
+	 */
+	identified?: boolean;
+	/** Base names of any jars packaged inside it, which the loader rosters instead */
+	nested?: string[];
+}
 
 /** Load, ready and failure evidence for one addon in a session. */
-function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
+function loadEvidence(
+	session: BootSession,
+	aliases: string[],
+	identity: AddonIdentity = {},
+): AddonEvidence {
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
 	const grammar = traitsOf(session.software, session.mcVersion).logGrammar;
+	const { file, identified = false, nested = [] } = identity;
 
-	let loading = false;
+	// The loader saying so outranks every other kind of evidence, including the
+	// server having finished starting: a mod named in a fatal block never ran, and
+	// the boot that printed `Done (…)!` was a later attempt without it.
+	if (declaredFailed(session, lowerAliases, file)) {
+		return "errored";
+	}
+
+	const verdict = rosterVerdict(session, lowerAliases, file, identified, nested);
+
+	// A roster in a log of its own (modlauncher writes one to debug.log and none
+	// to latest.log) is positive proof of discovery for an addon that says nothing
+	// itself, which on a modpack is nearly all of them.
+	let loading = verdict === "hit";
 	let ready = false;
 
 	// A mod loader has no per-mod "enabling" line. What modlauncher does print is
@@ -777,11 +1339,30 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 	// as the marker that it is in the session.
 	// Absence only means "not there" when the roster was captured at all, so each
 	// loader that prints one carries its own marker for having reached it.
-	let roster = grammar !== "modlauncher" && grammar !== "fabric" && grammar !== "fml";
+	//
+	// A separate-log roster licenses the same conclusion, but only for an addon it
+	// could have named by id: `rosterVerdict` is where that asymmetry lives.
+	let roster =
+		verdict === "absent" ||
+		(grammar !== "modlauncher" && grammar !== "fabric" && grammar !== "fml");
 
 	for (const rawLine of session.lines) {
 		const lower = rawLine.trimEnd().toLowerCase();
 		const mine = attributed(lower, lowerAliases, session);
+
+		// An addon's own logger reporting that it failed is the case the report
+		// used to lose: nothing else in the session contradicts it, the server
+		// finishes starting regardless, and the row read `running`.
+		//
+		// Gated on the line's own severity, which is what keeps the wording from
+		// over-reaching. Addons announce recovered problems in the same words they
+		// announce fatal ones ("failed to load the optional Vault hook") and do it
+		// at WARN; requiring ERROR or FATAL is what separates "I gave up" from "I
+		// carried on without it", and a false `errored` is a worse answer than the
+		// `unknown` it would replace.
+		if (mine && severityOf(rawLine) === "error" && claimsFatal(plain(rawLine))) {
+			return "errored";
+		}
 
 		if (grammar === "modlauncher" && (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)"))) {
 			roster = true;
@@ -797,14 +1378,28 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 
 		for (const alias of lowerAliases) {
 			if (grammar === "bukkit") {
-				// bukkit prints "[Name] Loading server plugin Name vX", then
-				// "[Name] Enabling Name vX"; failures follow as
-				// "Error occurred while enabling Name vX"
-				if (lower.includes(`error occurred while enabling ${alias} `)) {
+				// Bukkit's enable failure is logged by the *server*, not by the
+				// plugin, so it carries no `[Name]` field and `attributed` cannot see
+				// it: the plugin is named in the message instead, as its "full name"
+				// (`Name vX`). Paper additionally wraps ten variants of the same
+				// message in "(in the plugin loader)", which is why the middle is
+				// matched loosely rather than spelled out.
+				if (
+					/^.*error occurred (?:\(in the plugin loader\) )?while (?:enabling|disabling) /.test(lower) &&
+					lower.includes(`while enabling ${alias} `)
+				) {
 					return "errored";
 				}
 
-				if (lower.includes("could not load plugin") && lower.includes(alias)) {
+				// Three wordings across versions, and the modern pair names the jar
+				// rather than the plugin: legacy `Could not load '<path>' in folder
+				// '<dir>'`, modern `Could not load '<path>' in '<dir>'` (a missing
+				// dependency) and `Could not load plugin '<file>' in folder '<dir>'`.
+				// So the file is tested as well as the name.
+				if (
+					lower.includes("could not load") &&
+					(lower.includes(alias) || (file && lower.includes(file.toLowerCase())))
+				) {
 					return "errored";
 				}
 
@@ -816,7 +1411,23 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 					loading = true;
 				}
 			} else if (grammar === "velocity") {
-				if (lower.includes(`can't create plugin ${alias}`)) {
+				// `Can't create plugin <id>` is the one that names the id; the other
+				// two name a path (`Unable to load plugin plugins/x.jar`) or add a
+				// dependency after the id (`Can't load plugin <id> due to missing
+				// dependency <dep>`).
+				if (
+					lower.includes(`can't create plugin ${alias}`) ||
+					lower.includes(`can't create module for plugin ${alias}`) ||
+					lower.includes(`can't load plugin ${alias} due to missing dependency`)
+				) {
+					return "errored";
+				}
+
+				if (
+					lower.includes("unable to load plugin") &&
+					file &&
+					lower.includes(file.toLowerCase())
+				) {
 					return "errored";
 				}
 
@@ -824,6 +1435,17 @@ function loadEvidence(session: BootSession, aliases: string[]): AddonEvidence {
 					loading = true;
 				}
 			} else if (grammar === "fabric") {
+				// "Could not execute entrypoint stage 'main' due to errors, provided
+				// by 'modid' at 'the.Class'!" - the loader's own wrapper, and the only
+				// line that names which mod crashed on startup. The trailing `at`
+				// clause is absent on older loaders.
+				if (
+					lower.includes("could not execute entrypoint stage") &&
+					lower.includes(`provided by '${alias}'`)
+				) {
+					return "errored";
+				}
+
 				if (FABRIC_ROSTER_ENTRY.exec(lower)?.[1] === alias) {
 					loading = true;
 				}
@@ -1029,7 +1651,12 @@ async function unmanagedAddons(
 			}
 
 			const jar = await cachedJarInfo(full, size, modifiedAt);
-			const aliases = jar.aliases.length ? jar.aliases : [file.replace(/\.[^.]+$/, "")];
+
+			// a jar whose descriptor luna could read declares its own ids, which is
+			// what makes the roster's silence about it mean something; without one,
+			// all we have is a file name the loader is free to rewrite
+			const identified = jar.aliases.length > 0;
+			const aliases = identified ? jar.aliases : [file.replace(/\.[^.]+$/, "")];
 			const log = session ? pluginLogReport(session, aliases) : EMPTY_LOG;
 
 			rows.push({
@@ -1039,7 +1666,7 @@ async function unmanagedAddons(
 				modifiedAt,
 				...(Object.keys(jar.meta).length ? { meta: jar.meta } : {}),
 				displayName: aliases[0]!,
-				state: session ? unmanagedState(session, aliases) : unattributed,
+				state: session ? unmanagedState(session, aliases, file, identified, jar.nested) : unattributed,
 				warnings: log.warnings,
 				errors: log.errors,
 			});
@@ -1058,8 +1685,14 @@ const EMPTY_LOG: PluginLogReport = { lines: [], warnings: 0, errors: 0 };
  * no equivalent of: nothing targets an unmanaged jar, so there is no "disabled"
  * and no assigned version, only what the log says about it.
  */
-function unmanagedState(session: BootSession, aliases: string[]): PluginRuntimeState {
-	const evidence = loadEvidence(session, aliases);
+function unmanagedState(
+	session: BootSession,
+	aliases: string[],
+	file: string,
+	identified: boolean,
+	nested: string[],
+): PluginRuntimeState {
+	const evidence = loadEvidence(session, aliases, { file, identified, nested });
 
 	switch (evidence) {
 		case "errored":
@@ -1167,7 +1800,10 @@ export async function instancePluginReport(
 		} else if (stale) {
 			state = "unknown";
 		} else {
-			const evidence = loadEvidence(session, aliases);
+			const evidence = loadEvidence(session, aliases, {
+				file: entry.file,
+				identified: Boolean(entry.aliases?.length),
+			});
 
 			if (evidence === "errored") {
 				state = "errored";
