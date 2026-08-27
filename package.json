@@ -1,6 +1,6 @@
 {
   "name": "luna-console",
-  "version": "1.5.19",
+  "version": "1.5.20",
   "module": "src/cli/index.ts",
   "type": "module",
   "private": true,
