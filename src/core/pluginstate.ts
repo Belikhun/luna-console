@@ -1005,44 +1005,140 @@ function namesAlias(lowerLine: string, alias: string): boolean {
  * never be attributed. What is attributable is the set the server writes *about*
  * a plugin, which is the set the warning and error tallies are made of anyway.
  */
-function attributed(lowerLine: string, lowerAliases: string[], session: BootSession): boolean {
-	const grammar = traitsOf(session.software, session.mcVersion).logGrammar;
-
+function attributed(line: ScannedLine, lowerAliases: string[], grammar: LogGrammar): boolean {
 	if (grammar === "pumpkin") {
-		return lowerAliases.some((alias) => namesAlias(lowerLine, alias));
+		return lowerAliases.some((alias) => namesAlias(line.lower, alias));
 	}
 
-	const suffix = LOGGER_SUFFIX[grammar];
-
-	if (!suffix) {
-		return lowerAliases.some((alias) => lowerLine.includes(`[${alias}]`));
+	if (!LOGGER_SUFFIX[grammar]) {
+		return lowerAliases.some((alias) => line.lower.includes(`[${alias}]`));
 	}
 
-	const logger = lowerLine.match(LOG4J_LOGGER)?.[1];
-
-	if (!logger) {
+	if (line.logger === undefined) {
 		return false;
 	}
 
-	const bare = logger.replace(suffix, "");
-
-	// A great many mods hand log4j their main class rather than a name, so the
-	// logger arrives fully qualified: `insane96mcp.insanelib.InsaneLib` for the
-	// mod `insanelib`, `com.armilp.ezvcsurvival.EZVCSurvival` for `ezvcsurvival`.
-	// The last segment is the class, and a mod's main class is named after the mod
-	// often enough to be worth trying; the package segment before it is the same
-	// name again just as often. Matched whole, like the plain form, so
-	// `…LunaCoreMessaging` still cannot be credited to `luna-core`.
-	const segments = logger.includes(".") ? logger.split(".").filter(Boolean) : [];
-	const tail = segments.slice(-2);
-
 	return lowerAliases.some(
 		(alias) =>
-			logger === alias ||
-			bare === alias ||
-			tail.some((segment) => segment === alias || segment.replace(suffix, "") === alias),
+			line.logger === alias ||
+			line.bare === alias ||
+			line.tail.some((segment) => segment === alias),
 	);
 }
+
+/**
+ * One session line with everything addon-independent already derived.
+ *
+ * The report asks the same questions of every line once per addon, and on a
+ * modpack that is the whole cost of it: sunlitvalley is 5 700 lines against 315
+ * addons, so lowercasing the line, stripping its colour codes and running the
+ * logger regex inside the per-addon loop meant doing each of those 1.8 million
+ * times instead of 5 700. None of it depends on which addon is being asked
+ * about, so all of it belongs here.
+ */
+interface ScannedLine {
+	raw: string;
+	/** Trailing whitespace trimmed and lowercased; what every test works against */
+	lower: string;
+	/** `lower` with Minecraft's colour codes removed, for the fatal test */
+	plain: string;
+	/** Log4j's logger field, lowercased; absent when the line carries none */
+	logger?: string;
+	/** That logger with its platform suffix stripped (`lunacoreforge` → `lunacore`) */
+	bare?: string;
+	/**
+	 * Trailing dot-segments of a fully-qualified logger, each in both its plain
+	 * and its suffix-stripped form.
+	 *
+	 * A great many mods hand log4j their main class rather than a name, so the
+	 * logger arrives as `insane96mcp.insanelib.InsaneLib` for the mod `insanelib`.
+	 * The last segment is the class and the one before it is usually the same name
+	 * again, so both are offered - matched whole, so `…LunaCoreMessaging` still
+	 * cannot be credited to `luna-core`.
+	 *
+	 * Both forms are kept because stripping is not always right: an addon whose
+	 * own name ends in the platform (`proxy-compatible-forge`) would never match
+	 * its own stripped segment.
+	 */
+	tail: string[];
+	severity?: "warn" | "error";
+}
+
+/**
+ * Scans, memoised on the session they describe.
+ *
+ * A `WeakMap` rather than a parameter threaded through every caller: the report
+ * hands the same session object to `pluginLogReport` and `loadEvidence` several
+ * hundred times, so this is computed once and reused without any of them having
+ * to know it exists. Keyed weakly so a session is collected normally once the
+ * report that built it is done.
+ */
+const scans = new WeakMap<BootSession, ScannedLine[]>();
+
+/** The session's lines with their addon-independent parts already computed. */
+function scanSession(session: BootSession): ScannedLine[] {
+	const hit = scans.get(session);
+
+	if (hit) {
+		return hit;
+	}
+
+	const grammar = traitsOf(session.software, session.mcVersion).logGrammar;
+	const suffix = LOGGER_SUFFIX[grammar];
+	const scanned: ScannedLine[] = [];
+
+	for (const raw of session.lines) {
+		const lower = raw.trimEnd().toLowerCase();
+		const scan: ScannedLine = {
+			raw,
+			lower,
+			// almost no line carries a colour code, and the ones that do are the
+			// loader's own failure text; reusing `lower` avoids an allocation per line
+			plain: lower.includes("§") ? lower.replace(COLOUR_CODES, "") : lower,
+			tail: EMPTY_TAIL,
+		};
+
+		const severity = severityOf(raw);
+
+		if (severity) {
+			scan.severity = severity;
+		}
+
+		if (suffix) {
+			const logger = LOG4J_LOGGER.exec(lower)?.[1];
+
+			if (logger !== undefined) {
+				scan.logger = logger;
+				scan.bare = logger.replace(suffix, "");
+
+				if (logger.includes(".")) {
+					const tail: string[] = [];
+
+					for (const segment of logger.split(".").filter(Boolean).slice(-2)) {
+						const stripped = segment.replace(suffix, "");
+
+						tail.push(segment);
+
+						if (stripped !== segment) {
+							tail.push(stripped);
+						}
+					}
+
+					scan.tail = tail;
+				}
+			}
+		}
+
+		scanned.push(scan);
+	}
+
+	scans.set(session, scanned);
+
+	return scanned;
+}
+
+/** Shared empty tail, so a line with a plain logger allocates no array. */
+const EMPTY_TAIL: string[] = [];
 
 export interface PluginLogReport {
 	lines: string[];
@@ -1053,24 +1149,21 @@ export interface PluginLogReport {
 /** Every session line attributed to the plugin, with warn/error tallies. */
 export function pluginLogReport(session: BootSession, aliases: string[]): PluginLogReport {
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
+	const grammar = traitsOf(session.software, session.mcVersion).logGrammar;
 	const lines: string[] = [];
 	let warnings = 0;
 	let errors = 0;
 
-	for (const line of session.lines) {
-		const lower = line.toLowerCase();
-
-		if (!attributed(lower, lowerAliases, session)) {
+	for (const line of scanSession(session)) {
+		if (!attributed(line, lowerAliases, grammar)) {
 			continue;
 		}
 
-		lines.push(line);
+		lines.push(line.raw);
 
-		const severity = severityOf(line);
-
-		if (severity === "warn") {
+		if (line.severity === "warn") {
 			warnings += 1;
-		} else if (severity === "error") {
+		} else if (line.severity === "error") {
 			errors += 1;
 		}
 	}
@@ -1307,6 +1400,117 @@ interface AddonIdentity {
 	nested?: string[];
 }
 
+/** Bukkit's enable-failure prefix, whose middle clause Paper varies ten ways. */
+const BUKKIT_ENABLE_FAILURE = /error occurred (?:\(in the plugin loader\) )?while (?:enabling|disabling) /;
+
+/**
+ * The substrings one addon's evidence comes down to, per grammar.
+ *
+ * Built once per addon instead of once per addon per line. Each of these embeds
+ * an alias or the file name, so constructing them in the line loop allocated a
+ * handful of strings for every line of the session - on a modpack, millions of
+ * throwaway strings to answer questions whose text never changed.
+ */
+interface GrammarNeedles {
+	/** Any of these on any line means this addon failed */
+	fatal: string[];
+	/** Same, but only on a line already attributed to it */
+	fatalWhenMine?: string[];
+	/** Only tested once the line matches `BUKKIT_ENABLE_FAILURE` */
+	enableFailure?: string[];
+	/** Only tested once the line contains "could not load" */
+	couldNotLoad?: string[];
+	/** Any of these means the loader announced it */
+	loading: string[];
+	/** Modlauncher's roster line ends with the mod id in brackets */
+	rosterTail: string[];
+}
+
+/** The needles for one addon under one grammar. */
+function grammarNeedles(
+	grammar: LogGrammar,
+	lowerAliases: string[],
+	file: string | undefined,
+): GrammarNeedles {
+	const lowerFile = file?.toLowerCase();
+	const needles: GrammarNeedles = { fatal: [], loading: [], rosterTail: [] };
+
+	switch (grammar) {
+		case "bukkit":
+			needles.enableFailure = lowerAliases.map((alias) => `while enabling ${alias} `);
+			needles.couldNotLoad = [...lowerAliases];
+
+			if (lowerFile) {
+				needles.couldNotLoad.push(lowerFile);
+			}
+
+			for (const alias of lowerAliases) {
+				needles.loading.push(
+					`loading server plugin ${alias} v`,
+					`enabling ${alias} v`,
+					`disabling ${alias} v`,
+				);
+			}
+
+			break;
+
+		case "velocity":
+			for (const alias of lowerAliases) {
+				needles.fatal.push(
+					`can't create plugin ${alias}`,
+					`can't create module for plugin ${alias}`,
+					`can't load plugin ${alias} due to missing dependency`,
+				);
+				needles.loading.push(`loaded plugin ${alias} `);
+			}
+
+			// `Unable to load plugin plugins/x.jar` names the jar, not the id
+			if (lowerFile) {
+				needles.fatalWhenMine = [];
+				needles.fatal.push(`unable to load plugin plugins/${lowerFile}`);
+			}
+
+			break;
+
+		case "fabric":
+			for (const alias of lowerAliases) {
+				needles.fatal.push(`could not execute entrypoint stage 'main' due to errors, provided by '${alias}'`);
+				needles.fatal.push(`due to errors, provided by '${alias}'`);
+			}
+
+			break;
+
+		case "fml":
+			for (const alias of lowerAliases) {
+				needles.fatal.push(`caught exception from ${alias}`);
+			}
+
+			break;
+
+		case "pumpkin":
+			needles.fatalWhenMine = ["failed to load plugin from"];
+
+			for (const alias of lowerAliases) {
+				needles.fatal.push(
+					`permission denied for plugin "${alias}"`,
+					`failed to initialize plugin ${alias}`,
+				);
+				needles.loading.push(`loaded ${alias} (`);
+			}
+
+			break;
+
+		default:
+			break;
+	}
+
+	if (grammar === "modlauncher") {
+		needles.rosterTail = lowerAliases.map((alias) => `(${alias})`);
+	}
+
+	return needles;
+}
+
 /** Load, ready and failure evidence for one addon in a session. */
 function loadEvidence(
 	session: BootSession,
@@ -1346,9 +1550,14 @@ function loadEvidence(
 		verdict === "absent" ||
 		(grammar !== "modlauncher" && grammar !== "fabric" && grammar !== "fml");
 
-	for (const rawLine of session.lines) {
-		const lower = rawLine.trimEnd().toLowerCase();
-		const mine = attributed(lower, lowerAliases, session);
+	// Every needle below embeds an alias, so building them inside the line loop
+	// meant allocating a handful of strings per line per alias - on this scale,
+	// millions of them. They do not change as the lines go by.
+	const needles = grammarNeedles(grammar, lowerAliases, file);
+
+	for (const line of scanSession(session)) {
+		const lower = line.lower;
+		const mine = attributed(line, lowerAliases, grammar);
 
 		// An addon's own logger reporting that it failed is the case the report
 		// used to lose: nothing else in the session contradicts it, the server
@@ -1360,132 +1569,100 @@ function loadEvidence(
 		// at WARN; requiring ERROR or FATAL is what separates "I gave up" from "I
 		// carried on without it", and a false `errored` is a worse answer than the
 		// `unknown` it would replace.
-		if (mine && severityOf(rawLine) === "error" && claimsFatal(plain(rawLine))) {
+		if (mine && line.severity === "error" && claimsFatal(line.plain)) {
 			return "errored";
 		}
 
-		if (grammar === "modlauncher" && (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)"))) {
-			roster = true;
-		}
-
-		if (grammar === "fabric" && FABRIC_ROSTER_HEADER.test(lower)) {
-			roster = true;
-		}
-
-		if (grammar === "fml" && FML_ROSTER_HEADER.test(lower)) {
-			roster = true;
-		}
-
-		for (const alias of lowerAliases) {
-			if (grammar === "bukkit") {
-				// Bukkit's enable failure is logged by the *server*, not by the
-				// plugin, so it carries no `[Name]` field and `attributed` cannot see
-				// it: the plugin is named in the message instead, as its "full name"
-				// (`Name vX`). Paper additionally wraps ten variants of the same
-				// message in "(in the plugin loader)", which is why the middle is
-				// matched loosely rather than spelled out.
-				if (
-					/^.*error occurred (?:\(in the plugin loader\) )?while (?:enabling|disabling) /.test(lower) &&
-					lower.includes(`while enabling ${alias} `)
-				) {
-					return "errored";
-				}
-
-				// Three wordings across versions, and the modern pair names the jar
-				// rather than the plugin: legacy `Could not load '<path>' in folder
-				// '<dir>'`, modern `Could not load '<path>' in '<dir>'` (a missing
-				// dependency) and `Could not load plugin '<file>' in folder '<dir>'`.
-				// So the file is tested as well as the name.
-				if (
-					lower.includes("could not load") &&
-					(lower.includes(alias) || (file && lower.includes(file.toLowerCase())))
-				) {
-					return "errored";
-				}
-
-				if (
-					lower.includes(`loading server plugin ${alias} v`) ||
-					lower.includes(`enabling ${alias} v`) ||
-					lower.includes(`disabling ${alias} v`)
-				) {
-					loading = true;
-				}
-			} else if (grammar === "velocity") {
-				// `Can't create plugin <id>` is the one that names the id; the other
-				// two name a path (`Unable to load plugin plugins/x.jar`) or add a
-				// dependency after the id (`Can't load plugin <id> due to missing
-				// dependency <dep>`).
-				if (
-					lower.includes(`can't create plugin ${alias}`) ||
-					lower.includes(`can't create module for plugin ${alias}`) ||
-					lower.includes(`can't load plugin ${alias} due to missing dependency`)
-				) {
-					return "errored";
-				}
-
-				if (
-					lower.includes("unable to load plugin") &&
-					file &&
-					lower.includes(file.toLowerCase())
-				) {
-					return "errored";
-				}
-
-				if (lower.includes(`loaded plugin ${alias} `)) {
-					loading = true;
+		if (!roster) {
+			if (grammar === "modlauncher") {
+				if (lower.endsWith("(minecraft)") || lower.endsWith("(neoforge)")) {
+					roster = true;
 				}
 			} else if (grammar === "fabric") {
-				// "Could not execute entrypoint stage 'main' due to errors, provided
-				// by 'modid' at 'the.Class'!" - the loader's own wrapper, and the only
-				// line that names which mod crashed on startup. The trailing `at`
-				// clause is absent on older loaders.
-				if (
-					lower.includes("could not execute entrypoint stage") &&
-					lower.includes(`provided by '${alias}'`)
-				) {
-					return "errored";
+				if (FABRIC_ROSTER_HEADER.test(lower)) {
+					roster = true;
 				}
-
-				if (FABRIC_ROSTER_ENTRY.exec(lower)?.[1] === alias) {
-					loading = true;
-				}
-			} else if (grammar === "fml") {
-				// legacy FML names the mod it could not construct, and the phase it
-				// died in, on one line: "caught exception from lunacore"
-				if (lower.includes(`caught exception from ${alias}`)) {
-					return "errored";
-				}
-
-				const listed = FML_MOD_LIST.exec(lower)?.[1];
-
-				if (listed && listed.split(",").some((id) => id.trim() === alias)) {
-					loading = true;
-				}
-			} else if (grammar === "pumpkin") {
-				// the consent prompt is answered before anything is initialised, so
-				// a refused component never reaches the loader at all; that refusal
-				// is the failure an operator most needs to see named
-				if (lower.includes(`permission denied for plugin "${alias}"`)) {
-					return "errored";
-				}
-
-				if (
-					lower.includes(`failed to initialize plugin ${alias}`) ||
-					(lower.includes("failed to load plugin from") && mine)
-				) {
-					return "errored";
-				}
-
-				// "Loaded luna-core (0.1.0)": pumpkin prints it once on_load returns
-				if (lower.includes(`loaded ${alias} (`)) {
-					loading = true;
-				}
-			} else if (lower.endsWith(`(${alias})`)) {
-				loading = true;
+			} else if (grammar === "fml" && FML_ROSTER_HEADER.test(lower)) {
+				roster = true;
 			}
 		}
 
-		if (mine && claimsReady(lower)) {
+		for (const needle of needles.fatal) {
+			if (lower.includes(needle)) {
+				return "errored";
+			}
+		}
+
+		// Bukkit's enable failure is logged by the *server*, not by the plugin, so
+		// it carries no `[Name]` field and `attributed` cannot see it: the plugin is
+		// named in the message instead, as its "full name" (`Name vX`). Paper wraps
+		// ten variants of the same message in "(in the plugin loader)", which is why
+		// the prefix is matched loosely rather than spelled out.
+		if (needles.enableFailure && BUKKIT_ENABLE_FAILURE.test(lower)) {
+			for (const needle of needles.enableFailure) {
+				if (lower.includes(needle)) {
+					return "errored";
+				}
+			}
+		}
+
+		// Three "could not load" wordings across versions, and the modern pair names
+		// the jar rather than the plugin, so the file is tested as well as the name.
+		if (needles.couldNotLoad && lower.includes("could not load")) {
+			for (const needle of needles.couldNotLoad) {
+				if (lower.includes(needle)) {
+					return "errored";
+				}
+			}
+		}
+
+		// pumpkin's "failed to load plugin from <path>" names a path, so the only
+		// handle on which component it was is the attribution
+		if (mine && needles.fatalWhenMine) {
+			for (const needle of needles.fatalWhenMine) {
+				if (lower.includes(needle)) {
+					return "errored";
+				}
+			}
+		}
+
+		if (!loading) {
+			for (const needle of needles.loading) {
+				if (lower.includes(needle)) {
+					loading = true;
+
+					break;
+				}
+			}
+		}
+
+		// the two roster grammars whose entry is a whole-line shape rather than a
+		// phrase, so they cannot be reduced to a substring needle
+		if (!loading) {
+			if (grammar === "fabric") {
+				const listed = FABRIC_ROSTER_ENTRY.exec(lower)?.[1];
+
+				if (listed !== undefined && lowerAliases.includes(listed)) {
+					loading = true;
+				}
+			} else if (grammar === "fml") {
+				const listed = FML_MOD_LIST.exec(lower)?.[1];
+
+				if (listed && listed.split(",").some((id) => lowerAliases.includes(id.trim()))) {
+					loading = true;
+				}
+			} else if (grammar === "modlauncher" && lower.endsWith(")")) {
+				for (const needle of needles.rosterTail) {
+					if (lower.endsWith(needle)) {
+						loading = true;
+
+						break;
+					}
+				}
+			}
+		}
+
+		if (mine && !ready && claimsReady(lower)) {
 			ready = true;
 		}
 	}

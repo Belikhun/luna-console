@@ -2050,7 +2050,12 @@
 		"packContentErrors": "Content errors",
 		"packRefused": "The server could not read this pack",
 		"packNotRead": "Deployed, but the server never reported reading it",
-		"packContentBroken": "The pack loaded, but the server refused some of its contents"
+		"packContentBroken": "The pack loaded, but the server refused some of its contents",
+		"noneInstalled": "none installed",
+		"loadingShort": "loading\u2026",
+		"readingBootLog": "Reading the boot log\u2026",
+		"noManagedAddons": "No managed addons here",
+		"stateComesFromThe": "State comes from the server's own boot log, read on the machine that runs it."
 	},
 	"instanceFiles": {
 		"configFiles": "Config files",

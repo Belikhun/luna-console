@@ -27,6 +27,7 @@
 	import type { OverviewDetail, OverviewNode } from '$lib/components/nodeoverview';
 	import type { ThreadReport, ThreadSample } from '$client/daemon';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import Spinner from '$lib/components/Spinner.svelte';
 	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
 	import ServerProperties from '$lib/components/ServerProperties.svelte';
@@ -107,6 +108,7 @@
 		live: 'live',
 		reconnecting: 'reconnecting…'
 	};
+
 
 	/** headroom over the busiest sample, so the player chart never clips */
 	const PLAYER_HEADROOM = 1.2;
@@ -278,6 +280,30 @@
 	let instUnmanaged: UnmanagedAddonRow[] = $state([]);
 	/** addon stream state, in the same vocabulary the log stream uses */
 	let addonLive: 'off' | 'connecting' | 'live' | 'reconnecting' = $state('off');
+	/**
+	 * Whether an addon report has arrived yet.
+	 *
+	 * Separate from `addonLive`, which describes the *connection*: the stream can
+	 * be open for the second or two it takes the owning daemon to parse a boot
+	 * session, and until the first frame lands `instPlugins` is empty. Without
+	 * this the screen filled that gap by rendering the empty array as fact - the
+	 * overview said "Mods (0) · none installed" and the tab showed an empty table
+	 * on a server with 322 mods, which reads as an answer rather than as a wait.
+	 */
+	let addonsLoaded = $state(false);
+	/**
+	 * The addon stream's indicator.
+	 *
+	 * `addonLive` describes the socket, and the socket opens well before the first
+	 * frame: the owning daemon has a boot session to parse first. Saying "live"
+	 * during that gap claims data the screen does not have, which is the same lie
+	 * the empty tables used to tell, so the first report is what earns the word.
+	 */
+	const addonLiveLabel = $derived(
+		addonStreamOwnsView() && !addonsLoaded
+			? t('web.instanceDetail.loadingShort')
+			: LOG_LIVE_LABEL[addonLive]
+	);
 	let instRespacks: any[] = $state([]);
 
 	/**
@@ -418,6 +444,7 @@
 
 	/** Fold one frame of the addon stream into the summary and the tabs it feeds. */
 	function applyAddonSnapshot(snapshot: any): void {
+		addonsLoaded = true;
 		instPlugins = snapshot.plugins;
 		instUnmanaged = snapshot.unmanaged ?? [];
 		pluginTotals = {
@@ -471,6 +498,7 @@
 			const data = await api(`/instances/${name}/plugins`);
 
 			if (!addonStreamOwnsView()) {
+				addonsLoaded = true;
 				instPlugins = data.plugins;
 				pluginTotals = {
 					warnings: data.warnings,
@@ -2243,10 +2271,19 @@
 			{/if}
 		</OverviewCell>
 		<OverviewCell
-			label="{addonLabel} ({addonTotal})"
-			segments={addonSegments}
-			segmentsEmpty="none installed"
-		/>
+			label={addonsLoaded ? `${addonLabel} (${addonTotal})` : addonLabel}
+			segments={addonsLoaded ? addonSegments : undefined}
+			segmentsEmpty={t('web.instanceDetail.noneInstalled')}
+		>
+			{#if !addonsLoaded}
+				<span class="loading-line">
+					<Spinner size="0.75rem" />
+					<span class="dim">{t('web.instanceDetail.readingBootLog')}</span>
+				</span>
+			{/if}
+		</OverviewCell>
+		<!-- not shown while loading: an instance with no world never gets one, and a
+		     cell that appears only to vanish a second later is worse than a late one -->
 		{#if datapackTotal > 0}
 			<OverviewCell label="Data packs ({datapackTotal})" segments={datapackSegments} />
 		{/if}
@@ -2596,11 +2633,12 @@
 				{/if}
 			</p>
 		{:else if tab === 'plugins'}
-			<Panel title="{addonLabel} on {name}" count={instPlugins.length} flush>
+			<Panel title="{addonLabel} on {name}" count={addonsLoaded ? instPlugins.length : undefined} flush>
 				{#snippet actions()}
 					<Alerts warnings={pluginTotals.warnings} errors={pluginTotals.errors} />
 					{#if addonLive !== 'off'}
-						<span class="live {addonLive}">{LOG_LIVE_LABEL[addonLive]}</span>
+						{#if !addonsLoaded}<Spinner size="0.75rem" />{/if}
+						<span class="live {addonsLoaded ? addonLive : 'connecting'}">{addonLiveLabel}</span>
 					{/if}
 					<Btn icon="sync" onclick={() => loadTab('plugins')}>{t('web.instanceDetail.refresh')}</Btn>
 					<Btn icon="upload" onclick={deployPlugins}>{t('web.instanceDetail.deployToThisInstance')}</Btn>
@@ -2633,6 +2671,10 @@
 									col === 'auto' ? 'autoUpdate' : col === 'name' ? 'plugin' : col
 								] ?? '')}
 					onRowClick={(plugin) => goto(`/instances/${name}/plugins/${plugin.plugin}`)}
+					emptyTitle={addonsLoaded
+						? t('web.instanceDetail.noManagedAddons')
+						: t('web.instanceDetail.readingBootLog')}
+					emptyText={addonsLoaded ? '' : t('web.instanceDetail.stateComesFromThe')}
 				>
 					{#snippet cell(plugin, col)}
 						{#if col === 'name'}
@@ -2875,7 +2917,8 @@
 			>
 				{#snippet actions()}
 					{#if addonLive !== 'off'}
-						<span class="live {addonLive}">{LOG_LIVE_LABEL[addonLive]}</span>
+						{#if !addonsLoaded}<Spinner size="0.75rem" />{/if}
+						<span class="live {addonsLoaded ? addonLive : 'connecting'}">{addonLiveLabel}</span>
 					{/if}
 					<Btn icon="sync" onclick={() => loadTab('datapacks')}>{t('web.instanceDetail.refresh')}</Btn>
 					<Btn icon="box" onclick={() => goto('/datapacks')}>{t('web.instanceDetail.managePool')}</Btn>
@@ -2900,7 +2943,9 @@
 					noun={t('web.instanceDetail.dataPack')}
 					pageSize={25}
 					rowDim={(row) => row.managed && !row.targeted}
-					emptyTitle={t('web.instanceDetail.noDataPacks')}
+					emptyTitle={addonsLoaded
+						? t('web.instanceDetail.noDataPacks')
+						: t('web.instanceDetail.readingBootLog')}
 					emptyText={t('web.instanceDetail.deployPooledPacksHereOr')}
 				>
 					{#snippet cell(row, col)}
@@ -3608,6 +3653,13 @@
 
 	.gap {
 		height: 1rem;
+	}
+
+	// stands in for an overview cell's value line while its report is in flight
+	.loading-line {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
 	}
 
 	.checkrow {
