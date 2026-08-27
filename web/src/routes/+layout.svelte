@@ -20,6 +20,7 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { del } from '$lib/api';
 	import { INSTANCE_TAB_LABELS, isInstanceTab } from '$lib/components/instancetabs';
+	import { crumbLabel } from '$lib/crumbs.svelte';
 	import { fmtBytes } from '$lib/format';
 	import { LANGUAGES, currentLanguage, switchLanguage, t } from '$lib/i18n.svelte';
 	import { tooltip } from '$lib/tooltip.svelte';
@@ -302,7 +303,12 @@
 			// - and is shown exactly as it is configured: the instance called
 			// `survival` is not called `Survival`, and shouting it makes the crumb
 			// disagree with every other place the name appears.
+			//
+			// A label the screen has lent wins over both: the addon tab is called
+			// "Plugins" or "Mods" depending on the instance's software, and only the
+			// screen knows which.
 			const label =
+				crumbLabel(path) ??
 				tabLabel ??
 				(!dynamic && /^[a-z]+$/.test(part) ? part.charAt(0).toUpperCase() + part.slice(1) : part);
 

@@ -2054,7 +2054,6 @@
 		"noneInstalled": "none installed",
 		"loadingShort": "loading\u2026",
 		"viewLogActivity": "View log activity",
-		"addons": "Addons",
 		"readingBootLog": "Reading the boot log\u2026",
 		"noManagedAddons": "No managed addons here",
 		"stateComesFromThe": "State comes from the server's own boot log, read on the machine that runs it."

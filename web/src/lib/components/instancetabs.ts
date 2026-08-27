@@ -38,15 +38,19 @@ export const DEFAULT_INSTANCE_TAB: InstanceTab = 'details';
 /**
  * Language keys for each tab's name.
  *
- * The screen overrides `plugins`, which reads "Mods" on a mod loader and
- * "Plugins" elsewhere; nothing outside the screen knows an instance's software,
- * so the shared label is the neutral one.
+ * `plugins` is the one whose name depends on the instance: "Plugins" on Paper,
+ * "Mods" on a mod loader, "Plugins & Mods" on a hybrid. Nothing outside the
+ * screen knows the software, so the screen lends the breadcrumb the right word
+ * through `$lib/crumbs.svelte` and this stands in until it does.
+ *
+ * It is deliberately *not* an umbrella term: "addons" means plugins, mods **and**
+ * data packs here, so captioning the plugin tab with it names the wrong set.
  */
 export const INSTANCE_TAB_LABELS: Record<InstanceTab, string> = {
 	details: 'web.instanceDetail.details',
 	checks: 'web.instanceDetail.statusAndAlarms',
 	monitoring: 'web.instanceDetail.monitoring',
-	plugins: 'web.instanceDetail.addons',
+	plugins: 'web.instanceDetail.addonsPlugins',
 	world: 'web.instanceDetail.worldAndBackup',
 	datapacks: 'web.instanceDetail.dataPacks',
 	respacks: 'web.instanceDetail.resourcePacks',

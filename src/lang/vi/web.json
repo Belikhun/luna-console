@@ -1729,7 +1729,6 @@
 		"noneInstalled": "chưa cài gì",
 		"loadingShort": "đang tải\u2026",
 		"viewLogActivity": "Xem hoạt động log",
-		"addons": "Addon",
 		"readingBootLog": "Đang đọc log khởi động\u2026",
 		"noManagedAddons": "Không có addon nào được quản lý ở đây",
 		"stateComesFromThe": "Trạng thái đọc từ log khởi động của máy chủ, trên chính máy đang chạy nó."

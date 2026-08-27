@@ -29,6 +29,7 @@
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
 	import UnmanagedAddonLog from '$lib/components/UnmanagedAddonLog.svelte';
+	import { clearCrumbLabel, setCrumbLabel } from '$lib/crumbs.svelte';
 	import {
 		DEFAULT_INSTANCE_TAB,
 		INSTANCE_TABS,
@@ -191,6 +192,27 @@
 				? t('web.instanceDetail.addonsMods')
 				: t('web.instanceDetail.addonsPlugins')
 	);
+
+	/**
+	 * Lend the breadcrumb the addon tab's real name.
+	 *
+	 * The layout cannot work it out: the word depends on this instance's software,
+	 * and "Addons" would be wrong rather than merely vague - it is the umbrella term
+	 * for plugins, mods *and* data packs, so it names a larger set than the tab
+	 * shows. Cleared on destroy, or the next instance's crumb would inherit this
+	 * one's software.
+	 */
+	$effect(() => {
+		if (!name) {
+			return;
+		}
+
+		const path = instanceTabPath(name, 'plugins');
+
+		setCrumbLabel(path, addonLabel);
+
+		return () => clearCrumbLabel(path);
+	});
 
 	/**
 	 * The tab bar, each entry carrying its own path.

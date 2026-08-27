@@ -8,6 +8,8 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { instanceTabPath } from '$lib/components/instancetabs';
+	import { clearCrumbLabel, setCrumbLabel } from '$lib/crumbs.svelte';
+	import { FAMILY_DIRS } from '$core/software';
 	import { api, post } from '$lib/api';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
@@ -30,6 +32,37 @@
 	const plugin = $derived(page.params.plugin);
 
 	let data: any = $state(null);
+
+	/**
+	 * Lend the breadcrumb the right word for the addon crumb above this page.
+	 *
+	 * The instance screen publishes it too, but it unmounts on the way here, so
+	 * without this the crumb would flip from "Mods" to "Plugins" as you clicked
+	 * into a mod. `FAMILY_DIRS` is the same table that decides which directory the
+	 * jar lands in, so the crumb and the disk agree by construction; "Addons" is
+	 * not an option, since that word covers data packs here too.
+	 */
+	$effect(() => {
+		const family = data?.row?.family as keyof typeof FAMILY_DIRS | undefined;
+
+		if (!instance || !family) {
+			return;
+		}
+
+		const path = instanceTabPath(instance, 'plugins');
+
+		setCrumbLabel(
+			path,
+			t(
+				FAMILY_DIRS[family] === 'mods'
+					? 'web.instanceDetail.addonsMods'
+					: 'web.instanceDetail.addonsPlugins'
+			)
+		);
+
+		return () => clearCrumbLabel(path);
+	});
+
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
 	let busy = $state(false);
