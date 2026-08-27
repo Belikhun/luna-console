@@ -25,7 +25,8 @@
 		suggestName,
 		type AddonSource,
 		type InstanceAddonKind,
-		type PoolChoice
+		type PoolChoice,
+		type VersionChoice
 	} from './instanceaddon';
 
 	/**
@@ -87,6 +88,13 @@
 	let touched = $state(false);
 	let family = $state<PluginFamily>('paper');
 
+	// -- manual version override -------------------------------------------------
+	let pickVersion = $state(false);
+	let versionPick = $state('');
+	let versions = $state<VersionChoice[]>([]);
+	let versionsLoading = $state(false);
+	let versionsError = $state('');
+
 	// -- duplicate detection ---------------------------------------------------
 	let collisions = $state<AddonCollisionReport | null>(null);
 	let replaceExisting = $state(true);
@@ -118,6 +126,10 @@
 			family = families[0] ?? 'paper';
 			collisions = null;
 			replaceExisting = true;
+			pickVersion = false;
+			versionPick = '';
+			versions = [];
+			versionsError = '';
 
 			void loadPool();
 		});
@@ -235,6 +247,70 @@
 		};
 	});
 
+	/** The instance's MC version, as the versions endpoint judged against. */
+	let instanceMc = $state<string | null>(null);
+
+	/**
+	 * The provider's builds for the candidate, fetched only once the operator asks
+	 * to choose one: the automatic path needs no list, and fetching per project
+	 * picked would spend a provider round trip on a control most adds never open.
+	 */
+	$effect(() => {
+		const plugin = candidate;
+		const fam = family;
+		const from = source;
+
+		if (!open || !pickVersion || !spec.pickVersion || !plugin || from === 'upload') {
+			return;
+		}
+
+		let cancelled = false;
+
+		versionsLoading = true;
+		versionsError = '';
+		versions = [];
+		versionPick = '';
+
+		void (async () => {
+			try {
+				const query =
+					from === 'pool'
+						? `name=${encodeURIComponent(plugin)}`
+						: `provider=${encodeURIComponent(provider)}&slug=${encodeURIComponent(plugin)}` +
+							(projectId ? `&id=${encodeURIComponent(projectId)}` : '') +
+							`&family=${fam}`;
+
+				const res = await api(`/plugins/versions?instance=${encodeURIComponent(instance)}&${query}`);
+
+				if (cancelled) {
+					return;
+				}
+
+				versions = res.versions ?? [];
+				instanceMc = res.mcVersion ?? null;
+
+				// the newest compatible build is what the automatic path would take, so
+				// it is also the honest place to start the manual list from
+				versionPick =
+					versions.find((row) => row.compatible !== false)?.id ?? versions[0]?.id ?? '';
+			} catch (err) {
+				if (!cancelled) {
+					versionsError = (err as Error).message;
+				}
+			} finally {
+				if (!cancelled) {
+					versionsLoading = false;
+				}
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	const pickedVersion = $derived(versions.find((row) => row.id === versionPick));
+
 	/** Duplicates of the same addon under another name; the hazard worth a warning. */
 	const duplicates = $derived([
 		...(collisions?.managed ?? []),
@@ -243,6 +319,12 @@
 
 	const canSubmit = $derived.by(() => {
 		if (busy) {
+			return false;
+		}
+
+		// asking for a manual version and not having picked one yet is a half-made
+		// choice; submitting it would silently fall back to the automatic path
+		if (pickVersion && spec.pickVersion && source !== 'upload' && !versionPick) {
 			return false;
 		}
 
@@ -268,7 +350,9 @@
 		const note = Notify.loading(t('web.instanceAddon.adding', { name: label }));
 
 		try {
-			const body: Record<string, unknown> = { source, deploy: deployNow };
+			// the kind travels with the body: a data pack and a jar share this dialog
+			// and this route, and "family" cannot tell them apart (a pack has none)
+			const body: Record<string, unknown> = { source, kind, deploy: deployNow };
 
 			if (source === 'upload') {
 				body.plugin = name.trim();
@@ -284,6 +368,10 @@
 				body.channel = channel === 'release' ? undefined : channel;
 			}
 
+			if (pickVersion && spec.pickVersion && source !== 'upload' && versionPick) {
+				body.version = versionPick;
+			}
+
 			if (replaceExisting && duplicates.length) {
 				body.supersede = {
 					plugins: (collisions?.managed ?? [])
@@ -295,13 +383,29 @@
 
 			const res = await post(`/instances/${instance}/addons`, body);
 
+			// which build this instance ended up with, and the caveat when reaching one
+			// meant a less stable channel or an operator override past the compat gate
+			const versionNote = !res.version
+				? ''
+				: res.incompatible
+					? t('web.instanceAddon.pinnedIncompatible', { version: res.version })
+					: res.pinned
+						? t('web.instanceAddon.pinnedVersion', { version: res.version, instance })
+						: res.escalatedTo
+							? t('web.instanceAddon.resolvedEscalated', {
+									version: res.version,
+									channel: res.escalatedTo
+								})
+							: t('web.instanceAddon.resolvedVersion', { version: res.version });
+
 			note.set({
-				level: 'success',
+				level: res.incompatible ? 'warning' : 'success',
 				message: t('web.instanceAddon.added', { name: res.name }),
 				detail: [
 					deployNow
 						? t('web.instanceAddon.deployedTo', { instance })
 						: t('web.instanceAddon.pooledOnly'),
+					versionNote,
 					res.removed?.length
 						? t('web.instanceAddon.superseded', { files: res.removed.join(', ') })
 						: ''
@@ -342,7 +446,7 @@
 			{#if poolLoading}
 				<p class="dim empty">{t('web.common.loading')}</p>
 			{:else if !poolShown.length}
-				<p class="dim empty">{t('web.instanceAddon.poolEmpty')}</p>
+				<p class="dim empty">{t('web.instanceAddon.poolEmpty', { instance })}</p>
 			{:else}
 				{#each poolShown as row (row.plugin)}
 					<button
@@ -394,6 +498,61 @@
 				placeholder="my-{kind}"
 			/>
 		</label>
+	{/if}
+
+	<!-- the exact-build override: off, the instance gets the newest build its MC
+	     version can run; on, the operator's pick is pinned here, compatible or not -->
+	{#if spec.pickVersion && source !== 'upload' && candidate}
+		<div class="verpick">
+			<label class="verhead">
+				<Checkbox
+					checked={pickVersion}
+					disabled={busy}
+					label={t('web.instanceAddon.pickVersion')}
+					onchange={(value) => (pickVersion = value)}
+				/>
+				{t('web.instanceAddon.pickVersion')}
+			</label>
+			<p class="dim verhint">{t('web.instanceAddon.pickVersionHint', { instance })}</p>
+
+			{#if pickVersion}
+				{#if versionsLoading}
+					<p class="dim verstate">{t('web.instanceAddon.versionsLoading')}</p>
+				{:else if versionsError}
+					<Flash kind="error">{t('web.instanceAddon.versionsFailed', { reason: versionsError })}</Flash>
+				{:else if !versions.length}
+					<p class="dim verstate">{t('web.instanceAddon.versionsEmpty')}</p>
+				{:else}
+					<Select
+						value={versionPick}
+						width="100%"
+						disabled={busy}
+						options={versions.map((row) => ({
+							value: row.id,
+							label:
+								`${row.versionNumber} · ${row.channel} · ` +
+								(row.gameVersions.length
+									? `MC ${row.gameVersions.join(', ')}`
+									: t('web.instanceAddon.versionAnyMc')) +
+								(row.compatible === false && instanceMc
+									? ` · ${t('web.instanceAddon.versionNotForMc', { mc: instanceMc })}`
+									: '')
+						}))}
+						onchange={(value) => (versionPick = value)}
+					/>
+
+					{#if pickedVersion?.compatible === false && instanceMc}
+						<Flash kind="warning">
+							{t('web.instanceAddon.versionIncompatiblePick', {
+								version: pickedVersion.versionNumber,
+								mc: instanceMc,
+								instance
+							})}
+						</Flash>
+					{/if}
+				{/if}
+			{/if}
+		</div>
 	{/if}
 
 	{#if spec.family && families.length > 1 && source !== 'pool'}
@@ -541,8 +700,10 @@
 		margin-left: auto;
 	}
 
+	// every block below the source picker keeps the same breathing room, whether
+	// or not the optional blocks between them (version, collisions) are rendered
 	.chan,
-	.named {
+	.field {
 		margin-top: 0.875rem;
 	}
 
@@ -557,6 +718,36 @@
 		span {
 			margin-left: 0.375rem;
 		}
+	}
+
+	.verpick {
+		margin-top: 0.875rem;
+		// the version list is followed by the platform field, whose label needs
+		// room to read as the next control's caption rather than this one's tail
+		margin-bottom: 0.875rem;
+
+		// the incompatibility warning sits right under the select it talks about;
+		// Flash brings its own bottom margin but no top one
+		:global(.flash) {
+			margin-top: 0.5rem;
+		}
+	}
+
+	.verhead {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+	}
+
+	.verhint {
+		margin: 0.375rem 0 0.5rem;
+		font-size: 0.75rem;
+	}
+
+	.verstate {
+		margin: 0;
+		font-size: 0.8125rem;
 	}
 
 	.deploy,

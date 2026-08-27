@@ -27,6 +27,7 @@ export {
 	setChannel,
 } from "../../core/plugins";
 export type {
+	AddonFit,
 	AppliedUpdate,
 	DeployAction,
 	ScanReport,
@@ -61,6 +62,7 @@ export const updatePlugins = jobCall("plugins.update", {
 }) as typeof core.updatePlugins;
 export const pinVersion = call("plugins.pinVersion", { cfg: 0, lock: 1 }) as typeof core.pinVersion;
 export const ensureVariantForMc = call("plugins.ensureVariantForMc", { lock: 0 }) as typeof core.ensureVariantForMc;
+export const fitAddonToInstance = call("plugins.fitAddonToInstance", { cfg: 0, lock: 1 }) as typeof core.fitAddonToInstance;
 export const installFromProvider = call("plugins.installFromProvider", { cfg: 0, lock: 1 }) as typeof core.installFromProvider;
 export const adopt = call("plugins.adopt", { cfg: 0, lock: 1 }) as typeof core.adopt;
 // an uploaded jar is written into the pool, so it crosses to the daemon whole

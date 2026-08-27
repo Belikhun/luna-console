@@ -1453,6 +1453,10 @@ export const OPS: Record<string, OpSpec> = {
 	},
 	"plugins.pinVersion": { fn: pluginsCore.pinVersion, cfg: 0, lock: 1 },
 	"plugins.ensureVariantForMc": { fn: pluginsCore.ensureVariantForMc, lock: 0 },
+	// No instance routing: it reads the instance's MC version and writes the jar
+	// pool, both of which are the primary's. The jar reaches a follower the way
+	// every other pooled jar does, through the deploy that follows.
+	"plugins.fitAddonToInstance": { fn: pluginsCore.fitAddonToInstance, cfg: 0, lock: 1 },
 	"plugins.deploy": { fn: deployRouted, cfg: 0, lock: 1, reporter: { arg: 2, prop: "reporter" } },
 	"plugins.installFromProvider": { fn: pluginsCore.installFromProvider, cfg: 0, lock: 1 },
 	"plugins.adopt": { fn: pluginsCore.adopt, cfg: 0, lock: 1, instance: 2 },

@@ -11,7 +11,7 @@ import { PLUGIN_FAMILIES } from "./types";
 import { t } from "../shared/i18n";
 import type { AddonDir } from "./config";
 import { addonDirForFamily, addonDirOf, addonDirsOf, expandTargets, instanceDir, managedInstances, poolDir } from "./config";
-import { carriesMcRequirement, effectiveTargets, familyMatches, familyOf, pluginNameOf } from "./families";
+import { carriesMcRequirement, effectiveTargets, entriesOf, familyMatches, familyOf, pluginNameOf } from "./families";
 import { ADDON_EXTENSIONS, FAMILY_EXTENSIONS, FAMILY_LOADERS, familyForDir } from "./software";
 import { download, downloadToFile, reportBytes, sha512File } from "./services/download";
 import type { PortAllocation } from "./ports";
@@ -1058,12 +1058,19 @@ export async function pinVersion(
  * downloading one from the entry's provider when it does not; the "download
  * compatible version" action behind a group-validation warning. Returns the
  * version that now covers the MC version.
+ *
+ * `escalate` walks release → beta → alpha and stops at the first channel with a
+ * build for this MC version, which is what `fitAddonToInstance` asks for on an
+ * entry whose channel nobody has set. It is off by default because escalating
+ * silently is only defensible when the operator has just asked for this addon
+ * here and nothing on the safer channel can answer.
  */
 export async function ensureVariantForMc(
 	lock: PluginsLock,
 	name: string,
 	mcVersion: string,
-): Promise<{ version: string; downloaded: boolean }> {
+	opts: { escalate?: boolean } = {},
+): Promise<{ version: string; downloaded: boolean; channel?: ReleaseChannel }> {
 	const entry = lock.plugins[name];
 
 	if (!entry) {
@@ -1087,10 +1094,40 @@ export async function ensureVariantForMc(
 	}
 
 	const versions = await remoteVersions(entry);
-	const { best } = pickCompatible(versions, [mcVersion], { channel: entry.channel ?? "release" });
+	const declared = entry.channel ?? "release";
+	const wanted: ReleaseChannel[] = opts.escalate ? ["release", "beta", "alpha"] : [declared];
+
+	let best: AddonVersion | undefined;
+	let channel: ReleaseChannel = declared;
+
+	for (const candidate of wanted) {
+		const picked = pickCompatible(versions, [mcVersion], { channel: candidate });
+
+		if (picked.best) {
+			best = picked.best;
+			channel = candidate;
+
+			break;
+		}
+	}
 
 	if (!best) {
-		throw new Error(t("core.plugins.noBuildForMc", { channel: entry.channel ?? "release", name, mc: mcVersion }));
+		// Naming the build that *would* work is the whole value of this refusal: the
+		// operator's next move is either a channel change or a different addon, and
+		// which one depends on whether upstream ever built for this MC version.
+		const covering = newestCovering(versions, mcVersion);
+
+		throw new Error(
+			covering
+				? t("core.plugins.noBuildForMcOnChannel", {
+						name,
+						mc: mcVersion,
+						channel: declared,
+						version: covering.version_number,
+						found: covering.version_type ?? "release",
+					})
+				: t("core.plugins.noBuildForMcAtAll", { name, mc: mcVersion }),
+		);
 	}
 
 	const file = primaryFile(best);
@@ -1109,7 +1146,135 @@ export async function ensureVariantForMc(
 		gameVersions: best.game_versions,
 	};
 
-	return { version: best.version_number, downloaded: true };
+	return { version: best.version_number, downloaded: true, channel };
+}
+
+/** The newest build covering one MC version, on any channel; for explaining a refusal. */
+function newestCovering(versions: AddonVersion[], mcVersion: string): AddonVersion | undefined {
+	return versions
+		.filter((version) => coversMc(version.game_versions, mcVersion))
+		.sort((a, b) => new Date(b.date_published).getTime() - new Date(a.date_published).getTime())[0];
+}
+
+/** What fitting an addon to one instance settled on, or why there was nothing to settle. */
+export interface AddonFit {
+	/**
+	 * False when this instance cannot constrain the choice at all: a velocity
+	 * plugin carries no MC version, and a jar of the wrong ecosystem was never
+	 * going to land here anyway.
+	 */
+	fitted: boolean;
+	/** The build this instance will run */
+	version?: string;
+	/** The channel it came from, when that is not the entry's own */
+	escalatedTo?: ReleaseChannel;
+	/** Whether a jar had to be fetched to make it so */
+	downloaded?: boolean;
+	/** Whether the version was pinned on this instance (an explicit choice always is) */
+	pinned?: boolean;
+	/** Set when the pinned build does not declare this instance's MC version */
+	incompatible?: boolean;
+}
+
+/**
+ * Give one instance a build of an addon that its Minecraft version can run.
+ *
+ * This is the step that was missing wherever an addon *arrives* on an instance.
+ * Version resolution used to run only over an entry's own `targets`, so the two
+ * ways coverage actually grows - a per-instance override, an addon group - added
+ * the instance without anything reconsidering the build. The instance then got
+ * whatever the pool primary happened to be, which on a pool shared across game
+ * lines is a jar for somebody else's MC version: a 1.12.2 dynmap listed against
+ * a 1.20.1 modpack, with no way to change it from the screen that offered to add
+ * it. `deploy` catches that and declines to copy the jar, so the addon is listed
+ * and absent - which is the state this exists to prevent.
+ *
+ * Nothing here touches the pool primary or any other instance: the fitting build
+ * is pooled as a variant, and `deploy` assigns it to this instance alone. That
+ * containment is what lets the channel escalate when the entry's channel is
+ * unset - the same release → beta → alpha walk a fresh provider install already
+ * does - without moving a single other backend onto a beta.
+ *
+ * `opts.version` is the operator overriding the whole selection: install exactly
+ * this build here, compatible or not. It lands as a **pin**, because that is the
+ * override luna already has - `deploy` honours a pin over its own fitness check,
+ * the addon screens show it as one, and unpinning is how it is undone. The
+ * compat gate is forced past deliberately: an incompatible choice was refused
+ * once already by the automatic path, so reaching here with a version *is* the
+ * confirmation, and the fit reports `incompatible` so the caller can still say
+ * so out loud.
+ */
+export async function fitAddonToInstance(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	instance: string,
+	name: string,
+	opts: { version?: string } = {},
+): Promise<AddonFit> {
+	const inst = managedInstances(cfg)[instance];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name: instance }));
+	}
+
+	// The two paths an add takes name the addon differently: a provider install
+	// knows the entry key it just wrote, a pool pick knows only the plugin name,
+	// which on a hybrid can stand for one entry per ecosystem.
+	const keys = lock.plugins[name] ? [name] : entriesOf(lock, name);
+
+	if (!keys.length) {
+		throw new Error(t("core.plugins.unknown", { name }));
+	}
+
+	for (const key of keys) {
+		const entry = lock.plugins[key]!;
+
+		const eligible =
+			carriesMcRequirement(inst.software) && familyMatches(familyOf(entry), inst.software);
+
+		if (opts.version) {
+			// A velocity plugin has no MC constraint to override, but naming an exact
+			// build still means "run this one", so the pin applies wherever the entry
+			// can land at all.
+			if (!familyMatches(familyOf(entry), inst.software)) {
+				continue;
+			}
+
+			const pinned = await pinVersion(cfg, lock, key, opts.version, [instance], true);
+
+			return {
+				fitted: true,
+				version: pinned.version.version_number,
+				pinned: true,
+				...(pinned.incompatible.length ? { incompatible: true } : {}),
+			};
+		}
+
+		const mc = eligible ? inst.mcVersion : undefined;
+
+		if (!mc) {
+			continue;
+		}
+
+		// A pin is the operator having already answered this question by hand, and
+		// `deploy` honours it over its own fitness check; overruling it here would
+		// make adding an addon quietly undo a pin somebody set deliberately.
+		if (entry.pins?.[instance] !== undefined) {
+			continue;
+		}
+
+		const declared = entry.channel ?? "release";
+		const result = await ensureVariantForMc(lock, key, mc, { escalate: !entry.channel });
+
+		return {
+			fitted: true,
+			version: result.version,
+			downloaded: result.downloaded,
+			...(result.channel && result.channel !== declared ? { escalatedTo: result.channel } : {}),
+		};
+	}
+
+	return { fitted: false };
 }
 
 /** Release version pins, for the given targets or for all of them. */

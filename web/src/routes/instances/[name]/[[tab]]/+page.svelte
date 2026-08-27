@@ -364,6 +364,16 @@
 	const addonSourceMenu = $derived(
 		sourceMenu(uploadKind === 'mod' ? 'mod' : 'plugin', openAddon)
 	);
+
+	// the button says what it adds: "addon" is the umbrella over data packs too,
+	// which have their own button on their own tab
+	const addAddonLabel = $derived(
+		hybrid
+			? t('web.instanceDetail.addAddonBoth')
+			: modsOnly
+				? t('web.instanceDetail.addAddonMod')
+				: t('web.instanceDetail.addAddonPlugin')
+	);
 	const datapackSourceMenu = $derived(sourceMenu('datapack', openDatapack));
 
 	/** Last answer from the build check; null until the operator asks for one. */
@@ -2740,7 +2750,7 @@
 					<!-- primary click is the pool, because that is where most of what an
 					     operator wants already is; the other two sources are the caret -->
 					<SplitBtn
-						label={t('web.instanceDetail.addAddon')}
+						label={addAddonLabel}
 						icon="plus"
 						primary
 						onclick={() => openAddon('pool')}

@@ -112,6 +112,8 @@
 		"pinIncompatible": "{name} {version} hỗ trợ [{supported}]; không tương thích với: {detail} (dùng --force để vẫn ghim)",
 		"noProviderMeta": "{name} không có metadata nhà cung cấp; tự đưa một bản tương thích vào kho",
 		"noBuildForMc": "không bản kênh {channel} nào của {name} hỗ trợ MC {mc}",
+		"noBuildForMcOnChannel": "không bản kênh {channel} nào của {name} hỗ trợ MC {mc}; bản {version} thì có, trên kênh {found}",
+		"noBuildForMcAtAll": "không bản nào của {name} hỗ trợ MC {mc}",
 		"noInstallable": "không có phiên bản cài được của {slug} ({family}): {reasons}",
 		"noVersionsFound": "không thấy phiên bản nào",
 		"notAJar": "tệp tải lên không phải jar",

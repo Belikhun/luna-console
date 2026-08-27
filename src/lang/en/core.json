@@ -112,6 +112,8 @@
 		"pinIncompatible": "{name} {version} supports [{supported}]; incompatible with: {detail} (use --force to pin anyway)",
 		"noProviderMeta": "{name} has no provider metadata; pool a compatible build manually",
 		"noBuildForMc": "no {channel}-channel build of {name} supports MC {mc}",
+		"noBuildForMcOnChannel": "no {channel}-channel build of {name} supports MC {mc}; {version} does, on the {found} channel",
+		"noBuildForMcAtAll": "no build of {name} supports MC {mc}",
 		"noInstallable": "no installable version of {slug} ({family}): {reasons}",
 		"noVersionsFound": "no versions found",
 		"notAJar": "the uploaded file is not a jar",

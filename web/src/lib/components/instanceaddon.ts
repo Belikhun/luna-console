@@ -40,6 +40,13 @@ export interface InstanceAddonSpec {
 	 * honest to offer and the block is left out rather than guessed at.
 	 */
 	supersedes: boolean;
+	/**
+	 * Whether the operator may pick the exact build instead of the newest
+	 * compatible one. Jars can, because a per-instance choice lands as a pin the
+	 * pool's variant machinery carries; a data pack is one zip for every target,
+	 * so there is no per-instance version to offer.
+	 */
+	pickVersion: boolean;
 }
 
 export const INSTANCE_ADDON_KINDS: Record<InstanceAddonKind, InstanceAddonSpec> = {
@@ -49,7 +56,8 @@ export const INSTANCE_ADDON_KINDS: Record<InstanceAddonKind, InstanceAddonSpec> 
 		search: '/plugins/search',
 		accept: '.jar',
 		family: true,
-		supersedes: true
+		supersedes: true,
+		pickVersion: true
 	},
 	mod: {
 		noun: 'web.catalogKinds.mod',
@@ -57,7 +65,8 @@ export const INSTANCE_ADDON_KINDS: Record<InstanceAddonKind, InstanceAddonSpec> 
 		search: '/plugins/search',
 		accept: '.jar',
 		family: true,
-		supersedes: true
+		supersedes: true,
+		pickVersion: true
 	},
 	datapack: {
 		noun: 'web.catalogKinds.datapack',
@@ -65,9 +74,23 @@ export const INSTANCE_ADDON_KINDS: Record<InstanceAddonKind, InstanceAddonSpec> 
 		search: '/datapacks/search',
 		accept: '.zip',
 		family: false,
-		supersedes: false
+		supersedes: false,
+		pickVersion: false
 	}
 };
+
+/** One provider build as the manual version picker lists it. */
+export interface VersionChoice {
+	/** The provider's version id; the unique handle, since a project is free to
+	 *  publish one build per MC version all under the same version number */
+	id: string;
+	versionNumber: string;
+	channel: string;
+	gameVersions: string[];
+	date: string;
+	/** null when the instance carries no MC constraint to judge by */
+	compatible: boolean | null;
+}
 
 /** One pooled addon offered as a source, as the dialog lists it. */
 export interface PoolChoice {

@@ -212,21 +212,36 @@
 				return `Removed ${res.removed.join(', ')}; a running server keeps it loaded until restart.`;
 			}
 
-			return res.deployed ? `${res.deployed} deploy change(s).` : '';
+			const fitted = res.version
+				? ` ${t('web.addonDetail.fittedVersion', { instance, version: res.version })}`
+				: '';
+
+			return res.deployed ? `${res.deployed} deploy change(s).${fitted}` : fitted.trim();
 		});
 
 	/** Force-add this plugin to several instances at once (the Add popup's confirm). */
 	const addToInstances = (instances: string[]) =>
 		run('ovr-add', `Adding ${name} to ${instances.join(', ')}…`, async () => {
 			let deployed = 0;
+			const fitted: string[] = [];
 
 			for (const instance of instances) {
 				const res = await post(`/instances/${instance}/plugins`, { plugin: name, state: true });
 
 				deployed += res.deployed ?? 0;
+
+				// which build each backend resolved to; on a pool spanning game lines
+				// they differ, and that difference is the interesting part
+				if (res.version) {
+					fitted.push(`${instance} → ${res.version}`);
+				}
 			}
 
-			return `${deployed} deploy change(s); running servers load it on restart.`;
+			const versions = fitted.length
+				? ` ${t('web.addonDetail.fittedVersions', { list: fitted.join(', ') })}`
+				: '';
+
+			return `${deployed} deploy change(s); running servers load it on restart.${versions}`;
 		});
 
 	async function openPin(family: any): Promise<void> {

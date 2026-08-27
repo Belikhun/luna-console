@@ -5,7 +5,7 @@
 import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveCluster, saveLock, managedInstances } from '$core/config';
 import { effectiveTargets, entriesOf, setPluginOverride } from '$core/families';
-import { deploy } from '$core/plugins';
+import { deploy, fitAddonToInstance } from '$core/plugins';
 import { removeInstanceJars } from '$core/pluginstate';
 import { addonSnapshot } from '$lib/server/addons';
 import { pushEvent } from '$lib/server/luna';
@@ -46,8 +46,21 @@ export async function POST({ params, request }) {
 		throw error(400, 'state must be true (force-add), false (disable) or null (clear)');
 	}
 
+	let fit: Awaited<ReturnType<typeof fitAddonToInstance>> | undefined;
+
 	try {
 		setPluginOverride(cfg, lock, name, plugin, body.state);
+
+		// A force-add is an addon arriving on this instance, so the build it runs is
+		// settled here exactly as the add dialog settles it: the newest build its MC
+		// version can run, pooled as a variant. Without this the instance got the
+		// pool primary, which on a pool shared across game lines `deploy` refuses to
+		// copy - force-added, listed, and absent. A refusal (nothing compatible at
+		// any channel) fails the whole request before anything is persisted, with
+		// the message naming the build that would work.
+		if (body.state === true) {
+			fit = await fitAddonToInstance(cfg, lock, name, plugin);
+		}
 	} catch (err) {
 		throw error(400, errorMessage(err));
 	}
@@ -77,5 +90,11 @@ export async function POST({ params, request }) {
 
 	pushEvent(name, 'action', `plugin ${plugin} ${verb} (${removed.length ? `removed ${removed.join(', ')}` : `${deployed} deploy change(s)`})`);
 
-	return json({ ok: true, wanted, deployed, removed });
+	return json({
+		ok: true,
+		wanted,
+		deployed,
+		removed,
+		...(fit?.fitted ? { version: fit.version, escalatedTo: fit.escalatedTo } : {})
+	});
 }
