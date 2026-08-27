@@ -121,7 +121,14 @@ export interface BootSession {
 	 * against one rather than throwing halfway through a mixed-build rollout.
 	 */
 	discovered?: Record<string, string[]>;
-	/** Whether that roster was read at all, which is what makes absence meaningful */
+	/**
+	 * Whether that roster is *finished*, which is what makes absence meaningful.
+	 *
+	 * False while the run is still starting, because the loader is still writing
+	 * entries: what it has not named yet is not the same as what it will not name.
+	 * The entries above are usable either way; only the conclusion "and nothing
+	 * else" waits for this.
+	 */
 	discoveredComplete?: boolean;
 	/**
 	 * Addon ids and names the loader itself declared broken, lowercased.
@@ -476,17 +483,26 @@ async function rotatedLogs(logsDir: string): Promise<string[]> {
 	});
 }
 
+/** One read of a loader's own roster: what it named, and whether it had finished. */
+interface AddonRosterRead {
+	discovered: Record<string, string[]>;
+	complete: boolean;
+}
+
 /**
- * Rosters already parsed, keyed by path and the session-identifying first line.
+ * Rosters already parsed, keyed by path and the boot they belong to.
  *
  * A debug log grows for the whole run, so its size and mtime change between two
  * console polls seconds apart while the roster near its top does not; keying on
  * either would miss the cache every time and re-read megabytes.
+ *
+ * The boot's identity comes from the **session**, not from this file's own first
+ * line, and that is deliberate: log4j rolls the debug log at 200MB, which a
+ * modpack reaches in a couple of days, and the run's roster goes with it. Keyed
+ * on the session, a roster read while the file still held it keeps answering for
+ * the rest of the run instead of every mod turning `unknown` mid-week.
  */
-const rosters = new Map<string, { discovered: Record<string, string[]>; complete: boolean }>();
-
-/** Bytes read to identify the session, which is all the first line takes. */
-const ROSTER_KEY_BYTES = 4096;
+const rosters = new Map<string, AddonRosterRead>();
 
 /** A handful of instances, each with one roster; nothing like the jar cache. */
 const ROSTER_CACHE_MAX = 64;
@@ -505,10 +521,18 @@ const ROSTER_CACHE_MAX = 64;
  * debug log per boot, so in practice the whole prefix is this run; but log4j can
  * still roll it mid-run, and a roster left over from the previous boot would
  * otherwise be read as this one's.
+ *
+ * **The roster is only final once the run has finished starting**, which is what
+ * `boot.settled` carries. The file is written as the loader discovers, so a read
+ * landing inside those few seconds sees a slice of it: nothing on a 240-mod pack
+ * for the 1.8s before the first entry, part of it for the 4.5s the block takes.
+ * Remembering one of those pinned every mod it had not reached yet to `unknown`
+ * for the whole run - which is what a restart looked like from the console - and
+ * calling a part-read roster complete would have gone further and reported those
+ * mods `missing`. So an unsettled read is answered but not remembered, and it is
+ * never called complete.
  */
-async function readAddonRoster(
-	inst: InstanceConfig,
-): Promise<{ discovered: Record<string, string[]>; complete: boolean }> {
+async function readAddonRoster(inst: InstanceConfig, boot: BootIdentity): Promise<AddonRosterRead> {
 	const traits = traitsOf(inst.software, inst.mcVersion);
 	const roster = traits.addonRoster;
 
@@ -517,35 +541,25 @@ async function readAddonRoster(
 	}
 
 	const path = join(instanceDir(inst), roster.file);
+	const key = `${path}:${boot.id}`;
+	const hit = rosters.get(key);
+
+	// Ahead of the file itself, so a roster read earlier in this same run survives
+	// the debug log rolling out from under it.
+	if (hit) {
+		return hit;
+	}
 
 	if (!existsSync(path)) {
 		return EMPTY_ROSTER;
 	}
 
-	const handle = Bun.file(path);
-
-	let key: string;
-
-	try {
-		const head = await handle.slice(0, ROSTER_KEY_BYTES).text();
-
-		key = `${path}:${head.split(/\r?\n/, 1)[0] ?? ""}`;
-	} catch {
-		// unreadable is not the same as absent, but it answers the same way
-		return EMPTY_ROSTER;
-	}
-
-	const hit = rosters.get(key);
-
-	if (hit) {
-		return hit;
-	}
-
 	let lines: string[];
 
 	try {
-		lines = (await handle.slice(0, roster.scanBytes).text()).split(/\r?\n/);
+		lines = (await Bun.file(path).slice(0, roster.scanBytes).text()).split(/\r?\n/);
 	} catch {
+		// unreadable is not the same as absent, but it answers the same way
 		return EMPTY_ROSTER;
 	}
 
@@ -574,7 +588,14 @@ async function readAddonRoster(
 			.filter(Boolean);
 	}
 
-	const result = { discovered, complete: Object.keys(discovered).length > 0 };
+	const found = Object.keys(discovered).length > 0;
+	const result = { discovered, complete: boot.settled && found };
+
+	// A part-written roster is this poll's best answer and nothing more: caching it
+	// would answer every later poll of a run that has since written the rest.
+	if (!boot.settled || !found) {
+		return result;
+	}
 
 	if (rosters.size > ROSTER_CACHE_MAX) {
 		rosters.clear();
@@ -583,6 +604,19 @@ async function readAddonRoster(
 	rosters.set(key, result);
 
 	return result;
+}
+
+/**
+ * Which run a roster read belongs to, and whether that run is done starting.
+ *
+ * The id only has to tell one boot from the next, so it is the session's own
+ * first line: the loader's banner, carrying the timestamp it was printed at. An
+ * unidentifiable session (no marker within the rotations luna walks) gets an
+ * empty id and, being unsettled with it, is never cached under one.
+ */
+interface BootIdentity {
+	id: string;
+	settled: boolean;
 }
 
 const EMPTY_ROSTER = { discovered: {}, complete: false };
@@ -649,15 +683,23 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 		}
 	}
 
-	const roster = await readAddonRoster(inst);
 	const session = start === -1 ? lines : lines.slice(start);
+	const settled = startupComplete(inst.software, inst.mcVersion, session);
+
+	// The roster comes last because it needs both of those: which boot it would be
+	// filed under, and whether that boot is far enough along for its own log of
+	// discovered addons to be finished.
+	const roster = await readAddonRoster(inst, {
+		id: start === -1 ? "" : (session[0] ?? ""),
+		settled: start !== -1 && settled,
+	});
 
 	return {
 		lines: session,
 		complete: start !== -1,
 		software: inst.software,
 		...(inst.mcVersion ? { mcVersion: inst.mcVersion } : {}),
-		startupComplete: startupComplete(inst.software, inst.mcVersion, session),
+		startupComplete: settled,
 		...(writtenAt !== undefined ? { writtenAt } : {}),
 		discovered: roster.discovered,
 		discoveredComplete: roster.complete,
@@ -1571,10 +1613,6 @@ function rosterVerdict(
 	/** Base names of the jars packaged inside it, which the loader rosters instead */
 	nested: string[] = [],
 ): RosterVerdict {
-	if (!session.discoveredComplete) {
-		return "inconclusive";
-	}
-
 	for (const name of file ? [file, ...nested] : nested) {
 		if (rosterIdsFor(session, name).length) {
 			return "hit";
@@ -1585,6 +1623,14 @@ function rosterVerdict(
 		if (ids.some((id) => lowerAliases.includes(id.toLowerCase()))) {
 			return "hit";
 		}
+	}
+
+	// Hits are read off a partial roster too, and only absence waits for a finished
+	// one: an entry naming this addon is proof on its own, while its silence means
+	// nothing until the loader has stopped writing. Gating both on completeness
+	// instead left every mod of a server still starting reported as `unknown`.
+	if (!session.discoveredComplete) {
+		return "inconclusive";
 	}
 
 	return identified ? "absent" : "inconclusive";
