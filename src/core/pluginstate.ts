@@ -39,14 +39,10 @@ import {
 	setPluginOverride,
 } from "./families";
 import { assignedVersion, instanceAddonDir, instanceAddonDirs } from "./plugins";
+import { currentSession } from "./instsession";
 import { getStatus, type InstanceStatus } from "./instances";
 import { ADDON_EXTENSIONS, traitsOf, type LogGrammar } from "./software";
 
-/** Rotated files walked back at most, looking for the boot marker. */
-const MAX_ROTATIONS = 6;
-
-/** Decompressed session bytes read at most. */
-const MAX_SESSION_BYTES = 8 * 1024 * 1024;
 
 /**
  * The four phases an addon passes through, read from the server's own log.
@@ -130,6 +126,12 @@ export interface BootSession {
 	 * else" waits for this.
 	 */
 	discoveredComplete?: boolean;
+	/** When the daemon's session store first saw this boot (epoch ms) */
+	sessionStartedAt?: number;
+	/** Log lines the session store has accumulated for this boot in total */
+	sessionLines?: number;
+	/** Of those, how many the store let go to stay bounded (middle of the run) */
+	sessionDropped?: number;
 	/**
 	 * Addon ids and names the loader itself declared broken, lowercased.
 	 *
@@ -465,23 +467,6 @@ export async function ensureAliases(lock: PluginsLock): Promise<boolean> {
 	return changed;
 }
 
-/** Rotated log files of an instance, oldest first (date, then rotation index). */
-async function rotatedLogs(logsDir: string): Promise<string[]> {
-	if (!existsSync(logsDir)) {
-		return [];
-	}
-
-	const files = (await readdir(logsDir)).filter((file) =>
-		/^\d{4}-\d{2}-\d{2}-\d+\.log\.gz$/.test(file),
-	);
-
-	return files.sort((a, b) => {
-		const [dateA, indexA] = [a.slice(0, 10), Number(a.slice(11).split(".")[0])];
-		const [dateB, indexB] = [b.slice(0, 10), Number(b.slice(11).split(".")[0])];
-
-		return dateA === dateB ? indexA - indexB : dateA.localeCompare(dateB);
-	});
-}
 
 /** One read of a loader's own roster: what it named, and whether it had finished. */
 interface AddonRosterRead {
@@ -622,11 +607,23 @@ interface BootIdentity {
 const EMPTY_ROSTER = { discovered: {}, complete: false };
 
 /**
- * Reconstruct the current boot session of an instance: latest.log, extended
- * backwards through rotated files until the boot marker appears (log4j rolls
- * latest.log at midnight, so a long-running server's boot lines usually live
- * in a .gz). Bounded; a marker further back than the caps yields
- * `complete: false`.
+ * The last BootSession built per instance, reused while nothing changed.
+ *
+ * Identity, not just economy: `indexSession` memoizes its per-line index by
+ * session **object**, so handing back the same object for the same evidence is
+ * what lets a quiet poll skip re-indexing entirely. The key is everything the
+ * built session is derived from: which boot, how many lines the session store
+ * has accumulated, and how much of the roster had been read.
+ */
+const bootMemo = new Map<string, { key: string; session: BootSession }>();
+
+/**
+ * The current boot session of an instance, from the daemon's session store.
+ *
+ * The store accumulates each log line once, on a delta from the previous read,
+ * and keeps it (`core/instsession.ts`); rotation cannot lose evidence, because
+ * a line is in the session before it leaves the files. A session nobody was
+ * accumulating (daemon cold start) is seeded by the old file walk, once.
  */
 export async function readBootSession(cfg: ClusterConfig, instance: string): Promise<BootSession> {
 	const inst = managedInstances(cfg)[instance];
@@ -635,76 +632,43 @@ export async function readBootSession(cfg: ClusterConfig, instance: string): Pro
 		throw new Error(t("core.instances.unknown", { name: instance }));
 	}
 
-	const logsDir = join(instanceDir(inst), "logs");
-	const marker = traitsOf(inst.software, inst.mcVersion).bootMarker;
+	const snap = await currentSession(cfg, instance);
+	const complete = snap.bootLine !== "";
+	const settled = startupComplete(inst.software, inst.mcVersion, snap.lines);
 
-	let text = "";
-	let writtenAt: number | undefined;
-	const latest = join(logsDir, "latest.log");
-
-	if (existsSync(latest)) {
-		text = await Bun.file(latest).text();
-		writtenAt = (await stat(latest)).mtimeMs;
-	}
-
-	const rotations = await rotatedLogs(logsDir);
-	let walked = 0;
-
-	while (!marker.test(text) && rotations.length && walked < MAX_ROTATIONS) {
-		const file = rotations.pop()!;
-
-		walked += 1;
-
-		try {
-			const compressed = await Bun.file(join(logsDir, file)).bytes();
-			const chunk = new TextDecoder().decode(Bun.gunzipSync(compressed));
-
-			text = chunk + text;
-		} catch {
-			// a truncated archive must not take the whole report down
-			break;
-		}
-
-		if (text.length > MAX_SESSION_BYTES) {
-			break;
-		}
-	}
-
-	const lines = text.split(/\r?\n/);
-
-	// the LAST marker starts the current session; older sessions may sit above it
-	let start = -1;
-
-	for (let index = lines.length - 1; index >= 0; index -= 1) {
-		if (marker.test(lines[index]!)) {
-			start = index;
-
-			break;
-		}
-	}
-
-	const session = start === -1 ? lines : lines.slice(start);
-	const settled = startupComplete(inst.software, inst.mcVersion, session);
-
-	// The roster comes last because it needs both of those: which boot it would be
-	// filed under, and whether that boot is far enough along for its own log of
-	// discovered addons to be finished.
+	// The roster needs both of those: which boot it is filed under, and whether
+	// that boot is far enough along for its own log of discovered addons to be
+	// finished.
 	const roster = await readAddonRoster(inst, {
-		id: start === -1 ? "" : (session[0] ?? ""),
-		settled: start !== -1 && settled,
+		id: snap.bootLine,
+		settled: complete && settled,
 	});
 
-	return {
-		lines: session,
-		complete: start !== -1,
+	const key = `${snap.revision}|${roster.complete}|${Object.keys(roster.discovered).length}|${snap.bootLine}`;
+	const memo = bootMemo.get(instance);
+
+	if (memo && memo.key === key) {
+		return memo.session;
+	}
+
+	const session: BootSession = {
+		lines: snap.lines,
+		complete,
 		software: inst.software,
 		...(inst.mcVersion ? { mcVersion: inst.mcVersion } : {}),
 		startupComplete: settled,
-		...(writtenAt !== undefined ? { writtenAt } : {}),
+		writtenAt: snap.updatedAt,
 		discovered: roster.discovered,
 		discoveredComplete: roster.complete,
-		failed: loaderFailures(inst.software, inst.mcVersion, session),
+		failed: loaderFailures(inst.software, inst.mcVersion, snap.lines),
+		sessionStartedAt: snap.startedAt,
+		sessionLines: snap.appended,
+		sessionDropped: snap.dropped,
 	};
+
+	bootMemo.set(instance, { key, session });
+
+	return session;
 }
 
 /**

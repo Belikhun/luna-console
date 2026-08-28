@@ -383,6 +383,8 @@
 
 	let instPlugins: any[] = $state([]);
 	let pluginTotals = $state({ warnings: 0, errors: 0, sessionComplete: true });
+	/** the daemon's session store facts for the current boot; null off older daemons */
+	let pluginSession: { startedAt: number; lines: number; dropped: number } | null = $state(null);
 	let instDatapacks: any[] = $state([]);
 	let datapackWorld = $state('');
 	/** addon jars in the instance's directory that luna does not manage */
@@ -561,6 +563,7 @@
 			errors: snapshot.errors,
 			sessionComplete: snapshot.sessionComplete
 		};
+		pluginSession = snapshot.session ?? null;
 
 		// absent for software with no world of its own; leave the tab as it was
 		if (snapshot.datapacks) {
@@ -614,6 +617,7 @@
 					errors: data.errors,
 					sessionComplete: data.sessionComplete
 				};
+				pluginSession = data.session ?? null;
 			}
 		}
 
@@ -2825,6 +2829,20 @@
 			{#if !pluginTotals.sessionComplete}
 				<p class="dim note">
 					{t('web.instanceDetail.theBootLinesOf')}
+				</p>
+			{:else if pluginSession}
+				<!-- where the states above come from: the run the daemon has been
+				     accumulating since its boot, not a window into a rotating file -->
+				<p class="dim note">
+					{t('web.instanceDetail.sessionSummary', {
+						time: fmtDateTime(pluginSession.startedAt),
+						lines: pluginSession.lines.toLocaleString()
+					})}
+					{#if pluginSession.dropped > 0}
+						{t('web.instanceDetail.sessionDropped', {
+							dropped: pluginSession.dropped.toLocaleString()
+						})}
+					{/if}
 				</p>
 			{/if}
 			<!-- a second table rather than rows in the first: these have no version,

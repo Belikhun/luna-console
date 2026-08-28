@@ -27,6 +27,12 @@ export interface AddonSnapshot {
 	state: ReportLifecycle;
 	plugins: InstancePluginRow[];
 	sessionComplete: boolean;
+	/** The daemon's session store facts for this boot; absent from older daemons */
+	session?: {
+		startedAt: number;
+		lines: number;
+		dropped: number;
+	};
 	warnings: number;
 	errors: number;
 	/** Addon jars in the instance's directory that luna does not manage */
@@ -69,6 +75,15 @@ export async function addonSnapshot(name: string): Promise<AddonSnapshot> {
 		state,
 		plugins: rows,
 		sessionComplete: session.complete,
+		...(session.sessionStartedAt !== undefined
+			? {
+					session: {
+						startedAt: session.sessionStartedAt,
+						lines: session.sessionLines ?? 0,
+						dropped: session.sessionDropped ?? 0
+					}
+				}
+			: {}),
 		warnings: rows.reduce((sum, row) => sum + row.warnings, 0),
 		errors: rows.reduce((sum, row) => sum + row.errors, 0),
 		unmanaged

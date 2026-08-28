@@ -1992,6 +1992,8 @@
 		"manual": "manual",
 		"explicit": "explicit",
 		"theBootLinesOf": "The boot lines of this session have rotated out of the log window, so plugins with no later log activity read as Unknown.",
+		"sessionSummary": "{lines} log lines of this run kept since {time}.",
+		"sessionDropped": "{dropped} mid-run lines were let go to stay bounded.",
 		"managePool": "Manage pool",
 		"aRunningServerLoads": "A running server loads data pack changes on its next restart (or /minecraft:reload).",
 		"managePacks": "Manage packs",

@@ -11,6 +11,7 @@ import type { ClusterConfig, InstanceConfig, PluginsLock } from "./types";
 import { addonDirForFamily, instanceDir, loadLock, managedInstances } from "./config";
 import { renderManagedFiles } from "./configfiles";
 import { ENV_SCRIPT, loadEnv, renderEnvFile, resolveVars } from "./environment";
+import { clearSession } from "./instsession";
 import { ensureInstanceRuntime, isRuntimeInstalled, javaSelection } from "./runtimes";
 import { isJavaAgentJar } from "./archive";
 import { memoryBytes } from "./memory";
@@ -621,6 +622,10 @@ export async function startInstance(
 
 	const script = await writeRunScript(cfg, name);
 
+	// the old run's session must not caption the new boot; the fresh one begins
+	// at the boot marker the spawned server is about to write
+	await clearSession(name);
+
 	await screen.startDetached(session, script, instanceDir(inst));
 
 	return "started";
@@ -711,6 +716,9 @@ export async function stopInstance(
 	if (existsSync(sentinel)) {
 		await rm(sentinel, { force: true });
 	}
+
+	// a shut-down server has no running session; the next boot starts an empty one
+	await clearSession(name);
 
 	return {
 		outcome: forced ? "forced" : "stopped",

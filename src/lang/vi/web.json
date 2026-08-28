@@ -1665,6 +1665,8 @@
 		"manual": "thủ công",
 		"explicit": "tường minh",
 		"theBootLinesOf": "Các dòng khởi động của phiên này đã bị xoay khỏi cửa sổ log, nên plugin không có hoạt động log về sau sẽ hiện là Không rõ.",
+		"sessionSummary": "Đã giữ {lines} dòng log của lần chạy này từ {time}.",
+		"sessionDropped": "Đã bỏ {dropped} dòng giữa phiên để giới hạn bộ nhớ.",
 		"managePool": "Quản lý kho",
 		"aRunningServerLoads": "Máy chủ đang chạy nạp thay đổi gói dữ liệu ở lần khởi động lại sau (hoặc /minecraft:reload).",
 		"managePacks": "Quản lý gói",
