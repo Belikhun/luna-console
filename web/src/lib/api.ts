@@ -106,6 +106,8 @@ export interface InstanceRow {
 	uptimeMs: number | null;
 	players: { online: number; max: number } | null;
 	pingVersion: string | null;
+	/** The game loop is paused on an empty server; a refinement of 'running' */
+	paused?: boolean;
 	cpu: number | null;
 	/**
 	 * Cores of the machine this instance runs on. `cpu` is percent of one core, so

@@ -691,6 +691,7 @@
 	"instance": {
 		"stateAutoRestarting": "đang tự khởi động lại",
 		"stateRunning": "đang chạy",
+		"statePaused": "tạm dừng",
 		"stateStarting": "đang khởi động",
 		"stateStopped": "đã tắt",
 		"stateUnknown": "không rõ",

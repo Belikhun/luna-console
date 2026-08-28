@@ -691,6 +691,7 @@
 	"instance": {
 		"stateAutoRestarting": "auto-restarting",
 		"stateRunning": "running",
+		"statePaused": "paused",
 		"stateStarting": "starting",
 		"stateStopped": "stopped",
 		"stateUnknown": "unknown",

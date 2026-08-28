@@ -50,6 +50,9 @@
 
 	const styles: Record<string, { color: string; icon: string; spin?: boolean }> = {
 		running: { color: 'var(--success)', icon: 'circleCheck' },
+		// the game loop is asleep on an empty server (pause-when-empty): still up,
+		// still answering pings, resumes on the first join; calm blue, not amber
+		paused: { color: 'var(--info)', icon: 'circlePause' },
 		ok: { color: 'var(--success)', icon: 'circleCheck' },
 		passed: { color: 'var(--success)', icon: 'circleCheck' },
 		stopped: { color: 'var(--text-secondary)', icon: 'ban' },

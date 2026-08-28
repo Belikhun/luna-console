@@ -102,6 +102,7 @@
 		"responding": "responding; {online}/{max} players",
 		"tickCheck": "Tick performance",
 		"tickNotReported": "not reported by this backend",
+		"tickPausedEmpty": "no ticks to measure; the server is empty and pauses itself",
 		"tickApdex": "apdex {apdex}",
 		"tickMean": "mean {mean}ms",
 		"tickMisery": "misery {misery}%"

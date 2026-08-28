@@ -678,7 +678,9 @@
 							{row.name}
 						</a>
 					{:else if col === 'state'}
-						<StatusBadge state={row.state} />
+						<!-- paused refines running rather than replacing it: verbs and
+						     filters still treat the instance as up -->
+						<StatusBadge state={row.paused && row.state === 'running' ? 'paused' : row.state} />
 					{:else if col === 'checks'}
 						{#if row.state === 'stopped'}
 							<span class="dim">–</span>

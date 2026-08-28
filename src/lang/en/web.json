@@ -3319,7 +3319,8 @@
 		"days": "{count} days",
 		"minutesDown": "{count} min down",
 		"notMeasured": "Not measured",
-		"today": "today"
+		"today": "today",
+		"upOfWatched": "up {pct}% of the time watched"
 	},
 	"instanceWorld": {
 		"currentWorld": "Current world",

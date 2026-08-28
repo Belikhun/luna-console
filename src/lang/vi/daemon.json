@@ -102,6 +102,7 @@
 		"responding": "đang trả lời; {online}/{max} người chơi",
 		"tickCheck": "Hiệu năng tick",
 		"tickNotReported": "backend này không báo cáo",
+		"tickPausedEmpty": "không có tick để đo; máy chủ trống và tự tạm dừng",
 		"tickApdex": "apdex {apdex}",
 		"tickMean": "trung bình {mean}ms",
 		"tickMisery": "khó chịu {misery}%"

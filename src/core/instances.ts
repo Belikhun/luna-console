@@ -11,7 +11,7 @@ import type { ClusterConfig, InstanceConfig, PluginsLock } from "./types";
 import { addonDirForFamily, instanceDir, loadLock, managedInstances } from "./config";
 import { renderManagedFiles } from "./configfiles";
 import { ENV_SCRIPT, loadEnv, renderEnvFile, resolveVars } from "./environment";
-import { clearSession } from "./instsession";
+import { clearSession, sessionPaused } from "./instsession";
 import { ensureInstanceRuntime, isRuntimeInstalled, javaSelection } from "./runtimes";
 import { isJavaAgentJar } from "./archive";
 import { memoryBytes } from "./memory";
@@ -499,6 +499,14 @@ export interface InstanceStatus {
 	pingVersion?: string;
 	/** When auto-restarting, the moment the wrapper began waiting */
 	restartingSince?: number;
+	/**
+	 * The game loop is paused (pause-when-empty), read from the server's own log.
+	 * A refinement of `running`, never a state of its own: a paused server still
+	 * answers pings, still counts as up, and resumes the moment somebody joins.
+	 * Only ever set to true, so a daemon predating the field reads the same as a
+	 * server that never pauses.
+	 */
+	paused?: boolean;
 }
 
 /**
@@ -568,6 +576,18 @@ export async function getStatus(cfg: ClusterConfig, name: string): Promise<Insta
 			status.state = "running";
 			status.players = { online: pong.online, max: pong.max };
 			status.pingVersion = pong.version;
+		}
+	}
+
+	// Only an empty server can be pause-when-empty'd, so the session is only
+	// consulted when the answer could be yes; a busy server costs nothing here.
+	if (status.state === "running" && status.players?.online === 0) {
+		try {
+			if (await sessionPaused(cfg, name)) {
+				status.paused = true;
+			}
+		} catch {
+			// the pause is a refinement; a session hiccup must not break the status
 		}
 	}
 

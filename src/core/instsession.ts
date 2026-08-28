@@ -160,8 +160,66 @@ export async function currentSession(cfg: ClusterConfig, instance: string): Prom
 export async function clearSession(instance: string): Promise<void> {
 	sessions.delete(instance);
 	loadsAttempted.delete(instance);
+	pausedMemo.delete(instance);
 
 	await rm(sessionPath(instance), { force: true });
+}
+
+/**
+ * The vanilla server's own pause announcement (pause-when-empty). Anchored to
+ * the logger's colon so a player quoting the words in chat cannot match: a chat
+ * line puts `<name>` between the colon and the message.
+ */
+const PAUSE_LINE = /\]:\sServer empty for \d+ seconds, pausing\s*$/;
+
+/**
+ * What ends a pause. The server logs nothing when it resumes, so the resume is
+ * read from its cause: a player joining. `[Not Secure]` is how a join relayed
+ * without chat signing is prefixed on some setups; a single name token between
+ * the colon and the phrase is what keeps quoted chat out.
+ */
+const RESUME_LINE = /\]:\s(?:\[Not Secure\] )?\S+ joined the game\s*$/;
+
+/** The last paused verdict per instance, so a quiet poll costs no line scan. */
+const pausedMemo = new Map<string, { revision: string; paused: boolean }>();
+
+/**
+ * Whether the server's game loop is paused, read from its own log.
+ *
+ * Modern vanilla stops ticking when the server has sat empty
+ * (`pause-when-empty-seconds`), and it announces the pause but never the
+ * resume; the resume's cause is a player joining, and that *is* logged. So the
+ * loop is paused exactly when the newest pause line is more recent than the
+ * newest join line in the current boot. Software that never prints the line
+ * simply never reads as paused.
+ */
+export async function sessionPaused(cfg: ClusterConfig, instance: string): Promise<boolean> {
+	const snap = await currentSession(cfg, instance);
+	const memo = pausedMemo.get(instance);
+
+	if (memo && memo.revision === snap.revision) {
+		return memo.paused;
+	}
+
+	let paused = false;
+
+	for (let index = snap.lines.length - 1; index >= 0; index -= 1) {
+		const line = snap.lines[index]!;
+
+		if (RESUME_LINE.test(line)) {
+			break;
+		}
+
+		if (PAUSE_LINE.test(line)) {
+			paused = true;
+
+			break;
+		}
+	}
+
+	pausedMemo.set(instance, { revision: snap.revision, paused });
+
+	return paused;
 }
 
 async function advance(cfg: ClusterConfig, instance: string): Promise<SessionSnapshot> {

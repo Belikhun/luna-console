@@ -1365,6 +1365,11 @@
 	const isUp = $derived(inst && (inst.state === 'running' || inst.state === 'starting'));
 	const checksPassed = $derived(inst ? inst.checks.filter((check: any) => check.ok).length : 0);
 
+	// what the badge says; paused refines running, everything else stays as-is
+	const displayState = $derived(
+		inst && inst.paused && inst.state === 'running' ? 'paused' : (inst?.state ?? 'unknown')
+	);
+
 	/** The long uptime record; absent until the first metrics fetch lands. */
 	const uptime = $derived(metrics.uptime ?? null);
 
@@ -2324,7 +2329,7 @@
 
 {#if inst}
 	<PageHeader title={name ?? ''} info>
-		{#snippet extra()}<StatusBadge state={inst.state} />{/snippet}
+		{#snippet extra()}<StatusBadge state={displayState} />{/snippet}
 		{#snippet actions()}
 			<RefreshControl
 				onrefresh={() => refresh({ tabData: true })}
@@ -2385,7 +2390,7 @@
 
 	<OverviewBar title={t('web.instanceDetail.instanceOverview')}>
 		<OverviewCell label={t('web.instanceDetail.status')}>
-			<StatusBadge state={inst.state} />
+			<StatusBadge state={displayState} />
 		</OverviewCell>
 		<OverviewCell
 			label="Status checks ({inst.checks.length})"
@@ -2440,7 +2445,7 @@
 				<InfoGrid cells={summaryCells}>
 					{#snippet custom(cell)}
 						{#if cell.id === 'state'}
-							<StatusBadge state={inst.state} />
+							<StatusBadge state={displayState} />
 						{:else if cell.id === 'software'}
 							<SoftwareLabel
 								software={inst.software}

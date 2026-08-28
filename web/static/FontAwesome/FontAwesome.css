@@ -431,6 +431,14 @@ icon[data-icon="play"]::after {
 	content: "\f04b";
 }
 
+icon[data-icon="pause"]::after {
+	content: "\f04c";
+}
+
+icon[data-icon="circlePause"]::after {
+	content: "\f28b";
+}
+
 icon[data-icon="note"]::after {
 	content: "\f249";
 }

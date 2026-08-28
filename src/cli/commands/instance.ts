@@ -41,6 +41,11 @@ import { t } from "../../shared/i18n";
 function stateCell(status: inst.InstanceStatus): string {
 	switch (status.state) {
 		case "running":
+			// still up; the loop is just asleep on an empty server and resumes on join
+			if (status.paused) {
+				return `${Sym.ok} ${pc.cyan(t("cli.instance.statePaused"))}`;
+			}
+
 			return `${Sym.ok} ${pc.green(t("cli.instance.stateRunning"))}`;
 
 		case "starting":

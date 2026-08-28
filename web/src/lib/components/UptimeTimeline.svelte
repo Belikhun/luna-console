@@ -76,9 +76,13 @@
 
 	{#if !compact}
 		<div class="legend">
-			<span>{spanLabel}</span>
+			<!-- the aggregate belongs beside the window it is measured over; sitting
+			     next to "today" it read as today's own figure, which it is not -->
+			<span>
+				{spanLabel}{#if pct !== null}
+					· {t('web.uptime.upOfWatched', { pct: String(pct) })}{/if}
+			</span>
 			<span class="today">{t('web.uptime.today')}</span>
-			<span class="pct">{pct === null ? '–' : `${pct}%`}</span>
 		</div>
 	{/if}
 </div>
@@ -141,9 +145,4 @@
 		margin-left: auto;
 	}
 
-	.pct {
-		color: var(--text-heading);
-		font-weight: 600;
-		font-variant-numeric: tabular-nums;
-	}
 </style>

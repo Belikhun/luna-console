@@ -594,7 +594,18 @@ function tickCheck(st: CoreStatus): StatusCheck | undefined {
 	const apdex = backend?.online ? backend.metrics.apdex : undefined;
 
 	if (apdex === null || apdex === undefined) {
-		return { name, ok: undefined, detail: t("daemon.sampler.tickNotReported") };
+		// An empty modern server pauses its own game loop (pause-when-empty), so
+		// there genuinely are no ticks in the window: that is the server asleep,
+		// not the backend failing to report. The status carries the pause read
+		// from the server's own log; the heartbeat's player count stands in for a
+		// follower on a build predating the field.
+		const idle = st.paused === true || (backend?.online && backend.metrics.onlinePlayers === 0);
+
+		return {
+			name,
+			ok: undefined,
+			detail: idle ? t("daemon.sampler.tickPausedEmpty") : t("daemon.sampler.tickNotReported"),
+		};
 	}
 
 	const mean = backend?.metrics.tickMeanMillis;
@@ -754,6 +765,7 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 		uptimeMs: st.uptimeMs ?? null,
 		players: st.players ?? null,
 		pingVersion: st.pingVersion ?? null,
+		paused: st.paused === true,
 		cpu,
 		cpuCores,
 		rssMb,

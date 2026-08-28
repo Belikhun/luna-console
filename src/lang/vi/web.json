@@ -3319,7 +3319,8 @@
 		"days": "{count} ngày",
 		"minutesDown": "ngừng {count} phút",
 		"notMeasured": "Không đo được",
-		"today": "hôm nay"
+		"today": "hôm nay",
+		"upOfWatched": "chạy {pct}% thời gian được theo dõi"
 	},
 	"instanceWorld": {
 		"currentWorld": "Thế giới hiện tại",
