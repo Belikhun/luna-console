@@ -24,6 +24,12 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
+	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
+	import DetailPanel from '$lib/components/DetailPanel.svelte';
+	import Tabs from '$lib/components/Tabs.svelte';
+	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import type { InfoCell } from '$lib/components/grid';
+	import DistributionBar from '$lib/components/DistributionBar.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
@@ -74,6 +80,149 @@
 	let moderateReason = $state('');
 
 	const selection = $derived(players.filter((player) => selected.has(player.uuid)));
+
+	// -- detail split panel ------------------------------------------------------
+	// One selected player opens the docked panel, exactly as the instances screen
+	// does: the directory row already carries the profile's headline facts, and
+	// the panel enriches them with the full detail as it arrives.
+	const one = $derived(selection.length === 1 ? selection[0] : undefined);
+
+	let detailTab = $state('details');
+	let panelLocation: 'bottom' | 'right' = $state('bottom');
+	let panelSize = $state(42);
+
+	interface PanelDetail {
+		playtimeByServer: Array<{ server: string; playMillis: number; stints: number }>;
+		chatTotal: number;
+		commandTotal: number;
+		moderationTotal: number;
+		pingMillis: number;
+		permissions: { available: boolean; primaryGroupDisplay?: string; primaryGroup?: string };
+	}
+
+	interface PanelSession {
+		id: number;
+		server: string;
+		connectedAtEpochMillis: number;
+		durationMillis: number;
+		open: boolean;
+	}
+
+	let panelDetail = $state<PanelDetail | null>(null);
+	let panelSessions = $state<PanelSession[]>([]);
+	let panelLoading = $state(false);
+
+	/** How many recent sessions the panel lists; the full history is the profile's. */
+	const PANEL_SESSIONS = 8;
+
+	$effect(() => {
+		const uuid = one?.uuid;
+
+		panelDetail = null;
+		panelSessions = [];
+
+		if (!uuid) {
+			return;
+		}
+
+		let cancelled = false;
+
+		panelLoading = true;
+
+		void (async () => {
+			try {
+				const [detail, sessions] = await Promise.all([
+					api(`/players/${encodeURIComponent(uuid)}`),
+					api(`/players/${encodeURIComponent(uuid)}/sessions?limit=${PANEL_SESSIONS}&offset=0`)
+				]);
+
+				if (!cancelled) {
+					panelDetail = detail.available === false ? null : detail;
+					panelSessions = sessions.sessions ?? [];
+				}
+			} catch {
+				// the row's own facts still fill the panel; the profile page is the
+				// place that reports directory trouble in full
+				if (!cancelled) {
+					panelDetail = null;
+				}
+			} finally {
+				if (!cancelled) {
+					panelLoading = false;
+				}
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	const detailCells: InfoCell[] = $derived.by(() => {
+		if (!one) {
+			return [];
+		}
+
+		return [
+			{ id: 'status', label: t('web.players.status') },
+			{ label: t('web.players.uuid'), value: one.uuid, copyable: true, style: 'mono' },
+			{
+				label: t('web.players.auth'),
+				value: one.onlineMode ? 'Premium' : 'Offline'
+			},
+			{
+				label: t('web.players.firstSeen'),
+				value: one.firstSeenAtEpochMillis ? fmtDateTime(one.firstSeenAtEpochMillis) : null
+			},
+			{
+				label: t('web.players.lastSeen'),
+				value: one.online
+					? t('web.players.online')
+					: one.lastSeenAtEpochMillis
+						? fmtDateTime(one.lastSeenAtEpochMillis)
+						: null
+			},
+			{
+				label: t('web.playerDetail.backend'),
+				value: one.online ? one.server : one.lastServer || null,
+				href: (one.online ? one.server : one.lastServer)
+					? `/instances/${one.online ? one.server : one.lastServer}`
+					: undefined
+			},
+			{ label: t('web.playerDetail.totalPlaytime'), value: fmtDuration(one.totalPlayMillis) },
+			{ label: t('web.players.sessions'), value: one.sessionCount },
+			{ label: t('web.playerDetail.clientVersion'), value: one.lastClientVersion || null },
+			{ label: t('web.players.lastAddress'), value: one.lastAddress || null, style: 'mono' },
+			...(panelDetail?.permissions?.available
+				? [
+						{
+							label: t('web.playerDetail.permissionGroup'),
+							value:
+								panelDetail.permissions.primaryGroupDisplay ??
+								panelDetail.permissions.primaryGroup ??
+								null
+						}
+					]
+				: [])
+		];
+	});
+
+	/** The design tokens the per-backend playtime segments cycle through. */
+	const SEGMENT_COLORS = [
+		'var(--link)',
+		'var(--success)',
+		'var(--warning)',
+		'var(--info)',
+		'var(--error)'
+	];
+
+	const playtimeSegments = $derived(
+		(panelDetail?.playtimeByServer ?? []).map((entry, index) => ({
+			key: entry.server,
+			count: entry.playMillis,
+			color: SEGMENT_COLORS[index % SEGMENT_COLORS.length]!
+		}))
+	);
 
 	async function refresh(): Promise<void> {
 		try {
@@ -460,7 +609,110 @@
 			{/snippet}
 		</ResourceTable>
 	</Panel>
+
+	{#if !one}
+		<div class="hint dim">{t('web.players.selectHint')}</div>
+	{/if}
 </div>
+
+{#if one}
+	<DetailPanel
+		title={one.username}
+		subtitle={one.uuid}
+		href="/players/{one.uuid}"
+		hrefLabel={t('web.players.viewProfile')}
+		bind:location={panelLocation}
+		bind:size={panelSize}
+		onclose={() => (selected = new Set())}
+	>
+		{#snippet actions()}
+			{#if one.online}
+				<StatusBadge state="ok" label={t('web.players.online')} />
+			{:else}
+				<StatusBadge state="stopped" label={t('web.players.offline')} />
+			{/if}
+		{/snippet}
+		<Tabs
+			tabs={[
+				{ id: 'details', label: t('web.playerDetail.details') },
+				{ id: 'playtime', label: t('web.playerDetail.playtimeByBackend') },
+				{ id: 'sessions', label: t('web.playerDetail.sessions') }
+			]}
+			bind:active={detailTab}
+		/>
+		<div class="detailbody">
+			{#if detailTab === 'details'}
+				<div class="pcard">
+					<!-- the profile page owns the full 3D viewer; the panel's render is
+					     the lighter flat body, enough to recognise a skin at a glance -->
+					<div class="pskin"><PlayerSkin player={one.uuid} view="body" px={5} /></div>
+					<div class="pfacts">
+						<InfoGrid
+							cells={detailCells}
+							columns={panelLocation === 'right' ? [2, 2, 1] : [4, 3, 2]}
+						>
+							{#snippet custom(cell)}
+								{#if cell.id === 'status'}
+									{#if one.online}
+										<span class="status">
+											<StatusBadge state="ok" label={t('web.players.online')} />
+											<span class="dim">{fmtDuration(one.sessionMillis)}</span>
+										</span>
+									{:else}
+										<StatusBadge state="stopped" label={t('web.players.offline')} />
+									{/if}
+								{/if}
+							{/snippet}
+						</InfoGrid>
+					</div>
+				</div>
+			{:else if detailTab === 'playtime'}
+				{#if playtimeSegments.length > 0}
+					<!-- the rows beneath are the legend, with real durations; the bar's own
+					     legend would caption each backend with raw milliseconds -->
+					<DistributionBar
+						segments={playtimeSegments}
+						legend={false}
+						empty={t('web.playerDetail.noCompletedPlaySessions')}
+					/>
+					<div class="ptrows">
+						{#each panelDetail?.playtimeByServer ?? [] as entry, index}
+							<div class="ptrow">
+								<i class="swatch" style:background={SEGMENT_COLORS[index % SEGMENT_COLORS.length]}></i>
+								<a href="/instances/{entry.server}">{entry.server}</a>
+								<span class="dim">{fmtDuration(entry.playMillis)}</span>
+								<span class="dim stints">×{entry.stints}</span>
+							</div>
+						{/each}
+					</div>
+				{:else}
+					<p class="dim">
+						{panelLoading ? t('web.common.loading') : t('web.playerDetail.noCompletedPlaySessions')}
+					</p>
+				{/if}
+			{:else if panelSessions.length > 0}
+				<div class="sesrows">
+					{#each panelSessions as session (session.id)}
+						<div class="sesrow">
+							{#if session.open}
+								<StatusBadge state="ok" label={t('web.players.online')} />
+							{:else}
+								<StatusBadge state="stopped" label={t('web.playerDetail.disconnected')} />
+							{/if}
+							<a href="/instances/{session.server}">{session.server}</a>
+							<span class="dim">{fmtDateTime(session.connectedAtEpochMillis)}</span>
+							<span class="dim">{fmtDuration(session.durationMillis)}</span>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="dim">
+					{panelLoading ? t('web.common.loading') : t('web.playerDetail.noSessionsRecorded')}
+				</p>
+			{/if}
+		</div>
+	</DetailPanel>
+{/if}
 
 <Modal title={t('web.players.modalTitle', { label: ACTION_LABELS[moderateAction] ?? moderateAction, count: moderateTargets.length })} bind:open={moderateOpen}>
 	<p class="targets">
@@ -511,6 +763,60 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
+	}
+
+	.hint {
+		font-size: 0.75rem;
+		text-align: center;
+	}
+
+	.detailbody {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		padding: 1rem;
+		overflow-y: auto;
+	}
+
+	.pcard {
+		display: flex;
+		align-items: flex-start;
+		gap: 1.25rem;
+	}
+
+	// the skin is decoration beside the facts; it must never squeeze them
+	.pskin {
+		flex-shrink: 0;
+	}
+
+	.pfacts {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.ptrows,
+	.sesrows {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.ptrow,
+	.sesrow {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		font-size: 0.8125rem;
+	}
+
+	.swatch {
+		width: 0.625rem;
+		height: 0.625rem;
+		border-radius: 0.25rem;
+	}
+
+	.stints {
+		font-variant-numeric: tabular-nums;
 	}
 
 	.targets {

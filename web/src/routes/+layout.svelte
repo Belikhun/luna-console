@@ -17,6 +17,7 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import LunaMark from '$lib/components/LunaMark.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
+	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { del } from '$lib/api';
 	import { INSTANCE_TAB_LABELS, isInstanceTab } from '$lib/components/instancetabs';
@@ -90,6 +91,35 @@
 
 	let shellOpen = $state(false);
 	let shellHeight = $state(320);
+
+	// the status bar's language picker, as the console's own menu rather than the
+	// browser's select: same rows, same look, in both themes and on every platform
+	let langMenu: ContextMenu | undefined = $state();
+	let langTrigger: HTMLButtonElement | undefined = $state();
+
+	const langItems: ContextMenuItem[] = $derived(
+		LANGUAGES.map((lang) => ({
+			id: lang.code,
+			label: lang.label,
+			// the check marks the language in effect, exactly as Select marks its row
+			icon: lang.code === currentLanguage() ? 'check' : undefined,
+			action: () => switchLanguage(lang.code)
+		}))
+	);
+
+	async function openLangMenu(event: MouseEvent): Promise<void> {
+		event.stopPropagation();
+
+		if (langMenu?.isOpen()) {
+			langMenu.close();
+
+			return;
+		}
+
+		if (langTrigger) {
+			await langMenu?.openAtElement(langTrigger, 'top');
+		}
+	}
 	let navCollapsed = $state(false);
 
 	const nav = $derived([
@@ -457,17 +487,17 @@
 			</button>
 			<span class="statusdiv"></span>
 			<span class="spacer"></span>
-			<label class="langpick">
+			<button
+				class="langpick"
+				bind:this={langTrigger}
+				onpointerdown={(event) => event.stopPropagation()}
+				onclick={openLangMenu}
+			>
 				<Icon name="globe" size="0.75rem" style="solid" />
-				<select
-					value={currentLanguage()}
-					onchange={(event) => switchLanguage(event.currentTarget.value as 'en' | 'vi')}
-				>
-					{#each LANGUAGES as lang}
-						<option value={lang.code}>{lang.label}</option>
-					{/each}
-				</select>
-			</label>
+				{LANGUAGES.find((lang) => lang.code === currentLanguage())?.label}
+				<Icon name="caretDown" size="0.625rem" style="solid" />
+			</button>
+			<ContextMenu bind:this={langMenu} items={langItems} minWidth="9rem" />
 			<span class="statusdiv"></span>
 			<span class="dim">{t('web.layout.footer')} <a href="https://github.com/belikhun" target="_blank">belikhun</a></span>
 		</footer>
@@ -753,27 +783,21 @@
 
 	// the locale picker sits in the status bar chrome, styled as quiet text
 	.langpick {
+		@include bare-button;
+
 		display: inline-flex;
 		align-items: center;
 		gap: 0.375rem;
 		color: var(--text);
 		font-size: 0.6875rem;
+		cursor: pointer;
 
-		select {
-			background: transparent;
-			border: none;
-			color: var(--text);
-			font-size: 0.6875rem;
-			cursor: pointer;
+		&:hover {
+			color: var(--link);
+		}
 
-			&:hover {
-				color: var(--link);
-			}
-
-			option {
-				background: var(--bg-panel);
-				color: var(--text);
-			}
+		&:focus-visible {
+			@include focus-ring;
 		}
 	}
 </style>

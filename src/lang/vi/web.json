@@ -1169,6 +1169,7 @@
 	"players": {
 		"players": "Người chơi",
 		"everyoneTheNetworkHasEver": "Mọi người chơi mạng từng thấy; hồ sơ, giờ chơi và kiểm duyệt, do LunaCore ghi nhận",
+		"selectHint": "Chọn một người chơi để xem hồ sơ trong khung chia.",
 		"actions": "Hành động",
 		"directoryOverview": "Tổng quan danh bạ",
 		"registeredPlayers": "Người chơi đã ghi nhận",

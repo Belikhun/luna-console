@@ -1169,6 +1169,7 @@
 	"players": {
 		"players": "Players",
 		"everyoneTheNetworkHasEver": "Everyone the network has ever seen; profiles, playtime and moderation, recorded by LunaCore",
+		"selectHint": "Select a player to see their profile in the split panel.",
 		"actions": "Actions",
 		"directoryOverview": "Directory overview",
 		"registeredPlayers": "Registered players",
