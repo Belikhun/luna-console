@@ -39,6 +39,19 @@
 	const CARD_DAYS = 30;
 
 	const playerPoints = $derived(snapshot.series.players.map((point) => ({ t: point.t, v: point.v })));
+
+	/**
+	 * Where the footer's Console link goes.
+	 *
+	 * Relative only when the console shares this hostname. In production it does
+	 * not: this domain proxies a handful of public prefixes and nothing else, so
+	 * a relative `/instances` lands on nginx's 404 rather than on the console.
+	 */
+	const consoleHref = $derived(
+		snapshot.site.consoleUrl
+			? `${snapshot.site.consoleUrl}/instances`
+			: '/instances',
+	);
 </script>
 
 <svelte:head>
@@ -148,7 +161,7 @@
 	<footer>
 		<div class="wrap">
 			<span>{t('web.public.optInNote')}</span>
-			<a class="console" href="/instances">
+			<a class="console" href={consoleHref}>
 				<span>{t('web.public.console')}</span>
 				<Icon name="externalLink" style="solid" size="0.75em" />
 			</a>

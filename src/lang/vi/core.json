@@ -160,7 +160,14 @@
 		"notShadowing": "{key} không đè lên một đăng ký lúc chạy; xóa định nghĩa của nó sẽ hủy đăng ký gói",
 		"noInstallable": "không có phiên bản cài được của {slug} trên kênh {channel}",
 		"fileMissing": "{key}: {file} bị thiếu nên không định danh được",
-		"noMapping": "{key} không có ánh xạ nhà cung cấp"
+		"noMapping": "{key} không có ánh xạ nhà cung cấp",
+		"dynamicNoFile": "{key} do plugin đăng ký lúc chạy; plugin tự dựng tệp nên không có gì để thay",
+		"resendNeedsPack": "muốn gửi lại cho người chưa có gói thì phải nêu tên gói",
+		"resendNeedsTarget": "không có người chơi nào để gửi lại: hãy nêu tên, hoặc chọn phạm vi",
+		"resendTooOld": "LunaPackLoader trên proxy cũ hơn điểm cuối phiên gói",
+		"resendNoProxy": "proxy không phản hồi",
+		"resendOffline": "không trực tuyến",
+		"resendBadName": "proxy trả về một tên không thể đặt vào lệnh"
 	},
 	"families": {
 		"unknownPlugin": "không biết plugin: {name}; không có gì trong kho mang tên đó",

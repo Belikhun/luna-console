@@ -278,6 +278,8 @@ export interface PublicSnapshot {
 		title: string;
 		tagline: string | null;
 		address: string | null;
+		/** Absolute origin of the console, or null when it shares this hostname */
+		consoleUrl: string | null;
 		generatedAt: number;
 	};
 	totals: {
@@ -381,12 +383,30 @@ export interface PublicSnapshotInput {
 	now: number;
 }
 
+/** The configured console address as an absolute link target. */
+function consoleHrefOf(raw: string | undefined): string | null {
+	const value = raw?.trim();
+
+	if (!value) {
+		return null;
+	}
+
+	// a bare hostname in an href is a relative path, so the scheme is filled in;
+	// https because that is the only way the console answers on its own name
+	const absolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(value)
+		? value
+		: `https://${value}`;
+
+	return absolute.replace(/\/+$/, "");
+}
+
 /** Site heading and address, with the defaults a bare config falls back to. */
 function siteOf(config: PublicSiteConfig | undefined, now: number): PublicSnapshot["site"] {
 	return {
 		title: config?.title?.trim() || "Minecraft network",
 		tagline: config?.tagline?.trim() || null,
 		address: config?.address?.trim() || null,
+		consoleUrl: consoleHrefOf(config?.consoleUrl),
 		generatedAt: now,
 	};
 }

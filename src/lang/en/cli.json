@@ -14,21 +14,21 @@
 		"unsupportedShell": "unsupported shell: {shell}",
 		"installHint": "# install: luna completions {shell} >> ~/.{target}"
 	},
-		"maps": {
-			"desc": "web maps: which servers have one, and whether it outlives the server",
-			"unknownInstance": "unknown instance: {name}",
-			"none": "no instance has a web map plugin deployed",
-			"noneForInstance": "{name} has no web map plugin deployed",
-			"filesOnly": "files only",
-			"legend": "{ok} yes  {off} nothing rendered yet  {warn} only while the server runs",
-			"notOfflineReady": "{name}: the rendered map cannot be read on its own, so it disappears while the server is stopped. {provider} writes the files its page needs only under JsonFileClientUpdateComponent; swap InternalClientUpdateComponent for it in the plugin's configuration.txt and restart.",
-			"notRendered": "{name}: nothing has been rendered yet, so there is no map to serve until the server draws one",
-			"head": {
-				"map": "Map",
-				"rendered": "Rendered",
-				"survivesStop": "Survives a stop"
-			}
-		},
+	"maps": {
+		"desc": "web maps: which servers have one, and whether it outlives the server",
+		"unknownInstance": "unknown instance: {name}",
+		"none": "no instance has a web map plugin deployed",
+		"noneForInstance": "{name} has no web map plugin deployed",
+		"filesOnly": "files only",
+		"legend": "{ok} yes  {off} nothing rendered yet  {warn} only while the server runs",
+		"notOfflineReady": "{name}: the rendered map cannot be read on its own, so it disappears while the server is stopped. {provider} writes the files its page needs only under JsonFileClientUpdateComponent; swap InternalClientUpdateComponent for it in the plugin's configuration.txt and restart.",
+		"notRendered": "{name}: nothing has been rendered yet, so there is no map to serve until the server draws one",
+		"head": {
+			"map": "Map",
+			"rendered": "Rendered",
+			"survivesStop": "Survives a stop"
+		}
+	},
 	"repl": {
 		"title": "interactive console",
 		"hints": "Tab to complete · 'help' for commands · '?' after a command for hints · 'exit' to leave",
@@ -598,6 +598,28 @@
 			"desc": "Ask the running proxy to re-read the packs directory (lunapack reload)",
 			"sent": "reload sent to the proxy",
 			"proxyDown": "the proxy is not running; packs load on its next boot"
+		},
+		"replace": {
+			"desc": "Replace a resource pack's zip with a local file (keeps its registration)",
+			"noFile": "no such file: {file}",
+			"uploading": "uploading {file}...",
+			"done": "{file} replaced ({from} -> {to})",
+			"unchanged": "{file} is unchanged; the upload matches the file already there",
+			"nowManual": "the pack was installed from {provider}; it is now manual, so update checks stop until it is identified again"
+		},
+		"resend": {
+			"desc": "Ask the proxy to re-offer resource packs to players",
+			"optPack": "narrow the selection to players by their state for this pack",
+			"optAll": "every online player",
+			"optFailed": "players whose last pack load failed",
+			"optMissing": "players who neither hold nor have been offered the pack (needs --pack)",
+			"oneScope": "--all, --failed and --missing are mutually exclusive",
+			"needTarget": "name the players to resend to, or pick --all, --failed or --missing",
+			"unavailable": "cannot resend: {problem}",
+			"nobody": "nobody matched; nothing was sent",
+			"noBackend": "(no backend)",
+			"summary": "resent to {sent} of {online} online player(s)",
+			"wholeSet": "a resend offers a player every pack that applies to them; luna-pack has no per-pack resend"
 		}
 	},
 	"datapacks": {
@@ -1746,7 +1768,8 @@
 		"opt": {
 			"address": "Address players connect to, e.g. mc.example.com",
 			"title": "Heading shown on the page",
-			"tagline": "One line under the heading"
+			"tagline": "One line under the heading",
+			"consoleUrl": "Where the console answers, e.g. console.mc.example.com"
 		},
 		"enable": {
 			"desc": "Publish the public page"
@@ -1759,7 +1782,8 @@
 		},
 		"hide": {
 			"desc": "Remove an instance from the public page"
-		}
+		},
+		"consoleUrl": "console"
 	},
 	"uptime": {
 		"desc": "Uptime history per instance",

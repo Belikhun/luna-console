@@ -160,7 +160,14 @@
 		"notShadowing": "{key} is not shadowing a runtime registration; deleting its definition would unregister it",
 		"noInstallable": "no installable version of {slug} on the {channel} channel",
 		"fileMissing": "{key}: {file} is missing, so it cannot be identified",
-		"noMapping": "{key} has no provider mapping"
+		"noMapping": "{key} has no provider mapping",
+		"dynamicNoFile": "{key} is registered by a plugin at runtime; the plugin builds its file, so there is nothing to replace",
+		"resendNeedsPack": "resending to players missing a pack needs the pack named",
+		"resendNeedsTarget": "no players to resend to: name some, or pick a scope",
+		"resendTooOld": "the proxy's LunaPackLoader is older than the pack-session endpoint",
+		"resendNoProxy": "the proxy did not answer",
+		"resendOffline": "not online",
+		"resendBadName": "the proxy reports a name that cannot be put in a command"
 	},
 	"families": {
 		"unknownPlugin": "unknown plugin: {name}; nothing pooled under that name",

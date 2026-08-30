@@ -827,6 +827,91 @@ export async function addResourcePackFile(
 	return fresh.find((candidate) => candidate.key === key)!;
 }
 
+/**
+ * What replacing a pack's zip changed. The sizes are what makes an accidental
+ * upload obvious (a 40 KB file over a 12 MB pack is a mistake, not an update),
+ * and `unchanged` names the case where the bytes were already there.
+ */
+export interface RespackReplacement {
+	row: RespackRow;
+	/** The zip that was written: the definition's own filename, not a new one */
+	file: string;
+	sizeBefore: number;
+	sizeAfter: number;
+	/** The uploaded bytes are the bytes already on disk */
+	unchanged: boolean;
+	/** The provider this pack was installed from until this upload */
+	wasProvider?: PackSource;
+}
+
+/**
+ * Replace an existing pack's zip with an uploaded one, keeping its definition
+ * exactly as it is: the name, priority, rules and enablement are the
+ * operator's, and swapping the file is not a request to reset them.
+ *
+ * The bytes go over the definition's *own* filename rather than `<key>.zip`,
+ * because a pack adopted from a zip somebody else named would otherwise end up
+ * with its definition pointing at the old file and the new one sitting beside
+ * it unserved.
+ *
+ * The pack becomes manual: what is on disk is no longer the version the
+ * provider published, so leaving that version recorded would have the next
+ * update check compare against bytes nobody has. Re-identify it afterwards if
+ * the upload really is a provider build.
+ *
+ * Clients keep the pack they already downloaded until the proxy re-reads the
+ * directory, so a reload belongs after this.
+ */
+export async function replaceResourcePackFile(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	key: string,
+	dataBase64: string,
+): Promise<RespackReplacement> {
+	// the live listing, because a pack a plugin registers at runtime is exactly
+	// the one an upload must not touch, and only the proxy knows which those are
+	const { rows } = await listResourcePacksLive(cfg, lock);
+	const row = rows.find((candidate) => candidate.key === key);
+
+	if (!row) {
+		throw new Error(t("core.respacks.unknown", { key }));
+	}
+
+	if (row.registration === "dynamic") {
+		throw new Error(t("core.respacks.dynamicNoFile", { key }));
+	}
+
+	const buf = decodePackZip(dataBase64);
+	const file = row.filename;
+	const target = join(respacksDir(), file);
+	const sizeBefore = row.present ? row.sizeBytes : 0;
+	const before = row.present ? await sha512File(target) : undefined;
+
+	await Bun.write(target, buf);
+
+	const sha512 = await sha512File(target);
+	const entry = lock.resourcepacks[key];
+	const wasProvider = entry && entry.source !== "manual" ? entry.source : undefined;
+
+	lock.resourcepacks[key] = {
+		file,
+		source: "manual",
+		autoUpdate: false,
+		installed: { sha512 },
+	};
+
+	const fresh = await listResourcePacks(cfg, lock);
+
+	return {
+		row: fresh.find((candidate) => candidate.key === key)!,
+		file,
+		sizeBefore,
+		sizeAfter: buf.length,
+		unchanged: before === sha512,
+		wasProvider,
+	};
+}
+
 /** Pick the newest acceptable version of a pack project on a channel. */
 function pickPackVersion(
 	versions: AddonVersion[],
@@ -1048,6 +1133,156 @@ export async function removeResourcePack(
  */
 export async function reloadResourcePacks(cfg: ClusterConfig): Promise<boolean> {
 	return await instances.sendCommand(cfg, "proxy", "lunapack reload");
+}
+
+// -- resending to players ---------------------------------------------------------
+
+/**
+ * Whether a name is safe to put in a proxy console command. Mirrors the pack
+ * plugin's own argument check: no whitespace, no control characters, nothing
+ * long enough to be something other than a player name. A name selected from
+ * the proxy's session list already passes; one an operator typed may not.
+ */
+function usableName(name: string): boolean {
+	return name.length > 0 && name.length <= 64 && !/[\s\u0000-\u001f]/.test(name);
+}
+
+/** One player a resend was aimed at, and what became of it. */
+export interface RespackResendTarget {
+	username: string;
+	uuid?: string;
+	server?: string;
+	/** The proxy accepted the resend command for this player */
+	sent: boolean;
+	/** Why it did not; an offline name, a rejected command */
+	problem?: string;
+}
+
+/**
+ * Who to resend to.
+ *
+ * `all`      every online player
+ * `failed`   players whose last pack load failed; with a pack named, only those
+ *            not already holding it
+ * `missing`  players who do not have the named pack and have not been offered
+ *            it either; needs a pack
+ */
+export type RespackResendScope = "all" | "failed" | "missing";
+
+export interface RespackResendResult {
+	/** False when the proxy could not say who is online; nothing was sent */
+	available: boolean;
+	problem?: string;
+	targets: RespackResendTarget[];
+	sent: number;
+	/** Players online when the selection was made */
+	online: number;
+}
+
+/**
+ * Re-offer resource packs to players, through the proxy's own
+ * `lunapack resend`.
+ *
+ * That command resends **every pack that applies to the player**, not one pack:
+ * luna-pack sends a client its whole applicable set and there is no per-pack
+ * verb. So `pack` here only narrows *who* is picked, never what they receive,
+ * and a caller showing this from one pack's screen has to say so.
+ *
+ * Selection comes from the proxy's live session list, so every target is online
+ * by construction; a name the operator typed that nobody is using is reported
+ * as such rather than sent into the void.
+ */
+export async function resendResourcePacks(
+	opts: { pack?: string; players?: string[]; scope?: RespackResendScope } = {},
+): Promise<RespackResendResult> {
+	const normalized = opts.pack?.trim().toLowerCase();
+	const scope = opts.scope;
+
+	if (scope === "missing" && !normalized) {
+		throw new Error(t("core.respacks.resendNeedsPack"));
+	}
+
+	if (!scope && !opts.players?.length) {
+		throw new Error(t("core.respacks.resendNeedsTarget"));
+	}
+
+	const sessions = await lunaApi.packSessions();
+
+	if (!sessions.ok) {
+		return {
+			available: false,
+			problem:
+				sessions.status === 404
+					? t("core.respacks.resendTooOld")
+					: (sessions.error ?? t("core.respacks.resendNoProxy")),
+			targets: [],
+			sent: 0,
+			online: 0,
+		};
+	}
+
+	const online = sessions.data?.players ?? [];
+	const holds = (session: lunaApi.PackSession): boolean =>
+		!normalized || (session.loaded ?? []).some((name) => name.toLowerCase() === normalized);
+	const offered = (session: lunaApi.PackSession): boolean =>
+		!!normalized && (session.pending ?? []).some((name) => name.toLowerCase() === normalized);
+
+	const picked: lunaApi.PackSession[] = [];
+	const targets: RespackResendTarget[] = [];
+
+	if (scope === "all") {
+		picked.push(...online);
+	} else if (scope === "failed") {
+		picked.push(...online.filter((session) => !!session.lastFailure && !holds(session)));
+	} else if (scope === "missing") {
+		picked.push(...online.filter((session) => !holds(session) && !offered(session)));
+	}
+
+	for (const name of opts.players ?? []) {
+		const wanted = name.trim().toLowerCase();
+		const session = online.find((entry) => entry.username.toLowerCase() === wanted);
+
+		if (!session) {
+			targets.push({ username: name, sent: false, problem: t("core.respacks.resendOffline") });
+
+			continue;
+		}
+
+		if (!picked.includes(session)) {
+			picked.push(session);
+		}
+	}
+
+	for (const session of picked) {
+		if (!usableName(session.username)) {
+			targets.push({
+				username: session.username,
+				uuid: session.uuid,
+				server: session.server || undefined,
+				sent: false,
+				problem: t("core.respacks.resendBadName"),
+			});
+
+			continue;
+		}
+
+		const result = await lunaApi.runCommand(`lunapack resend ${session.username}`);
+
+		targets.push({
+			username: session.username,
+			uuid: session.uuid,
+			server: session.server || undefined,
+			sent: result.ok,
+			problem: result.ok ? undefined : (result.error ?? t("core.respacks.resendNoProxy")),
+		});
+	}
+
+	return {
+		available: true,
+		targets,
+		sent: targets.filter((target) => target.sent).length,
+		online: online.length,
+	};
 }
 
 // -- provider mapping ----------------------------------------------------------

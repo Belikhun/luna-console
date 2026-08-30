@@ -18,6 +18,10 @@ export type {
 	RespackRow,
 	RespackPatch,
 	RespackUpdate,
+	RespackReplacement,
+	RespackResendScope,
+	RespackResendResult,
+	RespackResendTarget,
 	PackRegistration,
 	DynamicPack,
 	DynamicPackReport,
@@ -28,6 +32,9 @@ export type {
 export const listResourcePacks = call("respacks.listResourcePacks", { cfg: 0, lock: 1 }) as typeof core.listResourcePacks;
 export const updateResourcePack = call("respacks.updateResourcePack", { cfg: 0, lock: 1 }) as typeof core.updateResourcePack;
 export const addResourcePackFile = call("respacks.addResourcePackFile", { cfg: 0, lock: 1 }) as typeof core.addResourcePackFile;
+// replacing a pack's zip is a write into the packs directory, and the
+// definition it must not disturb lives there too
+export const replaceResourcePackFile = call("respacks.replaceFile", { cfg: 0, lock: 1 }) as typeof core.replaceResourcePackFile;
 export const installResourcePackFromProvider = call("respacks.installFromProvider", { cfg: 0, lock: 1 }) as typeof core.installResourcePackFromProvider;
 export const checkResourcePackUpdates = call("respacks.checkUpdates", { lock: 0 }) as typeof core.checkResourcePackUpdates;
 export const applyResourcePackUpdate = call("respacks.applyUpdate", { lock: 0 }) as typeof core.applyResourcePackUpdate;
@@ -36,6 +43,9 @@ export const removeResourcePack = call("respacks.removeResourcePack", { cfg: 0, 
 // directory on the primary like every other registration change
 export const setResourcePackForInstance = call("respacks.setForInstance", { cfg: 0, lock: 1 }) as typeof core.setResourcePackForInstance;
 export const reloadResourcePacks = call("respacks.reload", { cfg: 0 }) as typeof core.reloadResourcePacks;
+// re-offering a pack runs a command on the proxy console, which only the
+// machine holding the proxy can reach
+export const resendResourcePacks = call("respacks.resend") as typeof core.resendResourcePacks;
 // group membership is materialized into the definitions the proxy reads, so
 // the sync is a daemon-side write like every other pack mutation
 export const syncResourcePackGroups = call("respacks.syncGroups", { cfg: 0, lock: 1 }) as typeof core.syncResourcePackGroups;

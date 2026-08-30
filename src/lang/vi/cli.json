@@ -14,21 +14,21 @@
 		"unsupportedShell": "shell không được hỗ trợ: {shell}",
 		"installHint": "# cài đặt: luna completions {shell} >> ~/.{target}"
 	},
-		"maps": {
-			"desc": "bản đồ web: máy chủ nào có, và bản đồ có sống lâu hơn máy chủ hay không",
-			"unknownInstance": "không có instance: {name}",
-			"none": "chưa có instance nào được triển khai plugin bản đồ web",
-			"noneForInstance": "{name} chưa được triển khai plugin bản đồ web",
-			"filesOnly": "chỉ tệp",
-			"legend": "{ok} có  {off} chưa kết xuất  {warn} chỉ khi máy chủ đang chạy",
-			"notOfflineReady": "{name}: bản đồ đã kết xuất không tự đọc được, nên nó biến mất khi máy chủ dừng. {provider} chỉ ghi các tệp mà trang của nó cần khi dùng JsonFileClientUpdateComponent; hãy thay InternalClientUpdateComponent bằng nó trong configuration.txt của plugin rồi khởi động lại.",
-			"notRendered": "{name}: chưa kết xuất gì cả, nên chưa có bản đồ nào để phục vụ cho tới khi máy chủ vẽ ra",
-			"head": {
-				"map": "Bản đồ",
-				"rendered": "Đã kết xuất",
-				"survivesStop": "Sống qua lúc dừng"
-			}
-		},
+	"maps": {
+		"desc": "bản đồ web: máy chủ nào có, và bản đồ có sống lâu hơn máy chủ hay không",
+		"unknownInstance": "không có instance: {name}",
+		"none": "chưa có instance nào được triển khai plugin bản đồ web",
+		"noneForInstance": "{name} chưa được triển khai plugin bản đồ web",
+		"filesOnly": "chỉ tệp",
+		"legend": "{ok} có  {off} chưa kết xuất  {warn} chỉ khi máy chủ đang chạy",
+		"notOfflineReady": "{name}: bản đồ đã kết xuất không tự đọc được, nên nó biến mất khi máy chủ dừng. {provider} chỉ ghi các tệp mà trang của nó cần khi dùng JsonFileClientUpdateComponent; hãy thay InternalClientUpdateComponent bằng nó trong configuration.txt của plugin rồi khởi động lại.",
+		"notRendered": "{name}: chưa kết xuất gì cả, nên chưa có bản đồ nào để phục vụ cho tới khi máy chủ vẽ ra",
+		"head": {
+			"map": "Bản đồ",
+			"rendered": "Đã kết xuất",
+			"survivesStop": "Sống qua lúc dừng"
+		}
+	},
 	"repl": {
 		"title": "bảng điều khiển tương tác",
 		"hints": "Tab để hoàn thành lệnh · 'help' xem danh sách lệnh · thêm '?' sau lệnh để xem gợi ý · 'exit' để thoát",
@@ -598,7 +598,29 @@
 			"sent": "đã gửi lệnh reload tới proxy",
 			"proxyDown": "proxy chưa chạy; các gói sẽ nạp ở lần khởi động sau"
 		},
-		"unknownChannel": "không biết kênh: {name} (cần {known})"
+		"unknownChannel": "không biết kênh: {name} (cần {known})",
+		"replace": {
+			"desc": "Thay tệp zip của gói tài nguyên bằng tệp cục bộ (giữ nguyên đăng ký)",
+			"noFile": "không có tệp: {file}",
+			"uploading": "đang tải lên {file}...",
+			"done": "đã thay {file} ({from} -> {to})",
+			"unchanged": "{file} không đổi; tệp tải lên trùng với tệp đang có",
+			"nowManual": "gói vốn được cài từ {provider}; giờ là gói thủ công nên việc kiểm tra cập nhật dừng cho tới khi định danh lại"
+		},
+		"resend": {
+			"desc": "Yêu cầu proxy mời lại gói tài nguyên cho người chơi",
+			"optPack": "lọc người chơi theo trạng thái của họ với gói này",
+			"optAll": "mọi người chơi đang trực tuyến",
+			"optFailed": "người chơi có lần tải gói gần nhất thất bại",
+			"optMissing": "người chơi chưa có và cũng chưa được mời gói (cần --pack)",
+			"oneScope": "--all, --failed và --missing loại trừ lẫn nhau",
+			"needTarget": "hãy nêu tên người chơi, hoặc chọn --all, --failed hay --missing",
+			"unavailable": "không gửi lại được: {problem}",
+			"nobody": "không ai khớp; không gửi gì cả",
+			"noBackend": "(không có backend)",
+			"summary": "đã gửi lại cho {sent} trên {online} người chơi trực tuyến",
+			"wholeSet": "gửi lại sẽ mời người chơi mọi gói áp dụng cho họ; luna-pack không có lệnh gửi lại từng gói"
+		}
 	},
 	"datapacks": {
 		"list": {
@@ -1746,7 +1768,8 @@
 		"opt": {
 			"address": "Địa chỉ người chơi kết nối, ví dụ mc.example.com",
 			"title": "Tiêu đề hiển thị trên trang",
-			"tagline": "Một dòng dưới tiêu đề"
+			"tagline": "Một dòng dưới tiêu đề",
+			"consoleUrl": "Nơi bảng điều khiển phục vụ, ví dụ console.mc.example.com"
 		},
 		"enable": {
 			"desc": "Xuất bản trang công khai"
@@ -1759,7 +1782,8 @@
 		},
 		"hide": {
 			"desc": "Bỏ một máy chủ khỏi trang công khai"
-		}
+		},
+		"consoleUrl": "bảng điều khiển"
 	},
 	"uptime": {
 		"desc": "Lịch sử thời gian hoạt động theo máy chủ",

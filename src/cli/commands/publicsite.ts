@@ -75,6 +75,10 @@ command({
 			console.log(`  ${pc.dim(t("cli.public.title"))} ${site.title}`);
 		}
 
+		if (site?.consoleUrl) {
+			console.log(`  ${pc.dim(t("cli.public.consoleUrl"))} ${site.consoleUrl}`);
+		}
+
 		console.log();
 
 		const rows = publicsite.listableInstances(cfg).map(([name, inst]) => [
@@ -100,6 +104,7 @@ command({
 		{ flag: "--address", value: true, desc: t("cli.public.opt.address") },
 		{ flag: "--title", value: true, desc: t("cli.public.opt.title") },
 		{ flag: "--tagline", value: true, desc: t("cli.public.opt.tagline") },
+		{ flag: "--console-url", value: true, desc: t("cli.public.opt.consoleUrl") },
 	],
 
 	handler: async (_args, opts) => {
@@ -117,6 +122,10 @@ command({
 
 		if (typeof opts.tagline === "string") {
 			cfg.publicSite.tagline = opts.tagline;
+		}
+
+		if (typeof opts["console-url"] === "string") {
+			cfg.publicSite.consoleUrl = opts["console-url"];
 		}
 
 		await saveCluster(cfg);

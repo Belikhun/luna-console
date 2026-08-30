@@ -8,12 +8,14 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { instanceTabPath } from '$lib/components/instancetabs';
-	import { api, post } from '$lib/api';
+	import { api, post, fileToBase64 } from '$lib/api';
 	import { fmtBytes, fmtDateTime, fmtDuration } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Btn from '$lib/components/Btn.svelte';
+	import Modal from '$lib/components/Modal.svelte';
+	import FileDrop from '$lib/components/FileDrop.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
@@ -258,6 +260,136 @@
 			);
 		});
 
+	// -- replacing the zip ----------------------------------------------------------
+
+	let replaceOpen = $state(false);
+	let replaceFile: File | null = $state(null);
+
+	$effect(() => {
+		if (replaceOpen) {
+			replaceFile = null;
+		}
+	});
+
+	/**
+	 * Upload a new zip over this pack's file. The registration is untouched, so
+	 * the pack keeps its name, priority, rules and enablement; only the bytes
+	 * clients fetch change, and the proxy is reloaded so it hands out the new
+	 * hash instead of the one it read at boot.
+	 */
+	const replacePack = () =>
+		run('replace', t('web.packDetail.replacingFile', { file: replaceFile?.name ?? '' }), async () => {
+			const res = await post(`/respacks/${encodeURIComponent(key ?? '')}/file`, {
+				data: await fileToBase64(replaceFile!)
+			});
+
+			replaceOpen = false;
+
+			// the zip changed under the same URL, so the stored reachability answer
+			// describes a file that is no longer there
+			await load(true);
+
+			if (res.unchanged) {
+				return t('web.packDetail.replacedSameBytes', { file: res.file });
+			}
+
+			return (
+				t('web.packDetail.replacedFile', {
+					file: res.file,
+					from: fmtBytes(res.sizeBefore),
+					to: fmtBytes(res.sizeAfter)
+				}) +
+				(res.wasProvider
+					? ` ${t('web.packDetail.replacedNowManual', { provider: res.wasProvider })}`
+					: '') +
+				(res.reloaded ? '' : ` ${t('web.packDetail.replacedProxyDown')}`)
+			);
+		});
+
+	// -- re-offering the pack to players --------------------------------------------
+
+	const holderPlayers = $derived(detail?.holders.players ?? []);
+
+	/** Online players whose last pack load failed and who still do not have it. */
+	const failedPlayers = $derived(
+		holderPlayers.filter((player: any) => player.lastFailure && !player.loaded)
+	);
+
+	/** Online players who neither hold the pack nor have been offered it. */
+	const missingPlayers = $derived(
+		holderPlayers.filter((player: any) => !player.loaded && !player.pending)
+	);
+
+	/**
+	 * Ask the proxy to re-offer packs. `lunapack resend` sends a player their
+	 * whole applicable set rather than one pack, so the scope only decides who
+	 * is picked; the copy around it says as much.
+	 */
+	function resend(
+		pending: string,
+		body: { scope?: string; players?: string[] }
+	): Promise<void> {
+		return run('resend', pending, async () => {
+			const res = await post(`/respacks/${encodeURIComponent(key ?? '')}/resend`, body);
+
+			if (!res.available) {
+				throw new Error(res.problem ?? t('web.packDetail.resendUnavailable'));
+			}
+
+			if (!res.targets.length) {
+				return t('web.packDetail.resendNobody');
+			}
+
+			const missed = res.targets.filter((target: any) => !target.sent);
+
+			const detailText = missed
+				.map((target: any) => `${target.username}: ${target.problem}`)
+				.join(', ');
+
+			return (
+				t('web.packDetail.resendSent', { count: res.sent }) +
+				(missed.length ? ` ${t('web.packDetail.resendMissed', { detail: detailText })}` : '')
+			);
+		});
+	}
+
+	/** The resend verbs, as one submenu; every one of them names its count. */
+	const resendActions: ContextMenuItem[] = $derived.by(() => {
+		const unavailable = detail?.holders.available
+			? undefined
+			: (detail?.holders.problem ?? t('web.packDetail.resendUnavailable'));
+
+		return [
+			{
+				label: t('web.packDetail.resendToEveryone', { count: detail?.holders.online ?? 0 }),
+				icon: 'users',
+				disabled: !!unavailable || !!busy || !detail?.holders.online,
+				hint:
+					unavailable ??
+					(detail?.holders.online ? undefined : t('web.packDetail.resendNobodyOnline')),
+				action: () => resend(t('web.packDetail.resendingEveryone'), { scope: 'all' })
+			},
+			{
+				label: t('web.packDetail.resendToFailed', { count: failedPlayers.length }),
+				icon: 'triangleExclamation',
+				disabled: !!unavailable || !!busy || !failedPlayers.length,
+				hint:
+					unavailable ??
+					(failedPlayers.length ? undefined : t('web.packDetail.resendNoFailures')),
+				action: () => resend(t('web.packDetail.resendingFailed'), { scope: 'failed' })
+			},
+			{
+				label: t('web.packDetail.resendToMissing', { count: missingPlayers.length }),
+				icon: 'download',
+				disabled: !!unavailable || !!busy || !missingPlayers.length,
+				hint:
+					unavailable ??
+					(missingPlayers.length ? undefined : t('web.packDetail.resendNoneMissing')),
+				action: () => resend(t('web.packDetail.resendingMissing'), { scope: 'missing' })
+			}
+		];
+	});
+
 	const packActions: ContextMenuItem[] = $derived.by(() => {
 		if (!pack) {
 			return [];
@@ -275,6 +407,23 @@
 				disabled: !pack.remote || !!busy,
 				hint: !pack.remote ? 'not identified with a provider' : undefined,
 				action: checkUpdate
+			},
+			{
+				label: t('web.packDetail.replaceFile'),
+				icon: 'upload',
+				disabled: pack.registration === 'dynamic' || !!busy,
+				hint:
+					pack.registration === 'dynamic'
+						? t('web.packDetail.replaceDynamicHint')
+						: undefined,
+				action: () => {
+					replaceOpen = true;
+				}
+			},
+			{
+				label: t('web.packDetail.resendPacks'),
+				icon: 'paperPlane',
+				submenu: resendActions
 			},
 			{
 				label: t('web.packDetail.testReachability'),
@@ -495,6 +644,28 @@
 		{ id: 'state', label: t('web.packDetail.thisPack'), width: 150 },
 		{ id: 'failure', label: t('web.packDetail.lastFailure') }
 	]);
+
+	/** One player's verbs, seen from this pack. */
+	function holderActions(row: any): ContextMenuItem[] {
+		return [
+			{
+				label: t('web.packDetail.resendToPlayer', { player: row.username }),
+				icon: 'paperPlane',
+				disabled: !!busy,
+				hint: t('web.packDetail.resendSendsEverything'),
+				action: () =>
+					resend(t('web.packDetail.resendingPlayer', { player: row.username }), {
+						players: [row.username]
+					})
+			},
+			{ separator: true },
+			{
+				label: t('web.packDetail.openPlayer'),
+				icon: 'user',
+				action: () => goto(`/players?q=${encodeURIComponent(row.username)}`)
+			}
+		];
+	}
 
 	/** Holders first; the answer to "who has it" should not need scrolling. */
 	const holderRows = $derived.by(() => {
@@ -859,6 +1030,8 @@
 						columns={holderCols}
 						rows={holderRows}
 						getId={(row) => row.uuid}
+						rowActions={holderActions}
+						rowLabel={(row) => row.username}
 						rowDim={(row) => !row.loaded && !row.pending}
 					>
 						{#snippet cell(row, col)}
@@ -892,6 +1065,9 @@
 						{/snippet}
 					</DataTable>
 				</Panel>
+				<p class="dim note">
+					{t('web.packDetail.resendNote')}
+				</p>
 			{/if}
 		{:else if tab === 'traffic'}
 			{#if !detail.traffic.available}
@@ -971,6 +1147,31 @@
 	</div>
 {/if}
 
+<!-- replace this pack's zip with one from this computer -->
+<Modal title={t('web.packDetail.replaceFileTitle', { key: key ?? '' })} bind:open={replaceOpen}>
+	<FileDrop bind:file={replaceFile} accept=".zip" hint={t('web.packDetail.dropTheNewZip')} />
+	<p class="dim modalnote">
+		{t('web.packDetail.replaceExplains', { file: pack?.filename ?? '' })}
+	</p>
+	{#if pack?.remote}
+		<p class="dim modalnote">
+			{t('web.packDetail.replaceDropsProvider', { provider: pack.source })}
+		</p>
+	{/if}
+	{#snippet footer()}
+		<Btn onclick={() => (replaceOpen = false)}>{t('web.packDetail.cancel')}</Btn>
+		<Btn
+			variant="primary"
+			icon="upload"
+			disabled={!replaceFile}
+			loading={busy === 'replace'}
+			onclick={replacePack}
+		>
+			{t('web.packDetail.replace')}
+		</Btn>
+	{/snippet}
+</Modal>
+
 <style lang="scss">
 	.crumb {
 		font-size: 0.875rem;
@@ -996,6 +1197,12 @@
 
 	.gap {
 		height: 1rem;
+	}
+
+	.modalnote {
+		margin: 0.75rem 0 0;
+		font-size: 0.8125rem;
+		line-height: 1.5;
 	}
 
 	// the two overview panels sit side by side where there is room, and stack

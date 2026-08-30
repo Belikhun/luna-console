@@ -22,6 +22,22 @@ import * as providers from "../../client/core/services/providers";
 import type { ProviderId } from "../../client/core/types";
 import { t } from "../../shared/i18n";
 
+/**
+ * Base64 for an upload payload. `btoa` takes a binary string, and building one
+ * from a multi-megabyte pack in a single `String.fromCharCode(...bytes)` call
+ * blows the argument limit, so the bytes go in chunks.
+ */
+function encodeBase64(bytes: Uint8Array): string {
+	const CHUNK = 0x8000;
+	let binary = "";
+
+	for (let index = 0; index < bytes.length; index += CHUNK) {
+		binary += String.fromCharCode(...bytes.subarray(index, index + CHUNK));
+	}
+
+	return btoa(binary);
+}
+
 /** The addon groups pack membership resolves against (plugins.lock.json). */
 async function addonGroups(): Promise<Awaited<ReturnType<typeof loadLock>>["groups"]> {
 	return (await loadLock()).groups;
@@ -753,6 +769,118 @@ command({
 
 		ok(t("cli.packs.remove.done", { name: args[0] ?? "", detail: pc.dim(`(${removed.join(", ")})`) }));
 		info(t("cli.packs.reloadHint"));
+	},
+});
+
+command({
+	path: ["packs", "replace"],
+	desc: t("cli.packs.replace.desc"),
+	args: [
+		{ name: "pack", required: true, complete: respackKeys },
+		{ name: "zip", required: true },
+	],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const lock = await loadPacksLock();
+		const key = args[0]!;
+		const source = Bun.file(args[1]!);
+
+		if (!(await source.exists())) {
+			throw new UsageError(t("cli.packs.replace.noFile", { file: args[1] ?? "" }));
+		}
+
+		const spin = new Spinner().start(t("cli.packs.replace.uploading", { file: args[1] ?? "" }));
+
+		let result: respacks.RespackReplacement;
+
+		try {
+			const bytes = new Uint8Array(await source.arrayBuffer());
+
+			result = await respacks.replaceResourcePackFile(cfg, lock, key, encodeBase64(bytes));
+		} finally {
+			spin.stop();
+		}
+
+		await savePacksLock(lock);
+
+		if (result.unchanged) {
+			warn(t("cli.packs.replace.unchanged", { file: result.file }));
+		} else {
+			ok(
+				t("cli.packs.replace.done", {
+					file: pc.bold(result.file),
+					from: fmtBytes(result.sizeBefore),
+					to: fmtBytes(result.sizeAfter),
+				}),
+			);
+		}
+
+		if (result.wasProvider) {
+			warn(t("cli.packs.replace.nowManual", { provider: result.wasProvider }));
+		}
+
+		info(t("cli.packs.reloadHint"));
+	},
+});
+
+command({
+	path: ["packs", "resend"],
+	desc: t("cli.packs.resend.desc"),
+	args: [{ name: "player", variadic: true }],
+	opts: [
+		{ flag: "--pack", desc: t("cli.packs.resend.optPack"), value: true, complete: respackKeys },
+		{ flag: "--all", desc: t("cli.packs.resend.optAll") },
+		{ flag: "--failed", desc: t("cli.packs.resend.optFailed") },
+		{ flag: "--missing", desc: t("cli.packs.resend.optMissing") },
+	],
+
+	handler: async (args, opts) => {
+		const scopes = [
+			opts.all ? "all" : undefined,
+			opts.failed ? "failed" : undefined,
+			opts.missing ? "missing" : undefined,
+		].filter((scope) => scope !== undefined) as respacks.RespackResendScope[];
+
+		if (scopes.length > 1) {
+			throw new UsageError(t("cli.packs.resend.oneScope"));
+		}
+
+		const scope = scopes[0];
+
+		if (!scope && !args.length) {
+			throw new UsageError(t("cli.packs.resend.needTarget"));
+		}
+
+		const result = await respacks.resendResourcePacks({
+			pack: typeof opts.pack === "string" ? opts.pack : undefined,
+			players: args,
+			scope,
+		});
+
+		if (!result.available) {
+			throw new Bail(t("cli.packs.resend.unavailable", { problem: result.problem ?? "" }));
+		}
+
+		if (!result.targets.length) {
+			warn(t("cli.packs.resend.nobody"));
+
+			return;
+		}
+
+		for (const target of result.targets) {
+			if (target.sent) {
+				ok(
+					`${pc.bold(target.username)} ` +
+						pc.dim(target.server ? `(${target.server})` : t("cli.packs.resend.noBackend")),
+				);
+			} else {
+				warn(`${pc.bold(target.username)} ${pc.dim(`- ${target.problem ?? ""}`)}`);
+			}
+		}
+
+		info(t("cli.packs.resend.summary", { sent: result.sent, online: result.online }));
+		info(t("cli.packs.resend.wholeSet"));
 	},
 });
 

@@ -339,6 +339,49 @@
 			});
 		});
 
+	// -- replace dialog ---------------------------------------------------------------
+
+	let replaceOpen = $state(false);
+	let replaceTarget: PackRow | null = $state(null);
+	let replaceFile: File | null = $state(null);
+
+	$effect(() => {
+		if (replaceOpen) {
+			replaceFile = null;
+		}
+	});
+
+	/**
+	 * Swap one pack's zip for a local one. Unlike an upload, this keeps the
+	 * registration: an operator with a new build of a pack they made themselves
+	 * wants the new file, not a new pack with its rules reset.
+	 */
+	const replacePack = () =>
+		run('replace', t('web.packs.replacingFile', { file: replaceFile?.name ?? '' }), async (note) => {
+			const res = await post(`/respacks/${encodeURIComponent(replaceTarget!.key)}/file`, {
+				data: await fileToBase64(replaceFile!)
+			});
+
+			replaceOpen = false;
+
+			await refresh();
+
+			note.set({
+				level: 'success',
+				message: res.unchanged
+					? t('web.packs.replacedSameBytes', { file: res.file })
+					: t('web.packs.replacedFile', {
+							file: res.file,
+							from: fmtBytes(res.sizeBefore),
+							to: fmtBytes(res.sizeAfter)
+						}),
+				detail: res.reloaded
+					? t('web.packs.replacedReloaded')
+					: t('web.packs.replacedProxyDown'),
+				closeable: true
+			});
+		});
+
 	// -- remove dialog ----------------------------------------------------------------
 
 	let removeOpen = $state(false);
@@ -469,6 +512,20 @@
 				disabled: updatable.length === 0,
 				hint: updatable.length === 0 ? 'not identified with a provider' : undefined,
 				action: () => checkUpdates(updatable.map((row) => row.key))
+			},
+			{
+				label: t('web.packs.replaceFile'),
+				icon: 'upload',
+				disabled: !only || only.registration === 'dynamic',
+				hint: !only
+					? oneOnly
+					: only.registration === 'dynamic'
+						? t('web.packs.replaceDynamicHint')
+						: t('web.packs.replaceKeepsRegistration'),
+				action: () => {
+					replaceTarget = only!;
+					replaceOpen = true;
+				}
 			},
 			{ separator: true },
 			{
@@ -748,6 +805,34 @@
 	{/snippet}
 </Modal>
 
+<!-- replace one pack's zip -->
+<Modal
+	title={t('web.packs.replaceFileTitle', { key: replaceTarget?.key ?? '' })}
+	bind:open={replaceOpen}
+>
+	<FileDrop bind:file={replaceFile} accept=".zip" hint={t('web.packs.dropTheNewZip')} />
+	<p class="dim modalnote">
+		{t('web.packs.replaceExplains', { file: replaceTarget?.filename ?? '' })}
+	</p>
+	{#if replaceTarget?.remote}
+		<p class="dim modalnote">
+			{t('web.packs.replaceDropsProvider', { provider: replaceTarget.source })}
+		</p>
+	{/if}
+	{#snippet footer()}
+		<Btn onclick={() => (replaceOpen = false)}>{t('web.packs.cancel')}</Btn>
+		<Btn
+			variant="primary"
+			icon="upload"
+			disabled={!replaceFile}
+			loading={busy === 'replace'}
+			onclick={replacePack}
+		>
+			{t('web.packs.replace')}
+		</Btn>
+	{/snippet}
+</Modal>
+
 <!-- remove -->
 <Modal
 	title={removeTargets.length === 1
@@ -843,6 +928,12 @@
 
 	.uploadname {
 		margin-top: 1rem;
+	}
+
+	.modalnote {
+		margin: 0.75rem 0 0;
+		font-size: 0.8125rem;
+		line-height: 1.5;
 	}
 
 	// the sentence under the picker, explaining what installing actually does

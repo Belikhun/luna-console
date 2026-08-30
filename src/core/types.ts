@@ -306,6 +306,15 @@ export interface PublicSiteConfig {
 	title?: string;
 	/** One line under the heading */
 	tagline?: string;
+	/**
+	 * Where the console answers, e.g. "console.mc.belikhun.dev".
+	 *
+	 * The public page and the console are two hostnames in production, and the
+	 * public one proxies a short allowlist of prefixes only, so the page's own
+	 * "Console" link cannot be a relative path there. Unset means they share a
+	 * host (a dev server, or the LAN address) and the link stays relative.
+	 */
+	consoleUrl?: string;
 }
 
 /** An upstream platform luna can install addons from (core/services/providers.ts). */
