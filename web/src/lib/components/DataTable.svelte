@@ -56,6 +56,7 @@
 		emptyTitle = t('web.table.emptyTitle'),
 		emptyText = '',
 		emptyExtra,
+		defaultSort,
 		filtersActive = $bindable(false)
 	}: {
 		/** persistence key for column prefs */
@@ -96,6 +97,11 @@
 		emptyText?: string;
 		/** rendered under the empty state; e.g. "clear the search" */
 		emptyExtra?: Snippet;
+		/** the order the screen's author considers this table's natural one, used
+		 *  until the reader sorts it themselves. Their choice is stored per table
+		 *  and wins from then on; there is no way back to an unsorted table, so a
+		 *  stored `null` only ever means "has never sorted this one" */
+		defaultSort?: { col: string; dir?: 'asc' | 'desc' };
 		/** true while any filter group is on something other than "any value" */
 		filtersActive?: boolean;
 	} = $props();
@@ -138,8 +144,12 @@
 	let stickyFirst: StickyFirst = $state(initial.stickyFirst ?? 1);
 	let stickyLast = $state(initial.stickyLast ?? false);
 
-	let sortCol: string | null = $state(initial.sortCol ?? null);
-	let sortDir: 'asc' | 'desc' = $state(initial.sortDir ?? 'asc');
+	let sortCol: string | null = $state(initial.sortCol ?? untrack(() => defaultSort?.col ?? null));
+	let sortDir: 'asc' | 'desc' = $state(
+		initial.sortCol
+			? (initial.sortDir ?? 'asc')
+			: untrack(() => defaultSort?.dir ?? 'asc')
+	);
 	let page = $state(1);
 	let prefsOpen = $state(false);
 	let rowMenu: ContextMenu | undefined = $state();
@@ -1219,6 +1229,18 @@
 			&:empty::before {
 				content: '–';
 				color: var(--text-secondary);
+			}
+		}
+
+		// a cell holding an open in-place editor must not clip it: the column is
+		// sized for the resting value (a number, a short name) and the editor is
+		// always wider, so the confirm and cancel would be cut off. Only while
+		// one is open, and only on that cell
+		&:has(:global(.inlineedit.editing)) {
+			overflow: visible;
+
+			.cell {
+				overflow: visible;
 			}
 		}
 

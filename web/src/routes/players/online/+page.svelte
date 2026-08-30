@@ -323,6 +323,44 @@
 		broadcastText = '';
 	}
 
+	/**
+	 * Re-offer this player their resource packs. luna-pack sends a client its
+	 * whole applicable set rather than one pack, so this is the player-shaped
+	 * form of the same verb the pack screens carry: the fix for somebody whose
+	 * pack failed to download or who declined the prompt.
+	 */
+	async function resendPacks(player: Player): Promise<void> {
+		const note = Notify.loading(t('web.playersOnline.resendingPacks', { player: player.username }));
+
+		try {
+			const result = await post('/respacks/resend', { players: [player.username] });
+
+			if (!result.available) {
+				throw new Error(result.problem ?? t('web.playersOnline.resendUnavailable'));
+			}
+
+			const target = result.targets?.[0];
+
+			if (!target?.sent) {
+				throw new Error(target?.problem ?? t('web.playersOnline.resendUnavailable'));
+			}
+
+			note.set({
+				level: 'success',
+				message: t('web.playersOnline.resentPacks', { player: player.username }),
+				detail: t('web.playersOnline.resendWholeSet'),
+				closeable: true
+			});
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: t('web.playersOnline.resendFailed', { player: player.username }),
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+	}
+
 	/** A player's verbs; the row menu and the toolbar's Actions button. */
 	function rowActions(player: Player): ContextMenuItem[] {
 		return [
@@ -352,6 +390,12 @@
 					selected = new Set([player.uuid]);
 					transferOpen = true;
 				}
+			},
+			{
+				label: t('web.playersOnline.resendPacks'),
+				icon: 'image',
+				hint: t('web.playersOnline.resendWholeSet'),
+				action: () => void resendPacks(player)
 			},
 			{
 				label: t('web.playersOnline.copyUuid'),

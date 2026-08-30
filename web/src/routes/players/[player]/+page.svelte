@@ -562,6 +562,45 @@
 	);
 
 	/** Administration verbs in the header; live ones first, then the lists. */
+	/**
+	 * Re-offer this player their resource packs. luna-pack sends a client its
+	 * whole applicable set rather than one pack, so there is nothing to pick
+	 * here; it is the fix for a pack that failed to download or a prompt that
+	 * was declined. Needs them online, since the proxy sends it to a connection.
+	 */
+	async function resendPacks(): Promise<void> {
+		const player = detail?.username ?? '';
+		const note = Notify.loading(t('web.playerDetail.resendingPacks', { player }));
+
+		try {
+			const result = await post('/respacks/resend', { players: [player] });
+
+			if (!result.available) {
+				throw new Error(result.problem ?? t('web.playerDetail.resendUnavailable'));
+			}
+
+			const target = result.targets?.[0];
+
+			if (!target?.sent) {
+				throw new Error(target?.problem ?? t('web.playerDetail.resendUnavailable'));
+			}
+
+			note.set({
+				level: 'success',
+				message: t('web.playerDetail.resentPacks', { player }),
+				detail: t('web.playerDetail.resendWholeSet'),
+				closeable: true
+			});
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: t('web.playerDetail.resendFailed', { player }),
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+	}
+
 	function headerActions(): ContextMenuItem[] {
 		const offline = !detail?.online;
 
@@ -583,6 +622,13 @@
 				action: () => {
 					transferOpen = true;
 				}
+			},
+			{
+				label: t('web.playerDetail.resendPacks'),
+				icon: 'image',
+				disabled: offline,
+				hint: offline ? 'player is offline' : t('web.playerDetail.resendWholeSet'),
+				action: () => void resendPacks()
 			},
 			{
 				label: t('web.playerDetail.disconnectFromTheNetwork'),

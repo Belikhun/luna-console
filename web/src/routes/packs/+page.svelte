@@ -28,6 +28,7 @@
 	import IdentifyAddonModal from '$lib/components/IdentifyAddonModal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
+	import InlineEdit from '$lib/components/InlineEdit.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 
 	/**
@@ -339,6 +340,52 @@
 			});
 		});
 
+	/**
+	 * Write one pack's priority from its own cell. Priority is the stacking
+	 * order and packs are compared against each other, so a whole configure
+	 * screen to change one number is the wrong weight; the row edits it and the
+	 * proxy is reloaded, because a priority the proxy has not read has not
+	 * changed anything.
+	 *
+	 * Throwing is how the field stays open on a bad value: InlineEdit keeps the
+	 * typed text so the operator corrects it rather than retyping it.
+	 */
+	async function setPriority(row: PackRow, next: string): Promise<void> {
+		const priority = Number(next);
+
+		if (!Number.isInteger(priority)) {
+			const message = t('web.packs.priorityInteger');
+
+			Notify.error(message);
+
+			throw new Error(message);
+		}
+
+		const note = Notify.loading(t('web.packs.settingPriority', { key: row.key, priority }));
+
+		try {
+			await patch(`/respacks/${encodeURIComponent(row.key)}`, { priority });
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: t('web.packs.priorityFailed', { key: row.key }),
+				detail: (err as Error).message,
+				closeable: true
+			});
+
+			throw err;
+		}
+
+		note.set({
+			level: 'success',
+			message: t('web.packs.priorityDone', { key: row.key, from: row.priority, to: priority }),
+			detail: await sendReload(),
+			closeable: true
+		});
+
+		await refresh();
+	}
+
 	// -- replace dialog ---------------------------------------------------------------
 
 	let replaceOpen = $state(false);
@@ -421,7 +468,7 @@
 		{ id: 'name', label: t('web.packs.pack2'), sortable: true, minWidth: 160 },
 		// the badge plus a registration tag ("plugin", "overrides plugin") needs the room
 		{ id: 'state', label: t('web.packs.state'), sortable: true, minWidth: 240 },
-		{ id: 'priority', label: t('web.packs.priority'), sortable: true, width: 90, align: 'right' },
+		{ id: 'priority', label: t('web.packs.priority'), sortable: true, width: 140, align: 'right' },
 		{ id: 'required', label: t('web.packs.required'), sortable: true },
 		{ id: 'servers', label: t('web.packs.servers') },
 		{ id: 'groups', label: t('web.packs.groups') },
@@ -430,6 +477,13 @@
 		{ id: 'version', label: t('web.packs.version') },
 		{ id: 'auto', label: t('web.packs.autoUpdate'), sortable: true }
 	]);
+
+	/**
+	 * Priority is the stacking order, so the pack that wins a conflict is the one
+	 * to read first; alphabetical order says nothing an operator is looking for
+	 * here. Descending, and ties keep the directory's own order.
+	 */
+	const defaultSort = { col: 'priority', dir: 'desc' } as const;
 
 	function sortValue(row: PackRow, col: string): string | number | null {
 		switch (col) {
@@ -664,6 +718,7 @@
 		rowLabel={(row) => row.key}
 		noun={t('web.packs.pack')}
 		{sortValue}
+		{defaultSort}
 		rowDim={(row) => !row.enabled}
 		pageSize={25}
 		emptyTitle={t('web.packs.noResourcePacks')}
@@ -715,7 +770,15 @@
 					</span>
 				{/if}
 			{:else if col === 'priority'}
-				{row.priority}
+				<InlineEdit
+					value={row.priority}
+					type="number"
+					step={1}
+					label={t('web.packs.priorityOf', { key: row.key })}
+					disabled={row.registration === 'dynamic'}
+					hint={t('web.packs.priorityDynamicHint')}
+					save={(next) => setPriority(row, next)}
+				/>
 			{:else if col === 'required'}
 				{#if row.required}
 					<StatusBadge state="warning" label={t('web.packs.required')} detail="players cannot decline this pack" />

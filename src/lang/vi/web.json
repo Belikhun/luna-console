@@ -1324,7 +1324,20 @@
 		"replacedFile": "Đã thay {file} ({from} → {to}).",
 		"replacedSameBytes": "{file} không đổi; tệp tải lên trùng khớp từng byte với tệp đang có.",
 		"replacedReloaded": "Đã gửi lệnh tải lại tới proxy; từ giờ người chơi nhận tệp mới.",
-		"replacedProxyDown": "Proxy không chạy; tệp mới sẽ áp dụng ở lần khởi động tới."
+		"replacedProxyDown": "Proxy không chạy; tệp mới sẽ áp dụng ở lần khởi động tới.",
+		"priorityOf": "độ ưu tiên của {key}",
+		"priorityDynamicHint": "một plugin đặt độ ưu tiên của gói này lúc chạy",
+		"priorityInteger": "Độ ưu tiên phải là số nguyên.",
+		"settingPriority": "Đang đặt {key} về độ ưu tiên {priority}…",
+		"priorityFailed": "Không đổi được độ ưu tiên của {key}",
+		"priorityDone": "Độ ưu tiên của {key}: {from} → {to}."
+	},
+	"inlineEdit": {
+		"edit": "Sửa",
+		"editNamed": "Sửa {name}",
+		"clickToEdit": "Bấm để sửa",
+		"save": "Lưu",
+		"cancel": "Hủy"
 	},
 	"datapacks": {
 		"loadFailed": "Không tải được các gói dữ liệu",
@@ -1948,7 +1961,13 @@
 		"done": "Xong",
 		"note": "Ghi chú",
 		"storedInThePlayer": "Lưu trong lịch sử kiểm duyệt của người chơi, mọi operator đều thấy",
-		"record": "Ghi lại"
+		"record": "Ghi lại",
+		"resendPacks": "Gửi lại gói tài nguyên",
+		"resendWholeSet": "Mời lại mọi gói áp dụng cho họ; client đã có gói sẽ áp dụng từ bộ nhớ đệm của nó.",
+		"resendingPacks": "Đang gửi lại gói tài nguyên cho {player}…",
+		"resentPacks": "Đã mời lại gói tài nguyên cho {player}.",
+		"resendFailed": "Không gửi lại được gói cho {player}",
+		"resendUnavailable": "proxy không phản hồi nên không gửi lại được"
 	},
 	"machineDetail": {
 		"loadFailed": "Không tải được daemon {name}",
@@ -2485,7 +2504,13 @@
 		"destinationBackend": "Backend đích",
 		"move": "Chuyển",
 		"sentToEveryoneOn": "Gửi tới mọi người trên mạng, hoặc trên một backend",
-		"audience": "Đối tượng"
+		"audience": "Đối tượng",
+		"resendPacks": "Gửi lại gói tài nguyên",
+		"resendWholeSet": "Mời lại mọi gói áp dụng cho họ; client đã có gói sẽ áp dụng từ bộ nhớ đệm của nó.",
+		"resendingPacks": "Đang gửi lại gói tài nguyên cho {player}…",
+		"resentPacks": "Đã mời lại gói tài nguyên cho {player}.",
+		"resendFailed": "Không gửi lại được gói cho {player}",
+		"resendUnavailable": "proxy không phản hồi nên không gửi lại được"
 	},
 	"addonDetail": {
 		"overridesWinOverGroupsDisabling": "Ghi đè thắng các nhóm: tắt ở đây sẽ gỡ jar kể cả khi một nhóm cung cấp nó",

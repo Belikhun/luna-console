@@ -103,6 +103,27 @@
 	.bd {
 		padding: 1rem 1.25rem;
 		overflow-y: auto;
+
+		// Flash is built for the page-top flashbar, so it carries a trailing
+		// margin and no leading one. Mid-body that reads as the warning being
+		// glued to the line above it and floating away from the line below;
+		// the direct-child selector leaves a Flash nested in some other
+		// component's own layout alone
+		> :global(.flash) {
+			margin-top: 0.75rem;
+		}
+
+		// the body's padding is the whole gap at either edge: a child's own
+		// margin must not add to it. These come after the rule above on
+		// purpose; equal specificity, so source order is what lets a leading
+		// Flash still sit flush against the header
+		> :global(:first-child) {
+			margin-top: 0;
+		}
+
+		> :global(:last-child) {
+			margin-bottom: 0;
+		}
 	}
 
 	.ft {

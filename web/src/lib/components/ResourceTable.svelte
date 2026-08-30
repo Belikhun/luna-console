@@ -51,6 +51,7 @@
 		maxHeight,
 		emptyTitle = t('web.table.emptyTitle'),
 		emptyText = '',
+		defaultSort,
 		noun = 'resource'
 	}: {
 		/** required; preferences (columns, page size, density) are stored per table */
@@ -86,6 +87,9 @@
 		maxHeight?: string;
 		emptyTitle?: string;
 		emptyText?: string;
+		/** the order the screen's author considers natural, until the reader sorts
+		 *  it themselves; their choice is stored per table and wins after that */
+		defaultSort?: { col: string; dir?: 'asc' | 'desc' };
 		/** what the rows are, for the "no matches" copy */
 		noun?: string;
 	} = $props();
@@ -137,6 +141,7 @@
 	cell={cellBody}
 	toolbar={tools}
 	emptyExtra={clearer}
+	{defaultSort}
 	{filters}
 	{selectable}
 	bind:selected

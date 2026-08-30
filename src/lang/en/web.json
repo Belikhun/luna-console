@@ -1449,7 +1449,20 @@
 		"replacedFile": "{file} replaced ({from} → {to}).",
 		"replacedSameBytes": "{file} is unchanged; the upload is byte-for-byte the file already there.",
 		"replacedReloaded": "Reload sent to the proxy; players get the new file from now on.",
-		"replacedProxyDown": "The proxy is not running; the new file applies on its next boot."
+		"replacedProxyDown": "The proxy is not running; the new file applies on its next boot.",
+		"priorityOf": "the priority of {key}",
+		"priorityDynamicHint": "a plugin sets this pack's priority at runtime",
+		"priorityInteger": "Priority must be a whole number.",
+		"settingPriority": "Setting {key} to priority {priority}…",
+		"priorityFailed": "Could not change {key}'s priority",
+		"priorityDone": "{key} priority {from} → {to}."
+	},
+	"inlineEdit": {
+		"edit": "Edit",
+		"editNamed": "Edit {name}",
+		"clickToEdit": "Click to edit",
+		"save": "Save",
+		"cancel": "Cancel"
 	},
 	"perms": {
 		"permissionGroups": "Permission groups",
@@ -2756,7 +2769,13 @@
 		"done": "Done",
 		"note": "Note",
 		"storedInThePlayer": "Stored in the player's moderation history, visible to every operator",
-		"record": "Record"
+		"record": "Record",
+		"resendPacks": "Resend resource packs",
+		"resendWholeSet": "Re-offers every pack that applies to them; a client that already has one applies it from its own cache.",
+		"resendingPacks": "Resending resource packs to {player}…",
+		"resentPacks": "Resource packs re-offered to {player}.",
+		"resendFailed": "Could not resend packs to {player}",
+		"resendUnavailable": "the proxy is not answering, so the resend could not be sent"
 	},
 	"playersOnline": {
 		"onlinePlayers": "Online players",
@@ -2818,7 +2837,13 @@
 		"destinationBackend": "Destination backend",
 		"move": "Move",
 		"sentToEveryoneOn": "Sent to everyone on the network, or on one backend",
-		"audience": "Audience"
+		"audience": "Audience",
+		"resendPacks": "Resend resource packs",
+		"resendWholeSet": "Re-offers every pack that applies to them; a client that already has one applies it from its own cache.",
+		"resendingPacks": "Resending resource packs to {player}…",
+		"resentPacks": "Resource packs re-offered to {player}.",
+		"resendFailed": "Could not resend packs to {player}",
+		"resendUnavailable": "the proxy is not answering, so the resend could not be sent"
 	},
 	"selector": {
 		"serverSelector": "Server selector",
