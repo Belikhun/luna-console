@@ -1,19 +1,20 @@
 # luna-console: Project Instructions
 
-`control/` is the source tree of the control centre for the **Luna Minecraft cluster**, which
-lives one level up at `/mnt/shulker/mrds`: one Velocity proxy plus seven Paper backends (`lobby`,
-`survival`, `event`, `event2`, `infdun`, `iceboat`, `manhunt`) running in GNU screen sessions
-`luna.<name>`, plus external servers (`create`, `sandbox`) routed through the proxy. The **luna
-daemon** is the long-lived process that owns the cluster; the `luna` CLI and the web console are
-its clients. This machine runs the primary; follower daemons elsewhere manage the instances
-assigned to them and mirror state plus plugins from the primary.
+This repo is the source tree of the control centre for the **Luna Minecraft cluster**: one
+Velocity proxy plus seven Paper backends (`lobby`, `survival`, `event`, `event2`, `infdun`,
+`iceboat`, `manhunt`) running in GNU screen sessions `luna.<name>`, plus external servers
+(`create`, `sandbox`) routed through the proxy. The cluster's managed data lives in the **cluster
+root** (written `<root>` throughout: a directory holding `.data/cluster.json`, discovered by the
+daemon). The **luna daemon** is the long-lived process that owns the cluster; the `luna` CLI and
+the web console are its clients. One machine runs the primary; follower daemons elsewhere manage
+the instances assigned to them and mirror state plus plugins from the primary.
 
 **`luna` is the one name** the project, the binary, the daemon, the system user, the config
 directory and every release asset share. The historical `mrds`/`MRDS_` prefix survives only in the
-cluster root path `/mnt/shulker/mrds`, which is a location, not an identity.
+production cluster root's directory name, which is a location, not an identity.
 
 Stack (locked): Bun + TypeScript · single compiled binary (`bun build --compile` → `dist/luna`,
-symlinked as `/mnt/shulker/mrds/luna`) · picocolors + @clack/prompts for the terminal · SvelteKit
+installed as `<root>/.bin/luna`) · picocolors + @clack/prompts for the terminal · SvelteKit
 (Svelte 5 runes) + adapter-node running **under Bun** for the web console (no Elysia, no separate
 backend) · **SCSS** (`sass-embedded` through `vitePreprocess`) for every stylesheet · xterm.js for
 the terminal drawer · **Monaco** for config editing, reached only through the dynamic import in
@@ -27,7 +28,7 @@ the only external APIs.
 ## Layout
 
 ```
-control/                # this repo — the only source tree
+<repo>/                 # this repo — the only source tree
   src/core/             # domain logic — no console I/O; executes inside the daemon
   src/daemon/           # daemon runtime: config, RPC ops, jobs, sampler, scheduler,
                         #   hub (primary) + follower link, unix-socket/TCP server
@@ -44,7 +45,7 @@ control/                # this repo — the only source tree
   .github/workflows/    # ci (typecheck · svelte-check · build) and release (tags)
   Dockerfile            # binary + console + JRE + screen — the published image
 
-/mnt/shulker/mrds/      # cluster root (parent dir) — managed data, not source
+<root>/                 # cluster root — managed data, not source
   .data/                # every state file; `STATE_FILES` in core/config.ts
     cluster.json        # instance registry — source of truth
     plugins.lock.json   # plugin metadata/versions — source of truth
@@ -471,7 +472,8 @@ Wiring rules:
 - **The existing console is the design reference**: match the dark token set and the metrics already
   in `web/src/app.scss` and the component library rather than introducing a new visual language.
   Where a value looks off-scale it is usually deliberate; check the comment before fixing it.
-  Implementation patterns come from the user's vloom dashboard (cloned at `~/dashboard`).
+  Implementation patterns come from the author's vloom dashboard; consult a local clone of it
+  when one is available.
 - **Everything goes through the component library** in `web/src/lib/components/`: no hand-rolled
   buttons, tables, grids or panels inside pages. Extend the component when a page needs something
   new.
@@ -635,7 +637,7 @@ in the file) to unlock the CurseForge provider, and
 defaults to the machine's hostname (short form, lowercased); it keys `cluster.json` and decides
 instance ownership, so it must be unique across the cluster. No config plus a discoverable cluster
 root = primary with defaults. For dev, start one with
-`LUNA_ROOT=/mnt/shulker/mrds bun run src/cli/index.ts daemon run` before using the CLI or console; a
+`LUNA_ROOT=<root> bun run src/cli/index.ts daemon run` before using the CLI or console; a
 second daemon on the same host isolates itself with `LUNA_SOCKET` (that is how the follower
 simulation runs on loopback).
 
@@ -643,8 +645,8 @@ Iterate on the console with `--dev`: Vite hot-reloads Svelte and CSS edits and r
 in place, so there is no rebuild/restart cycle. Only run `cd web && bun run build` when producing
 the deployable bundle.
 
-Server LAN address is `10.0.0.10`; the console is reachable at `http://10.0.0.10:8330` when bound
-to `0.0.0.0`.
+When bound to `0.0.0.0`, the console is reachable from the LAN at the primary machine's address on
+port 8330.
 
 `LUNA_LANG=vi` switches the CLI and the daemon to Vietnamese (`en` is the default and the fallback
 for any key a locale has not translated). The console picks its own locale in the status bar and
