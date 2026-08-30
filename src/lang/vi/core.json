@@ -167,7 +167,10 @@
 		"resendTooOld": "LunaPackLoader trên proxy cũ hơn điểm cuối phiên gói",
 		"resendNoProxy": "proxy không phản hồi",
 		"resendOffline": "không trực tuyến",
-		"resendBadName": "proxy trả về một tên không thể đặt vào lệnh"
+		"resendBadName": "proxy trả về một tên không thể đặt vào lệnh",
+		"versionsNeedProvider": "{key} chưa được liên kết với nhà cung cấp nên không có phiên bản nào để chọn",
+		"versionNotFound": "{key} không có phiên bản {version} nào được phát hành",
+		"versionAmbiguous": "{key} có nhiều bản dựng mang số {version}; hãy chọn theo id: {candidates}"
 	},
 	"families": {
 		"unknownPlugin": "không biết plugin: {name}; không có gì trong kho mang tên đó",

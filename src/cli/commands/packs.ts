@@ -740,6 +740,130 @@ command({
 	},
 });
 
+/**
+ * The MC versions a build declares, short enough for a table cell. A pack that
+ * covers a whole game line lists a dozen of them, which pushes every column
+ * after it off the terminal; the count carries what the tail would have said.
+ */
+function mcCell(gameVersions: string[]): string {
+	if (!gameVersions.length) {
+		return pc.dim("—");
+	}
+
+	const shown = gameVersions.slice(0, 3).join(", ");
+	const rest = gameVersions.length - 3;
+
+	return rest > 0 ? `${shown} ${pc.dim(`+${rest}`)}` : shown;
+}
+
+command({
+	path: ["packs", "versions"],
+	desc: t("cli.packs.versions.desc"),
+	args: [{ name: "pack", required: true, complete: respackKeys }],
+
+	handler: async (args) => {
+		const lock = await loadPacksLock();
+		const key = args[0]!;
+		const spin = new Spinner().start(t("cli.packs.checkingProviders"));
+
+		let versions: respacks.RespackVersion[];
+
+		try {
+			versions = await respacks.resourcePackVersions(lock, key);
+		} finally {
+			spin.stop();
+		}
+
+		if (!versions.length) {
+			warn(t("cli.packs.versions.none", { name: key }));
+
+			return;
+		}
+
+		const rows = versions.map((version) => [
+			version.installed ? pc.green(Sym.ok) : pc.dim(" "),
+			version.installed ? pc.bold(version.versionNumber) : version.versionNumber,
+			// the id, not the number: a pack publishing one build per MC line
+			// carries the same number several times over
+			pc.dim(version.id),
+			version.channel === "release" ? pc.dim(version.channel) : pc.yellow(version.channel),
+			mcCell(version.gameVersions),
+			version.publishedAt.slice(0, 10),
+			fmtBytes(version.sizeBytes),
+			version.older ? pc.dim(t("cli.packs.versions.older")) : "",
+		]);
+
+		printTable(rows, {
+			head: [
+				"",
+				t("cli.head.version"),
+				t("cli.head.id"),
+				t("cli.head.channel"),
+				t("cli.head.supportsMc"),
+				t("cli.head.published"),
+				t("cli.head.size"),
+				"",
+			],
+		});
+
+		info(t("cli.packs.versions.pickHint", { command: `luna packs set-version ${key} <version>` }));
+	},
+});
+
+command({
+	path: ["packs", "set-version"],
+	desc: t("cli.packs.setVersion.desc"),
+	args: [
+		{ name: "pack", required: true, complete: respackKeys },
+		{ name: "version", required: true },
+	],
+
+	handler: async (args) => {
+		const cfg = await loadCluster();
+		const lock = await loadPacksLock();
+		const key = args[0]!;
+		const wanted = args[1]!;
+		const spin = new Spinner().start(t("cli.packs.setVersion.switching", { version: wanted }));
+
+		let result: respacks.RespackVersionChange;
+
+		try {
+			result = await respacks.setResourcePackVersion(cfg, lock, key, wanted);
+		} finally {
+			spin.stop();
+		}
+
+		await savePacksLock(lock);
+
+		ok(
+			t("cli.packs.setVersion.done", {
+				name: pc.bold(key),
+				from: result.from ?? "?",
+				to: pc.green(result.to),
+				size: fmtBytes(result.sizeAfter),
+			}),
+		);
+
+		if (result.unchanged) {
+			warn(t("cli.packs.setVersion.unchanged"));
+		}
+
+		if (result.downgrade) {
+			warn(t("cli.packs.setVersion.downgraded", { version: result.to }));
+		}
+
+		if (result.autoUpdateOff) {
+			warn(t("cli.packs.setVersion.autoOff", { name: key }));
+		}
+
+		if (result.channelWidened) {
+			info(t("cli.packs.setVersion.channelWidened", { channel: result.channelWidened }));
+		}
+
+		info(t("cli.packs.reloadHint"));
+	},
+});
+
 command({
 	path: ["packs", "remove"],
 	desc: t("cli.packs.remove.desc"),

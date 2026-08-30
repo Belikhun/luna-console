@@ -146,7 +146,8 @@
 		"created": "created",
 		"field": "field",
 		"display": "display",
-		"dataPack": "DATA PACK"
+		"dataPack": "DATA PACK",
+		"published": "published"
 	},
 	"machines": {
 		"unknown": "unknown machine \"{name}\"; known machines: {known}"
@@ -620,6 +621,21 @@
 			"noBackend": "(no backend)",
 			"summary": "resent to {sent} of {online} online player(s)",
 			"wholeSet": "a resend offers a player every pack that applies to them; luna-pack has no per-pack resend"
+		},
+		"versions": {
+			"desc": "List the versions a pack's provider has published",
+			"none": "{name}'s provider lists no versions",
+			"older": "older",
+			"pickHint": "switch to one with: {command}"
+		},
+		"setVersion": {
+			"desc": "Switch a provider-linked pack to a specific version (up or down)",
+			"done": "{name} is now on {to} (was {from}, {size})",
+			"unchanged": "the file is unchanged; those bytes were already on disk",
+			"downgraded": "{version} is older than the version it replaced",
+			"autoOff": "auto-update is now off for {name}, so the next check cannot undo this",
+			"channelWidened": "the update channel widened to {channel} to stay on this line",
+			"switching": "switching to {version}..."
 		}
 	},
 	"datapacks": {

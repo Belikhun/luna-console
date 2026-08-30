@@ -35,6 +35,7 @@ import {
 	type PacksLock,
 	type PackSource,
 } from "./packslock";
+import { RELEASE_CHANNELS } from "./channels";
 import { download, sha512File } from "./services/download";
 import type { IdentityMatch, IdentityProbe } from "./identify";
 import {
@@ -998,6 +999,230 @@ export async function installResourcePackFromProvider(
 	const fresh = await listResourcePacks(cfg, lock);
 
 	return fresh.find((candidate) => candidate.key === key)!;
+}
+
+/** One provider build of a pack, as the version pickers list them. */
+export interface RespackVersion {
+	/** Provider version id; the handle to pick by, since numbers repeat */
+	id: string;
+	versionNumber: string;
+	channel: PackChannel;
+	gameVersions: string[];
+	publishedAt: string;
+	/** Size the provider declares for the file that would be downloaded */
+	sizeBytes: number;
+	/** The build the zip on disk currently is */
+	installed: boolean;
+	/** Published before the installed build: taking it is a downgrade */
+	older: boolean;
+}
+
+/** How many builds the version pickers offer, newest first. */
+const RESPACK_VERSION_LIMIT = 60;
+
+/**
+ * The builds a pack's provider offers, newest first.
+ *
+ * Deliberately not channel-gated: this is the list an operator picks from by
+ * hand, and the reason to open it is usually that the automatic path chose
+ * something they do not want. Every row says where it sits relative to what is
+ * installed, so a downgrade is visible before it is taken rather than after.
+ */
+export async function resourcePackVersions(
+	lock: PacksLock,
+	key: string,
+): Promise<RespackVersion[]> {
+	const entry = lock.resourcepacks[key];
+
+	if (!entry) {
+		throw new Error(t("core.respacks.unknown", { key }));
+	}
+
+	if (!entry.remote) {
+		throw new Error(t("core.respacks.versionsNeedProvider", { key }));
+	}
+
+	const versions = await getVersions(entry.remote, "resourcepack");
+	const installedAt = entry.installed?.publishedAt
+		? Date.parse(entry.installed.publishedAt)
+		: undefined;
+
+	return [...versions]
+		.sort((a, b) => Date.parse(b.date_published) - Date.parse(a.date_published))
+		.slice(0, RESPACK_VERSION_LIMIT)
+		.map((version) => ({
+			id: version.id,
+			versionNumber: version.version_number,
+			channel: version.version_type,
+			gameVersions: version.game_versions,
+			publishedAt: version.date_published,
+			sizeBytes: primaryFile(version).size,
+			installed: version.id === entry.installed?.versionId,
+			older: installedAt !== undefined && Date.parse(version.date_published) < installedAt,
+		}));
+}
+
+/**
+ * Resolve what an operator typed to exactly one published build.
+ *
+ * A version id is unique and wins outright. A version *number* is not: a pack
+ * that publishes one build per MC line carries the same number several times
+ * over (detailed-animations has six builds numbered 1.15), so an ambiguous
+ * number is refused with the ids rather than resolved to whichever came first
+ * out of the provider.
+ */
+function resolvePackVersion(
+	versions: AddonVersion[],
+	spec: string,
+	key: string,
+): AddonVersion {
+	const byId = versions.find((candidate) => candidate.id === spec);
+
+	if (byId) {
+		return byId;
+	}
+
+	const byNumber = versions
+		.filter((candidate) => candidate.version_number === spec)
+		.sort((a, b) => Date.parse(b.date_published) - Date.parse(a.date_published));
+
+	if (!byNumber.length) {
+		throw new Error(t("core.respacks.versionNotFound", { version: spec, key }));
+	}
+
+	if (byNumber.length > 1) {
+		const candidates = byNumber
+			.map((candidate) => `${candidate.id} (${candidate.date_published.slice(0, 10)})`)
+			.join(", ");
+
+		throw new Error(
+			t("core.respacks.versionAmbiguous", { version: spec, key, candidates }),
+		);
+	}
+
+	return byNumber[0]!;
+}
+
+/** What moving a pack onto a chosen provider build did. */
+export interface RespackVersionChange {
+	row: RespackRow;
+	/** The version number the pack was on, when one was recorded */
+	from?: string;
+	to: string;
+	/** The chosen build predates the one it replaced */
+	downgrade: boolean;
+	/** Auto-update was on and this pick turned it off */
+	autoUpdateOff: boolean;
+	/** The entry's channel was widened to carry the chosen build */
+	channelWidened?: PackChannel;
+	sizeBefore: number;
+	sizeAfter: number;
+	/** The downloaded bytes are the bytes already on disk */
+	unchanged: boolean;
+}
+
+/**
+ * Move a provider-linked pack onto a specific build, newer or older.
+ *
+ * The counterpart to an update check: that one asks the provider what it should
+ * be on and refuses to go backwards, this one does what the operator says. A
+ * downgrade is the point rather than an accident, which is why the guard is not
+ * applied here and is instead reported in the result.
+ *
+ * The definition is untouched, exactly as a file replacement leaves it: name,
+ * priority, rules and enablement are the operator's, and changing which build
+ * is on disk is not a request to reset them.
+ *
+ * Clients keep the pack they already downloaded until the proxy re-reads the
+ * directory, so a reload belongs after this.
+ */
+export async function setResourcePackVersion(
+	cfg: ClusterConfig,
+	lock: PacksLock,
+	key: string,
+	versionSpec: string,
+): Promise<RespackVersionChange> {
+	// the live listing, for the same reason an upload takes it: a pack a plugin
+	// registers at runtime has no zip of luna's to write over, and only the
+	// running proxy knows which packs those are
+	const { rows } = await listResourcePacksLive(cfg, lock);
+	const row = rows.find((candidate) => candidate.key === key);
+
+	if (!row) {
+		throw new Error(t("core.respacks.unknown", { key }));
+	}
+
+	if (row.registration === "dynamic") {
+		throw new Error(t("core.respacks.dynamicNoFile", { key }));
+	}
+
+	const entry = lock.resourcepacks[key];
+
+	if (!entry?.remote) {
+		throw new Error(t("core.respacks.versionsNeedProvider", { key }));
+	}
+
+	const versions = await getVersions(entry.remote, "resourcepack");
+	const version = resolvePackVersion(versions, versionSpec, key);
+
+	// the definition's own filename, not `<key>.zip`: a pack adopted from a zip
+	// somebody else named would otherwise leave its definition pointing at the
+	// old file with the new one sitting beside it unserved
+	const target = join(respacksDir(), entry.file);
+	const sizeBefore = row.present ? row.sizeBytes : 0;
+	const before = row.present ? await sha512File(target) : undefined;
+
+	const file = primaryFile(version);
+	const sha512 = await download(file.url, target, file.hashes);
+
+	const from = entry.installed?.versionNumber;
+	const installedAt = entry.installed?.publishedAt
+		? Date.parse(entry.installed.publishedAt)
+		: undefined;
+	const downgrade = installedAt !== undefined && Date.parse(version.date_published) < installedAt;
+
+	entry.installed = {
+		versionId: version.id,
+		versionNumber: version.version_number,
+		sha512,
+		gameVersions: version.game_versions,
+		publishedAt: version.date_published,
+	};
+
+	// a deliberate downgrade and an automatic update pull against each other:
+	// the next check would find the build just abandoned and put it straight
+	// back, so choosing an older build is also choosing to stop being moved
+	const autoUpdateOff = downgrade && entry.autoUpdate;
+
+	if (autoUpdateOff) {
+		entry.autoUpdate = false;
+	}
+
+	// picking a prerelease widens the channel to carry it; left at "release",
+	// the next check would offer a build off the line just chosen
+	const widened =
+		RELEASE_CHANNELS.indexOf(version.version_type) >
+		RELEASE_CHANNELS.indexOf(entry.channel ?? "release")
+			? version.version_type
+			: undefined;
+
+	if (widened) {
+		entry.channel = widened;
+	}
+
+	const fresh = await listResourcePacks(cfg, lock);
+
+	return {
+		row: fresh.find((candidate) => candidate.key === key)!,
+		from,
+		to: version.version_number,
+		downgrade,
+		autoUpdateOff,
+		channelWidened: widened,
+		sizeBefore,
+		sizeAfter: (await stat(target)).size,
+		unchanged: before === sha512,
+	};
 }
 
 /** One available resource pack update. */

@@ -18,6 +18,8 @@ export type {
 	RespackRow,
 	RespackPatch,
 	RespackUpdate,
+	RespackVersion,
+	RespackVersionChange,
 	RespackReplacement,
 	RespackResendScope,
 	RespackResendResult,
@@ -36,6 +38,11 @@ export const addResourcePackFile = call("respacks.addResourcePackFile", { cfg: 0
 // definition it must not disturb lives there too
 export const replaceResourcePackFile = call("respacks.replaceFile", { cfg: 0, lock: 1 }) as typeof core.replaceResourcePackFile;
 export const installResourcePackFromProvider = call("respacks.installFromProvider", { cfg: 0, lock: 1 }) as typeof core.installResourcePackFromProvider;
+// the published builds come from the provider, which only the daemon calls
+export const resourcePackVersions = call("respacks.versions", { lock: 0 }) as typeof core.resourcePackVersions;
+// switching build downloads over the pack's zip, so it is a packs-directory
+// write like an upload rather than a lockfile edit
+export const setResourcePackVersion = call("respacks.setVersion", { cfg: 0, lock: 1 }) as typeof core.setResourcePackVersion;
 export const checkResourcePackUpdates = call("respacks.checkUpdates", { lock: 0 }) as typeof core.checkResourcePackUpdates;
 export const applyResourcePackUpdate = call("respacks.applyUpdate", { lock: 0 }) as typeof core.applyResourcePackUpdate;
 export const removeResourcePack = call("respacks.removeResourcePack", { cfg: 0, lock: 1 }) as typeof core.removeResourcePack;

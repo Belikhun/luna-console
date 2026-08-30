@@ -167,7 +167,10 @@
 		"resendTooOld": "the proxy's LunaPackLoader is older than the pack-session endpoint",
 		"resendNoProxy": "the proxy did not answer",
 		"resendOffline": "not online",
-		"resendBadName": "the proxy reports a name that cannot be put in a command"
+		"resendBadName": "the proxy reports a name that cannot be put in a command",
+		"versionsNeedProvider": "{key} is not linked to a provider, so there are no published versions to choose from",
+		"versionNotFound": "{key} has no version {version} published",
+		"versionAmbiguous": "{key} has more than one build numbered {version}; pick one by id: {candidates}"
 	},
 	"families": {
 		"unknownPlugin": "unknown plugin: {name}; nothing pooled under that name",

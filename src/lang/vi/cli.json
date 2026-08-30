@@ -146,7 +146,8 @@
 		"created": "tạo lúc",
 		"field": "trường",
 		"display": "hiển thị",
-		"dataPack": "GÓI DỮ LIỆU"
+		"dataPack": "GÓI DỮ LIỆU",
+		"published": "phát hành"
 	},
 	"machines": {
 		"unknown": "không biết máy \"{name}\"; các máy đã biết: {known}"
@@ -620,6 +621,21 @@
 			"noBackend": "(không có backend)",
 			"summary": "đã gửi lại cho {sent} trên {online} người chơi trực tuyến",
 			"wholeSet": "gửi lại sẽ mời người chơi mọi gói áp dụng cho họ; luna-pack không có lệnh gửi lại từng gói"
+		},
+		"versions": {
+			"desc": "Liệt kê các phiên bản nhà cung cấp đã phát hành cho gói",
+			"none": "nhà cung cấp của {name} không liệt kê phiên bản nào",
+			"older": "cũ hơn",
+			"pickHint": "chuyển sang một phiên bản bằng: {command}"
+		},
+		"setVersion": {
+			"desc": "Chuyển gói đã liên kết nhà cung cấp sang một phiên bản cụ thể (lên hoặc xuống)",
+			"done": "{name} hiện ở {to} (trước là {from}, {size})",
+			"unchanged": "tệp không đổi; số byte đó đã có sẵn trên đĩa",
+			"downgraded": "{version} cũ hơn phiên bản mà nó thay thế",
+			"autoOff": "tự động cập nhật đã tắt cho {name} nên lần kiểm tra sau không thể hoàn tác việc này",
+			"channelWidened": "kênh cập nhật đã mở rộng sang {channel} để giữ nguyên nhánh này",
+			"switching": "đang chuyển sang {version}..."
 		}
 	},
 	"datapacks": {

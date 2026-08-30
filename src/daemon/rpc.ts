@@ -1489,6 +1489,8 @@ export const OPS: Record<string, OpSpec> = {
 	"respacks.addResourcePackFile": { fn: respacksCore.addResourcePackFile, cfg: 0, lock: 1 },
 	"respacks.installFromProvider": { fn: respacksCore.installResourcePackFromProvider, cfg: 0, lock: 1 },
 	"respacks.replaceFile": { fn: respacksCore.replaceResourcePackFile, cfg: 0, lock: 1 },
+	"respacks.versions": { fn: respacksCore.resourcePackVersions, lock: 0 },
+	"respacks.setVersion": { fn: respacksCore.setResourcePackVersion, cfg: 0, lock: 1 },
 	"respacks.checkUpdates": { fn: respacksCore.checkResourcePackUpdates, lock: 0 },
 	"respacks.applyUpdate": { fn: respacksCore.applyResourcePackUpdate, lock: 0 },
 	"respacks.removeResourcePack": { fn: respacksCore.removeResourcePack, cfg: 0, lock: 1 },

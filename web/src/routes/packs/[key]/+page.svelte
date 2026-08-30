@@ -15,6 +15,8 @@
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import Select from '$lib/components/Select.svelte';
+	import Flash from '$lib/components/Flash.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
@@ -320,6 +322,108 @@
 		holderPlayers.filter((player: any) => !player.loaded && !player.pending)
 	);
 
+	// -- switching to another published build ---------------------------------------
+
+	/** One row of the version picker, as `/respacks/<key>/versions` returns it. */
+	interface PackVersion {
+		id: string;
+		versionNumber: string;
+		channel: string;
+		gameVersions: string[];
+		publishedAt: string;
+		sizeBytes: number;
+		installed: boolean;
+		older: boolean;
+	}
+
+	let versionsOpen = $state(false);
+	let versions: PackVersion[] = $state([]);
+	let versionsLoading = $state(false);
+	let versionsError = $state('');
+	let versionPick = $state('');
+
+	// the provider is asked when the dialog opens rather than on every page load:
+	// nobody switching build is doing it by accident, and the call is a network
+	// round trip the overview has no use for
+	$effect(() => {
+		if (!versionsOpen) {
+			return;
+		}
+
+		let cancelled = false;
+
+		versionsLoading = true;
+		versionsError = '';
+		versions = [];
+		versionPick = '';
+
+		void (async () => {
+			try {
+				const res = await api(`/respacks/${encodeURIComponent(key ?? '')}/versions`);
+
+				if (cancelled) {
+					return;
+				}
+
+				versions = res.versions ?? [];
+
+				// start on what is installed, so the dialog opens saying where the
+				// pack actually is rather than proposing a move nobody asked for
+				versionPick = versions.find((row) => row.installed)?.id ?? versions[0]?.id ?? '';
+			} catch (err) {
+				if (!cancelled) {
+					versionsError = (err as Error).message;
+				}
+			} finally {
+				if (!cancelled) {
+					versionsLoading = false;
+				}
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	const pickedVersion = $derived(versions.find((row) => row.id === versionPick));
+
+	/** Put the pack on the picked build, then reload the proxy. */
+	const applyVersion = () =>
+		run(
+			'setversion',
+			t('web.packDetail.switchingVersion', { version: pickedVersion?.versionNumber ?? '' }),
+			async () => {
+				const res = await post(`/respacks/${encodeURIComponent(key ?? '')}/versions`, {
+					version: versionPick
+				});
+
+				versionsOpen = false;
+
+				// the zip changed under the same URL, so the stored reachability
+				// answer describes a file that is no longer there
+				await load(true);
+
+				const notes = [
+					res.unchanged
+						? t('web.packDetail.versionUnchanged')
+						: t('web.packDetail.versionSet', {
+								key: key ?? '',
+								from: res.from ?? '?',
+								to: res.to
+							}),
+					res.downgrade ? t('web.packDetail.versionDowngraded') : '',
+					res.autoUpdateOff ? t('web.packDetail.versionAutoOff') : '',
+					res.channelWidened
+						? t('web.packDetail.versionChannelWidened', { channel: res.channelWidened })
+						: '',
+					await sendReload()
+				];
+
+				return notes.filter(Boolean).join(' ');
+			}
+		);
+
 	/**
 	 * Ask the proxy to re-offer packs. `lunapack resend` sends a player their
 	 * whole applicable set rather than one pack, so the scope only decides who
@@ -407,6 +511,19 @@
 				disabled: !pack.remote || !!busy,
 				hint: !pack.remote ? 'not identified with a provider' : undefined,
 				action: checkUpdate
+			},
+			{
+				label: t('web.packDetail.changeVersion'),
+				icon: 'clockRotateLeft',
+				disabled: !pack.remote || pack.registration === 'dynamic' || !!busy,
+				hint: !pack.remote
+					? t('web.packDetail.changeVersionNoProvider')
+					: pack.registration === 'dynamic'
+						? t('web.packDetail.replaceDynamicHint')
+						: undefined,
+				action: () => {
+					versionsOpen = true;
+				}
 			},
 			{
 				label: t('web.packDetail.replaceFile'),
@@ -1146,6 +1263,60 @@
 		{/if}
 	</div>
 {/if}
+
+<!-- move the pack onto another build its provider published, up or down -->
+<Modal title={t('web.packDetail.changeVersionTitle', { key: key ?? '' })} bind:open={versionsOpen}>
+	{#if versionsLoading}
+		<p class="dim modalnote">{t('web.packDetail.versionsLoading')}</p>
+	{:else if versionsError}
+		<Flash kind="error">{versionsError}</Flash>
+	{:else if !versions.length}
+		<p class="dim modalnote">{t('web.packDetail.versionsEmpty')}</p>
+	{:else}
+		<Select
+			value={versionPick}
+			width="100%"
+			disabled={!!busy}
+			options={versions.map((row) => ({
+				value: row.id,
+				// the date disambiguates: a pack publishing one build per MC line
+				// carries the same number several times over
+				label:
+					`${row.versionNumber} · ${row.channel} · ${row.publishedAt.slice(0, 10)} · ` +
+					fmtBytes(row.sizeBytes) +
+					(row.installed ? ` · ${t('web.packDetail.versionInstalled')}` : '') +
+					(row.older ? ` · ${t('web.packDetail.versionOlder')}` : '')
+			}))}
+			onchange={(value) => (versionPick = value)}
+		/>
+
+		{#if pickedVersion?.gameVersions.length}
+			<p class="dim modalnote">
+				{t('web.packDetail.versionSupports', { mc: pickedVersion.gameVersions.join(', ') })}
+			</p>
+		{/if}
+
+		{#if pickedVersion?.older}
+			<Flash kind="warning">{t('web.packDetail.versionDowngradeWarn')}</Flash>
+		{/if}
+
+		{#if pickedVersion?.installed}
+			<p class="dim modalnote">{t('web.packDetail.versionIsCurrent')}</p>
+		{/if}
+	{/if}
+	{#snippet footer()}
+		<Btn onclick={() => (versionsOpen = false)}>{t('web.packDetail.cancel')}</Btn>
+		<Btn
+			variant="primary"
+			icon="download"
+			disabled={!versionPick}
+			loading={busy === 'setversion'}
+			onclick={applyVersion}
+		>
+			{t('web.packDetail.useThisVersion')}
+		</Btn>
+	{/snippet}
+</Modal>
 
 <!-- replace this pack's zip with one from this computer -->
 <Modal title={t('web.packDetail.replaceFileTitle', { key: key ?? '' })} bind:open={replaceOpen}>
