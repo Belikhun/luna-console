@@ -38,7 +38,7 @@ export async function GET({ params }) {
 	}
 
 	const entry = lock.plugins[row.key]!;
-	const log = pluginLogReport(session, aliasesOf(row.key, entry));
+	const log = pluginLogReport(session, aliasesOf(row.key, entry), row.file);
 
 	return json({
 		row,

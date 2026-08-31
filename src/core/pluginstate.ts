@@ -918,6 +918,48 @@ function loaderFailures(
 const LOG4J_LOGGER = /^\[[^\]]*\]\s*\[[^\]]*\]\s*\[([^\]/]*)[/\]]/;
 
 /**
+ * A line that opens a log record. Every layout luna reads starts one with a
+ * bracketed field - `[20:53:23]` for log4j, `[WARN]` for pumpkin's own logger -
+ * so a line that does not begin with a bracket continues the record above it.
+ */
+const RECORD_START = /^\[/;
+
+/**
+ * A record whose whole message is a piece of a stack trace: one frame, a
+ * `Caused by:` or `Suppressed:` header, or the `... 20 more` tail.
+ *
+ * A trace reaches the log two ways. Log4j's own `%throwable` renders the block
+ * under the record that threw, unprefixed, and those lines are continuations by
+ * the rule above. But an addon that walks a trace itself and logs it a line at a
+ * time - FAWE does, at WARN - gets every frame rendered as a record of its own,
+ * complete with a level. Those belong to the record above them just as much, and
+ * counting them instead reports one exception as thirteen warnings.
+ */
+const TRACE_TEXT = /(?:^|\]:\s)\s*(?:at\s+\S+\(|caused by:|suppressed:|\.\.\. \d+ more)/;
+
+/**
+ * The jar a stack-trace frame came out of, as Paper's layout prints it.
+ *
+ * Paper names each plugin's class loader after the jar it loaded, and log4j
+ * renders that name in front of every frame from it:
+ * `at fastasyncworldedit@paper.jar//com.sk89q.worldedit…`. It is the only thing
+ * in an exception block that names the addon, and it is the *deployed file name*,
+ * which is exactly what the lock entry records - so the report matches it against
+ * the file rather than against the aliases.
+ *
+ * Not anchored, because the frame arrives both bare (log4j's own block) and
+ * behind a full record prefix (an addon logging the trace a line at a time).
+ */
+const FRAME_JAR = /(?:^|\s)at\s+([^\s/]+\.jar)\/\//;
+
+/**
+ * The same thing under modlauncher, which names the layer, then the module and
+ * its version: `at TRANSFORMER/lunacore@0.1.0/dev.belikhun.luna…`. The module is
+ * the mod id, so that one is matched against the aliases.
+ */
+const FRAME_MODULE = /(?:^|\s)at\s+[a-z]+\/([^\s/@]+)@[^\s/]*\//;
+
+/**
  * The platform suffix a multi-platform addon appends to its logger name, per
  * grammar: `LunaCoreVelocity` and `LunaCoreNeoForge` are both `luna-core`.
  *
@@ -1068,6 +1110,17 @@ interface ScannedLine {
 	 */
 	tail: string[];
 	severity?: "warn" | "error";
+	/**
+	 * Whether the line continues the record above it rather than opening one of
+	 * its own: an exception block's frames, a `Caused by:` chain, the `... 20
+	 * more` tail, and the banner an addon prints as a single multi-line message.
+	 *
+	 * This is what makes an exception attributable at all. The block carries no
+	 * `[Plugin]` field - a plugin's own logger is not what wrote it - so read as
+	 * separate lines it belongs to nobody, which is how a plugin that died in its
+	 * own `onEnable` reported a clean log.
+	 */
+	continuation?: true;
 }
 
 /**
@@ -1092,6 +1145,22 @@ interface SessionIndex {
 	 * whose attribution is a bounded substring search rather than a field.
 	 */
 	byToken: Map<string, number[]>;
+	/**
+	 * Jar or module token → the records whose stack trace has a frame from it.
+	 *
+	 * Kept apart from `byToken` because the two answer different questions. A
+	 * token in `byToken` is the addon *writing* the line; a frame only says its
+	 * code is somewhere in the trace, which a library addon's is all run.
+	 */
+	byFrame: Map<string, number[]>;
+	/**
+	 * Record → the innermost jar or module in its trace, which is whose code threw.
+	 *
+	 * A trace regularly crosses two addons (a tab-list plugin asking a placeholder
+	 * plugin for a value, off the main thread), and both belong in the block. Only
+	 * one of them threw, and this is which, so the other's tally stays clean.
+	 */
+	blame: Map<number, string>;
 	/** Whether attribution has to fall back to walking every line (pumpkin) */
 	scanAll: boolean;
 	/**
@@ -1169,6 +1238,8 @@ function indexSession(session: BootSession): SessionIndex {
 	const built: SessionIndex = {
 		lines: [],
 		byToken: new Map(),
+		byFrame: new Map(),
+		blame: new Map(),
 		scanAll: grammar === "pumpkin",
 		needleLines: [],
 		byRosterTail: new Map(),
@@ -1194,6 +1265,10 @@ function indexSession(session: BootSession): SessionIndex {
 		}
 	};
 
+	// The record every following continuation line belongs to, which is what its
+	// tokens are indexed under.
+	let header = 0;
+
 	for (const raw of session.lines) {
 		const lower = raw.trimEnd().toLowerCase();
 		const scan: ScannedLine = {
@@ -1213,6 +1288,17 @@ function indexSession(session: BootSession): SessionIndex {
 
 		const index = built.lines.length;
 
+		// Attribution is a property of the *record*, not of the line: an exception
+		// block names its addon in its frames and in nothing else, so every token a
+		// continuation carries is indexed under the line that opened the record.
+		const continues = index > 0 && (!RECORD_START.test(raw) || TRACE_TEXT.test(lower));
+
+		if (continues) {
+			scan.continuation = true;
+		} else {
+			header = index;
+		}
+
 		if (suffix) {
 			const logger = LOG4J_LOGGER.exec(lower)?.[1];
 
@@ -1220,10 +1306,10 @@ function indexSession(session: BootSession): SessionIndex {
 				scan.logger = logger;
 				scan.bare = logger.replace(suffix, "");
 
-				remember(built.byToken, logger, index);
+				remember(built.byToken, logger, header);
 
 				if (scan.bare !== logger) {
-					remember(built.byToken, scan.bare, index);
+					remember(built.byToken, scan.bare, header);
 				}
 
 				if (logger.includes(".")) {
@@ -1242,7 +1328,7 @@ function indexSession(session: BootSession): SessionIndex {
 					scan.tail = tail;
 
 					for (const segment of tail) {
-						remember(built.byToken, segment, index);
+						remember(built.byToken, segment, header);
 					}
 				}
 			}
@@ -1255,9 +1341,26 @@ function indexSession(session: BootSession): SessionIndex {
 			let match = BRACKETED.exec(lower);
 
 			while (match) {
-				remember(built.byToken, match[1]!, index);
+				remember(built.byToken, match[1]!, header);
 
 				match = BRACKETED.exec(lower);
+			}
+		}
+
+		// A frame's jar or module is the exception block's only handle on whose code
+		// threw, and it is indexed for every grammar because the block itself is the
+		// platform's, not the addon's: log4j renders it the same way whatever wrote it.
+		if (!built.scanAll) {
+			const frame = FRAME_JAR.exec(lower)?.[1] ?? FRAME_MODULE.exec(lower)?.[1];
+
+			if (frame !== undefined) {
+				remember(built.byFrame, frame, header);
+
+				// the lines arrive innermost first, so the first frame of the block is the
+				// one that threw and every later one is a caller
+				if (!built.blame.has(header)) {
+					built.blame.set(header, frame);
+				}
 			}
 		}
 
@@ -1346,8 +1449,71 @@ export interface PluginLogReport {
 	errors: number;
 }
 
-/** Every session line attributed to the plugin, with warn/error tallies. */
-export function pluginLogReport(session: BootSession, aliases: string[]): PluginLogReport {
+/**
+ * The records one addon's tokens attribute, as header index → whether the
+ * addon's *own* field named it.
+ *
+ * That flag is what keeps a shared stack trace honest. A block naming the addon
+ * only in a frame belongs in its log, because its code is in the trace - but the
+ * event is not necessarily its fault, and a library addon appears in other
+ * addons' traces all run. So a frame-only record is tallied against whichever
+ * addon is innermost in it and shown, uncounted, to the rest.
+ */
+function attributedRecords(index: SessionIndex, tokens: string[]): Array<[number, boolean]> {
+	const records = new Map<number, boolean>();
+
+	for (const token of tokens) {
+		for (const at of index.byToken.get(token) ?? EMPTY_INDICES) {
+			records.set(at, true);
+		}
+	}
+
+	for (const token of tokens) {
+		for (const at of index.byFrame.get(token) ?? EMPTY_INDICES) {
+			if (!records.has(at)) {
+				records.set(at, false);
+			}
+		}
+	}
+
+	return [...records].sort((a, b) => a[0] - b[0]);
+}
+
+/**
+ * The lines of the record one index opens: the line itself, plus every
+ * continuation line belonging to it.
+ *
+ * A continuation always follows its header, so the block is a walk forward
+ * rather than a second index.
+ */
+function recordLines(index: SessionIndex, header: number): ScannedLine[] {
+	const block: ScannedLine[] = [index.lines[header]!];
+
+	for (let at = header + 1; at < index.lines.length && index.lines[at]!.continuation; at += 1) {
+		block.push(index.lines[at]!);
+	}
+
+	return block;
+}
+
+/**
+ * Every session line attributed to the plugin, with warn/error tallies.
+ *
+ * An attributed line brings its whole record with it, which is what puts an
+ * exception in the report: the stack trace under a failure carries no `[Plugin]`
+ * field, so line by line it belongs to nobody, and a plugin that threw its way
+ * out of `onEnable` used to read as a clean log with no warnings at all.
+ *
+ * `file` is the plugin's deployed jar name. Paper prints it in front of every
+ * frame from that jar, so it is the one handle on a block the addon never signed;
+ * without it an exception is only found when some other line of the same record
+ * happens to name the addon.
+ */
+export function pluginLogReport(
+	session: BootSession,
+	aliases: string[],
+	file?: string,
+): PluginLogReport {
 	const lowerAliases = aliases.map((alias) => alias.toLowerCase());
 	const grammar = traitsOf(session.software, session.mcVersion).logGrammar;
 	const index = indexSession(session);
@@ -1355,8 +1521,19 @@ export function pluginLogReport(session: BootSession, aliases: string[]): Plugin
 	let warnings = 0;
 	let errors = 0;
 
-	const take = (line: ScannedLine): void => {
+	const take = (line: ScannedLine, tally: boolean): void => {
 		lines.push(line.raw);
+
+		if (!tally) {
+			return;
+		}
+
+		// Only the line that opened the record carries the event's level. Tallying a
+		// continuation as well counts one exception as a dozen warnings, which is the
+		// same lie in the other direction.
+		if (line.continuation) {
+			return;
+		}
 
 		if (line.severity === "warn") {
 			warnings += 1;
@@ -1369,12 +1546,18 @@ export function pluginLogReport(session: BootSession, aliases: string[]): Plugin
 		// pumpkin names a plugin in prose, so there is no field to index
 		for (const line of index.lines) {
 			if (attributed(line, lowerAliases, grammar)) {
-				take(line);
+				take(line, true);
 			}
 		}
 	} else {
-		for (const at of attributedLines(index, lowerAliases)) {
-			take(index.lines[at]!);
+		const tokens = file ? [...lowerAliases, file.toLowerCase()] : lowerAliases;
+
+		for (const [at, named] of attributedRecords(index, tokens)) {
+			const blamed = named || tokens.includes(index.blame.get(at) ?? "");
+
+			for (const line of recordLines(index, at)) {
+				take(line, blamed);
+			}
 		}
 	}
 
@@ -2024,7 +2207,7 @@ async function unmanagedAddons(
 			// all we have is a file name the loader is free to rewrite
 			const identified = jar.aliases.length > 0;
 			const aliases = identified ? jar.aliases : [file.replace(/\.[^.]+$/, "")];
-			const log = session ? pluginLogReport(session, aliases) : EMPTY_LOG;
+			const log = session ? pluginLogReport(session, aliases, file) : EMPTY_LOG;
 
 			rows.push({
 				file,
@@ -2153,7 +2336,7 @@ export async function instancePluginReport(
 					? "group"
 					: "explicit";
 
-		const log = pluginLogReport(session, aliases);
+		const log = pluginLogReport(session, aliases, entry.file);
 
 		let state: PluginRuntimeState;
 
@@ -2269,7 +2452,7 @@ export async function unmanagedAddonLog(
 		return undefined;
 	}
 
-	const log = pluginLogReport(session, row.aliases);
+	const log = pluginLogReport(session, row.aliases, row.file);
 
 	return {
 		row,
