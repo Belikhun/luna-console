@@ -8,6 +8,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { api, post } from '$lib/api';
+	import { LOG_PAGE, LOG_LIMIT, restOfLog } from '$lib/log';
 	import { fmtDuration, fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
@@ -172,16 +173,6 @@
 		atEpochMillis: number;
 	}
 
-	/** Rows per request; LunaCore clamps a log page to 200 whatever is asked for. */
-	const LOG_PAGE = 200;
-
-	/**
-	 * Newest rows a log tab keeps. The tables page, sort and search over what they
-	 * are handed, so a tab loads the whole record instead of growing a "load more"
-	 * button under it; the cap is what stops years of chat arriving in one screen.
-	 */
-	const LOG_LIMIT = 2000;
-
 	/** Default lifetime offered for a temporary password, in minutes. */
 	const DEFAULT_TEMP_MINUTES = 1440;
 
@@ -343,29 +334,6 @@
 			vaultAvailable = false;
 			vaultProblem = (err as Error).message;
 		}
-	}
-
-	/**
-	 * Fetch the rest of a log whose first request already reported its total,
-	 * newest first and capped at `LOG_LIMIT` rows. The endpoints clamp a request
-	 * to `LOG_PAGE` rows however many are asked for, so a complete record is
-	 * several requests; they are independent, so they go out together.
-	 */
-	async function restOfLog<T>(
-		total: number,
-		loaded: number,
-		fetchPage: (offset: number) => Promise<T[]>
-	): Promise<T[]> {
-		const wanted = Math.min(total, LOG_LIMIT);
-		const offsets: number[] = [];
-
-		for (let offset = loaded; offset < wanted; offset += LOG_PAGE) {
-			offsets.push(offset);
-		}
-
-		const pages = await Promise.all(offsets.map((offset) => fetchPage(offset)));
-
-		return pages.flat().slice(0, wanted - loaded);
 	}
 
 	async function loadVaultTransactions(): Promise<void> {

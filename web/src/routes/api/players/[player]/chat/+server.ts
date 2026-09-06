@@ -5,12 +5,14 @@
 import { json } from '@sveltejs/kit';
 import * as luna from '$core/services/luna';
 
-/** GET ?type=&limit=&offset= → a page of the player's chat/command log. */
+/** GET ?type=&server=&limit=&offset= → a page of the player's chat/command log. */
 export async function GET({ params, url }) {
 	const type = url.searchParams.get('type');
+	const server = url.searchParams.get('server') ?? '';
 
 	const result = await luna.playerChat(params.player, {
 		...(type === 'chat' || type === 'command' ? { type } : {}),
+		...(server ? { server } : {}),
 		limit: Number(url.searchParams.get('limit') ?? 25),
 		offset: Number(url.searchParams.get('offset') ?? 0)
 	});

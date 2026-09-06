@@ -14,6 +14,8 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import AccessLists from '$lib/components/AccessLists.svelte';
+	import InstanceOnlinePlayers from '$lib/components/InstanceOnlinePlayers.svelte';
+	import InstanceChatLog from '$lib/components/InstanceChatLog.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -3217,7 +3219,11 @@
 				match <b>{name}</b>, stacked by priority.
 			</p>
 		{:else if tab === 'access'}
+			<InstanceOnlinePlayers instance={name ?? ''} />
+			<div class="gap"></div>
 			<AccessLists instance={name ?? ''} />
+		{:else if tab === 'chat'}
+			<InstanceChatLog instance={name ?? ''} />
 		{:else if tab === 'network'}
 			<Panel title={t('web.instanceDetail.ports')}>
 				<InfoGrid cells={portCells} />

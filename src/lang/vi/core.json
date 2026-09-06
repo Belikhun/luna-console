@@ -701,5 +701,12 @@
 		"skipUnknownBuild": "luna không biết bản dựng nào đang được cài; nâng cấp sẽ ghi lại, và {build} là bản sẽ được cài",
 		"asking": "đang hỏi về {name}",
 		"checked": "đã kiểm tra {count} instance; {updates} có bản dựng mới hơn"
+	},
+	"playerstate": {
+		"unknownInstance": "không có instance: {name}",
+		"noWorld": "{name} không có thế giới nên không lưu dữ liệu người chơi",
+		"fileTooLarge": "{path} quá lớn để là một tệp người chơi",
+		"notAnObject": "{path} không chứa một đối tượng JSON",
+		"unreadable": "không đọc được {file}: {error}"
 	}
 }

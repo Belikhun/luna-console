@@ -8,6 +8,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
+	import { PING_FAIR, PING_POOR, pingClass } from '$lib/players';
 	import { fmtDuration, fmtDateTime, fmtTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
@@ -58,10 +59,6 @@
 		atEpochMillis: number;
 		sessionMillis: number;
 	}
-
-	/** Latency bands, in ms; the same thresholds the proxy's own tab list uses. */
-	const PING_FAIR = 120;
-	const PING_POOR = 250;
 
 	let players: Player[] = $state([]);
 	let activity: Activity[] = $state([]);
@@ -192,15 +189,6 @@
 			default:
 				return null;
 		}
-	}
-
-	/** Latency band, for the coloured ping figure. */
-	function pingClass(ping: number): string {
-		if (ping < PING_FAIR) {
-			return 'good';
-		}
-
-		return ping < PING_POOR ? 'fair' : 'poor';
 	}
 
 	const longestSession = $derived(

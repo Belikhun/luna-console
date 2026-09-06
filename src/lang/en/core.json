@@ -701,5 +701,12 @@
 		"skipUnknownBuild": "luna does not know which build is installed; upgrading records it, and {build} is what it would install",
 		"asking": "asking about {name}",
 		"checked": "checked {count} instance(s); {updates} with a newer build"
+	},
+	"playerstate": {
+		"unknownInstance": "unknown instance: {name}",
+		"noWorld": "{name} has no world, so it keeps no player saves",
+		"fileTooLarge": "{path} is far too large to be a player file",
+		"notAnObject": "{path} does not hold a JSON object",
+		"unreadable": "{file} could not be read: {error}"
 	}
 }

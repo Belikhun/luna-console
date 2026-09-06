@@ -28,7 +28,9 @@ import { readProperties, upsertProperty } from "./confedit";
 import { getStatus, sendCommand } from "./instances";
 import { traitsOf } from "./software";
 import type { ClusterConfig, Software } from "./types";
+import { usercacheNameOf, usercacheUuidOf } from "./usercache";
 import { t } from "../shared/i18n";
+import { UUID_PATTERN } from "../shared/uuid";
 
 /** The four access lists and the file each one lives in. */
 export const ACCESS_LIST_FILES = {
@@ -53,8 +55,6 @@ const VERIFY_ATTEMPTS = 10;
 
 /** Valid Java Edition account name; bedrock names arrive prefixed and pass too. */
 const NAME_PATTERN = /^[A-Za-z0-9_.]{1,16}$/;
-
-const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 export interface WhitelistEntry {
 	uuid: string;
@@ -191,34 +191,6 @@ async function readListFile<T>(dir: string, file: string): Promise<T[]> {
 /** Write a list file the way vanilla's Gson does: two-space indent, LF. */
 async function writeListFile(dir: string, file: string, entries: unknown[]): Promise<void> {
 	await Bun.write(join(dir, file), JSON.stringify(entries, null, 2));
-}
-
-/** The server's own name→uuid cache, when it has one. */
-async function usercacheLookup(dir: string, name: string): Promise<string | undefined> {
-	const entries = await readListFile<{ name?: string; uuid?: string }>(dir, "usercache.json");
-	const lowered = name.toLowerCase();
-
-	for (const entry of entries) {
-		if (entry.name?.toLowerCase() === lowered && entry.uuid) {
-			return entry.uuid;
-		}
-	}
-
-	return undefined;
-}
-
-/** The reverse: the name the server knows a profile id by, for bare-UUID targets. */
-async function usercacheNameOf(dir: string, uuid: string): Promise<string | undefined> {
-	const entries = await readListFile<{ name?: string; uuid?: string }>(dir, "usercache.json");
-	const lowered = uuid.toLowerCase();
-
-	for (const entry of entries) {
-		if (entry.uuid?.toLowerCase() === lowered && entry.name) {
-			return entry.name;
-		}
-	}
-
-	return undefined;
 }
 
 /** Timestamp in the `yyyy-MM-dd HH:mm:ss Z` shape vanilla writes in ban entries. */
@@ -436,7 +408,7 @@ async function applyToFile(
 	const software = managedInstances(cfg)[name]?.software ?? "paper";
 	const uuid =
 		change.uuid
-			?? (await usercacheLookup(dir, change.target))
+			?? (await usercacheUuidOf(dir, change.target))
 			?? offlineUuid(change.target, software);
 
 	if (change.list === "whitelist") {

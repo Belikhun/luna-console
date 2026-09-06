@@ -7,6 +7,8 @@ import { pc, Sym, ok, warn, printTable, fmtDuration } from "../ui";
 import { instanceNames } from "../completers";
 import { loadCluster } from "../../client/core/config";
 import * as playerlists from "../../client/core/playerlists";
+import * as playerstate from "../../client/core/playerstate";
+import { dimensionLabel } from "../../client/core/playerdata";
 import type { AccessListKind } from "../../client/core/playerlists";
 import * as luna from "../../client/core/services/luna";
 import { t } from "../../shared/i18n";
@@ -728,6 +730,137 @@ command({
 					pc.dim(t("cli.players.permsGroup.global")),
 			]),
 		);
+		console.log();
+	},
+});
+
+command({
+	path: ["players"],
+	desc: t("cli.players.online.desc"),
+	args: [{ name: "instance", required: true, complete: instanceNames }],
+
+	handler: async (args) => {
+		const instance = args[0]!;
+		const cfg = await loadCluster();
+		const roster = await luna.players(instance);
+
+		if (!roster.ok || !roster.data) {
+			bailUnavailable(roster.error);
+		}
+
+		const live = roster.data.players;
+		const saved = live.length > 0
+			? await playerstate.readPlayerRoster(cfg, instance, live.map((player) => player.uuid))
+			: [];
+		const savedByUuid = new Map(saved.map((entry) => [entry.uuid.toLowerCase(), entry]));
+
+		const rows = live.map((player) => {
+			const entry = savedByUuid.get(player.uuid.toLowerCase());
+			const vitals = entry?.vitals;
+			const position = vitals
+				? `${dimensionLabel(vitals.position.dimension)} ${Math.round(vitals.position.x)}, ${Math.round(vitals.position.y)}, ${Math.round(vitals.position.z)}`
+				: pc.dim("—");
+
+			return [
+				pc.bold(player.username),
+				`${player.pingMillis} ms`,
+				player.clientVersion,
+				vitals ? `${Math.round(vitals.health * 10) / 10}/${vitals.maxHealth}` : pc.dim("—"),
+				vitals ? `${vitals.food}/20` : pc.dim("—"),
+				vitals ? String(vitals.xpLevel) : pc.dim("—"),
+				vitals ? vitals.gameMode : pc.dim("—"),
+				position,
+				entry?.advancements ? `${entry.advancements.done}/${entry.advancements.total}` : pc.dim("—"),
+				fmtDuration(player.sessionMillis),
+				pc.dim(player.uuid),
+			];
+		});
+
+		console.log();
+
+		if (rows.length === 0) {
+			console.log(`  ${pc.dim(t("cli.players.online.nobody", { instance }))}\n`);
+
+			return;
+		}
+
+		printTable(rows, {
+			head: [
+				t("cli.head.player"),
+				t("cli.head.ping"),
+				t("cli.head.client"),
+				t("cli.head.health"),
+				t("cli.head.food"),
+				t("cli.head.level"),
+				t("cli.head.mode"),
+				t("cli.head.position"),
+				t("cli.head.advancements"),
+				t("cli.head.session"),
+				t("cli.head.uuid"),
+			],
+		});
+
+		const newest = saved.reduce((latest, entry) => Math.max(latest, entry.vitals?.savedAt ?? 0), 0);
+
+		if (newest > 0) {
+			console.log(pc.dim(`\n  ${t("cli.players.online.savedNote", { when: fmtEpoch(newest) })}`));
+		}
+
+		console.log();
+	},
+});
+
+command({
+	path: ["player"],
+	desc: t("cli.players.saved.desc"),
+	args: [
+		{ name: "instance", required: true, complete: instanceNames },
+		{ name: "player", required: true },
+	],
+
+	handler: async (args) => {
+		const instance = args[0]!;
+		const cfg = await loadCluster();
+		const resolved = await playerstate.resolvePlayerRef(cfg, instance, args[1]!);
+
+		if (!resolved) {
+			throw new Bail(t("cli.players.saved.unknown", { player: args[1]!, instance }));
+		}
+
+		const detail = await playerstate.readPlayerDetail(cfg, instance, resolved.uuid);
+		const snapshot = detail.snapshot;
+
+		console.log();
+		console.log(`  ${pc.bold(detail.name ?? resolved.name ?? resolved.uuid)} ${pc.dim(`· ${resolved.uuid} · ${instance}`)}`);
+
+		for (const problem of detail.problems) {
+			warn(problem);
+		}
+
+		if (!snapshot) {
+			console.log(`\n  ${pc.dim(t("cli.players.saved.noSave", { instance }))}\n`);
+
+			return;
+		}
+
+		const position = snapshot.position;
+
+		printTable([
+			[t("cli.players.saved.savedAt"), fmtEpoch(snapshot.savedAt)],
+			[t("cli.head.health"), `${Math.round(snapshot.health * 10) / 10} / ${snapshot.maxHealth}`],
+			[t("cli.head.food"), `${snapshot.food} / 20 (${t("cli.players.saved.saturation")} ${Math.round(snapshot.saturation * 10) / 10})`],
+			[t("cli.head.level"), `${snapshot.xpLevel} (${Math.round(snapshot.xpProgress * 100)}%, ${snapshot.xpTotal} xp)`],
+			[t("cli.players.saved.score"), String(snapshot.score)],
+			[t("cli.head.mode"), snapshot.gameMode],
+			[t("cli.head.position"), `${dimensionLabel(position.dimension)} ${Math.round(position.x)}, ${Math.round(position.y)}, ${Math.round(position.z)}`],
+			[t("cli.players.saved.inventory"), t("cli.players.saved.stacks", { count: snapshot.inventory.length })],
+			[t("cli.players.saved.enderChest"), t("cli.players.saved.stacks", { count: snapshot.enderChest.length })],
+			[
+				t("cli.players.saved.advancements"),
+				detail.advancements ? `${detail.advancements.done} / ${detail.advancements.total}` : pc.dim("—"),
+			],
+		]);
+
 		console.log();
 	},
 });

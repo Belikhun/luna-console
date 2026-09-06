@@ -276,6 +276,8 @@
 		'/instances/[name]/console',
 		'/instances/[name]/files',
 		'/instances/[name]/plugins/[plugin]',
+		'/instances/[name]/players',
+		'/instances/[name]/players/[player]',
 		'/instances/selector',
 		'/machines',
 		'/machines/[name]',

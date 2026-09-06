@@ -147,7 +147,15 @@
 		"field": "field",
 		"display": "display",
 		"dataPack": "DATA PACK",
-		"published": "published"
+		"published": "published",
+		"ping": "ping",
+		"client": "client",
+		"health": "health",
+		"food": "food",
+		"level": "level",
+		"position": "position",
+		"advancements": "advancements",
+		"uuid": "uuid"
 	},
 	"machines": {
 		"unknown": "unknown machine \"{name}\"; known machines: {known}"
@@ -1040,6 +1048,23 @@
 			"primaryGroup": "primary group: {group}",
 			"groups": "groups: {names}",
 			"directNodes": "direct nodes"
+		},
+		"online": {
+			"desc": "Who is on one backend now, with what its last save says about each of them",
+			"nobody": "nobody is on {instance}",
+			"savedNote": "vitals, mode and position are from the backend's saves; newest written {when}"
+		},
+		"saved": {
+			"desc": "One player's saved state on one backend: vitals, position, inventory sizes, advancements",
+			"unknown": "no player named {player} on {instance}",
+			"noSave": "{instance} holds no save for this player",
+			"savedAt": "save written",
+			"saturation": "saturation",
+			"score": "score",
+			"inventory": "inventory",
+			"enderChest": "ender chest",
+			"stacks": "{count} stacks",
+			"advancements": "advancements"
 		}
 	},
 	"setup": {

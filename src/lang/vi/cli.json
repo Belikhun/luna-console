@@ -147,7 +147,15 @@
 		"field": "trường",
 		"display": "hiển thị",
 		"dataPack": "GÓI DỮ LIỆU",
-		"published": "phát hành"
+		"published": "phát hành",
+		"ping": "ping",
+		"client": "client",
+		"health": "máu",
+		"food": "thức ăn",
+		"level": "cấp",
+		"position": "vị trí",
+		"advancements": "thành tựu",
+		"uuid": "uuid"
 	},
 	"machines": {
 		"unknown": "không biết máy \"{name}\"; các máy đã biết: {known}"
@@ -1040,6 +1048,23 @@
 			"primaryGroup": "nhóm chính: {group}",
 			"groups": "các nhóm: {names}",
 			"directNodes": "node trực tiếp"
+		},
+		"online": {
+			"desc": "Ai đang ở trên một backend, kèm dữ liệu từ lần lưu gần nhất của từng người",
+			"nobody": "không có ai trên {instance}",
+			"savedNote": "máu, chế độ và vị trí lấy từ bản lưu của backend; lưu mới nhất lúc {when}"
+		},
+		"saved": {
+			"desc": "Trạng thái đã lưu của một người chơi trên một backend: chỉ số, vị trí, kích cỡ túi đồ, thành tựu",
+			"unknown": "không có người chơi {player} trên {instance}",
+			"noSave": "{instance} không có bản lưu của người chơi này",
+			"savedAt": "ghi lưu lúc",
+			"saturation": "độ no",
+			"score": "điểm",
+			"inventory": "túi đồ",
+			"enderChest": "rương ender",
+			"stacks": "{count} chồng",
+			"advancements": "thành tựu"
 		}
 	},
 	"setup": {

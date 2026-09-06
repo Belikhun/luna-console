@@ -634,12 +634,20 @@ export interface PlaySessionPage {
 	sessions: PlaySession[];
 }
 
-/** A page of one player's per-backend play sessions, newest first. */
+/**
+ * A page of one player's per-backend play sessions, newest first. `server`
+ * narrows it to one backend; a LunaCore build predating the filter ignores the
+ * parameter and answers with every backend, which the caller filters again.
+ */
 export async function playerSessions(
 	player: string,
-	opts: { limit?: number; offset?: number } = {},
+	opts: { server?: string; limit?: number; offset?: number } = {},
 ): Promise<LunaResult<PlaySessionPage>> {
 	const params = new URLSearchParams();
+
+	if (opts.server) {
+		params.set("server", opts.server);
+	}
 
 	if (opts.limit !== undefined) {
 		params.set("limit", String(opts.limit));
@@ -672,15 +680,22 @@ export interface PlayerChatPage {
 	entries: PlayerChatEntry[];
 }
 
-/** A page of one player's chat and command log, newest first. */
+/**
+ * A page of one player's chat and command log, newest first, optionally on one
+ * backend only; the same caveat as `playerSessions` applies to `server`.
+ */
 export async function playerChat(
 	player: string,
-	opts: { type?: "chat" | "command"; limit?: number; offset?: number } = {},
+	opts: { type?: "chat" | "command"; server?: string; limit?: number; offset?: number } = {},
 ): Promise<LunaResult<PlayerChatPage>> {
 	const params = new URLSearchParams();
 
 	if (opts.type) {
 		params.set("type", opts.type);
+	}
+
+	if (opts.server) {
+		params.set("server", opts.server);
 	}
 
 	if (opts.limit !== undefined) {
@@ -696,6 +711,65 @@ export async function playerChat(
 	return await call<PlayerChatPage>(
 		`/players/registered/${encodeURIComponent(player)}/chat${suffix}`,
 	);
+}
+
+/** One line of a backend's chat and command log, with who said it. */
+export interface ServerChatEntry extends PlayerChatEntry {
+	uuid: string;
+	username: string;
+}
+
+export interface ServerChatPage {
+	total: number;
+	offset: number;
+	limit: number;
+	/** The backend the page was filtered to; empty for the whole network */
+	server: string;
+	entries: ServerChatEntry[];
+}
+
+export interface ServerChatQuery {
+	/** Backend name; omit for every backend */
+	server?: string;
+	type?: "chat" | "command";
+	/** Matches content and username */
+	search?: string;
+	limit?: number;
+	offset?: number;
+}
+
+/**
+ * A page of one backend's chat and command log across every player, newest
+ * first; the network's when no server is given. Served by a LunaCore build
+ * carrying `/players/chat`; an older one answers 404, which the caller renders
+ * as "needs a newer build", never as an empty log.
+ */
+export async function serverChat(query: ServerChatQuery = {}): Promise<LunaResult<ServerChatPage>> {
+	const params = new URLSearchParams();
+
+	if (query.server) {
+		params.set("server", query.server);
+	}
+
+	if (query.type) {
+		params.set("type", query.type);
+	}
+
+	if (query.search) {
+		params.set("search", query.search);
+	}
+
+	if (query.limit !== undefined) {
+		params.set("limit", String(query.limit));
+	}
+
+	if (query.offset !== undefined) {
+		params.set("offset", String(query.offset));
+	}
+
+	const suffix = params.size > 0 ? `?${params.toString()}` : "";
+
+	return await call<ServerChatPage>(`/players/chat${suffix}`);
 }
 
 export interface ModerationEntry {

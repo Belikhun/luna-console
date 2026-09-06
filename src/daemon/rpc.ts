@@ -50,6 +50,7 @@ import * as publicsiteCore from "../core/publicsite";
 import * as uptimeCore from "../core/uptime";
 import * as respackinfoCore from "../core/respackinfo";
 import * as playerlistsCore from "../core/playerlists";
+import * as playerstateCore from "../core/playerstate";
 import * as respacksCore from "../core/respacks";
 import * as portsCore from "../core/ports";
 import * as proxyCore from "../core/proxy";
@@ -1380,6 +1381,12 @@ export const OPS: Record<string, OpSpec> = {
 	"playerlists.apply": { fn: playerlistsCore.applyAccessChange, cfg: 0, instance: 1 },
 	"playerlists.setWhitelist": { fn: playerlistsCore.setWhitelistEnabled, cfg: 0, instance: 1 },
 
+	// -- saved player state (playerdata / advancements / stats under the world) --
+	"playerstate.roster": { fn: playerstateCore.readPlayerRoster, cfg: 0, instance: 1 },
+	"playerstate.detail": { fn: playerstateCore.readPlayerDetail, cfg: 0, instance: 1 },
+	"playerstate.resolve": { fn: playerstateCore.resolvePlayerRef, cfg: 0, instance: 1 },
+	"playerstate.saved": { fn: playerstateCore.listSavedPlayers, cfg: 0, instance: 1 },
+
 	// -- tracked lifecycle (log-derived live progress; run as jobs) -------------
 	"lifecycle.startTracked": {
 		fn: lifecycleCore.startInstanceTracked,
@@ -1754,6 +1761,7 @@ export const OPS: Record<string, OpSpec> = {
 	"lunaApi.registeredPlayer": { fn: lunaApi.registeredPlayer },
 	"lunaApi.playerSessions": { fn: lunaApi.playerSessions },
 	"lunaApi.playerChat": { fn: lunaApi.playerChat },
+	"lunaApi.serverChat": { fn: lunaApi.serverChat },
 	"lunaApi.playerModeration": { fn: lunaApi.playerModeration },
 	"lunaApi.moderationLog": { fn: lunaApi.moderationLog },
 	"lunaApi.recordModeration": { fn: lunaApi.recordModeration },

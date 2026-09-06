@@ -18,6 +18,7 @@ export type {
 	BackendDetail,
 	DashboardSnapshot,
 	LunaResult,
+	LunaPlayer,
 	PlayerList,
 	PlayerActivity,
 	CommandResult,
@@ -32,6 +33,9 @@ export type {
 	PlaySessionPage,
 	PlayerChatEntry,
 	PlayerChatPage,
+	ServerChatEntry,
+	ServerChatPage,
+	ServerChatQuery,
 	ModerationEntry,
 	ModerationPage,
 	ModerationLogEntry,
@@ -70,6 +74,7 @@ export const registeredPlayers = call("lunaApi.registeredPlayers") as typeof cor
 export const registeredPlayer = call("lunaApi.registeredPlayer") as typeof core.registeredPlayer;
 export const playerSessions = call("lunaApi.playerSessions") as typeof core.playerSessions;
 export const playerChat = call("lunaApi.playerChat") as typeof core.playerChat;
+export const serverChat = call("lunaApi.serverChat") as typeof core.serverChat;
 export const playerModeration = call("lunaApi.playerModeration") as typeof core.playerModeration;
 export const moderationLog = call("lunaApi.moderationLog") as typeof core.moderationLog;
 export const recordModeration = call("lunaApi.recordModeration") as typeof core.recordModeration;

@@ -4,6 +4,7 @@
 
 import { json, error } from '@sveltejs/kit';
 import * as luna from '$core/services/luna';
+import { isUuid } from '$shared/uuid';
 import { pushEvent } from '$lib/server/luna';
 
 /** GET ?limit=&offset= → a page of the player's moderation history. */
@@ -29,11 +30,11 @@ export async function POST({ params, request }) {
 		throw error(400, 'reason is required');
 	}
 
-	const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.player);
+	const byUuid = isUuid(params.player);
 
 	const result = await luna.recordModeration({
 		action: String(body.action ?? 'note'),
-		...(isUuid ? { targetUuid: params.player } : { targetName: params.player }),
+		...(byUuid ? { targetUuid: params.player } : { targetName: params.player }),
 		actor: 'console',
 		reason
 	});
