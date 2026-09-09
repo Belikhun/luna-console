@@ -4,21 +4,21 @@
 
 # Luna Console ` >_ `
 
-The control centre for Luna Network: every Minecraft server across every machine in the cluster, with its plugins, config, ports and players, managed from a centralized web console or a terminal.
+The control centre for Luna Network: every Minecraft server across every machine in the cluster, with its plugins, worlds, config, ports and players, managed from one web console or a terminal.
 
-## ✨ Features
+## Features
 
 <img src="docs/instances.webp" alt="Instances screen" align="right" width="54%">
 
-### 🎛️ The whole network on one screen
+### The whole network on one screen
 
-State, health, tick rate, memory and player count for every backend and the proxy, live. No SSH, no screen attaches.
+State, health checks, tick rate, memory and player count for every backend and the proxy, live, without opening a shell on any of the machines.
 
-Verbs apply to the selection, so restarting nine servers is one action. A verb that cannot run on what you picked is disabled with the reason.
+Verbs apply to the selection, so restarting nine servers is one action. A verb that cannot run on what you picked stays visible and disabled, with the reason next to it.
 
 <br clear="all">
 
-Per instance: the command it launched with, the JVM flags it inherited, the address the proxy routes to, and the process behind it.
+Per instance: what it runs, which machine owns it, the Java profile and heap it launched with, the address the proxy routes to, and the process behind it.
 
 <img src="docs/instance-detail.webp" alt="Instance detail screen" width="100%">
 
@@ -26,21 +26,29 @@ Per instance: the command it launched with, the JVM flags it inherited, the addr
 
 <img src="docs/launch.webp" alt="Launch wizard" align="left" width="42%">
 
-### 🚀 A new server in one form
+### A new server in one form
 
-Name, version, heap, machine. luna downloads the Paper build, allocates a port, writes the forwarding secret, registers the server with Velocity and deploys every plugin that targets it.
+Name, software, version, heap, machine, and optionally a world zip to start from. luna downloads the build, allocates a port, writes the forwarding secret, registers the server with Velocity and deploys every plugin whose target rule matches it.
 
-Each step reports as it runs, and a failure names the step that broke instead of leaving you to find what got half done.
+Paper, Folia, Purpur, Fabric, Forge, NeoForge, Pumpkin, Youer and AsyncYouer are all a pick in the same dropdown.
+
+Each step reports as it runs, and a failure names the step that broke instead of leaving you to work out what got half done.
 
 <br clear="all">
 
 <img src="docs/monitoring.webp" alt="Instance monitoring" align="right" width="60%">
 
-### 📈 Lag you can see before players report it
+### Lag you can see before players report it
 
-CPU, memory, players, tick rate and JVM heap, sampled every five seconds and kept for an hour.
+CPU, memory, players, tick rate, tick duration, JVM heap, loaded chunks and entities, sampled every five seconds and kept for an hour, with ninety days of uptime history above them.
 
-Tick rate and heap come from inside the server rather than from the outside of its process, so they match what players are feeling.
+Tick rate and heap are read from inside the server rather than from the outside of its process, so they match what players feel. A backend that Paper paused for being empty reads as paused, not as a stall.
+
+<br clear="all">
+
+Every thread of the server process, shaded by the CPU it spent over the last sample, with the busiest ones named. When one core is pinned, this is where you find out by what.
+
+<img src="docs/threads.webp" alt="Server threads" width="100%">
 
 <br clear="all">
 
@@ -52,11 +60,11 @@ The log streams live, with a command line into the running server.
 
 <img src="docs/plugins.webp" alt="Plugin pool" align="left" width="58%">
 
-### 🧩 One plugin pool for every server
+### One plugin pool for every server
 
-Each server gets the newest build compatible with the Minecraft version it runs, or the version you pinned. Nine plugin folders stay in step without being touched.
+Each server gets the newest build compatible with the Minecraft version it runs, or the version you pinned. Plugin folders stay in step without anyone touching them.
 
-Targets are rules, not lists: `*paper` covers every Paper backend including ones that do not exist yet. Updates stay on their channel and never move a server backwards.
+Targets are rules rather than lists: `*paper` covers every Paper backend, including ones that do not exist yet. Updates stay on their channel and never move a server backwards. A jar swapped on a running server is staged and renamed in one step, so the server never reads a half-written file.
 
 <br clear="all">
 
@@ -66,45 +74,59 @@ Search and install from Modrinth, Hangar and CurseForge, plus Smithed for data p
 
 <br clear="all">
 
-<img src="docs/settings.webp" alt="Server settings" align="right" width="52%">
+<img src="docs/mods.webp" alt="Mod pool" align="right" width="58%">
 
-### 🎚️ server.properties as typed fields
+### Mods and data packs, the same way
 
-Real ranges, real choices, validated before anything reaches disk.
+Fabric, Forge and NeoForge mods share the pool model with plugins: one entry, one version per Minecraft line, deployed to whichever modded backends target it. Jars that appear in an instance directory without a pool entry are listed as unmanaged, with their state read from the boot log.
 
-The keys that wire proxy forwarding are shown but locked. Editing one by hand breaks every login on that backend while the server still looks healthy.
-
-<br clear="all">
-
-<img src="docs/config-files.webp" alt="Config file editor" align="left" width="58%">
-
-### 📄 Config edits that survive the plugin
-
-Any file in an instance, edited in Monaco from the browser. A value you keep retyping becomes a placeholder backed by one variable.
-
-When a plugin rewrites a managed config, the rewrite is reported as drift and its version is kept beside the file, so nothing is lost silently.
+Data packs are pooled too and land in each target world; servers pick them up on the next restart or a `/minecraft:reload`.
 
 <br clear="all">
 
-<img src="docs/environment.webp" alt="Environment variables" align="right" width="58%">
+<img src="docs/datapacks.webp" alt="Data pack pool" width="90%">
 
-### 🔑 One value, every server
+<br clear="all">
 
-Variables layer builtin, global, machine, instance. Rotating a database password is one edit and a restart, not nine files.
+<img src="docs/settings.webp" alt="Server settings" align="left" width="52%">
+
+### server.properties as typed fields
+
+Real ranges, real choices, validated before anything reaches disk. Every key without a form field is still there in the raw table below.
+
+The keys that wire proxy forwarding are shown but locked, because editing one by hand breaks every login on that backend while the server still looks healthy.
+
+<br clear="all">
+
+<img src="docs/config-files.webp" alt="Config file editor" align="right" width="58%">
+
+### Config edits that survive the plugin
+
+Any file in an instance, edited in Monaco from the browser. A value you keep retyping becomes a placeholder backed by one variable, and luna renders the file from its template on every start.
+
+When a plugin rewrites a managed config, the rewrite is reported as drift and kept beside the file, so a regenerated config is never lost quietly.
+
+<br clear="all">
+
+<img src="docs/environment.webp" alt="Environment variables" align="left" width="58%">
+
+### One value, every server
+
+Variables layer builtin, global, machine, instance. Rotating a database password is one edit and a restart rather than nine files.
 
 Secrets are masked wherever they appear. Revealing one is recorded with the scope and the time, never with the value.
 
 <br clear="all">
 
-Per instance: what it resolves, which layer won, and which config files and plugin templates read it.
+Per variable: which layer wins on each instance, which config files and plugin templates read it, and every change that was made to it.
 
 <img src="docs/env-resolution.webp" alt="Variable resolution per instance" width="90%">
 
 <br clear="all">
 
-<img src="docs/ports.webp" alt="Port ledger" align="left" width="58%">
+<img src="docs/ports.webp" alt="Port ledger" align="right" width="58%">
 
-### 🌐 Ports allocated, never guessed
+### Ports allocated, never guessed
 
 Allocation comes from named pools and is tracked per machine, because two hosts can both bind 25565.
 
@@ -118,9 +140,9 @@ Pools are cluster-wide so a provision can land on any machine; a machine sets on
 
 <br clear="all">
 
-<img src="docs/proxy.webp" alt="Proxy routing" align="right" width="58%">
+<img src="docs/proxy.webp" alt="Proxy routing" align="left" width="58%">
 
-### 🔀 Proxy routing written from the registry
+### Proxy routing written from the registry
 
 `[servers]` and `[forced-hosts]` are generated from the instance registry and diffed against disk before anything is saved.
 
@@ -128,13 +150,13 @@ Only the sections luna owns get replaced, so the rest of `velocity.toml` survive
 
 <br clear="all">
 
-<img src="docs/machines.webp" alt="Machine fleet" align="left" width="58%">
+<img src="docs/machines.webp" alt="Machine fleet" align="right" width="58%">
 
-### 🖧 More machines, same console
+### More machines, same console
 
 A follower joins the cluster and its servers appear on the same screens. Instances are launched onto it from the same form.
 
-Reachability is TCP-probed from the primary rather than inferred from the control link. Upgrades roll out by command, not by SSH.
+Reachability is TCP-probed from the primary rather than inferred from the control link. Followers upgrade themselves from the primary's binary; a follower on a mismatched build stays on the map as quarantined until it does.
 
 <br clear="all">
 
@@ -144,25 +166,59 @@ Per machine: checks, resource headroom, owned instances and the build each daemo
 
 <br clear="all">
 
-<img src="docs/players.webp" alt="Player directory" align="right" width="58%">
+<img src="docs/java-runtimes.webp" alt="Java runtimes" align="left" width="58%">
 
-### 👥 One profile per player, network-wide
+### Java, per machine
 
-Everyone the network has seen, with first and last seen, the backend they were last on, playtime, sessions and auth type.
-
-Recorded across the network rather than per server, so moderation and support are a lookup instead of a grep through seven log directories.
+luna installs JDKs itself, one copy per machine and architecture. An instance pins one of them or runs on the machine's own Java. Flag sets are Java profiles you edit once and hand to many servers, and a Java agent is one more field on the instance.
 
 <br clear="all">
 
-Balance, playtime by backend, chat, commands, permissions and moderation history on one page.
+<img src="docs/world.webp" alt="World and backups" align="right" width="58%">
+
+### Worlds you can put back
+
+Back up a world while the server runs. Restore, replace with an uploaded zip, or reset to a fresh one when it is stopped. A pinned backup is never pruned, and any archive can be re-read to check its checksum.
+
+The dimensions, their sizes and the seed are on the same screen.
+
+<br clear="all">
+
+<img src="docs/players.webp" alt="Player directory" align="right" width="58%">
+
+### One profile per player, network-wide
+
+Everyone the network has seen, with first and last seen, the backend they were last on, playtime, sessions and auth type.
+
+Recorded across the network rather than per server, so support is a lookup instead of a search through every backend's logs.
+
+<br clear="all">
+
+Balance, playtime by backend, chat, commands, permissions and moderation history on one page. The skin turns.
 
 <img src="docs/player-profile.webp" alt="Player profile" width="90%">
 
 <br clear="all">
 
-<img src="docs/permissions.webp" alt="Permission groups" align="left" width="58%">
+Every play session the proxy recorded, as a calendar and as a list.
 
-### 🛡️ Ranks that apply everywhere
+<img src="docs/play-history.webp" alt="Play history" width="90%">
+
+<br clear="all">
+
+<img src="docs/moderation.webp" alt="Moderation" align="left" width="58%">
+
+### Moderation that reaches every backend
+
+Bans, whitelist and operators for every server on one screen, with the log of who did what to whom. An IP ban at the network level is enforced by the proxy, so a scanner never reaches a backend.
+
+Each instance has its own Players & access tab for the players on it right now, with health, food, location and ping, and everything said or run there.
+
+<br clear="all">
+
+<img src="docs/permissions.webp" alt="Permission groups" align="right" width="58%">
+
+### Ranks that apply everywhere
 
 LuckPerms groups from one shared database, so a promotion lands on every server at once.
 
@@ -170,57 +226,87 @@ Group detail lists every node it carries, including what it inherits, with conte
 
 <br clear="all">
 
-<img src="docs/packs.webp" alt="Resource packs" align="right" width="58%">
+<img src="docs/packs.webp" alt="Resource packs" align="left" width="58%">
 
-### 🎒 Pack changes without kicking anyone
+### Pack changes without kicking anyone
 
 Resource packs stack by priority, are scoped per server, and apply on a proxy reload.
 
-Rules exclude as well as include, so `*, !create` is the whole network except the modded server.
+Rules exclude as well as include, so `*, !create` is the whole network except the modded server. A tracked pack can move to an older release when the new one misbehaves.
 
 <br clear="all">
 
-The chest players open with `/servers`, edited as a chest: MiniMessage names, and tooltips drawn the way the client draws them with live status filled in.
+The chest players open with `/servers`, edited as a chest: MiniMessage names, and tooltips drawn the way the client draws them, with live status filled in.
 
 <img src="docs/selector.webp" alt="Server selector editor" width="100%">
 
 <br clear="all">
 
-<img src="docs/schedules.webp" alt="Schedules" align="left" width="58%">
+<img src="docs/public.webp" alt="Public status page" align="right" width="46%">
 
-### ⏰ Restarts the daemon owns
+### A status page players can open
 
-Start, stop or restart on a cron expression, a fixed time or a rate. Nothing depends on a shell staying open.
+`/public` needs no sign-in: players online, servers up, fleet load, a map image for every server that renders one, and thirty days of uptime per server. Each server has its own page with its live map.
 
-Every run is kept with its outcome, so a restart that failed last Tuesday is on the record. Stops are graceful, not kills.
+Player heads and skins are drawn by the console itself, at a URL other software can point at.
 
 <br clear="all">
 
-### ⌨️ The full CLI in the browser
+<img src="docs/schedules.webp" alt="Schedules" align="left" width="58%">
+
+### Restarts the daemon owns
+
+Start, stop or restart on a cron expression, a fixed time or a rate. Nothing depends on a shell staying open.
+
+Every run is kept with its outcome, so a restart that failed last Tuesday is on the record. Stops are graceful.
+
+<br clear="all">
+
+### The full CLI in the browser
 
 The compiled binary, with the completion engine the shell uses: Tab completion, ghost text and the same history. Everything the console cannot do yet is a command away.
 
-The drawer shortens the page instead of covering it.
+The drawer shortens the page instead of covering it, and commands typed there are attributed to the signed-in account.
 
 <img src="docs/terminal.webp" alt="Terminal drawer" width="100%">
 
 <br clear="all">
 
-<img src="docs/search.webp" alt="Global search" align="right" width="50%">
+<img src="docs/search.webp" alt="Global search" align="right" width="46%">
 
-### 🔍 One search over everything
+### One search over everything
 
-`Alt+S` indexes instances, addon groups, packs, schedules, ports, proxy routes, players, machines and variables.
+`Alt+S` indexes instances, addon groups, packs, schedules, ports, proxy routes, players, machines, runtimes and variables.
 
 Enter opens the hit. Objects without a page of their own hand their term to the table that lists them.
 
 <br clear="all">
 
-## 🛠️ Running this project
+<img src="docs/login.webp" alt="Sign-in screen" align="left" width="50%">
+
+### Accounts, sessions and an audit trail
+
+The console is gated; the CLI is not. Passwords are argon2id-hashed, access keys exist for scripts and can be revoked on their own, and a Minecraft profile can be linked to an account. Wrong password, unknown user and disabled account all answer alike, and repeated failures lock the account.
+
+<br clear="all">
+
+Who may sign in, who is signed in right now, and everything done to those accounts.
+
+<img src="docs/accounts.webp" alt="Console accounts" width="90%">
+
+<br clear="all">
+
+A journal of what luna itself did on each machine: the daemon, the console's own routes, the CLI and the sign-in path, in monthly files.
+
+<img src="docs/console-logs.webp" alt="Console journal" width="90%">
+
+<br clear="all">
+
+## Running this project
 
 luna-console is built to run the luna ecosystem, and it leans on it. Without a copy of the luna suite of plugins and mods, the instance, addon, network and fleet screens still work; the player, permission and economy screens will be empty.
 
-The host needs a JRE, GNU `screen`, and MariaDB and RabbitMQ if you want the player-facing screens to have anything in them. Everything else ships in one compiled binary.
+The host needs GNU `screen`, and MariaDB and RabbitMQ if you want the player-facing screens to have anything in them. luna can install Java on each machine itself. Everything else ships in one compiled binary.
 
 ```
 sudo luna setup                    # install this machine: user, root, config, unit, start
@@ -241,11 +327,11 @@ docker build -t luna .             # or the published image: binary + console + 
 > [!WARNING]
 > This repository is public for transparency and to ship release artifacts to the machines that run it. It is **not** open source, and none of the above is permission to run it. See the licence below before you clone it.
 
-## 🤝 Contributions
+## Contributions
 
 This project does not take outside contributions. Issues and pull requests will be closed unread, and there is no roadmap to sign up to. Read the code if it is useful to you. The licence does not grant permission to build on it.
 
-## 📄 License
+## License
 
 Copyright (c) 2026 Belikhun. All rights reserved.
 
