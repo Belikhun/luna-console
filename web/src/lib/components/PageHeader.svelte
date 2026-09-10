@@ -43,13 +43,18 @@
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
+		flex-wrap: wrap;
 		gap: 1rem;
 		margin-bottom: 1rem;
 	}
 
 	// the title column is the one that gives: a long description wraps rather
-	// than squeezing the action bar until its buttons drop onto a second line
+	// than squeezing the action bar until its buttons drop onto a second line.
+	// The basis is its floor: once the action bar would push it narrower than
+	// that, the bar wraps under the title instead of leaving a one-word-per-line
+	// description beside it
 	.left {
+		flex: 1 1 20rem;
 		min-width: 0;
 	}
 
@@ -79,6 +84,11 @@
 		justify-content: flex-end;
 		gap: 0.5rem;
 		flex: none;
+		// keeps the bar on the right when it has wrapped onto its own row, and
+		// bounds it there so its own wrapping below can engage instead of the
+		// last buttons running off the edge
+		margin-left: auto;
+		max-width: 100%;
 
 		// only a genuinely narrow viewport may stack them
 		@include below($bp-medium) {
