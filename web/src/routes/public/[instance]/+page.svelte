@@ -5,9 +5,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 
+	import { page } from '$app/state';
+
 	import { t } from '$lib/i18n.svelte';
 	import { fmtDuration, cpuCeiling } from '$lib/format';
 	import { followPublic } from '$lib/public.svelte';
+	import { publicHome } from '$lib/publicroot';
 	import { BlueMapLink } from '$lib/bluemap.svelte';
 	import { DynmapLink } from '$lib/dynmap.svelte';
 	import type { MapLink } from '$lib/maplink';
@@ -167,6 +170,17 @@
 	}
 
 	const accent = $derived(card.accentColor ?? 'var(--link)');
+
+	/**
+	 * The address to hand a visitor for *this* server.
+	 *
+	 * Its own forced host when velocity routes one to it, the network address
+	 * otherwise. The fallback is not a placeholder: a backend with no host of its
+	 * own really is reached by joining the network and picking it out of the
+	 * selector, so that address is the true answer for it.
+	 */
+	const address = $derived(card.address ?? snapshot.site.address);
+
 	const mapBase = $derived(`/api/public/map/${encodeURIComponent(card.name)}`);
 
 	/** 20 is the ceiling, so the dial's tone falls as the reading falls. */
@@ -175,6 +189,41 @@
 	);
 
 	const HUD_UPTIME_DAYS = 90;
+
+	/** Where the readout panel's open state is remembered, per browser. */
+	const STATS_KEY = 'luna.public.stats';
+
+	/**
+	 * Whether the readouts are showing.
+	 *
+	 * The panel covers a corner of the world, and the world is what a visitor came
+	 * for; folding it down to its header gives that corner back without leaving the
+	 * page. Open by default, because the readouts are the other half of why this
+	 * screen exists, and remembered afterwards: somebody who closed it is looking at
+	 * the map and would close it again on every server they opened.
+	 */
+	let statsOpen = $state(true);
+
+	// read on mount rather than at init, so SSR renders the open panel and the
+	// markup the browser hydrates against matches it
+	onMount(() => {
+		try {
+			statsOpen = localStorage.getItem(STATS_KEY) !== 'closed';
+		} catch {
+			// a browser with storage blocked keeps the default for the visit
+		}
+	});
+
+	/** Fold the readouts away, or bring them back, and remember which. */
+	function toggleStats(): void {
+		statsOpen = !statsOpen;
+
+		try {
+			localStorage.setItem(STATS_KEY, statsOpen ? 'open' : 'closed');
+		} catch {
+			// the panel still toggles; only the memory of it is lost
+		}
+	}
 
 	/**
 	 * Entities across every world, or null when nothing counted them.
@@ -320,7 +369,7 @@
 	<div class="scrim"></div>
 
 	<div class="tl">
-		<a class="back" href="/public" aria-label={t('web.public.allServers')}>
+		<a class="back" href={publicHome(page.url)} aria-label={t('web.public.allServers')}>
 			<Icon name="left" style="solid" size="1rem" />
 		</a>
 		<div>
@@ -346,137 +395,147 @@
 				{/each}
 			</div>
 		{/if}
-		{#if snapshot.site.address}
-			<CopyValue value={snapshot.site.address} label={t('web.public.address')} chip />
+		{#if address}
+			<CopyValue value={address} label={t('web.public.address')} chip />
 		{/if}
 	</div>
 
-	<div class="bl glass">
-		<div class="dials">
-			<Gauge
-				value={card.players}
-				max={Math.max(1, card.maxPlayers ?? 1)}
-				display={String(card.players ?? 0)}
-				label={t('web.public.players')}
-				footnote={t('web.public.ofCapacity', { max: String(card.maxPlayers ?? 0) })}
-				color="accent"
-				size="7.5rem"
-			/>
-			<Gauge
-				value={card.tps}
-				max={20}
-				display={card.tps === null ? undefined : card.tps.toFixed(1)}
-				label={t('web.public.tps')}
-				footnote={t('web.public.ofTwenty')}
-				color={tpsTone}
-				size="7.5rem"
-			/>
-			<!-- the uptime dial used to sit here; the 90-day timeline right below says
-			     what it said, in more detail, so this is CPU and heap instead -->
-			<!-- scaled to the whole machine, not one core: a threaded server passes 100%
-			     of a core routinely, and a dial pegged there reads the same at 120% as
-			     at 600% -->
-			<Gauge
-				value={card.cpu}
-				max={cpuCeiling(card.cpuCores)}
-				label={t('web.public.cpu')}
-				footnote={card.cpuCores && card.cpuCores > 1
-					? t('web.public.ofCores', { count: String(card.cpuCores) })
-					: t('web.public.ofOneCore')}
-				size="7.5rem"
-			/>
-			<Gauge
-				value={card.memUsedMb}
-				max={Math.max(1, card.memMaxMb ?? 1)}
-				display={card.memUsedMb === null ? undefined : `${(card.memUsedMb / 1024).toFixed(1)} GB`}
-				label={t('web.public.memory')}
-				footnote={card.memMaxMb === null
-					? undefined
-					: t('web.public.ofMemory', { max: (card.memMaxMb / 1024).toFixed(0) })}
-				size="7.5rem"
-			/>
-		</div>
+	<div class="bl glass" class:closed={!statsOpen}>
+		<button class="blhdr" aria-expanded={statsOpen} onclick={toggleStats}>
+			<Icon name="chartLine" style="solid" size="0.875rem" />
+			<span>{t('web.public.readouts')}</span>
+			<Icon name={statsOpen ? 'arrowDown' : 'arrowUp'} style="solid" size="0.75rem" />
+		</button>
 
-		{#if hasLoad}
-			<div class="load">
-				{#if card.chunks !== null}
-					<div class="stat">
-						<div class="k">{t('web.public.chunks')}</div>
-						<div class="v">{card.chunks.toLocaleString()}</div>
+		{#if statsOpen}
+			<div class="blbody">
+				<div class="dials">
+					<Gauge
+						value={card.players}
+						max={Math.max(1, card.maxPlayers ?? 1)}
+						display={String(card.players ?? 0)}
+						label={t('web.public.players')}
+						footnote={t('web.public.ofCapacity', { max: String(card.maxPlayers ?? 0) })}
+						color="accent"
+						size="7.5rem"
+					/>
+					<Gauge
+						value={card.tps}
+						max={20}
+						display={card.tps === null ? undefined : card.tps.toFixed(1)}
+						label={t('web.public.tps')}
+						footnote={t('web.public.ofTwenty')}
+						color={tpsTone}
+						size="7.5rem"
+					/>
+					<!-- the uptime dial used to sit here; the 90-day timeline right below says
+					     what it said, in more detail, so this is CPU and heap instead -->
+					<!-- scaled to the whole machine, not one core: a threaded server passes 100%
+					     of a core routinely, and a dial pegged there reads the same at 120% as
+					     at 600% -->
+					<Gauge
+						value={card.cpu}
+						max={cpuCeiling(card.cpuCores)}
+						label={t('web.public.cpu')}
+						footnote={card.cpuCores && card.cpuCores > 1
+							? t('web.public.ofCores', { count: String(card.cpuCores) })
+							: t('web.public.ofOneCore')}
+						size="7.5rem"
+					/>
+					<Gauge
+						value={card.memUsedMb}
+						max={Math.max(1, card.memMaxMb ?? 1)}
+						display={card.memUsedMb === null ? undefined : `${(card.memUsedMb / 1024).toFixed(1)} GB`}
+						label={t('web.public.memory')}
+						footnote={card.memMaxMb === null
+							? undefined
+							: t('web.public.ofMemory', { max: (card.memMaxMb / 1024).toFixed(0) })}
+						size="7.5rem"
+					/>
+				</div>
+
+				{#if hasLoad}
+					<div class="load">
+						{#if card.chunks !== null}
+							<div class="stat">
+								<div class="k">{t('web.public.chunks')}</div>
+								<div class="v">{card.chunks.toLocaleString()}</div>
+							</div>
+						{/if}
+						{#if entityTotal !== null}
+							<div class="stat wide">
+								<div class="k">{t('web.public.entities')}</div>
+								<div class="v">{entityTotal.toLocaleString()}</div>
+								<!-- the split is the point: a world is fine holding ten thousand of
+								     them if nine thousand are frozen -->
+								<div class="bar"><i style:width="{tickingPct}%"></i></div>
+								<div class="legend">
+									<span class="on">{t('web.public.ticking', { n: String(card.tickingEntities ?? 0) })}</span>
+									<span>{t('web.public.idle', { n: String(card.nonTickingEntities ?? 0) })}</span>
+								</div>
+							</div>
+						{/if}
 					</div>
-				{/if}
-				{#if entityTotal !== null}
-					<div class="stat wide">
-						<div class="k">{t('web.public.entities')}</div>
-						<div class="v">{entityTotal.toLocaleString()}</div>
-						<!-- the split is the point: a world is fine holding ten thousand of
-						     them if nine thousand are frozen -->
-						<div class="bar"><i style:width="{tickingPct}%"></i></div>
-						<div class="legend">
-							<span class="on">{t('web.public.ticking', { n: String(card.tickingEntities ?? 0) })}</span>
-							<span>{t('web.public.idle', { n: String(card.nonTickingEntities ?? 0) })}</span>
+
+					{#if card.apdex !== null || card.misery !== null}
+						<div class="indices">
+							{#if card.apdex !== null}
+								<ProgressBar
+									value={card.apdex * 100}
+									left={t('web.public.apdex')}
+									right={card.apdex.toFixed(3)}
+									segmented
+									height="2rem"
+									color={card.apdex >= 0.95 ? 'success' : card.apdex >= 0.85 ? 'warning' : 'danger'}
+								/>
+							{/if}
+							{#if card.misery !== null}
+								<!-- the one bar here where full is bad, so the tone runs the other way -->
+								<ProgressBar
+									value={card.misery * 100}
+									left={t('web.public.misery')}
+									right={`${(card.misery * 100).toFixed(1)}%`}
+									segmented
+									height="2rem"
+									color={card.misery <= 0.02 ? 'success' : card.misery <= 0.1 ? 'warning' : 'danger'}
+								/>
+							{/if}
 						</div>
-					</div>
+					{/if}
 				{/if}
-			</div>
 
-			{#if card.apdex !== null || card.misery !== null}
-				<div class="indices">
-					{#if card.apdex !== null}
-						<ProgressBar
-							value={card.apdex * 100}
-							left={t('web.public.apdex')}
-							right={card.apdex.toFixed(3)}
-							segmented
-							height="2rem"
-							color={card.apdex >= 0.95 ? 'success' : card.apdex >= 0.85 ? 'warning' : 'danger'}
-						/>
-					{/if}
-					{#if card.misery !== null}
-						<!-- the one bar here where full is bad, so the tone runs the other way -->
-						<ProgressBar
-							value={card.misery * 100}
-							left={t('web.public.misery')}
-							right={`${(card.misery * 100).toFixed(1)}%`}
-							segmented
-							height="2rem"
-							color={card.misery <= 0.02 ? 'success' : card.misery <= 0.1 ? 'warning' : 'danger'}
-						/>
-					{/if}
+				<div class="uprow">
+					<div class="k">{t('web.public.uptime')}</div>
+					<UptimeTimeline
+						days={card.uptime.days}
+						pct={card.uptime.pct}
+						count={HUD_UPTIME_DAYS}
+						height="2rem"
+					/>
 				</div>
-			{/if}
-		{/if}
 
-		<div class="uprow">
-			<div class="k">{t('web.public.uptime')}</div>
-			<UptimeTimeline
-				days={card.uptime.days}
-				pct={card.uptime.pct}
-				count={HUD_UPTIME_DAYS}
-				height="2rem"
-			/>
-		</div>
-
-		<div class="facts">
-			<div class="fact">
-				<div class="k">{t('web.public.version')}</div>
-				<div class="v">{card.software}{card.mcVersion ? ` ${card.mcVersion}` : ''}</div>
-			</div>
-			{#if worlds.length}
-				<div class="fact">
-					<div class="k">{t('web.public.worlds')}</div>
-					<div class="v">{worlds.length}</div>
-				</div>
-			{/if}
-			{#if snapshot.site.address}
-				<div class="fact">
-					<div class="k">{t('web.public.address')}</div>
-					<div class="v">
-						<CopyValue value={snapshot.site.address} label={t('web.public.address')} />
+				<div class="facts">
+					<div class="fact">
+						<div class="k">{t('web.public.version')}</div>
+						<div class="v">{card.software}{card.mcVersion ? ` ${card.mcVersion}` : ''}</div>
 					</div>
+					{#if worlds.length}
+						<div class="fact">
+							<div class="k">{t('web.public.worlds')}</div>
+							<div class="v">{worlds.length}</div>
+						</div>
+					{/if}
+					{#if address}
+						<div class="fact">
+							<div class="k">{t('web.public.address')}</div>
+							<div class="v">
+								<CopyValue value={address} label={t('web.public.address')} />
+							</div>
+						</div>
+					{/if}
 				</div>
-			{/if}
-		</div>
+			</div>
+		{/if}
 	</div>
 
 	<!-- one bottom-aligned column rather than two corner panels: the map controls
@@ -682,9 +741,47 @@
 	.bl {
 		left: 1.5rem;
 		bottom: 1.5rem;
-		padding: 1rem 1.25rem 0.875rem;
 		width: 38rem;
 		max-width: calc(100vw - 3rem);
+		overflow: hidden;
+
+		// closed it is a header and nothing else, so it stops being a panel-shaped
+		// hole in the corner of the world
+		&.closed {
+			width: auto;
+		}
+	}
+
+	.blhdr {
+		@include bare-button;
+
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.625rem 1.25rem;
+		font-weight: 700;
+		font-size: 0.875rem;
+		color: var(--text-heading);
+
+		&:hover {
+			background: var(--bg-hover);
+		}
+
+		&:focus-visible {
+			@include focus-ring;
+		}
+
+		// the chevron is the affordance; it sits at the far end whatever the label
+		:global(icon:last-child) {
+			margin-left: auto;
+			color: var(--text-secondary);
+		}
+	}
+
+	.blbody {
+		padding: 0.875rem 1.25rem;
+		border-top: var(--hairline) solid var(--border-divider);
 	}
 
 	.dials {

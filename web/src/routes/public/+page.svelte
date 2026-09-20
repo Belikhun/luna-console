@@ -6,6 +6,7 @@
 	import { onMount } from 'svelte';
 
 	import { t } from '$lib/i18n.svelte';
+	import { fmtDuration } from '$lib/format';
 	import { followPublic } from '$lib/public.svelte';
 	import Gauge from '$lib/components/Gauge.svelte';
 	import Icon from '$lib/components/Icon.svelte';
@@ -37,6 +38,20 @@
 
 	/** Days on the card strips; a card is too narrow to read ninety of them. */
 	const CARD_DAYS = 30;
+
+	/** Days on the network strip, which has a whole panel to run across. */
+	const NETWORK_DAYS = 90;
+
+	/**
+	 * The network's own record, which is the proxy's.
+	 *
+	 * Not an average of the servers behind it: a backend can be restarted, moved
+	 * or taken out of the list without a player being disconnected, and every one
+	 * of them being down still leaves the address answering. What a visitor is
+	 * asking when they look at this row is whether the thing they type into
+	 * Minecraft has been letting them in, and that is the proxy.
+	 */
+	const network = $derived(snapshot.network);
 
 	const playerPoints = $derived(snapshot.series.players.map((point) => ({ t: point.t, v: point.v })));
 
@@ -137,6 +152,26 @@
 
 				<div class="chart">
 					<Sparkline points={playerPoints} label={t('web.public.playersOnline')} color="#42b4ff" />
+				</div>
+
+				<div class="netrow">
+					<div class="head">
+						<span class="k">{t('web.public.networkUptime')}</span>
+						<span class="v">
+							{#if network.online && network.uptimeMs !== null}
+								{t('web.public.upFor', { time: fmtDuration(network.uptimeMs) })}
+							{:else}
+								{t('web.public.networkDown')}
+							{/if}
+						</span>
+					</div>
+
+					<UptimeTimeline
+						days={network.uptime.days}
+						pct={network.uptime.pct}
+						count={NETWORK_DAYS}
+						height="2rem"
+					/>
 				</div>
 			</Panel>
 		</section>
@@ -259,6 +294,30 @@
 		margin-top: 1.5rem;
 	}
 
+	.netrow {
+		margin-top: 1.5rem;
+
+		.head {
+			display: flex;
+			align-items: baseline;
+			gap: 0.75rem;
+			margin-bottom: 0.5rem;
+		}
+
+		.k {
+			font-size: 0.8125rem;
+			font-weight: 700;
+			color: var(--text-heading);
+		}
+
+		.v {
+			margin-left: auto;
+			font-size: 0.8125rem;
+			color: var(--text-secondary);
+			font-variant-numeric: tabular-nums;
+		}
+	}
+
 	.eyebrow {
 		color: var(--text-label);
 		font-size: 0.75rem;
@@ -338,7 +397,8 @@
 			justify-items: center;
 		}
 
-		.chart {
+		.chart,
+		.netrow {
 			margin-top: 1rem;
 		}
 

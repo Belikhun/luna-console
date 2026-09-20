@@ -20,31 +20,22 @@
  * first paint and leave the router disagreeing.
  */
 
-import { env } from '$env/dynamic/public';
+import { isPublicHost } from '$lib/publicroot';
 
 /**
- * The hostname the public page owns, e.g. `mc.belikhun.dev`.
+ * Map a URL onto a route without changing the address the visitor sees.
  *
- * Set by `luna web` from `publicSite.address`, so an operator configures the
- * address once and nothing here needs editing. It reaches the browser because
+ * The hostname it answers for comes from `$lib/publicroot`, which reads it out
+ * of `PUBLIC_LUNA_SITE_HOST`. That value reaches the browser because
  * `$env/dynamic/public` is serialized into the page, which is what lets the
- * client half of this hook make the same decision as the server half.
- *
- * Empty when the public page is off or has no address, and then this hook does
- * nothing at all: `/` stays the console's root, which is what every other
- * hostname wants.
+ * client half of this hook make the same decision as the server half. Unset,
+ * nothing here claims a hostname and `/` stays the console's root, which is what
+ * every other name wants.
  */
-const publicHost = (env.PUBLIC_LUNA_SITE_HOST ?? '').trim().toLowerCase();
-
-/** Map a URL onto a route without changing the address the visitor sees. */
 export function reroute({ url }: { url: URL }): string | undefined {
 	// only the bare root: every other path on this domain is either the public
 	// tree already or something nginx never proxies here
-	if (url.pathname !== '/' || !publicHost) {
-		return undefined;
-	}
-
-	if (url.hostname.toLowerCase() !== publicHost) {
+	if (url.pathname !== '/' || !isPublicHost(url)) {
 		return undefined;
 	}
 

@@ -1265,6 +1265,10 @@ async function publicSnapshot(): Promise<publicsiteCore.PublicSnapshot | null> {
 		metrics[name] = sampler.getHistory(name);
 	}
 
+	// the proxy heads the same list; it is the address players actually dial, so
+	// the page reports its uptime as the network's rather than any backend's
+	const proxyRow = rows.find((entry) => entry.name === "proxy");
+
 	const fleet = fleetHistoryProvider();
 
 	return publicsiteCore.buildPublicSnapshot({
@@ -1273,6 +1277,10 @@ async function publicSnapshot(): Promise<publicsiteCore.PublicSnapshot | null> {
 		fleet,
 		metrics,
 		status,
+		proxy: {
+			online: proxyRow?.state === "running",
+			uptimeMs: (proxyRow?.uptimeMs as number | null) ?? null,
+		},
 		uptime: uptimeRecorder.uptimeStore(),
 		machines: fleet.length,
 		bucketMs: health.SAMPLE_INTERVAL_MS,

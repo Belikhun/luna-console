@@ -32,6 +32,9 @@ import type { ClusterConfig, InstanceConfig, PluginsLock, PublicSiteConfig } fro
 /** Days of uptime history the public page carries per instance. */
 export const PUBLIC_UPTIME_DAYS = 90;
 
+/** How the proxy keys itself in the registry and in the uptime record. */
+const PROXY_INSTANCE = "proxy";
+
 /** Whether the public page exists on this cluster. */
 export function publicEnabled(cfg: ClusterConfig): boolean {
 	return cfg.publicSite?.enabled === true;
@@ -244,6 +247,16 @@ export interface PublicInstanceCard {
 	/** Bukkit material of the selector icon, for the card art fallback */
 	icon: string | null;
 	description: string[];
+	/**
+	 * The hostname a player types to land on this server, or null when there is
+	 * none of its own.
+	 *
+	 * Velocity's forced hosts are the registry for it: a host the proxy routes to
+	 * a backend *is* that backend's address, and the only one a visitor can use,
+	 * since a backend's own port is never published. Null falls back to the
+	 * network address, which is what a server with no forced host is reached by.
+	 */
+	address: string | null;
 	software: string;
 	mcVersion: string | null;
 	online: boolean;
@@ -272,6 +285,22 @@ export interface PublicInstanceCard {
 	uptime: { days: Array<{ d: string; up: number; seen: number }>; pct: number | null };
 }
 
+/**
+ * The network itself, as the public page sees it.
+ *
+ * The proxy is what a player connects to, so its record is the network's: every
+ * backend behind it can be restarted without a visitor noticing, and none of
+ * them being up says nothing about whether the address answered. The proxy is
+ * not a card - it has no world, no version and no map - so its uptime is
+ * carried here instead.
+ */
+export interface PublicNetworkStatus {
+	online: boolean;
+	/** How long the proxy has been up, in ms; null when it is not running */
+	uptimeMs: number | null;
+	uptime: { days: Array<{ d: string; up: number; seen: number }>; pct: number | null };
+}
+
 /** Everything the public page renders, in one document. */
 export interface PublicSnapshot {
 	site: {
@@ -282,6 +311,7 @@ export interface PublicSnapshot {
 		consoleUrl: string | null;
 		generatedAt: number;
 	};
+	network: PublicNetworkStatus;
 	totals: {
 		players: number;
 		maxPlayers: number;
@@ -375,6 +405,14 @@ export interface PublicSnapshotInput {
 			misery?: number | null;
 		}
 	>;
+	/**
+	 * The proxy's own live status, which is the network's.
+	 *
+	 * A field of its own rather than an entry in `status`: nothing else here may
+	 * carry the proxy, because `status` is read per listed instance and the proxy
+	 * is never one of them.
+	 */
+	proxy: { online: boolean; uptimeMs: number | null };
 	uptime: UptimeStore;
 	/** Machines counted as usable right now */
 	machines: number;
@@ -450,6 +488,7 @@ export function buildPublicSnapshot(input: PublicSnapshotInput): PublicSnapshot 
 			accentColor: inst.accentColor ?? null,
 			icon: inst.serverIcon ?? null,
 			description: inst.description ?? [],
+			address: inst.proxy?.forcedHosts?.[0] ?? null,
 			software: inst.software,
 			mcVersion: inst.mcVersion ?? null,
 			online: status?.online ?? false,
@@ -484,9 +523,18 @@ export function buildPublicSnapshot(input: PublicSnapshotInput): PublicSnapshot 
 		.map(([, history]) => history.map((sample) => ({ t: sample.t, v: sample.players })));
 
 	const latest = input.fleet.map((history) => history.at(-1)).filter((sample) => sample !== undefined);
+	const proxyWindow = series(input.uptime, PROXY_INSTANCE, PUBLIC_UPTIME_DAYS, input.now);
 
 	return {
 		site: siteOf(input.cfg.publicSite, input.now),
+		network: {
+			online: input.proxy.online,
+			uptimeMs: input.proxy.uptimeMs,
+			uptime: {
+				days: proxyWindow.days.map((day) => ({ d: day.d, up: day.up, seen: day.seen })),
+				pct: proxyWindow.pct,
+			},
+		},
 		totals: {
 			players,
 			maxPlayers,

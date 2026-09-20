@@ -37,11 +37,17 @@
 	 * served to visitors who have no account and are not meant to learn that an
 	 * operator's console exists behind it. A route group would express this too,
 	 * but at the cost of moving every screen in the console into one.
+	 *
+	 * Matched on the route rather than on the pathname, exactly as the server's
+	 * own gate is: on the public site's own domain the landing page is served at
+	 * `/` by the `reroute` hook, and a pathname test would wrap it in the whole
+	 * console chrome - side nav, search, terminal drawer - on the one page that
+	 * must not show a stranger that any of it exists.
 	 */
 	const bare = $derived(
 		page.url.pathname === '/login' ||
-			page.url.pathname === '/public' ||
-			page.url.pathname.startsWith('/public/')
+			page.route.id === '/public' ||
+			(page.route.id ?? '').startsWith('/public/')
 	);
 
 	/** The signed-in account, resolved server-side in `+layout.server.ts`. */
