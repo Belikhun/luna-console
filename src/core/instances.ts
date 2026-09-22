@@ -618,6 +618,14 @@ export async function startInstance(
 		return "already-running";
 	}
 
+	// A socket under this same name that nothing is listening on is what a killed
+	// screen leaves (a container restart keeps /run/screen while the processes go).
+	// Starting over it works, but it stays in every later listing, so the start that
+	// replaces it is where it gets reaped.
+	if ((await screen.listDeadSessions()).includes(session)) {
+		await screen.wipe();
+	}
+
 	// A world operation in flight - or one a crash left half-finished - means what
 	// is on disk under the level name is not a whole world. This is the only place
 	// that has to be checked, because it is the only path to a screen session: the

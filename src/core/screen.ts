@@ -6,29 +6,78 @@
 
 import { readlink, stat } from "node:fs/promises";
 
-/** Names of every live screen session on the host. */
-export async function listSessions(): Promise<string[]> {
+/** One row of `screen -ls`: a socket's session name and whether it still answers. */
+interface Socket {
+	name: string;
+	dead: boolean;
+}
+
+// `screen -ls` prints one tab-separated row per socket: the pid and the name,
+// the socket's timestamp, then its state. A socket whose screen process is gone
+// is listed exactly like a live one, and only that trailing state tells them
+// apart, which is why it is parsed rather than skipped. `Dead ???` is what a
+// killed screen leaves behind (a container restart keeps /run/screen while the
+// processes go with it); `Removed` is a socket that vanished mid-listing.
+const SESSION_LINE = /^\s+(\d+)\.(\S+)\s+.*\(([^()]*)\)\s*$/;
+
+/** Every screen socket on the host, live and stale alike. */
+async function listSockets(): Promise<Socket[]> {
 	const proc = Bun.spawn(["screen", "-ls"], { stdout: "pipe", stderr: "pipe" });
 	const out = await new Response(proc.stdout).text();
 
 	await proc.exited;
 
-	const names: string[] = [];
+	const sockets: Socket[] = [];
 
 	for (const line of out.split("\n")) {
-		const match = line.match(/^\s+(\d+)\.(\S+)\s+\(/);
+		const match = line.match(SESSION_LINE);
 
-		if (match) {
-			names.push(match[2]!);
+		if (!match) {
+			continue;
 		}
+
+		const state = match[3]!;
+
+		sockets.push({
+			name: match[2]!,
+			dead: state.startsWith("Dead") || state === "Removed",
+		});
 	}
 
-	return names;
+	return sockets;
+}
+
+/**
+ * Names of every live screen session on the host.
+ *
+ * Stale sockets are left out deliberately: every caller reads this as "the
+ * instance is up", and a start refusing with "already running" against a socket
+ * nothing is listening on is the bug that costs an operator the most time,
+ * because `getStatus` wants a server process too and reports the truth.
+ */
+export async function listSessions(): Promise<string[]> {
+	const sockets = await listSockets();
+
+	return sockets.filter((socket) => !socket.dead).map((socket) => socket.name);
 }
 
 /** Whether a screen session with this exact name is live. */
 export async function sessionExists(name: string): Promise<boolean> {
 	return (await listSessions()).includes(name);
+}
+
+/** Names of the stale sockets a killed screen left behind. */
+export async function listDeadSessions(): Promise<string[]> {
+	const sockets = await listSockets();
+
+	return sockets.filter((socket) => socket.dead).map((socket) => socket.name);
+}
+
+/** Remove every stale socket on the host. Live sessions are untouched. */
+export async function wipe(): Promise<void> {
+	const proc = Bun.spawn(["screen", "-wipe"], { stdout: "ignore", stderr: "ignore" });
+
+	await proc.exited;
 }
 
 /** Send text to a session's console followed by Enter. */
