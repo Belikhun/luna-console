@@ -48,6 +48,18 @@ import { buildVersion } from "../version";
 const RECONNECT_MIN_MS = 2_000;
 const RECONNECT_MAX_MS = 30_000;
 
+/** How long the link may stay quiet before this end calls it dead. The primary
+ *  pings every 5s and drops a follower after three unanswered ones, so silence
+ *  past that is silence the primary can no longer account for; the margin keeps
+ *  its clean close the usual path. This exists because a blackholed network
+ *  delivers no close frame at all: on 22 Sep an IP conflict on the primary left
+ *  both followers holding half-open sockets, healthy and idle, for hours,
+ *  because `onclose` was the only thing that could have started a reconnect. */
+const LINK_SILENCE_MS = 30_000;
+
+/** How often the silence above is checked. */
+const SILENCE_CHECK_MS = 5_000;
+
 /** Progress frames are throttled like the job SSE stream is. */
 const PROGRESS_FLUSH_MS = 150;
 
@@ -55,6 +67,8 @@ let dcfg: DaemonConfig | undefined;
 let ws: WebSocket | undefined;
 let backoffMs = RECONNECT_MIN_MS;
 let startedAt = Date.now();
+let silenceTimer: ReturnType<typeof setInterval> | undefined;
+let lastHeard = 0;
 
 function send(frame: Record<string, unknown>): void {
 	if (ws && ws.readyState === WebSocket.OPEN) {
@@ -384,14 +398,80 @@ async function recoverFromProtocolMismatch(): Promise<void> {
 	}
 }
 
+/** Queue the next dial and widen the backoff. */
+function scheduleReconnect(): void {
+	setTimeout(connect, backoffMs);
+	backoffMs = Math.min(RECONNECT_MAX_MS, backoffMs * 2);
+}
+
+function disarmWatchdog(): void {
+	if (silenceTimer) {
+		clearInterval(silenceTimer);
+		silenceTimer = undefined;
+	}
+}
+
+/**
+ * Watch for a link that has gone quiet. Every frame from the primary refreshes
+ * `lastHeard`, and the heartbeat alone guarantees one every few seconds, so a
+ * gap wider than LINK_SILENCE_MS means the socket is carrying nothing however
+ * open it reads.
+ */
+function armWatchdog(socket: WebSocket): void {
+	disarmWatchdog();
+
+	lastHeard = Date.now();
+
+	silenceTimer = setInterval(() => {
+		if (Date.now() - lastHeard < LINK_SILENCE_MS) {
+			return;
+		}
+
+		log(t("daemon.log.linkSilent", { seconds: Math.round(LINK_SILENCE_MS / 1000) }));
+
+		dropLink(socket);
+	}, SILENCE_CHECK_MS);
+}
+
+/**
+ * Abandon a link this end has judged dead. A half-open socket may never raise a
+ * close event, so the handlers come off and the retry is queued here rather than
+ * through `onclose`: the close below is a courtesy to a primary that might still
+ * be listening, never the thing the reconnect waits on.
+ */
+function dropLink(socket: WebSocket): void {
+	disarmWatchdog();
+
+	socket.onclose = null;
+	socket.onerror = null;
+	socket.onmessage = null;
+
+	try {
+		socket.close(4000, "link silent");
+	} catch {
+		// already gone; the retry below is what matters
+	}
+
+	if (ws === socket) {
+		ws = undefined;
+	}
+
+	stopAllTails();
+	scheduleReconnect();
+}
+
 function connect(): void {
 	const address = dcfg!.primary!.address;
 	const token = encodeURIComponent(dcfg!.token ?? "");
 
-	ws = new WebSocket(`ws://${address}/cluster?token=${token}`);
+	const socket = new WebSocket(`ws://${address}/cluster?token=${token}`);
 
-	ws.onopen = () => {
+	ws = socket;
+
+	socket.onopen = () => {
 		backoffMs = RECONNECT_MIN_MS;
+
+		armWatchdog(socket);
 
 		log(`connected to primary at ${address}`);
 
@@ -415,7 +495,10 @@ function connect(): void {
 		});
 	};
 
-	ws.onmessage = (event) => {
+	socket.onmessage = (event) => {
+		// any frame proves the link carries traffic, which is what the watchdog asks
+		lastHeard = Date.now();
+
 		let frame: PrimaryFrame;
 
 		try {
@@ -482,9 +565,10 @@ function connect(): void {
 		}
 	};
 
-	ws.onclose = (event) => {
+	socket.onclose = (event) => {
 		log(t("daemon.log.linkLost", { code: `${event.code}${event.reason ? ` ${event.reason}` : ""}`, seconds: Math.round(backoffMs / 1000) }));
 
+		disarmWatchdog();
 		stopAllTails();
 
 		// the one automatic upgrade: a protocol mismatch means this build can no
@@ -499,11 +583,10 @@ function connect(): void {
 
 		ws = undefined;
 
-		setTimeout(connect, backoffMs);
-		backoffMs = Math.min(RECONNECT_MAX_MS, backoffMs * 2);
+		scheduleReconnect();
 	};
 
-	ws.onerror = () => {
+	socket.onerror = () => {
 		// onclose follows with the retry; nothing useful to add here
 	};
 }

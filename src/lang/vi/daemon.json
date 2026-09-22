@@ -86,6 +86,7 @@
 	"log": {
 		"protocolMismatch": "lệch giao thức; đang thử tự nâng cấp từ primary",
 		"linkLost": "mất liên kết tới primary ({code}); thử lại sau {seconds}s",
+		"linkSilent": "liên kết tới primary im lặng {seconds}s; ngắt và gọi lại",
 		"starting": "daemon luna \"{name}\" ({mode}), gốc {root}",
 		"noToken": "cảnh báo: chưa cấu hình token cụm; follower không xác thực được",
 		"shuttingDown": "nhận {signal}, đang tắt",

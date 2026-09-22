@@ -86,6 +86,7 @@
 	"log": {
 		"protocolMismatch": "protocol mismatch; attempting a self-upgrade from the primary",
 		"linkLost": "primary link lost ({code}); retrying in {seconds}s",
+		"linkSilent": "primary link silent for {seconds}s; dropping it and redialling",
 		"starting": "luna daemon \"{name}\" ({mode}), root {root}",
 		"noToken": "warning: no cluster token configured; followers cannot authenticate",
 		"shuttingDown": "{signal} received, shutting down",
