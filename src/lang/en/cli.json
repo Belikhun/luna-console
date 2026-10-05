@@ -1915,5 +1915,148 @@
 			"badCount": "keep at least one backup",
 			"done": "{name} keeps {count} backup(s)"
 		}
+	},
+	"mcp": {
+		"stateActive": "active",
+		"stateDisabled": "disabled",
+		"stateExpired": "expired",
+		"unknownGroups": "unknown tool group(s): {groups}; the groups are {known}",
+		"badDays": "--expires-days takes a positive number of days",
+		"cancelled": "cancelled; nothing changed",
+		"secretOnce": "this is the only time the token is shown; store it in the client now",
+		"secretUse": "clients send it as {header} to the console's {path}",
+		"optGroups": "comma-separated tool groups (observe, control, config, knowledge, knowledge-write)",
+		"optAllow": "comma-separated tools granted on top of the groups",
+		"optDeny": "comma-separated tools refused even if a group grants them",
+		"optInstances": "comma-separated instances the token may name",
+		"optAllInstances": "lift the instance limit",
+		"optExpiresDays": "expire the token after this many days",
+		"optNoExpiry": "the token never expires",
+		"optDescription": "what it is for",
+		"optName": "rename the token",
+		"optYes": "skip the confirmation",
+		"head": {
+			"groups": "Groups",
+			"group": "Group",
+			"tools": "Tools",
+			"instances": "Instances",
+			"calls": "Calls",
+			"lastUsed": "Last used",
+			"description": "Description",
+			"when": "When",
+			"tool": "Tool",
+			"token": "Token",
+			"onBehalfOf": "On behalf of",
+			"duration": "Took",
+			"detail": "Detail",
+			"action": "Action",
+			"actor": "Actor",
+			"id": "Id",
+			"kind": "Kind",
+			"title": "Title",
+			"scope": "Scope",
+			"updated": "Updated"
+		},
+		"field": {
+			"id": "Id",
+			"description": "Purpose",
+			"groups": "Groups",
+			"allow": "Also allowed",
+			"deny": "Denied",
+			"instances": "Instances",
+			"created": "Created",
+			"lastUsed": "Last used",
+			"expires": "Expires",
+			"rotated": "Secret rotated",
+			"calls": "Calls"
+		},
+		"tokens": {
+			"desc": "MCP tokens: which programs may reach the cluster over MCP, and with which tools",
+			"none": "no MCP tokens yet",
+			"createHint": "create one with {command}"
+		},
+		"show": {
+			"desc": "one MCP token: scope, usage and expiry",
+			"tools": "{count} tool(s) in scope"
+		},
+		"add": {
+			"desc": "mint an MCP token (read-only unless --groups says otherwise)",
+			"created": "created MCP token {name} · {count} tool(s)"
+		},
+		"update": {
+			"desc": "change a token's name, purpose, expiry or scope",
+			"done": "updated {name} · {count} tool(s)"
+		},
+		"enable": {
+			"desc": "accept calls made with a token again",
+			"done": "enabled {name}"
+		},
+		"disable": {
+			"desc": "refuse every call made with a token, keeping its history",
+			"done": "disabled {name}"
+		},
+		"rotate": {
+			"desc": "replace a token's secret; the old one stops working at once",
+			"confirm": "rotate {name}? every client holding it has to be updated",
+			"done": "rotated {name}"
+		},
+		"remove": {
+			"desc": "delete a token and the knowledge scoped to it",
+			"confirm": "delete {name}? its token-scoped knowledge goes with it",
+			"done": "deleted {name} · {count} knowledge item(s) removed with it"
+		},
+		"tools": {
+			"desc": "every tool the MCP endpoint can expose, by group",
+			"changesState": "changes state",
+			"readOnly": "read-only"
+		},
+		"calls": {
+			"desc": "the MCP call log, newest first",
+			"optToken": "only this token",
+			"optTool": "only this tool",
+			"optFailed": "only failed calls",
+			"optSearch": "substring filter",
+			"optLimit": "how many entries (default 50)",
+			"none": "no matching calls",
+			"truncated": "showing the newest {count}; raise --limit for more"
+		},
+		"audit": {
+			"desc": "what was done to MCP tokens and knowledge, newest first",
+			"none": "no audit entries"
+		},
+		"knowledge": {
+			"desc": "context, memories and skills the MCP endpoint serves",
+			"optKind": "context, memory or skill",
+			"optScope": "\"console\" for every token, or a token name",
+			"optBody": "the body text (markdown)",
+			"optFile": "read the body from a file",
+			"optTags": "comma-separated tags",
+			"optPinned": "send it to every client in scope on connect",
+			"optTitle": "new title (a skill's name)",
+			"optPin": "pin it",
+			"optUnpin": "unpin it",
+			"optEnable": "enable it",
+			"optDisable": "disable it",
+			"none": "no matching knowledge",
+			"everyToken": "every token",
+			"noFile": "no such file: {path}",
+			"bodyNeeded": "give the body with --body or --file",
+			"show": {
+				"desc": "print one knowledge item"
+			},
+			"add": {
+				"desc": "add a context document, memory or skill",
+				"done": "added {title} {id}"
+			},
+			"edit": {
+				"desc": "change a knowledge item",
+				"done": "updated {title}"
+			},
+			"remove": {
+				"desc": "delete a knowledge item",
+				"confirm": "delete {title}?",
+				"done": "deleted {title}"
+			}
+		}
 	}
 }

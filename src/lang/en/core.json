@@ -708,5 +708,17 @@
 		"fileTooLarge": "{path} is far too large to be a player file",
 		"notAnObject": "{path} does not hold a JSON object",
 		"unreadable": "{file} could not be read: {error}"
+	},
+	"mcp": {
+		"unknownToken": "no MCP token named {name}",
+		"badTokenName": "a token name starts with a letter or digit and holds up to 64 letters, digits, spaces, dots, dashes or underscores",
+		"tokenNameTaken": "the token name {name} is already taken",
+		"expiryInPast": "the expiry must be in the future",
+		"badKnowledgeKind": "a knowledge item is a context document, a memory or a skill",
+		"titleRequired": "a title is required",
+		"bodyTooLong": "the body is longer than {max} characters",
+		"badSkillName": "a skill name is a lowercase slug: letters, digits and dashes, up to 64 characters",
+		"skillNameTaken": "a skill named {name} is already visible in that scope",
+		"unknownKnowledge": "no knowledge item {id} that this caller may change"
 	}
 }

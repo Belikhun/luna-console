@@ -189,6 +189,8 @@
 			section: t('web.nav.console'),
 			items: [
 				{ label: t('web.nav.accounts'), href: '/console/accounts', icon: 'userShield' },
+				{ label: t('web.nav.mcp'), href: '/console/mcp', icon: 'plug' },
+				{ label: t('web.nav.knowledge'), href: '/console/knowledge', icon: 'bookOpen' },
 				{ label: t('web.nav.consoleLogs'), href: '/console/logs', icon: 'fileLines' }
 			]
 		},
@@ -268,7 +270,13 @@
 		'/console/accounts/[id]',
 		'/console/accounts/[id]/edit',
 		'/console/accounts/new',
+		'/console/knowledge',
+		'/console/knowledge/[id]',
+		'/console/knowledge/new',
 		'/console/logs',
+		'/console/mcp',
+		'/console/mcp/[id]',
+		'/console/mcp/new',
 		'/datapacks',
 		'/environment',
 		'/environment/[name]',

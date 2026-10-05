@@ -35,6 +35,7 @@ import { join } from "node:path";
 import { MIN_PASSWORD_LENGTH, USERNAME_PATTERN } from "../shared/accountrules";
 import { t } from "../shared/i18n";
 import { notifySave, statePath } from "./config";
+import { digest, newId, newSecret, sameDigest } from "./secrets";
 
 const ACCOUNTS_FILE = "accounts.json";
 const SESSIONS_FILE = "sessions.json";
@@ -316,34 +317,6 @@ export async function loadSessions(): Promise<SessionStore> {
  */
 export async function saveSessions(store: SessionStore): Promise<void> {
 	await Bun.write(sessionsPath(), JSON.stringify({ sessions: store.sessions }, null, "\t") + "\n");
-}
-
-/** 128 bits of id, prefixed so a stray value says what it is. */
-function newId(prefix: string): string {
-	return `${prefix}_${randomBytes(8).toString("hex")}`;
-}
-
-/** SHA-256 hex. Only ever applied to values that are already 256-bit random. */
-function digest(value: string): string {
-	return new Bun.CryptoHasher("sha256").update(value).digest("hex");
-}
-
-/**
- * Compare two hex digests without leaking where they diverge. The token arrives
- * from the client, so the lookup is an attacker-controlled comparison.
- */
-function sameDigest(left: string, right: string): boolean {
-	if (left.length !== right.length) {
-		return false;
-	}
-
-	let diff = 0;
-
-	for (let i = 0; i < left.length; i++) {
-		diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
-	}
-
-	return diff === 0;
 }
 
 /**
@@ -822,7 +795,7 @@ export async function addAccessKey(
 	const account = requireAccount(store, idOrName);
 
 	const id = newId("key");
-	const secret = randomBytes(32).toString("base64url");
+	const secret = newSecret();
 	const identity: ConsoleIdentity = {
 		id,
 		kind: "accessKey",
@@ -1030,7 +1003,7 @@ export async function signIn(
 
 	await saveAccounts(store);
 
-	const token = randomBytes(32).toString("base64url");
+	const token = newSecret();
 	const sessions = await loadSessions();
 
 	sessions.sessions.push({

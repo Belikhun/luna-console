@@ -1915,5 +1915,148 @@
 			"badCount": "giữ lại ít nhất một bản sao lưu",
 			"done": "{name} giữ {count} bản sao lưu"
 		}
+	},
+	"mcp": {
+		"stateActive": "đang hoạt động",
+		"stateDisabled": "đã tắt",
+		"stateExpired": "đã hết hạn",
+		"unknownGroups": "nhóm công cụ không tồn tại: {groups}; các nhóm hợp lệ là {known}",
+		"badDays": "--expires-days nhận số ngày dương",
+		"cancelled": "đã huỷ; không có gì thay đổi",
+		"secretOnce": "đây là lần duy nhất token được hiển thị; hãy lưu vào client ngay",
+		"secretUse": "client gửi nó dưới dạng {header} tới {path} của console",
+		"optGroups": "các nhóm công cụ, phân tách bằng dấu phẩy (observe, control, config, knowledge, knowledge-write)",
+		"optAllow": "các công cụ được cấp thêm ngoài nhóm, phân tách bằng dấu phẩy",
+		"optDeny": "các công cụ bị từ chối dù nhóm có cấp, phân tách bằng dấu phẩy",
+		"optInstances": "các instance token được phép chỉ định, phân tách bằng dấu phẩy",
+		"optAllInstances": "bỏ giới hạn instance",
+		"optExpiresDays": "token hết hạn sau số ngày này",
+		"optNoExpiry": "token không bao giờ hết hạn",
+		"optDescription": "dùng để làm gì",
+		"optName": "đổi tên token",
+		"optYes": "bỏ qua xác nhận",
+		"head": {
+			"groups": "Nhóm",
+			"group": "Nhóm",
+			"tools": "Công cụ",
+			"instances": "Instance",
+			"calls": "Lượt gọi",
+			"lastUsed": "Dùng lần cuối",
+			"description": "Mô tả",
+			"when": "Thời điểm",
+			"tool": "Công cụ",
+			"token": "Token",
+			"onBehalfOf": "Thay mặt",
+			"duration": "Thời gian",
+			"detail": "Chi tiết",
+			"action": "Hành động",
+			"actor": "Người thực hiện",
+			"id": "Id",
+			"kind": "Loại",
+			"title": "Tiêu đề",
+			"scope": "Phạm vi",
+			"updated": "Cập nhật"
+		},
+		"field": {
+			"id": "Id",
+			"description": "Mục đích",
+			"groups": "Nhóm",
+			"allow": "Cấp thêm",
+			"deny": "Từ chối",
+			"instances": "Instance",
+			"created": "Tạo lúc",
+			"lastUsed": "Dùng lần cuối",
+			"expires": "Hết hạn",
+			"rotated": "Đổi khoá lần cuối",
+			"calls": "Lượt gọi"
+		},
+		"tokens": {
+			"desc": "Token MCP: chương trình nào được truy cập cụm qua MCP, và với công cụ nào",
+			"none": "chưa có token MCP",
+			"createHint": "tạo bằng {command}"
+		},
+		"show": {
+			"desc": "một token MCP: phạm vi, mức dùng và thời hạn",
+			"tools": "{count} công cụ trong phạm vi"
+		},
+		"add": {
+			"desc": "tạo token MCP (chỉ đọc trừ khi --groups chỉ định khác)",
+			"created": "đã tạo token MCP {name} · {count} công cụ"
+		},
+		"update": {
+			"desc": "đổi tên, mục đích, thời hạn hoặc phạm vi của token",
+			"done": "đã cập nhật {name} · {count} công cụ"
+		},
+		"enable": {
+			"desc": "cho phép lại các lượt gọi bằng token",
+			"done": "đã bật {name}"
+		},
+		"disable": {
+			"desc": "từ chối mọi lượt gọi bằng token, vẫn giữ lịch sử",
+			"done": "đã tắt {name}"
+		},
+		"rotate": {
+			"desc": "thay khoá bí mật của token; khoá cũ ngừng hoạt động ngay",
+			"confirm": "đổi khoá {name}? mọi client đang giữ nó phải được cập nhật",
+			"done": "đã đổi khoá {name}"
+		},
+		"remove": {
+			"desc": "xoá token cùng kiến thức thuộc phạm vi của nó",
+			"confirm": "xoá {name}? kiến thức riêng của token sẽ bị xoá theo",
+			"done": "đã xoá {name} · {count} mục kiến thức bị xoá theo"
+		},
+		"tools": {
+			"desc": "mọi công cụ mà endpoint MCP có thể cung cấp, theo nhóm",
+			"changesState": "thay đổi trạng thái",
+			"readOnly": "chỉ đọc"
+		},
+		"calls": {
+			"desc": "nhật ký lượt gọi MCP, mới nhất trước",
+			"optToken": "chỉ token này",
+			"optTool": "chỉ công cụ này",
+			"optFailed": "chỉ các lượt gọi lỗi",
+			"optSearch": "lọc theo chuỗi con",
+			"optLimit": "số mục hiển thị (mặc định 50)",
+			"none": "không có lượt gọi phù hợp",
+			"truncated": "đang hiện {count} mục mới nhất; tăng --limit để xem thêm"
+		},
+		"audit": {
+			"desc": "những gì đã làm với token MCP và kiến thức, mới nhất trước",
+			"none": "không có mục kiểm tra nào"
+		},
+		"knowledge": {
+			"desc": "ngữ cảnh, ghi nhớ và kỹ năng mà endpoint MCP cung cấp",
+			"optKind": "context, memory hoặc skill",
+			"optScope": "\"console\" cho mọi token, hoặc tên một token",
+			"optBody": "nội dung (markdown)",
+			"optFile": "đọc nội dung từ tệp",
+			"optTags": "các thẻ, phân tách bằng dấu phẩy",
+			"optPinned": "gửi cho mọi client trong phạm vi khi kết nối",
+			"optTitle": "tiêu đề mới (tên kỹ năng)",
+			"optPin": "ghim",
+			"optUnpin": "bỏ ghim",
+			"optEnable": "bật",
+			"optDisable": "tắt",
+			"none": "không có kiến thức phù hợp",
+			"everyToken": "mọi token",
+			"noFile": "không có tệp: {path}",
+			"bodyNeeded": "nhập nội dung bằng --body hoặc --file",
+			"show": {
+				"desc": "in một mục kiến thức"
+			},
+			"add": {
+				"desc": "thêm tài liệu ngữ cảnh, ghi nhớ hoặc kỹ năng",
+				"done": "đã thêm {title} {id}"
+			},
+			"edit": {
+				"desc": "sửa một mục kiến thức",
+				"done": "đã cập nhật {title}"
+			},
+			"remove": {
+				"desc": "xoá một mục kiến thức",
+				"confirm": "xoá {title}?",
+				"done": "đã xoá {title}"
+			}
+		}
 	}
 }

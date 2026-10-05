@@ -380,6 +380,29 @@ export interface InstanceConfig {}
   It is a third thing on purpose: `core/logs.ts` reads an *instance's* log, and `daemon/events.ts` is
   the in-memory cluster event feed that dies with the daemon.
 
+### MCP access
+- **A token is not an account.** `core/mcp.ts` mints MCP tokens for programs (the Discord bot, an
+  editor) that reach the console's `/api/mcp` endpoint. A token's `McpScope` (groups, then explicit
+  allows, then denies that win, plus an optional instance allowlist) **is** its authorization, and it
+  is checked on every `tools/call`, never only at `tools/list`, so narrowing a scope or disabling a
+  token takes effect on the client's next call. This is not the RBAC phase for console accounts.
+- **The catalog is data.** `shared/mcptools.ts` lists every tool with its group, model-facing
+  description (protocol text, English), JSON schema and MCP annotations; a new tool is a catalog entry
+  plus its adapter in `web/src/lib/server/mcp/handlers.ts`, which calls the `$core` bridge like any
+  route so follower routing still applies. Deleting instances, set-version, cleanup, accounts,
+  secret reveal, file writes and upgrades are deliberately never tools.
+- **The endpoint is stateless Streamable HTTP**, hand-rolled in `web/src/lib/server/mcp/protocol.ts`
+  (no SDK): POST answers JSON, GET/DELETE answer 405, no session id. It sits in `PUBLIC_PREFIXES` and
+  demands its own bearer; a browser `Origin` that is not the host is refused (DNS rebinding).
+- **Three stores, all primary-local and never mirrored**, like `sessions.json`: `mcp.json` (tokens as
+  digests + the management audit), `knowledge.json` (context, memories, skills; scoped console-wide or
+  to one token) and `logs/mcp/<YYYY-MM>.ndjson`, one line per call with the client's
+  `_meta["dev.belikhun.luna/onBehalfOf"]` claim. Per-call traffic never rewrites a JSON store; a
+  token's `lastUsedAt` and counters persist on an `MCP_TOUCH_MS` throttle.
+- Console-wide knowledge is readable by every token and writable only from the console or CLI; a
+  token's `memory_save` always lands in its own scope. Pinned context and memories become the
+  `initialize` instructions.
+
 ### Daemon health
 - **Every daemon samples its own machine** (`daemon/health.ts`, 5 s, one hour kept): CPU, memory,
   cluster-root disk, load, host uptime, IP addresses and each owned instance's resident memory. A
@@ -616,6 +639,14 @@ luna sessions [--account x]               # open console sessions
 luna sessions revoke <id>|--account x     # close one, or all of an account's
 luna audit [--account x] [--limit n]      # the account audit trail, newest first
 luna logs [--source s] [--level l] [--search x]   # this machine's console journal
+luna mcp tokens                   # MCP tokens: scope, usage, expiry
+luna mcp token add <name> [--groups a,b] [--allow x] [--deny y] [--instances i] [--expires-days n]
+luna mcp token show|update|enable|disable|rotate|remove <name>
+luna mcp calls [--token x] [--tool y] [--failed]  # the MCP call log
+luna mcp audit [--token x]        # what was done to tokens and knowledge
+luna mcp tools                    # the tool catalog by group
+luna mcp knowledge [--kind k] [--scope console|<token>]
+luna mcp knowledge show|add|edit|remove …
 luna version                      # build identity of the binary and of the daemon
 bun run src/cli/index.ts <cmd…>   # run the CLI from source (this dir)
 bun run build                     # compile the single binary → dist/luna

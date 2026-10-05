@@ -42,6 +42,7 @@ import * as journalCore from "../core/journal";
 import * as lifecycleCore from "../core/lifecycle";
 import * as logsCore from "../core/logs";
 import * as lunaCore from "../core/luna";
+import * as mcpCore from "../core/mcp";
 import * as mcassetsCore from "../core/mcassets";
 import * as packslockCore from "../core/packslock";
 import * as pluginstateCore from "../core/pluginstate";
@@ -1449,6 +1450,29 @@ export const OPS: Record<string, OpSpec> = {
 	"accounts.listSessions": { fn: accountsCore.listSessions },
 	"accounts.revokeSession": { fn: accountsCore.revokeSession },
 	"accounts.revokeAccountSessions": { fn: accountsCore.revokeAccountSessions },
+
+	// -- MCP tokens, call log and knowledge (primary-local; see core/mcp.ts) ----------
+	// As with accounts, no op returns the raw token store: digests stay in here.
+	"mcp.listTokens": { fn: mcpCore.listMcpTokens },
+	"mcp.getToken": { fn: mcpCore.getMcpToken },
+	"mcp.createToken": { fn: mcpCore.createMcpToken },
+	"mcp.updateToken": { fn: mcpCore.updateMcpToken },
+	"mcp.setTokenEnabled": { fn: mcpCore.setMcpTokenEnabled },
+	"mcp.rotateToken": { fn: mcpCore.rotateMcpToken },
+	"mcp.removeToken": { fn: mcpCore.removeMcpToken },
+	"mcp.audit": { fn: mcpCore.mcpAudit },
+	"mcp.authorize": { fn: mcpCore.authorizeMcpToken },
+	"mcp.recordCall": { fn: mcpCore.recordMcpCall },
+	"mcp.readCalls": { fn: mcpCore.readMcpCalls },
+	"mcp.instructions": { fn: mcpCore.mcpInstructions },
+	"mcp.serverVersion": { fn: mcpCore.mcpServerVersion },
+	"mcp.listKnowledge": { fn: mcpCore.listKnowledge },
+	"mcp.getKnowledge": { fn: mcpCore.getKnowledge },
+	"mcp.knowledgeFor": { fn: mcpCore.knowledgeFor },
+	"mcp.createKnowledge": { fn: mcpCore.createKnowledge },
+	"mcp.updateKnowledge": { fn: mcpCore.updateKnowledge },
+	"mcp.removeKnowledge": { fn: mcpCore.removeKnowledge },
+	"mcp.searchMemories": { fn: mcpCore.searchMemories },
 
 	// -- plugins ---------------------------------------------------------------
 	"plugins.scan": { fn: pluginsCore.scan, cfg: 0, lock: 1 },

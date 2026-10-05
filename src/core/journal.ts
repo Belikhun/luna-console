@@ -31,7 +31,7 @@ import { join } from "node:path";
 import { root } from "./config";
 
 /** Which part of luna wrote the entry. */
-export type JournalSource = "daemon" | "web" | "cli" | "auth" | "job" | "scheduler";
+export type JournalSource = "daemon" | "web" | "cli" | "auth" | "job" | "scheduler" | "mcp";
 
 export type JournalLevel = "debug" | "info" | "warn" | "error";
 
@@ -43,6 +43,7 @@ export const JOURNAL_SOURCES: JournalSource[] = [
 	"auth",
 	"job",
 	"scheduler",
+	"mcp",
 ];
 
 /** Every level, weakest first; also the filter's "this level and above" order. */

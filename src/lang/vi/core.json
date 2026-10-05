@@ -708,5 +708,17 @@
 		"fileTooLarge": "{path} quá lớn để là một tệp người chơi",
 		"notAnObject": "{path} không chứa một đối tượng JSON",
 		"unreadable": "không đọc được {file}: {error}"
+	},
+	"mcp": {
+		"unknownToken": "không có token MCP nào tên {name}",
+		"badTokenName": "tên token bắt đầu bằng chữ cái hoặc chữ số, dài tối đa 64 ký tự gồm chữ, số, khoảng trắng, dấu chấm, gạch ngang hoặc gạch dưới",
+		"tokenNameTaken": "tên token {name} đã được dùng",
+		"expiryInPast": "thời điểm hết hạn phải ở tương lai",
+		"badKnowledgeKind": "mục kiến thức phải là tài liệu ngữ cảnh, ghi nhớ hoặc kỹ năng",
+		"titleRequired": "cần có tiêu đề",
+		"bodyTooLong": "nội dung dài quá {max} ký tự",
+		"badSkillName": "tên kỹ năng là slug chữ thường: chữ cái, chữ số và gạch ngang, tối đa 64 ký tự",
+		"skillNameTaken": "đã có kỹ năng tên {name} trong phạm vi đó",
+		"unknownKnowledge": "không có mục kiến thức {id} mà bên gọi này được phép sửa"
 	}
 }

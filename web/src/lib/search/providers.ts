@@ -153,6 +153,20 @@ const pages = (): SearchHit[] => [
 	},
 	{
 		group: 'web.searchGroups.pages',
+		label: t('web.nav.mcp'),
+		detail: t('web.searchPages.mcp'),
+		href: '/console/mcp',
+		icon: 'plug'
+	},
+	{
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.knowledge'),
+		detail: t('web.searchPages.knowledge'),
+		href: '/console/knowledge',
+		icon: 'bookOpen'
+	},
+	{
+		group: 'web.searchGroups.pages',
 		label: t('web.nav.consoleLogs'),
 		detail: t('web.searchPages.consoleLogs'),
 		href: '/console/logs',
@@ -444,6 +458,46 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 					.join(' · '),
 				href: `/console/accounts/${account.id}`,
 				icon: 'userShield'
+			}));
+		}
+	},
+
+	{
+		group: 'web.searchGroups.mcpTokens',
+		icon: 'plug',
+		load: async () => {
+			const body = await fetchJson<{ tokens?: any[] }>('/api/mcp-tokens');
+
+			return (body?.tokens ?? []).map((token) => ({
+				group: 'web.searchGroups.mcpTokens',
+				label: String(token.name),
+				detail: [
+					token.description || '',
+					token.enabled ? (token.expired ? 'expired' : 'enabled') : 'disabled',
+					`${token.tools?.length ?? 0} tool(s)`
+				]
+					.filter(Boolean)
+					.join(' · '),
+				href: `/console/mcp/${token.id}`,
+				icon: 'plug'
+			}));
+		}
+	},
+
+	{
+		group: 'web.searchGroups.knowledge',
+		icon: 'bookOpen',
+		load: async () => {
+			const body = await fetchJson<{ items?: any[] }>('/api/knowledge');
+
+			return (body?.items ?? []).map((item) => ({
+				group: 'web.searchGroups.knowledge',
+				label: String(item.title),
+				detail: [item.kind, item.description || String(item.body ?? '').slice(0, 80)]
+					.filter(Boolean)
+					.join(' · '),
+				href: `/console/knowledge/${item.id}`,
+				icon: 'bookOpen'
 			}));
 		}
 	},

@@ -36,8 +36,12 @@ const PUBLIC_ROUTES = new Set(['/login', '/api/auth/session', '/api/auth/bootstr
  * routes carry instead is their own: every one of them refuses unless the
  * cluster has the public page switched on, and the per-instance ones refuse
  * unless that instance opted in.
+ *
+ * `/api/mcp` is ungated by the session for a different reason: an MCP client has
+ * no cookie, and the route demands its own bearer token on every request
+ * (`core/mcp.ts`), which is a stricter gate than a session, not a missing one.
  */
-const PUBLIC_PREFIXES = ['/public', '/api/public'];
+const PUBLIC_PREFIXES = ['/public', '/api/public', '/api/mcp'];
 
 /**
  * Whether a request landed in an ungated subtree.

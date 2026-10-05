@@ -138,7 +138,8 @@
 					value: 'scheduler',
 					label: t('web.consoleLogs.sourceScheduler'),
 					match: (row) => row.source === 'scheduler'
-				}
+				},
+				{ value: 'mcp', label: t('web.consoleLogs.sourceMcp'), match: (row) => row.source === 'mcp' }
 			]
 		},
 		{
