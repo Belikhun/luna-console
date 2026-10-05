@@ -4239,7 +4239,11 @@
 			"shell": "luna CLI",
 			"host-shell": "Shell máy chủ",
 			"addons": "Xem addon",
-			"addons-write": "Quản lý addon"
+			"addons-write": "Quản lý addon",
+			"network": "Xem mạng",
+			"network-write": "Quản lý mạng",
+			"packs": "Xem gói",
+			"packs-write": "Quản lý gói"
 		},
 		"groupHint": {
 			"observe": "trạng thái, log, người chơi, máy chủ, sự kiện; chỉ đọc",
@@ -4252,7 +4256,11 @@
 			"shell": "chạy lệnh luna dưới tên token này; lệnh tài khoản, MCP, setup và lệnh lộ secret bị từ chối, và token bị giới hạn instance không dùng được",
 			"host-shell": "bash tuỳ ý dưới quyền người dùng dịch vụ luna; mỗi máy còn phải bật mcpHostShell trong cấu hình daemon",
 			"addons": "kho addon, tìm kiếm trên nhà cung cấp, các phiên bản và cập nhật đang chờ",
-			"addons-write": "cài từ nhà cung cấp, URL hoặc tệp tải lên, cập nhật, ghim, triển khai và gỡ plugin và mod"
+			"addons-write": "cài từ nhà cung cấp, URL hoặc tệp tải lên, cập nhật, ghim, triển khai và gỡ plugin và mod",
+			"network": "menu /servers, đăng ký với velocity và bảng cổng",
+			"network-write": "sửa và áp dụng menu /servers, đăng ký server với velocity, đồng bộ velocity.toml, sửa cổng và đổi cổng của instance",
+			"packs": "gói tài nguyên và gói dữ liệu, tìm kiếm nhà cung cấp và bản cập nhật chờ",
+			"packs-write": "cài, tải lên, cấu hình, cập nhật, đẩy và gỡ gói tài nguyên và gói dữ liệu"
 		}
 	},
 	"mcpNew": {

@@ -15,6 +15,12 @@
  * way a config key does. What a human reads in the console is the i18n key
  * `core.mcp.tools.<name>`.
  *
+ * `network` / `network-write` cover the `/servers` menu, velocity registration
+ * and ports; `packs` / `packs-write` cover resource packs and data packs. Like
+ * the addon pool, all of it is cluster-wide, so the write groups are closed to a
+ * token limited to some instances (instance_set_port excepted, since it names
+ * the one instance it changes).
+ *
  * Deliberately absent as dedicated tools: deleting instances, set-version,
  * cleanup, accounts, revealing secrets and upgrades. File writes and the two
  * shells exist, but in groups of their own that no token gets by default, and
@@ -33,6 +39,10 @@ export type McpToolGroup =
 	| "host-shell"
 	| "addons"
 	| "addons-write"
+	| "network"
+	| "network-write"
+	| "packs"
+	| "packs-write"
 	| "knowledge"
 	| "knowledge-write";
 
@@ -47,6 +57,10 @@ export const MCP_TOOL_GROUPS: McpToolGroup[] = [
 	"host-shell",
 	"addons",
 	"addons-write",
+	"network",
+	"network-write",
+	"packs",
+	"packs-write",
 	"knowledge",
 	"knowledge-write",
 ];
@@ -126,6 +140,14 @@ const ADDON = {
 	description: "The addon's lock entry key, as addon_info and addons_list show it (\"<plugin>@<family>\", e.g. \"luckperms@paper\").",
 	maxLength: 160,
 } as const satisfies McpSchema;
+
+/** Registration fields a resource pack install may set straight away. */
+const RESPACK_REGISTRATION: Record<string, McpSchema> = {
+	enabled: { type: "boolean", description: "Start serving it (a new pack starts disabled)." },
+	servers: { type: "array", description: "Servers it is sent on; \"*\" (the default) means all.", items: { type: "string", maxLength: 80 } },
+	priority: { type: "integer", description: "Higher priority loads on top of lower (default 0).", minimum: -1000, maximum: 1000 },
+	required: { type: "boolean", description: "Players must accept it to stay (default false)." },
+};
 
 const TARGETS = {
 	type: "array",
@@ -294,7 +316,7 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		inputSchema: object(
 			{
 				instance: INSTANCE,
-				command: { type: "string", description: "The console command.", maxLength: 700 },
+				command: { type: "string", description: "The console command. Any length: long lines (a /give with full item components) are pasted rather than typed.", maxLength: 32000 },
 			},
 			["instance", "command"],
 		),
@@ -713,6 +735,318 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		inputSchema: object(
 			{
 				name: ADDON,
+				from: { type: "array", description: "Instances to remove it from; omit to remove it everywhere and drop it from the pool.", items: { type: "string", maxLength: 80 } },
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+
+	// -- network ---------------------------------------------------------------
+	{
+		name: "server_menu_list",
+		group: "network",
+		description: "The /servers menu (LunaCore's server selector on the proxy): every server's display name, accent colour, icon, description lines, page and slot, whether it is listed on the public page, plus whether the applied menu has drifted from the registry and any validation issues. Unplaced servers are not in the menu.",
+		inputSchema: object(),
+		annotations: READ,
+	},
+	{
+		name: "proxy_registrations",
+		group: "network",
+		description: "How velocity routes players: each instance's registration (registered, try-list priority, forced hostnames), the server list luna wants in velocity.toml next to what is on disk, and whether a sync is pending.",
+		inputSchema: object(),
+		annotations: READ,
+	},
+	{
+		name: "ports_list",
+		group: "network",
+		description: "Every port the cluster allocates (game ports, plugin ports such as voice chat or web maps), per machine, with whether it is listening, which pool it belongs to, pool usage, and audit findings (duplicates, config drift, velocity mismatches).",
+		inputSchema: object({
+			machine: { type: "string", description: "Only this machine, by daemon name as fleet_status lists it.", maxLength: 80 },
+		}),
+		annotations: READ,
+	},
+	{
+		name: "port_check",
+		group: "network",
+		description: "Whether a port number is free to use on a machine, and which pool it falls in. Ports are per machine: the same number may be taken on one machine and free on another.",
+		inputSchema: object(
+			{
+				port: { type: "integer", description: "The port number.", minimum: 1, maximum: 65535 },
+				machine: { type: "string", description: "Daemon name; omit for the primary.", maxLength: 80 },
+				protocol: { type: "string", description: "tcp (default) or udp.", enum: ["tcp", "udp"] },
+			},
+			["port"],
+		),
+		annotations: READ,
+	},
+
+	// -- network-write ---------------------------------------------------------
+	{
+		name: "server_menu_set",
+		group: "network-write",
+		description: "Edit one server's entry in the /servers menu and save it. Only the fields given change; set placed to false to take the server out of the menu. Text accepts MiniMessage. Nothing reaches players until server_menu_apply.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				displayName: { type: "string", description: "Name shown on the item.", maxLength: 120 },
+				accentColor: { type: "string", description: "Hex colour such as \"#25EED0\".", maxLength: 16 },
+				icon: { type: "string", description: "Bukkit material name of the item, e.g. GRASS_BLOCK, LANTERN.", maxLength: 64 },
+				description: { type: "array", description: "Lore lines under the name; replaces the current lines.", items: { type: "string", maxLength: 300 } },
+				placed: { type: "boolean", description: "false removes the server from the menu grid; true (or giving page/slot) places it." },
+				page: { type: "integer", description: "1-based menu page.", minimum: 1, maximum: 20 },
+				slot: { type: "integer", description: "Slot 0-44 in the 9x5 grid (row-major).", minimum: 0, maximum: 44 },
+				glint: { type: "boolean", description: "Enchantment glint on the item." },
+				permission: { type: "string", description: "Permission node needed to see the server; empty clears it.", maxLength: 120 },
+				publicListed: { type: "boolean", description: "Show the server on the public web page." },
+			},
+			["instance"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "server_menu_apply",
+		group: "network-write",
+		description: "Write the saved menu to the proxy (LunaCore's servers.yml) and reload LunaCore so players see it. Refused while the menu has validation errors; fix them with server_menu_set first.",
+		inputSchema: object(),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "proxy_register",
+		group: "network-write",
+		description: "Change how velocity routes to one instance: register or unregister it, put it in or take it out of the try list (where players land on join, lowest priority first), and set the hostnames that connect straight to it. Then rewrites velocity.toml and reloads velocity.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				register: { type: "boolean", description: "Whether velocity knows this server at all." },
+				priority: { type: "integer", description: "Try-list priority (lower is tried first).", minimum: 0, maximum: 9999 },
+				tryList: { type: "boolean", description: "false takes the server out of the try list." },
+				forcedHosts: { type: "array", description: "Hostnames that connect straight to this server, e.g. \"create.belikhun.dev\"; replaces the current list, empty clears it.", items: { type: "string", maxLength: 253 } },
+				reload: { type: "boolean", description: "Reload velocity afterwards (default true)." },
+			},
+			["instance"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "proxy_sync",
+		group: "network-write",
+		description: "Rewrite velocity.toml's server list from the registry and reload velocity. Needed after creating a server, since velocity does not learn new servers on its own.",
+		inputSchema: object({
+			reload: { type: "boolean", description: "Reload velocity even when the file was already in sync (default true)." },
+		}),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "ports_fix",
+		group: "network-write",
+		description: "Re-allocate every plugin port from its pool and rewrite the plugins' config files to match, then report the remaining audit findings. Servers need a restart to bind a moved port.",
+		inputSchema: object(),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "instance_set_port",
+		group: "network-write",
+		description: "Move an instance to another game port: checked against that machine's allocations, written to its server config, and synced into velocity.toml. The server needs a restart to bind it.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				port: { type: "integer", description: "The new port.", minimum: 1, maximum: 65535 },
+			},
+			["instance", "port"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+		instanceArg: "instance",
+	},
+
+	// -- packs -----------------------------------------------------------------
+	{
+		name: "respacks_list",
+		group: "packs",
+		description: "Every resource pack luna-pack serves: key, display name, priority, required or optional, enabled, the servers it is sent on, file size, source and version, whether a plugin registers it at runtime, and auto-update settings.",
+		inputSchema: object(),
+		annotations: READ,
+	},
+	{
+		name: "datapacks_list",
+		group: "packs",
+		description: "Every data pack in the pool: source and version, targets (the worlds it is deployed into), whether the file is present, and auto-update settings.",
+		inputSchema: object(),
+		annotations: READ,
+	},
+	{
+		name: "pack_search",
+		group: "packs",
+		description: "Search a provider for resource packs or data packs to install.",
+		inputSchema: object(
+			{
+				kind: { type: "string", description: "resourcepack or datapack.", enum: ["resourcepack", "datapack"] },
+				query: { type: "string", description: "What to search for.", maxLength: 120 },
+				provider: PROVIDER,
+			},
+			["kind", "query"],
+		),
+		annotations: { readOnlyHint: true, openWorldHint: true },
+	},
+	{
+		name: "pack_check_updates",
+		group: "packs",
+		description: "Ask the providers which resource packs or data packs have newer versions, downloading nothing.",
+		inputSchema: object(
+			{
+				kind: { type: "string", description: "resourcepack or datapack.", enum: ["resourcepack", "datapack"] },
+				names: { type: "array", description: "Only these packs; omit for all.", items: { type: "string", maxLength: 120 } },
+			},
+			["kind"],
+		),
+		annotations: { readOnlyHint: true, openWorldHint: true },
+	},
+
+	// -- packs-write -----------------------------------------------------------
+	{
+		name: "respack_install",
+		group: "packs-write",
+		description: "Install a resource pack from a provider. A new pack starts disabled and sent on every server unless enabled/servers say otherwise. Players get it on their next join, or now with respack_push.",
+		inputSchema: object(
+			{
+				slug: { type: "string", description: "Provider project slug or id, from pack_search.", maxLength: 120 },
+				provider: PROVIDER,
+				channel: CHANNEL,
+				...RESPACK_REGISTRATION,
+			},
+			["slug"],
+		),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "respack_install_upload",
+		group: "packs-write",
+		description: "Install a resource pack zip the operator attached in the console's chat panel (an <attachment id=...>), or replace an existing pack's zip with it. Replacing reloads the proxy so the new hash is served; run respack_push to make players already holding the old one download it.",
+		inputSchema: object(
+			{
+				upload: { type: "string", description: "The attachment id from the message.", maxLength: 80 },
+				name: { type: "string", description: "Pack key for a new pack (lowercase, dashes); defaults to the file name.", maxLength: 64 },
+				replace: { type: "string", description: "Key of an existing pack whose zip this replaces.", maxLength: 120 },
+				...RESPACK_REGISTRATION,
+			},
+			["upload"],
+		),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "respack_configure",
+		group: "packs-write",
+		description: "Change a resource pack's registration: display name, priority (higher loads on top), required, enabled, the servers it is sent on, auto-update and channel.",
+		inputSchema: object(
+			{
+				key: { type: "string", description: "Pack key, from respacks_list.", maxLength: 120 },
+				name: { type: "string", description: "Display name.", maxLength: 120 },
+				priority: { type: "integer", description: "Higher priority loads on top of lower.", minimum: -1000, maximum: 1000 },
+				required: { type: "boolean", description: "Players must accept it to stay." },
+				enabled: { type: "boolean" },
+				servers: { type: "array", description: "Servers it is sent on; \"*\" means all. Replaces the current list.", items: { type: "string", maxLength: 80 } },
+				autoUpdate: { type: "boolean" },
+				channel: CHANNEL,
+			},
+			["key"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "respack_update",
+		group: "packs-write",
+		description: "Download the newer resource pack versions pack_check_updates reported over the pack files, then reload the proxy. Run respack_push afterwards so players already holding a pack get the new bytes.",
+		inputSchema: object({
+			names: { type: "array", description: "Only these packs; omit for every pack with an update.", items: { type: "string", maxLength: 120 } },
+		}),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "respack_push",
+		group: "packs-write",
+		description: "Make online players download a changed resource pack now. Reloads the proxy (so it re-hashes the zip), then force-reloads the pack for each online player on the servers it is sent to. A plain resend would skip anyone who already holds a pack of that name.",
+		inputSchema: object(
+			{
+				key: { type: "string", description: "Pack key, from respacks_list.", maxLength: 120 },
+				players: { type: "array", description: "Only these players; omit for everyone online on the pack's servers.", items: { type: "string", maxLength: 32 } },
+			},
+			["key"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+	},
+	{
+		name: "respack_remove",
+		group: "packs-write",
+		description: "Unregister a resource pack and delete its zip (or keep the file).",
+		inputSchema: object(
+			{
+				key: { type: "string", description: "Pack key, from respacks_list.", maxLength: 120 },
+				keepFile: { type: "boolean", description: "Keep the zip in the packs folder." },
+			},
+			["key"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "datapack_install",
+		group: "packs-write",
+		description: "Install a data pack from a provider into the pool and deploy it into the target instances' worlds. Run `reload` on a running server (instance_command) to load it; a few packs need a restart.",
+		inputSchema: object(
+			{
+				slug: { type: "string", description: "Provider project slug or id, from pack_search.", maxLength: 120 },
+				provider: PROVIDER,
+				targets: { type: "array", description: "Instances whose worlds get it.", items: { type: "string", maxLength: 80 } },
+				channel: CHANNEL,
+			},
+			["slug", "targets"],
+		),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "datapack_install_upload",
+		group: "packs-write",
+		description: "Install a data pack zip the operator attached in the console's chat panel (an <attachment id=...>) into the pool, or replace a pooled pack's file, and deploy it.",
+		inputSchema: object(
+			{
+				upload: { type: "string", description: "The attachment id from the message.", maxLength: 80 },
+				name: { type: "string", description: "Pool name; defaults to the file name. Naming an existing pack replaces its file.", maxLength: 64 },
+				targets: { type: "array", description: "Instances whose worlds get it (new packs).", items: { type: "string", maxLength: 80 } },
+			},
+			["upload"],
+		),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "datapack_configure",
+		group: "packs-write",
+		description: "Change a data pack's targets (deploying or removing world copies to match), auto-update or channel.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "Data pack name, from datapacks_list.", maxLength: 120 },
+				targets: { type: "array", description: "Instances whose worlds get it; replaces the current list.", items: { type: "string", maxLength: 80 } },
+				autoUpdate: { type: "boolean" },
+				channel: CHANNEL,
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "datapack_update",
+		group: "packs-write",
+		description: "Download the newer data pack versions pack_check_updates reported and redeploy them. Running servers need `reload` to load them.",
+		inputSchema: object({
+			names: { type: "array", description: "Only these packs; omit for every pack with an update.", items: { type: "string", maxLength: 120 } },
+		}),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "datapack_remove",
+		group: "packs-write",
+		description: "Remove a data pack from some worlds, or from every world and the pool.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "Data pack name, from datapacks_list.", maxLength: 120 },
 				from: { type: "array", description: "Instances to remove it from; omit to remove it everywhere and drop it from the pool.", items: { type: "string", maxLength: 80 } },
 			},
 			["name"],

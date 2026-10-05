@@ -418,6 +418,20 @@ export interface InstanceConfig {}
   body is capped, and the jar's own descriptors name it and pick its family. Panel attachments are
   staged in the console host's temp directory (`agent/uploads.ts`, raw `application/octet-stream`
   posts, an hour's life) because an MCP request body is far smaller than a jar.
+- **The network and packs groups follow the same rule.** `network` reads the `/servers` menu,
+  velocity's registrations and the port map; `network-write` edits and applies the menu, registers
+  servers, syncs velocity.toml (reloading velocity whenever asked, since a server created moments
+  ago is already in sync and velocity would never learn it), re-ensures ports and moves one
+  instance's port (`web/src/lib/server/mcp/network.ts`). `packs` / `packs-write` cover resource and
+  data packs, including zips attached in the panel (`packs.ts`). Every write in both groups is
+  cluster-wide and closed to instance-limited tokens, except `instance_set_port`, which names its
+  instance. `respack_push` exists because a resend compares packs by name and the proxy keeps the
+  hash it loaded: it reloads, waits for the re-hash, then `lunapack forceload`s each online player
+  on the pack's servers.
+- **A console command can be any length.** `screen.stuff` types up to 700 bytes; past that it
+  writes the line to a private temp file, `readbuf -e utf8` loads it into screen's paste buffer and
+  `paste` types it, because GNU screen silently drops a `-X stuff` argument over ~768 bytes while
+  the send still reports success.
 - **The endpoint is stateless Streamable HTTP**, hand-rolled in `web/src/lib/server/mcp/protocol.ts`
   (no SDK): POST answers JSON, GET/DELETE answer 405, no session id. It sits in `PUBLIC_PREFIXES` and
   demands its own bearer; a browser `Origin` that is not the host is refused (DNS rebinding).

@@ -4,7 +4,10 @@
 
 /** GNU screen helpers. */
 
-import { readlink, stat } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { readlink, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /** One row of `screen -ls`: a socket's session name and whether it still answers. */
 interface Socket {
@@ -80,9 +83,47 @@ export async function wipe(): Promise<void> {
 	await proc.exited;
 }
 
-/** Send text to a session's console followed by Enter. */
+/**
+ * Longest text, in bytes, that goes through `stuff`. GNU screen discards a
+ * `-X stuff` argument past 768 bytes without a word (measured: 750 landed, 770
+ * vanished), so anything longer takes the paste buffer instead.
+ */
+const STUFF_MAX_BYTES = 700;
+
+/**
+ * Type a long line through screen's paste buffer: `readbuf` loads a file into
+ * the buffer and `paste` types it into the window, neither with a length cap
+ * worth hitting. The file is private to this user and gone once pasted.
+ */
+async function paste(session: string, line: string): Promise<void> {
+	const file = join(tmpdir(), `luna-paste-${randomBytes(8).toString("hex")}`);
+
+	await writeFile(file, line, { mode: 0o600 });
+
+	try {
+		const load = Bun.spawn(["screen", "-S", session, "-p", "0", "-X", "readbuf", "-e", "utf8", file]);
+
+		await load.exited;
+
+		const type = Bun.spawn(["screen", "-S", session, "-p", "0", "-X", "paste", "."]);
+
+		await type.exited;
+	} finally {
+		await rm(file, { force: true });
+	}
+}
+
+/** Send text to a session's console followed by Enter, at any length. */
 export async function stuff(session: string, text: string): Promise<void> {
-	const proc = Bun.spawn(["screen", "-S", session, "-p", "0", "-X", "stuff", text + "\r"]);
+	const line = text + "\r";
+
+	if (Buffer.byteLength(line, "utf8") > STUFF_MAX_BYTES) {
+		await paste(session, line);
+
+		return;
+	}
+
+	const proc = Bun.spawn(["screen", "-S", session, "-p", "0", "-X", "stuff", line]);
 
 	await proc.exited;
 }

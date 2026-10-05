@@ -1937,7 +1937,7 @@
 		"cancelled": "đã huỷ; không có gì thay đổi",
 		"secretOnce": "đây là lần duy nhất token được hiển thị; hãy lưu vào client ngay",
 		"secretUse": "client gửi nó dưới dạng {header} tới {path} của console",
-		"optGroups": "các nhóm công cụ, phân tách bằng dấu phẩy (observe, control, config, files, files-write, shell, host-shell, addons, addons-write, knowledge, knowledge-write)",
+		"optGroups": "các nhóm công cụ, phân tách bằng dấu phẩy (observe, control, config, files, files-write, shell, host-shell, addons, addons-write, network, network-write, packs, packs-write, knowledge, knowledge-write)",
 		"optAllow": "các công cụ được cấp thêm ngoài nhóm, phân tách bằng dấu phẩy",
 		"optDeny": "các công cụ bị từ chối dù nhóm có cấp, phân tách bằng dấu phẩy",
 		"optInstances": "các instance token được phép chỉ định, phân tách bằng dấu phẩy",

@@ -190,7 +190,7 @@ export interface AgentSettingsPatch {
 
 /** The token a fresh agent gets: it reads, operates instances, manages addons and remembers. Files, shells and config stay off. */
 const AGENT_SCOPE: McpScope = {
-	groups: [...new Set([...MCP_DEFAULT_GROUPS, "control" as const, "addons" as const, "addons-write" as const, "knowledge-write" as const])],
+	groups: [...new Set([...MCP_DEFAULT_GROUPS, "control" as const, "addons" as const, "addons-write" as const, "network" as const, "network-write" as const, "packs" as const, "packs-write" as const, "knowledge-write" as const])],
 	allow: [],
 	deny: [],
 	instances: null,

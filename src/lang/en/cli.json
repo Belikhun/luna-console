@@ -1937,7 +1937,7 @@
 		"cancelled": "cancelled; nothing changed",
 		"secretOnce": "this is the only time the token is shown; store it in the client now",
 		"secretUse": "clients send it as {header} to the console's {path}",
-		"optGroups": "comma-separated tool groups (observe, control, config, files, files-write, shell, host-shell, addons, addons-write, knowledge, knowledge-write)",
+		"optGroups": "comma-separated tool groups (observe, control, config, files, files-write, shell, host-shell, addons, addons-write, network, network-write, packs, packs-write, knowledge, knowledge-write)",
 		"optAllow": "comma-separated tools granted on top of the groups",
 		"optDeny": "comma-separated tools refused even if a group grants them",
 		"optInstances": "comma-separated instances the token may name",

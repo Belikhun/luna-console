@@ -4239,7 +4239,11 @@
 			"shell": "luna CLI",
 			"host-shell": "Host shell",
 			"addons": "Read addons",
-			"addons-write": "Manage addons"
+			"addons-write": "Manage addons",
+			"network": "Read network",
+			"network-write": "Manage network",
+			"packs": "Read packs",
+			"packs-write": "Manage packs"
 		},
 		"groupHint": {
 			"observe": "status, logs, players, machines, events; reads only",
@@ -4252,7 +4256,11 @@
 			"shell": "run luna commands as this token; account, MCP, setup and secret-revealing commands are refused, and a token limited to some instances cannot use it",
 			"host-shell": "arbitrary bash as the luna service user; each machine must also enable mcpHostShell in its daemon config",
 			"addons": "the addon pool, provider search, versions and pending updates",
-			"addons-write": "install from providers, URLs or uploads, update, pin, deploy and remove plugins and mods"
+			"addons-write": "install from providers, URLs or uploads, update, pin, deploy and remove plugins and mods",
+			"network": "the /servers menu, velocity registrations and the port map",
+			"network-write": "edit and apply the /servers menu, register servers with velocity, sync velocity.toml, fix ports and move an instance's port",
+			"packs": "resource packs and data packs, provider search and pending updates",
+			"packs-write": "install, upload, configure, update, push and remove resource packs and data packs"
 		}
 	},
 	"mcpNew": {

@@ -54,6 +54,8 @@ import { cliBinary, root } from '$lib/server/luna';
 import { ToolError } from './errors';
 import type { ToolArgs, ToolContext, ToolHandler } from './errors';
 import { ADDON_HANDLERS } from './addons';
+import { NETWORK_HANDLERS } from './network';
+import { PACK_HANDLERS } from './packs';
 
 export { ToolError } from './errors';
 export type { ToolArgs, ToolContext, ToolHandler } from './errors';
@@ -276,6 +278,8 @@ function knowledgeView(item: KnowledgeItem): Record<string, unknown> {
 
 export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	...ADDON_HANDLERS,
+	...NETWORK_HANDLERS,
+	...PACK_HANDLERS,
 
 	// -- observe ---------------------------------------------------------------
 	async cluster_status(_args, ctx) {

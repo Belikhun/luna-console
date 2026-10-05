@@ -1823,6 +1823,7 @@ export const OPS: Record<string, OpSpec> = {
 	"lunaApi.players": { fn: lunaApi.players },
 	"lunaApi.playerHistory": { fn: lunaApi.playerHistory },
 	"lunaApi.runCommand": { fn: lunaApi.runCommand },
+	"lunaApi.packSessions": { fn: lunaApi.packSessions },
 	"lunaApi.broadcast": { fn: lunaApi.broadcast },
 	"lunaApi.kick": { fn: lunaApi.kick },
 	"lunaApi.message": { fn: lunaApi.message },
