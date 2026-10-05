@@ -6,6 +6,7 @@
 	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { api, post } from '$lib/api';
 	import { jobFlash } from '$lib/jobflash';
 	import { createFlashConfig, modpackFlashConfig } from '$lib/instancejobs';
@@ -93,6 +94,11 @@
 	let pluginOverrides: Record<string, boolean> = $state({});
 
 	onMount(async () => {
+		// the Instances screen's "from a modpack" entry lands here with the source chosen
+		if (page.url.searchParams.get('source') === 'modpack') {
+			setSource('modpack');
+		}
+
 		const [catalog, insts, cluster] = await Promise.all([
 			api('/software'),
 			api('/instances'),

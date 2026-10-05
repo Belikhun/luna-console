@@ -714,6 +714,7 @@
 		"proxyRegistration": "Đăng ký proxy",
 		"connect": "Kết nối",
 		"launchWizard": "Tạo instance (trình hướng dẫn)",
+		"launchModpack": "Tạo từ modpack Modrinth",
 		"cloneSelected": "Nhân bản instance đã chọn",
 		"searchPlaceholder": "Tìm instance theo tên, trạng thái hoặc phiên bản",
 		"noun": "instance",

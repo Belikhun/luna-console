@@ -714,6 +714,7 @@
 		"proxyRegistration": "Proxy registration",
 		"connect": "Connect",
 		"launchWizard": "Launch instance (wizard)",
+		"launchModpack": "Create from a Modrinth modpack",
 		"cloneSelected": "Clone selected instance",
 		"searchPlaceholder": "Find instance by name, state or version",
 		"noun": "instance",

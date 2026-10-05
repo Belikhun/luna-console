@@ -585,6 +585,10 @@
 							label: t('web.instances.launchWizard'), icon: 'rocket',
 							action: () => goto('/instances/launch')
 						},
+						{
+							label: t('web.instances.launchModpack'), icon: 'box',
+							action: () => goto('/instances/launch?source=modpack')
+						},
 						{ label: t('web.instances.cloneSelected'), icon: 'copy', disabled: true }
 					]}
 				/>
