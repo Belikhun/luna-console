@@ -7,6 +7,7 @@
 	import ContextMenu from './ContextMenu.svelte';
 	import { toMenuItems, type Item } from './menu';
 	import type { ContextMenuItem } from './contextmenu';
+	import type { Snippet } from 'svelte';
 
 	/** Button dropdown; the trigger is a pill button, the panel is the shared
 	 *  ContextMenu so button menus and right-click menus match. */
@@ -15,7 +16,8 @@
 		items = [],
 		menu: menuItems,
 		primary = false,
-		disabled = false
+		disabled = false,
+		leading
 	}: {
 		label: string;
 		items?: Item[];
@@ -24,6 +26,8 @@
 		menu?: ContextMenuItem[];
 		primary?: boolean;
 		disabled?: boolean;
+		/** drawn before the label inside the trigger, e.g. an account's picture */
+		leading?: Snippet;
 	} = $props();
 
 	const resolved = $derived(menuItems ?? toMenuItems(items));
@@ -58,6 +62,7 @@
 		onpointerdown={(event) => event.stopPropagation()}
 		onclick={toggle}
 	>
+		{#if leading}{@render leading()}{/if}
 		{label}
 		<span class="caret" class:flip={open}><Icon name="caretDown" size="0.75rem" /></span>
 	</button>

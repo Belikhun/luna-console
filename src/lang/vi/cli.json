@@ -1784,6 +1784,18 @@
 			"badLevel": "mức không rõ {level}; các mức đã biết là {known}",
 			"none": "nhật ký không có mục nào khớp",
 			"truncated": "đang hiển thị {count} mục khớp mới nhất"
+		},
+		"avatar": {
+			"desc": "Đặt ảnh đại diện cho tài khoản: tệp ảnh, skin Minecraft, chữ cái đầu hoặc tự động",
+			"optFile": "Tệp PNG, JPEG, GIF hoặc WebP (tối đa 1 MB; nên là ảnh vuông nhỏ)",
+			"optMinecraft": "Dùng mặt skin của hồ sơ Minecraft đã liên kết",
+			"optInitials": "Hiển thị chữ cái đầu thay cho ảnh",
+			"optAuto": "Trở về tự động (skin Minecraft nếu đã liên kết, nếu không thì chữ cái đầu)",
+			"pickOne": "Chỉ truyền đúng một trong --file, --minecraft, --initials hoặc --auto",
+			"showsUpload": "ảnh đã tải lên",
+			"showsMinecraft": "skin của {player}",
+			"showsInitials": "chữ cái đầu",
+			"done": "{name} giờ hiển thị {shows}"
 		}
 	},
 	"public": {

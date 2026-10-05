@@ -34,6 +34,7 @@ import {
 	updateAccount,
 	type AccountSummary,
 	type IdentityKind,
+	setAccountAvatar,
 } from "../../client/core/accounts";
 import {
 	appendJournal,
@@ -371,6 +372,41 @@ command({
 		await updateAccount(name, { unlock: true }, cliActor());
 
 		ok(t("cli.accounts.unlock.done", { name: pc.bold(name) }));
+	},
+});
+
+command({
+	path: ["account", "avatar"],
+	desc: t("cli.accounts.avatar.desc"),
+	args: [{ name: "username", required: true, complete: accountNames }],
+	opts: [
+		{ flag: "--file", desc: t("cli.accounts.avatar.optFile"), value: true },
+		{ flag: "--minecraft", desc: t("cli.accounts.avatar.optMinecraft") },
+		{ flag: "--initials", desc: t("cli.accounts.avatar.optInitials") },
+		{ flag: "--auto", desc: t("cli.accounts.avatar.optAuto") },
+	],
+
+	handler: async (args, opts) => {
+		const name = args[0]!;
+		const picked = [opts.file, opts.minecraft, opts.initials, opts.auto].filter(Boolean).length;
+
+		if (picked !== 1) {
+			throw new UsageError(t("cli.accounts.avatar.pickOne"));
+		}
+
+		// the console crops and shrinks a picture in the browser; from a shell the
+		// file goes up as it is, so it has to be small already (core checks)
+		const account = typeof opts.file === "string"
+			? await setAccountAvatar(name, { source: "upload", dataBase64: Buffer.from(await Bun.file(opts.file).arrayBuffer()).toString("base64") }, cliActor())
+			: await setAccountAvatar(name, { source: opts.minecraft ? "minecraft" : opts.initials ? "initials" : "auto" }, cliActor());
+
+		const shows = account.avatar?.source === "upload"
+			? t("cli.accounts.avatar.showsUpload")
+			: account.avatar?.source === "minecraft"
+				? t("cli.accounts.avatar.showsMinecraft", { player: account.avatar.playerName ?? account.avatar.uuid })
+				: t("cli.accounts.avatar.showsInitials");
+
+		ok(t("cli.accounts.avatar.done", { name: pc.bold(account.username), shows }));
 	},
 });
 

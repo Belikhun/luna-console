@@ -365,6 +365,13 @@ export interface InstanceConfig {}
   so a follower could not validate a token it was given, and copying live credentials to machines
   that cannot use them buys nothing. A session's `lastSeenAt` is only persisted once it is
   `SESSION_TOUCH_MS` stale, or every page load would rewrite the file and wake the sync watcher.
+- **An account's picture is a choice in `accounts.json`, its image beside the store.** `avatar` is
+  an upload, a Minecraft identity or initials; absent means automatic (the first linked Minecraft
+  profile's face, else initials), and `summarize` resolves it so no client repeats that rule. An
+  upload is cropped and shrunk in the browser (the daemon decodes no images), sniffed by content,
+  capped at 1 MB and written to `.data/avatars/<account id>.<ext>`, which is **not** mirrored: the
+  console only runs beside the primary, and a follower holding the choice without the file is
+  harmless. `AccountAvatar.svelte` draws all three cases.
 - **Every refusal reads the same and every refusal is recorded.** A disabled account, a wrong
   password and a username that does not exist all answer with one message, because telling them
   apart is how an account list gets enumerated; a miss also burns an argon2 verification, since
@@ -693,6 +700,7 @@ luna account password <name> [--reset]    # set it; --reset asks the owner for a
 luna account enable|disable|unlock|remove <name>
 luna account key <name> [label]           # mint an access key (secret shown once)
 luna account link|unlink <name> …         # a Minecraft profile, or an identity id
+luna account avatar <name> --file x|--minecraft|--initials|--auto   # the picture the console shows
 luna sessions [--account x]               # open console sessions
 luna sessions revoke <id>|--account x     # close one, or all of an account's
 luna audit [--account x] [--limit n]      # the account audit trail, newest first

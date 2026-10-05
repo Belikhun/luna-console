@@ -1784,6 +1784,18 @@
 			"badLevel": "unknown level {level}; known levels are {known}",
 			"none": "the journal has nothing matching that",
 			"truncated": "showing the newest {count} matching entries"
+		},
+		"avatar": {
+			"desc": "Set an account's picture: an image file, its Minecraft skin, initials, or automatic",
+			"optFile": "PNG, JPEG, GIF or WebP file (at most 1 MB; ideally a small square)",
+			"optMinecraft": "Use the linked Minecraft profile's skin face",
+			"optInitials": "Show initials instead of a picture",
+			"optAuto": "Go back to automatic (the Minecraft skin when linked, else initials)",
+			"pickOne": "Pass exactly one of --file, --minecraft, --initials or --auto",
+			"showsUpload": "the uploaded picture",
+			"showsMinecraft": "the skin of {player}",
+			"showsInitials": "initials",
+			"done": "{name} now shows {shows}"
 		}
 	},
 	"public": {

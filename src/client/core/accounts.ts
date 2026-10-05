@@ -18,6 +18,7 @@ import { call } from "../rpc";
 export {
 	LOCKOUT_MS,
 	MAX_AUDIT,
+	MAX_AVATAR_BYTES,
 	MAX_SIGNIN_FAILURES,
 	MIN_PASSWORD_LENGTH,
 	SESSION_TTL_MS,
@@ -32,6 +33,9 @@ export type {
 	AccountSummary,
 	AuditAction,
 	AuditEntry,
+	AvatarChoice,
+	AvatarSetting,
+	AvatarView,
 	ClientMeta,
 	CreateAccountInput,
 	IdentityKind,
@@ -45,6 +49,8 @@ export const listAccounts = call("accounts.list") as typeof core.listAccounts;
 export const getAccount = call("accounts.get") as typeof core.getAccount;
 export const createAccount = call("accounts.create") as typeof core.createAccount;
 export const updateAccount = call("accounts.update") as typeof core.updateAccount;
+export const setAccountAvatar = call("accounts.setAvatar") as typeof core.setAccountAvatar;
+export const readAccountAvatar = call("accounts.readAvatar") as typeof core.readAccountAvatar;
 export const deleteAccount = call("accounts.delete") as typeof core.deleteAccount;
 export const setPassword = call("accounts.setPassword") as typeof core.setPassword;
 export const addAccessKey = call("accounts.addAccessKey") as typeof core.addAccessKey;

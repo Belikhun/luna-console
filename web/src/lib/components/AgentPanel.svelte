@@ -14,6 +14,8 @@
 	import Spinner from './Spinner.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import AgentComposer from './AgentComposer.svelte';
+	import AccountAvatar from './AccountAvatar.svelte';
+	import type { AvatarSubject } from './accountavatar';
 	import type { ContextMenuItem } from './contextmenu';
 
 	/**
@@ -25,7 +27,10 @@
 	 * A call that changes something stops in its card until the operator approves
 	 * or denies it.
 	 */
-	let { user }: { user: string } = $props();
+	let { account }: { account: AvatarSubject | null } = $props();
+
+	/** the signed-in account's name; every conversation here is theirs */
+	const user = $derived(account?.username ?? 'root');
 
 	type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
@@ -93,6 +98,29 @@
 		}
 
 		return true;
+	});
+
+	// Claude Code's waiting line: a playful verb picked once per answer and a
+	// running count of seconds, so a long tool call still looks alive
+	const verbs = $derived(t('web.agent.thinkingVerbs').split('|'));
+	let verb = $state('');
+	let startedAt = 0;
+	let elapsed = $state(0);
+
+	$effect(() => {
+		if (!Agent.running) {
+			return;
+		}
+
+		verb = verbs[Math.floor(Math.random() * verbs.length)] ?? t('web.agent.thinking');
+		startedAt = Date.now();
+		elapsed = 0;
+
+		const timer = setInterval(() => {
+			elapsed = Math.floor((Date.now() - startedAt) / 1000);
+		}, 1000);
+
+		return () => clearInterval(timer);
 	});
 
 	const current = $derived(Agent.conversations.find((row) => row.id === Agent.conversationId) ?? null);
@@ -338,7 +366,11 @@
 			{#if group.kind === 'user'}
 				<div class="msg user">
 					<div class="author">
-						<span class="avatar">{(group.item.author || user).slice(0, 1).toUpperCase()}</span>
+						{#if account}
+							<AccountAvatar {account} size="1.75rem" />
+						{:else}
+							<span class="avatar">{(group.item.author || user).slice(0, 1).toUpperCase()}</span>
+						{/if}
 						<span class="who">{group.item.author || user}</span>
 						{#if group.item.mode && group.item.mode !== 'auto'}
 							<span class="modetag {group.item.mode}">{t(`web.agentComposer.mode_${group.item.mode}`)}</span>
@@ -427,7 +459,11 @@
 					{/each}
 
 					{#if thinking && gi === groups.length - 1}
-						<div class="bubble text thinking">{t('web.agent.thinking')}</div>
+						<div class="thinking" role="status" aria-label={t('web.agent.thinking')}>
+							<span class="star"><Icon name="asterisk" size="0.875rem" /></span>
+							<span class="verb" data-text="{verb}…">{verb}…</span>
+							<span class="elapsed">({elapsed}s)</span>
+						</div>
 					{/if}
 				</div>
 			{/if}
@@ -439,7 +475,11 @@
 					<img class="avatar cat" src={AVATAR} alt="" />
 					<span class="who">Mèo Béo</span>
 				</div>
-				<div class="bubble text thinking">{t('web.agent.thinking')}</div>
+				<div class="thinking" role="status" aria-label={t('web.agent.thinking')}>
+							<span class="star"><Icon name="asterisk" size="0.875rem" /></span>
+							<span class="verb" data-text="{verb}…">{verb}…</span>
+							<span class="elapsed">({elapsed}s)</span>
+						</div>
 			</div>
 		{/if}
 	</div>
@@ -895,20 +935,69 @@
 		}
 	}
 
+	// not a bubble, since nothing has been said yet: Claude Code's waiting line,
+	// a spinning star, a verb with a light sweeping across it, and the seconds
 	.thinking {
-		position: relative;
-		overflow: hidden;
-		opacity: 0.85;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.125rem 0;
+		font-size: 0.8125rem;
 
-		&::before {
-			content: '';
-			position: absolute;
-			top: 0;
-			left: -10rem;
-			width: 0;
-			height: 100%;
-			box-shadow: 0 0 4rem 2rem rgba(255, 255, 255, 0.18);
-			animation: sweep 1.5s linear infinite;
+		.star {
+			display: inline-grid;
+			place-items: center;
+			color: var(--src-luna);
+			animation: twinkle 2.4s ease-in-out infinite;
+		}
+
+		// the verb is drawn twice: dim text underneath, and a copy clipped to a
+		// moving band of light on top, which is the shimmer
+		.verb {
+			position: relative;
+			color: var(--text-secondary);
+
+			&::after {
+				content: attr(data-text);
+				position: absolute;
+				inset: 0;
+				color: var(--text-heading);
+				clip-path: inset(0 100% 0 0);
+				animation: shimmer 2s ease-in-out infinite;
+			}
+		}
+
+		.elapsed {
+			color: var(--text-disabled);
+			font-size: 0.75rem;
+		}
+	}
+
+	@keyframes twinkle {
+		0% {
+			transform: rotate(0deg) scale(0.85);
+		}
+
+		50% {
+			transform: rotate(180deg) scale(1.15);
+		}
+
+		100% {
+			transform: rotate(360deg) scale(0.85);
+		}
+	}
+
+	@keyframes shimmer {
+		0% {
+			clip-path: inset(0 100% 0 0);
+		}
+
+		50% {
+			clip-path: inset(0 0 0 0);
+		}
+
+		100% {
+			clip-path: inset(0 0 0 100%);
 		}
 	}
 

@@ -3237,7 +3237,23 @@
 		"mustChangeNotice": "This account is asked to choose a new password on its next sign-in.",
 		"noPasswordNotice": "This account has no console password, so it cannot sign in.",
 		"lockedNotice": "Locked out for another {time} after {attempts} failed sign-in attempts. Clear the lockout to let them try again now.",
-		"noPermissionsNotice": "Every console account can reach everything in this phase; there is nothing to grant or withhold here yet."
+		"noPermissionsNotice": "Every console account can reach everything in this phase; there is nothing to grant or withhold here yet.",
+		"avatarPanel": "Picture",
+		"avatarHint": "Shown in the top bar, on the accounts screen and in Mèo Béo's chat.",
+		"avatarUpload": "Upload picture",
+		"avatarOther": "Other sources",
+		"avatarUploaded": "Uploaded picture",
+		"avatarMinecraft": "Minecraft skin of {player}",
+		"avatarInitials": "Initials",
+		"avatarAutomatic": "automatic",
+		"avatarUseSkin": "Use the skin of {player}",
+		"avatarUseSkinNone": "Use a Minecraft skin",
+		"avatarUseSkinHint": "Link a Minecraft profile on the Identities tab first",
+		"avatarUseInitials": "Use initials",
+		"avatarAuto": "Back to automatic",
+		"avatarAutoHint": "The linked Minecraft profile's skin if there is one, otherwise initials",
+		"avatarSaved": "Picture updated",
+		"avatarFailed": "Could not update the picture"
 	},
 	"accountEdit": {
 		"accessHint": "What the account is asked for the next time it signs in.",
@@ -4432,7 +4448,8 @@
 			"badModel": "That model or effort level is not valid; pick another in the model menu."
 		},
 		"toolPlan": "Not run: plan mode",
-		"copyCode": "Copy"
+		"copyCode": "Copy",
+		"thinkingVerbs": "Pondering|Purring|Kneading|Pawing through logs|Stretching|Chasing the cursor|Napping on it|Sniffing around|Grooming the answer|Batting at bytes|Curling up with the docs|Hunting|Prowling|Whisker-twitching|Loafing|Meowing at the server"
 	},
 	"agentSettings": {
 		"description": "The console's chat agent: the Claude account it runs on, how it behaves, and what it may touch",

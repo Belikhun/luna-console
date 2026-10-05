@@ -10,6 +10,7 @@
 	import { browser, dev } from '$app/environment';
 	import TerminalDrawer from '$lib/components/TerminalDrawer.svelte';
 	import AgentPanel from '$lib/components/AgentPanel.svelte';
+	import AccountAvatar from '$lib/components/AccountAvatar.svelte';
 	import { Agent } from '$lib/agent.svelte';
 	import Flashbar from '$lib/components/Flashbar.svelte';
 	import ShellGlyph from '$lib/components/ShellGlyph.svelte';
@@ -462,7 +463,11 @@
 				{#if account}
 					<span class="regdiv"></span>
 					<span class="who">
-						<Dropdown label={account.username} menu={accountMenu} />
+						<Dropdown label={account.username} menu={accountMenu}>
+							{#snippet leading()}
+								<AccountAvatar account={account} size="1.25rem" />
+							{/snippet}
+						</Dropdown>
 					</span>
 				{/if}
 			</div>
@@ -525,7 +530,7 @@
 			</div>
 
 			{#if Agent.open && browser}
-				<AgentPanel user={account?.username ?? 'root'} />
+				<AgentPanel {account} />
 			{/if}
 		</div>
 
@@ -649,10 +654,28 @@
 
 	// the account menu sits in chrome, not in a content panel, so its trigger is
 	// pulled down to the bar's own type scale rather than the button metric
+	// the account menu is a bare trigger: no outline and no fill, just the
+	// account's picture, its name and the caret, tinted only on hover
 	.who :global(.trigger) {
 		height: 1.5rem;
+		gap: 0.5rem;
+		padding: 0 0.375rem 0 0.25rem;
+		border: none;
+		border-radius: var(--radius-input);
+		background: transparent;
+		color: var(--text-heading);
 		font-size: 0.75rem;
-		padding: 0 0.625rem;
+		font-weight: 600;
+
+		&:hover,
+		&:global(.open) {
+			background: var(--bg-hover);
+		}
+	}
+
+	.who :global(.trigger .avatar) {
+		height: 1.25rem;
+		width: 1.25rem;
 	}
 
 	// the agent panel docks beside everything under the top bar, crumbs and

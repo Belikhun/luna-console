@@ -1287,6 +1287,10 @@ icon[data-icon="forwardFast"]::after {
 	content: "\f050";
 }
 
+icon[data-icon="asterisk"]::after {
+	content: "\f069";
+}
+
 icon[data-icon="cat"]::after {
 	content: "\f6be";
 }

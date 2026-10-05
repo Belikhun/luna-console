@@ -1436,6 +1436,8 @@ export const OPS: Record<string, OpSpec> = {
 	"accounts.get": { fn: accountsCore.getAccount },
 	"accounts.create": { fn: accountsCore.createAccount },
 	"accounts.update": { fn: accountsCore.updateAccount },
+	"accounts.setAvatar": { fn: accountsCore.setAccountAvatar },
+	"accounts.readAvatar": { fn: accountsCore.readAccountAvatar },
 	"accounts.delete": { fn: accountsCore.deleteAccount },
 	"accounts.setPassword": { fn: accountsCore.setPassword },
 	"accounts.addAccessKey": { fn: accountsCore.addAccessKey },

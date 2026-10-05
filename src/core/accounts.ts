@@ -29,12 +29,13 @@
  */
 
 import { existsSync } from "node:fs";
+import { mkdir, rm } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
 import { MIN_PASSWORD_LENGTH, USERNAME_PATTERN } from "../shared/accountrules";
 import { t } from "../shared/i18n";
-import { notifySave, statePath } from "./config";
+import { dataDir, notifySave, statePath } from "./config";
 import { digest, newId, newSecret, sameDigest } from "./secrets";
 
 const ACCOUNTS_FILE = "accounts.json";
@@ -126,7 +127,33 @@ export interface ConsoleAccount {
 	/** Epoch millis the lockout expires at, when one is in force */
 	lockedUntil?: number;
 	identities: ConsoleIdentity[];
+	/** What the console shows for this account; absent means automatic (see `resolveAvatar`) */
+	avatar?: AvatarSetting;
 }
+
+/**
+ * Where an account's picture comes from. An uploaded image is a file beside the
+ * store (`uploadedAt` versions its URL); a Minecraft one is that identity's skin
+ * face, drawn by the console's avatar renderer; `initials` is the explicit
+ * choice of no picture.
+ */
+export type AvatarSetting =
+	| { source: "upload"; type: string; uploadedAt: number }
+	| { source: "minecraft"; identity: string }
+	| { source: "initials" };
+
+/** The picture as a client draws it, already resolved: an image to fetch, a skin to render, or none. */
+export type AvatarView =
+	| { source: "upload"; version: number }
+	| { source: "minecraft"; uuid: string; playerName: string | null }
+	| null;
+
+/** A change of picture, as a caller asks for it. `auto` drops the choice and lets the default apply. */
+export type AvatarChoice =
+	| { source: "upload"; dataBase64: string }
+	| { source: "minecraft"; identity?: string }
+	| { source: "initials" }
+	| { source: "auto" };
 
 /** Everything the audit trail records. */
 export type AuditAction =
@@ -142,7 +169,8 @@ export type AuditAction =
 	| "signin.failed"
 	| "signin.locked"
 	| "signout"
-	| "session.revoke";
+	| "session.revoke"
+	| "avatar.set";
 
 /**
  * One recorded action. Values are deliberately absent, exactly as the
@@ -209,6 +237,10 @@ export interface AccountSummary {
 	identities: IdentitySummary[];
 	/** Open, unexpired sessions for this account */
 	activeSessions: number;
+	/** The picture to show, resolved; null draws initials */
+	avatar: AvatarView;
+	/** Whether the picture was chosen, or is the automatic default */
+	avatarChosen: boolean;
 }
 
 export interface IdentitySummary {
@@ -413,7 +445,36 @@ export function summarize(account: ConsoleAccount, sessions: ConsoleSession[] = 
 		activeSessions: sessions.filter(
 			(session) => session.account === account.id && session.expiresAt > now,
 		).length,
+		avatar: resolveAvatar(account),
+		avatarChosen: account.avatar !== undefined,
 	};
+}
+
+/**
+ * The picture an account shows. An explicit choice wins while it still holds (a
+ * removed or disabled Minecraft identity falls back); with no choice, the first
+ * linked Minecraft profile's face, since that is who the operator is in game;
+ * otherwise none, and the client draws initials.
+ */
+function resolveAvatar(account: ConsoleAccount): AvatarView {
+	const setting = account.avatar;
+
+	if (setting?.source === "upload") {
+		return { source: "upload", version: setting.uploadedAt };
+	}
+
+	if (setting?.source === "initials") {
+		return null;
+	}
+
+	const linked = account.identities.filter((identity) => identity.kind === "minecraft" && !identity.disabled && identity.uuid);
+	const chosen = setting?.source === "minecraft"
+		? linked.find((identity) => identity.id === setting.identity) ?? linked[0]
+		: linked[0];
+
+	return chosen
+		? { source: "minecraft", uuid: chosen.uuid!, playerName: chosen.playerName ?? null }
+		: null;
 }
 
 /** Every account, masked, with its open-session count; the Accounts screen's rows. */
@@ -720,6 +781,7 @@ export async function deleteAccount(idOrName: string, actor?: string): Promise<v
 	}
 
 	store.accounts = store.accounts.filter((other) => other.id !== account.id);
+	await dropAvatarFile(account);
 
 	recordAudit(store, { action: "account.delete", account: account.username, actor });
 
@@ -1261,4 +1323,136 @@ export async function signOut(token: string): Promise<boolean> {
 	await saveAccounts(store);
 
 	return true;
+}
+
+// -- avatars -------------------------------------------------------------------
+
+/** Largest uploaded picture; the console crops and shrinks it before sending, so this is generous. */
+export const MAX_AVATAR_BYTES = 1024 * 1024;
+
+/** Image types an upload may be, by their leading bytes; the type served is the one sniffed, never a claim. */
+const AVATAR_TYPES: Array<{ type: string; ext: string; test: (bytes: Uint8Array) => boolean }> = [
+	{ type: "image/png", ext: "png", test: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 },
+	{ type: "image/jpeg", ext: "jpg", test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+	{ type: "image/gif", ext: "gif", test: (b) => b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 },
+	{
+		type: "image/webp",
+		ext: "webp",
+		test: (b) => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
+	},
+];
+
+/**
+ * Uploaded pictures sit beside the account store, one per account. Only the
+ * console reads them and the console only runs beside the primary, so they are
+ * not mirrored; `accounts.json` carries the choice, which a follower can hold
+ * without the file.
+ */
+function avatarsDir(): string {
+	return join(dataDir(), "avatars");
+}
+
+function avatarPath(accountId: string, type: string): string {
+	const ext = AVATAR_TYPES.find((entry) => entry.type === type)?.ext ?? "bin";
+
+	return join(avatarsDir(), `${accountId}.${ext}`);
+}
+
+async function dropAvatarFile(account: ConsoleAccount): Promise<void> {
+	if (account.avatar?.source === "upload") {
+		await rm(avatarPath(account.id, account.avatar.type), { force: true });
+	}
+}
+
+/**
+ * Change an account's picture: store an uploaded image (PNG, JPEG, GIF or
+ * WebP, recognised by content), pick one of its Minecraft identities, choose
+ * initials, or go back to automatic. The audit records which source, never the
+ * image.
+ */
+export async function setAccountAvatar(
+	idOrName: string,
+	choice: AvatarChoice,
+	actor?: string,
+): Promise<AccountSummary> {
+	const store = await loadAccounts();
+	const account = requireAccount(store, idOrName);
+
+	switch (choice.source) {
+		case "upload": {
+			const bytes = Buffer.from(choice.dataBase64, "base64");
+
+			if (bytes.length === 0 || bytes.length > MAX_AVATAR_BYTES) {
+				throw new Error(t("core.accounts.avatarTooLarge", { max: MAX_AVATAR_BYTES / 1024 }));
+			}
+
+			const kind = AVATAR_TYPES.find((entry) => entry.test(bytes));
+
+			if (!kind) {
+				throw new Error(t("core.accounts.avatarNotImage"));
+			}
+
+			await dropAvatarFile(account);
+			await mkdir(avatarsDir(), { recursive: true });
+			await Bun.write(avatarPath(account.id, kind.type), bytes);
+
+			account.avatar = { source: "upload", type: kind.type, uploadedAt: Date.now() };
+			break;
+		}
+
+		case "minecraft": {
+			const linked = account.identities.filter((identity) => identity.kind === "minecraft" && !identity.disabled);
+			const identity = choice.identity
+				? linked.find((entry) => entry.id === choice.identity)
+				: linked[0];
+
+			if (!identity) {
+				throw new Error(t("core.accounts.avatarNoMinecraft", { name: account.username }));
+			}
+
+			await dropAvatarFile(account);
+			account.avatar = { source: "minecraft", identity: identity.id };
+			break;
+		}
+
+		case "initials":
+			await dropAvatarFile(account);
+			account.avatar = { source: "initials" };
+			break;
+
+		default:
+			await dropAvatarFile(account);
+			delete account.avatar;
+	}
+
+	recordAudit(store, { action: "avatar.set", account: account.username, actor, detail: choice.source });
+	await saveAccounts(store);
+
+	const { sessions } = await loadSessions();
+
+	return summarize(account, sessions);
+}
+
+/** An account's uploaded picture, or null when it has none. */
+export async function readAccountAvatar(
+	idOrName: string,
+): Promise<{ type: string; dataBase64: string; version: number } | null> {
+	const store = await loadAccounts();
+	const account = findAccount(store, idOrName);
+
+	if (account?.avatar?.source !== "upload") {
+		return null;
+	}
+
+	const file = Bun.file(avatarPath(account.id, account.avatar.type));
+
+	if (!(await file.exists())) {
+		return null;
+	}
+
+	return {
+		type: account.avatar.type,
+		dataBase64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+		version: account.avatar.uploadedAt,
+	};
 }

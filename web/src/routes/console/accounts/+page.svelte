@@ -10,6 +10,7 @@
 	import { api, del, patch } from '$lib/api';
 	import { fmtDateTime, fmtDuration } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import AccountAvatar from '$lib/components/AccountAvatar.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -458,7 +459,10 @@
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'username'}
-						<a href={detailHref(row)}><b>{row.username}</b></a>
+						<span class="who">
+							<AccountAvatar account={row} size="1.5rem" />
+							<a href={detailHref(row)}><b>{row.username}</b></a>
+						</span>
 						{#if row.id === self}
 							<span class="you">{t('web.accounts.you')}</span>
 						{/if}
@@ -601,5 +605,11 @@
 
 		display: block;
 		font-size: 0.75rem;
+	}
+
+	.who {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 </style>

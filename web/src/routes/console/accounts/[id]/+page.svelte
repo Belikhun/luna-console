@@ -6,8 +6,8 @@
 	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
-	import { api, del, patch, post } from '$lib/api';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { api, del, patch, post, put } from '$lib/api';
 	import { copyText } from '$lib/clipboard';
 	import { fmtDateTime, fmtDuration } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -23,6 +23,7 @@
 	import FormGrid from '$lib/components/FormGrid.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import AccountAvatar from '$lib/components/AccountAvatar.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
@@ -92,6 +93,137 @@
 	// minecraft link form
 	let linkUuid = $state('');
 	let linkPlayer = $state('');
+
+	// picture
+	let avatarBusy = $state(false);
+	let avatarPicker: HTMLInputElement | undefined = $state();
+
+	/** px of the square an upload is cropped and shrunk to before it leaves the browser */
+	const AVATAR_PX = 256;
+
+	const minecraftIdentities = $derived(
+		(detail?.account.identities ?? []).filter((identity) => identity.kind === 'minecraft' && !identity.disabled)
+	);
+
+	const avatarSourceLabel = $derived.by(() => {
+		const account = detail?.account;
+
+		if (!account) {
+			return '';
+		}
+
+		if (account.avatar?.source === 'upload') {
+			return t('web.accountDetail.avatarUploaded');
+		}
+
+		if (account.avatar?.source === 'minecraft') {
+			return t('web.accountDetail.avatarMinecraft', { player: account.avatar.playerName ?? account.avatar.uuid });
+		}
+
+		return t('web.accountDetail.avatarInitials');
+	});
+
+	const avatarVerbs: ContextMenuItem[] = $derived([
+		...minecraftIdentities.map((identity) => ({
+			label: t('web.accountDetail.avatarUseSkin', { player: identity.playerName ?? identity.uuid ?? identity.label }),
+			icon: 'cube',
+			action: () => saveAvatar({ source: 'minecraft', identity: identity.id })
+		})),
+		...(minecraftIdentities.length === 0
+			? [{ label: t('web.accountDetail.avatarUseSkinNone'), icon: 'cube', disabled: true, hint: t('web.accountDetail.avatarUseSkinHint') }]
+			: []),
+		{ label: t('web.accountDetail.avatarUseInitials'), icon: 'font', action: () => saveAvatar({ source: 'initials' }) },
+		{ separator: true },
+		{
+			label: t('web.accountDetail.avatarAuto'),
+			icon: 'rotate',
+			disabled: !detail?.account.avatarChosen,
+			hint: t('web.accountDetail.avatarAutoHint'),
+			action: () => saveAvatar({ source: 'auto' })
+		}
+	]);
+
+	async function saveAvatar(body: Record<string, unknown>): Promise<void> {
+		if (!detail) {
+			return;
+		}
+
+		avatarBusy = true;
+
+		try {
+			const result = await put(`/accounts/${encodeURIComponent(detail.account.id)}/avatar`, body);
+
+			detail.account = result.account;
+			Notify.success(t('web.accountDetail.avatarSaved'));
+
+			// the top bar draws the signed-in account from the layout's data
+			if (detail.self) {
+				await invalidateAll();
+			}
+		} catch (err) {
+			Notify.error(t('web.accountDetail.avatarFailed'), { detail: (err as Error).message });
+		} finally {
+			avatarBusy = false;
+		}
+	}
+
+	/**
+	 * Crop a picked image to its centred square and shrink it, in the browser:
+	 * the daemon has no image decoder, and a phone photo is megabytes where the
+	 * picture is shown at a few dozen pixels.
+	 */
+	async function squareImage(file: File): Promise<string> {
+		const bitmap = await createImageBitmap(file);
+		const side = Math.min(bitmap.width, bitmap.height);
+		const canvas = document.createElement('canvas');
+
+		canvas.width = AVATAR_PX;
+		canvas.height = AVATAR_PX;
+
+		const context = canvas.getContext('2d')!;
+
+		// pixel art (a skin render, a server icon) stays sharp when it is enlarged
+		context.imageSmoothingEnabled = side >= AVATAR_PX;
+		context.drawImage(
+			bitmap,
+			(bitmap.width - side) / 2,
+			(bitmap.height - side) / 2,
+			side,
+			side,
+			0,
+			0,
+			AVATAR_PX,
+			AVATAR_PX
+		);
+		bitmap.close();
+
+		const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.9));
+		const bytes = new Uint8Array(await (blob ?? new Blob()).arrayBuffer());
+		let binary = '';
+
+		for (const byte of bytes) {
+			binary += String.fromCharCode(byte);
+		}
+
+		return btoa(binary);
+	}
+
+	async function onAvatarPicked(event: Event): Promise<void> {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+
+		input.value = '';
+
+		if (!file) {
+			return;
+		}
+
+		try {
+			await saveAvatar({ source: 'upload', data: await squareImage(file) });
+		} catch (err) {
+			Notify.error(t('web.accountDetail.avatarFailed'), { detail: (err as Error).message });
+		}
+	}
 
 	async function refresh(): Promise<void> {
 		loading = true;
@@ -536,6 +668,31 @@
 
 	<div class="tabbody">
 		{#if tab === 'details'}
+			<Panel title={t('web.accountDetail.avatarPanel')} description={t('web.accountDetail.avatarHint')}>
+				{#snippet actions()}
+					<Dropdown label={t('web.accountDetail.avatarOther')} menu={avatarVerbs} disabled={avatarBusy} />
+					<Btn icon="upload" loading={avatarBusy} onclick={() => avatarPicker?.click()}>
+						{t('web.accountDetail.avatarUpload')}
+					</Btn>
+				{/snippet}
+				<div class="picture">
+					<AccountAvatar account={detail.account} size="4.5rem" />
+					<div class="picwhat">
+						<b>{detail.account.displayName || detail.account.username}</b>
+						<span class="dim">{avatarSourceLabel}{detail.account.avatarChosen ? '' : ` · ${t('web.accountDetail.avatarAutomatic')}`}</span>
+					</div>
+				</div>
+				<input
+					class="picker"
+					type="file"
+					accept="image/png,image/jpeg,image/gif,image/webp"
+					bind:this={avatarPicker}
+					onchange={onAvatarPicked}
+				/>
+			</Panel>
+
+			<div class="gap"></div>
+
 			<Panel title={t('web.accountDetail.summary')}>
 				<InfoGrid cells={summaryCells}>
 					{#snippet custom(cell)}
@@ -844,5 +1001,21 @@
 			padding: 0.5rem 0.75rem;
 			font-size: 0.8125rem;
 		}
+	}
+
+	.picture {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.picwhat {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.picker {
+		display: none;
 	}
 </style>

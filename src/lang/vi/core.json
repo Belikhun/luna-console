@@ -611,7 +611,10 @@
 		"accountDisabled": "tài khoản đã bị tắt",
 		"noPassword": "chưa đặt mật khẩu console",
 		"wrongPassword": "mật khẩu không đúng",
-		"sessionsClosed": "đã đóng {count} phiên"
+		"sessionsClosed": "đã đóng {count} phiên",
+		"avatarTooLarge": "Ảnh tối đa {max} KB",
+		"avatarNotImage": "Đây không phải ảnh PNG, JPEG, GIF hay WebP",
+		"avatarNoMinecraft": "{name} chưa liên kết hồ sơ Minecraft nào để lấy ảnh"
 	},
 	"software": {
 		"paper": "Paper",

@@ -611,7 +611,10 @@
 		"accountDisabled": "account disabled",
 		"noPassword": "no console password set",
 		"wrongPassword": "wrong password",
-		"sessionsClosed": "{count} session(s) closed"
+		"sessionsClosed": "{count} session(s) closed",
+		"avatarTooLarge": "Pictures are limited to {max} KB",
+		"avatarNotImage": "That is not a PNG, JPEG, GIF or WebP image",
+		"avatarNoMinecraft": "{name} has no linked Minecraft profile to take a picture from"
 	},
 	"software": {
 		"paper": "Paper",
