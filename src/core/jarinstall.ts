@@ -190,7 +190,13 @@ function internalAddress(address: string): boolean {
 		|| a >= 224;
 }
 
-async function assertPublic(url: URL): Promise<void> {
+/**
+ * Refuse a URL that would make the daemon fetch from itself or its network: a
+ * loopback, private or link-local address, by literal or by what the name
+ * resolves to. Shared with the modpack installer, which downloads hundreds of
+ * files from addresses a pack author chose.
+ */
+export async function assertPublic(url: URL): Promise<void> {
 	if (url.protocol !== "https:" && url.protocol !== "http:") {
 		throw new Error(t("core.jarinstall.badScheme"));
 	}

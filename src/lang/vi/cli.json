@@ -2115,5 +2115,72 @@
 			"done": "Đã lưu cài đặt"
 		},
 		"tools": "{count} công cụ"
+	},
+	"modpack": {
+		"head": {
+			"slug": "Slug",
+			"title": "Tên",
+			"downloads": "Lượt tải",
+			"versions": "Minecraft",
+			"version": "Phiên bản",
+			"channel": "Kênh",
+			"minecraft": "Minecraft",
+			"loaders": "Loader",
+			"published": "Phát hành",
+			"size": "Kích thước"
+		},
+		"search": {
+			"desc": "Tìm modpack trên Modrinth mà luna chạy được",
+			"argQuery": "từ khoá tìm",
+			"optLoader": "chỉ các gói trên loader này (neoforge, forge, fabric)",
+			"searching": "đang tìm trên Modrinth",
+			"none": "không có modpack nào khớp",
+			"hint": "xem các phiên bản của một gói với {command}"
+		},
+		"versions": {
+			"desc": "Các phiên bản đã phát hành của một modpack Modrinth, mới nhất trước",
+			"argSlug": "slug hoặc id Modrinth của gói",
+			"fetching": "đang lấy danh sách phiên bản",
+			"none": "chưa có phiên bản nào",
+			"dimNote": "phiên bản mờ chạy trên loader mà luna không chạy được"
+		},
+		"install": {
+			"desc": "Tạo instance mới từ một modpack Modrinth (hoặc tệp .mrpack cục bộ)",
+			"argName": "tên instance mới",
+			"argSlug": "slug hoặc id Modrinth của gói",
+			"optVersion": "id hoặc số phiên bản; mặc định là bản ổn định mới nhất luna chạy được",
+			"optFile": "tệp .mrpack cục bộ thay cho gói Modrinth",
+			"optMemory": "heap JVM, ví dụ 8G (mặc định 6G)",
+			"optPort": "cổng game; mặc định lấy cổng trống kế tiếp",
+			"optProfile": "profile java (mặc định aikar)",
+			"optRuntime": "id runtime java được quản lý",
+			"optDaemon": "máy sẽ tạo instance (mặc định: máy chính)",
+			"optNoRegister": "không đăng ký với velocity",
+			"optSkipOptional": "bỏ qua các tệp gói đánh dấu tuỳ chọn phía server",
+			"oneSource": "hãy cho slug Modrinth hoặc --file, không phải cả hai",
+			"badPort": "cổng phải là số, không phải \"{value}\"",
+			"title": "cài modpack {name}",
+			"phasePack": "Modpack",
+			"phasePlugins": "Plugin",
+			"phasePacks": "Gói",
+			"phasePorts": "Cấp cổng",
+			"phaseProxy": "Đăng ký proxy",
+			"installed": "đã tạo {name} từ {pack} {version} ({software} {mc}, cổng {port})",
+			"filesLine": "{files} tệp của gói, {overrides} override, bỏ qua {clientOnly} tệp chỉ dành cho client",
+			"skippedLine": "override không áp dụng vì luna quản các tệp này: {files}",
+			"removedLine": "đã gỡ khỏi gói: {files}",
+			"withheldLine": "{mods} đã có trong gói; bản trong pool của luna được giữ lại khỏi instance này"
+		},
+		"update": {
+			"desc": "Chuyển instance modpack sang phiên bản khác của gói (instance phải đang dừng)",
+			"argInstance": "instance",
+			"optVersion": "id hoặc số phiên bản; mặc định là bản ổn định mới nhất",
+			"optFile": "tệp .mrpack cục bộ để cập nhật từ đó",
+			"optForce": "cài lại kể cả khi đã ở phiên bản đó",
+			"title": "cập nhật modpack trên {name}",
+			"updated": "{name} đã chuyển từ {from} sang {to}",
+			"versionLine": "nay là Minecraft {mc}, loader {loader}",
+			"filesLine": "{files} tệp của gói, {overrides} override, đã xoá {removed} tệp cũ"
+		}
 	}
 }

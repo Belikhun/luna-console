@@ -20,6 +20,8 @@ export const FORGE_LOADERS = ["forge"];
 export const PUMPKIN_LOADERS = ["pumpkin"];
 export const RESOURCEPACK_LOADERS = ["minecraft"];
 export const DATAPACK_LOADERS = ["datapack"];
+// quilt is absent on purpose: luna hosts no quilt server, so a quilt pack has nowhere to go
+export const MODPACK_LOADERS = [...NEOFORGE_LOADERS, ...FORGE_LOADERS, ...FABRIC_LOADERS];
 
 /**
  * How a server is launched.

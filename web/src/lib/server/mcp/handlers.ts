@@ -37,7 +37,8 @@ import * as luna from '$core/services/luna';
 import { listStatuses, getEvents, pushEvent, markTransition, clearTransition } from '$lib/server/luna';
 import type { ClusterEvent } from '$lib/server/luna';
 import { listDaemons, daemonDetail } from '$client/daemon';
-import { startJob, watchJob } from '$lib/server/jobs';
+import { startJob } from '$lib/server/jobs';
+import { awaitJob } from './jobs';
 import type { JobView } from '$lib/jobs';
 import { lunaShellRefusal, scopeCoversInstance } from '$shared/mcptools';
 import { browseInstance, readInstanceFile, writeInstanceFile, MAX_EDIT_BYTES } from '$core/configfiles';
@@ -56,6 +57,7 @@ import type { ToolArgs, ToolContext, ToolHandler } from './errors';
 import { ADDON_HANDLERS } from './addons';
 import { NETWORK_HANDLERS } from './network';
 import { PACK_HANDLERS } from './packs';
+import { MODPACK_HANDLERS } from './modpacks';
 
 export { ToolError } from './errors';
 export type { ToolArgs, ToolContext, ToolHandler } from './errors';
@@ -159,30 +161,6 @@ function visibleRows<T>(ctx: ToolContext, rows: T[], nameOf: (row: T) => string)
 	return rows.filter((row) => scopeCoversInstance(ctx.principal.scope, nameOf(row)));
 }
 
-/** Wait for a job to settle, or give up and say it is still going. */
-function awaitJob(job: JobView, timeoutMs: number): Promise<JobView> {
-	return new Promise((resolve) => {
-		let unsubscribe: () => void = () => {};
-
-		const timer = setTimeout(() => {
-			unsubscribe();
-			resolve(job);
-		}, timeoutMs);
-
-		unsubscribe = watchJob(job.id, (view) => {
-			job = view;
-
-			if (view.state === 'running') {
-				return;
-			}
-
-			clearTimeout(timer);
-			queueMicrotask(() => unsubscribe());
-			resolve(view);
-		});
-	});
-}
-
 const LIFECYCLE = {
 	start: startInstanceTracked,
 	stop: stopInstanceTracked,
@@ -280,6 +258,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	...ADDON_HANDLERS,
 	...NETWORK_HANDLERS,
 	...PACK_HANDLERS,
+	...MODPACK_HANDLERS,
 
 	// -- observe ---------------------------------------------------------------
 	async cluster_status(_args, ctx) {

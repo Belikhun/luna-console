@@ -87,6 +87,10 @@ function typeFacets(type: AddonType, loaders: string[]): string[][] {
 		return [["project_type:mod"], loaders.map((loader) => `categories:${loader}`)];
 	}
 
+	if (type === "modpack") {
+		return [["project_type:modpack"], loaders.map((loader) => `categories:${loader}`)];
+	}
+
 	return [["project_type:plugin"], loaders.map((loader) => `categories:${loader}`)];
 }
 
@@ -113,7 +117,7 @@ function typePath(type: AddonType): string {
 export const client: ProviderClient = {
 	id: "modrinth",
 	label: "Modrinth",
-	types: ["plugin", "mod", "resourcepack", "datapack"],
+	types: ["plugin", "mod", "resourcepack", "datapack", "modpack"],
 
 	status: () => ({ available: true }),
 

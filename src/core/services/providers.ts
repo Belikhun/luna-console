@@ -24,7 +24,7 @@ import * as modrinth from "./modrinth";
 import * as smithed from "./smithed";
 
 /** Kinds of addon luna installs from a provider. */
-export type AddonType = "plugin" | "mod" | "resourcepack" | "datapack";
+export type AddonType = "plugin" | "mod" | "resourcepack" | "datapack" | "modpack";
 
 // the channel vocabulary lives in a module with no imports, so a console
 // component can read it without dragging the provider clients (and node:fs)
@@ -39,6 +39,7 @@ import type { ReleaseChannel } from "../channels";
 // here because every provider client reaches for it through this module.
 import {
 	DATAPACK_LOADERS,
+	MODPACK_LOADERS,
 	PAPER_LOADERS,
 	RESOURCEPACK_LOADERS,
 } from "../software";
@@ -47,6 +48,7 @@ export {
 	DATAPACK_LOADERS,
 	FABRIC_LOADERS,
 	FORGE_LOADERS,
+	MODPACK_LOADERS,
 	NEOFORGE_LOADERS,
 	PAPER_LOADERS,
 	RESOURCEPACK_LOADERS,
@@ -188,6 +190,10 @@ function defaultLoaders(type: AddonType, loaders?: string[]): string[] {
 
 	if (type === "datapack") {
 		return DATAPACK_LOADERS;
+	}
+
+	if (type === "modpack") {
+		return MODPACK_LOADERS;
 	}
 
 	return PAPER_LOADERS;

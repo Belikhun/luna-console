@@ -742,6 +742,63 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
 	},
 
+	{
+		name: "modpack_search",
+		group: "addons",
+		description: "Search Modrinth for modpacks luna can host as a server (neoforge, forge or fabric packs). A modpack provisions a whole new instance; it is not installed onto an existing one.",
+		inputSchema: object(
+			{
+				query: { type: "string", description: "What to search for.", maxLength: 120 },
+				loader: { type: "string", description: "Only packs on this loader.", enum: ["neoforge", "forge", "fabric"] },
+			},
+			["query"],
+		),
+		annotations: { readOnlyHint: true, openWorldHint: true },
+	},
+	{
+		name: "modpack_versions",
+		group: "addons",
+		description: "Published versions of a Modrinth modpack, newest first, with the Minecraft version and loader each one runs on. Versions marked not runnable need a loader luna cannot host (quilt).",
+		inputSchema: object({ slug: { type: "string", description: "Modrinth project slug or id, from modpack_search.", maxLength: 120 } }, ["slug"]),
+		annotations: { readOnlyHint: true, openWorldHint: true },
+	},
+	{
+		name: "modpack_install",
+		group: "addons-write",
+		description: "Create a new instance from a Modrinth modpack: installs the server the pack calls for (loader, Minecraft version), downloads every server-side file the pack lists, applies its overrides, registers it with velocity and deploys luna's own addons. Takes minutes; the call waits up to ten and otherwise reports the job still running. The new server is left stopped; start it with instance_start and read its log.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "Name of the new instance (lowercase letters, digits, - and _).", maxLength: 40 },
+				slug: { type: "string", description: "Modrinth project slug or id.", maxLength: 120 },
+				version: { type: "string", description: "Version id or number from modpack_versions; omit for the newest stable build luna can run.", maxLength: 80 },
+				memory: { type: "string", description: "JVM heap such as \"8G\" (default 6G; modpacks need more than a plain server).", maxLength: 8 },
+				machine: { type: "string", description: "Daemon name to create it on, as fleet_status lists them; omit for the primary.", maxLength: 80 },
+				port: { type: "integer", description: "Game port; omit to take the next free one.", minimum: 1, maximum: 65535 },
+				profile: { type: "string", description: "Java profile name; omit for the default.", maxLength: 40 },
+				register: { type: "boolean", description: "Register with velocity so players can reach it (default true)." },
+				skipOptional: { type: "boolean", description: "Leave out files the pack marks optional on the server." },
+			},
+			["name", "slug"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+	},
+	{
+		name: "modpack_update",
+		group: "addons-write",
+		description: "Move an instance created from a modpack to another version of that pack: changes the server version when the pack did, replaces the pack's files and removes the ones the previous version wrote that the new one does not. The instance must be stopped. Files the operators added by hand are kept.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				version: { type: "string", description: "Version id or number; omit for the newest stable build.", maxLength: 80 },
+				force: { type: "boolean", description: "Reinstall even when already on that version." },
+				skipOptional: { type: "boolean", description: "Leave out files the pack marks optional on the server." },
+			},
+			["instance"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
+		instanceArg: "instance",
+	},
+
 	// -- network ---------------------------------------------------------------
 	{
 		name: "server_menu_list",

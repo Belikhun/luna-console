@@ -291,6 +291,20 @@ export interface InstanceConfig {}
   drawing the last people it saw is a lie a visitor cannot see through.
 - `luna-*` jars are in-house plugins (`source: "luna"` in the lockfile): excluded from Modrinth
   checks, and their deployment mechanism is still to be provided.
+- **A modpack is a provisioning source, not an addon.** `core/modpack.ts` reads the loader, the
+  Minecraft version and the loader build out of a Modrinth `.mrpack`'s index, hands them to
+  `createInstance`, then lays the pack's files and `overrides/` over the result. Those files are
+  the pack's: listed in the instance's `.luna-modpack.json`, never pooled, replaced by
+  `modpack update`, which removes only what the previous version wrote, so a jar an operator
+  dropped in survives. Only Modrinth, because only its format is a specification; CurseForge has
+  no server-side format to read. Every file comes from a host the format allows, is checked
+  against the index's hashes, and lands at a path confined to the instance. The pack's launch
+  files (`server.properties`, `eula.txt`, start scripts) are skipped and its
+  `default-server-properties` mod removed, because luna owns how a server starts. Luna's own
+  additions (the forwarding mod, group jars, packs, ports, velocity) still arrive through
+  `completeProvision` in the client bridge, the sequence a plain create runs, shared by the CLI,
+  the route and the MCP tool; it is composed client-side because each step is routed to the
+  owning daemon by its own op. A local `.mrpack` installs on the primary only.
 - **Environment values layer one-directionally**: builtin < global < machine < instance
   (`core/environment.ts`). A machine's key is read off the *instance's* `daemon` field
   (`machineKeyOf`, primary = `""`), never off the daemon running the call, so the primary resolves a
@@ -730,6 +744,10 @@ luna mcp knowledge show|add|edit|remove …
 luna agent                        # Mèo Béo: credential, model, token, state
 luna agent connect|disconnect     # paste the Claude token or API key (prompt or stdin) · forget it
 luna agent set [--model m] [--effort e] [--max-turns n] [--executable p] [--enable|--disable]
+luna modpack search <query> [--loader l]        # Modrinth modpacks luna can host
+luna modpack versions <slug>                      # a pack's versions, newest first
+luna modpack install <name> <slug> [--version v] [--memory m] [--daemon d] [--file x.mrpack]
+luna modpack update <instance> [--version v] [--force]   # move a pack instance to another version
 luna version                      # build identity of the binary and of the daemon
 bun run src/cli/index.ts <cmd…>   # run the CLI from source (this dir)
 bun run build                     # compile the single binary → dist/luna

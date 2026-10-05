@@ -2115,5 +2115,72 @@
 			"done": "Settings saved"
 		},
 		"tools": "{count} tools"
+	},
+	"modpack": {
+		"head": {
+			"slug": "Slug",
+			"title": "Title",
+			"downloads": "Downloads",
+			"versions": "Minecraft",
+			"version": "Version",
+			"channel": "Channel",
+			"minecraft": "Minecraft",
+			"loaders": "Loaders",
+			"published": "Published",
+			"size": "Size"
+		},
+		"search": {
+			"desc": "Search Modrinth for modpacks luna can host",
+			"argQuery": "what to search for",
+			"optLoader": "only packs on this loader (neoforge, forge, fabric)",
+			"searching": "searching Modrinth",
+			"none": "no modpacks matched",
+			"hint": "see a pack's versions with {command}"
+		},
+		"versions": {
+			"desc": "Published versions of a Modrinth modpack, newest first",
+			"argSlug": "the pack's Modrinth slug or id",
+			"fetching": "fetching versions",
+			"none": "no versions published",
+			"dimNote": "dimmed versions run on a loader luna cannot host"
+		},
+		"install": {
+			"desc": "Provision a new instance from a Modrinth modpack (or a local .mrpack)",
+			"argName": "name of the new instance",
+			"argSlug": "the pack's Modrinth slug or id",
+			"optVersion": "version id or number; default is the newest stable build luna can run",
+			"optFile": "a local .mrpack instead of a Modrinth pack",
+			"optMemory": "JVM heap, e.g. 8G (default 6G)",
+			"optPort": "game port; default takes the next free one",
+			"optProfile": "java profile (default aikar)",
+			"optRuntime": "managed java runtime id",
+			"optDaemon": "machine to create it on (default: the primary)",
+			"optNoRegister": "do not register it with velocity",
+			"optSkipOptional": "leave out files the pack marks optional on the server",
+			"oneSource": "give a Modrinth slug or --file, not both",
+			"badPort": "port must be a number, not \"{value}\"",
+			"title": "install modpack {name}",
+			"phasePack": "Modpack",
+			"phasePlugins": "Plugins",
+			"phasePacks": "Packs",
+			"phasePorts": "Port allocations",
+			"phaseProxy": "Proxy registration",
+			"installed": "{name} created from {pack} {version} ({software} {mc}, port {port})",
+			"filesLine": "{files} pack file(s), {overrides} override(s), {clientOnly} client-only file(s) skipped",
+			"skippedLine": "overrides not applied, luna owns these: {files}",
+			"removedLine": "removed from the pack: {files}",
+			"withheldLine": "{mods} already in the pack; luna's pooled copy is withheld from this instance"
+		},
+		"update": {
+			"desc": "Move a modpack instance to another version of its pack (the instance must be stopped)",
+			"argInstance": "the instance",
+			"optVersion": "version id or number; default is the newest stable build",
+			"optFile": "a local .mrpack to update from",
+			"optForce": "reinstall even when already on that version",
+			"title": "update modpack on {name}",
+			"updated": "{name} moved from {from} to {to}",
+			"versionLine": "now Minecraft {mc}, loader {loader}",
+			"filesLine": "{files} pack file(s), {overrides} override(s), {removed} stale file(s) removed"
+		}
 	}
 }

@@ -41,6 +41,9 @@ const CLASS_IDS: Record<AddonType, number> = {
 	plugin: 5,
 	resourcepack: 12,
 	datapack: 6945,
+	// listed so the record stays total; the client never serves this type, and
+	// a CurseForge pack has no server-side format to install from anyway
+	modpack: 4471,
 };
 
 /** URL path segment of each class on curseforge.com. */
@@ -49,6 +52,7 @@ const CLASS_PATHS: Record<AddonType, string> = {
 	plugin: "bukkit-plugins",
 	resourcepack: "texture-packs",
 	datapack: "data-packs",
+	modpack: "modpacks",
 };
 
 /** ModLoaderType enum values for the loaders luna cares about. */

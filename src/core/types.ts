@@ -117,6 +117,23 @@ export interface RuntimeConsumer {
 	machine?: string;
 }
 
+/**
+ * Where an instance's modpack came from, so `modpack update` can move it. The
+ * list of files the pack wrote lives in the instance directory
+ * (`core/modpack.ts`), not here: it is hundreds of paths and only that machine
+ * ever needs it.
+ */
+export interface InstanceModpack {
+	/** `file` for a pack installed from a local .mrpack, which cannot be updated from a provider */
+	provider: "modrinth" | "file";
+	projectId?: string;
+	slug?: string;
+	versionId: string;
+	versionNumber: string;
+	/** The pack's own name, as its index states it */
+	name: string;
+}
+
 export interface ProxyRegistration {
 	register: boolean;
 	/** Hostnames force-routed to this instance */
@@ -180,6 +197,8 @@ export interface InstanceConfig {
 	/** Daemon that owns this instance; absent = the primary daemon's host */
 	daemon?: string;
 	proxy?: ProxyRegistration;
+	/** The modpack this instance was provisioned from, when it was one */
+	modpack?: InstanceModpack;
 
 	// -- server selector presentation ------------------------------------------
 	// These describe how the instance appears in the proxy's `/servers` GUI and in

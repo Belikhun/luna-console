@@ -45,6 +45,7 @@ import * as lifecycleCore from "../core/lifecycle";
 import * as logsCore from "../core/logs";
 import * as lunaCore from "../core/luna";
 import * as mcpCore from "../core/mcp";
+import * as modpackCore from "../core/modpack";
 import * as agentCore from "../core/agent";
 import * as jarinstallCore from "../core/jarinstall";
 import * as mcassetsCore from "../core/mcassets";
@@ -743,6 +744,39 @@ async function adoptInstanceRouted(
 	return await adminCore.adoptInstance(cfg, name, opts);
 }
 
+/**
+ * Route a modpack install to the daemon named in the options, as a create is:
+ * the pack's files land on that machine's disk. A local .mrpack is a path on
+ * this machine, so it cannot travel; the operator is told rather than left with
+ * an install that fails on the other side looking for a file that is here.
+ */
+async function installModpackRouted(
+	cfg: ClusterConfig,
+	name: string,
+	opts: modpackCore.ModpackInstallOptions,
+): Promise<modpackCore.ModpackInstallResult> {
+	if (opts.daemon && opts.daemon !== daemonName()) {
+		if (!forwardOp) {
+			throw new Error(t("daemon.noFollowerLink", { name: opts.daemon }));
+		}
+
+		if (opts.mrpackPath) {
+			throw new Error(t("core.modpack.localOnPrimary"));
+		}
+
+		const { reporter, ...plain } = opts;
+		const outcome = await forwardOp(opts.daemon, "modpack.install", [cfg, name, plain], reporter);
+
+		// the follower mutated its copy of cfg; echo it into ours so the
+		// caller's registry entry (and its save) are correct
+		Object.assign(cfg, outcome.cfg as ClusterConfig);
+
+		return outcome.result as modpackCore.ModpackInstallResult;
+	}
+
+	return await modpackCore.installModpack(cfg, name, opts);
+}
+
 // -- ports ---------------------------------------------------------------------
 // `ss` only sees its own host and a plugin's config file only exists on the
 // machine running it, so the port map is gathered per machine: this daemon looks
@@ -1358,6 +1392,21 @@ export const OPS: Record<string, OpSpec> = {
 	},
 	"admin.adoptInstance": { fn: adoptInstanceRouted, cfg: 0 },
 	"admin.inspectInstanceDir": { fn: inspectInstanceDirRouted },
+
+	// -- modpacks ---------------------------------------------------------------
+	"modpack.search": { fn: modpackCore.searchModpacks },
+	"modpack.versions": { fn: modpackCore.modpackVersions },
+	"modpack.install": {
+		fn: installModpackRouted,
+		cfg: 0,
+		reporter: { arg: 2, prop: "reporter" },
+	},
+	"modpack.update": {
+		fn: modpackCore.updateModpack,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 2, prop: "reporter" },
+	},
 	"admin.setVersion": { fn: adminCore.setVersion, cfg: 0, instance: 1, reporter: { arg: 3 } },
 	// the sweep is routed per owner by its own wrapper, so it carries no instance
 	// index; `serverbuilds.check` is the leaf the wrapper forwards to a follower
