@@ -16,9 +16,18 @@
  */
 
 import { redirect, type Handle } from '@sveltejs/kit';
+import { version } from '$app/environment';
 
 import { resolveSession } from '$core/accounts';
 import { SESSION_COOKIE } from '$lib/server/session';
+
+/**
+ * The vendored stylesheets in `app.html` are served from `static/` with no cache
+ * policy, so a browser reuses an old copy heuristically and new icons render
+ * blank until it gives up on it. Stamping each link with the build makes every
+ * release a new URL.
+ */
+const STATIC_STYLESHEET = /(\/(?:AlbulaPro|FontAwesome)\/[\w-]+\.css)"/g;
 
 /**
  * Routes reachable without a session, and the only ones. `/login` is the screen;
@@ -113,5 +122,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		throw redirect(303, event.url.searchParams.get('next') || '/instances');
 	}
 
-	return await resolve(event);
+	return await resolve(event, {
+		transformPageChunk: ({ html }) => html.replace(STATIC_STYLESHEET, `$1?v=${version}"`)
+	});
 };
