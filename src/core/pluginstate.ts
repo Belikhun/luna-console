@@ -190,7 +190,7 @@ function yamlAuthors(text: string): string[] {
 }
 
 /** Descriptor of one jar plus the names it logs under. */
-interface JarInfo {
+export interface JarInfo {
 	meta: PluginMeta;
 	aliases: string[];
 	/**
@@ -206,9 +206,10 @@ interface JarInfo {
  * bukkit-side builds, `velocity-plugin.json` for the proxy side,
  * `neoforge.mods.toml` for neoforge mods and `fabric.mod.json` for fabric ones.
  * Later sources fill gaps rather than overwrite, so a universal jar keeps its
- * bukkit name but gains the velocity id.
+ * bukkit name but gains the velocity id. Exported for `jarinstall.ts`, which
+ * has to name a jar before it is pooled.
  */
-async function readJarInfo(path: string): Promise<JarInfo> {
+export async function readJarInfo(path: string): Promise<JarInfo> {
 	const meta: PluginMeta = {};
 	const aliases: string[] = [];
 

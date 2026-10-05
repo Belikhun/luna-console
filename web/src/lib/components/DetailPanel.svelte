@@ -201,7 +201,7 @@
 	// the far edge clears the status bar and, when it is open, the terminal drawer
 	.dp.bottom {
 		left: var(--nav-w);
-		right: 0;
+		right: var(--agent-w, 0rem);
 		bottom: calc(var(--statusbar-h, 1.75rem) + var(--shell-h, 0px));
 		height: var(--extent);
 		border-top: 0.1rem solid var(--border-drawer);
@@ -219,7 +219,7 @@
 	.dp.right {
 		top: var(--content-top, 4.5rem);
 		bottom: calc(var(--statusbar-h, 1.75rem) + var(--shell-h, 0px));
-		right: 0;
+		right: var(--agent-w, 0rem);
 		width: var(--extent);
 		border-left: 0.1rem solid var(--border-drawer);
 

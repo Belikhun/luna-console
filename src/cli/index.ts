@@ -27,6 +27,7 @@ import "./commands/daemon";
 import "./commands/setup";
 import "./commands/accounts";
 import "./commands/mcp";
+import "./commands/agent";
 
 import { command, dispatch } from "./framework";
 import { complete, BASH_HOOK, ZSH_HOOK, FISH_HOOK } from "./complete";

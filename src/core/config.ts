@@ -95,6 +95,7 @@ export const STATE_FILES = [
 	"backups.json",
 	"mcp.json",
 	"knowledge.json",
+	"agent.json",
 ] as const;
 
 /** Whether a directory is a cluster root: it holds the registry. */

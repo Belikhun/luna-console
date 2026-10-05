@@ -1925,7 +1925,7 @@
 		"cancelled": "cancelled; nothing changed",
 		"secretOnce": "this is the only time the token is shown; store it in the client now",
 		"secretUse": "clients send it as {header} to the console's {path}",
-		"optGroups": "comma-separated tool groups (observe, control, config, files, files-write, shell, host-shell, knowledge, knowledge-write)",
+		"optGroups": "comma-separated tool groups (observe, control, config, files, files-write, shell, host-shell, addons, addons-write, knowledge, knowledge-write)",
 		"optAllow": "comma-separated tools granted on top of the groups",
 		"optDeny": "comma-separated tools refused even if a group grants them",
 		"optInstances": "comma-separated instances the token may name",
@@ -2058,5 +2058,50 @@
 				"done": "deleted {title}"
 			}
 		}
+	},
+	"agent": {
+		"desc": "Mèo Béo, the console's chat agent: credential, model and state",
+		"ready": "ready",
+		"auto": "found automatically",
+		"kindOauth": "Claude subscription token",
+		"kindApikey": "Anthropic API key",
+		"cancelled": "Cancelled",
+		"optYes": "Do not ask for confirmation",
+		"field": {
+			"state": "State",
+			"credential": "Credential",
+			"connected": "Connected",
+			"model": "Model",
+			"effort": "Effort",
+			"maxTurns": "Turns per message",
+			"executable": "Claude Code",
+			"token": "MCP token"
+		},
+		"connect": {
+			"desc": "Store the Claude token or API key Mèo Béo runs on (read from a prompt or stdin)",
+			"how": "Run {command} on a machine with Claude Code to get a subscription token, or paste an Anthropic API key.",
+			"prompt": "Token or API key",
+			"needed": "Pipe the token or API key on stdin, or run this in a terminal",
+			"done": "Credential stored ({kind})",
+			"test": "Test it from the console's Mèo Béo screen; the stored value is never shown again."
+		},
+		"disconnect": {
+			"desc": "Forget the stored credential; Mèo Béo stops answering",
+			"confirm": "Delete Mèo Béo's credential?",
+			"done": "Credential removed"
+		},
+		"set": {
+			"desc": "Change Mèo Béo's settings",
+			"optModel": "Model id or alias (sonnet, opus, claude-sonnet-5-5, …)",
+			"optEffort": "low, medium, high, xhigh or max",
+			"optMaxTurns": "Model steps one message may take",
+			"optExecutable": "Path to the Claude Code executable (empty finds one)",
+			"optEnable": "Let people chat with Mèo Béo",
+			"optDisable": "Stop new messages",
+			"bothToggles": "Pass --enable or --disable, not both",
+			"nothing": "Nothing to change; pass at least one option",
+			"done": "Settings saved"
+		},
+		"tools": "{count} tools"
 	}
 }

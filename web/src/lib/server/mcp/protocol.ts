@@ -49,6 +49,8 @@ export interface JsonRpcResponse {
 /** What the transport knows about the request the message arrived in. */
 export interface RequestContext {
 	principal: McpPrincipal;
+	/** Who the call is for when the transport established it; wins over the client's `_meta` claim */
+	onBehalfOf?: McpOnBehalfOf;
 	ip?: string;
 	/** `clientInfo` from the session's initialize, when the client sends it as a header */
 	client?: string;
@@ -165,7 +167,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 			ok,
 			error,
 			durationMs: Math.round(performance.now() - started),
-			onBehalfOf: onBehalfOf(request.params),
+			onBehalfOf: ctx.onBehalfOf ?? onBehalfOf(request.params),
 			client: ctx.client,
 			ip: ctx.ip
 		});

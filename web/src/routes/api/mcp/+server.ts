@@ -16,7 +16,8 @@
  */
 
 import { authorizeMcpToken } from '$core/mcp';
-import type { McpPrincipal } from '$core/mcp';
+import type { McpOnBehalfOf, McpPrincipal } from '$core/mcp';
+import { authorizeRunBearer, isRunBearer } from '$lib/server/agent/bearer';
 import { clientIp } from '$lib/server/session';
 import {
 	dispatch,
@@ -94,7 +95,13 @@ function originAllowed(request: Request, url: URL): boolean {
 	}
 }
 
-async function authorize(request: Request): Promise<McpPrincipal | null> {
+interface Caller {
+	principal: McpPrincipal;
+	/** Set for Mèo Béo's runs: who the run belongs to, established by the console itself */
+	onBehalfOf?: McpOnBehalfOf;
+}
+
+async function authorize(request: Request): Promise<Caller | null> {
 	const header = request.headers.get('authorization') ?? '';
 	const match = /^Bearer\s+(.+)$/i.exec(header);
 
@@ -102,7 +109,17 @@ async function authorize(request: Request): Promise<McpPrincipal | null> {
 		return null;
 	}
 
-	return await authorizeMcpToken(match[1]!);
+	const bearer = match[1]!;
+
+	if (isRunBearer(bearer)) {
+		return await authorizeRunBearer(bearer);
+	}
+
+	const principal = await authorizeMcpToken(bearer);
+
+	return principal
+		? { principal }
+		: null;
 }
 
 export async function POST({ request, url, getClientAddress }) {
@@ -110,11 +127,13 @@ export async function POST({ request, url, getClientAddress }) {
 		return jsonResponse(rpcError(RPC_INVALID_REQUEST, 'cross-origin requests are refused'), 403);
 	}
 
-	const principal = await authorize(request);
+	const caller = await authorize(request);
 
-	if (!principal) {
+	if (!caller) {
 		return unauthorized();
 	}
+
+	const principal = caller.principal;
 
 	if (!takeToken(principal.id)) {
 		return jsonResponse(rpcError(RPC_INVALID_REQUEST, 'rate limit exceeded; slow down'), 429, {
@@ -146,6 +165,7 @@ export async function POST({ request, url, getClientAddress }) {
 
 	const ctx = {
 		principal,
+		onBehalfOf: caller.onBehalfOf,
 		ip: clientIp(request, address),
 		client: request.headers.get('user-agent')?.slice(0, 120) ?? undefined
 	};

@@ -9,6 +9,8 @@
 	import { goto } from '$app/navigation';
 	import { browser, dev } from '$app/environment';
 	import TerminalDrawer from '$lib/components/TerminalDrawer.svelte';
+	import AgentPanel from '$lib/components/AgentPanel.svelte';
+	import { Agent } from '$lib/agent.svelte';
 	import Flashbar from '$lib/components/Flashbar.svelte';
 	import ShellGlyph from '$lib/components/ShellGlyph.svelte';
 	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
@@ -93,6 +95,12 @@
 			alive = false;
 			clearInterval(id);
 		};
+	});
+
+	$effect(() => {
+		if (!bare) {
+			Agent.boot();
+		}
 	});
 
 	let shellOpen = $state(false);
@@ -189,6 +197,7 @@
 			section: t('web.nav.console'),
 			items: [
 				{ label: t('web.nav.accounts'), href: '/console/accounts', icon: 'userShield' },
+				{ label: t('web.nav.agent'), href: '/console/agent', icon: 'cat' },
 				{ label: t('web.nav.mcp'), href: '/console/mcp', icon: 'plug' },
 				{ label: t('web.nav.knowledge'), href: '/console/knowledge', icon: 'bookOpen' },
 				{ label: t('web.nav.consoleLogs'), href: '/console/logs', icon: 'fileLines' }
@@ -270,6 +279,7 @@
 		'/console/accounts/[id]',
 		'/console/accounts/[id]/edit',
 		'/console/accounts/new',
+		'/console/agent',
 		'/console/knowledge',
 		'/console/knowledge/[id]',
 		'/console/knowledge/new',
@@ -390,7 +400,11 @@
 	{@render children?.()}
 	<TooltipHost />
 {:else}
-	<div class="app" style:--shell-h="{shellOpen && browser ? shellHeight : 0}px">
+	<div
+		class="app"
+		style:--shell-h="{shellOpen && browser ? shellHeight : 0}px"
+		style:--agent-w="{Agent.open && browser ? Agent.width : 0}px"
+	>
 		<header class="topnav">
 			<a class="brand" href="/instances">
 				<LunaMark size="1.5rem" glyph="1rem" />
@@ -435,6 +449,16 @@
 					<Icon name="hardDrive" size="0.875rem" style="solid" />
 					{host?.name ?? '—'} · {host?.root ?? '—'}
 				</span>
+				<span class="regdiv"></span>
+				<button
+					class="agentbtn"
+					class:on={Agent.open}
+					title={t('web.layout.agentToggle')}
+					onclick={() => Agent.toggle()}
+				>
+					<img class="cat" src="/agent/meo-beo.webp" alt="" />
+					Mèo Béo
+				</button>
 				{#if account}
 					<span class="regdiv"></span>
 					<span class="who">
@@ -444,58 +468,66 @@
 			</div>
 		</header>
 
-		<div class="crumbs">
-			{#each crumbs as crumb, i}
-				{#if i > 0}
-					<span class="sep"><Icon name="arrowRight" size="0.625rem" /></span>
-				{/if}
-				{#if i === crumbs.length - 1 || !crumb.href}
-					<span class="here" class:plain={i !== crumbs.length - 1}>{crumb.label}</span>
-				{:else}
-					<a href={crumb.href}>{crumb.label}</a>
-				{/if}
-			{/each}
-		</div>
-
-		<div class="mid">
-			<nav class="sidenav" class:collapsed={navCollapsed}>
-				<button
-					class="collapse"
-					onclick={() => (navCollapsed = !navCollapsed)}
-					title={navCollapsed ? t('web.layout.expand') : t('web.layout.collapse')}
-				>
-					<Icon name={navCollapsed ? 'rightFromLine' : 'leftFromLine'} size="0.875rem" style="solid" />
-				</button>
-				{#if !navCollapsed}
-					<div class="navhead"><a href="/instances">{t('web.layout.navTitle')}</a></div>
-					{#each nav as group, gi}
-						{#if gi > 0}<hr />{/if}
-						<div class="group">
-							<div class="gt">{group.section}</div>
-							{#each group.items as item}
-								<a class="nl" class:active={isActive(item.href)} href={item.href}>
-									<Icon name={item.icon} size="1rem" style="solid" />
-									{item.label}
-								</a>
-							{/each}
-						</div>
+		<div class="body">
+			<div class="column">
+				<div class="crumbs">
+					{#each crumbs as crumb, i}
+						{#if i > 0}
+							<span class="sep"><Icon name="arrowRight" size="0.625rem" /></span>
+						{/if}
+						{#if i === crumbs.length - 1 || !crumb.href}
+							<span class="here" class:plain={i !== crumbs.length - 1}>{crumb.label}</span>
+						{:else}
+							<a href={crumb.href}>{crumb.label}</a>
+						{/if}
 					{/each}
+				</div>
+
+				<div class="mid">
+					<nav class="sidenav" class:collapsed={navCollapsed}>
+						<button
+							class="collapse"
+							onclick={() => (navCollapsed = !navCollapsed)}
+							title={navCollapsed ? t('web.layout.expand') : t('web.layout.collapse')}
+						>
+							<Icon name={navCollapsed ? 'rightFromLine' : 'leftFromLine'} size="0.875rem" style="solid" />
+						</button>
+						{#if !navCollapsed}
+							<div class="navhead"><a href="/instances">{t('web.layout.navTitle')}</a></div>
+							{#each nav as group, gi}
+								{#if gi > 0}<hr />{/if}
+								<div class="group">
+									<div class="gt">{group.section}</div>
+									{#each group.items as item}
+										<a class="nl" class:active={isActive(item.href)} href={item.href}>
+											<Icon name={item.icon} size="1rem" style="solid" />
+											{item.label}
+										</a>
+									{/each}
+								</div>
+							{/each}
+						{/if}
+					</nav>
+
+					<main class="content">
+						<Flashbar />
+						{@render children?.()}
+					</main>
+				</div>
+
+				{#if shellOpen && browser}
+					<TerminalDrawer
+						bind:height={shellHeight}
+						user={account?.username ?? 'root'}
+						onclose={() => (shellOpen = false)}
+					/>
 				{/if}
-			</nav>
+			</div>
 
-			<main class="content">
-				<Flashbar />
-				{@render children?.()}
-			</main>
+			{#if Agent.open && browser}
+				<AgentPanel user={account?.username ?? 'root'} />
+			{/if}
 		</div>
-
-		{#if shellOpen && browser}
-			<TerminalDrawer
-				bind:height={shellHeight}
-				user={account?.username ?? 'root'}
-				onclose={() => (shellOpen = false)}
-			/>
-		{/if}
 
 		<footer class="statusbar">
 			<button class="shellbtn" onclick={() => (shellOpen = !shellOpen)}>
@@ -621,6 +653,63 @@
 		height: 1.5rem;
 		font-size: 0.75rem;
 		padding: 0 0.625rem;
+	}
+
+	// the agent panel docks beside everything under the top bar, crumbs and
+	// terminal drawer included, so the page column narrows instead of being covered
+	.body {
+		display: flex;
+		flex: 1;
+		min-height: 0;
+	}
+
+	.column {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	// an avatar chip: a filled pill with no outline, the avatar its round left
+	// end, so it reads as "someone you can open" rather than as another button
+	.agentbtn {
+		@include bare-button;
+
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		height: 1.5rem;
+		padding: 0 0.75rem 0 0;
+		border-radius: 0.75rem;
+		background: var(--bg-hover);
+		color: var(--text-heading);
+		font-family: var(--font);
+		font-size: 0.75rem;
+		font-weight: 600;
+		white-space: nowrap;
+
+		.cat {
+			height: 100%;
+			aspect-ratio: 1;
+			border-radius: 50%;
+			object-fit: cover;
+		}
+
+		&:hover {
+			background: color-mix(in srgb, var(--text-heading) 16%, transparent);
+		}
+
+		// open: the panel's chip takes Luna's violet, the same tint the
+		// welcome screen writes the name in
+		&.on {
+			background: color-mix(in srgb, var(--src-luna) 24%, transparent);
+			color: #fff;
+		}
+
+		&:focus-visible {
+			@include focus-ring;
+		}
 	}
 
 	.crumbs {

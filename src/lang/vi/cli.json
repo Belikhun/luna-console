@@ -1925,7 +1925,7 @@
 		"cancelled": "đã huỷ; không có gì thay đổi",
 		"secretOnce": "đây là lần duy nhất token được hiển thị; hãy lưu vào client ngay",
 		"secretUse": "client gửi nó dưới dạng {header} tới {path} của console",
-		"optGroups": "các nhóm công cụ, phân tách bằng dấu phẩy (observe, control, config, files, files-write, shell, host-shell, knowledge, knowledge-write)",
+		"optGroups": "các nhóm công cụ, phân tách bằng dấu phẩy (observe, control, config, files, files-write, shell, host-shell, addons, addons-write, knowledge, knowledge-write)",
 		"optAllow": "các công cụ được cấp thêm ngoài nhóm, phân tách bằng dấu phẩy",
 		"optDeny": "các công cụ bị từ chối dù nhóm có cấp, phân tách bằng dấu phẩy",
 		"optInstances": "các instance token được phép chỉ định, phân tách bằng dấu phẩy",
@@ -2058,5 +2058,50 @@
 				"done": "đã xoá {title}"
 			}
 		}
+	},
+	"agent": {
+		"desc": "Mèo Béo, trợ lý trò chuyện của console: thông tin xác thực, model và trạng thái",
+		"ready": "sẵn sàng",
+		"auto": "tự tìm",
+		"kindOauth": "Token gói Claude",
+		"kindApikey": "Khóa API Anthropic",
+		"cancelled": "Đã hủy",
+		"optYes": "Không hỏi xác nhận",
+		"field": {
+			"state": "Trạng thái",
+			"credential": "Thông tin xác thực",
+			"connected": "Kết nối lúc",
+			"model": "Model",
+			"effort": "Mức suy nghĩ",
+			"maxTurns": "Số lượt mỗi tin nhắn",
+			"executable": "Claude Code",
+			"token": "Token MCP"
+		},
+		"connect": {
+			"desc": "Lưu token Claude hoặc khóa API cho Mèo Béo (nhập ẩn hoặc qua stdin)",
+			"how": "Chạy {command} trên máy có Claude Code để lấy token gói, hoặc dán khóa API Anthropic.",
+			"prompt": "Token hoặc khóa API",
+			"needed": "Truyền token hoặc khóa API qua stdin, hoặc chạy lệnh này trong terminal",
+			"done": "Đã lưu thông tin xác thực ({kind})",
+			"test": "Kiểm tra ở trang Mèo Béo trên console; giá trị đã lưu sẽ không hiển thị lại."
+		},
+		"disconnect": {
+			"desc": "Xóa thông tin xác thực đã lưu; Mèo Béo ngừng trả lời",
+			"confirm": "Xóa thông tin xác thực của Mèo Béo?",
+			"done": "Đã xóa thông tin xác thực"
+		},
+		"set": {
+			"desc": "Thay đổi cài đặt của Mèo Béo",
+			"optModel": "Mã hoặc bí danh model (sonnet, opus, claude-sonnet-5-5, …)",
+			"optEffort": "low, medium, high, xhigh hoặc max",
+			"optMaxTurns": "Số bước model được đi cho một tin nhắn",
+			"optExecutable": "Đường dẫn tới Claude Code (để trống để tự tìm)",
+			"optEnable": "Cho phép trò chuyện với Mèo Béo",
+			"optDisable": "Chặn tin nhắn mới",
+			"bothToggles": "Chỉ truyền --enable hoặc --disable",
+			"nothing": "Không có gì để đổi; hãy truyền ít nhất một tùy chọn",
+			"done": "Đã lưu cài đặt"
+		},
+		"tools": "{count} công cụ"
 	}
 }

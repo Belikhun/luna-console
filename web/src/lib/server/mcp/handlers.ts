@@ -51,17 +51,12 @@ import {
 } from '$core/instancefiles';
 import { runHostCommand } from '$core/hostshell';
 import { cliBinary, root } from '$lib/server/luna';
+import { ToolError } from './errors';
+import type { ToolArgs, ToolContext, ToolHandler } from './errors';
+import { ADDON_HANDLERS } from './addons';
 
-/** What an adapter is handed besides its arguments. */
-export interface ToolContext {
-	principal: McpPrincipal;
-	/** `mcp:<token name>`, the actor every change made over MCP is recorded as */
-	actor: string;
-}
-
-export type ToolArgs = Record<string, unknown>;
-
-export type ToolHandler = (args: ToolArgs, ctx: ToolContext) => Promise<unknown>;
+export { ToolError } from './errors';
+export type { ToolArgs, ToolContext, ToolHandler } from './errors';
 
 /** How long a lifecycle tool waits for the instance to settle before answering. */
 const LIFECYCLE_WAIT_MS = 3 * 60 * 1000;
@@ -76,8 +71,7 @@ const LUNA_SHELL_MAX_OUTPUT = 64 * 1024;
 /** Lines file_read returns when the caller does not say. */
 const FILE_READ_DEFAULT_LINES = 400;
 
-/** A failure the model should read as-is, rather than as an internal error. */
-export class ToolError extends Error {}
+
 
 function str(args: ToolArgs, key: string): string {
 	return String(args[key] ?? '');
@@ -281,6 +275,8 @@ function knowledgeView(item: KnowledgeItem): Record<string, unknown> {
 }
 
 export const TOOL_HANDLERS: Record<string, ToolHandler> = {
+	...ADDON_HANDLERS,
+
 	// -- observe ---------------------------------------------------------------
 	async cluster_status(_args, ctx) {
 		const data = await listStatuses();

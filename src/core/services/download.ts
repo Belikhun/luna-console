@@ -2,7 +2,8 @@
 // Proprietary software: use, copying, modification and distribution are
 // prohibited without written permission. See LICENSE at the repository root.
 
-import { unlink } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import { t } from "../../shared/i18n";
 
@@ -142,6 +143,9 @@ export async function downloadToFile(
 			hashers.set(algo, new Bun.CryptoHasher(algo));
 		}
 	}
+
+	// a fresh cluster root has no pool yet, and the writer does not create one
+	await mkdir(dirname(dest), { recursive: true });
 
 	const sink = Bun.file(dest).writer();
 	let received = 0;

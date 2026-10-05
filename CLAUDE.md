@@ -401,6 +401,16 @@ export interface InstanceConfig {}
   core at boot and checked by `core/hostshell.ts` on the machine the op is routed to. Commands run
   with a scrubbed environment (the daemon's carries the cluster token), are journalled before they
   start, killed with their process group at the timeout and capped in output.
+- **Addons are their own pair of groups.** `addons` reads the pool, searches providers, lists
+  versions and checks updates; `addons-write` installs (from a provider, a public URL, or a file
+  attached in Mèo Béo's panel), configures, updates, pins, deploys and removes, through
+  `web/src/lib/server/mcp/addons.ts`, which makes the plugin routes' bridge calls in the same order.
+  The pool is cluster-wide, so `addons-write` is closed to instance-limited tokens. A jar that
+  arrives as bytes or a URL goes through `core/jarinstall.ts`: the daemon fetches the URL itself,
+  so every redirect hop is resolved and refused on a loopback, private or link-local address, the
+  body is capped, and the jar's own descriptors name it and pick its family. Panel attachments are
+  staged in the console host's temp directory (`agent/uploads.ts`, raw `application/octet-stream`
+  posts, an hour's life) because an MCP request body is far smaller than a jar.
 - **The endpoint is stateless Streamable HTTP**, hand-rolled in `web/src/lib/server/mcp/protocol.ts`
   (no SDK): POST answers JSON, GET/DELETE answer 405, no session id. It sits in `PUBLIC_PREFIXES` and
   demands its own bearer; a browser `Origin` that is not the host is refused (DNS rebinding).
@@ -412,6 +422,44 @@ export interface InstanceConfig {}
 - Console-wide knowledge is readable by every token and writable only from the console or CLI; a
   token's `memory_save` always lands in its own scope. Pinned context and memories become the
   `initialize` instructions.
+
+### Mèo Béo, the console's chat agent
+- **It is a Claude Agent SDK run the console's server drives**, one query per message
+  (`web/src/lib/server/agent/runner.ts`), shown in the right-docked panel the top bar's button opens
+  (`AgentPanel.svelte`, state in `$lib/agent.svelte.ts`) and configured on `/console/agent`. A run
+  belongs to the server, not to the request: closing the panel leaves it going, and the stream route
+  replays its events so a reload picks up mid-answer.
+- **Its only hands are luna's MCP tools.** `tools: []` removes every built-in Claude Code tool, and
+  the luna tools are reached over the console's own `/api/mcp` (on loopback) with a per-run bearer
+  that lives only in the server's memory (`agent/bearer.ts`). That bearer resolves to an ordinary
+  MCP token (`meo-beo`, created on first use by `ensureAgentToken`), so the token's scope **is** the
+  agent's authorization, disabling the token stops it, and every call lands in the MCP call log with
+  an `onBehalfOf` the console established rather than one a client claimed. Never give the agent a
+  tool any other way.
+- **A mode decides when a person is asked; the token decides what is possible.** The modes are
+  `shared/agent.ts`, chosen per message in the composer (Shift+Tab cycles them). **Auto**, the
+  default: `readOnlyHint` tools and the agent's own `knowledge-write` memory run unasked, everything
+  else stops in `canUseTool` until the account that owns the conversation allows or denies it
+  (denied after ten minutes). **Manual** asks for every call. **Plan** refuses every call that is
+  not unasked in Auto and has the model answer with a plan. **Bypass** runs everything in scope
+  without asking; it confirms in the browser, journals a warning per message, and the
+  `bypassAllowed` setting turns it off for the whole console. No mode widens the token's scope.
+- **Its memory is the knowledge store.** Memories it saves are knowledge items in its token's scope,
+  managed on `/console/knowledge` like any other; pinned context reaches it as the MCP
+  `instructions`. Nothing is remembered in the subprocess's own state.
+- **The credential is write-only.** A Claude subscription token from `claude setup-token`
+  (`sk-ant-oat…`) or an API key (`sk-ant-api…`) is pasted on the settings screen or piped to
+  `luna agent connect`; reads return only a hint, and `agentLaunch` is the one path it leaves the
+  daemon, as subprocess environment. The console never imitates Anthropic's sign-in flow and never
+  reads anybody's `~/.claude`: the subprocess runs with its own `HOME`/`CLAUDE_CONFIG_DIR` under
+  `.data/agent/claude`, and a scrubbed environment (`ANTHROPIC_BASE_URL` and proxy variables pass).
+- **State is primary-local and never mirrored**, like `sessions.json`: `agent.json` (credential,
+  settings, conversation index) and one transcript per conversation under `.data/agent/`.
+  Conversations are per account; nobody lists anybody else's.
+- **The executable comes from the host.** The SDK's native binary is a quarter of a gigabyte and the
+  console bundle ships no `node_modules`, so `agent/executable.ts` looks for one: the settings path,
+  `LUNA_CLAUDE_BIN`, `<root>/.bin/claude`, `claude` on PATH, `~/.local/bin/claude`, then the SDK's
+  own package (a source checkout).
 
 ### Daemon health
 - **Every daemon samples its own machine** (`daemon/health.ts`, 5 s, one hour kept): CPU, memory,
@@ -657,6 +705,9 @@ luna mcp audit [--token x]        # what was done to tokens and knowledge
 luna mcp tools                    # the tool catalog by group
 luna mcp knowledge [--kind k] [--scope console|<token>]
 luna mcp knowledge show|add|edit|remove …
+luna agent                        # Mèo Béo: credential, model, token, state
+luna agent connect|disconnect     # paste the Claude token or API key (prompt or stdin) · forget it
+luna agent set [--model m] [--effort e] [--max-turns n] [--executable p] [--enable|--disable]
 luna version                      # build identity of the binary and of the daemon
 bun run src/cli/index.ts <cmd…>   # run the CLI from source (this dir)
 bun run build                     # compile the single binary → dist/luna

@@ -45,6 +45,8 @@ import * as lifecycleCore from "../core/lifecycle";
 import * as logsCore from "../core/logs";
 import * as lunaCore from "../core/luna";
 import * as mcpCore from "../core/mcp";
+import * as agentCore from "../core/agent";
+import * as jarinstallCore from "../core/jarinstall";
 import * as mcassetsCore from "../core/mcassets";
 import * as packslockCore from "../core/packslock";
 import * as pluginstateCore from "../core/pluginstate";
@@ -1489,6 +1491,23 @@ export const OPS: Record<string, OpSpec> = {
 	"mcp.removeKnowledge": { fn: mcpCore.removeKnowledge },
 	"mcp.searchMemories": { fn: mcpCore.searchMemories },
 
+	// -- Mèo Béo, the console's chat agent (primary-local; see core/agent.ts) ----------
+	// The credential is write-only: agent.launch is the one op that returns it, and
+	// only the console's agent runner calls it, to start the subprocess.
+	"agent.status": { fn: agentCore.agentStatus },
+	"agent.setCredential": { fn: agentCore.setAgentCredential },
+	"agent.clearCredential": { fn: agentCore.clearAgentCredential },
+	"agent.updateSettings": { fn: agentCore.updateAgentSettings },
+	"agent.recordModels": { fn: agentCore.recordAgentModels },
+	"agent.ensureToken": { fn: agentCore.ensureAgentToken },
+	"agent.launch": { fn: agentCore.agentLaunch },
+	"agent.listConversations": { fn: agentCore.listAgentConversations },
+	"agent.getConversation": { fn: agentCore.getAgentConversation },
+	"agent.createConversation": { fn: agentCore.createAgentConversation },
+	"agent.appendTurn": { fn: agentCore.appendAgentTurn },
+	"agent.renameConversation": { fn: agentCore.renameAgentConversation },
+	"agent.removeConversation": { fn: agentCore.removeAgentConversation },
+
 	// -- plugins ---------------------------------------------------------------
 	"plugins.scan": { fn: pluginsCore.scan, cfg: 0, lock: 1 },
 	"plugins.getVersionsForEntry": { fn: pluginsCore.getVersionsForEntry },
@@ -1515,6 +1534,8 @@ export const OPS: Record<string, OpSpec> = {
 	"plugins.installFromProvider": { fn: pluginsCore.installFromProvider, cfg: 0, lock: 1 },
 	"plugins.adopt": { fn: pluginsCore.adopt, cfg: 0, lock: 1, instance: 2 },
 	"plugins.uploadJar": { fn: pluginsCore.uploadJar, cfg: 0, lock: 1 },
+	"jarinstall.inspect": { fn: jarinstallCore.inspectJar },
+	"jarinstall.install": { fn: jarinstallCore.installJar, cfg: 0, lock: 1 },
 	"plugins.removePlugin": { fn: pluginsCore.removePlugin, cfg: 0, lock: 1 },
 	// provider mapping: the probe writes nothing, the other two rewrite the entry
 	"plugins.probeIdentity": { fn: pluginsCore.probePluginIdentity, lock: 0 },

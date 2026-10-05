@@ -31,6 +31,8 @@ export type McpToolGroup =
 	| "files-write"
 	| "shell"
 	| "host-shell"
+	| "addons"
+	| "addons-write"
 	| "knowledge"
 	| "knowledge-write";
 
@@ -43,6 +45,8 @@ export const MCP_TOOL_GROUPS: McpToolGroup[] = [
 	"files-write",
 	"shell",
 	"host-shell",
+	"addons",
+	"addons-write",
 	"knowledge",
 	"knowledge-write",
 ];
@@ -98,6 +102,39 @@ const INSTANCE = {
 } as const satisfies McpSchema;
 
 const READ: McpToolAnnotations = { readOnlyHint: true, openWorldHint: false };
+
+const FAMILY = {
+	type: "string",
+	description: "Platform the build runs on: paper (Paper/Purpur/Folia plugins), velocity (proxy plugins), neoforge, forge or fabric (mods), universal (one jar for paper and velocity), pumpkin.",
+	enum: ["paper", "velocity", "universal", "neoforge", "fabric", "forge", "pumpkin"],
+} as const satisfies McpSchema;
+
+const PROVIDER = {
+	type: "string",
+	description: "Where to look: modrinth (default), curseforge, hangar or smithed.",
+	enum: ["modrinth", "curseforge", "hangar", "smithed"],
+} as const satisfies McpSchema;
+
+const CHANNEL = {
+	type: "string",
+	description: "Least stable release channel allowed: release, beta or alpha.",
+	enum: ["release", "beta", "alpha"],
+} as const satisfies McpSchema;
+
+const ADDON = {
+	type: "string",
+	description: "The addon's lock entry key, as addon_info and addons_list show it (\"<plugin>@<family>\", e.g. \"luckperms@paper\").",
+	maxLength: 160,
+} as const satisfies McpSchema;
+
+const TARGETS = {
+	type: "array",
+	description: "Instances to deploy to. \"*\" means every instance the build fits; an empty list pools the addon without deploying it.",
+	items: { type: "string", maxLength: 80 },
+} as const satisfies McpSchema;
+
+/** Changes the cluster's addons and redeploys; never removes anything. */
+const ADDON_WRITE: McpToolAnnotations = { destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
 function object(properties: Record<string, McpSchema> = {}, required: string[] = []): McpSchema {
 	return { type: "object", properties, required, additionalProperties: false };
@@ -498,6 +535,189 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		),
 		annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: true },
 		instanceArg: "instance",
+	},
+
+	// -- addons ----------------------------------------------------------------
+	{
+		name: "addons_list",
+		group: "addons",
+		description: "Every addon (plugin or mod) in the cluster's pool: one row per lock entry with its family, source, installed version, targets, auto-update and channel. Use plugins_list for what one instance actually loads.",
+		inputSchema: object({
+			kind: { type: "string", description: "Only plugins or only mods.", enum: ["plugins", "mods"] },
+			search: { type: "string", description: "Case-insensitive filter on the name.", maxLength: 80 },
+		}),
+		annotations: READ,
+	},
+	{
+		name: "addon_info",
+		group: "addons",
+		description: "Everything about one addon: each family build, its pooled versions and variants, version pins, targets and where it is deployed, with the instances it fits.",
+		inputSchema: object({ name: { type: "string", description: "Plugin name or lock entry key.", maxLength: 160 } }, ["name"]),
+		annotations: READ,
+	},
+	{
+		name: "addon_search",
+		group: "addons",
+		description: "Search a provider for addons to install. Mods and plugins are separate project types upstream, so the family decides what comes back.",
+		inputSchema: object(
+			{
+				query: { type: "string", description: "Search text.", maxLength: 120 },
+				family: FAMILY,
+				provider: PROVIDER,
+			},
+			["query", "family"],
+		),
+		annotations: { readOnlyHint: true, openWorldHint: true },
+	},
+	{
+		name: "addon_versions",
+		group: "addons",
+		description: "Builds a provider offers for an addon, newest first, each marked compatible or not with one instance's Minecraft version. Give either name (a pooled addon) or provider+slug+family (one not installed yet).",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				name: { type: "string", description: "Pooled addon: plugin name or lock entry key.", maxLength: 160 },
+				provider: PROVIDER,
+				slug: { type: "string", description: "Provider project slug or id.", maxLength: 120 },
+				family: FAMILY,
+			},
+			["instance"],
+		),
+		annotations: { readOnlyHint: true, openWorldHint: true },
+		instanceArg: "instance",
+	},
+	{
+		name: "addon_check_updates",
+		group: "addons",
+		description: "Ask the providers what an update would change, downloading nothing: per addon, the version each group of targets would move to, plus holdbacks and pins. Can take a while for the whole pool.",
+		inputSchema: object({
+			names: { type: "array", description: "Lock entry keys to check; omit for every addon.", items: { type: "string", maxLength: 160 } },
+		}),
+		annotations: { readOnlyHint: true, openWorldHint: true },
+	},
+
+	// -- addons (write) ----------------------------------------------------------
+	{
+		name: "addon_install",
+		group: "addons-write",
+		description: "Install an addon from a provider into the pool and deploy it to its targets. The newest build compatible with each target is chosen per instance. Running servers need a restart to load it.",
+		inputSchema: object(
+			{
+				slug: { type: "string", description: "Provider project slug or id, from addon_search.", maxLength: 120 },
+				family: FAMILY,
+				provider: PROVIDER,
+				targets: TARGETS,
+				channel: CHANNEL,
+			},
+			["slug", "family", "targets"],
+		),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "addon_install_url",
+		group: "addons-write",
+		description: "Download an addon jar from a public http(s) URL (a GitHub release asset, a CI build, a Discord attachment) into the pool and deploy it. The name and family are read from the jar itself unless given. Uploaded jars never auto-update.",
+		inputSchema: object(
+			{
+				url: { type: "string", description: "Direct link to the .jar file.", maxLength: 2048 },
+				plugin: { type: "string", description: "Pool name to use instead of the one the jar declares (lowercase, dashes).", maxLength: 64 },
+				family: FAMILY,
+				targets: TARGETS,
+			},
+			["url", "targets"],
+		),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "addon_install_upload",
+		group: "addons-write",
+		description: "Install an addon jar the operator attached in the console's chat panel (an <attachment id=...> in their message) into the pool and deploy it. The name and family are read from the jar itself unless given.",
+		inputSchema: object(
+			{
+				upload: { type: "string", description: "The attachment id from the message.", maxLength: 80 },
+				plugin: { type: "string", description: "Pool name to use instead of the one the jar declares.", maxLength: 64 },
+				family: FAMILY,
+				targets: TARGETS,
+			},
+			["upload", "targets"],
+		),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "addon_configure",
+		group: "addons-write",
+		description: "Change an addon's targets (where it is deployed), auto-update or release channel, then redeploy it. Narrowing targets removes the jar from instances no longer listed.",
+		inputSchema: object(
+			{
+				name: ADDON,
+				targets: TARGETS,
+				autoUpdate: { type: "boolean", description: "Whether update sweeps may move it to newer builds." },
+				channel: CHANNEL,
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "addon_update",
+		group: "addons-write",
+		description: "Download the newer builds addon_check_updates reported and, unless deploy is false, deploy them. Never moves an instance backwards or past its channel. Running servers need a restart to load new jars.",
+		inputSchema: object({
+			names: { type: "array", description: "Lock entry keys to update; omit for every auto-updating addon.", items: { type: "string", maxLength: 160 } },
+			deploy: { type: "boolean", description: "Deploy after downloading (default true)." },
+		}),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "addon_pin",
+		group: "addons-write",
+		description: "Pin an addon to one provider version on some instances (it then stays there through updates), downloading that build if needed, and redeploy.",
+		inputSchema: object(
+			{
+				name: ADDON,
+				version: { type: "string", description: "Version number or id, from addon_versions.", maxLength: 120 },
+				targets: { type: "array", description: "Instances the pin applies to.", items: { type: "string", maxLength: 80 } },
+				force: { type: "boolean", description: "Pin even where the build does not declare the instance's Minecraft version." },
+			},
+			["name", "version", "targets"],
+		),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "addon_unpin",
+		group: "addons-write",
+		description: "Remove version pins so the addon follows updates again, then redeploy.",
+		inputSchema: object(
+			{
+				name: ADDON,
+				targets: { type: "array", description: "Instances to unpin; omit for all.", items: { type: "string", maxLength: 80 } },
+			},
+			["name"],
+		),
+		annotations: ADDON_WRITE,
+	},
+	{
+		name: "addon_deploy",
+		group: "addons-write",
+		description: "Copy pooled addons into instance folders so each instance holds exactly what the lock says. Reports what changed and which running instances need a restart.",
+		inputSchema: object({
+			instances: { type: "array", description: "Only these instances; omit for all.", items: { type: "string", maxLength: 80 } },
+			name: ADDON,
+		}),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "addon_remove",
+		group: "addons-write",
+		description: "Remove an addon from some instances, or from all of them, deleting its jar from their folders; removed from every target, it leaves the pool too. Its config folders are kept.",
+		inputSchema: object(
+			{
+				name: ADDON,
+				from: { type: "array", description: "Instances to remove it from; omit to remove it everywhere and drop it from the pool.", items: { type: "string", maxLength: 80 } },
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
 	},
 
 	// -- knowledge -------------------------------------------------------------

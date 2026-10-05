@@ -1267,6 +1267,34 @@ icon[data-icon="floppyDiskArrowRight"]::after {
 	content: "\e180";
 }
 
+icon[data-icon="bolt"]::after {
+	content: "\f0e7";
+}
+
+icon[data-icon="listCheck"]::after {
+	content: "\f0ae";
+}
+
+icon[data-icon="brain"]::after {
+	content: "\f5dc";
+}
+
+icon[data-icon="paperclip"]::after {
+	content: "\f0c6";
+}
+
+icon[data-icon="forwardFast"]::after {
+	content: "\f050";
+}
+
+icon[data-icon="cat"]::after {
+	content: "\f6be";
+}
+
+icon[data-icon="paw"]::after {
+	content: "\f1b0";
+}
+
 icon[data-icon="sparkles"]::after {
 	content: "\f890";
 }

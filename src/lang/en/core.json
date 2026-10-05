@@ -732,5 +732,26 @@
 		"disabled": "this machine does not accept host commands; its operator can enable mcpHostShell in the daemon config",
 		"empty": "the command is empty",
 		"tooLong": "the command is longer than {max} characters"
+	},
+	"agent": {
+		"disabled": "Mèo Béo is switched off in its settings",
+		"noCredential": "Mèo Béo has no Claude credential yet; connect one in its settings",
+		"tokenDisabled": "Mèo Béo's MCP token \"{name}\" is disabled or expired",
+		"badCredential": "That is not a Claude token (sk-ant-oat…) or an Anthropic API key (sk-ant-api…)",
+		"badModel": "Not a model id: {model}",
+		"instructionsTooLong": "Extra instructions are limited to {max} characters",
+		"badMaxTurns": "Turns per message must be between 1 and {max}",
+		"unknownConversation": "No conversation {id}",
+		"badEffort": "Unknown effort level: {effort}"
+	},
+	"jarinstall": {
+		"badScheme": "Only http and https URLs can be installed from",
+		"badUrl": "That is not a valid URL",
+		"internalHost": "Refusing to download from {host}: it resolves to a private or internal address",
+		"httpError": "The download failed with HTTP {status}",
+		"tooLarge": "The file is larger than {max} MB",
+		"tooManyRedirects": "The download redirected too many times",
+		"oneSource": "Give either the jar's data or a URL, not both",
+		"unknownFamily": "Could not tell which platform {file} is for; give the family explicitly"
 	}
 }

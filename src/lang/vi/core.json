@@ -732,5 +732,26 @@
 		"disabled": "máy này không nhận lệnh shell; người vận hành có thể bật mcpHostShell trong cấu hình daemon",
 		"empty": "lệnh trống",
 		"tooLong": "lệnh dài quá {max} ký tự"
+	},
+	"agent": {
+		"disabled": "Mèo Béo đang bị tắt trong phần cài đặt",
+		"noCredential": "Mèo Béo chưa có thông tin xác thực Claude; hãy kết nối trong phần cài đặt",
+		"tokenDisabled": "Token MCP \"{name}\" của Mèo Béo đã bị tắt hoặc hết hạn",
+		"badCredential": "Đây không phải token Claude (sk-ant-oat…) hay khóa API Anthropic (sk-ant-api…)",
+		"badModel": "Không phải mã model hợp lệ: {model}",
+		"instructionsTooLong": "Chỉ dẫn bổ sung tối đa {max} ký tự",
+		"badMaxTurns": "Số lượt mỗi tin nhắn phải từ 1 đến {max}",
+		"unknownConversation": "Không có cuộc trò chuyện {id}",
+		"badEffort": "Mức effort không xác định: {effort}"
+	},
+	"jarinstall": {
+		"badScheme": "Chỉ cài được từ URL http hoặc https",
+		"badUrl": "URL không hợp lệ",
+		"internalHost": "Từ chối tải từ {host}: địa chỉ này là mạng riêng hoặc nội bộ",
+		"httpError": "Tải xuống thất bại với HTTP {status}",
+		"tooLarge": "Tệp lớn hơn {max} MB",
+		"tooManyRedirects": "Tải xuống bị chuyển hướng quá nhiều lần",
+		"oneSource": "Chỉ đưa dữ liệu jar hoặc URL, không phải cả hai",
+		"unknownFamily": "Không xác định được {file} dành cho nền tảng nào; hãy chỉ rõ family"
 	}
 }
