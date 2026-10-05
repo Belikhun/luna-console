@@ -3321,7 +3321,11 @@
 		"linkPending": "liên kết khi lưu",
 		"noPlayers": "Chưa liên kết người chơi Minecraft nào.",
 		"addPlayer": "Liên kết người chơi",
-		"addPlayerButton": "Thêm người chơi"
+		"addPlayerButton": "Thêm người chơi",
+		"language": "Ngôn ngữ",
+		"languageHint": "Ngôn ngữ console mở ra khi tài khoản này đăng nhập. Ngôn ngữ đã chọn ở thanh trạng thái trên một trình duyệt vẫn được ưu tiên ở trình duyệt đó.",
+		"languageDefault": "Mặc định của console",
+		"changeLanguage": "ngôn ngữ"
 	},
 	"consoleLogs": {
 		"pageDescription": "Những gì luna đã làm trên máy này: daemon, các route của console, CLI và luồng đăng nhập.",

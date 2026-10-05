@@ -34,7 +34,8 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
 import { MIN_PASSWORD_LENGTH, USERNAME_PATTERN } from "../shared/accountrules";
-import { t } from "../shared/i18n";
+import { LANGUAGES, isLanguage, t } from "../shared/i18n";
+import type { LanguageCode } from "../shared/i18n";
 import { dataDir, notifySave, statePath } from "./config";
 import { digest, newId, newSecret, sameDigest } from "./secrets";
 
@@ -129,6 +130,12 @@ export interface ConsoleAccount {
 	identities: ConsoleIdentity[];
 	/** What the console shows for this account; absent means automatic (see `resolveAvatar`) */
 	avatar?: AvatarSetting;
+	/**
+	 * The console language this account signs in to. A browser that picked a
+	 * language in the status bar keeps its own pick; this is the default for one
+	 * that has not. Absent means the console's default.
+	 */
+	language?: LanguageCode;
 }
 
 /**
@@ -241,6 +248,8 @@ export interface AccountSummary {
 	avatar: AvatarView;
 	/** Whether the picture was chosen, or is the automatic default */
 	avatarChosen: boolean;
+	/** The preferred console language, or null for the console's default */
+	language: LanguageCode | null;
 }
 
 export interface IdentitySummary {
@@ -447,6 +456,7 @@ export function summarize(account: ConsoleAccount, sessions: ConsoleSession[] = 
 		).length,
 		avatar: resolveAvatar(account),
 		avatarChosen: account.avatar !== undefined,
+		language: account.language ?? null,
 	};
 }
 
@@ -682,6 +692,8 @@ export interface AccountPatch {
 	mustChangePassword?: boolean;
 	/** Clear a lockout without waiting it out */
 	unlock?: boolean;
+	/** A language code, or null/"" to fall back to the console's default */
+	language?: string | null;
 }
 
 /**
@@ -721,6 +733,19 @@ export async function updateAccount(
 	if (patch.mustChangePassword !== undefined) {
 		account.mustChangePassword = patch.mustChangePassword || undefined;
 		changed.push("mustChangePassword");
+	}
+
+	if (patch.language !== undefined) {
+		const code = patch.language || undefined;
+
+		if (code !== undefined && !isLanguage(code)) {
+			throw new Error(`unknown language "${code}"; known: ${LANGUAGES.map((entry) => entry.code).join(", ")}`);
+		}
+
+		if (code !== account.language) {
+			account.language = code;
+			changed.push("language");
+		}
 	}
 
 	if (patch.unlock) {

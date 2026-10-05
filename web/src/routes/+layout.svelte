@@ -26,7 +26,7 @@
 	import { INSTANCE_TAB_LABELS, isInstanceTab } from '$lib/components/instancetabs';
 	import { crumbLabel } from '$lib/crumbs.svelte';
 	import { fmtBytes } from '$lib/format';
-	import { LANGUAGES, currentLanguage, switchLanguage, t } from '$lib/i18n.svelte';
+	import { LANGUAGES, adoptAccountLanguage, currentLanguage, switchLanguage, t } from '$lib/i18n.svelte';
 	import { tooltip } from '$lib/tooltip.svelte';
 
 	let { children, data } = $props();
@@ -55,6 +55,10 @@
 
 	/** The signed-in account, resolved server-side in `+layout.server.ts`. */
 	const account = $derived(data?.account ?? null);
+
+	$effect(() => {
+		adoptAccountLanguage(account?.language);
+	});
 
 	/** host vitals are cheap but not free; poll them slowly */
 	const HOST_POLL_MS = 60_000;

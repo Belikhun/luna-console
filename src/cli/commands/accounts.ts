@@ -44,7 +44,7 @@ import {
 	type JournalLevel,
 	type JournalSource,
 } from "../../client/core/journal";
-import { t } from "../../shared/i18n";
+import { LANGUAGES, isLanguage, t } from "../../shared/i18n";
 
 /**
  * Who the audit trail records for a change made from a shell: `root`, unless the
@@ -205,6 +205,7 @@ command({
 				[t("cli.accounts.field.displayName"), account.displayName || pc.dim("—")],
 				[t("cli.accounts.field.email"), account.email || pc.dim("—")],
 				[t("cli.accounts.field.description"), account.description || pc.dim("—")],
+				[t("cli.accounts.field.language"), account.language ?? pc.dim(t("cli.accounts.language.default"))],
 				[t("cli.accounts.field.created"), `${stamp(account.createdAt)} ${pc.dim(account.createdBy ?? "")}`],
 				[t("cli.accounts.field.lastSignIn"), stamp(account.lastSignInAt)],
 				[t("cli.accounts.field.failedAttempts"), String(account.failedAttempts)],
@@ -323,6 +324,34 @@ command({
 		if (opts.reset) {
 			info(t("cli.accounts.password.mustChangeNote"));
 		}
+	},
+});
+
+command({
+	path: ["account", "language"],
+	desc: t("cli.accounts.language.desc"),
+	args: [
+		{ name: "username", required: true, complete: accountNames },
+		{ name: "language", required: true, complete: async () => [...LANGUAGES.map((entry) => entry.code), "default"] },
+	],
+
+	handler: async (args) => {
+		const name = args[0]!;
+		const code = args[1]!;
+
+		if (code !== "default" && !isLanguage(code)) {
+			throw new UsageError(t("cli.accounts.language.unknown", {
+				code,
+				known: [...LANGUAGES.map((entry) => entry.code), "default"].join(", "),
+			}));
+		}
+
+		const account = await updateAccount(name, { language: code === "default" ? null : code }, cliActor());
+
+		ok(t("cli.accounts.language.done", {
+			name: pc.bold(account.username),
+			language: account.language ?? t("cli.accounts.language.default"),
+		}));
 	},
 });
 

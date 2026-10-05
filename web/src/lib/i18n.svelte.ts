@@ -56,6 +56,38 @@ export function switchLanguage(code: LanguageCode): void {
 	}
 }
 
+/**
+ * Open the console in the signed-in account's preferred language, unless this
+ * browser picked one in the status bar, which always wins. Not persisted: the
+ * account's setting stays the default, so changing it reaches every browser
+ * that never chose for itself.
+ */
+export function adoptAccountLanguage(code: string | null | undefined): void {
+	if (!browser || !code || !isLanguage(code)) {
+		return;
+	}
+
+	let saved: string | null = null;
+
+	try {
+		saved = localStorage.getItem(STORAGE_KEY);
+	} catch {
+		// storage blocked: nothing was picked here, so the account's choice stands
+	}
+
+	if (saved !== null && isLanguage(saved)) {
+		return;
+	}
+
+	if (language() === code) {
+		return;
+	}
+
+	setLanguage(code);
+	stamp += 1;
+	document.documentElement.lang = code;
+}
+
 /** Resolve a language string; see `$shared/i18n`. Tracked, unlike the shared `t`. */
 export function t(key: string, params?: Record<string, string | number>): string {
 	void stamp;

@@ -3,6 +3,8 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
+	import { LANGUAGES } from '$lib/i18n.svelte';
 	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -51,6 +53,7 @@
 		description: string;
 		mustChangePassword: boolean;
 		hasPassword: boolean;
+		language: string | null;
 	}
 
 	const id = $derived(page.params.id!);
@@ -67,6 +70,8 @@
 	let email = $state('');
 	let description = $state('');
 	let mustChange = $state(false);
+	/** '' is the console default */
+	let language = $state('');
 	let links = $state<PlayerLink[]>([]);
 
 	// the player being added; the picker writes a UUID here once a row is picked
@@ -87,6 +92,7 @@
 	let initialEmail = $state('');
 	let initialDescription = $state('');
 	let initialMustChange = $state(false);
+	let initialLanguage = $state('');
 	let initialLinks = $state<PlayerLink[]>([]);
 
 	async function load(): Promise<void> {
@@ -101,6 +107,7 @@
 			email = data.account.email;
 			description = data.account.description;
 			mustChange = data.account.mustChangePassword;
+			language = data.account.language ?? '';
 			links = (data.account.identities ?? [])
 				.filter((identity: { kind: string; uuid: string | null }) => identity.kind === 'minecraft' && identity.uuid)
 				.map((identity: { id: string; uuid: string; playerName: string | null; label: string }) => ({
@@ -114,6 +121,7 @@
 			initialEmail = email;
 			initialDescription = description;
 			initialMustChange = mustChange;
+			initialLanguage = language;
 			initialLinks = [...links];
 		} catch (err) {
 			missing = (err as Error).message;
@@ -150,7 +158,13 @@
 			|| email !== initialEmail
 			|| description !== initialDescription
 			|| mustChange !== initialMustChange
+			|| language !== initialLanguage
 	);
+
+	const languageOptions = $derived([
+		{ value: '', label: t('web.accountEdit.languageDefault') },
+		...LANGUAGES.map((entry) => ({ value: entry.code, label: entry.label }))
+	]);
 
 	/** What the save will actually do, named field by field for the recap line. */
 	const changes = $derived.by(() => {
@@ -178,6 +192,10 @@
 			);
 		}
 
+		if (language !== initialLanguage) {
+			out.push(t('web.accountEdit.changeLanguage'));
+		}
+
 		for (const link of addedLinks) {
 			out.push(t('web.accountEdit.changeLink', { player: link.playerName }));
 		}
@@ -201,7 +219,8 @@
 					displayName,
 					email,
 					description,
-					mustChangePassword: mustChange
+					mustChangePassword: mustChange,
+					language: language || null
 				});
 			}
 
@@ -308,6 +327,12 @@
 					<span class="hint">{t('web.accountNew.purposeHint')}</span>
 					<input class="input" type="text" disabled={loading} bind:value={description} />
 				</label>
+
+				<div class="field">
+					<span class="lbl">{t('web.accountEdit.language')}</span>
+					<span class="hint">{t('web.accountEdit.languageHint')}</span>
+					<Select width="100%" options={languageOptions} disabled={loading} bind:value={language} />
+				</div>
 			</FormGrid>
 
 			{#if username !== initialUsername && initialUsername}

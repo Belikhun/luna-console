@@ -3321,7 +3321,11 @@
 		"linkPending": "linked on save",
 		"noPlayers": "No Minecraft player is linked.",
 		"addPlayer": "Link a player",
-		"addPlayerButton": "Add player"
+		"addPlayerButton": "Add player",
+		"language": "Language",
+		"languageHint": "What the console opens in when this account signs in. A language picked in the status bar on a browser still wins there.",
+		"languageDefault": "Console default",
+		"changeLanguage": "language"
 	},
 	"consoleLogs": {
 		"pageDescription": "What luna itself has been doing on this machine: the daemon, the console's own routes, the CLI and the sign-in path.",

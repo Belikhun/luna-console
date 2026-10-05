@@ -1693,7 +1693,8 @@
 			"lastSignIn": "last sign-in",
 			"failedAttempts": "failed attempts",
 			"lockedUntil": "locked until",
-			"sessions": "open sessions"
+			"sessions": "open sessions",
+			"language": "language"
 		},
 		"list": {
 			"desc": "console accounts: who may sign in to the web console",
@@ -1796,6 +1797,12 @@
 			"showsMinecraft": "the skin of {player}",
 			"showsInitials": "initials",
 			"done": "{name} now shows {shows}"
+		},
+		"language": {
+			"desc": "Set the console language an account signs in to (a browser's own pick still wins)",
+			"done": "{name} now signs in to {language}",
+			"default": "console default",
+			"unknown": "unknown language \"{code}\"; known: {known}"
 		}
 	},
 	"public": {

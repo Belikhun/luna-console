@@ -26,7 +26,7 @@ export async function GET({ params, locals }) {
 	return json({ account, sessions, audit, self: account.id === locals.account?.id });
 }
 
-/** PATCH { username?, displayName?, email?, description?, enabled?, unlock? } → edit it. */
+/** PATCH { username?, displayName?, email?, description?, enabled?, unlock?, language? } → edit it. */
 export async function PATCH({ params, request, locals }) {
 	const body = await jsonBody(request);
 	const account = await getAccount(params.id);
@@ -52,7 +52,10 @@ export async function PATCH({ params, request, locals }) {
 				enabled: body.enabled !== undefined ? !!body.enabled : undefined,
 				mustChangePassword:
 					body.mustChangePassword !== undefined ? !!body.mustChangePassword : undefined,
-				unlock: !!body.unlock
+				unlock: !!body.unlock,
+				language: body.language !== undefined
+					? (body.language === null ? null : String(body.language))
+					: undefined
 			},
 			locals.account?.username
 		);
