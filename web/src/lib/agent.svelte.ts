@@ -466,12 +466,13 @@ class AgentStore {
 		}
 	}
 
-	async decide(toolUseId: string, allow: boolean, tool: string): Promise<void> {
+	/** Allow or deny a waiting call; `answers` answers a question the agent asked. */
+	async decide(toolUseId: string, allow: boolean, tool: string, answers?: Record<string, string>): Promise<void> {
 		if (!this.conversationId) {
 			return;
 		}
 
-		await post(`/agent/conversations/${this.conversationId}/approve`, { toolUseId, allow, tool });
+		await post(`/agent/conversations/${this.conversationId}/approve`, { toolUseId, allow, tool, ...(answers ? { answers } : {}) });
 	}
 
 	async stop(): Promise<void> {

@@ -478,12 +478,19 @@ export interface InstanceConfig {}
   tool any other way.
 - **A mode decides when a person is asked; the token decides what is possible.** The modes are
   `shared/agent.ts`, chosen per message in the composer (Shift+Tab cycles them). **Auto**, the
-  default: `readOnlyHint` tools and the agent's own `knowledge-write` memory run unasked, everything
-  else stops in `canUseTool` until the account that owns the conversation allows or denies it
-  (denied after ten minutes). **Manual** asks for every call. **Plan** refuses every call that is
-  not unasked in Auto and has the model answer with a plan. **Bypass** runs everything in scope
+  default: the agent works on its own, and only tools the catalog marks `destructiveHint` (stop,
+  restart, console commands, removals, shells) stop in `canUseTool` until the account that owns the
+  conversation allows or denies it (denied after ten minutes); so a new tool's annotation decides
+  whether Auto asks for it. **Manual** asks for every call. **Plan** runs only `readOnlyHint` tools
+  and the agent's own memory, refuses the rest and has the model answer with a plan. **Bypass** runs everything in scope
   without asking; it confirms in the browser, journals a warning per message, and the
   `bypassAllowed` setting turns it off for the whole console. No mode widens the token's scope.
+- **Its one other tool is a question.** Outside Auto, the SDK's built-in `AskUserQuestion`
+  (`AGENT_ASK_TOOL`) is the only built-in left in `tools`; it reaches nothing on the cluster.
+  `canUseTool` turns the call into a waiting question in the panel (`AgentQuestion.svelte`), the
+  owner's picks come back through the approve route as `answers` keyed by question text and ride
+  into the tool as `updatedInput`, and a dismissal or the ten-minute timeout is a deny telling the
+  model to carry on. Auto withholds it on purpose: that mode is the one where nobody is watching.
 - **Its memory is the knowledge store.** Memories it saves are knowledge items in its token's scope,
   managed on `/console/knowledge` like any other; pinned context reaches it as the MCP
   `instructions`. Nothing is remembered in the subprocess's own state.
@@ -734,6 +741,7 @@ luna account enable|disable|unlock|remove <name>
 luna account key <name> [label]           # mint an access key (secret shown once)
 luna account link|unlink <name> …         # a Minecraft profile, or an identity id
 luna account avatar <name> --file x|--minecraft|--initials|--auto   # the picture the console shows
+luna account language <name> <en|vi|default>   # the console language it signs in to (a browser's pick wins)
 luna sessions [--account x]               # open console sessions
 luna sessions revoke <id>|--account x     # close one, or all of an account's
 luna audit [--account x] [--limit n]      # the account audit trail, newest first

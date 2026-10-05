@@ -9,8 +9,9 @@
  * at all is its MCP token's scope, in every mode, bypass included.
  *
  * - `manual`: every tool call waits for the operator, even a read.
- * - `auto`: reads and the agent's own memory run; anything that changes the
- *   cluster waits. The default.
+ * - `auto`: every call runs on its own except the ones the catalog marks
+ *   destructive (stop, restart, console commands, removals, shells), which
+ *   wait. The default.
  * - `plan`: reads run, changes are refused outright, and the agent answers with
  *   a plan instead of acting.
  * - `bypass`: every tool in scope runs without asking. It can be switched off
@@ -22,6 +23,19 @@ export const AGENT_MODES = ["manual", "auto", "plan", "bypass"] as const;
 export type AgentMode = typeof AGENT_MODES[number];
 
 export const DEFAULT_AGENT_MODE: AgentMode = "auto";
+
+/**
+ * The SDK's built-in question tool, the one tool the agent has besides luna's:
+ * it asks the operator to pick from a few options (or type their own) and
+ * waits for the answer. It reaches nothing on the cluster. Auto has no one
+ * watching by design, so there it is withheld and the agent decides itself.
+ */
+export const AGENT_ASK_TOOL = "AskUserQuestion";
+
+/** Whether the agent may stop and ask the operator a question in a mode. */
+export function agentCanAsk(mode: AgentMode): boolean {
+	return mode !== "auto";
+}
 
 /** Whether a value names a mode. */
 export function isAgentMode(value: unknown): value is AgentMode {

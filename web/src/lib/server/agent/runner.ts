@@ -15,7 +15,7 @@
  *   fetches), so the only tools are luna's, reached over `/api/mcp` with a
  *   per-run bearer (`bearer.ts`). The agent token's scope is therefore the whole
  *   of its reach, checked on every call by the endpoint.
- * - Tools that only read (or only touch the agent's own memory) run unasked;
+ * - In Auto, every tool not marked destructive (and the agent's own memory) runs unasked;
  *   every other call waits in `canUseTool` until the operator who owns the
  *   conversation approves or denies it in the panel.
  *
@@ -35,7 +35,8 @@ import {
 	recordAgentModels
 } from '$core/agent';
 import type { AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
-import { mcpTool } from '$shared/mcptools';
+import { allowedTools, mcpTool } from '$shared/mcptools';
+import { AGENT_ASK_TOOL, agentCanAsk } from '$shared/agent';
 import type { AgentMode } from '$shared/agent';
 import { issueRunBearer } from './bearer';
 import { findClaudeExecutable } from './executable';
@@ -93,8 +94,11 @@ export class AgentRunError extends Error {
 
 type Listener = (event: AgentEvent) => void;
 
+/** The operator's picks for an `AskUserQuestion` call, keyed by question text, as the SDK reads them. */
+export type AgentAnswers = Record<string, string>;
+
 interface Pending {
-	resolve: (allow: boolean, by: string) => void;
+	resolve: (allow: boolean, by: string, answers?: AgentAnswers) => void;
 }
 
 function stripPrefix(name: string): string {
@@ -103,7 +107,7 @@ function stripPrefix(name: string): string {
 		: name;
 }
 
-/** Tools that leave the cluster as it was: those that only read, and the agent's own memory. */
+/** Tools that leave the cluster as it was: those that only read, and the agent's own memory. Plan runs only these. */
 function leavesClusterAlone(name: string): boolean {
 	const tool = mcpTool(name);
 
@@ -112,6 +116,22 @@ function leavesClusterAlone(name: string): boolean {
 	}
 
 	return tool.annotations.readOnlyHint === true || tool.group === 'knowledge-write';
+}
+
+/**
+ * Whether Auto runs a tool without asking: everything except what the catalog
+ * marks destructive (stopping, restarting, raw console commands, removals,
+ * shells), which still waits for the operator. The agent's own memory always
+ * runs, forgetting included.
+ */
+function safeUnattended(name: string): boolean {
+	const tool = mcpTool(name);
+
+	if (!tool) {
+		return false;
+	}
+
+	return leavesClusterAlone(name) || tool.annotations.destructiveHint !== true;
 }
 
 /** Whether a tool runs without asking in a mode. Plan refuses the rest in `canUseTool` instead. */
@@ -123,8 +143,11 @@ function runsUnasked(name: string, mode: AgentMode): boolean {
 		case 'bypass':
 			return true;
 
-		default:
+		case 'plan':
 			return leavesClusterAlone(name);
+
+		default:
+			return safeUnattended(name);
 	}
 }
 
@@ -201,7 +224,7 @@ class Run {
 		}
 	}
 
-	decide(toolUseId: string, allow: boolean, by: string): boolean {
+	decide(toolUseId: string, allow: boolean, by: string, answers?: AgentAnswers): boolean {
 		const pending = this.pending.get(toolUseId);
 
 		if (!pending) {
@@ -209,7 +232,7 @@ class Run {
 		}
 
 		this.pending.delete(toolUseId);
-		pending.resolve(allow, by);
+		pending.resolve(allow, by, answers);
 
 		return true;
 	}
@@ -303,6 +326,68 @@ export async function startRun(input: StartRunInput): Promise<void> {
 	void drive(run, input, launch, executable.path, conversation.sessionId);
 }
 
+/**
+ * Put an `AskUserQuestion` call in front of the operator and wait for the
+ * answer. The answers ride back in the tool's input, which is how the SDK's
+ * tool reads them, and are kept on the call so the transcript shows what was
+ * picked. A dismissal or the timeout tells the model to go on without one.
+ */
+async function askOperator(
+	run: Run,
+	toolInput: Record<string, unknown>,
+	toolUseId: string,
+	signal: AbortSignal
+): Promise<PermissionResult> {
+	run.calls.set(toolUseId, { name: AGENT_ASK_TOOL, input: toolInput });
+	run.emit({ type: 'tool', id: toolUseId, name: AGENT_ASK_TOOL, input: toolInput, status: 'awaiting' });
+
+	const reply = await new Promise<{ allow: boolean; by: string; answers?: AgentAnswers }>((resolve) => {
+		const timer = setTimeout(() => {
+			run.decide(toolUseId, false, 'timeout');
+		}, APPROVAL_TIMEOUT_MS);
+
+		run.pending.set(toolUseId, {
+			resolve: (allow, by, answers) => {
+				clearTimeout(timer);
+				resolve({ allow, by, answers });
+			}
+		});
+
+		signal.addEventListener('abort', () => {
+			run.decide(toolUseId, false, 'stopped');
+		});
+	});
+
+	const call = run.calls.get(toolUseId);
+
+	if (!reply.allow || !reply.answers) {
+		if (call) {
+			call.decidedBy = reply.by;
+			call.denied = true;
+		}
+
+		run.emit({ type: 'tool', id: toolUseId, name: AGENT_ASK_TOOL, status: 'denied', decidedBy: reply.by });
+
+		return {
+			behavior: 'deny',
+			message: reply.by === 'timeout'
+				? 'The operator did not answer in time. Carry on with the most sensible choice and say which one you made.'
+				: 'The operator dismissed the question. Carry on with the most sensible choice, or stop if there is none, and say which.'
+		};
+	}
+
+	const answered = { ...toolInput, answers: reply.answers };
+
+	if (call) {
+		call.input = answered;
+		call.decidedBy = reply.by;
+	}
+
+	run.emit({ type: 'tool', id: toolUseId, name: AGENT_ASK_TOOL, input: answered, status: 'running', decidedBy: reply.by });
+
+	return { behavior: 'allow', updatedInput: answered };
+}
+
 async function drive(
 	run: Run,
 	input: StartRunInput,
@@ -319,6 +404,10 @@ async function drive(
 
 	const canUseTool: CanUseTool = async (toolName, toolInput, options) => {
 		const name = stripPrefix(toolName);
+
+		if (toolName === AGENT_ASK_TOOL && agentCanAsk(input.mode)) {
+			return await askOperator(run, toolInput, options.toolUseID, options.signal);
+		}
 
 		// only luna's tools exist; anything else reaching here is refused outright
 		if (!toolName.startsWith(TOOL_PREFIX)) {
@@ -408,7 +497,10 @@ async function drive(
 				model: input.model || launch.settings.model,
 				effort: (input.effort || launch.settings.effort) as AgentEffort,
 				maxTurns: launch.settings.maxTurns,
-				tools: [],
+				// no built-in tool but the question one, and that only where someone is watching
+				tools: agentCanAsk(input.mode)
+					? [AGENT_ASK_TOOL]
+					: [],
 				mcpServers: {
 					[SERVER]: {
 						type: 'http',
@@ -419,7 +511,10 @@ async function drive(
 					}
 				},
 				strictMcpConfig: true,
-				allowedTools: launch.token.tools
+				// resolved from the scope against this console's catalog, not the daemon's list,
+				// which leaves out tools an older daemon build has not heard of
+				allowedTools: allowedTools(launch.token.scope)
+					.map((tool) => tool.name)
 					.filter((name) => runsUnasked(name, input.mode))
 					.map((name) => `${TOOL_PREFIX}${name}`),
 				canUseTool,
@@ -557,11 +652,13 @@ function handleMessage(run: Run, message: SDKMessage, mode: AgentMode): MessageO
 							id: block.id,
 							name,
 							input: block.input,
-							status: runsUnasked(name, mode)
-								? 'running'
-								: mode === 'plan'
-									? 'denied'
-									: 'awaiting'
+							status: name === AGENT_ASK_TOOL
+								? 'awaiting'
+								: runsUnasked(name, mode)
+									? 'running'
+									: mode === 'plan'
+										? 'denied'
+										: 'awaiting'
 						});
 					}
 				}
@@ -665,15 +762,25 @@ export function isRunning(conversationId: string): boolean {
 	return runs.get(conversationId)?.running ?? false;
 }
 
-/** Approve or deny a waiting tool call. Only the conversation's owner may. */
-export function decideCall(conversationId: string, owner: string, toolUseId: string, allow: boolean): boolean {
+/**
+ * Approve or deny a waiting tool call, or answer a waiting question (`answers`,
+ * keyed by question text; denying a question dismisses it). Only the
+ * conversation's owner may.
+ */
+export function decideCall(
+	conversationId: string,
+	owner: string,
+	toolUseId: string,
+	allow: boolean,
+	answers?: AgentAnswers
+): boolean {
 	const run = runs.get(conversationId);
 
 	if (!run || run.owner !== owner) {
 		return false;
 	}
 
-	return run.decide(toolUseId, allow, owner);
+	return run.decide(toolUseId, allow, owner, answers);
 }
 
 /** Stop a conversation's run, denying anything still waiting. */

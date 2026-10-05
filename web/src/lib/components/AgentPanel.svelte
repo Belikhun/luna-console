@@ -3,6 +3,10 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import AgentQuestion from './AgentQuestion.svelte';
+	import { readAnswers, readQuestions } from './agentquestion';
+	import type { AgentQuestionState } from './agentquestion';
+	import { AGENT_ASK_TOOL } from '$shared/agent';
 	import { t } from '$lib/i18n.svelte';
 	import { tick } from 'svelte';
 	import { Agent, type ChatItem } from '$lib/agent.svelte';
@@ -202,14 +206,35 @@
 		pinned = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < PIN_SLACK;
 	}
 
-	async function decide(item: ToolItem, allow: boolean): Promise<void> {
+	async function decide(item: ToolItem, allow: boolean, answers?: Record<string, string>): Promise<void> {
 		deciding[item.id] = true;
 
 		try {
-			await Agent.decide(item.id, allow, item.name);
+			await Agent.decide(item.id, allow, item.name, answers);
 		} finally {
 			deciding[item.id] = false;
 		}
+	}
+
+	/** The question waiting for the operator, answered in the dock above the composer */
+	const asking = $derived(
+		Agent.items.find(
+			(item): item is ToolItem => item.kind === 'tool' && item.name === AGENT_ASK_TOOL && item.status === 'awaiting'
+		)
+	);
+
+	function questionState(item: ToolItem): AgentQuestionState {
+		if (item.status === 'awaiting') {
+			return 'waiting';
+		}
+
+		if (item.status === 'denied') {
+			return item.decidedBy === 'timeout'
+				? 'timeout'
+				: 'dismissed';
+		}
+
+		return 'answered';
 	}
 
 	async function openHistory(event: MouseEvent): Promise<void> {
@@ -278,6 +303,23 @@
 			default:
 				return 'triangleExclamation';
 		}
+	}
+
+	/** The call's arguments on one line, `key: value`, for the collapsed row. */
+	function argsPreview(input: unknown): string {
+		if (!input || typeof input !== 'object') {
+			return '';
+		}
+
+		return Object.entries(input as Record<string, unknown>)
+			.map(([key, value]) => {
+				const text = typeof value === 'string'
+					? value
+					: JSON.stringify(value);
+
+				return `${key}: ${text}`;
+			})
+			.join(' · ');
 	}
 
 	function pretty(value: unknown): string {
@@ -396,28 +438,33 @@
 					{#each group.items as item, ii (item.kind === 'tool' ? item.id : `${gi}:${ii}`)}
 						{#if item.kind === 'assistant'}
 							<div class="bubble text md" class:streaming={item.streaming}>{@html renderMarkdown(item.text, { copyLabel: t('web.agent.copyCode') })}</div>
+						{:else if item.kind === 'tool' && item.name === AGENT_ASK_TOOL}
+							<AgentQuestion
+								questions={readQuestions(item.input)}
+								answers={readAnswers(item.input)}
+								phase={questionState(item)}
+							/>
 						{:else if item.kind === 'tool'}
 							<div class="bubble call" data-status={item.status} class:processing={item.status === 'running'}>
-								<div class="row">
-									<span class="icon">
+								<button
+									class="row"
+									title={t('web.agent.details')}
+									aria-expanded={!!expanded[item.id]}
+									onclick={() => (expanded[item.id] = !expanded[item.id])}
+								>
+									<span class="icon" title={toolTitle(item)} aria-label={toolTitle(item)}>
 										{#if item.status === 'running'}
-											<Spinner size="1rem" color="#fff" />
+											<Spinner size="0.75rem" color="#fff" />
 										{:else}
-											<Icon name={toolIcon(item.status)} size="1rem" />
+											<Icon name={toolIcon(item.status)} style="solid" size="0.625rem" />
 										{/if}
 									</span>
-									<span class="info">
-										<span class="title">{toolTitle(item)}</span>
-										<code>{item.name}()</code>
+									<code class="name">{item.name}</code>
+									<span class="args">{argsPreview(item.input)}</span>
+									<span class="caret">
+										<Icon name={expanded[item.id] ? 'arrowUp' : 'arrowDown'} size="0.625rem" />
 									</span>
-									<button
-										class="more"
-										title={t('web.agent.details')}
-										onclick={() => (expanded[item.id] = !expanded[item.id])}
-									>
-										<Icon name={expanded[item.id] ? 'arrowUp' : 'arrowDown'} size="0.75rem" />
-									</button>
-								</div>
+								</button>
 
 								{#if item.status === 'awaiting'}
 									<div class="ask">
@@ -483,6 +530,21 @@
 			</div>
 		{/if}
 	</div>
+
+	{#if asking}
+		<div class="asking">
+			{#key asking.id}
+				<AgentQuestion
+					docked
+					questions={readQuestions(asking.input)}
+					phase="waiting"
+					busy={deciding[asking.id]}
+					onanswer={(answers) => asking && decide(asking, true, answers)}
+					ondismiss={() => asking && decide(asking, false)}
+				/>
+			{/key}
+		</div>
+	{/if}
 
 	<AgentComposer bind:this={composer} onsent={() => (pinned = true)} />
 </aside>
@@ -1001,73 +1063,80 @@
 		}
 	}
 
+	.asking {
+		padding: 0 0.75rem 0.5rem;
+	}
+
 	.call {
 		position: relative;
 		display: flex;
 		flex-direction: column;
 		width: 90%;
-		border: 0.1rem solid var(--luna-primary);
+		border: 0.1rem solid var(--border-divider);
+		border-left: 0.25rem solid var(--luna-primary);
 		background: var(--bg-panel-raised);
 		overflow: hidden;
 
+		// consecutive calls stack as one list rather than separate cards
+		& + & {
+			margin-top: -0.125rem;
+		}
+
 		.row {
+			@include bare-button;
+
 			display: flex;
 			align-items: center;
-			gap: 0.75rem;
-			padding: 0.5rem 0.5rem 0.5rem 0.625rem;
+			gap: 0.5rem;
+			width: 100%;
+			padding: 0.25rem 0.5rem;
+			text-align: left;
+			color: var(--text-secondary);
+
+			&:hover {
+				background: var(--bg-hover);
+			}
 		}
 
 		.icon {
 			display: grid;
 			place-items: center;
-			width: 2.25rem;
-			height: 2.25rem;
-			border-radius: 0.5rem;
+			width: 1.25rem;
+			height: 1.25rem;
+			border-radius: 0.25rem;
 			background: var(--luna-primary);
 			color: #fff;
 			flex: none;
 		}
 
-		.info {
-			display: flex;
-			flex-direction: column;
-			min-width: 0;
-			flex: 1;
-
-			.title {
-				font-size: 0.8125rem;
-				font-weight: 600;
-				color: var(--text-heading);
-			}
-
-			code {
-				@include ellipsis;
-
-				font-family: var(--font-mono);
-				font-size: 0.8125rem;
-				color: var(--text-secondary);
-			}
+		.name {
+			flex: none;
+			font-family: var(--font-mono);
+			font-size: 0.75rem;
+			font-weight: 600;
+			color: var(--text-heading);
 		}
 
-		.more {
-			@include bare-button;
+		.args {
+			@include ellipsis;
 
+			flex: 1;
+			min-width: 0;
+			font-family: var(--font-mono);
+			font-size: 0.75rem;
+			color: var(--text-label);
+		}
+
+		.caret {
 			display: grid;
 			place-items: center;
-			width: 1.75rem;
-			height: 1.75rem;
-			border-radius: 0.375rem;
-			color: var(--text-secondary);
-
-			&:hover {
-				background: var(--bg-hover);
-				color: var(--link);
-			}
+			flex: none;
+			width: 1rem;
 		}
 
 		.ask,
 		.detail {
-			padding: 0 0.75rem 0.75rem;
+			padding: 0.25rem 0.5rem 0.5rem;
 			font-size: 0.8125rem;
 
 			pre {
@@ -1116,7 +1185,7 @@
 		}
 
 		&[data-status='ok'] {
-			border-color: var(--success);
+			border-left-color: var(--success);
 
 			.icon {
 				background: var(--success);
@@ -1124,7 +1193,7 @@
 		}
 
 		&[data-status='awaiting'] {
-			border-color: var(--warning);
+			border-left-color: var(--warning);
 
 			.icon {
 				background: var(--warning);
@@ -1134,7 +1203,7 @@
 
 		&[data-status='denied'],
 		&[data-status='error'] {
-			border-color: var(--error);
+			border-left-color: var(--error);
 
 			.icon {
 				background: var(--error);
