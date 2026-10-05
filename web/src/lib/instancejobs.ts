@@ -12,6 +12,7 @@
  */
 
 import { goto } from '$app/navigation';
+import { t } from '$lib/i18n.svelte';
 import { del, post } from '$lib/api';
 import { attachJobFlash, jobFlash, type JobFlashConfig } from '$lib/jobflash';
 import type { JobView } from '$lib/jobs';
@@ -115,6 +116,51 @@ export function createFlashConfig(name: string): FlashConfig {
 	};
 }
 
+/** The flash card for an instance being provisioned from a modpack. */
+export function modpackFlashConfig(name: string): FlashConfig {
+	return {
+		title: t('web.launch.modpack.flashTitle', { name }),
+
+		success: (result) => {
+			const res = result as {
+				name: string;
+				port: number;
+				software: string;
+				mcVersion: string;
+				modpack: { name: string; versionNumber: string };
+				files: number;
+				rescued: Array<{ id: string }>;
+				unresolved: string[];
+			};
+
+			const detail = res.unresolved.length
+				? t('web.launch.modpack.flashUnresolved', { ids: res.unresolved.join(', ') })
+				: t('web.launch.modpack.flashDetail', {
+						software: res.software,
+						mc: res.mcVersion,
+						files: res.files,
+						rescued: res.rescued.length
+					});
+
+			return {
+				message: t('web.launch.modpack.flashDone', {
+					name: res.name,
+					pack: res.modpack.name,
+					version: res.modpack.versionNumber,
+					port: res.port
+				}),
+				detail,
+				actions: [
+					{ label: t('web.launch.modpack.startNow'), run: () => void instanceStateJob(res.name, 'start') },
+					{ label: t('web.launch.modpack.viewInstance'), run: () => void goto(`/instances/${res.name}`) }
+				]
+			};
+		},
+
+		failure: () => ({ message: t('web.launch.modpack.flashFailed', { name }) })
+	};
+}
+
 /**
  * Start/stop/restart one instance behind a live flash card. Resolves with the
  * settled job, or undefined when it failed (already reported on the card).
@@ -157,7 +203,8 @@ export function attachInstanceJobFlash(job: JobView): void {
 		'instance-stop': () => stateFlashConfig(job.target, 'stop'),
 		'instance-restart': () => stateFlashConfig(job.target, 'restart'),
 		'instance-delete': () => deleteFlashConfig(job.target),
-		'instance-create': () => createFlashConfig(job.target)
+		'instance-create': () => createFlashConfig(job.target),
+		'modpack-install': () => modpackFlashConfig(job.target)
 	};
 
 	const config = configs[job.kind];

@@ -41,6 +41,25 @@ function settle(job: JobView, stillRunning: string): unknown {
 	return job.result ?? { done: true, job: job.id };
 }
 
+/**
+ * The loader a pack version runs on, so the provisioning row can say what is
+ * being laid down before the pack's index has been read; the install itself
+ * takes the loader from the index. Undefined when the lookup fails, which
+ * leaves the row with the generic label rather than a wrong one.
+ */
+async function packLoader(slug: string, version: string | undefined): Promise<string | undefined> {
+	try {
+		const versions = await modpackVersions(slug);
+		const pick = version
+			? versions.find((entry) => entry.id === version || entry.versionNumber === version)
+			: versions.find((entry) => entry.runnable && entry.channel === 'release') ?? versions.find((entry) => entry.runnable);
+
+		return pick?.loaders.find((loader) => ['neoforge', 'forge', 'fabric'].includes(loader));
+	} catch {
+		return undefined;
+	}
+}
+
 /** The daemon name as a machine option: the primary's own name means "here". */
 async function machineOption(name: string | undefined): Promise<string | undefined> {
 	if (!name || name === 'primary') {
@@ -98,6 +117,7 @@ export const MODPACK_HANDLERS: Record<string, ToolHandler> = {
 
 		const daemon = await machineOption(optStr(args, 'machine'));
 		const register = optBool(args, 'register') !== false;
+		const loader = await packLoader(slug, optStr(args, 'version'));
 
 		const job = startJob('modpack-install', name, `Install modpack ${slug} as ${name}`, async (reporter) => {
 			const fresh = await loadCluster();
@@ -158,7 +178,7 @@ export const MODPACK_HANDLERS: Record<string, ToolHandler> = {
 
 				throw err;
 			}
-		}, { daemon: daemon ?? null, software: 'modpack' });
+		}, { daemon: daemon ?? null, software: loader });
 
 		return settle(await awaitJob(job, JOB_WAIT_MS), 'still installing; the pack is large. Check cluster_status for the new instance in a few minutes, or cluster_events for a failure');
 	},

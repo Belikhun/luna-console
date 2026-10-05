@@ -35,6 +35,7 @@ import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 
 import { createInstance, setVersion } from "./admin";
+import type { CreateOptions } from "./admin";
 import { unzipRead } from "./archive";
 import { instanceDir, managedInstances, stagingDir } from "./config";
 import { getStatus } from "./instances";
@@ -170,6 +171,8 @@ export interface ModpackSearchHit {
 	downloads: number;
 	mcVersions?: string[];
 	categories?: string[];
+	iconUrl?: string;
+	author?: string;
 }
 
 /** The record an install leaves in the instance directory. */
@@ -191,7 +194,17 @@ export interface ModpackSource {
 	mrpackPath?: string;
 }
 
-export interface ModpackInstallOptions extends ModpackSource {
+/**
+ * The create options a pack does not decide. Software and versions are left
+ * out on purpose: the pack's index names them, and a request that also named
+ * them would be two answers to one question.
+ */
+type PassedCreateOptions = Pick<
+	CreateOptions,
+	"settings" | "javaArgs" | "javaAgents" | "autoRestart" | "restartDelay" | "addonGroups" | "pluginOverrides"
+>;
+
+export interface ModpackInstallOptions extends ModpackSource, PassedCreateOptions {
 	memory?: string;
 	port?: number;
 	profile?: string;
@@ -316,6 +329,8 @@ export async function searchModpacks(query: string, loaders?: string[]): Promise
 		downloads: hit.downloads,
 		mcVersions: hit.versions?.slice(-6),
 		categories: hit.categories,
+		iconUrl: hit.icon_url,
+		author: hit.author,
 	}));
 }
 
@@ -1086,6 +1101,13 @@ export async function installModpack(
 			runtime: opts.runtime,
 			register: opts.register,
 			daemon: opts.daemon,
+			settings: opts.settings,
+			javaArgs: opts.javaArgs,
+			javaAgents: opts.javaAgents,
+			autoRestart: opts.autoRestart,
+			restartDelay: opts.restartDelay,
+			addonGroups: opts.addonGroups,
+			pluginOverrides: opts.pluginOverrides,
 			reporter: server,
 		});
 

@@ -74,7 +74,8 @@ export async function GET() {
 
 	const running = (kind: string) => listJobs(kind).filter((job) => job.state === 'running');
 
-	const creating = running('instance-create');
+	// a modpack install is a create too: the pack only decides what gets laid down
+	const creating = [...running('instance-create'), ...running('modpack-install')];
 	const deleting = running('instance-delete');
 
 	for (const row of data.instances) {

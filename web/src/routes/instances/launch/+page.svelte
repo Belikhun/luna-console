@@ -8,7 +8,7 @@
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
 	import { jobFlash } from '$lib/jobflash';
-	import { createFlashConfig } from '$lib/instancejobs';
+	import { createFlashConfig, modpackFlashConfig } from '$lib/instancejobs';
 	import Wizard from '$lib/components/Wizard.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -22,6 +22,10 @@
 	import { traitsOf } from '$core/software';
 	import { formatMemoryGb } from '$core/memory';
 	import WorldUpload from '$lib/components/WorldUpload.svelte';
+	import ButtonGroup from '$lib/components/ButtonGroup.svelte';
+	import Btn from '$lib/components/Btn.svelte';
+	import ModpackPicker from '$lib/components/ModpackPicker.svelte';
+	import type { PickedModpack } from '$lib/components/modpackpicker';
 	import { isStagedWorldReady, type StagedWorld } from '$lib/components/worldupload';
 
 	/** One server software, as /api/software describes it. */
@@ -35,6 +39,19 @@
 	}
 
 	let name = $state('');
+
+	/**
+	 * Where the server comes from: a software and version picked here, or a
+	 * Modrinth modpack whose index decides both. A modpack drops the world
+	 * upload (the pack ships its own content) and nothing else: machine, memory,
+	 * Java options, addon groups and settings all still apply.
+	 */
+	let source: 'software' | 'modpack' = $state('software');
+	let pack: PickedModpack | null = $state(null);
+
+	/** a pack is far heavier than a plain server; 2G is a crash on the first world load */
+	const MODPACK_MEMORY = '6G';
+
 	let softwares: SoftwareOption[] = $state([]);
 	let software: Software = $state('paper');
 	let versions: string[] = $state([]);
@@ -194,7 +211,47 @@
 	 * The `levelName` trait is the codebase's own test for it, and the same one
 	 * the instance page's tabs use; a proxy has none.
 	 */
-	const hasWorld = $derived(traitsOf(software).levelName !== undefined);
+	const hasWorld = $derived(source === 'software' && traitsOf(software).levelName !== undefined);
+
+	function setSource(next: 'software' | 'modpack'): void {
+		if (next === source) {
+			return;
+		}
+
+		source = next;
+
+		if (next === 'modpack') {
+			world = null;
+
+			if (memory === '2G') {
+				memory = MODPACK_MEMORY;
+			}
+
+			return;
+		}
+
+		pack = null;
+
+		if (memory === MODPACK_MEMORY) {
+			memory = '2G';
+		}
+
+		void loadVersions();
+	}
+
+	/**
+	 * A pack build was picked: its loader and Minecraft version become this
+	 * form's, so the addon-group check and the java-agent picker judge the
+	 * instance the pack will actually produce.
+	 */
+	function onPack(next: PickedModpack | null): void {
+		pack = next;
+
+		if (next) {
+			software = next.loader as Software;
+			mcVersion = next.mcVersion;
+		}
+	}
 
 	/** A world zip to provision onto, once the wizard has been through it. */
 	let world: StagedWorld | null = $state(null);
@@ -255,9 +312,15 @@
 	 * it, which reads as a missing space in the rendered line.
 	 */
 	const summaryLine = $derived.by(() => {
+		const origin = source === 'modpack'
+			? pack
+				? t('web.launch.modpack.summary', { pack: pack.title, version: pack.versionNumber, software, mc: mcVersion })
+				: t('web.launch.modpack.summaryNone')
+			: `${software} ${mcVersion}`;
+
 		const parts = [
 			name || t('web.scheduleNew.namePlaceholder'),
-			`${software} ${mcVersion}`,
+			origin,
 			memory
 		];
 
@@ -267,11 +330,13 @@
 
 		parts.push(register ? t('web.launch.proxied') : t('web.launch.standalone'));
 
-		parts.push(
-			isStagedWorldReady(world)
-				? t('web.launch.worldSummary', { name: world!.level })
-				: t('web.launch.worldGenerated')
-		);
+		if (source === 'software') {
+			parts.push(
+				isStagedWorldReady(world)
+					? t('web.launch.worldSummary', { name: world!.level })
+					: t('web.launch.worldGenerated')
+			);
+		}
 
 		if (changedCount) {
 			parts.push(t('web.launch.settingsChanged', { count: changedCount }));
@@ -356,7 +421,59 @@
 			: undefined
 	);
 
+	/** The options a modpack install shares with a plain create. */
+	function sharedOptions(): Record<string, unknown> {
+		return {
+			memory,
+			profile,
+			register,
+			settings: changedSettings,
+			javaArgs: selected?.usesJava ? javaArgs : '',
+			javaAgents: selected?.usesJava ? javaAgents : [],
+			runtime: selected?.usesJava ? runtime : '',
+			autoRestart,
+			restartDelay,
+			addonGroups,
+			pluginOverrides,
+			// the registry records an owner only for follower-held instances, so
+			// the primary is sent as "no daemon" rather than by name
+			daemon: daemon === primaryName ? '' : daemon
+		};
+	}
+
+	async function launchModpack(): Promise<void> {
+		creating = true;
+
+		const target = name;
+		const chosen = pack!;
+
+		const done = await jobFlash({
+			...modpackFlashConfig(target),
+
+			start: () =>
+				post('/modpacks/install', {
+					name: target,
+					slug: chosen.slug,
+					versionId: chosen.versionId,
+					software: chosen.loader,
+					...sharedOptions()
+				}),
+
+			started: () => void goto('/instances')
+		});
+
+		if (!done) {
+			creating = false;
+		}
+	}
+
 	async function launch(): Promise<void> {
+		if (source === 'modpack') {
+			await launchModpack();
+
+			return;
+		}
+
 		creating = true;
 
 		// the page navigates away as soon as the job is accepted, so everything
@@ -374,24 +491,11 @@
 					software,
 					mcVersion,
 					loaderVersion,
-					memory,
-					profile,
-					register,
-					settings: changedSettings,
-					javaArgs: selected?.usesJava ? javaArgs : '',
-					javaAgents: selected?.usesJava ? javaAgents : [],
-					runtime: selected?.usesJava ? runtime : '',
-					autoRestart,
-					restartDelay,
+					...sharedOptions(),
 					// a token, never the bytes: options cross the daemon socket as
 					// JSON, and the archive is already on disk there
 					worldStage: isStagedWorldReady(world) ? world!.token : undefined,
-					worldLevel: isStagedWorldReady(world) ? world!.level : undefined,
-					addonGroups,
-					pluginOverrides,
-					// the registry records an owner only for follower-held instances, so
-					// the primary is sent as "no daemon" rather than by name
-					daemon: daemon === primaryName ? '' : daemon
+					worldLevel: isStagedWorldReady(world) ? world!.level : undefined
 				}),
 
 			// back to the list, where the new row shows up as "provisioning"
@@ -410,7 +514,7 @@
 	windowTitle={t('web.nav.launchInstance')}
 	description={t('web.launch.pageDescription')}
 	submitLabel={t('web.nav.launchInstance')}
-	disabled={!name || !!nameError || !mcVersion || worldPending}
+	disabled={!name || !!nameError || (source === 'modpack' ? !pack : !mcVersion || worldPending)}
 	loading={creating}
 	onsubmit={launch}
 >
@@ -427,59 +531,86 @@
 		</label>
 	</Panel>
 
-	<Panel title={t('web.instances.colSoftware')} description={t('web.launch.softwareHint')}>
-		<FormGrid cols={2}>
-			<div class="field">
-				<span class="lbl">{t('web.launch.serverSoftware')}</span>
-				<Select
-					value={software}
-					width="100%"
-					onchange={(value) => {
-						software = value as Software;
-						void loadVersions();
-					}}
-					options={softwares.map((entry) => ({
-						value: entry.id,
-						label: entry.experimental
-							? `${t(entry.label)} (${t('web.launch.experimental')})`
-							: t(entry.label)
-					}))}
-				/>
-				{#if selected?.experimental}
-					<span class="hint">{t('web.launch.experimentalNote')}</span>
-				{/if}
-			</div>
-			<div class="field">
-				<span class="lbl">{t('web.launch.minecraftVersion')}</span>
-				<Select
-					value={mcVersion}
-					width="100%"
-					disabled={!versions.length}
-					onchange={(value) => {
-						mcVersion = value;
-						void loadLoaderVersions();
-					}}
-					options={versions.map((version) => ({ value: version, label: version }))}
-				/>
-				{#if versionError}<span class="err">{versionError}</span>{/if}
-			</div>
-			{#if selected?.hasLoaderVersions && loaderVersions.length}
-				<div class="field">
-					<span class="lbl">{t('web.launch.loaderVersion')}</span>
-					<span class="hint">{t('web.launch.loaderVersionHint')}</span>
-					<Select
-						bind:value={loaderVersion}
-						width="100%"
-						searchable
-						options={[
-							{ value: '', label: t('web.launch.loaderNewest') },
-							...loaderVersions.map((version) => ({ value: version, label: version }))
-						]}
-					/>
-				</div>
-			{/if}
-		</FormGrid>
+	<Panel title={t('web.launch.modpack.sourceTitle')} description={t('web.launch.modpack.sourceHint')}>
+		<ButtonGroup>
+			<Btn
+				icon="server"
+				variant={source === 'software' ? 'primary' : 'normal'}
+				disabled={creating}
+				onclick={() => setSource('software')}
+			>
+				{t('web.launch.modpack.sourceSoftware')}
+			</Btn>
+			<Btn
+				icon="box"
+				variant={source === 'modpack' ? 'primary' : 'normal'}
+				disabled={creating}
+				onclick={() => setSource('modpack')}
+			>
+				{t('web.launch.modpack.sourceModpack')}
+			</Btn>
+		</ButtonGroup>
 	</Panel>
+
+	{#if source === 'modpack'}
+		<Panel title={t('web.launch.modpack.panelTitle')} description={t('web.launch.modpack.panelHint')}>
+			<ModpackPicker disabled={creating} onpick={onPack} />
+		</Panel>
+	{:else}
+		<Panel title={t('web.instances.colSoftware')} description={t('web.launch.softwareHint')}>
+			<FormGrid cols={2}>
+				<div class="field">
+					<span class="lbl">{t('web.launch.serverSoftware')}</span>
+					<Select
+						value={software}
+						width="100%"
+						onchange={(value) => {
+							software = value as Software;
+							void loadVersions();
+						}}
+						options={softwares.map((entry) => ({
+							value: entry.id,
+							label: entry.experimental
+								? `${t(entry.label)} (${t('web.launch.experimental')})`
+								: t(entry.label)
+						}))}
+					/>
+					{#if selected?.experimental}
+						<span class="hint">{t('web.launch.experimentalNote')}</span>
+					{/if}
+				</div>
+				<div class="field">
+					<span class="lbl">{t('web.launch.minecraftVersion')}</span>
+					<Select
+						value={mcVersion}
+						width="100%"
+						disabled={!versions.length}
+						onchange={(value) => {
+							mcVersion = value;
+							void loadLoaderVersions();
+						}}
+						options={versions.map((version) => ({ value: version, label: version }))}
+					/>
+					{#if versionError}<span class="err">{versionError}</span>{/if}
+				</div>
+				{#if selected?.hasLoaderVersions && loaderVersions.length}
+					<div class="field">
+						<span class="lbl">{t('web.launch.loaderVersion')}</span>
+						<span class="hint">{t('web.launch.loaderVersionHint')}</span>
+						<Select
+							bind:value={loaderVersion}
+							width="100%"
+							searchable
+							options={[
+								{ value: '', label: t('web.launch.loaderNewest') },
+								...loaderVersions.map((version) => ({ value: version, label: version }))
+							]}
+						/>
+					</div>
+				{/if}
+			</FormGrid>
+		</Panel>
+	{/if}
 
 	{#if hasWorld}
 		<Panel title={t('web.launch.worldTitle')} description={t('web.launch.worldHint')}>
