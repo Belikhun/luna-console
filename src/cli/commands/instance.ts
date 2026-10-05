@@ -367,6 +367,7 @@ command({
 		{ flag: "--groups", desc: t("cli.instance.create.optGroups"), value: true },
 		{ flag: "--no-register", desc: t("cli.instance.create.optNoRegister") },
 		{ flag: "--daemon", desc: t("cli.instance.create.optDaemon"), value: true },
+		{ flag: "--test", desc: t("cli.instance.create.optTest") },
 	],
 
 	handler: async (args, opts) => {
@@ -446,6 +447,7 @@ command({
 				runtime: opts.runtime as string | undefined,
 				addonGroups: groups,
 				daemon: opts.daemon as string | undefined,
+				test: !!opts.test,
 				reporter: files,
 			});
 
@@ -1110,7 +1112,7 @@ command({
 	desc: t("cli.instance.config.desc"),
 	args: [
 		{ name: "instance", required: true, complete: instanceNames },
-		{ name: "key", complete: async () => [...REGISTRY_KEYS, ...editableSettingKeys()] },
+		{ name: "key", complete: async () => [...REGISTRY_KEYS, "test", ...editableSettingKeys()] },
 		{ name: "value", variadic: true },
 	],
 	opts: [{ flag: "--clear", desc: t("cli.instance.config.optClear") }],
@@ -1182,6 +1184,13 @@ command({
 						: pc.dim(t("cli.instance.config.off")),
 				],
 				["restartDelay", `${inst.restartDelayOf(instance)}s`],
+				[
+					"test",
+					instance.test
+						? t("cli.instance.config.on")
+						: pc.dim(t("cli.instance.config.off")),
+				],
+				["created", instance.createdAt ? new Date(instance.createdAt).toLocaleString() : pc.dim(t("cli.instance.config.notRecorded"))],
 				["mcVersion", instance.mcVersion ?? pc.dim("—")],
 				...Object.entries(instance.ports ?? {}).map(([id, port]) => [
 					`port:${id}`,
@@ -1212,6 +1221,7 @@ command({
 				javaAgents: instance.javaAgents?.join(" "),
 				autoRestart: inst.autoRestartOf(instance) ? "true" : "false",
 				restartDelay: String(inst.restartDelayOf(instance)),
+				test: instance.test ? "true" : "false",
 			};
 
 			if (key in builtin) {
@@ -1257,6 +1267,25 @@ command({
 					admin.applyInstanceOptions(cfg, name, { restartDelay: Number.parseInt(value, 10) });
 				} catch (err) {
 					throw new UsageError((err as Error).message);
+				}
+
+				break;
+			}
+
+			// a test instance is one an MCP token may delete whatever its age
+			// (`agentDeletionRefusal`); luna_shell refuses this key, so only an
+			// operator can grant that
+			case "test": {
+				const on = /^(true|on|yes|1)$/i.test(value);
+
+				if (!on && !/^(false|off|no|0)$/i.test(value)) {
+					throw new UsageError(t("cli.instance.config.notABoolean", { value }));
+				}
+
+				if (on) {
+					instance.test = true;
+				} else {
+					delete instance.test;
 				}
 
 				break;

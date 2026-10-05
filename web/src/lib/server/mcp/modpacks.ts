@@ -213,6 +213,7 @@ export const MODPACK_HANDLERS: Record<string, ToolHandler> = {
 					daemon,
 					register,
 					skipOptional: optBool(args, 'skipOptional') === true,
+					test: optBool(args, 'test') === true,
 					reporter: pack
 				});
 

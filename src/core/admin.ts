@@ -640,6 +640,8 @@ export interface CreateOptions {
 	pluginOverrides?: Record<string, boolean>;
 	/** daemon that will own the instance (absent = the primary's host) */
 	daemon?: string;
+	/** Mark it a test instance, which an MCP token may delete */
+	test?: boolean;
 	/**
 	 * Staging token of an uploaded world zip to provision the instance onto.
 	 *
@@ -986,6 +988,12 @@ async function buildInstance(
 		await importStagedWorld(cfg, name, inst, opts, world);
 	} else {
 		world.settle();
+	}
+
+	inst.createdAt = Date.now();
+
+	if (opts.test) {
+		inst.test = true;
 	}
 
 	cfg.instances[name] = inst;

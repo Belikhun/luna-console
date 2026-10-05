@@ -68,6 +68,7 @@
 	let javaArgs = $state('');
 	let javaAgents: string[] = $state([]);
 	let autoRestart = $state(true);
+	let test = $state(false);
 	let restartDelay = $state(3);
 	/** pooled addons the selected groups would put on this instance */
 	let agentAddons: AgentAddon[] = $state([]);
@@ -441,6 +442,7 @@
 			restartDelay,
 			addonGroups,
 			pluginOverrides,
+			test,
 			// the registry records an owner only for follower-held instances, so
 			// the primary is sent as "no daemon" rather than by name
 			daemon: daemon === primaryName ? '' : daemon
@@ -671,6 +673,14 @@
 				onchange={(value) => (register = value)}
 			/>
 			{t('web.launch.registerNote')}
+		</label>
+		<label class="reg">
+			<Checkbox
+				checked={test}
+				label={t('web.launch.testLabel')}
+				onchange={(value) => (test = value)}
+			/>
+			{t('web.launch.testNote')}
 		</label>
 	</Panel>
 

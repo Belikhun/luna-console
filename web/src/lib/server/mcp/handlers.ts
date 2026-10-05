@@ -13,7 +13,7 @@
  * that passed the tool's schema for a token allowed to call it.
  */
 
-import { loadCluster, loadLock, managedInstances } from '$core/config';
+import { loadCluster, loadLock, managedInstances, saveCluster } from '$core/config';
 import { getStatus, sendCommand } from '$core/instances';
 import type { ClusterConfig } from '$core/types';
 import { readInstanceLogs } from '$core/logs';
@@ -38,6 +38,9 @@ import { listStatuses, getEvents, pushEvent, markTransition, clearTransition } f
 import type { ClusterEvent } from '$lib/server/luna';
 import { listDaemons, daemonDetail } from '$client/daemon';
 import { startJob } from '$lib/server/jobs';
+import { deleteInstance } from '$core/admin';
+import { syncVelocityToml } from '$core/proxy';
+import { agentDeletionRefusal, logRunDays } from '$shared/instanceguard';
 import { awaitJob } from './jobs';
 import type { JobView } from '$lib/jobs';
 import { lunaShellRefusal, scopeCoversInstance } from '$shared/mcptools';
@@ -615,6 +618,82 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		return await lifecycle('restart', args, ctx);
 	},
 
+	async instance_delete(args, ctx) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const inst = cfg.instances[name];
+
+		// the proxy is not an entry in the instance registry at all
+		if (!inst || name === 'proxy') {
+			throw new ToolError(agentDeletionRefusal(name, { proxy: true, runDays: [], now: Date.now() }) ?? `${name} cannot be deleted`);
+		}
+
+		// an instance that never ran has no logs directory, which is the newest case of all
+		const logs = inst.external
+			? []
+			: await browseInstance(cfg, name, 'logs')
+				.then((listing) => listing.entries)
+				.catch(() => []);
+
+		const refusal = agentDeletionRefusal(name, {
+			createdAt: inst.createdAt,
+			test: inst.test,
+			external: !!inst.external,
+			proxy: name === 'proxy' || inst.software === 'velocity',
+			runDays: logRunDays(logs),
+			now: Date.now()
+		});
+
+		if (refusal) {
+			throw new ToolError(refusal);
+		}
+
+		const status = await getStatus(cfg, name);
+
+		if (status.state !== 'stopped') {
+			throw new ToolError(`${name} is ${status.state}; stop it with instance_stop first`);
+		}
+
+		const purge = args.purge !== false;
+		const owner = inst.daemon ?? null;
+
+		const job = startJob('instance-delete', name, `Delete ${name}`, async (reporter) => {
+			reporter.weighOwn(0);
+
+			const removal = reporter.child('Instance', 4);
+			const proxy = reporter.child('Proxy registration', 1);
+
+			try {
+				await deleteInstance(cfg, name, purge, removal);
+				await saveCluster(cfg);
+
+				const sync = await proxy.task({ start: 'updating velocity.toml' }, async (step) => {
+					const out = await syncVelocityToml(cfg);
+
+					step.report(1, 'okay', out.changed ? 'velocity.toml updated' : 'velocity.toml already up to date');
+
+					return out;
+				});
+
+				pushEvent(name, 'action', `instance deleted${purge ? ' (directory purged)' : ''} by ${ctx.actor}`);
+
+				return { instance: name, deleted: true, purged: purge, velocityUpdated: sync.changed };
+			} catch (err) {
+				pushEvent(name, 'error', `delete failed: ${(err as Error).message}`);
+
+				throw err;
+			}
+		}, { daemon: owner });
+
+		const settled = await awaitJob(job, 3 * 60 * 1000);
+
+		if (settled.state === 'failed') {
+			throw new ToolError(settled.error ?? 'the delete failed');
+		}
+
+		return settled.result ?? { running: true, job: settled.id, note: 'still deleting; check cluster_status shortly' };
+	},
+
 	async instance_command(args, ctx) {
 		const name = str(args, 'instance');
 		const cfg = await requireInstance(name);
@@ -930,6 +1009,12 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 		if (!instance && ctx.principal.scope.instances !== null) {
 			throw new ToolError('this token is limited to some instances, so it must name one to run a command');
+		}
+
+		// best effort: arbitrary bash can always find another way, but the obvious
+		// one should not walk around instance_delete's check
+		if (/\bluna\b[^\n;|&]*\binstance\s+(delete|remove|rm)\b/i.test(str(args, 'command'))) {
+			throw new ToolError('deleting an instance is not available from a shell; use instance_delete, which checks whether it may be deleted');
 		}
 
 		const cfg = instance

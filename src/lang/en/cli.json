@@ -816,7 +816,8 @@
 			"unknownSoftware": "unknown server software: {software}",
 			"softwareNoProvider": "luna cannot download {software}; it can only be adopted",
 			"softwareHasNoJava": "{software} is not a JVM program; drop --runtime and --java-args",
-			"noVersions": "{software} has no published versions to install"
+			"noVersions": "{software} has no published versions to install",
+			"optTest": "Mark it a test instance, which an MCP token may delete later"
 		},
 		"adopt": {
 			"desc": "Register a server directory that already exists as a managed instance",
@@ -902,7 +903,8 @@
 			"cleared": "{name}.{key} cleared (applies on next restart)",
 			"settingsHint": "server settings live in server.properties: {command}",
 			"keyNotFound": "key \"{key}\" not found in server.properties",
-			"appliesOnRestart": "(applies on next restart)"
+			"appliesOnRestart": "(applies on next restart)",
+			"notRecorded": "not recorded"
 		},
 		"remove": {
 			"desc": "Deregister an instance (--purge also deletes its directory)",

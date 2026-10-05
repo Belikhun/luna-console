@@ -233,7 +233,7 @@ export interface MrpackSummary {
  */
 type PassedCreateOptions = Pick<
 	CreateOptions,
-	"settings" | "javaArgs" | "javaAgents" | "autoRestart" | "restartDelay" | "addonGroups" | "pluginOverrides"
+	"settings" | "javaArgs" | "javaAgents" | "autoRestart" | "restartDelay" | "addonGroups" | "pluginOverrides" | "test"
 >;
 
 export interface ModpackInstallOptions extends ModpackSource, PassedCreateOptions {
@@ -1250,6 +1250,7 @@ export async function installModpack(
 			restartDelay: opts.restartDelay,
 			addonGroups: opts.addonGroups,
 			pluginOverrides: opts.pluginOverrides,
+			test: opts.test,
 			reporter: server,
 		});
 

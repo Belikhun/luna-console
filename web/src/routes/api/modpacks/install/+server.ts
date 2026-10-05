@@ -17,7 +17,7 @@ const PACK_SOFTWARE = new Set(['fabric', 'forge', 'neoforge']);
 /**
  * POST { name, slug | mrpackStage, versionId?, software?, memory?, port?, profile?, runtime?,
  * daemon?, register?, skipOptional?, settings?, javaArgs?, javaAgents?,
- * autoRestart?, restartDelay?, addonGroups?, pluginOverrides? } → provision an
+ * autoRestart?, restartDelay?, addonGroups?, pluginOverrides?, test? } → provision an
  * instance from a Modrinth modpack, as a job: the pack alone is hundreds of
  * downloads.
  *
@@ -124,6 +124,7 @@ export async function POST({ request }) {
 				daemon: targetDaemon ?? undefined,
 				register,
 				skipOptional: body.skipOptional === true,
+				test: body.test === true,
 				settings,
 				javaArgs,
 				javaAgents,

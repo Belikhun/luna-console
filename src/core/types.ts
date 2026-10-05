@@ -199,6 +199,14 @@ export interface InstanceConfig {
 	proxy?: ProxyRegistration;
 	/** The modpack this instance was provisioned from, when it was one */
 	modpack?: InstanceModpack;
+	/**
+	 * Epoch millis `createInstance` registered it. Absent on an instance created
+	 * before luna recorded it and on an adopted one, whose data is older than its
+	 * registration; both count as long-standing (`agentDeletionRefusal`).
+	 */
+	createdAt?: number;
+	/** Marked disposable by an operator: an MCP token may delete it whatever its age */
+	test?: boolean;
 
 	// -- server selector presentation ------------------------------------------
 	// These describe how the instance appears in the proxy's `/servers` GUI and in

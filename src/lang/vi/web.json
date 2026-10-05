@@ -1106,7 +1106,9 @@
 		"worldOptional": "Để trống thì máy chủ sẽ tạo thế giới mới ở lần khởi động đầu tiên.",
 		"useThisWorld": "Dùng thế giới này",
 		"worldSummary": "thế giới {name}",
-		"worldGenerated": "thế giới mới"
+		"worldGenerated": "thế giới mới",
+		"testLabel": "Instance thử nghiệm",
+		"testNote": "Instance thử nghiệm: Mèo Béo và các token MCP khác có thể xoá nó sau này, dù đã tạo bao lâu"
 	},
 	"envNew": {
 		"nameRule": "CHỮ_HOA_VỚI_GẠCH_DƯỚI, bắt đầu bằng chữ cái",

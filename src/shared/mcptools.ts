@@ -353,6 +353,21 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		instanceArg: "instance",
 	},
 	{
+		name: "instance_delete",
+		group: "control",
+		description:
+			"Delete an instance: unregister it, release its ports, update velocity.toml and (by default) remove its directory. Only a test instance, or one created in the last 7 days that has run on fewer than 3 different days, may be deleted this way; anything long-standing or in use is refused, and only an operator can delete it. The instance must be stopped first. Irreversible: confirm with the operator unless they asked for this deletion.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				purge: { type: "boolean", description: "Also remove the instance's directory (default true)." },
+			},
+			["instance"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: false },
+		instanceArg: "instance",
+	},
+	{
 		name: "instance_command",
 		group: "control",
 		description:
@@ -823,6 +838,7 @@ export const MCP_TOOLS: McpToolSpec[] = [
 				profile: { type: "string", description: "Java profile name; omit for the default.", maxLength: 40 },
 				register: { type: "boolean", description: "Register with velocity so players can reach it (default true)." },
 				skipOptional: { type: "boolean", description: "Leave out files the pack marks optional on the server." },
+				test: { type: "boolean", description: "Mark it a test instance, which instance_delete may remove later whatever its age. Use for trial or throwaway servers only." },
 			},
 			["name"],
 		),
@@ -1243,6 +1259,9 @@ export const MCP_TOOLS: McpToolSpec[] = [
 /** First words of luna commands `luna_shell` refuses: credentials, MCP itself, installation, interactive ones. */
 const LUNA_SHELL_DENIED = new Set(["mcp", "account", "accounts", "sessions", "audit", "setup", "web", "console", "shell", "repl"]);
 
+/** `luna instance` subcommands `luna_shell` refuses: deletion goes through `instance_delete`. */
+const INSTANCE_SHELL_DENIED = new Set(["delete", "remove", "rm"]);
+
 /** `luna daemon` subcommands `luna_shell` refuses: upgrades, the cluster token, unregistering, the service unit. */
 const LUNA_SHELL_DENIED_DAEMON = new Set(["upgrade", "token", "remove", "service", "run"]);
 
@@ -1265,6 +1284,17 @@ export function lunaShellRefusal(args: string[]): string | null {
 
 	if (first === "daemon" && LUNA_SHELL_DENIED_DAEMON.has(words[1]?.toLowerCase() ?? "")) {
 		return `"luna daemon ${words[1]}" is not available over MCP`;
+	}
+
+	// deleting goes through instance_delete, which holds the line on what an agent
+	// may remove; flagging an instance as a test one is the operator's call, or
+	// it would be the way around that line
+	if (first === "instance" && INSTANCE_SHELL_DENIED.has(words[1]?.toLowerCase() ?? "")) {
+		return "deleting an instance is not available over the luna CLI; use instance_delete, which checks whether it may be deleted";
+	}
+
+	if (first === "instance" && words[1]?.toLowerCase() === "config" && words.some((word) => word.toLowerCase() === "test")) {
+		return "marking an instance as a test instance is for an operator to do";
 	}
 
 	if (words.some((word) => word === "--reveal" || word.startsWith("--reveal="))) {

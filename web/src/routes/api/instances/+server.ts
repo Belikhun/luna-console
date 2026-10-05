@@ -110,7 +110,7 @@ export async function GET() {
 
 /**
  * POST { name, software?, mcVersion?, loaderVersion?, memory?, profile?, port?,
- * register?, settings?, javaArgs?, addonGroups?, pluginOverrides?, daemon? }
+ * register?, settings?, javaArgs?, addonGroups?, pluginOverrides?, daemon?, test? }
  *
  * Creation lives on the collection, never at /api/instances/create: a static
  * segment there outranks [name], so the cluster's real `create` instance would
@@ -221,6 +221,7 @@ export async function POST({ request }) {
 				restartDelay:
 					body.restartDelay === undefined ? undefined : Number(body.restartDelay),
 				runtime,
+				test: body.test === true,
 				addonGroups: Array.isArray(body.addonGroups) ? body.addonGroups.map(String) : undefined,
 				pluginOverrides:
 					body.pluginOverrides && typeof body.pluginOverrides === 'object'

@@ -115,6 +115,7 @@ command({
 		{ flag: "--daemon", desc: t("cli.modpack.install.optDaemon"), value: true, complete: machineNames },
 		{ flag: "--no-register", desc: t("cli.modpack.install.optNoRegister") },
 		{ flag: "--skip-optional", desc: t("cli.modpack.install.optSkipOptional") },
+		{ flag: "--test", desc: t("cli.instance.create.optTest") },
 	],
 
 	handler: async (args, opts) => {
@@ -164,6 +165,7 @@ command({
 				daemon: opts.daemon as string | undefined,
 				register,
 				skipOptional: !!opts["skip-optional"],
+				test: !!opts.test,
 				reporter: pack,
 			});
 

@@ -1106,7 +1106,9 @@
 		"worldOptional": "Leave this empty and the server generates a new world on its first start.",
 		"useThisWorld": "Use this world",
 		"worldSummary": "world {name}",
-		"worldGenerated": "new world"
+		"worldGenerated": "new world",
+		"testLabel": "Test instance",
+		"testNote": "Test instance: Mèo Béo and other MCP tokens may delete it later, whatever its age"
 	},
 	"envNew": {
 		"nameRule": "ALL_UPPERCASE_WITH_UNDERSCORES, starting with a letter",
