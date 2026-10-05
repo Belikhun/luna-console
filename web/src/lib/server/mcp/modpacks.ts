@@ -12,11 +12,14 @@
  */
 
 import { loadCluster, loadLock, saveCluster } from '$core/config';
-import { completeProvision, installModpack, modpackVersions, searchModpacks, updateModpack } from '$core/modpack';
+import { completeProvision, inspectStagedMrpack, installModpack, modpackVersions, searchModpacks, stageMrpackFromUrl, updateModpack } from '$core/modpack';
+import type { MrpackSummary } from '$core/modpack';
+import { newStageToken } from '$core/world';
+import { daemonFetch, pushEvent } from '$lib/server/luna';
+import { readUpload } from '$lib/server/agent/uploads';
 import { listDaemons } from '$client/daemon';
 import { startJob } from '$lib/server/jobs';
 import type { JobView } from '$lib/jobs';
-import { pushEvent } from '$lib/server/luna';
 import { optBool, optInt, optStr, requireWholeCluster, str } from './args';
 import { ToolError } from './errors';
 import type { ToolHandler } from './errors';
@@ -57,6 +60,68 @@ async function packLoader(slug: string, version: string | undefined): Promise<st
 		return pick?.loaders.find((loader) => ['neoforge', 'forge', 'fabric'].includes(loader));
 	} catch {
 		return undefined;
+	}
+}
+
+/** A pack given as a file: staged on the primary, by token, with what its index says. */
+interface StagedPack {
+	token: string;
+	summary: MrpackSummary;
+}
+
+/**
+ * Put an attached or linked .mrpack into the daemon's staging area. An
+ * attachment is streamed there the way the console's upload is (an MCP body
+ * is far too small for a pack), a URL is fetched by the daemon itself with
+ * every redirect checked; either way the install then takes a token, which a
+ * follower can pull. Undefined when the call names neither.
+ */
+async function stagePack(upload: string | undefined, url: string | undefined): Promise<StagedPack | undefined> {
+	if (upload && url) {
+		throw new ToolError('give upload or url, not both');
+	}
+
+	if (url) {
+		try {
+			const staged = await stageMrpackFromUrl(url);
+
+			return { token: staged.token, summary: staged.summary };
+		} catch (err) {
+			throw new ToolError((err as Error).message);
+		}
+	}
+
+	if (!upload) {
+		return undefined;
+	}
+
+	const staged = await readUpload(upload);
+
+	if (!staged) {
+		throw new ToolError('no such attachment, or it expired (attachments live for an hour); ask the operator to attach the file again');
+	}
+
+	if (!staged.upload.name.toLowerCase().endsWith('.mrpack')) {
+		throw new ToolError(`${staged.upload.name} is not a .mrpack`);
+	}
+
+	const token = newStageToken();
+	const response = await daemonFetch(`/files/stage/${encodeURIComponent(token)}`, {
+		method: 'PUT',
+		body: new Blob([staged.bytes as Uint8Array<ArrayBuffer>]),
+		headers: { 'content-type': 'application/octet-stream' }
+	});
+
+	if (!response.ok) {
+		throw new ToolError(`the daemon refused the upload (HTTP ${response.status})`);
+	}
+
+	try {
+		return { token, summary: await inspectStagedMrpack(token) };
+	} catch (err) {
+		await daemonFetch(`/files/stage/${encodeURIComponent(token)}`, { method: 'DELETE' }).catch(() => undefined);
+
+		throw new ToolError((err as Error).message);
 	}
 }
 
@@ -104,9 +169,15 @@ export const MODPACK_HANDLERS: Record<string, ToolHandler> = {
 
 		const name = str(args, 'name').trim();
 		const slug = str(args, 'slug').trim();
+		const upload = optStr(args, 'upload')?.trim() || undefined;
+		const url = optStr(args, 'url')?.trim() || undefined;
 
 		if (!/^[a-z0-9_-]+$/.test(name)) {
 			throw new ToolError('the instance name must be lowercase letters, digits, - or _');
+		}
+
+		if ([slug, upload, url].filter(Boolean).length !== 1) {
+			throw new ToolError('name the pack exactly one way: slug, upload or url');
 		}
 
 		const cfg = await loadCluster();
@@ -117,9 +188,11 @@ export const MODPACK_HANDLERS: Record<string, ToolHandler> = {
 
 		const daemon = await machineOption(optStr(args, 'machine'));
 		const register = optBool(args, 'register') !== false;
-		const loader = await packLoader(slug, optStr(args, 'version'));
+		const file = await stagePack(upload, url);
+		const loader = file ? file.summary.software : await packLoader(slug, optStr(args, 'version'));
+		const label = file ? `${file.summary.name} ${file.summary.versionId}` : slug;
 
-		const job = startJob('modpack-install', name, `Install modpack ${slug} as ${name}`, async (reporter) => {
+		const job = startJob('modpack-install', name, `Install modpack ${label} as ${name}`, async (reporter) => {
 			const fresh = await loadCluster();
 			const lock = await loadLock();
 
@@ -133,8 +206,7 @@ export const MODPACK_HANDLERS: Record<string, ToolHandler> = {
 
 			try {
 				const result = await installModpack(fresh, name, {
-					slug,
-					versionId: optStr(args, 'version'),
+					...(file ? { mrpackStage: file.token } : { slug, versionId: optStr(args, 'version') }),
 					memory: optStr(args, 'memory'),
 					port: optInt(args, 'port'),
 					profile: optStr(args, 'profile'),
@@ -195,12 +267,18 @@ export const MODPACK_HANDLERS: Record<string, ToolHandler> = {
 			throw new ToolError(`${name} was not created from a modpack, so there is no pack to update`);
 		}
 
+		const file = await stagePack(optStr(args, 'upload')?.trim() || undefined, optStr(args, 'url')?.trim() || undefined);
+
+		if (!file && cfg.instances[name]?.modpack?.provider === 'file') {
+			throw new ToolError(`${name} was installed from a .mrpack file, so the new version has to come as upload or url`);
+		}
+
 		const job = startJob('modpack-update', name, `Update modpack on ${name}`, async (reporter) => {
 			const fresh = await loadCluster();
 
 			try {
 				const result = await updateModpack(fresh, name, {
-					versionId: optStr(args, 'version'),
+					...(file ? { mrpackStage: file.token } : { versionId: optStr(args, 'version') }),
 					force: optBool(args, 'force') === true,
 					skipOptional: optBool(args, 'skipOptional') === true,
 					reporter

@@ -434,6 +434,9 @@ export interface InstanceConfig {}
   body is capped, and the jar's own descriptors name it and pick its family. Panel attachments are
   staged in the console host's temp directory (`agent/uploads.ts`, raw `application/octet-stream`
   posts, an hour's life) because an MCP request body is far smaller than a jar.
+  `modpack_install`/`modpack_update` take a Modrinth slug, a panel attachment or a URL; a file is
+  moved into the daemon's world-zip staging first (an attachment streamed there, a URL fetched by
+  the daemon with every hop checked), so the install takes a token a follower can pull.
 - **The network and packs groups follow the same rule.** `network` reads the `/servers` menu,
   velocity's registrations and the port map; `network-write` edits and applies the menu, registers
   servers, syncs velocity.toml (reloading velocity whenever asked, since a server created moments

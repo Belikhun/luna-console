@@ -779,6 +779,7 @@
 		"loaderChanged": "phiên bản mới chạy trên {to}, nhưng instance đang là {from}; đó là một instance mới, không phải cập nhật",
 		"localOnPrimary": "tệp .mrpack cục bộ chỉ cài được trên máy chính; hãy dùng slug Modrinth để cài lên máy khác",
 		"stageUnresolved": "gói tải lên phải được daemon chạy bản cài giải quyết",
+		"urlTooLarge": "tệp .mrpack ở URL đó lớn hơn 1 GB; đó không phải chỉ mục modpack",
 		"phaseFetch": "Lấy modpack",
 		"phaseServer": "Cài server",
 		"phaseFiles": "Tệp của gói",

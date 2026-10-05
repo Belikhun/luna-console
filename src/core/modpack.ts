@@ -40,6 +40,8 @@ import { unzipRead } from "./archive";
 import { instanceDir, managedInstances, stagingDir } from "./config";
 import { getStatus } from "./instances";
 import { assertPublic } from "./jarinstall";
+import { ensureStagingDir, newStageToken, stagePath } from "./staging";
+import { USER_AGENT } from "./services/download";
 import { releaseInstancePorts } from "./ports";
 import { ProgressReporter } from "./progress";
 import { downloadToFile } from "./services/download";
@@ -51,6 +53,13 @@ import type { ZipEntry } from "./services/zip";
 import { MODPACK_LOADERS, traitsOf } from "./software";
 import type { ClusterConfig, InstanceConfig, InstanceModpack, Software } from "./types";
 import { t } from "../shared/i18n";
+
+/** Largest .mrpack taken from a URL; a pack carries overrides, never its mods. */
+const MAX_MRPACK_DOWNLOAD = 1024 * 1024 * 1024;
+
+const MRPACK_REDIRECTS = 5;
+
+const MRPACK_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Hosts the mrpack specification lets a pack download from; anything else is refused. */
 export const MRPACK_HOSTS = ["cdn.modrinth.com", "github.com", "raw.githubusercontent.com", "gitlab.com"];
@@ -364,6 +373,86 @@ export async function inspectMrpack(path: string): Promise<MrpackSummary> {
 		downloadBytes: server.reduce((total, file) => total + (file.fileSize ?? 0), 0),
 		overrides: entries.filter((entry) => OVERRIDE_DIRS.some((prefix) => entry.name.startsWith(prefix)) && !entry.name.endsWith("/")).length,
 	};
+}
+
+/**
+ * Download a .mrpack from a public URL into the staging area and return its
+ * token, so it installs exactly as an upload does (a follower pulls it by
+ * token). Every redirect hop is resolved and refused on an internal address,
+ * the body is capped, and the file must carry a modpack index or it is thrown
+ * away again.
+ */
+export async function stageMrpackFromUrl(rawUrl: string): Promise<{ token: string; sizeBytes: number; summary: MrpackSummary }> {
+	let url: URL;
+
+	try {
+		url = new URL(rawUrl);
+	} catch {
+		throw new Error(t("core.jarinstall.badUrl"));
+	}
+
+	await ensureStagingDir();
+
+	const token = newStageToken();
+	const dest = stagePath(token);
+	const signal = AbortSignal.timeout(MRPACK_TIMEOUT_MS);
+
+	try {
+		for (let hop = 0; hop <= MRPACK_REDIRECTS; hop++) {
+			await assertPublic(url);
+
+			const response = await fetch(url, { redirect: "manual", signal, headers: { "user-agent": USER_AGENT } });
+
+			if (response.status >= 300 && response.status < 400) {
+				const next = response.headers.get("location");
+
+				if (!next) {
+					throw new Error(t("core.jarinstall.httpError", { status: response.status }));
+				}
+
+				url = new URL(next, url);
+
+				continue;
+			}
+
+			if (!response.ok || !response.body) {
+				throw new Error(t("core.jarinstall.httpError", { status: response.status }));
+			}
+
+			const declared = Number(response.headers.get("content-length") ?? 0);
+
+			if (declared > MAX_MRPACK_DOWNLOAD) {
+				throw new Error(t("core.modpack.urlTooLarge"));
+			}
+
+			const writer = Bun.file(dest).writer();
+			let size = 0;
+
+			try {
+				for await (const chunk of response.body) {
+					size += chunk.byteLength;
+
+					if (size > MAX_MRPACK_DOWNLOAD) {
+						throw new Error(t("core.modpack.urlTooLarge"));
+					}
+
+					writer.write(chunk);
+				}
+			} finally {
+				await writer.end();
+			}
+
+			const summary = await inspectMrpack(dest);
+
+			return { token, sizeBytes: size, summary };
+		}
+
+		throw new Error(t("core.jarinstall.tooManyRedirects"));
+	} catch (err) {
+		await rm(dest, { force: true });
+
+		throw err;
+	}
 }
 
 /** Modrinth modpacks matching a query, narrowed to the loaders luna hosts unless told otherwise. */

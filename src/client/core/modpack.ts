@@ -44,6 +44,8 @@ export { MODPACK_MANIFEST, MRPACK_HOSTS } from "../../core/modpack";
 export const searchModpacks = call("modpack.search") as typeof core.searchModpacks;
 export const modpackVersions = call("modpack.versions") as typeof core.modpackVersions;
 /** What an uploaded .mrpack would install, by staging token. */
+/** Download a .mrpack from a public URL into the primary's staging area. */
+export const stageMrpackFromUrl = call("modpack.stageUrl") as typeof core.stageMrpackFromUrl;
 export const inspectStagedMrpack = call("modpack.inspectStage") as (token: string) => Promise<core.MrpackSummary>;
 export const installModpack = jobCall("modpack.install", {
 	cfg: 0,
@@ -56,7 +58,11 @@ export const updateModpack = jobCall("modpack.update", {
 	reporter: { arg: 2, prop: "reporter" },
 	kind: "modpack-update",
 	targetArg: 1,
-}) as typeof core.updateModpack;
+}) as (
+	cfg: ClusterConfig,
+	name: string,
+	opts?: core.ModpackUpdateOptions & { mrpackStage?: string },
+) => Promise<core.ModpackUpdateResult>;
 
 /** The progress nodes `completeProvision` reports into, one per step. */
 export interface ProvisionSteps {

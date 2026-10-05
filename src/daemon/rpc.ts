@@ -795,6 +795,30 @@ async function installModpackRouted(
 	}
 }
 
+/**
+ * Update a modpack instance, resolving an uploaded pack's token on this daemon:
+ * the op is routed to the owner first, so on a follower this pulls the file
+ * from the primary. The staged copy goes once used.
+ */
+async function updateModpackStaged(
+	cfg: ClusterConfig,
+	name: string,
+	opts: modpackCore.ModpackUpdateOptions & { mrpackStage?: string } = {},
+): Promise<modpackCore.ModpackUpdateResult> {
+	if (!opts.mrpackStage) {
+		return await modpackCore.updateModpack(cfg, name, opts);
+	}
+
+	const { mrpackStage, ...rest } = opts;
+	const mrpackPath = await localStagePath(mrpackStage);
+
+	try {
+		return await modpackCore.updateModpack(cfg, name, { ...rest, mrpackPath });
+	} finally {
+		await stagingCore.discardStage(mrpackStage).catch(() => undefined);
+	}
+}
+
 /** What an uploaded .mrpack would install, read off the staged file. */
 async function inspectStagedMrpack(token: string): Promise<modpackCore.MrpackSummary> {
 	return await modpackCore.inspectMrpack(await localStagePath(token));
@@ -1425,8 +1449,9 @@ export const OPS: Record<string, OpSpec> = {
 		cfg: 0,
 		reporter: { arg: 2, prop: "reporter" },
 	},
+	"modpack.stageUrl": { fn: modpackCore.stageMrpackFromUrl },
 	"modpack.update": {
-		fn: modpackCore.updateModpack,
+		fn: updateModpackStaged,
 		cfg: 0,
 		instance: 1,
 		reporter: { arg: 2, prop: "reporter" },
