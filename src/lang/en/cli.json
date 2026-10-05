@@ -2169,7 +2169,9 @@
 			"filesLine": "{files} pack file(s), {overrides} override(s), {clientOnly} client-only file(s) skipped",
 			"skippedLine": "overrides not applied, luna owns these: {files}",
 			"removedLine": "removed from the pack: {files}",
-			"withheldLine": "{mods} already in the pack; luna's pooled copy is withheld from this instance"
+			"withheldLine": "{mods} already in the pack; luna's pooled copy is withheld from this instance",
+			"rescuedLine": "fetched for the pack's server mods: {mods}",
+			"unresolvedLine": "the server mods need {ids}, which neither the pack nor Modrinth supplied; the server will not start until they are added"
 		},
 		"update": {
 			"desc": "Move a modpack instance to another version of its pack (the instance must be stopped)",

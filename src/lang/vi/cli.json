@@ -2169,7 +2169,9 @@
 			"filesLine": "{files} tệp của gói, {overrides} override, bỏ qua {clientOnly} tệp chỉ dành cho client",
 			"skippedLine": "override không áp dụng vì luna quản các tệp này: {files}",
 			"removedLine": "đã gỡ khỏi gói: {files}",
-			"withheldLine": "{mods} đã có trong gói; bản trong pool của luna được giữ lại khỏi instance này"
+			"withheldLine": "{mods} đã có trong gói; bản trong pool của luna được giữ lại khỏi instance này",
+			"rescuedLine": "đã tải thêm cho các mod phía server của gói: {mods}",
+			"unresolvedLine": "các mod phía server cần {ids}, gói lẫn Modrinth đều không có; server sẽ không khởi động cho tới khi thêm chúng"
 		},
 		"update": {
 			"desc": "Chuyển instance modpack sang phiên bản khác của gói (instance phải đang dừng)",

@@ -204,6 +204,14 @@ command({
 				info(t("cli.modpack.install.withheldLine", { mods: result.withheld.join(", ") }));
 			}
 
+			if (result.rescued.length) {
+				info(t("cli.modpack.install.rescuedLine", { mods: result.rescued.map((entry) => `${entry.id} (${entry.from})`).join(", ") }));
+			}
+
+			if (result.unresolved.length) {
+				warn(t("cli.modpack.install.unresolvedLine", { ids: result.unresolved.join(", ") }));
+			}
+
 			if (outcome.forwarding.required.length) {
 				info(t("core.admin.requiredAddonsInstalled", { mods: outcome.forwarding.required.join(", ") }));
 			}
@@ -278,6 +286,14 @@ command({
 
 			if (result.skipped.length) {
 				info(t("cli.modpack.install.skippedLine", { files: result.skipped.join(", ") }));
+			}
+
+			if (result.rescued.length) {
+				info(t("cli.modpack.install.rescuedLine", { mods: result.rescued.map((entry) => `${entry.id} (${entry.from})`).join(", ") }));
+			}
+
+			if (result.unresolved.length) {
+				warn(t("cli.modpack.install.unresolvedLine", { ids: result.unresolved.join(", ") }));
 			}
 
 			info(t("cli.instance.startHint", { command: pc.cyan(`luna start ${name}`) }));

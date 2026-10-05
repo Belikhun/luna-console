@@ -144,10 +144,14 @@ export const MODPACK_HANDLERS: Record<string, ToolHandler> = {
 					removed: result.removed,
 					clientOverridesSkipped: result.clientOverrides,
 					poolCopiesWithheld: result.withheld,
+					dependenciesFetched: result.rescued,
+					dependenciesUnresolved: result.unresolved,
 					forwardingMod: outcome.forwarding.slug ?? null,
 					addonsDeployed: outcome.pluginsChanged,
 					velocityUpdated: outcome.velocityUpdated,
-					note: 'the server is created but not started; instance_start it, then read instance_logs for the first boot'
+					note: result.unresolved.length > 0
+						? `the server mods need ${result.unresolved.join(', ')}, which neither the pack nor Modrinth supplied; the server will not start until they are added (addon_install can add a mod by slug)`
+						: 'the server is created but not started; instance_start it, then read instance_logs for the first boot'
 				};
 			} catch (err) {
 				pushEvent(name, 'error', `modpack install failed: ${(err as Error).message}`);
@@ -197,6 +201,8 @@ export const MODPACK_HANDLERS: Record<string, ToolHandler> = {
 					staleRemoved: result.removed,
 					launchFilesSkipped: result.skipped,
 					poolCopiesWithheld: result.withheld,
+					dependenciesFetched: result.rescued,
+					dependenciesUnresolved: result.unresolved,
 					note: 'start the server with instance_start and read instance_logs for the first boot on the new version'
 				};
 			} catch (err) {

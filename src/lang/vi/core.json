@@ -796,6 +796,10 @@
 		"movingVersion": "chuyển sang Minecraft {mc}, loader {loader}",
 		"removingStale": "đang xoá các tệp phiên bản cũ đã ghi",
 		"staleRemoved": "đã xoá {count} tệp",
+		"phaseDeps": "Phụ thuộc",
+		"resolvingDeps": "đang kiểm tra các mod phía server cần gì",
+		"rescuing": "đang tải {id}, mod phía server của gói cần nó",
+		"depsDone": "đã tải {rescued} phụ thuộc, {unresolved} chưa giải quyết",
 		"provision": {
 			"deploying": "đang triển khai mod forwarding và các addon nhắm wildcard",
 			"deployed": "{changed}/{total} jar thay đổi",

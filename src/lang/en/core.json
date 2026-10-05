@@ -796,6 +796,10 @@
 		"movingVersion": "moving to Minecraft {mc}, loader {loader}",
 		"removingStale": "removing files the previous version wrote",
 		"staleRemoved": "{count} file(s) removed",
+		"phaseDeps": "Dependencies",
+		"resolvingDeps": "checking what the server mods depend on",
+		"rescuing": "fetching {id}, which the pack's server mods need",
+		"depsDone": "{rescued} dependency(ies) fetched, {unresolved} unresolved",
 		"provision": {
 			"deploying": "deploying the forwarding mod and wildcard-targeted addons",
 			"deployed": "{changed} of {total} jar(s) changed",

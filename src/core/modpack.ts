@@ -29,8 +29,10 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, posix, resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
+import { randomBytes } from "node:crypto";
 
 import { createInstance, setVersion } from "./admin";
 import { unzipRead } from "./archive";
@@ -41,7 +43,7 @@ import { releaseInstancePorts } from "./ports";
 import { ProgressReporter } from "./progress";
 import { downloadToFile } from "./services/download";
 import type { KnownHashes } from "./services/download";
-import { getProject, getVersions, primaryFile, remoteRefFor, searchProvider } from "./services/providers";
+import { coversMc, getProject, getVersions, primaryFile, remoteRefFor, searchProvider } from "./services/providers";
 import type { AddonVersion, ReleaseChannel } from "./services/providers";
 import { readZipEntries, readZipEntry } from "./services/zip";
 import type { ZipEntry } from "./services/zip";
@@ -104,6 +106,15 @@ const CRUFT_MODS = /^default-server-properties.*\.jar$/i;
  */
 const CLIENT_ROOTS = ["resourcepacks/", "shaderpacks/", "screenshots/", "saves/"];
 const CLIENT_FILES = new Set(["options.txt", "optionsof.txt", "optionsshaders.txt", "servers.dat"]);
+
+/**
+ * Dependency ids every mod declares that no jar provides: the game, the JVM
+ * and the loader itself. Anything else unresolved is a mod the server lacks.
+ */
+const BUILTIN_IDS = new Set(["minecraft", "java", "fabricloader", "fabric", "forge", "neoforge"]);
+
+/** Rounds of dependency rescue; a rescued library can itself need one more. */
+const RESCUE_ROUNDS = 3;
 
 /** The index's dependency keys that name a loader luna can host. */
 const LOADER_SOFTWARE: Record<string, Software> = {
@@ -192,6 +203,14 @@ export interface ModpackInstallOptions extends ModpackSource {
 	reporter?: ProgressReporter;
 }
 
+/** A dependency the pack's server mods needed and luna fetched for them. */
+export interface RescuedDependency {
+	id: string;
+	/** `pack`: shipped by the pack under a client-only tag; `modrinth`: not in the pack, found by id */
+	from: "pack" | "modrinth";
+	path: string;
+}
+
 export interface ModpackInstallResult {
 	name: string;
 	software: Software;
@@ -211,6 +230,9 @@ export interface ModpackInstallResult {
 	removed: string[];
 	/** Pool addons the pack already ships, so luna's copy is withheld from this instance */
 	withheld: string[];
+	rescued: RescuedDependency[];
+	/** Dependency ids the server mods declare that nothing could supply; the server will not start */
+	unresolved: string[];
 }
 
 export interface ModpackUpdateOptions {
@@ -237,6 +259,8 @@ export interface ModpackUpdateResult {
 	skipped: string[];
 	clientOverrides: number;
 	withheld: string[];
+	rescued: RescuedDependency[];
+	unresolved: string[];
 }
 
 interface ResolvedPack {
@@ -619,27 +643,286 @@ async function removeCruft(dir: string): Promise<string[]> {
 	return removed;
 }
 
-/** The mod ids a jar declares, from whichever loader descriptor it carries. */
-async function modIdsOf(jar: string): Promise<string[]> {
+/** What one mod jar says about itself: the ids it supplies and the ids it cannot run without. */
+interface ModDescriptor {
+	provides: string[];
+	requires: string[];
+	/** Jars nested inside this one (Fabric `jars`, Forge jar-in-jar), which supply ids of their own */
+	nested: string[];
+}
+
+interface FabricModJson {
+	id?: string;
+	provides?: string[];
+	depends?: Record<string, unknown>;
+	jars?: Array<{ file?: string }>;
+}
+
+/**
+ * Fabric's own reader accepts raw control characters inside strings, and some
+ * mods ship a description with a literal newline in it, so a strict parse
+ * would call a working mod unreadable. Whitespace is insignificant outside
+ * strings and only a description inside them, so every control character is
+ * blanked before parsing.
+ */
+function parseModJson(text: string): FabricModJson | undefined {
+	try {
+		return JSON.parse(text.replace(/[\u0000-\u001f]/g, " ")) as FabricModJson;
+	} catch {
+		return undefined;
+	}
+}
+
+/** The dependency blocks of a Forge or NeoForge mods.toml that bind on a server. */
+function tomlRequires(toml: string): string[] {
+	const requires: string[] = [];
+
+	for (const block of toml.split(/^\s*\[\[dependencies\./m).slice(1)) {
+		const modId = /^\s*modId\s*=\s*"([^"]+)"/m.exec(block)?.[1];
+		const required = /^\s*type\s*=\s*"required"/m.test(block) || /^\s*mandatory\s*=\s*true/m.test(block);
+		const clientOnly = /^\s*side\s*=\s*"CLIENT"/m.test(block);
+
+		if (modId && required && !clientOnly) {
+			requires.push(modId);
+		}
+	}
+
+	return requires;
+}
+
+/** Read a jar's descriptor, whichever loader wrote it; empty for a jar with none. */
+async function describeMod(jar: string): Promise<ModDescriptor> {
 	const fabric = await unzipRead(jar, "fabric.mod.json");
 
 	if (fabric) {
-		try {
-			const id = (JSON.parse(fabric) as { id?: string }).id;
+		const parsed = parseModJson(fabric);
 
-			return id ? [id] : [];
-		} catch {
-			return [];
+		if (!parsed?.id) {
+			return { provides: [], requires: [], nested: [] };
 		}
+
+		return {
+			provides: [parsed.id, ...(parsed.provides ?? [])],
+			requires: parsed.depends && typeof parsed.depends === "object" ? Object.keys(parsed.depends) : [],
+			nested: (parsed.jars ?? []).map((entry) => entry.file ?? "").filter((file) => file !== ""),
+		};
 	}
 
 	const toml = (await unzipRead(jar, "META-INF/neoforge.mods.toml")) ?? (await unzipRead(jar, "META-INF/mods.toml"));
 
 	if (toml) {
-		return [...toml.matchAll(/^\s*modId\s*=\s*"([^"]+)"/gm)].map((match) => match[1]!);
+		const provides = [...toml.matchAll(/^\s*modId\s*=\s*"([^"]+)"/gm)].map((match) => match[1]!);
+		const metadata = await unzipRead(jar, "META-INF/jarjar/metadata.json");
+		let nested: string[] = [];
+
+		if (metadata) {
+			try {
+				const parsed = JSON.parse(metadata) as { jars?: Array<{ path?: string }> };
+
+				nested = (parsed.jars ?? []).map((entry) => entry.path ?? "").filter((path) => path !== "");
+			} catch {
+				nested = [];
+			}
+		}
+
+		// a toml's modId lines include the dependency blocks' own; those are not provided
+		const own = provides.filter((id) => !tomlRequires(toml).includes(id));
+
+		return { provides: own, requires: tomlRequires(toml), nested };
 	}
 
-	return [];
+	return { provides: [], requires: [], nested: [] };
+}
+
+/**
+ * The ids a nested jar supplies. `unzip -p` yields the inner jar's bytes, which
+ * go to a scratch file so the same descriptor reader can open it; a nested jar
+ * is a library and small.
+ */
+async function nestedProvides(outer: string, inner: string): Promise<string[]> {
+	const scratch = join(tmpdir(), `luna-nested-${randomBytes(6).toString("hex")}.jar`);
+
+	try {
+		const proc = Bun.spawn(["unzip", "-p", outer, inner], { stdout: "pipe", stderr: "ignore" });
+		const bytes = new Uint8Array(await new Response(proc.stdout).arrayBuffer());
+
+		await proc.exited;
+
+		if (proc.exitCode !== 0 || bytes.byteLength === 0) {
+			return [];
+		}
+
+		await writeFile(scratch, bytes);
+
+		return (await describeMod(scratch)).provides;
+	} finally {
+		await rm(scratch, { force: true });
+	}
+}
+
+/** The mod ids a jar declares, nested jars excluded. */
+async function modIdsOf(jar: string): Promise<string[]> {
+	return (await describeMod(jar)).provides;
+}
+
+/** A pack filename normalised for matching against a mod id: lowercase, one kind of separator. */
+function slugLike(text: string): string {
+	return text.toLowerCase().replace(/[_\s]/g, "-");
+}
+
+/**
+ * Fetch the dependencies the laid server mods declare and nothing supplies.
+ *
+ * Pack authors tag by what the *client* needs, so a library a server mod
+ * depends on is often tagged client-only (uilib in ba+), or left out of the
+ * index altogether because a client mod bundles it (cloth-config there). The
+ * loader would refuse to start and name exactly these ids, so they are fetched
+ * before the first boot instead: from the pack's own client-only entries when a
+ * filename matches the id, else from Modrinth by that id for the same loader
+ * and Minecraft version. A downloaded jar is kept only when it declares the id
+ * it was fetched for. What neither source can supply is reported, not guessed.
+ */
+async function rescueDependencies(
+	dir: string,
+	index: MrpackIndex,
+	target: PackTarget,
+	step: ProgressReporter,
+): Promise<{ rescued: RescuedDependency[]; unresolved: string[] }> {
+	const mods = join(dir, "mods");
+	const rescued: RescuedDependency[] = [];
+	const clientOnly = (index.files ?? []).filter((file) => file.env?.server === "unsupported" && file.path.endsWith(".jar"));
+	const loader = target.software === "fabric"
+		? "fabric"
+		: target.software;
+	let unresolved: string[] = [];
+
+	for (let round = 0; round < RESCUE_ROUNDS; round++) {
+		if (!existsSync(mods)) {
+			break;
+		}
+
+		const provided = new Set<string>(BUILTIN_IDS);
+		const requires = new Set<string>();
+
+		for (const name of await readdir(mods)) {
+			if (!name.endsWith(".jar")) {
+				continue;
+			}
+
+			const jar = join(mods, name);
+			const descriptor = await describeMod(jar);
+
+			for (const id of descriptor.provides) {
+				provided.add(id);
+			}
+
+			for (const id of descriptor.requires) {
+				requires.add(id);
+			}
+
+			for (const inner of descriptor.nested) {
+				for (const id of await nestedProvides(jar, inner)) {
+					provided.add(id);
+				}
+			}
+		}
+
+		const missing = [...requires].filter((id) => !provided.has(id));
+
+		unresolved = [];
+
+		if (missing.length === 0) {
+			break;
+		}
+
+		for (const id of missing) {
+			step.say("info", t("core.modpack.rescuing", { id }));
+
+			const got = await rescueOne(mods, id, clientOnly, loader, target.mcVersion);
+
+			if (got) {
+				rescued.push(got);
+			} else {
+				unresolved.push(id);
+			}
+		}
+
+		// nothing new to read on the next round means the remaining ids stay unresolved
+		if (unresolved.length === missing.length) {
+			break;
+		}
+	}
+
+	return { rescued, unresolved };
+}
+
+/** Download one jar into mods/ and keep it only if it declares the wanted id. */
+async function fetchVerified(mods: string, id: string, url: string, filename: string, expected: KnownHashes): Promise<string | null> {
+	const dest = safePath(mods, basename(filename));
+
+	await mkdir(mods, { recursive: true });
+	await downloadToFile(url, dest, { expected });
+
+	const provides = (await describeMod(dest)).provides;
+
+	if (!provides.includes(id)) {
+		await rm(dest, { force: true });
+
+		return null;
+	}
+
+	return `mods/${basename(dest)}`;
+}
+
+async function rescueOne(
+	mods: string,
+	id: string,
+	clientOnly: MrpackFile[],
+	loader: string,
+	mcVersion: string,
+): Promise<RescuedDependency | null> {
+	const wanted = slugLike(id);
+	const shipped = clientOnly.find((file) => slugLike(basename(file.path)).includes(wanted));
+
+	if (shipped) {
+		try {
+			const url = await pickDownload(shipped);
+			const path = await fetchVerified(mods, id, url.href, shipped.path, hashesOf(shipped));
+
+			if (path) {
+				return { id, from: "pack", path };
+			}
+		} catch {
+			// the pack's copy is unusable; Modrinth may still have the mod
+		}
+	}
+
+	try {
+		const project = await getProject("modrinth", id, "mod");
+
+		if (!project) {
+			return null;
+		}
+
+		const versions = await getVersions(remoteRefFor("modrinth", project), "mod", [loader]);
+		const fitting = versions
+			.filter((version) => coversMc(version.game_versions, mcVersion))
+			.sort((a, b) => b.date_published.localeCompare(a.date_published));
+		const version = fitting.find((candidate) => candidate.version_type === "release") ?? fitting[0];
+
+		if (!version) {
+			return null;
+		}
+
+		const file = primaryFile(version);
+		const path = await fetchVerified(mods, id, file.url, file.filename, file.hashes);
+
+		return path
+			? { id, from: "modrinth", path }
+			: null;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -788,6 +1071,7 @@ export async function installModpack(
 	const server = progress.child(t("core.modpack.phaseServer"), 6);
 	const files = progress.child(t("core.modpack.phaseFiles"), 6);
 	const overrides = progress.child(t("core.modpack.phaseOverrides"), 1);
+	const deps = progress.child(t("core.modpack.phaseDeps"), 2);
 
 	const pack = await fetching.task({ start: t("core.modpack.fetching") }, (step) => resolvePack(opts, name, step));
 
@@ -822,12 +1106,18 @@ export async function installModpack(
 			overrides.complete(t("core.modpack.overridesDone", { count: over.written.length, skipped: over.skipped.length + over.clientOnly }));
 
 			const removed = await removeCruft(dir);
-			const withheld = await withholdShipped(inst, dir, laid.written);
+			const resolution = await deps.task({ start: t("core.modpack.resolvingDeps") }, (step) =>
+				rescueDependencies(dir, pack.index, pack.target, step),
+			);
+
+			deps.complete(t("core.modpack.depsDone", { rescued: resolution.rescued.length, unresolved: resolution.unresolved.length }));
+
+			const withheld = await withholdShipped(inst, dir, [...laid.written, ...resolution.rescued.map((entry) => entry.path)]);
 
 			await writeManifest(dir, {
 				...pack.provenance,
 				installedAt: Date.now(),
-				files: laid.written,
+				files: [...laid.written, ...resolution.rescued.map((entry) => entry.path)],
 				overrides: over.written.filter((path) => !removed.includes(path)),
 			});
 
@@ -847,6 +1137,8 @@ export async function installModpack(
 				clientOverrides: over.clientOnly,
 				removed,
 				withheld,
+				rescued: resolution.rescued,
+				unresolved: resolution.unresolved,
 			};
 		} catch (err) {
 			// the server exists but the pack does not: take it back out, so the
@@ -907,6 +1199,7 @@ export async function updateModpack(
 	const files = progress.child(t("core.modpack.phaseFiles"), 6);
 	const overrides = progress.child(t("core.modpack.phaseOverrides"), 1);
 	const cleanup = progress.child(t("core.modpack.phaseCleanup"), 1);
+	const deps = progress.child(t("core.modpack.phaseDeps"), 2);
 
 	const source: ModpackSource = opts.mrpackPath
 		? { mrpackPath: opts.mrpackPath }
@@ -962,12 +1255,18 @@ export async function updateModpack(
 		});
 
 		const cruft = await removeCruft(dir);
-		const withheld = await withholdShipped(inst, dir, laid.written);
+		const resolution = await deps.task({ start: t("core.modpack.resolvingDeps") }, (step) =>
+			rescueDependencies(dir, pack.index, pack.target, step),
+		);
+
+		deps.complete(t("core.modpack.depsDone", { rescued: resolution.rescued.length, unresolved: resolution.unresolved.length }));
+
+		const withheld = await withholdShipped(inst, dir, [...laid.written, ...resolution.rescued.map((entry) => entry.path)]);
 
 		await writeManifest(dir, {
 			...pack.provenance,
 			installedAt: Date.now(),
-			files: laid.written,
+			files: [...laid.written, ...resolution.rescued.map((entry) => entry.path)],
 			overrides: over.written.filter((path) => !cruft.includes(path)),
 		});
 
@@ -986,6 +1285,8 @@ export async function updateModpack(
 			skipped: over.skipped,
 			clientOverrides: over.clientOnly,
 			withheld,
+			rescued: resolution.rescued,
+			unresolved: resolution.unresolved,
 		};
 	} finally {
 		if (pack.staged) {
