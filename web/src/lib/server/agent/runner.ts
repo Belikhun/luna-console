@@ -23,7 +23,8 @@
  * root, so it never reads or writes the ~/.claude of whoever runs the console.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
+import { z } from 'zod';
 import type { CanUseTool, PermissionResult, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 
 import {
@@ -36,15 +37,33 @@ import {
 } from '$core/agent';
 import type { AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
 import { allowedTools, mcpTool } from '$shared/mcptools';
-import { AGENT_ASK_TOOL, agentCanAsk } from '$shared/agent';
+import { AGENT_ASK_TOOL, AGENT_NAVIGATE_TOOL, AGENT_SCREEN_TOOLS, AGENT_SCREENSHOT_TOOL, agentCanAsk, isConsolePath } from '$shared/agent';
 import type { AgentMode } from '$shared/agent';
 import { issueRunBearer } from './bearer';
 import { findClaudeExecutable } from './executable';
 import { personaPrompt } from './persona';
+import { INSTANCE_TABS } from '$lib/components/instancetabs';
 
 /** The name luna's MCP server is registered under; the SDK prefixes its tools with it. */
 const SERVER = 'luna';
 const TOOL_PREFIX = `mcp__${SERVER}__`;
+
+/** The in-process server carrying the tools only the operator's browser can answer. */
+const CONSOLE_SERVER = 'console';
+const SCREENSHOT_SDK_NAME = `mcp__${CONSOLE_SERVER}__screenshot`;
+const NAVIGATE_SDK_NAME = `mcp__${CONSOLE_SERVER}__navigate`;
+
+/** The SDK names of the console's own tools, by the name the panel and the transcript use. */
+const SCREEN_SDK_NAMES: Record<string, string> = {
+	[SCREENSHOT_SDK_NAME]: AGENT_SCREENSHOT_TOOL,
+	[NAVIGATE_SDK_NAME]: AGENT_NAVIGATE_TOOL
+};
+
+/** How long a request to the panel waits for it to answer. */
+const PANEL_TIMEOUT_MS = 30_000;
+
+/** The largest screenshot a panel may upload. */
+export const MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024;
 
 /** How long a call waits for the operator before it is denied for them. */
 const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -69,6 +88,8 @@ export type AgentEvent =
 		output?: string;
 		decidedBy?: string;
 	}
+	| { type: 'screenshot'; id: string }
+	| { type: 'navigate'; id: string; path: string }
 	| { type: 'error'; text: string; code?: AgentErrorCode }
 	| { type: 'done'; costUsd: number };
 
@@ -102,9 +123,31 @@ interface Pending {
 }
 
 function stripPrefix(name: string): string {
+	const screen = SCREEN_SDK_NAMES[name];
+
+	if (screen) {
+		return screen;
+	}
+
 	return name.startsWith(TOOL_PREFIX)
 		? name.slice(TOOL_PREFIX.length)
 		: name;
+}
+
+/** Where the panel ended up after a navigate request. */
+export interface Navigated {
+	ok: boolean;
+	page: string;
+	error?: string;
+}
+
+/** A screenshot the panel delivered. */
+export interface Screenshot {
+	bytes: Uint8Array;
+	mime: string;
+	page: string;
+	width: number;
+	height: number;
 }
 
 /** Tools that leave the cluster as it was: those that only read, and the agent's own memory. Plan runs only these. */
@@ -144,10 +187,14 @@ function runsUnasked(name: string, mode: AgentMode): boolean {
 			return true;
 
 		case 'plan':
+			if (AGENT_SCREEN_TOOLS.includes(name)) {
+				return true;
+			}
+
 			return leavesClusterAlone(name);
 
 		default:
-			return safeUnattended(name);
+			return AGENT_SCREEN_TOOLS.includes(name) || safeUnattended(name);
 	}
 }
 
@@ -235,6 +282,48 @@ class Run {
 		pending.resolve(allow, by, answers);
 
 		return true;
+	}
+
+	/** Requests waiting on the panel (a screenshot, a navigation), by request id */
+	readonly asks = new Map<string, (answer: unknown) => void>();
+
+	/**
+	 * Ask the browser following this run to do something and wait for its
+	 * answer. The request is an event like any other, so whichever of the
+	 * owner's tabs is following the run handles it, and the first answer wins.
+	 * It is dropped from the replay buffer once settled, so a panel that
+	 * reconnects later does not act on it again.
+	 */
+	async askPanel<T>(build: (id: string) => AgentEvent, what: string): Promise<T> {
+		if (this.listeners.size === 0) {
+			throw new Error(`the operator does not have the console open, so there is no screen to ${what}`);
+		}
+
+		const id = crypto.randomUUID();
+		const event = build(id);
+
+		this.emit(event);
+
+		try {
+			return await new Promise<T>((resolve, reject) => {
+				const timer = setTimeout(() => {
+					reject(new Error(`the console did not answer in time (asked to ${what})`));
+				}, PANEL_TIMEOUT_MS);
+
+				this.asks.set(id, (answer) => {
+					clearTimeout(timer);
+					resolve(answer as T);
+				});
+			});
+		} finally {
+			this.asks.delete(id);
+
+			const index = this.events.indexOf(event);
+
+			if (index >= 0) {
+				this.events.splice(index, 1);
+			}
+		}
 	}
 
 	stop(by: string): void {
@@ -327,6 +416,63 @@ export async function startRun(input: StartRunInput): Promise<void> {
 }
 
 /**
+ * The in-process MCP server for one run: `screenshot` and `navigate`, which
+ * only the operator's browser can carry out. It is built per run because its
+ * handlers belong to that run's panel.
+ */
+function consoleServer(run: Run): ReturnType<typeof createSdkMcpServer> {
+	return createSdkMcpServer({
+		name: CONSOLE_SERVER,
+		version: '1.0.0',
+		tools: [
+			tool(
+				'screenshot',
+				"Capture the Luna Console as the operator sees it right now in their browser: the top bar, side navigation and the page they have open, scrolled where they left it, without this chat panel. Use it when the operator refers to something on their screen (\"this\", \"here\", \"what is wrong with this page\") and the <console-page> path alone does not tell you enough, or to check how a change looks. It shows only what is on screen; read data with the luna tools.",
+				{},
+				async () => {
+					try {
+						const shot = await run.askPanel<Screenshot>((id) => ({ type: 'screenshot', id }), 'capture');
+
+						return {
+							content: [
+								{ type: 'image', data: Buffer.from(shot.bytes).toString('base64'), mimeType: shot.mime },
+								{ type: 'text', text: `The console at ${shot.page}, ${shot.width}x${shot.height} CSS pixels, without the chat panel.` }
+							]
+						};
+					} catch (err) {
+						return { content: [{ type: 'text', text: (err as Error).message }], isError: true };
+					}
+				},
+				{ annotations: { readOnlyHint: true, openWorldHint: false } }
+			),
+			tool(
+				'navigate',
+				`Open a page of the Luna Console in the operator's browser, the way a click would: to show them what you are talking about, or to take them to where they can act on it. Give a console path, never a full URL or an /api route. Screens: /instances, /instances/<name>/<tab> where tab is one of ${INSTANCE_TABS.join(', ')}; /players, /players/<username>, /players/online, /players/moderation; /plugins, /mods, /packs, /datapacks; /machines/<name>; /network, /proxy, /schedules, /environment. A list screen filters with ?q=<text> (/plugins?q=luckperms). Say in your reply why you moved them; follow with console_screenshot to see what they now see.`,
+				{ path: z.string().describe('Console path, starting with /, e.g. /instances/survival?tab=console') },
+				async ({ path }) => {
+					if (!isConsolePath(path)) {
+						return { content: [{ type: 'text', text: `${path} is not a console page; give a path such as /instances/survival` }], isError: true };
+					}
+
+					try {
+						const landed = await run.askPanel<Navigated>((id) => ({ type: 'navigate', id, path }), 'navigate');
+
+						if (!landed.ok) {
+							return { content: [{ type: 'text', text: `the console could not open ${path}: ${landed.error ?? 'unknown error'}` }], isError: true };
+						}
+
+						return { content: [{ type: 'text', text: `The operator's console is now on ${landed.page}.` }] };
+					} catch (err) {
+						return { content: [{ type: 'text', text: (err as Error).message }], isError: true };
+					}
+				},
+				{ annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }
+			)
+		]
+	});
+}
+
+/**
  * Put an `AskUserQuestion` call in front of the operator and wait for the
  * answer. The answers ride back in the tool's input, which is how the SDK's
  * tool reads them, and are kept on the call so the transcript shows what was
@@ -409,8 +555,8 @@ async function drive(
 			return await askOperator(run, toolInput, options.toolUseID, options.signal);
 		}
 
-		// only luna's tools exist; anything else reaching here is refused outright
-		if (!toolName.startsWith(TOOL_PREFIX)) {
+		// only luna's tools and the console's own exist; anything else is refused outright
+		if (!toolName.startsWith(TOOL_PREFIX) && !SCREEN_SDK_NAMES[toolName]) {
 			return { behavior: 'deny', message: 'Only the luna tools are available.' };
 		}
 
@@ -508,7 +654,8 @@ async function drive(
 						headers: { Authorization: `Bearer ${grant.bearer}` },
 						alwaysLoad: true,
 						timeout: TOOL_TIMEOUT_MS
-					}
+					},
+					[CONSOLE_SERVER]: consoleServer(run)
 				},
 				strictMcpConfig: true,
 				// resolved from the scope against this console's catalog, not the daemon's list,
@@ -516,7 +663,8 @@ async function drive(
 				allowedTools: allowedTools(launch.token.scope)
 					.map((tool) => tool.name)
 					.filter((name) => runsUnasked(name, input.mode))
-					.map((name) => `${TOOL_PREFIX}${name}`),
+					.map((name) => `${TOOL_PREFIX}${name}`)
+					.concat(Object.keys(SCREEN_SDK_NAMES).filter((sdkName) => runsUnasked(SCREEN_SDK_NAMES[sdkName]!, input.mode))),
 				canUseTool,
 				settingSources: [],
 				includePartialMessages: true,
@@ -760,6 +908,29 @@ export function followRun(conversationId: string, owner: string, listener: Liste
 /** Whether a conversation has a run in progress. */
 export function isRunning(conversationId: string): boolean {
 	return runs.get(conversationId)?.running ?? false;
+}
+
+/**
+ * Hand the panel's answer (a `Screenshot`, a `Navigated`) to the run that asked
+ * for it. Only the conversation's owner may, and only for a request still
+ * waiting.
+ */
+export function deliverPanelAnswer(conversationId: string, owner: string, requestId: string, answer: Screenshot | Navigated): boolean {
+	const run = runs.get(conversationId);
+
+	if (!run || run.owner !== owner) {
+		return false;
+	}
+
+	const settle = run.asks.get(requestId);
+
+	if (!settle) {
+		return false;
+	}
+
+	settle(answer);
+
+	return true;
 }
 
 /**

@@ -16,7 +16,8 @@
 import { browser } from '$app/environment';
 import { api, del, patch, post } from '$lib/api';
 import { currentLanguage } from '$lib/i18n.svelte';
-import { AGENT_MODES, DEFAULT_AGENT_MODE, isAgentMode, type AgentMode } from '$shared/agent';
+import { AGENT_MODES, DEFAULT_AGENT_MODE, isAgentMode, isConsolePath, type AgentMode } from '$shared/agent';
+import { goto } from '$app/navigation';
 
 export type ToolStatus = 'running' | 'awaiting' | 'ok' | 'error' | 'denied';
 
@@ -98,6 +99,8 @@ type StreamEvent =
 	| { type: 'text'; delta: string }
 	| { type: 'assistant'; text: string }
 	| { type: 'tool'; id: string; name: string; input?: unknown; status: ToolStatus; output?: string; decidedBy?: string }
+	| { type: 'screenshot'; id: string }
+	| { type: 'navigate'; id: string; path: string }
 	| { type: 'error'; text: string; code?: string }
 	| { type: 'done'; costUsd: number }
 	| { type: 'idle' }
@@ -466,6 +469,67 @@ class AgentStore {
 		}
 	}
 
+	/**
+	 * Answer the agent's `console_screenshot`: render the console as this browser
+	 * shows it, without the panel, and post it to the run. Every tab following
+	 * the run tries; the first upload wins and the rest are refused, harmlessly.
+	 */
+	private async sendScreenshot(requestId: string): Promise<void> {
+		const conversation = this.conversationId;
+
+		if (!conversation || typeof document === 'undefined') {
+			return;
+		}
+
+		try {
+			const { captureConsole } = await import('$lib/screenshot');
+			const shot = await captureConsole(this.open ? this.width : 0);
+			const query = new URLSearchParams({
+				request: requestId,
+				page: shot.page,
+				w: String(shot.width),
+				h: String(shot.height)
+			});
+
+			await fetch(`/api/agent/conversations/${encodeURIComponent(conversation)}/screenshot?${query}`, {
+				method: 'POST',
+				headers: { 'content-type': shot.image.type },
+				body: shot.image
+			});
+		} catch (err) {
+			// the run times out and tells the model; the console is the place to see why
+			console.error('screenshot failed', err);
+		}
+	}
+
+	/**
+	 * Answer the agent's `console_navigate`: open the page in this browser, as a
+	 * click would, and report where it landed. The path is checked again here,
+	 * so a request can only ever move the operator between console screens.
+	 */
+	private async followNavigation(requestId: string, path: string): Promise<void> {
+		const conversation = this.conversationId;
+
+		if (!conversation || typeof window === 'undefined') {
+			return;
+		}
+
+		let answer: { ok: boolean; page: string; error?: string };
+
+		try {
+			if (!isConsolePath(path)) {
+				throw new Error('not a console page');
+			}
+
+			await goto(path);
+			answer = { ok: true, page: `${location.pathname}${location.search}` };
+		} catch (err) {
+			answer = { ok: false, page: `${location.pathname}${location.search}`, error: (err as Error).message };
+		}
+
+		await post(`/agent/conversations/${conversation}/navigated`, { request: requestId, ...answer }).catch(() => {});
+	}
+
 	/** Allow or deny a waiting call; `answers` answers a question the agent asked. */
 	async decide(toolUseId: string, allow: boolean, tool: string, answers?: Record<string, string>): Promise<void> {
 		if (!this.conversationId) {
@@ -586,6 +650,18 @@ class AgentStore {
 				} else {
 					this.items[index] = { kind: 'assistant', text: event.text, streaming: false };
 				}
+
+				break;
+			}
+
+			case 'screenshot': {
+				void this.sendScreenshot(event.id);
+
+				break;
+			}
+
+			case 'navigate': {
+				void this.followNavigation(event.id, event.path);
 
 				break;
 			}

@@ -32,6 +32,36 @@ export const DEFAULT_AGENT_MODE: AgentMode = "auto";
  */
 export const AGENT_ASK_TOOL = "AskUserQuestion";
 
+/**
+ * The agent's look at the operator's screen: the panel that owns the run renders
+ * the console as it stands in that browser and posts the image back. Like the
+ * question, it lives in the console's runner rather than among luna's MCP tools,
+ * because only the browser can see it. It reads and changes nothing, so it runs
+ * unasked everywhere but Manual.
+ */
+export const AGENT_SCREENSHOT_TOOL = "console_screenshot";
+
+/**
+ * The agent's hand on the operator's screen: it opens a console page in the
+ * browser following the run, to show them something or take them to where a
+ * fix lives. It changes nothing but what they are looking at, so like the
+ * screenshot it runs unasked everywhere but Manual.
+ */
+export const AGENT_NAVIGATE_TOOL = "console_navigate";
+
+/** The console tools that act on the operator's browser rather than the cluster. */
+export const AGENT_SCREEN_TOOLS: readonly string[] = [AGENT_SCREENSHOT_TOOL, AGENT_NAVIGATE_TOOL];
+
+/**
+ * Whether a path is a console page the agent may open: same-origin, absolute,
+ * and not an API route, so it can only ever move the operator between screens.
+ */
+export function isConsolePath(path: string): boolean {
+	return /^\/(?![\/\\])[^\s]*$/.test(path)
+		&& !/^\/api(\/|$|\?)/.test(path)
+		&& path.length <= 500;
+}
+
 /** Whether the agent may stop and ask the operator a question in a mode. */
 export function agentCanAsk(mode: AgentMode): boolean {
 	return mode !== "auto";

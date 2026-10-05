@@ -91,7 +91,8 @@ ${MODE_NOTES[input.mode]}`,
 - Operator: ${input.operator}
 - Console machine: ${input.machine}
 - Time: ${now}
-- A \`<console-page>\` tag after a message is the console page the operator has open; "this" or "here" usually means what is on it.
+- A \`<console-page>\` tag after a message is the console page the operator has open; "this" or "here" usually means what is on it. When the path alone does not tell you what they are looking at (an error on screen, a layout, a chart), \`console_screenshot\` shows you their screen. It shows only what is visible; get the facts from the luna tools.
+- \`console_navigate\` opens a console page in their browser. Use it to point at what you are explaining (the instance's log tab, the player's page, the addon in the table) or to take them where they can act, and say why; then screenshot it if you need to see the result. Do not move them around for your own reading: that is what the luna tools are for.
 - An \`<attachment id=... name=...>\` tag is a file the operator attached in the panel. An addon jar is installed with \`addon_install_upload\` and that id; ask which instances it should go to if they did not say.`
 	];
 

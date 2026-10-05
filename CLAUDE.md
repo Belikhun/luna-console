@@ -412,8 +412,16 @@ export interface InstanceConfig {}
 - **The catalog is data.** `shared/mcptools.ts` lists every tool with its group, model-facing
   description (protocol text, English), JSON schema and MCP annotations; a new tool is a catalog entry
   plus its adapter in `web/src/lib/server/mcp/handlers.ts`, which calls the `$core` bridge like any
-  route so follower routing still applies. Deleting instances, set-version, cleanup, accounts,
-  secret reveal and upgrades are deliberately never dedicated tools.
+  route so follower routing still applies. Set-version, cleanup, accounts, secret reveal and
+  upgrades are deliberately never dedicated tools.
+- **An agent may only delete what nobody depends on.** `instance_delete` exists, but
+  `agentDeletionRefusal` (`shared/instanceguard.ts`) refuses everything except a **test** instance
+  (`InstanceConfig.test`, set at creation or by an operator, never over MCP) or a **new** one:
+  `createdAt` within 7 days *and* fewer than 3 distinct days in the server's own dated logs, which
+  stopping it does not reset. No `createdAt` (older instances, adopted ones) means long-standing.
+  The proxy and external servers are never deletable. `luna_shell` refuses `instance delete` and
+  `instance config … test`, and `shell_bash` refuses the obvious `luna instance delete`, so neither
+  walks around the check. Operators delete anything from the console or the CLI as before.
 - **Files and shells are opt-in groups no token gets by default.** `files`/`files-write` go through
   `core/instancefiles.ts` and `configfiles.ts`, so every path passes `resolveInstancePath` (which
   resolves symlinks and refuses dangling ones) and the instance directory itself is never a
@@ -485,7 +493,16 @@ export interface InstanceConfig {}
   and the agent's own memory, refuses the rest and has the model answer with a plan. **Bypass** runs everything in scope
   without asking; it confirms in the browser, journals a warning per message, and the
   `bypassAllowed` setting turns it off for the whole console. No mode widens the token's scope.
-- **Its one other tool is a question.** Outside Auto, the SDK's built-in `AskUserQuestion`
+- **Its other tools are the operator's: a question, a look at their screen and a hand on it.**
+  None reaches the cluster, which is why they are not luna MCP tools. `console_screenshot` and
+  `console_navigate` live on an in-process SDK server built per run, over one request/answer
+  channel (`Run.askPanel`): `console_navigate` takes a console path (`isConsolePath`: same
+  origin, never `/api`, checked on both ends), the panel `goto`s it and posts where it landed to
+  `/navigated`. For the screenshot, the runner emits a `screenshot` event, the panel that owns
+  the run renders `.app` in the browser with `modern-screenshot` (`$lib/screenshot.ts`, the panel
+  filtered out and cropped off), posts the JPEG to `/api/agent/conversations/<id>/screenshot`, and
+  the image goes back to the model as the tool's result; it is dropped from the replay buffer once
+  settled, and both run unasked everywhere but Manual. Outside Auto, the SDK's built-in `AskUserQuestion`
   (`AGENT_ASK_TOOL`) is the only built-in left in `tools`; it reaches nothing on the cluster.
   `canUseTool` turns the call into a waiting question in the panel (`AgentQuestion.svelte`), the
   owner's picks come back through the approve route as `answers` keyed by question text and ride
@@ -759,7 +776,7 @@ luna agent connect|disconnect     # paste the Claude token or API key (prompt or
 luna agent set [--model m] [--effort e] [--max-turns n] [--executable p] [--enable|--disable]
 luna modpack search <query> [--loader l]        # Modrinth modpacks luna can host
 luna modpack versions <slug>                      # a pack's versions, newest first
-luna modpack install <name> <slug> [--version v] [--memory m] [--daemon d] [--file x.mrpack]
+luna modpack install <name> <slug> [--version v] [--memory m] [--daemon d] [--file x.mrpack] [--test]
 luna modpack update <instance> [--version v] [--force]   # move a pack instance to another version
 luna version                      # build identity of the binary and of the daemon
 bun run src/cli/index.ts <cmd…>   # run the CLI from source (this dir)
