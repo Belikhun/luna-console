@@ -4,7 +4,11 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
-	import { api } from '$lib/api';
+	import { api, post } from '$lib/api';
+	import { uploadFile } from '$lib/upload';
+	import ButtonGroup from './ButtonGroup.svelte';
+	import Btn from './Btn.svelte';
+	import FileDrop from './FileDrop.svelte';
 	import Icon from './Icon.svelte';
 	import SearchInput from './SearchInput.svelte';
 	import Select from './Select.svelte';
@@ -13,8 +17,11 @@
 	/**
 	 * Pick a Modrinth modpack and one of its versions, for the create wizard.
 	 *
-	 * Search runs as the operator types, narrowed to packs on a loader luna can
-	 * host. Picking a pack lists its versions; ones on a loader luna cannot run
+	 * Two ways in. Search runs as the operator types, narrowed to packs on a
+	 * loader luna can host. An upload streams a .mrpack to the daemon's staging
+	 * area (the path a world zip takes, which a follower can pull from), and the
+	 * daemon reads its index back, so the page learns what it would install
+	 * before anything is submitted. Picking a pack lists its versions; ones on a loader luna cannot run
 	 * (quilt) are listed but unpickable, so the newest build is never silently
 	 * skipped. `onpick` hands the page the loader and Minecraft version of the
 	 * chosen build, which is what the addon-group check and the summary read.
@@ -61,6 +68,128 @@
 	let versions: Version[] = $state([]);
 	let versionsLoading = $state(false);
 	let versionId = $state('');
+
+	interface PackSummary {
+		name: string;
+		versionId: string;
+		summary?: string;
+		software: string;
+		mcVersion: string;
+		loaderVersion: string;
+		serverFiles: number;
+		clientFiles: number;
+		downloadBytes: number;
+		overrides: number;
+	}
+
+	let mode: 'search' | 'upload' = $state('search');
+	let file: File | null = $state(null);
+	let stage = $state('');
+	let uploadProgress: number | null = $state(null);
+	let uploadError = $state('');
+	let inspecting = $state(false);
+	let uploaded: PackSummary | null = $state(null);
+
+	/** The file whose upload is the current one; a re-pick mid-upload ignores the old one's answers */
+	let uploading: File | null = null;
+
+	async function discard(): Promise<void> {
+		if (stage) {
+			const token = stage;
+
+			stage = '';
+			await api(`/worlds/stage/${token}`, { method: 'DELETE' }).catch(() => undefined);
+		}
+	}
+
+	async function upload(next: File): Promise<void> {
+		await discard();
+
+		uploading = next;
+		uploaded = null;
+		uploadError = '';
+		uploadProgress = 0;
+		onpick(null);
+
+		try {
+			const started = await post('/modpacks/stage', { fileName: next.name, sizeBytes: next.size });
+			const token = String(started.stage.token);
+
+			stage = token;
+
+			await uploadFile(started.stage.uploadUrl, next, {
+				onprogress: (progress) => {
+					if (uploading === next) {
+						uploadProgress = progress.fraction;
+					}
+				}
+			});
+
+			if (uploading !== next) {
+				return;
+			}
+
+			uploadProgress = null;
+			inspecting = true;
+
+			const res = await api(`/modpacks/stage/${token}`);
+
+			if (uploading !== next) {
+				return;
+			}
+
+			uploaded = res.summary as PackSummary;
+			onpick({
+				stage: token,
+				title: uploaded.name,
+				versionNumber: uploaded.versionId,
+				loader: uploaded.software,
+				mcVersion: uploaded.mcVersion
+			});
+		} catch (err) {
+			if (uploading === next) {
+				uploadError = err instanceof Error ? err.message : String(err);
+				uploadProgress = null;
+				await discard();
+			}
+		} finally {
+			if (uploading === next) {
+				inspecting = false;
+			}
+		}
+	}
+
+	$effect(() => {
+		const next = file;
+
+		if (next && next !== uploading) {
+			void upload(next);
+		}
+	});
+
+	function setMode(next: 'search' | 'upload'): void {
+		if (next === mode) {
+			return;
+		}
+
+		mode = next;
+
+		if (next === 'search') {
+			uploading = null;
+			file = null;
+			uploaded = null;
+			uploadError = '';
+			uploadProgress = null;
+			void discard();
+			announce();
+
+			return;
+		}
+
+		onpick(uploaded && stage
+			? { stage, title: uploaded.name, versionNumber: uploaded.versionId, loader: uploaded.software, mcVersion: uploaded.mcVersion }
+			: null);
+	}
 
 	/** the query the newest request was issued for; older answers are dropped */
 	let inflight = '';
@@ -180,72 +309,113 @@
 </script>
 
 <div class="picker">
-	<SearchInput bind:value={query} placeholder={t('web.launch.modpack.searchPlaceholder')} width="100%" />
+	<ButtonGroup>
+		<Btn icon="magnifyingGlass" variant={mode === 'search' ? 'primary' : 'normal'} {disabled} onclick={() => setMode('search')}>
+			{t('web.launch.modpack.modeSearch')}
+		</Btn>
+		<Btn icon="upload" variant={mode === 'upload' ? 'primary' : 'normal'} {disabled} onclick={() => setMode('upload')}>
+			{t('web.launch.modpack.modeUpload')}
+		</Btn>
+	</ButtonGroup>
 
-	<div class="results">
-		{#if searchError}
-			<div class="state err">{searchError}</div>
-		{:else if !query.trim()}
-			<div class="state dim">{t('web.launch.modpack.searchHint')}</div>
-		{:else if searching && !hits.length}
-			<div class="state">
-				<Icon name="rotate" size="1rem" spin />
-				<span class="dim">{t('web.launch.modpack.searching')}</span>
-			</div>
-		{:else if !hits.length}
-			<div class="state dim">{t('web.launch.modpack.noMatches', { query: query.trim() })}</div>
-		{:else}
-			<div class="list" class:stale={searching}>
-				{#each hits as hit (hit.id)}
-					<button type="button" class="hit" class:sel={picked?.id === hit.id} {disabled} onclick={() => void choose(hit)}>
-						{#if hit.iconUrl}
-							<img class="art" src={hit.iconUrl} alt="" loading="lazy" />
-						{:else}
-							<span class="art blank"><Icon name="box" size="1rem" /></span>
-						{/if}
-						<span class="body">
-							<b class="title">{hit.title}</b>
-							<span class="desc dim">{hit.description}</span>
-						</span>
-						<span class="meta dim">
-							<span>{fmtDownloads(hit.downloads)} <Icon name="download" size="0.75rem" /></span>
-							{#if hit.mcVersions?.length}<span>{hit.mcVersions.at(-1)}</span>{/if}
-						</span>
-						{#if picked?.id === hit.id}
-							<span class="tick"><Icon name="circleCheck" size="1rem" style="solid" /></span>
-						{/if}
-					</button>
-				{/each}
-			</div>
-		{/if}
-	</div>
-
-	{#if picked}
-		<div class="field">
-			<span class="lbl">{t('web.launch.modpack.version')}</span>
-			<span class="hint">{t('web.launch.modpack.versionHint')}</span>
-			<Select
-				bind:value={versionId}
-				width="100%"
-				searchable
-				disabled={disabled || versionsLoading || !versions.length}
-				options={versionOptions}
-				onchange={() => announce()}
-			/>
-			{#if versionsLoading}
-				<span class="hint">{t('web.launch.modpack.loadingVersions')}</span>
-			{:else if !versions.some((entry) => entry.runnable)}
-				<span class="err">{t('web.launch.modpack.noRunnable')}</span>
-			{:else if chosen}
+	{#if mode === 'upload'}
+		<FileDrop
+			bind:file
+			accept=".mrpack"
+			hint={t('web.launch.modpack.dropHint')}
+			disabled={disabled || uploadProgress !== null || inspecting}
+			progress={uploadProgress}
+		/>
+		{#if uploadError}
+			<span class="err">{uploadError}</span>
+		{:else if uploadProgress !== null}
+			<span class="hint">{t('web.launch.modpack.uploading', { percent: Math.round(uploadProgress * 100) })}</span>
+		{:else if inspecting}
+			<span class="hint">{t('web.launch.modpack.reading')}</span>
+		{:else if uploaded}
+			<div class="summary">
+				<b>{uploaded.name} {uploaded.versionId}</b>
+				{#if uploaded.summary}<span class="dim">{uploaded.summary}</span>{/if}
 				<span class="hint">
-					{t('web.launch.modpack.runsOn', {
-						loader: loaderOf(chosen),
-						mc: chosen.mcVersions[0] ?? '',
-						size: (chosen.sizeBytes / 1024 / 1024).toFixed(1)
+					{t('web.launch.modpack.uploadSummary', {
+						loader: uploaded.software,
+						loaderVersion: uploaded.loaderVersion,
+						mc: uploaded.mcVersion,
+						files: uploaded.serverFiles,
+						client: uploaded.clientFiles,
+						size: (uploaded.downloadBytes / 1024 / 1024).toFixed(1)
 					})}
 				</span>
+			</div>
+		{/if}
+	{:else}
+		<SearchInput bind:value={query} placeholder={t('web.launch.modpack.searchPlaceholder')} width="100%" />
+
+		<div class="results">
+			{#if searchError}
+				<div class="state err">{searchError}</div>
+			{:else if !query.trim()}
+				<div class="state dim">{t('web.launch.modpack.searchHint')}</div>
+			{:else if searching && !hits.length}
+				<div class="state">
+					<Icon name="rotate" size="1rem" spin />
+					<span class="dim">{t('web.launch.modpack.searching')}</span>
+				</div>
+			{:else if !hits.length}
+				<div class="state dim">{t('web.launch.modpack.noMatches', { query: query.trim() })}</div>
+			{:else}
+				<div class="list" class:stale={searching}>
+					{#each hits as hit (hit.id)}
+						<button type="button" class="hit" class:sel={picked?.id === hit.id} {disabled} onclick={() => void choose(hit)}>
+							{#if hit.iconUrl}
+								<img class="art" src={hit.iconUrl} alt="" loading="lazy" />
+							{:else}
+								<span class="art blank"><Icon name="box" size="1rem" /></span>
+							{/if}
+							<span class="body">
+								<b class="title">{hit.title}</b>
+								<span class="desc dim">{hit.description}</span>
+							</span>
+							<span class="meta dim">
+								<span>{fmtDownloads(hit.downloads)} <Icon name="download" size="0.75rem" /></span>
+								{#if hit.mcVersions?.length}<span>{hit.mcVersions.at(-1)}</span>{/if}
+							</span>
+							{#if picked?.id === hit.id}
+								<span class="tick"><Icon name="circleCheck" size="1rem" style="solid" /></span>
+							{/if}
+						</button>
+					{/each}
+				</div>
 			{/if}
 		</div>
+
+		{#if picked}
+			<div class="field">
+				<span class="lbl">{t('web.launch.modpack.version')}</span>
+				<span class="hint">{t('web.launch.modpack.versionHint')}</span>
+				<Select
+					bind:value={versionId}
+					width="100%"
+					searchable
+					disabled={disabled || versionsLoading || !versions.length}
+					options={versionOptions}
+					onchange={() => announce()}
+				/>
+				{#if versionsLoading}
+					<span class="hint">{t('web.launch.modpack.loadingVersions')}</span>
+				{:else if !versions.some((entry) => entry.runnable)}
+					<span class="err">{t('web.launch.modpack.noRunnable')}</span>
+				{:else if chosen}
+					<span class="hint">
+						{t('web.launch.modpack.runsOn', {
+							loader: loaderOf(chosen),
+							mc: chosen.mcVersions[0] ?? '',
+							size: (chosen.sizeBytes / 1024 / 1024).toFixed(1)
+						})}
+					</span>
+				{/if}
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -350,6 +520,16 @@
 		align-items: flex-end;
 		gap: 0.125rem;
 		font-size: 0.75rem;
+	}
+
+	.summary {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 0.75rem 1rem;
+		border: 0.1rem solid var(--border-divider);
+		border-radius: var(--radius-input);
+		font-size: 0.875rem;
 	}
 
 	.tick {

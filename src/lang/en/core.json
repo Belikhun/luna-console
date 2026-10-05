@@ -778,6 +778,7 @@
 		"alreadyOn": "already on {version}; pass force to reinstall it",
 		"loaderChanged": "the new version runs on {to}, but the instance is {from}; that is a new instance, not an update",
 		"localOnPrimary": "a local .mrpack installs on the primary only; give a Modrinth slug to install on another machine",
+		"stageUnresolved": "an uploaded pack must be resolved by the daemon running the install",
 		"phaseFetch": "Fetch modpack",
 		"phaseServer": "Install server",
 		"phaseFiles": "Pack files",

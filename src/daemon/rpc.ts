@@ -771,10 +771,33 @@ async function installModpackRouted(
 		// caller's registry entry (and its save) are correct
 		Object.assign(cfg, outcome.cfg as ClusterConfig);
 
+		// the upload was the primary's; the follower worked from its own pulled copy
+		if (opts.mrpackStage) {
+			await stagingCore.discardStage(opts.mrpackStage).catch(() => undefined);
+		}
+
 		return outcome.result as modpackCore.ModpackInstallResult;
 	}
 
-	return await modpackCore.installModpack(cfg, name, opts);
+	if (!opts.mrpackStage) {
+		return await modpackCore.installModpack(cfg, name, opts);
+	}
+
+	// an uploaded pack: this daemon resolves the token, pulling the file from the
+	// primary first when it is a follower, and the staged copy goes once it is used
+	const { mrpackStage, ...rest } = opts;
+	const mrpackPath = await localStagePath(mrpackStage);
+
+	try {
+		return await modpackCore.installModpack(cfg, name, { ...rest, mrpackPath });
+	} finally {
+		await stagingCore.discardStage(mrpackStage).catch(() => undefined);
+	}
+}
+
+/** What an uploaded .mrpack would install, read off the staged file. */
+async function inspectStagedMrpack(token: string): Promise<modpackCore.MrpackSummary> {
+	return await modpackCore.inspectMrpack(await localStagePath(token));
 }
 
 // -- ports ---------------------------------------------------------------------
@@ -1396,6 +1419,7 @@ export const OPS: Record<string, OpSpec> = {
 	// -- modpacks ---------------------------------------------------------------
 	"modpack.search": { fn: modpackCore.searchModpacks },
 	"modpack.versions": { fn: modpackCore.modpackVersions },
+	"modpack.inspectStage": { fn: inspectStagedMrpack },
 	"modpack.install": {
 		fn: installModpackRouted,
 		cfg: 0,

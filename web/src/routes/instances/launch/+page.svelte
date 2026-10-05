@@ -459,8 +459,9 @@
 			start: () =>
 				post('/modpacks/install', {
 					name: target,
-					slug: chosen.slug,
-					versionId: chosen.versionId,
+					...(chosen.stage
+						? { mrpackStage: chosen.stage }
+						: { slug: chosen.slug, versionId: chosen.versionId }),
 					software: chosen.loader,
 					...sharedOptions()
 				}),

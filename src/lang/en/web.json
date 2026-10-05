@@ -1059,7 +1059,13 @@
 			"flashUnresolved": "The server mods need {ids}, which neither the pack nor Modrinth supplied; add them before starting.",
 			"flashFailed": "Could not install the modpack as {name}",
 			"startNow": "Start now",
-			"viewInstance": "View instance"
+			"viewInstance": "View instance",
+			"modeSearch": "Search Modrinth",
+			"modeUpload": "Upload .mrpack",
+			"dropHint": "Drop a .mrpack here, or click to browse",
+			"uploading": "Uploading… {percent}%",
+			"reading": "Reading the pack's index…",
+			"uploadSummary": "{loader} {loaderVersion} for Minecraft {mc} · {files} server file(s) to download ({size} MB) · {client} client-only file(s) left out"
 		},
 		"javaRuntime": "Java runtime",
 		"runtimeHint": "installed on the target machine at first start",

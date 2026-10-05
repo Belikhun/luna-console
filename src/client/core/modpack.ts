@@ -30,6 +30,7 @@ import { syncVelocityToml } from "./proxy";
 
 export type {
 	ModpackInstallOptions,
+	MrpackSummary,
 	ModpackInstallResult,
 	ModpackManifest,
 	ModpackSearchHit,
@@ -42,6 +43,8 @@ export { MODPACK_MANIFEST, MRPACK_HOSTS } from "../../core/modpack";
 
 export const searchModpacks = call("modpack.search") as typeof core.searchModpacks;
 export const modpackVersions = call("modpack.versions") as typeof core.modpackVersions;
+/** What an uploaded .mrpack would install, by staging token. */
+export const inspectStagedMrpack = call("modpack.inspectStage") as (token: string) => Promise<core.MrpackSummary>;
 export const installModpack = jobCall("modpack.install", {
 	cfg: 0,
 	reporter: { arg: 2, prop: "reporter" },

@@ -1059,7 +1059,13 @@
 			"flashUnresolved": "Các mod phía server cần {ids}, gói lẫn Modrinth đều không có; hãy thêm chúng trước khi khởi động.",
 			"flashFailed": "Không cài được modpack thành {name}",
 			"startNow": "Khởi động ngay",
-			"viewInstance": "Xem instance"
+			"viewInstance": "Xem instance",
+			"modeSearch": "Tìm trên Modrinth",
+			"modeUpload": "Tải lên .mrpack",
+			"dropHint": "Thả tệp .mrpack vào đây, hoặc bấm để chọn",
+			"uploading": "Đang tải lên… {percent}%",
+			"reading": "Đang đọc chỉ mục của gói…",
+			"uploadSummary": "{loader} {loaderVersion} cho Minecraft {mc} · {files} tệp phía server cần tải ({size} MB) · bỏ qua {client} tệp chỉ dành cho client"
 		},
 		"javaRuntime": "Java runtime",
 		"runtimeHint": "sẽ cài trên máy đích ở lần khởi động đầu",

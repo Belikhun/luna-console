@@ -192,6 +192,29 @@ export interface ModpackSource {
 	versionId?: string;
 	/** A local .mrpack, for a pack that is not on Modrinth */
 	mrpackPath?: string;
+	/**
+	 * A .mrpack uploaded to the staging area, by token. The daemon that runs
+	 * the install turns it into `mrpackPath` (a follower pulls its own copy
+	 * first), so core itself only ever reads a path.
+	 */
+	mrpackStage?: string;
+}
+
+/** What a .mrpack says it will install, read without installing anything. */
+export interface MrpackSummary {
+	name: string;
+	versionId: string;
+	summary?: string;
+	software: Software;
+	mcVersion: string;
+	loaderVersion: string;
+	/** Index files a server gets (required and optional) */
+	serverFiles: number;
+	/** Index files marked unsupported on the server */
+	clientFiles: number;
+	/** Bytes the server-side files add up to, as the index states them */
+	downloadBytes: number;
+	overrides: number;
 }
 
 /**
@@ -314,6 +337,32 @@ function summarize(version: AddonVersion): ModpackVersion {
 		fileName: file.filename,
 		sizeBytes: file.size,
 		runnable: runnable(version),
+	};
+}
+
+/**
+ * Read a .mrpack's index and say what it would install: the loader and versions
+ * it calls for and how much it would download. Refuses exactly what an install
+ * would refuse (a bad index, a loader luna cannot host), so a pack that passes
+ * here fails later only on its downloads.
+ */
+export async function inspectMrpack(path: string): Promise<MrpackSummary> {
+	const { index, entries } = await readIndex(path);
+	const target = targetOf(index);
+	const files = index.files ?? [];
+	const server = files.filter((file) => file.env?.server !== "unsupported");
+
+	return {
+		name: index.name ?? basename(path),
+		versionId: index.versionId ?? "unknown",
+		summary: index.summary,
+		software: target.software,
+		mcVersion: target.mcVersion,
+		loaderVersion: target.loaderVersion,
+		serverFiles: server.length,
+		clientFiles: files.length - server.length,
+		downloadBytes: server.reduce((total, file) => total + (file.fileSize ?? 0), 0),
+		overrides: entries.filter((entry) => OVERRIDE_DIRS.some((prefix) => entry.name.startsWith(prefix)) && !entry.name.endsWith("/")).length,
 	};
 }
 
@@ -1004,6 +1053,10 @@ async function writeManifest(dir: string, manifest: ModpackManifest): Promise<vo
 
 /** Find the pack, fetch it when it is remote, read its index and decide what it needs. */
 async function resolvePack(source: ModpackSource, name: string, step: ProgressReporter): Promise<ResolvedPack> {
+	if (source.mrpackStage) {
+		throw new Error(t("core.modpack.stageUnresolved"));
+	}
+
 	if (!source.mrpackPath === !source.slug) {
 		throw new Error(t("core.modpack.oneSource"));
 	}

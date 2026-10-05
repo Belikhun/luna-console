@@ -15,7 +15,7 @@ import { errorMessage, jsonBody } from '$lib/server/http';
 const PACK_SOFTWARE = new Set(['fabric', 'forge', 'neoforge']);
 
 /**
- * POST { name, slug, versionId?, software?, memory?, port?, profile?, runtime?,
+ * POST { name, slug | mrpackStage, versionId?, software?, memory?, port?, profile?, runtime?,
  * daemon?, register?, skipOptional?, settings?, javaArgs?, javaAgents?,
  * autoRestart?, restartDelay?, addonGroups?, pluginOverrides? } → provision an
  * instance from a Modrinth modpack, as a job: the pack alone is hundreds of
@@ -32,13 +32,14 @@ export async function POST({ request }) {
 	const body = await jsonBody(request);
 	const name = String(body.name ?? '').trim();
 	const slug = String(body.slug ?? '').trim();
+	const mrpackStage = String(body.mrpackStage ?? '').trim();
 
 	if (!/^[a-z0-9_-]+$/.test(name)) {
 		throw error(400, 'name must be lowercase letters, digits, - or _');
 	}
 
-	if (!slug) {
-		throw error(400, 'slug required');
+	if (!slug === !mrpackStage) {
+		throw error(400, 'give a Modrinth slug or an uploaded mrpackStage, not both');
 	}
 
 	const settings: Record<string, string> = body.settings && typeof body.settings === 'object' ? body.settings : {};
@@ -100,7 +101,7 @@ export async function POST({ request }) {
 	const targetDaemon = typeof body.daemon === 'string' && body.daemon ? body.daemon : null;
 	const label = PACK_SOFTWARE.has(String(body.software)) ? String(body.software) : 'fabric';
 
-	const job = startJob('modpack-install', name, `Install modpack ${slug} as ${name}`, async (reporter) => {
+	const job = startJob('modpack-install', name, `Install modpack ${slug || 'upload'} as ${name}`, async (reporter) => {
 		const fresh = await loadCluster();
 		const lock = await loadLock();
 
@@ -114,8 +115,8 @@ export async function POST({ request }) {
 
 		try {
 			const result = await installModpack(fresh, name, {
-				slug,
-				versionId: body.versionId ? String(body.versionId) : undefined,
+				...(slug ? { slug } : { mrpackStage }),
+				versionId: slug && body.versionId ? String(body.versionId) : undefined,
 				memory: body.memory ? String(body.memory) : undefined,
 				port: body.port ? Number(body.port) : undefined,
 				profile: body.profile ? String(body.profile) : undefined,

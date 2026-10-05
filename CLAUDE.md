@@ -304,7 +304,9 @@ export interface InstanceConfig {}
   additions (the forwarding mod, group jars, packs, ports, velocity) still arrive through
   `completeProvision` in the client bridge, the sequence a plain create runs, shared by the CLI,
   the route and the MCP tool; it is composed client-side because each step is routed to the
-  owning daemon by its own op. A local `.mrpack` installs on the primary only.
+  owning daemon by its own op. An uploaded `.mrpack` rides the world-zip staging (token in, the
+  installing daemon resolves it, a follower pulls its own copy, the stage is discarded once used);
+  a `--file` path on the CLI is the primary's disk and installs there only.
 - **Environment values layer one-directionally**: builtin < global < machine < instance
   (`core/environment.ts`). A machine's key is read off the *instance's* `daemon` field
   (`machineKeyOf`, primary = `""`), never off the daemon running the call, so the primary resolves a
