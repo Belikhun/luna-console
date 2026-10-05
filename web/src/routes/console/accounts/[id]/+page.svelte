@@ -20,10 +20,11 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
-	import FormGrid from '$lib/components/FormGrid.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import AccountAvatar from '$lib/components/AccountAvatar.svelte';
+	import PlayerPicker from '$lib/components/PlayerPicker.svelte';
+	import Checkbox from '$lib/components/Checkbox.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
@@ -93,6 +94,10 @@
 	// minecraft link form
 	let linkUuid = $state('');
 	let linkPlayer = $state('');
+	let linkAsAvatar = $state(false);
+
+	/** the core refuses anything else, so a typed name has to be picked from the directory first */
+	const linkUuidValid = $derived(/^[0-9a-fA-F-]{32,36}$/.test(linkUuid.trim()));
 
 	// picture
 	let avatarBusy = $state(false);
@@ -129,9 +134,7 @@
 			icon: 'cube',
 			action: () => saveAvatar({ source: 'minecraft', identity: identity.id })
 		})),
-		...(minecraftIdentities.length === 0
-			? [{ label: t('web.accountDetail.avatarUseSkinNone'), icon: 'cube', disabled: true, hint: t('web.accountDetail.avatarUseSkinHint') }]
-			: []),
+		{ label: t('web.accountDetail.avatarLinkPlayer'), icon: 'link', action: () => openLink(true) },
 		{ label: t('web.accountDetail.avatarUseInitials'), icon: 'font', action: () => saveAvatar({ source: 'initials' }) },
 		{ separator: true },
 		{
@@ -140,7 +143,14 @@
 			disabled: !detail?.account.avatarChosen,
 			hint: t('web.accountDetail.avatarAutoHint'),
 			action: () => saveAvatar({ source: 'auto' })
-		}
+		},
+		...(minecraftIdentities.length > 0 ? [{ separator: true }] : []),
+		...minecraftIdentities.map((identity) => ({
+			label: t('web.accountDetail.unlinkNamed', { player: identity.playerName ?? identity.label }),
+			icon: 'linkHorizontalSlash',
+			color: 'danger' as const,
+			action: () => removeIdentity(identity)
+		}))
 	]);
 
 	async function saveAvatar(body: Record<string, unknown>): Promise<void> {
@@ -268,9 +278,11 @@
 		keyOpen = true;
 	}
 
-	function openLink(): void {
+	/** `asAvatar` when opened from the picture panel: the link is wanted for its face */
+	function openLink(asAvatar = false): void {
 		linkUuid = '';
 		linkPlayer = '';
+		linkAsAvatar = asAvatar;
 		linkOpen = true;
 	}
 
@@ -340,14 +352,19 @@
 		busy = true;
 
 		try {
-			await post(`/accounts/${detail!.account.id}/identities`, {
+			const result = await post(`/accounts/${detail!.account.id}/identities`, {
 				kind: 'minecraft',
-				uuid: linkUuid,
+				uuid: linkUuid.trim(),
 				playerName: linkPlayer
 			});
 
 			Notify.success(t('web.accountDetail.linked', { player: linkPlayer || linkUuid }));
 			linkOpen = false;
+
+			if (linkAsAvatar && result.identity?.id) {
+				await saveAvatar({ source: 'minecraft', identity: result.identity.id });
+			}
+
 			await refresh();
 		} catch (err) {
 			Notify.error(t('web.accountDetail.linkFailed'), { detail: (err as Error).message });
@@ -455,7 +472,7 @@
 						action: () => goto(`/console/accounts/${detail!.account.id}/edit`)
 					},
 					{ label: t('web.accountDetail.setPassword'), icon: 'key', action: openPassword },
-					{ label: t('web.accountDetail.linkPlayer'), icon: 'cube', action: openLink },
+					{ label: t('web.accountDetail.linkPlayer'), icon: 'cube', action: () => openLink() },
 					{ separator: true },
 					{
 						label: detail.account.enabled
@@ -579,8 +596,10 @@
 			},
 			{ separator: true },
 			{
-				label: t('web.accountDetail.removeIdentity'),
-				icon: 'trash',
+				label: row.kind === 'minecraft'
+					? t('web.accountDetail.unlinkPlayer')
+					: t('web.accountDetail.removeIdentity'),
+				icon: row.kind === 'minecraft' ? 'linkHorizontalSlash' : 'trash',
 				color: 'danger',
 				disabled: row.kind === 'password',
 				hint: row.kind === 'password' ? t('web.accountDetail.replacePasswordInstead') : undefined,
@@ -899,20 +918,29 @@
 
 	<Modal title={t('web.accountDetail.linkTitle')} bind:open={linkOpen}>
 		<p class="modalnote dim">{t('web.accountDetail.linkHint')}</p>
-		<FormGrid>
-			<label class="field">
-				<span class="lbl">{t('web.accountDetail.playerUuid')}</span>
-				<input class="input mono" type="text" spellcheck="false" bind:value={linkUuid} />
-			</label>
-			<label class="field">
-				<span class="lbl">{t('web.accountDetail.playerName')}</span>
-				<input class="input" type="text" spellcheck="false" bind:value={linkPlayer} />
-			</label>
-		</FormGrid>
+		<div class="field">
+			<span class="lbl">{t('web.accountDetail.linkPlayerField')}</span>
+			<span class="hint">{t('web.accountDetail.linkPlayerHint')}</span>
+			{#key linkOpen}
+				<PlayerPicker
+					bind:value={linkUuid}
+					placeholder={t('web.accountDetail.linkPlaceholder')}
+					onpick={(player) => (linkPlayer = player?.username ?? '')}
+				/>
+			{/key}
+		</div>
+		<label class="checkrow">
+			<Checkbox
+				label={t('web.accountDetail.linkAsAvatar')}
+				checked={linkAsAvatar}
+				onchange={(checked) => (linkAsAvatar = checked)}
+			/>
+			<span>{t('web.accountDetail.linkAsAvatar')}</span>
+		</label>
 
 		{#snippet footer()}
 			<Btn onclick={() => (linkOpen = false)}>{t('web.common.cancel')}</Btn>
-			<Btn variant="primary" disabled={!linkUuid} loading={busy} onclick={linkMinecraft}>
+			<Btn variant="primary" disabled={!linkUuidValid} loading={busy} onclick={linkMinecraft}>
 				{t('web.accountDetail.link')}
 			</Btn>
 		{/snippet}
@@ -923,7 +951,9 @@
 		title={t('web.accountDetail.removeIdentityTitle', { label: identityToRemove?.label ?? '' })}
 		lead={t('web.accountDetail.removeIdentityLead', { label: identityToRemove?.label ?? '' })}
 		notes={[t('web.accountDetail.removeIdentityNote')]}
-		confirmLabel={t('web.accountDetail.removeIdentity')}
+		confirmLabel={identityToRemove?.kind === 'minecraft'
+			? t('web.accountDetail.unlinkPlayer')
+			: t('web.accountDetail.removeIdentity')}
 		onconfirm={() => void removeIdentityConfirmed()}
 	/>
 
@@ -955,6 +985,15 @@
 	.modalnote {
 		margin: 0 0 1rem;
 		font-size: 0.8125rem;
+	}
+
+	.checkrow {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+		margin-top: 1rem;
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
 
 	.kind {

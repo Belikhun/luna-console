@@ -13,16 +13,12 @@ export interface AvatarSubject {
 		| null;
 }
 
-/** The image to show for an account, or null when it draws initials. */
-export function avatarUrl(account: AvatarSubject, px: number): string | null {
+/** The uploaded image to show for an account, or null; a skin face is drawn on a canvas instead. */
+export function avatarUrl(account: AvatarSubject): string | null {
 	const avatar = account.avatar;
 
 	if (avatar?.source === 'upload') {
 		return `/api/accounts/${encodeURIComponent(account.id)}/avatar?v=${avatar.version}`;
-	}
-
-	if (avatar?.source === 'minecraft') {
-		return `/api/avatar/face/${px}/${avatar.uuid}.png`;
 	}
 
 	return null;

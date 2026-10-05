@@ -7,12 +7,15 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, patch } from '$lib/api';
+	import { api, del, patch, post } from '$lib/api';
 	import Wizard from '$lib/components/Wizard.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import FormGrid from '$lib/components/FormGrid.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import Flash from '$lib/components/Flash.svelte';
+	import Btn from '$lib/components/Btn.svelte';
+	import PlayerPicker from '$lib/components/PlayerPicker.svelte';
+	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	// $shared, never $core: the bridge reaches the daemon over a unix socket and
 	// has no business in a browser bundle
@@ -29,7 +32,16 @@
 	 * Credentials are deliberately absent. A password and an access key are their
 	 * own objects with their own verbs on the detail screen, and folding them into
 	 * a details form is what makes people change two things when they meant one.
+	 * Linked Minecraft players are here because they are not credentials: a link
+	 * is a record of who the operator is, and the picture follows it.
 	 */
+
+	/** A linked player as the form holds it; `id` is absent until the save creates it. */
+	interface PlayerLink {
+		id?: string;
+		uuid: string;
+		playerName: string;
+	}
 
 	interface AccountFields {
 		id: string;
@@ -55,6 +67,17 @@
 	let email = $state('');
 	let description = $state('');
 	let mustChange = $state(false);
+	let links = $state<PlayerLink[]>([]);
+
+	// the player being added; the picker writes a UUID here once a row is picked
+	let addUuid = $state('');
+	let addName = $state('');
+	let pickerKey = $state(0);
+
+	const addValid = $derived(
+		/^[0-9a-fA-F-]{32,36}$/.test(addUuid.trim())
+			&& !links.some((link) => link.uuid.toLowerCase() === addUuid.trim().toLowerCase())
+	);
 
 	// What was loaded, for the diff the summary bar reports. These are $state
 	// because the recap and the rename notice read them: a plain `let` assigned
@@ -64,6 +87,7 @@
 	let initialEmail = $state('');
 	let initialDescription = $state('');
 	let initialMustChange = $state(false);
+	let initialLinks = $state<PlayerLink[]>([]);
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -77,12 +101,20 @@
 			email = data.account.email;
 			description = data.account.description;
 			mustChange = data.account.mustChangePassword;
+			links = (data.account.identities ?? [])
+				.filter((identity: { kind: string; uuid: string | null }) => identity.kind === 'minecraft' && identity.uuid)
+				.map((identity: { id: string; uuid: string; playerName: string | null; label: string }) => ({
+					id: identity.id,
+					uuid: identity.uuid,
+					playerName: identity.playerName ?? identity.label
+				}));
 
 			initialUsername = username;
 			initialDisplayName = displayName;
 			initialEmail = email;
 			initialDescription = description;
 			initialMustChange = mustChange;
+			initialLinks = [...links];
 		} catch (err) {
 			missing = (err as Error).message;
 		}
@@ -96,6 +128,28 @@
 
 	const nameError = $derived(
 		username && !USERNAME_PATTERN.test(username) ? t('web.accountNew.nameRule') : ''
+	);
+
+	function addLink(): void {
+		links = [...links, { uuid: addUuid.trim(), playerName: addName || addUuid.trim() }];
+		addUuid = '';
+		addName = '';
+		pickerKey++;
+	}
+
+	function dropLink(link: PlayerLink): void {
+		links = links.filter((other) => other !== link);
+	}
+
+	const addedLinks = $derived(links.filter((link) => !link.id));
+	const removedLinks = $derived(initialLinks.filter((link) => !links.some((other) => other.id === link.id)));
+
+	const detailsChanged = $derived(
+		username !== initialUsername
+			|| displayName !== initialDisplayName
+			|| email !== initialEmail
+			|| description !== initialDescription
+			|| mustChange !== initialMustChange
 	);
 
 	/** What the save will actually do, named field by field for the recap line. */
@@ -124,6 +178,14 @@
 			);
 		}
 
+		for (const link of addedLinks) {
+			out.push(t('web.accountEdit.changeLink', { player: link.playerName }));
+		}
+
+		for (const link of removedLinks) {
+			out.push(t('web.accountEdit.changeUnlink', { player: link.playerName }));
+		}
+
 		return out;
 	});
 
@@ -133,13 +195,28 @@
 		saving = true;
 
 		try {
-			await patch(`/accounts/${account!.id}`, {
-				username,
-				displayName,
-				email,
-				description,
-				mustChangePassword: mustChange
-			});
+			if (detailsChanged) {
+				await patch(`/accounts/${account!.id}`, {
+					username,
+					displayName,
+					email,
+					description,
+					mustChangePassword: mustChange
+				});
+			}
+
+			// unlink first, so a player moved between accounts is free again before it is linked
+			for (const link of removedLinks) {
+				await del(`/accounts/${account!.id}/identities?identity=${encodeURIComponent(link.id!)}`);
+			}
+
+			for (const link of addedLinks) {
+				await post(`/accounts/${account!.id}/identities`, {
+					kind: 'minecraft',
+					uuid: link.uuid,
+					playerName: link.playerName
+				});
+			}
 
 			Notify.success(t('web.accountDetail.saved', { name: username }));
 
@@ -242,6 +319,50 @@
 
 		<div class="gap"></div>
 
+		<Panel title={t('web.accountEdit.playersPanel')} description={t('web.accountEdit.playersHint')}>
+			{#if links.length > 0}
+				<ul class="links">
+					{#each links as link (link.id ?? link.uuid)}
+						<li class="link">
+							<PlayerSkin player={link.uuid} view="face" px={3} />
+							<span class="who">
+								<b>{link.playerName}</b>
+								<span class="mono dim">{link.uuid}</span>
+							</span>
+							{#if !link.id}
+								<span class="dim new">{t('web.accountEdit.linkPending')}</span>
+							{/if}
+							<Btn icon="linkHorizontalSlash" disabled={loading} onclick={() => dropLink(link)}>
+								{t('web.accountDetail.unlinkPlayer')}
+							</Btn>
+						</li>
+					{/each}
+				</ul>
+			{:else if !loading}
+				<p class="dim note">{t('web.accountEdit.noPlayers')}</p>
+			{/if}
+
+			<div class="field adder">
+				<span class="lbl">{t('web.accountEdit.addPlayer')}</span>
+				<span class="hint">{t('web.accountDetail.linkPlayerHint')}</span>
+				{#key pickerKey}
+					<PlayerPicker
+						bind:value={addUuid}
+						placeholder={t('web.accountDetail.linkPlaceholder')}
+						autofocus={false}
+						onpick={(player) => (addName = player?.username ?? '')}
+					/>
+				{/key}
+				<div class="addrow">
+					<Btn icon="link" disabled={!addValid || loading} onclick={addLink}>
+						{t('web.accountEdit.addPlayerButton')}
+					</Btn>
+				</div>
+			</div>
+		</Panel>
+
+		<div class="gap"></div>
+
 		<Panel title={t('web.accountEdit.accessPanel')} description={t('web.accountEdit.accessHint')}>
 			<label class="check">
 				<Checkbox
@@ -281,5 +402,50 @@
 	.note {
 		margin: 0;
 		font-size: 0.875rem;
+	}
+
+	.links {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin: 0 0 1rem;
+		padding: 0;
+		list-style: none;
+	}
+
+	.link {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		border: 0.1rem solid var(--border-divider);
+		border-radius: var(--radius-input);
+	}
+
+	.who {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		min-width: 0;
+		font-size: 0.875rem;
+
+		.mono {
+			@include ellipsis;
+			font-size: 0.75rem;
+		}
+	}
+
+	.new {
+		font-size: 0.75rem;
+	}
+
+	.adder {
+		margin-top: 1rem;
+	}
+
+	.addrow {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: 0.5rem;
 	}
 </style>

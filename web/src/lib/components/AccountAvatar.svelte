@@ -4,20 +4,23 @@
 
 <script lang="ts">
 	import { avatarUrl, initialsOf, type AvatarSubject } from './accountavatar';
+	import PlayerSkin from './PlayerSkin.svelte';
 
 	/**
 	 * A console account's picture: the uploaded image, the face of its linked
-	 * Minecraft skin, or its initials on a tinted disc. Always round, always the
-	 * given size, so a row of them lines up whatever each one is.
+	 * Minecraft skin, or its initials on a tinted disc. Always the given size, so a
+	 * row of them lines up whatever each one is. Photos and initials are round; a
+	 * skin face is drawn by `PlayerSkin`, exactly as the player screens draw it,
+	 * and stays square, since a circle cuts the corners off its pixel art.
 	 */
 	let { account, size = '1.5rem' }: { account: AvatarSubject; size?: string } = $props();
 
-	/** px asked of the renderer; twice a typical 1.5rem so it stays sharp on high-density screens */
-	const RENDER_PX = 64;
+	/** canvas pixels per skin texel; the canvas is then scaled to the avatar's size */
+	const SKIN_PX = 8;
 
 	let failed = $state(false);
 
-	const url = $derived(avatarUrl(account, RENDER_PX));
+	const url = $derived(avatarUrl(account));
 
 	// a different picture deserves a fresh attempt, even after the last one failed
 	$effect(() => {
@@ -26,10 +29,13 @@
 	});
 </script>
 
-{#if url && !failed}
+{#if account.avatar?.source === 'minecraft'}
+	<span class="avatar skin" style:--size={size}>
+		<PlayerSkin player={account.avatar.uuid} view="face" px={SKIN_PX} />
+	</span>
+{:else if url && !failed}
 	<img
 		class="avatar"
-		class:pixel={account.avatar?.source === 'minecraft'}
 		src={url}
 		alt=""
 		style:--size={size}
@@ -49,9 +55,16 @@
 		object-fit: cover;
 		flex: none;
 
-		// a skin face is pixel art and stays crisp scaled; a photo is smoothed
-		&.pixel {
-			image-rendering: pixelated;
+		&.skin {
+			border-radius: 0;
+
+			// PlayerSkin sizes its canvas in device pixels; the avatar decides the size shown
+			:global(canvas),
+			:global(.fallback) {
+				width: 100% !important;
+				height: 100% !important;
+				border-radius: 0;
+			}
 		}
 	}
 

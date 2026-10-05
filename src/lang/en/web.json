@@ -3188,8 +3188,9 @@
 		"linkPlayer": "Link a Minecraft profile",
 		"linkTitle": "Link a Minecraft profile",
 		"linkHint": "Records which player this operator is. It carries no credential; the proxy already authenticated that player.",
-		"playerUuid": "Player UUID",
-		"playerName": "Player name",
+		"linkPlaceholder": "Name or UUID",
+		"linkPlayerField": "Player",
+		"linkPlayerHint": "Search the players the network has seen, or paste a UUID.",
 		"link": "Link profile",
 		"linked": "{player} linked",
 		"linkFailed": "Could not link the profile",
@@ -3247,13 +3248,15 @@
 		"avatarInitials": "Initials",
 		"avatarAutomatic": "automatic",
 		"avatarUseSkin": "Use the skin of {player}",
-		"avatarUseSkinNone": "Use a Minecraft skin",
-		"avatarUseSkinHint": "Link a Minecraft profile on the Identities tab first",
+		"avatarLinkPlayer": "Link a Minecraft player…",
+		"linkAsAvatar": "Use this player's face as the picture",
 		"avatarUseInitials": "Use initials",
 		"avatarAuto": "Back to automatic",
 		"avatarAutoHint": "The linked Minecraft profile's skin if there is one, otherwise initials",
 		"avatarSaved": "Picture updated",
-		"avatarFailed": "Could not update the picture"
+		"avatarFailed": "Could not update the picture",
+		"unlinkPlayer": "Unlink",
+		"unlinkNamed": "Unlink {player}"
 	},
 	"accountEdit": {
 		"accessHint": "What the account is asked for the next time it signs in.",
@@ -3277,7 +3280,15 @@
 		"submit": "Save changes",
 		"title": "Edit account",
 		"titleNamed": "Edit {name}",
-		"usernameHint": "What they sign in with; letters, digits, dot, dash and underscore."
+		"usernameHint": "What they sign in with; letters, digits, dot, dash and underscore.",
+		"changeLink": "link {player}",
+		"changeUnlink": "unlink {player}",
+		"playersPanel": "Minecraft players",
+		"playersHint": "Which players this operator is. The first linked player's face is the account's picture unless another one was chosen.",
+		"linkPending": "linked on save",
+		"noPlayers": "No Minecraft player is linked.",
+		"addPlayer": "Link a player",
+		"addPlayerButton": "Add player"
 	},
 	"consoleLogs": {
 		"pageDescription": "What luna itself has been doing on this machine: the daemon, the console's own routes, the CLI and the sign-in path.",

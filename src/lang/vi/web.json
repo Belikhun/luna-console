@@ -3188,8 +3188,9 @@
 		"linkPlayer": "Liên kết hồ sơ Minecraft",
 		"linkTitle": "Liên kết hồ sơ Minecraft",
 		"linkHint": "Ghi lại người chơi tương ứng với người quản trị này. Nó không mang thông tin đăng nhập; proxy đã xác thực người chơi đó.",
-		"playerUuid": "UUID người chơi",
-		"playerName": "Tên người chơi",
+		"linkPlaceholder": "Tên hoặc UUID",
+		"linkPlayerField": "Người chơi",
+		"linkPlayerHint": "Tìm trong những người chơi mạng đã ghi nhận, hoặc dán UUID.",
 		"link": "Liên kết hồ sơ",
 		"linked": "Đã liên kết {player}",
 		"linkFailed": "Không liên kết được hồ sơ",
@@ -3247,13 +3248,15 @@
 		"avatarInitials": "Chữ cái đầu",
 		"avatarAutomatic": "tự động",
 		"avatarUseSkin": "Dùng skin của {player}",
-		"avatarUseSkinNone": "Dùng skin Minecraft",
-		"avatarUseSkinHint": "Hãy liên kết hồ sơ Minecraft ở thẻ Danh tính trước",
+		"avatarLinkPlayer": "Liên kết người chơi Minecraft…",
+		"linkAsAvatar": "Dùng mặt của người chơi này làm ảnh",
 		"avatarUseInitials": "Dùng chữ cái đầu",
 		"avatarAuto": "Trở về tự động",
 		"avatarAutoHint": "Skin của hồ sơ Minecraft đã liên kết nếu có, nếu không thì chữ cái đầu",
 		"avatarSaved": "Đã cập nhật ảnh đại diện",
-		"avatarFailed": "Không cập nhật được ảnh đại diện"
+		"avatarFailed": "Không cập nhật được ảnh đại diện",
+		"unlinkPlayer": "Huỷ liên kết",
+		"unlinkNamed": "Huỷ liên kết {player}"
 	},
 	"accountEdit": {
 		"accessHint": "Những gì tài khoản bị yêu cầu trong lần đăng nhập kế tiếp.",
@@ -3277,7 +3280,15 @@
 		"submit": "Lưu thay đổi",
 		"title": "Sửa tài khoản",
 		"titleNamed": "Sửa {name}",
-		"usernameHint": "Tên dùng để đăng nhập; chữ, số, dấu chấm, gạch ngang và gạch dưới."
+		"usernameHint": "Tên dùng để đăng nhập; chữ, số, dấu chấm, gạch ngang và gạch dưới.",
+		"changeLink": "liên kết {player}",
+		"changeUnlink": "huỷ liên kết {player}",
+		"playersPanel": "Người chơi Minecraft",
+		"playersHint": "Người quản trị này là ai trong game. Mặt của người chơi liên kết đầu tiên là ảnh của tài khoản, trừ khi đã chọn ảnh khác.",
+		"linkPending": "liên kết khi lưu",
+		"noPlayers": "Chưa liên kết người chơi Minecraft nào.",
+		"addPlayer": "Liên kết người chơi",
+		"addPlayerButton": "Thêm người chơi"
 	},
 	"consoleLogs": {
 		"pageDescription": "Những gì luna đã làm trên máy này: daemon, các route của console, CLI và luồng đăng nhập.",

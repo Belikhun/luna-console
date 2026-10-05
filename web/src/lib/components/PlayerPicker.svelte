@@ -31,6 +31,7 @@
 		value = $bindable(''),
 		placeholder = t('web.playerPicker.placeholder'),
 		pickValue = 'uuid',
+		autofocus = true,
 		onpick
 	}: {
 		value?: string;
@@ -38,6 +39,8 @@
 		/** which field of a picked player becomes `value`; consumers whose
 		 *  backend wants a name (vanilla commands) ask for the username */
 		pickValue?: 'uuid' | 'username';
+		/** take focus on mount, which suits a dialog; a field partway down a form opts out */
+		autofocus?: boolean;
 		/** the full picked player, null when the pick is cleared; for callers
 		 *  that need both the name and the exact profile id */
 		onpick?: (player: { uuid: string; username: string } | null) => void;
@@ -123,7 +126,7 @@
 </script>
 
 <div class="picker">
-	<SearchInput bind:value={query} {placeholder} width="100%" focus />
+	<SearchInput bind:value={query} {placeholder} width="100%" focus={autofocus} />
 
 	<div class="results">
 		{#if unavailable}
