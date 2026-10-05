@@ -734,6 +734,52 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		return result.data;
 	},
 
+	// -- players ---------------------------------------------------------------
+	async player_transfer(args, ctx) {
+		const player = str(args, 'player').trim();
+		const server = str(args, 'server').trim();
+		const cfg = await loadCluster();
+
+		if (server === 'proxy' || !cfg.instances[server]) {
+			throw new ToolError(`"${server}" is not a backend server; call cluster_status for the names`);
+		}
+
+		// A program acting for one Minecraft player (the chat bot) may only move that
+		// player: anyone in game can talk to it, and "send nene to manhunt" is not
+		// theirs to ask. The claim is the client's, so this narrows, never widens.
+		const requester = ctx.onBehalfOf;
+		const ownUuid = typeof requester?.minecraftPlayer === 'string' ? requester.minecraftPlayer.toLowerCase() : null;
+		const ownName = typeof requester?.minecraftName === 'string' ? requester.minecraftName.toLowerCase() : null;
+
+		if ((ownUuid || ownName) && player.toLowerCase() !== ownUuid && player.toLowerCase() !== ownName) {
+			throw new ToolError(`this request comes from ${requester?.minecraftName ?? 'a Minecraft player'}, who can only move themselves`);
+		}
+
+		const result = await luna.transfer(player, server);
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.error ?? 'the proxy did not answer');
+		}
+
+		if (!result.data.successful) {
+			throw new ToolError(`${result.data.username} was not moved to ${server}: ${result.data.reason || result.data.status}`);
+		}
+
+		pushEvent(server, 'action', `${result.data.username} sent to ${server} by ${ctx.actor}`);
+
+		return result.data;
+	},
+
+	async player_message(args) {
+		const result = await luna.message(str(args, 'player').trim(), str(args, 'message'));
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.error ?? 'the proxy did not answer');
+		}
+
+		return { sent: true, player: result.data.username };
+	},
+
 	// -- config ----------------------------------------------------------------
 	async env_list(args, ctx) {
 		const store = await loadEnv();

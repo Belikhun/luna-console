@@ -8,13 +8,15 @@
  * importing each other.
  */
 
-import type { McpPrincipal } from '$core/mcp';
+import type { McpOnBehalfOf, McpPrincipal } from '$core/mcp';
 
 /** What an adapter is handed besides its arguments. */
 export interface ToolContext {
 	principal: McpPrincipal;
 	/** `mcp:<token name>`, the actor every change made over MCP is recorded as */
 	actor: string;
+	/** Who the client says it acts for; a claim, used only to narrow what a call may do */
+	onBehalfOf?: McpOnBehalfOf;
 }
 
 export type ToolArgs = Record<string, unknown>;

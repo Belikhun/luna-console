@@ -4270,6 +4270,7 @@
 		"group": {
 			"observe": "Observe",
 			"control": "Control",
+			"players": "Players",
 			"config": "Configuration",
 			"knowledge": "Read knowledge",
 			"knowledge-write": "Write memories",
@@ -4287,6 +4288,7 @@
 		"groupHint": {
 			"observe": "status, logs, players, machines, events; reads only",
 			"control": "start, stop, restart, console commands, broadcasts",
+			"players": "move a player to another server, message one player privately",
 			"config": "environment variables and server.properties; secrets stay masked and read-only",
 			"knowledge": "search memories, read skills and context",
 			"knowledge-write": "save, correct and forget memories scoped to this token",

@@ -422,6 +422,10 @@ export interface InstanceConfig {}
   The proxy and external servers are never deletable. `luna_shell` refuses `instance delete` and
   `instance config … test`, and `shell_bash` refuses the obvious `luna instance delete`, so neither
   walks around the check. Operators delete anything from the console or the CLI as before.
+- **The `players` group acts on one player at a time.** `player_transfer` moves an online player (what
+  `/server` does) and `player_message` sends one a private line, both through LunaCore's admin API. A
+  call claiming to act for a Minecraft player (`onBehalfOf.minecraftPlayer`/`minecraftName`, which the
+  chat bot sends) may only move that player: the claim is the client's, so it only ever narrows.
 - **Files and shells are opt-in groups no token gets by default.** `files`/`files-write` go through
   `core/instancefiles.ts` and `configfiles.ts`, so every path passes `resolveInstancePath` (which
   resolves symlinks and refuses dangling ones) and the instance directory itself is never a

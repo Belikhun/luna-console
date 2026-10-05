@@ -212,7 +212,11 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 	}
 
 	try {
-		const payload = await handler(args, { principal: ctx.principal, actor: `mcp:${ctx.principal.name}` });
+		const payload = await handler(args, {
+			principal: ctx.principal,
+			actor: `mcp:${ctx.principal.name}`,
+			onBehalfOf: ctx.onBehalfOf ?? onBehalfOf(request.params)
+		});
 
 		return await finish(true, payload ?? { ok: true });
 	} catch (err) {

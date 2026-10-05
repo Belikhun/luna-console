@@ -32,6 +32,7 @@
 export type McpToolGroup =
 	| "observe"
 	| "control"
+	| "players"
 	| "config"
 	| "files"
 	| "files-write"
@@ -50,6 +51,7 @@ export type McpToolGroup =
 export const MCP_TOOL_GROUPS: McpToolGroup[] = [
 	"observe",
 	"control",
+	"players",
 	"config",
 	"files",
 	"files-write",
@@ -392,6 +394,35 @@ export const MCP_TOOLS: McpToolSpec[] = [
 				instance: { type: "string", description: "Only players on this backend." },
 			},
 			["message"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+	},
+
+	// -- players ---------------------------------------------------------------
+	{
+		name: "player_transfer",
+		group: "players",
+		description: "Move an online player to another backend server, the same as them running /server. Use it when a player asks to go somewhere. When the request comes from a Minecraft player, only that player can be moved, never somebody else.",
+		inputSchema: object(
+			{
+				player: { type: "string", description: "Exact username or UUID of an online player." },
+				server: { type: "string", description: "The backend to send them to, as named by cluster_status." },
+			},
+			["player", "server"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+		instanceArg: "server",
+	},
+	{
+		name: "player_message",
+		group: "players",
+		description: "Send one online player a private message only they see in chat (MiniMessage formatting allowed).",
+		inputSchema: object(
+			{
+				player: { type: "string", description: "Exact username or UUID of an online player." },
+				message: { type: "string", description: "The message.", maxLength: 500 },
+			},
+			["player", "message"],
 		),
 		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
 	},

@@ -4270,6 +4270,7 @@
 		"group": {
 			"observe": "Quan sát",
 			"control": "Điều khiển",
+			"players": "Người chơi",
 			"config": "Cấu hình",
 			"knowledge": "Đọc kiến thức",
 			"knowledge-write": "Ghi nhớ",
@@ -4287,6 +4288,7 @@
 		"groupHint": {
 			"observe": "trạng thái, log, người chơi, máy chủ, sự kiện; chỉ đọc",
 			"control": "khởi động, dừng, khởi động lại, lệnh console, thông báo",
+			"players": "chuyển người chơi sang máy chủ khác, nhắn riêng cho một người chơi",
 			"config": "biến môi trường và server.properties; secret luôn được che và chỉ đọc",
 			"knowledge": "tìm ghi nhớ, đọc kỹ năng và ngữ cảnh",
 			"knowledge-write": "lưu, sửa và xoá ghi nhớ thuộc phạm vi token này",
