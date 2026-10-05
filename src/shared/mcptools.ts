@@ -210,11 +210,55 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		name: "player_lookup",
 		group: "observe",
 		description:
-			"Look up a player the network has seen (by username or UUID): first/last seen, play time, last server and whether they are online now.",
+			"Look up one player the network has seen, by exact username or UUID: first/last seen, play time per server, sessions, chat and command counts, and whether they are online now. When the name may be partial or misspelt, call player_search first.",
 		inputSchema: object(
 			{ player: { type: "string", description: "Username or UUID.", maxLength: 64 } },
 			["player"],
 		),
+		annotations: READ,
+	},
+	{
+		name: "player_search",
+		group: "observe",
+		description:
+			"Search the directory of every player the network has ever seen, by part of a username or UUID (case-insensitive). Use it whenever the operator names a player loosely, a nickname or a fragment like \"nene\", before player_lookup or player_chat, which need the exact username. Also lists players by last seen, playtime or first seen.",
+		inputSchema: object({
+			query: { type: "string", description: "Part of a username or UUID; omit to list everyone.", maxLength: 64 },
+			sort: { type: "string", enum: ["lastSeen", "firstSeen", "playtime", "sessions", "username"], description: "Order (default lastSeen)." },
+			limit: { type: "integer", description: "Players to return (default 20).", minimum: 1, maximum: 100 },
+			offset: { type: "integer", description: "Skip this many, for the next page.", minimum: 0 },
+		}),
+		annotations: READ,
+	},
+	{
+		name: "player_chat",
+		group: "observe",
+		description:
+			"Read one player's recorded chat messages and commands, newest first, with the server and time of each. Use it to answer anything about what a player said, how they talk or behave; read enough pages to judge before concluding (the total says how much there is).",
+		inputSchema: object(
+			{
+				player: { type: "string", description: "Exact username or UUID (player_search finds it).", maxLength: 64 },
+				type: { type: "string", enum: ["chat", "command"], description: "Only chat lines or only commands; omit for both." },
+				server: { type: "string", description: "Only lines sent on this backend." },
+				limit: { type: "integer", description: "Lines to return (default 100).", minimum: 1, maximum: 200 },
+				offset: { type: "integer", description: "Skip this many newest lines, for older pages.", minimum: 0 },
+			},
+			["player"],
+		),
+		annotations: READ,
+	},
+	{
+		name: "chat_log",
+		group: "observe",
+		description:
+			"Read the network's recorded chat and commands across every player, newest first, optionally on one backend or matching a text (content or username). Use it for what was said in a conversation, around an incident or on a server.",
+		inputSchema: object({
+			server: { type: "string", description: "Only this backend; omit for the whole network." },
+			type: { type: "string", enum: ["chat", "command"], description: "Only chat lines or only commands; omit for both." },
+			search: { type: "string", description: "Only lines whose content or username contains this.", maxLength: 200 },
+			limit: { type: "integer", description: "Lines to return (default 100).", minimum: 1, maximum: 200 },
+			offset: { type: "integer", description: "Skip this many newest lines, for older pages.", minimum: 0 },
+		}),
 		annotations: READ,
 	},
 	{

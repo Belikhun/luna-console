@@ -19,7 +19,7 @@
 
 import { knowledgeFor, mcpInstructions, mcpServerVersion, recordMcpCall } from '$core/mcp';
 import type { McpOnBehalfOf, McpPrincipal } from '$core/mcp';
-import { mcpTool, scopeCoversInstance, validateMcpArgs } from '$shared/mcptools';
+import { allowedTools, mcpTool, scopeCoversInstance, validateMcpArgs } from '$shared/mcptools';
 import { TOOL_HANDLERS, ToolError } from './handlers';
 import type { ToolArgs } from './handlers';
 
@@ -136,8 +136,18 @@ async function initialize(request: JsonRpcRequest, ctx: RequestContext): Promise
 	});
 }
 
+/**
+ * The tools a principal may call, resolved from its scope against this
+ * console's catalog rather than the list the daemon sent: the handlers live
+ * here, so a daemon on an older build would otherwise refuse every tool it has
+ * not heard of yet.
+ */
+function toolsOf(principal: McpPrincipal): string[] {
+	return allowedTools(principal.scope).map((tool) => tool.name);
+}
+
 function listTools(request: JsonRpcRequest, ctx: RequestContext): JsonRpcResponse {
-	const tools = ctx.principal.tools
+	const tools = toolsOf(ctx.principal)
 		.map((name) => mcpTool(name))
 		.filter((tool) => tool !== undefined)
 		.map((tool) => ({
@@ -177,7 +187,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 
 	// an unknown tool and a tool outside the scope read the same, so the list of
 	// what exists is not discoverable by probing names
-	if (!tool || !ctx.principal.tools.includes(name)) {
+	if (!tool || !toolsOf(ctx.principal).includes(name)) {
 		return await finish(false, `tool "${name}" is not available to this token`, 'not in scope');
 	}
 
@@ -219,7 +229,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 }
 
 async function listPrompts(request: JsonRpcRequest, ctx: RequestContext): Promise<JsonRpcResponse> {
-	if (!ctx.principal.tools.includes('skill_get')) {
+	if (!toolsOf(ctx.principal).includes('skill_get')) {
 		return reply(request.id, { prompts: [] });
 	}
 
@@ -232,7 +242,7 @@ async function listPrompts(request: JsonRpcRequest, ctx: RequestContext): Promis
 
 async function getPrompt(request: JsonRpcRequest, ctx: RequestContext): Promise<JsonRpcResponse> {
 	const name = request.params?.name;
-	const skills = ctx.principal.tools.includes('skill_get')
+	const skills = toolsOf(ctx.principal).includes('skill_get')
 		? await knowledgeFor(ctx.principal.id, 'skill')
 		: [];
 	const skill = skills.find((entry) => entry.title === name);
@@ -250,7 +260,7 @@ async function getPrompt(request: JsonRpcRequest, ctx: RequestContext): Promise<
 const CONTEXT_URI = 'luna://context/';
 
 async function listResources(request: JsonRpcRequest, ctx: RequestContext): Promise<JsonRpcResponse> {
-	if (!ctx.principal.tools.includes('context_get')) {
+	if (!toolsOf(ctx.principal).includes('context_get')) {
 		return reply(request.id, { resources: [] });
 	}
 
@@ -268,7 +278,7 @@ async function listResources(request: JsonRpcRequest, ctx: RequestContext): Prom
 
 async function readResource(request: JsonRpcRequest, ctx: RequestContext): Promise<JsonRpcResponse> {
 	const uri = String(request.params?.uri ?? '');
-	const items = ctx.principal.tools.includes('context_get')
+	const items = toolsOf(ctx.principal).includes('context_get')
 		? await knowledgeFor(ctx.principal.id, 'context')
 		: [];
 	const item = items.find((entry) => `${CONTEXT_URI}${entry.id}` === uri);

@@ -161,6 +161,36 @@ function visibleRows<T>(ctx: ToolContext, rows: T[], nameOf: (row: T) => string)
 	return rows.filter((row) => scopeCoversInstance(ctx.principal.scope, nameOf(row)));
 }
 
+/**
+ * The refusal for a name the directory does not hold exactly, naming the
+ * players whose username contains it, so a nickname or fragment ("nene")
+ * leads straight to the real account instead of a dead end.
+ */
+async function unknownPlayer(name: string): Promise<string> {
+	const near = await luna.registeredPlayers({ search: name, sort: 'lastSeen', dir: 'desc', limit: 10 });
+	const players = near.ok && near.data
+		? near.data.players
+		: [];
+
+	if (players.length === 0) {
+		return `no player named "${name}" has been seen on the network, and no username contains it`;
+	}
+
+	// two profiles can share a username (an account moved to a new UUID), and
+	// only the UUID tells them apart
+	const counts = new Map<string, number>();
+
+	for (const player of players) {
+		counts.set(player.username, (counts.get(player.username) ?? 0) + 1);
+	}
+
+	const names = players.map((player) => (counts.get(player.username) ?? 0) > 1
+		? `${player.username} (uuid ${player.uuid})`
+		: player.username);
+
+	return `no player is named exactly "${name}"; players whose name contains it: ${names.join(', ')}. Retry with one of them (a UUID when two share a name)`;
+}
+
 const LIFECYCLE = {
 	start: startInstanceTracked,
 	stop: stopInstanceTracked,
@@ -317,12 +347,121 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		return { onlineCount: players.length, byServer: result.data.byServer, players };
 	},
 
+	async player_search(args) {
+		const result = await luna.registeredPlayers({
+			search: optStr(args, 'query')?.trim() || undefined,
+			sort: optStr(args, 'sort') ?? 'lastSeen',
+			dir: optStr(args, 'sort') === 'username' ? 'asc' : 'desc',
+			limit: num(args, 'limit', 20),
+			offset: num(args, 'offset', 0)
+		});
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(`the proxy did not answer: ${result.error ?? 'unavailable'}`);
+		}
+
+		return {
+			total: result.data.total,
+			offset: result.data.offset,
+			players: result.data.players.map((player) => ({
+				username: player.username,
+				uuid: player.uuid,
+				online: player.online,
+				server: player.server || undefined,
+				lastSeen: new Date(player.lastSeenAtEpochMillis).toISOString(),
+				lastServer: player.lastServer,
+				totalPlayHours: Math.round(player.totalPlayMillis / 36_000) / 100,
+				sessions: player.sessionCount
+			}))
+		};
+	},
+
+	async player_chat(args, ctx) {
+		const player = str(args, 'player');
+		const server = optStr(args, 'server');
+		const type = optStr(args, 'type');
+
+		if (server && !scopeCoversInstance(ctx.principal.scope, server)) {
+			throw new ToolError(`this token may not read ${server}`);
+		}
+
+		const result = await luna.playerChat(player, {
+			...(type === 'chat' || type === 'command' ? { type } : {}),
+			...(server ? { server } : {}),
+			limit: num(args, 'limit', 100),
+			offset: num(args, 'offset', 0)
+		});
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.status === 404
+				? await unknownPlayer(player)
+				: `the proxy did not answer: ${result.error ?? 'unavailable'}`);
+		}
+
+		// an older LunaCore ignores the server filter, so it is applied again here
+		const entries = visibleRows(ctx, result.data.entries, (entry) => entry.server)
+			.filter((entry) => !server || entry.server === server);
+
+		return {
+			player,
+			total: result.data.total,
+			offset: result.data.offset,
+			returned: entries.length,
+			more: result.data.offset + result.data.entries.length < result.data.total,
+			entries: entries.map((entry) => ({
+				at: new Date(entry.atEpochMillis).toISOString(),
+				server: entry.server,
+				type: entry.type,
+				content: entry.content
+			}))
+		};
+	},
+
+	async chat_log(args, ctx) {
+		const server = optStr(args, 'server');
+		const type = optStr(args, 'type');
+
+		if (server && !scopeCoversInstance(ctx.principal.scope, server)) {
+			throw new ToolError(`this token may not read ${server}`);
+		}
+
+		const result = await luna.serverChat({
+			...(server ? { server } : {}),
+			...(type === 'chat' || type === 'command' ? { type } : {}),
+			search: optStr(args, 'search')?.trim() || undefined,
+			limit: num(args, 'limit', 100),
+			offset: num(args, 'offset', 0)
+		});
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.status === 404
+				? 'the proxy\'s LunaCore build predates the network chat log'
+				: `the proxy did not answer: ${result.error ?? 'unavailable'}`);
+		}
+
+		const entries = visibleRows(ctx, result.data.entries, (entry) => entry.server);
+
+		return {
+			total: result.data.total,
+			offset: result.data.offset,
+			returned: entries.length,
+			more: result.data.offset + result.data.entries.length < result.data.total,
+			entries: entries.map((entry) => ({
+				at: new Date(entry.atEpochMillis).toISOString(),
+				player: entry.username,
+				server: entry.server,
+				type: entry.type,
+				content: entry.content
+			}))
+		};
+	},
+
 	async player_lookup(args) {
 		const result = await luna.registeredPlayer(str(args, 'player'));
 
 		if (!result.ok || !result.data) {
 			const reason = result.status === 404
-				? `no player named "${str(args, 'player')}" has been seen on the network`
+				? await unknownPlayer(str(args, 'player'))
 				: `the proxy did not answer: ${result.error ?? 'unavailable'}`;
 
 			throw new ToolError(reason);
