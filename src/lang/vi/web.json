@@ -4203,14 +4203,22 @@
 			"control": "Điều khiển",
 			"config": "Cấu hình",
 			"knowledge": "Đọc kiến thức",
-			"knowledge-write": "Ghi nhớ"
+			"knowledge-write": "Ghi nhớ",
+			"files": "Đọc tệp",
+			"files-write": "Sửa tệp",
+			"shell": "luna CLI",
+			"host-shell": "Shell máy chủ"
 		},
 		"groupHint": {
 			"observe": "trạng thái, log, người chơi, máy chủ, sự kiện; chỉ đọc",
 			"control": "khởi động, dừng, khởi động lại, lệnh console, thông báo",
 			"config": "biến môi trường và server.properties; secret luôn được che và chỉ đọc",
 			"knowledge": "tìm ghi nhớ, đọc kỹ năng và ngữ cảnh",
-			"knowledge-write": "lưu, sửa và xoá ghi nhớ thuộc phạm vi token này"
+			"knowledge-write": "lưu, sửa và xoá ghi nhớ thuộc phạm vi token này",
+			"files": "liệt kê, đọc, xem thông tin và tìm tệp trong thư mục instance; tệp văn bản tối đa 512 KB",
+			"files-write": "ghi, sao chép, di chuyển, xoá và tạo thư mục trong instance; không hoàn tác được",
+			"shell": "chạy lệnh luna dưới tên token này; lệnh tài khoản, MCP, setup và lệnh lộ secret bị từ chối, và token bị giới hạn instance không dùng được",
+			"host-shell": "bash tuỳ ý dưới quyền người dùng dịch vụ luna; mỗi máy còn phải bật mcpHostShell trong cấu hình daemon"
 		}
 	},
 	"mcpNew": {

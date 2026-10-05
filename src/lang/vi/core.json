@@ -720,5 +720,17 @@
 		"badSkillName": "tên kỹ năng là slug chữ thường: chữ cái, chữ số và gạch ngang, tối đa 64 ký tự",
 		"skillNameTaken": "đã có kỹ năng tên {name} trong phạm vi đó",
 		"unknownKnowledge": "không có mục kiến thức {id} mà bên gọi này được phép sửa"
+	},
+	"instancefiles": {
+		"rootRefused": "không thao tác trên chính thư mục instance ({path}); hãy chỉ định một mục bên trong",
+		"missing": "không có gì tại {path}",
+		"exists": "{path} đã tồn tại; dùng overwrite để thay thế",
+		"intoItself": "không thể sao chép hoặc di chuyển {from} vào chính nó ({to})",
+		"notEmpty": "{path} là thư mục không rỗng; dùng recursive để xoá"
+	},
+	"hostshell": {
+		"disabled": "máy này không nhận lệnh shell; người vận hành có thể bật mcpHostShell trong cấu hình daemon",
+		"empty": "lệnh trống",
+		"tooLong": "lệnh dài quá {max} ký tự"
 	}
 }

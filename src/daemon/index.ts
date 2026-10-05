@@ -17,6 +17,7 @@ import { dirname } from "node:path";
 import { clusterPath, ensureDataDir, saveCluster } from "../core/config";
 import { starterCluster } from "../shared/bootstrap";
 import { appendJournal, setJournalMachine, type JournalLevel } from "../core/journal";
+import { setHostShellEnabled } from "../core/hostshell";
 import { configureProviders } from "../core/services/providers";
 import {
 	DEFAULT_AUTO_UPGRADE,
@@ -116,6 +117,9 @@ export async function runDaemon(): Promise<void> {
 
 	// provider credentials come from the daemon config; core never reads env
 	configureProviders({ curseforgeApiKey: dcfg.curseforgeApiKey });
+
+	// arbitrary commands over MCP are a per-machine decision; core only learns it here
+	setHostShellEnabled(!!dcfg.mcpHostShell);
 
 	if (!existsSync(dcfg.root)) {
 		if (dcfg.mode !== "follower") {

@@ -4203,14 +4203,22 @@
 			"control": "Control",
 			"config": "Configuration",
 			"knowledge": "Read knowledge",
-			"knowledge-write": "Write memories"
+			"knowledge-write": "Write memories",
+			"files": "Read files",
+			"files-write": "Change files",
+			"shell": "luna CLI",
+			"host-shell": "Host shell"
 		},
 		"groupHint": {
 			"observe": "status, logs, players, machines, events; reads only",
 			"control": "start, stop, restart, console commands, broadcasts",
 			"config": "environment variables and server.properties; secrets stay masked and read-only",
 			"knowledge": "search memories, read skills and context",
-			"knowledge-write": "save, correct and forget memories scoped to this token"
+			"knowledge-write": "save, correct and forget memories scoped to this token",
+			"files": "list, read, stat and find files inside instance folders; text files up to 512 KB",
+			"files-write": "write, copy, move, delete and create folders inside instances; no undo",
+			"shell": "run luna commands as this token; account, MCP, setup and secret-revealing commands are refused, and a token limited to some instances cannot use it",
+			"host-shell": "arbitrary bash as the luna service user; each machine must also enable mcpHostShell in its daemon config"
 		}
 	},
 	"mcpNew": {

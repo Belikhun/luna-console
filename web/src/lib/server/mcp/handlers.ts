@@ -39,7 +39,18 @@ import type { ClusterEvent } from '$lib/server/luna';
 import { listDaemons, daemonDetail } from '$client/daemon';
 import { startJob, watchJob } from '$lib/server/jobs';
 import type { JobView } from '$lib/jobs';
-import { scopeCoversInstance } from '$shared/mcptools';
+import { lunaShellRefusal, scopeCoversInstance } from '$shared/mcptools';
+import { browseInstance, readInstanceFile, writeInstanceFile, MAX_EDIT_BYTES } from '$core/configfiles';
+import {
+	copyInstancePath,
+	deleteInstancePath,
+	findInstanceFiles,
+	makeInstanceDir,
+	moveInstancePath,
+	statInstancePath
+} from '$core/instancefiles';
+import { runHostCommand } from '$core/hostshell';
+import { cliBinary, root } from '$lib/server/luna';
 
 /** What an adapter is handed besides its arguments. */
 export interface ToolContext {
@@ -54,6 +65,16 @@ export type ToolHandler = (args: ToolArgs, ctx: ToolContext) => Promise<unknown>
 
 /** How long a lifecycle tool waits for the instance to settle before answering. */
 const LIFECYCLE_WAIT_MS = 3 * 60 * 1000;
+
+/** Default and ceiling for one luna_shell command. */
+const LUNA_SHELL_DEFAULT_TIMEOUT_MS = 120_000;
+const LUNA_SHELL_MAX_TIMEOUT_MS = 600_000;
+
+/** Most characters of CLI output returned to the model. */
+const LUNA_SHELL_MAX_OUTPUT = 64 * 1024;
+
+/** Lines file_read returns when the caller does not say. */
+const FILE_READ_DEFAULT_LINES = 400;
 
 /** A failure the model should read as-is, rather than as an internal error. */
 export class ToolError extends Error {}
@@ -87,6 +108,54 @@ async function requireInstance(name: string): Promise<ClusterConfig> {
 	}
 
 	return cfg;
+}
+
+/** ANSI escapes, which the CLI emits for colour and the model has no use for. */
+const ANSI = /\x1b\[[0-9;?]*[ -\/]*[@-~]/g;
+
+/**
+ * Run the luna CLI as the drawer does, but for a token: attributed to it,
+ * without colour, killed at its timeout, its output capped.
+ */
+async function runLunaCli(args: string[], actor: string, timeoutMs: number): Promise<Record<string, unknown>> {
+	const proc = Bun.spawn([cliBinary(), ...args], {
+		env: {
+			...process.env,
+			LUNA_ROOT: root(),
+			LUNA_ACTOR: actor,
+			LUNA_LANG: 'en',
+			NO_COLOR: '1',
+			FORCE_COLOR: '0'
+		},
+		stdin: 'ignore',
+		stdout: 'pipe',
+		stderr: 'pipe'
+	});
+
+	let timedOut = false;
+
+	const timer = setTimeout(() => {
+		timedOut = true;
+		proc.kill('SIGKILL');
+	}, timeoutMs);
+
+	try {
+		const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+		const exitCode = await proc.exited;
+		const output = `${stdout}${stderr ? `\n${stderr}` : ''}`.replace(ANSI, '').trim();
+		const truncated = output.length > LUNA_SHELL_MAX_OUTPUT;
+
+		return {
+			command: `luna ${args.join(' ')}`,
+			exitCode: timedOut ? null : exitCode,
+			timedOut: timedOut || undefined,
+			output: truncated
+				? `${output.slice(0, LUNA_SHELL_MAX_OUTPUT)}\n… [truncated]`
+				: output
+		};
+	} finally {
+		clearTimeout(timer);
+	}
 }
 
 /** Drop rows naming an instance the token may not see. */
@@ -576,6 +645,193 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		const cfg = await requireInstance(name);
 
 		return await readServerProperties(cfg, name);
+	},
+
+	// -- files ------------------------------------------------------------------
+	async file_list(args) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const listing = await browseInstance(cfg, name, optStr(args, 'path') ?? '');
+
+		return {
+			instance: name,
+			path: listing.path || '/',
+			entries: listing.entries.map((entry) => ({
+				name: entry.name,
+				kind: entry.kind,
+				size: entry.kind === 'file' ? entry.size : undefined,
+				modified: new Date(entry.modified).toISOString(),
+				managed: entry.managed || undefined
+			}))
+		};
+	},
+
+	async file_read(args) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const file = await readInstanceFile(cfg, name, str(args, 'path'));
+		const lines = file.text.split('\n');
+		const offset = num(args, 'offset', 1);
+		const limit = num(args, 'limit', FILE_READ_DEFAULT_LINES);
+		const slice = lines.slice(offset - 1, offset - 1 + limit);
+
+		return {
+			instance: name,
+			path: file.path,
+			size: file.size,
+			totalLines: lines.length,
+			fromLine: offset,
+			toLine: offset - 1 + slice.length,
+			managed: file.managed || undefined,
+			note: file.managed
+				? 'luna renders this file from a template on every start; file_write changes the template'
+				: undefined,
+			content: slice.join('\n')
+		};
+	},
+
+	async file_stat(args) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const info = await statInstancePath(cfg, name, str(args, 'path'));
+
+		return info
+			? { exists: true, ...info, modified: new Date(info.modified).toISOString() }
+			: { exists: false, path: str(args, 'path') };
+	},
+
+	async file_find(args) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const result = await findInstanceFiles(cfg, name, {
+			path: optStr(args, 'path'),
+			name: optStr(args, 'name'),
+			depth: num(args, 'depth', 4),
+			limit: num(args, 'limit', 100)
+		});
+
+		return {
+			instance: name,
+			truncated: result.truncated || undefined,
+			entries: result.entries.map((entry) => ({ ...entry, modified: new Date(entry.modified).toISOString() }))
+		};
+	},
+
+	async file_write(args, ctx) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const path = str(args, 'path');
+		const content = str(args, 'content');
+
+		if (Buffer.byteLength(content) > MAX_EDIT_BYTES) {
+			throw new ToolError(`content is over the ${MAX_EDIT_BYTES / 1024} KB limit for one file`);
+		}
+
+		if (args.createOnly === true && (await statInstancePath(cfg, name, path))) {
+			throw new ToolError(`${path} already exists`);
+		}
+
+		const result = await writeInstanceFile(cfg, name, path, content);
+
+		pushEvent(name, 'action', `file written by ${ctx.actor}: ${path}`);
+
+		return { instance: name, path, written: Buffer.byteLength(content), result };
+	},
+
+	async file_mkdir(args, ctx) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const info = await makeInstanceDir(cfg, name, str(args, 'path'));
+
+		pushEvent(name, 'action', `directory created by ${ctx.actor}: ${info.path}`);
+
+		return { instance: name, created: info.path };
+	},
+
+	async file_copy(args, ctx) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const info = await copyInstancePath(cfg, name, str(args, 'from'), str(args, 'to'), {
+			overwrite: args.overwrite === true
+		});
+
+		pushEvent(name, 'action', `copied by ${ctx.actor}: ${str(args, 'from')} → ${info.path}`);
+
+		return { instance: name, copied: str(args, 'from'), to: info.path, kind: info.kind };
+	},
+
+	async file_move(args, ctx) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const info = await moveInstancePath(cfg, name, str(args, 'from'), str(args, 'to'), {
+			overwrite: args.overwrite === true
+		});
+
+		pushEvent(name, 'action', `moved by ${ctx.actor}: ${str(args, 'from')} → ${info.path}`);
+
+		return { instance: name, moved: str(args, 'from'), to: info.path, kind: info.kind };
+	},
+
+	async file_delete(args, ctx) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const removed = await deleteInstancePath(cfg, name, str(args, 'path'), {
+			recursive: args.recursive === true
+		});
+
+		pushEvent(name, 'action', `deleted by ${ctx.actor}: ${removed.path}`);
+
+		return { instance: name, deleted: removed.path, kind: removed.kind, size: removed.kind === 'file' ? removed.size : undefined };
+	},
+
+	// -- shells -------------------------------------------------------------------
+	async luna_shell(args, ctx) {
+		const words = Array.isArray(args.args)
+			? (args.args as string[])
+			: [];
+
+		// the CLI can name any instance, so a token held to some instances
+		// cannot be trusted with it
+		if (ctx.principal.scope.instances !== null) {
+			throw new ToolError('this token is limited to some instances, so it cannot use the luna CLI');
+		}
+
+		const refusal = lunaShellRefusal(words);
+
+		if (refusal) {
+			throw new ToolError(refusal);
+		}
+
+		const timeoutMs = Math.min(num(args, 'timeoutSeconds', LUNA_SHELL_DEFAULT_TIMEOUT_MS / 1000) * 1000, LUNA_SHELL_MAX_TIMEOUT_MS);
+
+		return await runLunaCli(words, ctx.actor, timeoutMs);
+	},
+
+	async shell_bash(args, ctx) {
+		const instance = optStr(args, 'instance') ?? null;
+
+		if (!instance && ctx.principal.scope.instances !== null) {
+			throw new ToolError('this token is limited to some instances, so it must name one to run a command');
+		}
+
+		const cfg = instance
+			? await requireInstance(instance)
+			: await loadCluster();
+
+		const result = await runHostCommand(cfg, instance, str(args, 'command'), {
+			timeoutMs: num(args, 'timeoutSeconds', 60) * 1000,
+			actor: ctx.actor
+		});
+
+		return {
+			exitCode: result.exitCode,
+			timedOut: result.timedOut || undefined,
+			truncated: result.truncated || undefined,
+			durationMs: result.durationMs,
+			cwd: result.cwd,
+			stdout: result.stdout,
+			stderr: result.stderr || undefined
+		};
 	},
 
 	// -- knowledge -------------------------------------------------------------

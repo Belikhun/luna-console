@@ -31,7 +31,7 @@
  * plugin regenerated with new keys is never silently thrown away.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
@@ -159,7 +159,50 @@ export function resolveInstancePath(
 		throw new Error(t("core.configfiles.pathEscapes", { path: relPath }));
 	}
 
+	if (!withinReal(dir, path)) {
+		throw new Error(t("core.configfiles.pathEscapes", { path: relPath }));
+	}
+
 	return { dir, path, rel: relative(dir, path).split(sep).join("/") };
+}
+
+function isLink(path: string): boolean {
+	try {
+		return lstatSync(path).isSymbolicLink();
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Whether a path, once symlinks are resolved, still lies inside a directory.
+ *
+ * The string check above cannot see a symlink: `plugins/evil -> /etc` passes it
+ * and then every read or write through it lands outside the instance. So the
+ * deepest part of the path that exists is resolved with `realpath` and held to
+ * the real instance directory; the parts that do not exist yet cannot be links.
+ */
+function withinReal(dir: string, path: string): boolean {
+	let existing = path;
+
+	while (!existsSync(existing) && existing !== dir) {
+		// a dangling link is "missing" to existsSync, yet writing through it
+		// creates its target, wherever that is
+		if (isLink(existing)) {
+			return false;
+		}
+
+		existing = dirname(existing);
+	}
+
+	if (!existsSync(dir)) {
+		return true;
+	}
+
+	const realDir = realpathSync(dir);
+	const realPath = realpathSync(existing);
+
+	return realPath === realDir || realPath.startsWith(realDir + sep);
 }
 
 /** Lowercase extension of a path, without the dot ("" when it has none). */

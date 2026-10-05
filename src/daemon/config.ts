@@ -64,6 +64,9 @@ export interface DaemonConfig {
 	/** CurseForge API key (console.curseforge.com); the curseforge provider
 	 *  reports itself unavailable without one */
 	curseforgeApiKey?: string;
+	/** Accept bash commands from MCP tokens holding the `host-shell` group on
+	 *  this machine (default false); each machine opts in on its own */
+	mcpHostShell?: boolean;
 	/** Where the config came from, for `daemon status` */
 	configFile?: string;
 }
@@ -287,6 +290,9 @@ export async function resolveDaemonConfig(): Promise<DaemonConfig> {
 		host: process.env.LUNA_HOST ?? file.host,
 		autoUpgrade: parseAutoUpgrade(process.env.LUNA_AUTO_UPGRADE ?? file.autoUpgrade),
 		curseforgeApiKey: process.env.LUNA_CURSEFORGE_KEY ?? file.curseforgeApiKey,
+		mcpHostShell: process.env.LUNA_MCP_HOST_SHELL !== undefined
+			? ["1", "true", "yes", "on"].includes(process.env.LUNA_MCP_HOST_SHELL.toLowerCase())
+			: file.mcpHostShell === true,
 		configFile,
 	};
 

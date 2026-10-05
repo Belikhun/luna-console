@@ -390,7 +390,17 @@ export interface InstanceConfig {}
   description (protocol text, English), JSON schema and MCP annotations; a new tool is a catalog entry
   plus its adapter in `web/src/lib/server/mcp/handlers.ts`, which calls the `$core` bridge like any
   route so follower routing still applies. Deleting instances, set-version, cleanup, accounts,
-  secret reveal, file writes and upgrades are deliberately never tools.
+  secret reveal and upgrades are deliberately never dedicated tools.
+- **Files and shells are opt-in groups no token gets by default.** `files`/`files-write` go through
+  `core/instancefiles.ts` and `configfiles.ts`, so every path passes `resolveInstancePath` (which
+  resolves symlinks and refuses dangling ones) and the instance directory itself is never a
+  destructive target. `shell` (`luna_shell`) runs the compiled CLI as `mcp:<token>`, refuses the
+  `lunaShellRefusal` denylist (accounts, MCP, setup, daemon upgrade/token, `--reveal`) and is closed
+  to instance-limited tokens. `host-shell` (`shell_bash`) is arbitrary bash, so it also needs the
+  **machine** to opt in: `mcpHostShell` in that daemon's config (`LUNA_MCP_HOST_SHELL`), handed to
+  core at boot and checked by `core/hostshell.ts` on the machine the op is routed to. Commands run
+  with a scrubbed environment (the daemon's carries the cluster token), are journalled before they
+  start, killed with their process group at the timeout and capped in output.
 - **The endpoint is stateless Streamable HTTP**, hand-rolled in `web/src/lib/server/mcp/protocol.ts`
   (no SDK): POST answers JSON, GET/DELETE answer 405, no session id. It sits in `PUBLIC_PREFIXES` and
   demands its own bearer; a browser `Origin` that is not the host is refused (DNS rebinding).
@@ -662,7 +672,8 @@ Daemon config: JSON file (`$LUNA_DAEMON_CONFIG` → `/etc/luna/daemon.json` →
 `~/.config/luna/daemon.json`) with env overrides (`LUNA_MODE`, `LUNA_ROOT`, `LUNA_DAEMON_NAME`,
 `LUNA_SOCKET`, `LUNA_LISTEN`, `LUNA_TOKEN`, `LUNA_PRIMARY_ADDRESS`, `LUNA_HOST`,
 `LUNA_AUTO_UPGRADE` (or `autoUpgrade` in the file: `off` · `followers`, the default · `all`), plus
-`LUNA_WEB_DIR` for a console outside the source tree, `LUNA_CURSEFORGE_KEY` (or `curseforgeApiKey`
+`LUNA_MCP_HOST_SHELL` (or `mcpHostShell` in the file, default off) to let MCP tokens with the
+`host-shell` group run bash on that machine, `LUNA_WEB_DIR` for a console outside the source tree, `LUNA_CURSEFORGE_KEY` (or `curseforgeApiKey`
 in the file) to unlock the CurseForge provider, and
 `LUNA_RELEASE_REPO`/`LUNA_GITHUB_API`/`LUNA_GITHUB_TOKEN` for the upgrade fallback). A daemon's name
 defaults to the machine's hostname (short form, lowercased); it keys `cluster.json` and decides

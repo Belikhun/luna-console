@@ -720,5 +720,17 @@
 		"badSkillName": "a skill name is a lowercase slug: letters, digits and dashes, up to 64 characters",
 		"skillNameTaken": "a skill named {name} is already visible in that scope",
 		"unknownKnowledge": "no knowledge item {id} that this caller may change"
+	},
+	"instancefiles": {
+		"rootRefused": "refusing to touch the instance directory itself ({path}); name something inside it",
+		"missing": "nothing at {path}",
+		"exists": "{path} already exists; pass overwrite to replace it",
+		"intoItself": "cannot copy or move {from} into itself ({to})",
+		"notEmpty": "{path} is a directory that is not empty; pass recursive to delete it"
+	},
+	"hostshell": {
+		"disabled": "this machine does not accept host commands; its operator can enable mcpHostShell in the daemon config",
+		"empty": "the command is empty",
+		"tooLong": "the command is longer than {max} characters"
 	}
 }

@@ -38,6 +38,8 @@ import * as configfilesCore from "../core/configfiles";
 import * as datapacksCore from "../core/datapacks";
 import * as environmentCore from "../core/environment";
 import * as instancesCore from "../core/instances";
+import * as instancefilesCore from "../core/instancefiles";
+import * as hostshellCore from "../core/hostshell";
 import * as journalCore from "../core/journal";
 import * as lifecycleCore from "../core/lifecycle";
 import * as logsCore from "../core/logs";
@@ -1450,6 +1452,19 @@ export const OPS: Record<string, OpSpec> = {
 	"accounts.listSessions": { fn: accountsCore.listSessions },
 	"accounts.revokeSession": { fn: accountsCore.revokeSession },
 	"accounts.revokeAccountSessions": { fn: accountsCore.revokeAccountSessions },
+
+	// -- instance files beyond one text file (run on the instance's owner) --------
+	"instancefiles.stat": { fn: instancefilesCore.statInstancePath, cfg: 0, instance: 1 },
+	"instancefiles.find": { fn: instancefilesCore.findInstanceFiles, cfg: 0, instance: 1 },
+	"instancefiles.mkdir": { fn: instancefilesCore.makeInstanceDir, cfg: 0, instance: 1 },
+	"instancefiles.copy": { fn: instancefilesCore.copyInstancePath, cfg: 0, instance: 1 },
+	"instancefiles.move": { fn: instancefilesCore.moveInstancePath, cfg: 0, instance: 1 },
+	"instancefiles.delete": { fn: instancefilesCore.deleteInstancePath, cfg: 0, instance: 1 },
+
+	// -- host shell (MCP shell_bash); each machine answers from its own opt-in ----
+	// a null instance runs on the machine the op reached, which is the primary
+	"hostshell.run": { fn: hostshellCore.runHostCommand, cfg: 0, instance: 1 },
+	"hostshell.enabled": { fn: hostshellCore.hostShellEnabled },
 
 	// -- MCP tokens, call log and knowledge (primary-local; see core/mcp.ts) ----------
 	// As with accounts, no op returns the raw token store: digests stay in here.

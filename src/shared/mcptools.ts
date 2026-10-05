@@ -15,19 +15,34 @@
  * way a config key does. What a human reads in the console is the i18n key
  * `core.mcp.tools.<name>`.
  *
- * Deliberately absent: deleting instances, set-version, cleanup, accounts,
- * revealing secrets, writing files and upgrades. None of those should be one
- * sentence in a chat away, whatever a token's scope says.
+ * Deliberately absent as dedicated tools: deleting instances, set-version,
+ * cleanup, accounts, revealing secrets and upgrades. File writes and the two
+ * shells exist, but in groups of their own that no token gets by default, and
+ * the host shell additionally needs the machine itself to opt in
+ * (`mcpHostShell` in that daemon's config).
  */
 
 /** What a tool is for; the unit a scope is usually granted in. */
-export type McpToolGroup = "observe" | "control" | "config" | "knowledge" | "knowledge-write";
+export type McpToolGroup =
+	| "observe"
+	| "control"
+	| "config"
+	| "files"
+	| "files-write"
+	| "shell"
+	| "host-shell"
+	| "knowledge"
+	| "knowledge-write";
 
 /** Every group, in the order the scope editor lists them. */
 export const MCP_TOOL_GROUPS: McpToolGroup[] = [
 	"observe",
 	"control",
 	"config",
+	"files",
+	"files-write",
+	"shell",
+	"host-shell",
 	"knowledge",
 	"knowledge-write",
 ];
@@ -313,6 +328,178 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		instanceArg: "instance",
 	},
 
+	// -- files (read) ------------------------------------------------------------
+	{
+		name: "file_list",
+		group: "files",
+		description: "List one directory inside an instance's server folder (not recursive). Paths are relative to the instance root, e.g. \"plugins/LuckPerms\".",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				path: { type: "string", description: "Directory relative to the instance root; empty for the root.", maxLength: 1024 },
+			},
+			["instance"],
+		),
+		annotations: READ,
+		instanceArg: "instance",
+	},
+	{
+		name: "file_read",
+		group: "files",
+		description: "Read a text file inside an instance (configs, logs, scripts). Files over 512 KB and binary files are refused; use offset/limit to page through long files by line.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				path: { type: "string", description: "File path relative to the instance root.", maxLength: 1024 },
+				offset: { type: "integer", description: "First line to return, 1-based (default 1).", minimum: 1 },
+				limit: { type: "integer", description: "Most lines to return (default 400).", minimum: 1, maximum: 5000 },
+			},
+			["instance", "path"],
+		),
+		annotations: READ,
+		instanceArg: "instance",
+	},
+	{
+		name: "file_stat",
+		group: "files",
+		description: "Whether a path exists inside an instance, and its kind, size and modification time.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				path: { type: "string", description: "Path relative to the instance root.", maxLength: 1024 },
+			},
+			["instance", "path"],
+		),
+		annotations: READ,
+		instanceArg: "instance",
+	},
+	{
+		name: "file_find",
+		group: "files",
+		description: "Find files or directories by name below a directory of an instance. `name` is a case-insensitive substring, or a pattern with * wildcards. World region data is skipped.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				path: { type: "string", description: "Directory to search from (default the instance root).", maxLength: 1024 },
+				name: { type: "string", description: "Name substring or * pattern, e.g. \"config.yml\" or \"*.jar\".", maxLength: 200 },
+				depth: { type: "integer", description: "How many levels to descend (default 4, max 8).", minimum: 0, maximum: 8 },
+				limit: { type: "integer", description: "Most results (default 100, max 500).", minimum: 1, maximum: 500 },
+			},
+			["instance"],
+		),
+		annotations: READ,
+		instanceArg: "instance",
+	},
+
+	// -- files (write) -----------------------------------------------------------
+	{
+		name: "file_write",
+		group: "files-write",
+		description: "Write a text file inside an instance, replacing its contents (parent folders are created). At most 512 KB. A file luna manages as a template is written as the new template. Most configs only apply after the server restarts or reloads.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				path: { type: "string", description: "File path relative to the instance root.", maxLength: 1024 },
+				content: { type: "string", description: "The complete new file contents." },
+				createOnly: { type: "boolean", description: "Refuse if the file already exists." },
+			},
+			["instance", "path", "content"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+		instanceArg: "instance",
+	},
+	{
+		name: "file_mkdir",
+		group: "files-write",
+		description: "Create a directory (and missing parents) inside an instance.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				path: { type: "string", description: "Directory path relative to the instance root.", maxLength: 1024 },
+			},
+			["instance", "path"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+		instanceArg: "instance",
+	},
+	{
+		name: "file_copy",
+		group: "files-write",
+		description: "Copy a file or a whole directory to another path in the same instance.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				from: { type: "string", description: "Source path relative to the instance root.", maxLength: 1024 },
+				to: { type: "string", description: "Target path relative to the instance root.", maxLength: 1024 },
+				overwrite: { type: "boolean", description: "Replace an existing target (default false)." },
+			},
+			["instance", "from", "to"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+		instanceArg: "instance",
+	},
+	{
+		name: "file_move",
+		group: "files-write",
+		description: "Move or rename a file or directory within the same instance.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				from: { type: "string", description: "Source path relative to the instance root.", maxLength: 1024 },
+				to: { type: "string", description: "Target path relative to the instance root.", maxLength: 1024 },
+				overwrite: { type: "boolean", description: "Replace an existing target (default false)." },
+			},
+			["instance", "from", "to"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: false },
+		instanceArg: "instance",
+	},
+	{
+		name: "file_delete",
+		group: "files-write",
+		description: "Delete a file or directory inside an instance. A non-empty directory needs recursive=true. There is no undo; prefer file_move into a backup name when unsure.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				path: { type: "string", description: "Path relative to the instance root.", maxLength: 1024 },
+				recursive: { type: "boolean", description: "Allow deleting a non-empty directory." },
+			},
+			["instance", "path"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+		instanceArg: "instance",
+	},
+
+	// -- shells ------------------------------------------------------------------
+	{
+		name: "luna_shell",
+		group: "shell",
+		description: "Run one luna CLI command, exactly as an operator would at the terminal, and return its output. Pass the words after \"luna\" as args, e.g. [\"plugins\", \"--instance\", \"survival\"] or [\"instance\", \"restart\", \"lobby\", \"--yes\"]. Commands that ask for confirmation need --yes, since there is no one to answer. Run [\"help\"] to see the commands. Account, MCP, setup, daemon upgrade/token and secret-revealing commands are refused.",
+		inputSchema: object(
+			{
+				args: { type: "array", items: { type: "string", maxLength: 1000 }, description: "The command words after \"luna\"." },
+				timeoutSeconds: { type: "integer", description: "Kill the command after this long (default 120, max 600).", minimum: 1, maximum: 600 },
+			},
+			["args"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: false },
+	},
+	{
+		name: "shell_bash",
+		group: "host-shell",
+		description: "Run a bash command on the machine that hosts an instance, in that instance's folder (or in the cluster root on the primary when no instance is given). Runs as the luna service user with a minimal environment. Only works on machines whose operator enabled it. Output is capped at 64 KB per stream.",
+		inputSchema: object(
+			{
+				command: { type: "string", description: "The bash command line.", maxLength: 8192 },
+				instance: { type: "string", description: "Run on this instance's machine, in its folder." },
+				timeoutSeconds: { type: "integer", description: "Kill the command after this long (default 60, max 600).", minimum: 1, maximum: 600 },
+			},
+			["command"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: true },
+		instanceArg: "instance",
+	},
+
 	// -- knowledge -------------------------------------------------------------
 	{
 		name: "memory_search",
@@ -393,6 +580,40 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
 	},
 ];
+
+/** First words of luna commands `luna_shell` refuses: credentials, MCP itself, installation, interactive ones. */
+const LUNA_SHELL_DENIED = new Set(["mcp", "account", "accounts", "sessions", "audit", "setup", "web", "console", "shell", "repl"]);
+
+/** `luna daemon` subcommands `luna_shell` refuses: upgrades, the cluster token, unregistering, the service unit. */
+const LUNA_SHELL_DENIED_DAEMON = new Set(["upgrade", "token", "remove", "service", "run"]);
+
+/**
+ * Why `luna_shell` refuses a command, or null when it may run. A token reaching
+ * the CLI must not mint itself wider access (`mcp`, `account`), read credentials
+ * (`--reveal`, `daemon token`), or reinstall the machine it runs on.
+ */
+export function lunaShellRefusal(args: string[]): string | null {
+	const words = args.map((word) => word.trim()).filter((word) => word !== "");
+	const first = words[0]?.toLowerCase();
+
+	if (!first) {
+		return "no command given";
+	}
+
+	if (LUNA_SHELL_DENIED.has(first)) {
+		return `"luna ${first}" is not available over MCP`;
+	}
+
+	if (first === "daemon" && LUNA_SHELL_DENIED_DAEMON.has(words[1]?.toLowerCase() ?? "")) {
+		return `"luna daemon ${words[1]}" is not available over MCP`;
+	}
+
+	if (words.some((word) => word === "--reveal" || word.startsWith("--reveal="))) {
+		return "revealing secrets is not available over MCP";
+	}
+
+	return null;
+}
 
 /** One tool's spec, or undefined for a name the catalog does not know. */
 export function mcpTool(name: string): McpToolSpec | undefined {
