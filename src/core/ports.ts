@@ -1358,6 +1358,36 @@ function auditDuplicates(cfg: ClusterConfig, lock: PluginsLock): PortIssue[] {
 }
 
 /**
+ * Whether an allocation answers to a pool cluster.json actually records. A game
+ * port answers to `game`, a plugin port to the pool its spec names, and a spec
+ * naming none to any written pool of its protocol. Writing the voice pool says
+ * nothing about where game ports belong, so it must not put them on trial.
+ */
+function heldToWrittenPool(
+	written: PortPool[],
+	lock: PluginsLock,
+	entry: PortAllocationEntry,
+): boolean {
+	let wanted: string | undefined;
+
+	if (entry.key === "game") {
+		wanted = GAME_POOL;
+	} else {
+		const [plugin, id] = entry.key.split("/");
+		const plugged = lock.plugins[plugin!];
+		const specs = plugged ? portSpecsFor(plugged) : undefined;
+
+		wanted = specs?.find((spec) => spec.id === id)?.pool;
+	}
+
+	if (wanted) {
+		return written.some((pool) => pool.id === wanted);
+	}
+
+	return written.some((pool) => poolServes(pool, entry.protocol));
+}
+
+/**
  * Allocations that no pool on their machine covers, and pool definitions that
  * clash. Machines are only held to a catalog somebody actually wrote: the
  * built-in defaults are a guess at what a machine hands out, and flagging a
@@ -1365,8 +1395,9 @@ function auditDuplicates(cfg: ClusterConfig, lock: PluginsLock): PortIssue[] {
  */
 function auditPools(cfg: ClusterConfig, lock: PluginsLock): PortIssue[] {
 	const issues: PortIssue[] = [];
+	const written = storedCatalog(cfg);
 
-	if (!storedCatalog(cfg).length) {
+	if (!written.length) {
 		return issues;
 	}
 
@@ -1387,6 +1418,10 @@ function auditPools(cfg: ClusterConfig, lock: PluginsLock): PortIssue[] {
 			}
 
 			if (entry.pool === null) {
+				if (!heldToWrittenPool(written, lock, entry)) {
+					continue;
+				}
+
 				issues.push({
 					kind: "pool",
 					machine,
