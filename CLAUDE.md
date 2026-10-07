@@ -436,6 +436,14 @@ export interface InstanceConfig {}
   core at boot and checked by `core/hostshell.ts` on the machine the op is routed to. Commands run
   with a scrubbed environment (the daemon's carries the cluster token), are journalled before they
   start, killed with their process group at the timeout and capped in output.
+- **`file_transfer` copies between instances, across machines too.** `copyAcrossInstances` runs on
+  the daemon owning the destination: a source on the same machine is copied from disk, one owned by
+  another daemon is pulled from `/files/instance/<instance>/<path>` as a tar stream (the owner packs
+  it; the primary passes a follower's through, so followers never dial each other), through a fetcher
+  the daemon installs into core. Everything lands in a `.luna-incoming-*` folder inside the
+  destination instance first and is renamed into place, so a transfer that dies halfway writes
+  nothing; `existing` is `fail`, `replace` or `merge` (rsync without `--delete`). Symlinks travel as
+  links, the instance root is never a source, and the source instance must be in the token's scope.
 - **Addons are their own pair of groups.** `addons` reads the pool, searches providers, lists
   versions and checks updates; `addons-write` installs (from a provider, a public URL, or a file
   attached in Mèo Béo's panel), configures, updates, pins, deploys and removes, through

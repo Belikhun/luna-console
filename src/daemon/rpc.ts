@@ -1562,6 +1562,12 @@ export const OPS: Record<string, OpSpec> = {
 	"instancefiles.copy": { fn: instancefilesCore.copyInstancePath, cfg: 0, instance: 1 },
 	"instancefiles.move": { fn: instancefilesCore.moveInstancePath, cfg: 0, instance: 1 },
 	"instancefiles.delete": { fn: instancefilesCore.deleteInstancePath, cfg: 0, instance: 1 },
+	"instancefiles.copyAcross": {
+		fn: instancefilesCore.copyAcrossInstances,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 5, prop: "reporter" },
+	},
 
 	// -- host shell (MCP shell_bash); each machine answers from its own opt-in ----
 	// a null instance runs on the machine the op reached, which is the primary

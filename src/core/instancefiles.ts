@@ -18,11 +18,13 @@
 
 import { existsSync, type Stats } from "node:fs";
 import { cp, lstat, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
+import { randomBytes } from "node:crypto";
 
 import type { ClusterConfig } from "./types";
 import { t } from "../shared/i18n";
 import { resolveInstancePath } from "./configfiles";
+import { ProgressReporter } from "./progress";
 
 /** Most entries a find returns. */
 export const MAX_FIND_RESULTS = 500;
@@ -274,4 +276,307 @@ export async function deleteInstancePath(
 	await rm(resolved.path, { recursive: before.kind === "dir", force: false });
 
 	return before;
+}
+
+//* ===========================================================
+//*  Copying between instances, on one machine or across two
+//* -----------------------------------------------------------
+//*  The copy runs on the daemon that owns the destination. A
+//*  source on the same machine is copied from disk; one held by
+//*  another daemon arrives as a tar stream over the cluster's
+//*  own HTTP file routes (the hook below), and is unpacked next
+//*  to its destination before it is moved into place, so a
+//*  transfer that dies halfway leaves nothing half-written.
+//* ===========================================================
+
+/** What happens when the destination already exists. */
+export type ExistingPolicy = "fail" | "replace" | "merge";
+
+export interface CrossCopyOptions {
+	/**
+	 * `fail` (default) refuses, `replace` removes the destination first, `merge`
+	 * copies into an existing directory, overwriting same-named files and keeping
+	 * the rest (what `rsync -a` without `--delete` does).
+	 */
+	existing?: ExistingPolicy;
+	reporter?: ProgressReporter;
+}
+
+export interface CrossCopyResult {
+	from: { instance: string; path: string };
+	to: { instance: string; path: string };
+	kind: PathInfo["kind"];
+	/** Whether the bytes crossed the cluster link or stayed on one disk */
+	route: "local" | "remote";
+	/** Bytes received over the link; 0 for a local copy */
+	transferred: number;
+	/** Files and total size of the destination afterwards (capped walk) */
+	files: number;
+	size: number;
+	existing: ExistingPolicy;
+}
+
+/** One file or directory of an instance, packed as a tar stream. */
+export interface InstanceArchive {
+	stream: ReadableStream<Uint8Array>;
+	kind: PathInfo["kind"];
+	/** The top-level entry name inside the archive */
+	name: string;
+	/** Resolves to tar's exit code once the stream is done */
+	exited: Promise<number>;
+}
+
+/**
+ * How the destination's daemon reaches a source on another machine: a response
+ * carrying the tar stream (`x-luna-kind`, `x-luna-name` headers), or null when
+ * the source instance is this daemon's own. Installed by the daemon, which
+ * alone knows who owns what and where the other daemons answer.
+ */
+export type InstanceArchiveFetcher = (cfg: ClusterConfig, instance: string, relPath: string) => Promise<Response | null>;
+
+let fetchRemoteArchive: InstanceArchiveFetcher | undefined;
+
+/** Install the cross-machine fetcher (the daemon does this at boot). */
+export function installInstanceArchiveFetcher(fetcher: InstanceArchiveFetcher): void {
+	fetchRemoteArchive = fetcher;
+}
+
+/** The most entries the result walk counts before it stops. */
+const MAX_COUNTED_ENTRIES = 100_000;
+
+/**
+ * Pack one path of an instance as a tar stream, for another daemon to pull.
+ * Symlinks travel as links, never followed, exactly as a local copy keeps them.
+ */
+export async function instanceArchive(cfg: ClusterConfig, instance: string, relPath: string): Promise<InstanceArchive> {
+	const resolved = resolveInstancePath(cfg, instance, relPath);
+
+	requireInner(resolved, relPath);
+
+	const info = await statInstancePath(cfg, instance, relPath);
+
+	if (!info) {
+		throw new Error(t("core.instancefiles.missingIn", { path: relPath, instance }));
+	}
+
+	const name = basename(resolved.path);
+	const proc = Bun.spawn(["tar", "-C", dirname(resolved.path), "-cf", "-", "--", name], {
+		stdout: "pipe",
+		stderr: "ignore",
+	});
+
+	return { stream: proc.stdout, kind: info.kind, name, exited: proc.exited };
+}
+
+/** Count files and bytes under a path, stopping after {@link MAX_COUNTED_ENTRIES}. */
+async function measure(path: string): Promise<{ files: number; size: number }> {
+	let files = 0;
+	let size = 0;
+	const pending = [path];
+
+	while (pending.length > 0 && files < MAX_COUNTED_ENTRIES) {
+		const current = pending.pop()!;
+		const info = await lstat(current);
+
+		if (info.isDirectory()) {
+			for (const entry of await readdir(current)) {
+				pending.push(join(current, entry));
+			}
+
+			continue;
+		}
+
+		files += 1;
+		size += info.size;
+	}
+
+	return { files, size };
+}
+
+/** Unpack a tar body into `dir`, reporting bytes as they arrive; resolves to the byte count. */
+async function unpack(body: ReadableStream<Uint8Array>, dir: string, progress: ProgressReporter): Promise<number> {
+	const proc = Bun.spawn(["tar", "-C", dir, "-xf", "-", "--no-same-owner"], {
+		stdin: "pipe",
+		stdout: "ignore",
+		stderr: "pipe",
+	});
+
+	const reader = body.getReader();
+	let bytes = 0;
+	let reported = 0;
+
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+
+			if (done) {
+				break;
+			}
+
+			bytes += value.byteLength;
+			proc.stdin.write(value);
+			await proc.stdin.flush();
+
+			if (bytes - reported >= 8 * 1024 * 1024) {
+				reported = bytes;
+				progress.info(0.5, t("core.instancefiles.crossReceiving", { size: formatSize(bytes) }));
+			}
+		}
+	} finally {
+		await proc.stdin.end();
+	}
+
+	const code = await proc.exited;
+
+	if (code !== 0) {
+		const detail = (await new Response(proc.stderr).text()).trim().split("\n").slice(-2).join(" ");
+		throw new Error(t("core.instancefiles.unpackFailed", { error: detail || `tar exited ${code}` }));
+	}
+
+	return bytes;
+}
+
+function formatSize(bytes: number): string {
+	if (bytes >= 1024 * 1024 * 1024) {
+		return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+	}
+
+	if (bytes >= 1024 * 1024) {
+		return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+	}
+
+	return `${Math.ceil(bytes / 1024)} KB`;
+}
+
+/** Move a fully arrived entry to its destination under the existing-path policy. */
+async function place(entry: string, target: string, targetRel: string, existing: ExistingPolicy): Promise<void> {
+	if (existsSync(target)) {
+		if (existing === "fail") {
+			throw new Error(t("core.instancefiles.existsCross", { path: targetRel }));
+		}
+
+		if (existing === "merge") {
+			// same-named files are overwritten, everything else in the destination stays
+			await cp(entry, target, { recursive: true, force: true, verbatimSymlinks: true });
+			return;
+		}
+
+		await rm(target, { recursive: true, force: true });
+	}
+
+	await mkdir(dirname(target), { recursive: true });
+	await rename(entry, target);
+}
+
+/**
+ * Copy a file or directory from one instance into another, whether they live
+ * on the same machine or not. Runs on the daemon owning `toInstance`; `to`
+ * is the destination path itself, or a directory to copy into when it ends
+ * with `/`.
+ */
+export async function copyAcrossInstances(
+	cfg: ClusterConfig,
+	toInstance: string,
+	to: string,
+	fromInstance: string,
+	from: string,
+	opts: CrossCopyOptions = {},
+): Promise<CrossCopyResult> {
+	const progress = opts.reporter ?? new ProgressReporter("copy");
+	const existing = opts.existing ?? "fail";
+	const destinationRel = to.endsWith("/")
+		? `${to}${basename(from.replace(/\/+$/, ""))}`
+		: to;
+	const target = resolveInstancePath(cfg, toInstance, destinationRel);
+
+	requireInner(target, destinationRel);
+
+	if (fromInstance === toInstance) {
+		const source = resolveInstancePath(cfg, fromInstance, from);
+
+		if (target.path === source.path || target.path.startsWith(source.path + sep)) {
+			throw new Error(t("core.instancefiles.intoItself", { from, to: destinationRel }));
+		}
+	}
+
+	if (existsSync(target.path) && existing === "fail") {
+		throw new Error(t("core.instancefiles.existsCross", { path: destinationRel }));
+	}
+
+	// staged inside the destination instance, so the final move is a rename on
+	// one filesystem rather than a second copy
+	const incoming = join(target.dir, `.luna-incoming-${randomBytes(6).toString("hex")}`);
+
+	await mkdir(incoming, { recursive: true });
+
+	try {
+		const remote = fetchRemoteArchive
+			? await fetchRemoteArchive(cfg, fromInstance, from)
+			: null;
+
+		let entry: string;
+		let kind: PathInfo["kind"];
+		let transferred = 0;
+
+		if (remote) {
+			if (!remote.ok || !remote.body) {
+				const body = await remote.text().catch(() => "");
+				let detail = body.slice(0, 200);
+
+				try {
+					detail = JSON.parse(body).error ?? detail;
+				} catch {
+					// not the daemon's JSON error shape; keep the raw text
+				}
+				throw new Error(t("core.instancefiles.fetchFailed", { instance: fromInstance, path: from, error: detail || `HTTP ${remote.status}` }));
+			}
+
+			progress.info(0.1, t("core.instancefiles.crossFetching", { instance: fromInstance, path: from }));
+			transferred = await unpack(remote.body, incoming, progress);
+			// header values are ASCII, so the name travels percent-encoded
+			entry = join(incoming, decodeURIComponent(remote.headers.get("x-luna-name") ?? encodeURIComponent(basename(from))));
+			kind = (remote.headers.get("x-luna-kind") as PathInfo["kind"] | null) ?? "file";
+		} else {
+			const source = resolveInstancePath(cfg, fromInstance, from);
+
+			requireInner(source, from);
+
+			const info = await statInstancePath(cfg, fromInstance, from);
+
+			if (!info) {
+				throw new Error(t("core.instancefiles.missingIn", { path: from, instance: fromInstance }));
+			}
+
+			progress.info(0.1, t("core.instancefiles.crossCopying", { instance: fromInstance, path: from }));
+			entry = join(incoming, basename(source.path));
+			kind = info.kind;
+			await cp(source.path, entry, { recursive: true, verbatimSymlinks: true, errorOnExist: true });
+		}
+
+		if (!existsSync(entry)) {
+			throw new Error(t("core.instancefiles.unpackFailed", { error: "the archive did not hold the expected entry" }));
+		}
+
+		await place(entry, target.path, destinationRel, existing);
+
+		const counted = await measure(target.path);
+
+		progress.complete(t("core.instancefiles.crossPlaced", { path: destinationRel, instance: toInstance }));
+
+		return {
+			from: { instance: fromInstance, path: from },
+			to: { instance: toInstance, path: destinationRel },
+			kind,
+			route: remote ? "remote" : "local",
+			transferred,
+			files: counted.files,
+			size: counted.size,
+			existing,
+		};
+	} catch (err) {
+		progress.error(0, (err as Error).message);
+		throw err;
+	} finally {
+		await rm(incoming, { recursive: true, force: true });
+	}
 }

@@ -729,7 +729,16 @@
 		"missing": "nothing at {path}",
 		"exists": "{path} already exists; pass overwrite to replace it",
 		"intoItself": "cannot copy or move {from} into itself ({to})",
-		"notEmpty": "{path} is a directory that is not empty; pass recursive to delete it"
+		"notEmpty": "{path} is a directory that is not empty; pass recursive to delete it",
+		"missingIn": "nothing at {path} in {instance}",
+		"existsCross": "{path} already exists; pass existing \"replace\" to overwrite it or \"merge\" to copy into it",
+		"fetchFailed": "could not get {path} from {instance}: {error}",
+		"unpackFailed": "the transfer could not be unpacked: {error}",
+		"crossCopying": "copying {path} from {instance}",
+		"crossFetching": "receiving {path} from {instance}",
+		"crossReceiving": "{size} received",
+		"crossPlaced": "{path} is in place on {instance}",
+		"noRoute": "{instance} is on {daemon}, which this machine cannot reach"
 	},
 	"hostshell": {
 		"disabled": "this machine does not accept host commands; its operator can enable mcpHostShell in the daemon config",

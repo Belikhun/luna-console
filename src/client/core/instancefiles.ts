@@ -9,10 +9,10 @@
 
 import type * as core from "../../core/instancefiles";
 
-import { call } from "../rpc";
+import { call, jobCall } from "../rpc";
 
 export { MAX_FIND_DEPTH, MAX_FIND_RESULTS } from "../../core/instancefiles";
-export type { DeleteOptions, FindQuery, FindResult, PathInfo, TransferOptions } from "../../core/instancefiles";
+export type { CrossCopyOptions, CrossCopyResult, DeleteOptions, ExistingPolicy, FindQuery, FindResult, PathInfo, TransferOptions } from "../../core/instancefiles";
 
 export const statInstancePath = call("instancefiles.stat", { cfg: 0 }) as typeof core.statInstancePath;
 export const findInstanceFiles = call("instancefiles.find", { cfg: 0 }) as typeof core.findInstanceFiles;
@@ -20,3 +20,14 @@ export const makeInstanceDir = call("instancefiles.mkdir", { cfg: 0 }) as typeof
 export const copyInstancePath = call("instancefiles.copy", { cfg: 0 }) as typeof core.copyInstancePath;
 export const moveInstancePath = call("instancefiles.move", { cfg: 0 }) as typeof core.moveInstancePath;
 export const deleteInstancePath = call("instancefiles.delete", { cfg: 0 }) as typeof core.deleteInstancePath;
+
+/**
+ * Copy between two instances, routed to the daemon owning the destination; a
+ * source on another machine crosses the cluster link as a tar stream.
+ */
+export const copyAcrossInstances = jobCall("instancefiles.copyAcross", {
+	cfg: 0,
+	reporter: { arg: 5, prop: "reporter" },
+	kind: "file-copy",
+	targetArg: 1,
+}) as typeof core.copyAcrossInstances;

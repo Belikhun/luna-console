@@ -588,6 +588,23 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		instanceArg: "instance",
 	},
 	{
+		name: "file_transfer",
+		group: "files-write",
+		description: "Copy a file or a whole directory from one instance into another, on the same machine or across machines (the daemons stream it between themselves), e.g. a saved schematic from one server's plugins/WorldEdit/schematics into another's. `to` is the destination path itself, or a folder to copy into when it ends with \"/\". When the destination exists: existing \"fail\" (default) refuses, \"replace\" removes it first, \"merge\" copies into the existing folder, overwriting same-named files and keeping the rest (like rsync without --delete). Large folders can take minutes; the call waits up to ten and otherwise reports the job still running.",
+		inputSchema: object(
+			{
+				fromInstance: { type: "string", description: "Instance to copy from." },
+				from: { type: "string", description: "Source path relative to that instance's root.", maxLength: 1024 },
+				toInstance: { type: "string", description: "Instance to copy into (may be the same one)." },
+				to: { type: "string", description: "Destination path relative to that instance's root; end with \"/\" to copy into a folder under the source's own name.", maxLength: 1024 },
+				existing: { type: "string", enum: ["fail", "replace", "merge"], description: "What to do when the destination already exists (default fail)." },
+			},
+			["fromInstance", "from", "toInstance", "to"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+		instanceArg: "toInstance",
+	},
+	{
 		name: "file_move",
 		group: "files-write",
 		description: "Move or rename a file or directory within the same instance.",

@@ -47,12 +47,14 @@ import { lunaShellRefusal, scopeCoversInstance } from '$shared/mcptools';
 import { browseInstance, readInstanceFile, writeInstanceFile, MAX_EDIT_BYTES } from '$core/configfiles';
 import {
 	copyInstancePath,
+	copyAcrossInstances,
 	deleteInstancePath,
 	findInstanceFiles,
 	makeInstanceDir,
 	moveInstancePath,
 	statInstancePath
 } from '$core/instancefiles';
+import type { ExistingPolicy } from '$core/instancefiles';
 import { runHostCommand } from '$core/hostshell';
 import { cliBinary, root } from '$lib/server/luna';
 import { ToolError } from './errors';
@@ -110,6 +112,9 @@ async function requireInstance(name: string): Promise<ClusterConfig> {
 
 	return cfg;
 }
+
+/** How long file_transfer waits on its job before answering that it is still going. */
+const FILE_TRANSFER_WAIT_MS = 10 * 60 * 1000;
 
 /** ANSI escapes, which the CLI emits for colour and the model has no use for. */
 const ANSI = /\x1b\[[0-9;?]*[ -\/]*[@-~]/g;
@@ -1001,6 +1006,46 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		pushEvent(name, 'action', `copied by ${ctx.actor}: ${str(args, 'from')} → ${info.path}`);
 
 		return { instance: name, copied: str(args, 'from'), to: info.path, kind: info.kind };
+	},
+
+	async file_transfer(args, ctx) {
+		const fromInstance = str(args, 'fromInstance');
+		const toInstance = str(args, 'toInstance');
+		const from = str(args, 'from');
+		const to = str(args, 'to');
+		const existing = (optStr(args, 'existing') ?? 'fail') as ExistingPolicy;
+
+		// the catalog checks the destination; the source has to be in scope too,
+		// or a token limited to one server could read any other through a copy
+		if (!scopeCoversInstance(ctx.principal.scope, fromInstance)) {
+			throw new ToolError(`this token may not reach the instance "${fromInstance}"`);
+		}
+
+		const cfg = await requireInstance(toInstance);
+
+		if (!managedInstances(cfg)[fromInstance]) {
+			throw new ToolError(`unknown instance "${fromInstance}"; call cluster_status for the list`);
+		}
+
+		const job = startJob('file-copy', toInstance, `Copy ${fromInstance}:${from} to ${toInstance}:${to}`, async (reporter) => {
+			const result = await copyAcrossInstances(cfg, toInstance, to, fromInstance, from, { existing, reporter });
+
+			pushEvent(toInstance, 'action', `${fromInstance}:${from} copied to ${result.to.path} by ${ctx.actor}`);
+
+			return result;
+		});
+
+		const settled = await awaitJob(job, FILE_TRANSFER_WAIT_MS);
+
+		if (settled.state === 'running') {
+			return { running: true, job: settled.id, note: 'still copying; check file_stat on the destination in a few minutes' };
+		}
+
+		if (settled.state === 'failed') {
+			throw new ToolError(settled.error ?? 'the copy failed');
+		}
+
+		return settled.result;
 	},
 
 	async file_move(args, ctx) {

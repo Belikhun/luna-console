@@ -33,6 +33,8 @@ import type { DaemonConfig } from "./config";
 import { consoleStamp } from "./console";
 import { getEvents } from "./events";
 import { ownsInstance } from "./identity";
+import * as instancefilesCore from "../core/instancefiles";
+import type { ClusterConfig } from "../core/types";
 import { getJob, startJob, watchJob, type JobView } from "./jobs";
 import { runOp } from "./rpc";
 import { tailFollow, type TailHandle } from "./tail";
@@ -116,6 +118,10 @@ let followerEndpoint: ((daemon: string) => string | undefined) | undefined;
 
 /** The shared cluster token, kept so a proxied fetch can authenticate itself. */
 let clusterToken: string | undefined;
+
+/** Whether this daemon is the primary, and where a follower reaches the primary. */
+let isPrimary = false;
+let primaryAddress: string | undefined;
 
 /** Install the follower address lookup (primary only). */
 export function setFollowerEndpoint(lookup: typeof followerEndpoint): void {
@@ -515,6 +521,99 @@ async function handleBackupFile(
 	return rangedFile(path, request);
 }
 
+/** A relative instance path as URL segments, each encoded on its own. */
+function encodePath(relPath: string): string {
+	return relPath.split("/").filter((part) => part !== "").map(encodeURIComponent).join("/");
+}
+
+/**
+ * How a copy's destination reaches a source on another machine
+ * (`copyAcrossInstances`). The primary asks the owning follower directly;
+ * a follower asks the primary, which serves its own instances and passes the
+ * request through for another follower's, so followers never need to know
+ * each other's addresses. Null when the source is this daemon's own.
+ */
+async function fetchInstanceArchive(cfg: ClusterConfig, instance: string, relPath: string): Promise<Response | null> {
+	const inst = managedInstances(cfg)[instance];
+
+	if (!inst) {
+		throw new Error(t("core.instances.unknown", { name: instance }));
+	}
+
+	if (ownsInstance(inst)) {
+		return null;
+	}
+
+	const base = isPrimary
+		? followerEndpoint?.(inst.daemon ?? "")
+		: primaryAddress;
+
+	if (!base) {
+		throw new Error(t("core.instancefiles.noRoute", { instance, daemon: inst.daemon ?? "primary" }));
+	}
+
+	return await fetch(`http://${base}/files/instance/${encodeURIComponent(instance)}/${encodePath(relPath)}`, {
+		headers: { "x-luna-token": clusterToken ?? "" },
+	});
+}
+
+/**
+ * GET /files/instance/<instance>/<path>; one file or directory of an instance
+ * as a tar stream, for a copy whose destination is on another machine. The
+ * owner packs it; the primary passes the request through to the owner when the
+ * instance is a follower's.
+ */
+async function handleInstanceArchive(subpath: string): Promise<Response> {
+	const slash = subpath.indexOf("/");
+	const instance = slash < 0 ? subpath : subpath.slice(0, slash);
+	const relPath = slash < 0 ? "" : subpath.slice(slash + 1);
+
+	if (!/^[a-z0-9_-]+$/i.test(instance)) {
+		return errorResponse("invalid instance", 400);
+	}
+
+	const cfg = await loadCluster().catch(() => undefined);
+	const inst = cfg ? managedInstances(cfg)[instance] : undefined;
+
+	if (!cfg || !inst) {
+		return errorResponse("no such instance", 404);
+	}
+
+	if (!ownsInstance(inst)) {
+		const endpoint = isPrimary
+			? followerEndpoint?.(inst.daemon ?? "")
+			: undefined;
+
+		if (!endpoint) {
+			return errorResponse(t("core.instancefiles.noRoute", { instance, daemon: inst.daemon ?? "primary" }), 502);
+		}
+
+		const upstream = await fetch(`http://${endpoint}/files/instance/${encodeURIComponent(instance)}/${encodePath(relPath)}`, {
+			headers: { "x-luna-token": clusterToken ?? "" },
+		}).catch(() => undefined);
+
+		if (!upstream) {
+			return errorResponse(t("core.instancefiles.noRoute", { instance, daemon: inst.daemon ?? "?" }), 502);
+		}
+
+		return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
+	}
+
+	try {
+		const archive = await instancefilesCore.instanceArchive(cfg, instance, relPath);
+
+		return new Response(archive.stream, {
+			headers: {
+				"content-type": "application/x-tar",
+				"x-luna-kind": archive.kind,
+				"x-luna-name": encodeURIComponent(archive.name),
+			},
+		});
+	} catch (err) {
+		return errorResponse(err instanceof Error ? err.message : String(err), 404);
+	}
+}
+
 /** Stream a follower-held archive back through the primary. */
 async function proxyFollowerBackup(
 	daemon: string,
@@ -808,6 +907,9 @@ export function buildHandler(
 	startedAt: number,
 ): (request: Request, server: Bun.Server<WsData>) => Promise<Response | undefined> {
 	clusterToken = dcfg.token;
+	isPrimary = dcfg.mode === "primary";
+	primaryAddress = dcfg.primary?.address;
+	instancefilesCore.installInstanceArchiveFetcher(fetchInstanceArchive);
 
 	return async (request: Request, server: Bun.Server<WsData>): Promise<Response | undefined> => {
 		const url = new URL(request.url);
@@ -933,6 +1035,10 @@ export function buildHandler(
 			} catch (err) {
 				return errorResponse(err instanceof Error ? err.message : String(err), 502);
 			}
+		}
+
+		if (path.startsWith("/files/instance/") && request.method === "GET") {
+			return await handleInstanceArchive(decodeURIComponent(path.slice("/files/instance/".length)));
 		}
 
 		if (path.startsWith("/files/pool/")) {
