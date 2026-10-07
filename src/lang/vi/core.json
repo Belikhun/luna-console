@@ -823,5 +823,21 @@
 			"velocityUpToDate": "velocity.toml đã đúng",
 			"notRegistered": "không đăng ký; instance độc lập"
 		}
+	},
+	"domains": {
+		"notConfigured": "chưa cấu hình nhà cung cấp DNS; hãy đặt thông tin API Namecheap trước",
+		"badLabel": "\"{name}\" không phải tên miền luna quản lý được: dùng một nhãn (chữ, số, gạch ngang) ngay dưới {base}",
+		"zoneNotOwned": "không tên miền nào trong tài khoản Namecheap chứa {base}",
+		"notOurDns": "{zone} không dùng DNS của Namecheap nên không sửa bản ghi qua API được",
+		"writeMismatch": "vùng DNS {zone} đọc lại không khớp với bản đã ghi; các bản ghi cũ đã được khôi phục từ {backup}",
+		"badProvider": "cấu hình Namecheap cần API user, API key và một địa chỉ IPv4 của máy gọi",
+		"badBase": "\"{base}\" không phải tên miền",
+		"badAddress": "\"{address}\" không phải địa chỉ IPv4",
+		"badTtl": "TTL phải là số giây nguyên từ 60 đến 86400",
+		"exists": "{fqdn} đã do luna quản lý",
+		"foreignRecords": "{fqdn} đang có bản ghi {types} mà luna không quản lý; hãy xoá chúng trên Namecheap trước",
+		"recordsExist": "{fqdn} đã có bản ghi DNS; dùng adopt để thay thế",
+		"unmanaged": "luna không quản lý {fqdn}",
+		"unsupportedRecords": "{zone} có bản ghi mà API Namecheap không ghi lại được ({records}); lưu vùng DNS sẽ xoá chúng. Hãy tạo lại thủ công sau đó, hoặc cho phép luna bỏ chúng trong cấu hình DNS (chúng vẫn nằm trong bản sao lưu)."
 	}
 }

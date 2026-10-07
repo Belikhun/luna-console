@@ -2193,5 +2193,98 @@
 			"versionLine": "now Minecraft {mc}, loader {loader}",
 			"filesLine": "{files} pack file(s), {overrides} override(s), {removed} stale file(s) removed"
 		}
+	},
+	"domains": {
+		"desc": "Hostnames under the network's base domain and the instances they route to",
+		"notConfigured": "not configured; run luna domains setup",
+		"none": "No managed hostnames yet; create one with luna domain add <name> --instance <instance>.",
+		"notReloaded": "velocity is not running; it picks the change up when it starts",
+		"cancelled": "Cancelled.",
+		"argHostname": "a label (create) or a full hostname under the base domain",
+		"field": {
+			"provider": "provider",
+			"base": "base domain",
+			"address": "records point at",
+			"ttl": "record TTL",
+			"dropUnsupported": "drop unsupported records"
+		},
+		"head": {
+			"hostname": "HOSTNAME",
+			"address": "ADDRESS",
+			"by": "BY",
+			"domain": "DOMAIN",
+			"dns": "DNS",
+			"expires": "EXPIRES",
+			"name": "NAME",
+			"type": "TYPE",
+			"ttl": "TTL",
+			"when": "WHEN",
+			"action": "ACTION"
+		},
+		"setup": {
+			"desc": "Set the Namecheap API credentials (the key is read from stdin or a prompt)",
+			"optApiUser": "API user (the Namecheap username)",
+			"optUserName": "account the calls act on (default: the API user)",
+			"optClientIp": "the whitelisted IPv4 address the calls come from",
+			"optSandbox": "use Namecheap's sandbox API",
+			"optKeepKey": "keep the stored API key",
+			"keyNeeded": "pipe the API key on stdin, or run this in a terminal to be asked for it",
+			"keyPrompt": "Namecheap API key",
+			"needed": "--api-user and --client-ip are required the first time",
+			"saved": "Namecheap credentials saved for {user}"
+		},
+		"set": {
+			"desc": "Change the base domain, the address records point at, or the record TTL",
+			"optBase": "base domain every hostname sits under (e.g. mc.belikhun.dev)",
+			"optAddress": "IPv4 address records point at, or auto for the client IP",
+			"optTtl": "record TTL in seconds (60-86400)",
+			"nothing": "pass --base, --address or --ttl",
+			"saved": "base {base} · records point at {address} · TTL {ttl}s",
+			"optDropUnsupported": "allow writes that delete records the API cannot send back, such as CAA (on|off)"
+		},
+		"check": {
+			"desc": "Prove the credential and the whitelisted IP work, and list the account's domains",
+			"ok": "Namecheap answered: {count} domain(s); the base domain is in {zone}",
+			"failed": "Namecheap refused: {error}",
+			"externalDns": "external DNS"
+		},
+		"records": {
+			"desc": "Live DNS records at a hostname, or under the whole base domain",
+			"none": "No records there."
+		},
+		"add": {
+			"desc": "Create a hostname under the base domain, optionally routed to an instance",
+			"optInstance": "instance to route it to",
+			"optAddress": "IPv4 address for this hostname",
+			"optAdopt": "replace A/CNAME records already at that name",
+			"done": "{fqdn} → {address}"
+		},
+		"point": {
+			"desc": "Point a managed hostname at another address",
+			"argAddress": "the new IPv4 address",
+			"done": "{fqdn} now points at {address}"
+		},
+		"link": {
+			"desc": "Route a managed hostname to an instance (velocity forced host)",
+			"argInstance": "the instance",
+			"done": "{fqdn} routes to {instance}"
+		},
+		"unlink": {
+			"desc": "Stop routing a hostname to its instance (the DNS record stays)",
+			"done": "{fqdn} no longer routes to an instance"
+		},
+		"remove": {
+			"desc": "Delete a managed hostname: unlink it and remove its DNS record",
+			"optYes": "skip the confirmation",
+			"confirm": "Delete {fqdn} (routed to {instance}) and its DNS record?",
+			"done": "{fqdn} deleted"
+		},
+		"audit": {
+			"desc": "What was done to hostnames and the DNS settings, newest first",
+			"optLimit": "how many entries",
+			"none": "Nothing recorded yet."
+		},
+		"dropOn": "allowed (CAA and similar records are deleted on every write)",
+		"dropOff": "refused (writes stop while the zone holds them)"
 	}
 }

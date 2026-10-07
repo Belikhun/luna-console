@@ -127,6 +127,7 @@ const pages = (): SearchHit[] => [
 		icon: 'sliders'
 	},
 	{ group: 'web.searchGroups.pages', label: t('web.nav.ports'), detail: t('web.searchPages.ports'), href: '/network', icon: 'sitemap' },
+	{ group: 'web.searchGroups.pages', label: t('web.nav.domains'), detail: t('web.searchPages.domains'), href: '/network/domains', icon: 'globe' },
 	{ group: 'web.searchGroups.pages', label: t('web.nav.proxyRouting'), detail: t('web.searchPages.proxy'), href: '/proxy', icon: 'route' },
 	{ group: 'web.searchGroups.pages', label: t('web.nav.schedules'), detail: t('web.searchPages.schedules'), href: '/schedules', icon: 'clock' },
 	{
@@ -480,6 +481,22 @@ export const SEARCH_PROVIDERS: SearchProvider[] = [
 					.join(' · '),
 				href: `/console/mcp/${token.id}`,
 				icon: 'plug'
+			}));
+		}
+	},
+
+	{
+		group: 'web.searchGroups.domains',
+		icon: 'globe',
+		load: async () => {
+			const body = await fetchJson<{ hostnames?: any[] }>('/api/domains');
+
+			return (body?.hostnames ?? []).map((entry) => ({
+				group: 'web.searchGroups.domains',
+				label: String(entry.fqdn),
+				detail: entry.instance ? `→ ${entry.instance} · ${entry.address}` : String(entry.address),
+				href: `/network/domains?q=${encodeURIComponent(entry.fqdn)}`,
+				icon: 'globe'
 			}));
 		}
 	},

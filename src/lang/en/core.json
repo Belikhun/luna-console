@@ -823,5 +823,21 @@
 			"velocityUpToDate": "velocity.toml already up to date",
 			"notRegistered": "not registered; standalone instance"
 		}
+	},
+	"domains": {
+		"notConfigured": "no DNS provider is configured; set the Namecheap API credentials first",
+		"badLabel": "\"{name}\" is not a hostname luna can manage: use one label (letters, digits, dashes) directly under {base}",
+		"zoneNotOwned": "none of the Namecheap account's domains holds {base}",
+		"notOurDns": "{zone} does not use Namecheap's DNS, so its records cannot be edited through the API",
+		"writeMismatch": "the provider's zone for {zone} did not read back as written; the previous records were restored from {backup}",
+		"badProvider": "the Namecheap settings need an API user, an API key and an IPv4 client address",
+		"badBase": "\"{base}\" is not a domain name",
+		"badAddress": "\"{address}\" is not an IPv4 address",
+		"badTtl": "the TTL must be a whole number of seconds between 60 and 86400",
+		"exists": "{fqdn} is already managed by luna",
+		"foreignRecords": "{fqdn} already holds {types} records, which luna does not manage; remove them in Namecheap first",
+		"recordsExist": "{fqdn} already has DNS records; pass adopt to replace them",
+		"unmanaged": "luna does not manage {fqdn}",
+		"unsupportedRecords": "{zone} holds records the Namecheap API cannot write back ({records}); saving the zone would delete them. Re-create them by hand afterwards, or allow luna to drop them in the DNS settings (they stay in the zone backup)."
 	}
 }

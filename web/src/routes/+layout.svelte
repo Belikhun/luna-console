@@ -180,6 +180,7 @@
 			section: t('web.nav.networkProxy'),
 			items: [
 				{ label: t('web.nav.ports'), href: '/network', icon: 'sitemap' },
+				{ label: t('web.nav.domains'), href: '/network/domains', icon: 'globe' },
 				{ label: t('web.nav.proxyRouting'), href: '/proxy', icon: 'route' }
 			]
 		},
@@ -312,6 +313,7 @@
 		'/machines/[name]',
 		'/mods',
 		'/network',
+		'/network/domains',
 		'/network/pools',
 		'/packs',
 		'/packs/[key]',
@@ -390,6 +392,11 @@
 		// /players must not claim them
 		if (href === '/players') {
 			return /^\/players(?!\/online|\/moderation)/.test(page.url.pathname);
+		}
+
+		// "Domains" is its own entry; pools stays under ports, as it always has
+		if (href === '/network') {
+			return /^\/network(?!\/domains)/.test(page.url.pathname);
 		}
 
 		return page.url.pathname === href || page.url.pathname.startsWith(href + '/');

@@ -96,6 +96,7 @@ export const STATE_FILES = [
 	"mcp.json",
 	"knowledge.json",
 	"agent.json",
+	"domains.json",
 ] as const;
 
 /** Whether a directory is a cluster root: it holds the registry. */

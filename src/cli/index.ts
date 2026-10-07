@@ -7,6 +7,7 @@
 // web/ = SvelteKit console reusing core through the $core alias.
 
 import "./commands/instance";
+import "./commands/domains";
 import "./commands/modpack";
 import "./commands/plugins";
 import "./commands/addons";

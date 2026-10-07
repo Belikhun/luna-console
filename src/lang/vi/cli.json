@@ -2193,5 +2193,98 @@
 			"versionLine": "nay là Minecraft {mc}, loader {loader}",
 			"filesLine": "{files} tệp của gói, {overrides} override, đã xoá {removed} tệp cũ"
 		}
+	},
+	"domains": {
+		"desc": "Tên miền con dưới tên miền gốc của mạng và máy chủ mà chúng dẫn tới",
+		"notConfigured": "chưa cấu hình; chạy luna domains setup",
+		"none": "Chưa có tên miền nào được quản lý; tạo bằng luna domain add <tên> --instance <instance>.",
+		"notReloaded": "velocity đang không chạy; thay đổi sẽ có hiệu lực khi nó khởi động",
+		"cancelled": "Đã huỷ.",
+		"argHostname": "một nhãn (create) hoặc tên đầy đủ dưới tên miền gốc",
+		"field": {
+			"provider": "nhà cung cấp",
+			"base": "tên miền gốc",
+			"address": "bản ghi trỏ tới",
+			"ttl": "TTL bản ghi",
+			"dropUnsupported": "bỏ bản ghi không hỗ trợ"
+		},
+		"head": {
+			"hostname": "TÊN MIỀN",
+			"address": "ĐỊA CHỈ",
+			"by": "BỞI",
+			"domain": "TÊN MIỀN",
+			"dns": "DNS",
+			"expires": "HẾT HẠN",
+			"name": "TÊN",
+			"type": "LOẠI",
+			"ttl": "TTL",
+			"when": "LÚC",
+			"action": "HÀNH ĐỘNG"
+		},
+		"setup": {
+			"desc": "Đặt thông tin API Namecheap (key đọc từ stdin hoặc hỏi trực tiếp)",
+			"optApiUser": "API user (tên đăng nhập Namecheap)",
+			"optUserName": "tài khoản được thao tác (mặc định: API user)",
+			"optClientIp": "địa chỉ IPv4 đã whitelist mà lệnh gọi đi ra",
+			"optSandbox": "dùng API sandbox của Namecheap",
+			"optKeepKey": "giữ API key đã lưu",
+			"keyNeeded": "truyền API key qua stdin, hoặc chạy trong terminal để được hỏi",
+			"keyPrompt": "API key Namecheap",
+			"needed": "lần đầu cần --api-user và --client-ip",
+			"saved": "Đã lưu thông tin Namecheap cho {user}"
+		},
+		"set": {
+			"desc": "Đổi tên miền gốc, địa chỉ bản ghi trỏ tới hoặc TTL",
+			"optBase": "tên miền gốc mọi tên miền con nằm dưới (vd mc.belikhun.dev)",
+			"optAddress": "địa chỉ IPv4 bản ghi trỏ tới, hoặc auto để dùng IP máy gọi",
+			"optTtl": "TTL bản ghi tính bằng giây (60-86400)",
+			"nothing": "truyền --base, --address hoặc --ttl",
+			"saved": "gốc {base} · trỏ tới {address} · TTL {ttl}s",
+			"optDropUnsupported": "cho phép ghi dù xoá bản ghi API không gửi lại được, như CAA (on|off)"
+		},
+		"check": {
+			"desc": "Kiểm tra thông tin API và IP whitelist, liệt kê tên miền của tài khoản",
+			"ok": "Namecheap đã trả lời: {count} tên miền; tên miền gốc nằm trong {zone}",
+			"failed": "Namecheap từ chối: {error}",
+			"externalDns": "DNS bên ngoài"
+		},
+		"records": {
+			"desc": "Bản ghi DNS hiện tại của một tên miền, hoặc toàn bộ dưới tên miền gốc",
+			"none": "Không có bản ghi nào."
+		},
+		"add": {
+			"desc": "Tạo tên miền con dưới tên miền gốc, có thể dẫn tới một instance",
+			"optInstance": "instance được dẫn tới",
+			"optAddress": "địa chỉ IPv4 cho tên miền này",
+			"optAdopt": "thay thế bản ghi A/CNAME đang có ở tên đó",
+			"done": "{fqdn} → {address}"
+		},
+		"point": {
+			"desc": "Trỏ một tên miền đang quản lý sang địa chỉ khác",
+			"argAddress": "địa chỉ IPv4 mới",
+			"done": "{fqdn} giờ trỏ tới {address}"
+		},
+		"link": {
+			"desc": "Dẫn một tên miền đang quản lý tới một instance (forced host của velocity)",
+			"argInstance": "instance",
+			"done": "{fqdn} dẫn tới {instance}"
+		},
+		"unlink": {
+			"desc": "Ngừng dẫn tên miền tới instance (bản ghi DNS vẫn giữ)",
+			"done": "{fqdn} không còn dẫn tới instance nào"
+		},
+		"remove": {
+			"desc": "Xoá một tên miền đang quản lý: gỡ liên kết và xoá bản ghi DNS",
+			"optYes": "bỏ qua xác nhận",
+			"confirm": "Xoá {fqdn} (đang dẫn tới {instance}) và bản ghi DNS của nó?",
+			"done": "Đã xoá {fqdn}"
+		},
+		"audit": {
+			"desc": "Lịch sử thay đổi tên miền và cấu hình DNS, mới nhất trước",
+			"optLimit": "số dòng",
+			"none": "Chưa có gì được ghi lại."
+		},
+		"dropOn": "cho phép (CAA và bản ghi tương tự bị xoá mỗi lần ghi)",
+		"dropOff": "từ chối (dừng ghi khi vùng còn chúng)"
 	}
 }

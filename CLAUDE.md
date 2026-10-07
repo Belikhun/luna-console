@@ -358,6 +358,29 @@ export interface InstanceConfig {}
   paths**: `syncFilePath()` resolves each name on the machine that has it, so where a file lives is
   never on the wire.
 
+### Domains
+- **A hostname is one label under the base domain, and it routes by forced host.** `core/domains.ts`
+  manages names like `create.mc.belikhun.dev` (base domain configurable, `mc.belikhun.dev` by
+  default; nothing outside it, nothing nested, is ever touched): an A record at the network's public
+  address, optionally linked to one instance, which adds it to that instance's velocity
+  `forcedHosts`, registers the instance and reloads velocity. Modded servers are why: their clients
+  cannot pass through the vanilla lobby. Buying domains is deliberately not here.
+- **Namecheap's DNS API replaces a whole zone per write**, so every change is read-modify-write
+  through `editZone`: the zone is backed up to `.data/dns-backups/<zone>/`, only the names asked about
+  change, the mail setting is sent back, and the zone is read back afterwards; anything else that
+  moved restores the backup and fails. **SRV records are outside the API entirely** (measured
+  2026-10-07): `getHosts` never returns them, a write leaves the existing ones in place, and an SRV
+  sent in `setHosts` is answered with success and silently not stored, so they are made in
+  Namecheap's dashboard only. A type the API does return but cannot send back (CAA) blocks writes
+  unless an operator sets `dropUnsupported` (CLI, console, never MCP); dropped records stay in the
+  backup and are reported.
+- `domains.json` holds the API key, so like `mcp.json` it is primary-local and never mirrored, and
+  the key is write-only (reads give a hint). Namecheap refuses any caller IP not whitelisted on the
+  account. `LUNA_NAMECHEAP_API` points a test cluster at a stand-in server.
+- Surfaces: `luna domains …`/`luna domain …`, `/network/domains`, and the `domains`/`domains-write`
+  MCP groups (writes closed to instance-limited tokens). Mèo Béo's persona gives a modded server its
+  own hostname after creating it.
+
 ### Console accounts
 - **The console is gated; the CLI is not.** Every web route goes through
   `web/src/hooks.server.ts`, which resolves the session cookie once and hangs the account on

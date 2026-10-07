@@ -42,6 +42,8 @@ export type McpToolGroup =
 	| "addons-write"
 	| "network"
 	| "network-write"
+	| "domains"
+	| "domains-write"
 	| "packs"
 	| "packs-write"
 	| "knowledge"
@@ -61,6 +63,8 @@ export const MCP_TOOL_GROUPS: McpToolGroup[] = [
 	"addons-write",
 	"network",
 	"network-write",
+	"domains",
+	"domains-write",
 	"packs",
 	"packs-write",
 	"knowledge",
@@ -432,9 +436,10 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		name: "env_list",
 		group: "config",
 		description:
-			"Environment variables defined for the cluster (global, per machine, per instance). Secret values are always masked.",
+			"Environment variables defined for the cluster (global, per machine, per instance). Secret values are always masked. Values layer builtin < global < machine < instance: an instance sees the global value unless its machine or the instance itself overrides it.",
 		inputSchema: object({
 			instance: { type: "string", description: "Only variables set on this instance's scope." },
+			machine: { type: "string", description: "Only variables set on this machine's scope, by machine name as listed by fleet_status." },
 		}),
 		annotations: READ,
 	},
@@ -442,12 +447,13 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		name: "env_set",
 		group: "config",
 		description:
-			"Set a non-secret environment variable at global scope or on one instance. Takes effect on the instance's next start.",
+			"Set a non-secret environment variable at global scope, on one machine (every instance that machine runs) or on one instance. Give at most one of machine and instance; neither means global. Takes effect on each affected instance's next start.",
 		inputSchema: object(
 			{
 				name: { type: "string", description: "UPPER_SNAKE_CASE variable name.", maxLength: 128 },
 				value: { type: "string", description: "The value.", maxLength: 4096 },
-				instance: { type: "string", description: "Instance scope; omit for global." },
+				machine: { type: "string", description: "Machine scope, by name as listed by fleet_status." },
+				instance: { type: "string", description: "Instance scope." },
 			},
 			["name", "value"],
 		),
@@ -457,11 +463,12 @@ export const MCP_TOOLS: McpToolSpec[] = [
 	{
 		name: "env_unset",
 		group: "config",
-		description: "Remove a non-secret environment variable from global scope or from one instance.",
+		description: "Remove a non-secret environment variable from global scope, one machine or one instance. Give at most one of machine and instance; neither means global.",
 		inputSchema: object(
 			{
 				name: { type: "string", description: "Variable name.", maxLength: 128 },
-				instance: { type: "string", description: "Instance scope; omit for global." },
+				machine: { type: "string", description: "Machine scope, by name as listed by fleet_status." },
+				instance: { type: "string", description: "Instance scope." },
 			},
 			["name"],
 		),
@@ -909,6 +916,93 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		),
 		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
 		instanceArg: "instance",
+	},
+
+	// -- domains ---------------------------------------------------------------
+	{
+		name: "domain_list",
+		group: "domains",
+		description: "The hostnames luna manages under the network's base domain (e.g. create.mc.belikhun.dev), which instance each one routes to, and the DNS settings: the base domain, the address records point at, and whether the DNS provider is configured. A hostname linked to an instance sends a client connecting by that name straight to it (a velocity forced host), which is how modded servers are reached, since modded clients cannot join the vanilla lobby first.",
+		inputSchema: object({}, []),
+		annotations: { readOnlyHint: true, openWorldHint: true },
+	},
+	{
+		name: "domain_records",
+		group: "domains",
+		description: "The live DNS records at one hostname, or every record under the base domain when no name is given, read from the provider (Namecheap).",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "A label (\"create\") or a full hostname under the base domain." },
+			},
+			[],
+		),
+		annotations: { readOnlyHint: true, openWorldHint: true },
+	},
+	{
+		name: "domain_create",
+		group: "domains-write",
+		description: "Create a hostname under the base domain (one label, e.g. \"create\" becomes create.mc.belikhun.dev) pointing at the network's public address, and link it to an instance when one is given, which also registers that instance with velocity and reloads it. Use it when setting up a modded server, so players can connect by its own name. Refuses a name that already has DNS records unless adopt is true. New DNS names can take a few minutes to resolve everywhere.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "The label, or the full hostname under the base domain." },
+				instance: { type: "string", description: "Instance to route the hostname to." },
+				address: { type: "string", description: "IPv4 address for this hostname; the network's public address when omitted." },
+				adopt: { type: "boolean", description: "Replace A/CNAME records already at that name (default false)." },
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+	},
+	{
+		name: "domain_update",
+		group: "domains-write",
+		description: "Point a managed hostname at another IPv4 address.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "The label, or the full hostname." },
+				address: { type: "string", description: "The new IPv4 address." },
+			},
+			["name", "address"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
+	},
+	{
+		name: "domain_link",
+		group: "domains-write",
+		description: "Route a managed hostname to an instance (moving it off any other one): adds it to the instance's velocity forced hosts, registers the instance with velocity and reloads it.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "The label, or the full hostname." },
+				instance: INSTANCE,
+			},
+			["name", "instance"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+		instanceArg: "instance",
+	},
+	{
+		name: "domain_unlink",
+		group: "domains-write",
+		description: "Stop routing a hostname to its instance; the DNS record stays, so it can be linked again later.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "The label, or the full hostname." },
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "domain_delete",
+		group: "domains-write",
+		description: "Delete a managed hostname: unlink it from its instance, remove its DNS record and stop managing it. Players using that name can no longer connect by it. Confirm with the operator unless they asked for it.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "The label, or the full hostname." },
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: true },
 	},
 
 	// -- network ---------------------------------------------------------------

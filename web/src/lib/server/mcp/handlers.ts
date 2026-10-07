@@ -37,6 +37,7 @@ import * as luna from '$core/services/luna';
 import { listStatuses, getEvents, pushEvent, markTransition, clearTransition } from '$lib/server/luna';
 import type { ClusterEvent } from '$lib/server/luna';
 import { listDaemons, daemonDetail } from '$client/daemon';
+import { machineKeyFor, machineNameFor } from '$shared/machines';
 import { startJob } from '$lib/server/jobs';
 import { deleteInstance } from '$core/admin';
 import { syncVelocityToml } from '$core/proxy';
@@ -61,6 +62,7 @@ import { ToolError } from './errors';
 import type { ToolArgs, ToolContext, ToolHandler } from './errors';
 import { ADDON_HANDLERS } from './addons';
 import { NETWORK_HANDLERS } from './network';
+import { DOMAIN_HANDLERS } from './domains';
 import { PACK_HANDLERS } from './packs';
 import { MODPACK_HANDLERS } from './modpacks';
 
@@ -111,6 +113,51 @@ async function requireInstance(name: string): Promise<ClusterConfig> {
 	}
 
 	return cfg;
+}
+
+/**
+ * The scope an env_set/env_unset call writes: one machine (by name), one
+ * instance, or global. A token limited to some instances may only touch its
+ * own instances' scopes, since a global or machine value reaches others too.
+ */
+async function envTarget(
+	args: ToolArgs,
+	ctx: ToolContext,
+	verb: 'set' | 'unset'
+): Promise<{ scope: { instance?: string; machine?: string }; label: string }> {
+	const instance = optStr(args, 'instance')?.trim() || undefined;
+	const machine = optStr(args, 'machine')?.trim() || undefined;
+
+	if (instance && machine) {
+		throw new ToolError('give machine or instance, not both');
+	}
+
+	if (instance) {
+		if (!scopeCoversInstance(ctx.principal.scope, instance)) {
+			throw new ToolError(`this token may not reach ${instance}`);
+		}
+
+		await requireInstance(instance);
+
+		return { scope: { instance }, label: `instance ${instance}` };
+	}
+
+	if (ctx.principal.scope.instances !== null) {
+		throw new ToolError(`this token is limited to some instances, so it may only ${verb} instance-scoped variables`);
+	}
+
+	if (machine) {
+		const fleet = await listDaemons();
+		const key = machineKeyFor(fleet, machine);
+
+		if (key === undefined) {
+			throw new ToolError(`unknown machine "${machine}"; call fleet_status for the names`);
+		}
+
+		return { scope: { machine: key }, label: `machine ${machineNameFor(fleet, key)}` };
+	}
+
+	return { scope: {}, label: 'global' };
 }
 
 /** How long file_transfer waits on its job before answering that it is still going. */
@@ -295,6 +342,7 @@ function knowledgeView(item: KnowledgeItem): Record<string, unknown> {
 export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	...ADDON_HANDLERS,
 	...NETWORK_HANDLERS,
+	...DOMAIN_HANDLERS,
 	...PACK_HANDLERS,
 	...MODPACK_HANDLERS,
 
@@ -791,6 +839,23 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		const instance = optStr(args, 'instance');
 		const secret = (name: string) => !!store.variables[name]?.secret || BUILTIN_SECRETS.has(name);
 		const shown = (name: string, value: string) => (secret(name) ? '••••••' : value);
+		const fleet = await listDaemons().catch(() => []);
+		const machine = optStr(args, 'machine');
+
+		if (machine) {
+			const key = machineKeyFor(fleet, machine);
+
+			if (key === undefined) {
+				throw new ToolError(`unknown machine "${machine}"; call fleet_status for the names`);
+			}
+
+			return Object.entries(store.machines[key] ?? {}).map(([name, value]) => ({
+				name,
+				value: shown(name, value),
+				scope: 'machine',
+				machine: machineNameFor(fleet, key)
+			}));
+		}
 
 		if (instance) {
 			if (!scopeCoversInstance(ctx.principal.scope, instance)) {
@@ -821,7 +886,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 		for (const [machine, values] of Object.entries(store.machines)) {
 			for (const [name, value] of Object.entries(values)) {
-				rows.push({ name, value: shown(name, value), scope: 'machine', machine: machine || 'primary' });
+				rows.push({ name, value: shown(name, value), scope: 'machine', machine: machineNameFor(fleet, machine) });
 			}
 		}
 
@@ -840,44 +905,35 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 	async env_set(args, ctx) {
 		const name = str(args, 'name');
-		const instance = optStr(args, 'instance');
 		const store = await loadEnv();
 
 		if (store.variables[name]?.secret || BUILTIN_SECRETS.has(name)) {
 			throw new ToolError(`${name} is a secret; secrets can only be changed from the console`);
 		}
 
-		if (instance) {
-			await requireInstance(instance);
-		} else if (ctx.principal.scope.instances !== null) {
-			throw new ToolError('this token is limited to some instances, so it may only set instance-scoped variables');
-		}
+		const target = await envTarget(args, ctx, 'set');
 
-		setVariable(store, name, str(args, 'value'), instance ? { instance } : {});
+		try {
+			setVariable(store, name, str(args, 'value'), target.scope);
+		} catch (err) {
+			throw new ToolError((err as Error).message);
+		}
 
 		await saveEnv(store);
 
-		const scope = instance
-			? `instance ${instance}`
-			: 'global';
-
-		return { name, scope, note: 'takes effect on the next start of the affected instances' };
+		return { name, scope: target.label, note: 'takes effect on the next start of the affected instances' };
 	},
 
 	async env_unset(args, ctx) {
 		const name = str(args, 'name');
-		const instance = optStr(args, 'instance');
 		const store = await loadEnv();
 
 		if (store.variables[name]?.secret || BUILTIN_SECRETS.has(name)) {
 			throw new ToolError(`${name} is a secret; secrets can only be changed from the console`);
 		}
 
-		if (!instance && ctx.principal.scope.instances !== null) {
-			throw new ToolError('this token is limited to some instances, so it may only unset instance-scoped variables');
-		}
-
-		const removed = unsetVariable(store, name, instance ? { instance } : {});
+		const target = await envTarget(args, ctx, 'unset');
+		const removed = unsetVariable(store, name, target.scope);
 
 		if (!removed) {
 			throw new ToolError(`${name} is not set at that scope`);
@@ -885,7 +941,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 		await saveEnv(store);
 
-		return { name, removed: true };
+		return { name, scope: target.label, removed: true };
 	},
 
 	async settings_get(args) {

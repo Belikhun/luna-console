@@ -39,6 +39,7 @@ import * as datapacksCore from "../core/datapacks";
 import * as environmentCore from "../core/environment";
 import * as instancesCore from "../core/instances";
 import * as instancefilesCore from "../core/instancefiles";
+import * as domainsCore from "../core/domains";
 import * as hostshellCore from "../core/hostshell";
 import * as journalCore from "../core/journal";
 import * as lifecycleCore from "../core/lifecycle";
@@ -1562,6 +1563,21 @@ export const OPS: Record<string, OpSpec> = {
 	"instancefiles.copy": { fn: instancefilesCore.copyInstancePath, cfg: 0, instance: 1 },
 	"instancefiles.move": { fn: instancefilesCore.moveInstancePath, cfg: 0, instance: 1 },
 	"instancefiles.delete": { fn: instancefilesCore.deleteInstancePath, cfg: 0, instance: 1 },
+	// -- domains (primary-local; the credential lives in domains.json) --------
+	"domains.settings": { fn: domainsCore.domainSettings },
+	"domains.updateSettings": { fn: domainsCore.updateDomainSettings },
+	"domains.check": { fn: domainsCore.checkDomainProvider },
+	"domains.list": { fn: domainsCore.listHostnames },
+	"domains.get": { fn: domainsCore.getHostname },
+	"domains.records": { fn: domainsCore.hostnameRecords },
+	"domains.baseRecords": { fn: domainsCore.baseDomainRecords },
+	"domains.create": { fn: domainsCore.createHostname, cfg: 0 },
+	"domains.update": { fn: domainsCore.updateHostname },
+	"domains.link": { fn: domainsCore.linkHostname, cfg: 0 },
+	"domains.unlink": { fn: domainsCore.unlinkHostname, cfg: 0 },
+	"domains.delete": { fn: domainsCore.deleteHostname, cfg: 0 },
+	"domains.audit": { fn: domainsCore.domainAudit },
+
 	"instancefiles.uploadArchive": { fn: uploadInstanceArchive, cfg: 0, instance: 1 },
 	"instancefiles.copyAcross": {
 		fn: instancefilesCore.copyAcrossInstances,
