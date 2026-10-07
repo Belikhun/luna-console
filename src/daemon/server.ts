@@ -35,6 +35,7 @@ import { getEvents } from "./events";
 import { ownsInstance } from "./identity";
 import * as instancefilesCore from "../core/instancefiles";
 import type { ClusterConfig } from "../core/types";
+import { discardStage, newStageToken, stagePath } from "../core/staging";
 import { getJob, startJob, watchJob, type JobView } from "./jobs";
 import { runOp } from "./rpc";
 import { tailFollow, type TailHandle } from "./tail";
@@ -527,6 +528,33 @@ function encodePath(relPath: string): string {
 }
 
 /**
+ * A follower's instance archive fetched the long way round: the follower is
+ * asked over the cluster link to upload it to this primary's staging area,
+ * and the staged copy is served from here, discarded once read (the stage
+ * sweep takes any copy a dropped reader leaves behind). For followers that
+ * advertise no listen port, which the primary cannot dial.
+ */
+async function stagedFollowerArchive(cfg: ClusterConfig, instance: string, relPath: string): Promise<Response> {
+	const token = newStageToken();
+	const outcome = await runOp("instancefiles.uploadArchive", [cfg, instance, relPath, token]);
+	const meta = outcome.result as { kind: string; name: string };
+
+	const body = Bun.file(stagePath(token)).stream().pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+		flush() {
+			void discardStage(token);
+		},
+	}));
+
+	return new Response(body, {
+		headers: {
+			"content-type": "application/x-tar",
+			"x-luna-kind": meta.kind,
+			"x-luna-name": encodeURIComponent(meta.name),
+		},
+	});
+}
+
+/**
  * How a copy's destination reaches a source on another machine
  * (`copyAcrossInstances`). The primary asks the owning follower directly;
  * a follower asks the primary, which serves its own instances and passes the
@@ -547,6 +575,10 @@ async function fetchInstanceArchive(cfg: ClusterConfig, instance: string, relPat
 	const base = isPrimary
 		? followerEndpoint?.(inst.daemon ?? "")
 		: primaryAddress;
+
+	if (!base && isPrimary) {
+		return await stagedFollowerArchive(cfg, instance, relPath);
+	}
 
 	if (!base) {
 		throw new Error(t("core.instancefiles.noRoute", { instance, daemon: inst.daemon ?? "primary" }));
@@ -583,6 +615,14 @@ async function handleInstanceArchive(subpath: string): Promise<Response> {
 		const endpoint = isPrimary
 			? followerEndpoint?.(inst.daemon ?? "")
 			: undefined;
+
+		if (!endpoint && isPrimary) {
+			try {
+				return await stagedFollowerArchive(cfg, instance, relPath);
+			} catch (err) {
+				return errorResponse(err instanceof Error ? err.message : String(err), 404);
+			}
+		}
 
 		if (!endpoint) {
 			return errorResponse(t("core.instancefiles.noRoute", { instance, daemon: inst.daemon ?? "primary" }), 502);

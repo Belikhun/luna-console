@@ -439,7 +439,9 @@ export interface InstanceConfig {}
 - **`file_transfer` copies between instances, across machines too.** `copyAcrossInstances` runs on
   the daemon owning the destination: a source on the same machine is copied from disk, one owned by
   another daemon is pulled from `/files/instance/<instance>/<path>` as a tar stream (the owner packs
-  it; the primary passes a follower's through, so followers never dial each other), through a fetcher
+  it; the primary passes a follower's through, so followers never dial each other; a follower that
+  advertises no listen port, which is every production follower, is asked over the link to upload the
+  tar into the primary's staging instead, the one direction a follower can always reach), through a fetcher
   the daemon installs into core. Everything lands in a `.luna-incoming-*` folder inside the
   destination instance first and is renamed into place, so a transfer that dies halfway writes
   nothing; `existing` is `fail`, `replace` or `merge` (rsync without `--delete`). Symlinks travel as

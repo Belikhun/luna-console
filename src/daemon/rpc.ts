@@ -1562,6 +1562,7 @@ export const OPS: Record<string, OpSpec> = {
 	"instancefiles.copy": { fn: instancefilesCore.copyInstancePath, cfg: 0, instance: 1 },
 	"instancefiles.move": { fn: instancefilesCore.moveInstancePath, cfg: 0, instance: 1 },
 	"instancefiles.delete": { fn: instancefilesCore.deleteInstancePath, cfg: 0, instance: 1 },
+	"instancefiles.uploadArchive": { fn: uploadInstanceArchive, cfg: 0, instance: 1 },
 	"instancefiles.copyAcross": {
 		fn: instancefilesCore.copyAcrossInstances,
 		cfg: 0,
@@ -2039,6 +2040,38 @@ export function installRouting(
  * from here, and reaching back the other way would close the cycle.
  */
 export let fetchStagedWorld: ((token: string) => Promise<string>) | undefined;
+
+/**
+ * How a follower hands one of its instances' files to the primary: it packs
+ * them and uploads the tar to the primary's staging area, the one direction
+ * every follower can always reach. The primary falls back to this whenever a
+ * follower advertises no listen port of its own (`copyAcrossInstances`).
+ * Installed by the follower link, for the same import-cycle reason as below.
+ */
+export let uploadArchiveToPrimary: ((archive: instancefilesCore.InstanceArchive, token: string) => Promise<void>) | undefined;
+
+/** Install the archive uploader (follower only). */
+export function installArchiveUploader(uploader: typeof uploadArchiveToPrimary): void {
+	uploadArchiveToPrimary = uploader;
+}
+
+/** Pack one path of an instance this follower owns and upload it to the primary under `token`. */
+async function uploadInstanceArchive(
+	cfg: ClusterConfig,
+	instance: string,
+	relPath: string,
+	token: string,
+): Promise<{ kind: string; name: string }> {
+	if (!uploadArchiveToPrimary) {
+		throw new Error(t("core.instancefiles.noRoute", { instance, daemon: "primary" }));
+	}
+
+	const archive = await instancefilesCore.instanceArchive(cfg, instance, relPath);
+
+	await uploadArchiveToPrimary(archive, token);
+
+	return { kind: archive.kind, name: archive.name };
+}
 
 /** Install the staged-world fetcher (follower only). */
 export function installStageFetcher(fetcher: typeof fetchStagedWorld): void {

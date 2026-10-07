@@ -38,7 +38,8 @@ import { installEventForwarder } from "./events";
 import { currentHealth, hostAddresses } from "./health";
 import { ownsInstance } from "./identity";
 import { log } from "./index";
-import { installStageFetcher, runOp, setLinkQuarantine } from "./rpc";
+import { installArchiveUploader, installStageFetcher, runOp, setLinkQuarantine } from "./rpc";
+import type { InstanceArchive } from "../core/instancefiles";
 import { setLunaTelemetry } from "./sampler";
 import { PROTOCOL_VERSION } from "./server";
 import { tailFollow, type TailHandle } from "./tail";
@@ -113,6 +114,39 @@ async function ensureMirroredFile(
 /** Fetch one pool file from the primary when missing or hash-mismatched. */
 async function ensurePoolFile(rel: string, sha512: string | undefined): Promise<void> {
 	await ensureMirroredFile("pool", poolDir(), rel, sha512);
+}
+
+/**
+ * Upload one instance archive into the primary's staging area, streamed as it
+ * is packed. Used when the primary needs this machine's files and cannot dial
+ * it: a follower with no listen port is only reachable through the link it
+ * opened itself, and this is that link's direction.
+ */
+async function uploadArchiveToPrimary(archive: InstanceArchive, token: string): Promise<void> {
+	if (!dcfg?.primary?.address) {
+		throw new Error(t("daemon.noPrimaryForStage"));
+	}
+
+	const response = await fetch(`http://${dcfg.primary.address}/files/stage/${encodeURIComponent(token)}`, {
+		method: "PUT",
+		body: archive.stream,
+		headers: {
+			"x-luna-token": dcfg.token ?? "",
+			"content-type": "application/x-tar",
+		},
+	});
+
+	const code = await archive.exited;
+
+	if (!response.ok) {
+		throw new Error(`archive upload failed: HTTP ${response.status} ${(await response.text().catch(() => "")).slice(0, 200)}`);
+	}
+
+	if (code !== 0) {
+		throw new Error(`tar exited ${code} while packing the archive`);
+	}
+
+	log(`stage: uploaded archive ${token}`);
 }
 
 /**
@@ -609,6 +643,7 @@ export function startFollower(config: DaemonConfig, processStartedAt: number): v
 	// an upload lands on the primary, because that is where the console runs; a
 	// world destined for an instance this daemon owns has to be pulled across
 	installStageFetcher(ensureStagedWorld);
+	installArchiveUploader(uploadArchiveToPrimary);
 
 	// where a self-upgrade fetches its new binary from
 	setUpgradeSource(config.primary!.address, config.token ?? "");
