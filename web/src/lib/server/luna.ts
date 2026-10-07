@@ -74,11 +74,25 @@ export function clearTransition(name: string): void {
 	void daemon.clearTransition(name).catch(() => {});
 }
 
-/** Path to the compiled CLI binary (for the terminal's exec route). */
+/**
+ * Path to the compiled CLI binary, for the terminal's exec route and the MCP
+ * `luna_shell` tool. `luna setup` installs it as `<root>/.bin/luna` and puts that
+ * directory on PATH only for login and interactive shells, so a console started
+ * by systemd would not find a bare `luna`.
+ */
 export function cliBinary(): string {
-	const bin = join(root(), 'control', 'dist', 'luna');
+	const candidates = [
+		join(root(), '.bin', 'luna'),
+		join(root(), 'control', 'dist', 'luna')
+	];
 
-	return existsSync(bin) ? bin : 'luna';
+	for (const bin of candidates) {
+		if (existsSync(bin)) {
+			return bin;
+		}
+	}
+
+	return 'luna';
 }
 
 export const INTERACTIVE_COMMANDS = new Set(['console']);
