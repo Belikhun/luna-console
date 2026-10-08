@@ -39,9 +39,23 @@ import {
 	recordAgentModels
 } from '$core/agent';
 import type { AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
-import { mcpTool } from '$shared/mcptools';
-import { AGENT_ASK_TOOL, AGENT_NAVIGATE_TOOL, AGENT_SCREEN_TOOLS, AGENT_SCREENSHOT_TOOL, agentCanAsk, isConsolePath } from '$shared/agent';
+import { AGENT_ASK_TOOL, AGENT_NAVIGATE_TOOL, AGENT_SCREENSHOT_TOOL, AGENT_TASK_TOOLS, agentCanAsk, isConsolePath } from '$shared/agent';
 import type { AgentMode } from '$shared/agent';
+import { runsUnasked } from './approval';
+import {
+	cancelTask,
+	cancelTrigger,
+	createTrigger,
+	INSTANCE_STATES,
+	listTasks,
+	listTriggers,
+	MAX_TRIGGER_FIRES,
+	MAX_TRIGGER_MINUTES,
+	setNoticeDeliverer,
+	startTask,
+	TRIGGER_KINDS
+} from './background';
+import type { AgentNotice, DeliveryContext, TriggerSpec } from './background';
 import { issueRunBearer } from './bearer';
 import { findClaudeExecutable } from './executable';
 import { personaPrompt } from './persona';
@@ -59,7 +73,8 @@ const NAVIGATE_SDK_NAME = `mcp__${CONSOLE_SERVER}__navigate`;
 /** The SDK names of the console's own tools, by the name the panel and the transcript use. */
 const SCREEN_SDK_NAMES: Record<string, string> = {
 	[SCREENSHOT_SDK_NAME]: AGENT_SCREENSHOT_TOOL,
-	[NAVIGATE_SDK_NAME]: AGENT_NAVIGATE_TOOL
+	[NAVIGATE_SDK_NAME]: AGENT_NAVIGATE_TOOL,
+	...Object.fromEntries(AGENT_TASK_TOOLS.map((name) => [`mcp__${CONSOLE_SERVER}__${name}`, name]))
 };
 
 /** How long a request to the panel waits for it to answer. */
@@ -102,6 +117,7 @@ export type AgentEvent =
 	| { type: 'screenshot'; id: string }
 	| { type: 'navigate'; id: string; path: string }
 	| { type: 'error'; text: string; code?: AgentErrorCode }
+	| { type: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number }
 	| { type: 'done'; costUsd: number };
 
 /** Failures the panel words itself, in the operator's language; anything else shows its text. */
@@ -232,54 +248,6 @@ export interface Screenshot {
 	height: number;
 }
 
-/** Tools that leave the cluster as it was: those that only read, and the agent's own memory. Plan runs only these. */
-function leavesClusterAlone(name: string): boolean {
-	const tool = mcpTool(name);
-
-	if (!tool) {
-		return false;
-	}
-
-	return tool.annotations.readOnlyHint === true || tool.group === 'knowledge-write';
-}
-
-/**
- * Whether Auto runs a tool without asking: everything except what the catalog
- * marks destructive (stopping, restarting, raw console commands, removals,
- * shells), which still waits for the operator. The agent's own memory always
- * runs, forgetting included.
- */
-function safeUnattended(name: string): boolean {
-	const tool = mcpTool(name);
-
-	if (!tool) {
-		return false;
-	}
-
-	return leavesClusterAlone(name) || tool.annotations.destructiveHint !== true;
-}
-
-/** Whether a tool runs without asking in a mode. Plan refuses the rest in `canUseTool` instead. */
-function runsUnasked(name: string, mode: AgentMode): boolean {
-	switch (mode) {
-		case 'manual':
-			return false;
-
-		case 'bypass':
-			return true;
-
-		case 'plan':
-			if (AGENT_SCREEN_TOOLS.includes(name)) {
-				return true;
-			}
-
-			return leavesClusterAlone(name);
-
-		default:
-			return AGENT_SCREEN_TOOLS.includes(name) || safeUnattended(name);
-	}
-}
-
 function resultText(content: unknown): string {
 	if (typeof content === 'string') {
 		return content;
@@ -323,6 +291,8 @@ function subprocessEnv(launch: AgentLaunch): Record<string, string> {
 }
 
 class Run {
+	/** Where a background task or trigger set up during this run reports back */
+	context: Omit<DeliveryContext, 'mode'> | null = null;
 	readonly events: AgentEvent[] = [];
 	readonly listeners = new Set<Listener>();
 	readonly pending = new Map<string, Pending>();
@@ -475,6 +445,8 @@ export interface StartRunInput {
 	page?: string;
 	/** Files staged in `uploads.ts` that the message refers to */
 	attachments?: Array<{ id: string; name: string; size: number }>;
+	/** Set when no person sent this: a background task or a trigger reporting back */
+	event?: { source: 'task' | 'trigger'; label: string };
 }
 
 /** Refuse settings the run could not honour, before anything is saved or sent. */
@@ -543,24 +515,39 @@ export async function startRun(input: StartRunInput): Promise<boolean> {
 	});
 
 	runs.set(input.conversationId, run);
+	run.context = {
+		conversationId: input.conversationId,
+		owner: input.owner,
+		origin: input.origin,
+		machine: input.machine,
+		locale: input.locale
+	};
 
-	await appendAgentTurn(input.conversationId, input.owner, {
-		entries: [{
-			kind: 'user',
-			at: Date.now(),
-			author: input.owner,
-			text: input.text,
-			mode: input.mode,
-			model: run.model,
-			...(input.attachments?.length
-				? { attachments: input.attachments.map(({ name, size }) => ({ name, size })) }
-				: {})
-		}],
-		title: input.text
-	});
+	// a notice is nobody's words: it is filed as an event, and never names the chat
+	await appendAgentTurn(input.conversationId, input.owner, input.event
+		? { entries: [eventEntry(input)] }
+		: {
+			entries: [{
+				kind: 'user',
+				at: Date.now(),
+				author: input.owner,
+				text: input.text,
+				mode: input.mode,
+				model: run.model,
+				...(input.attachments?.length
+					? { attachments: input.attachments.map(({ name, size }) => ({ name, size })) }
+					: {})
+			}],
+			title: input.text
+		});
+
+	if (input.event) {
+		run.emit(eventFrame(input));
+	}
 
 	run.input.push(userMessage(promptFor(input, run)));
 	run.emit({ type: 'state', running: true });
+	announceRunStart(input.conversationId, input.owner);
 
 	void drive(run, input, launch, executable.path, conversation.sessionId);
 
@@ -583,6 +570,13 @@ async function joinRun(run: Run, input: StartRunInput): Promise<boolean> {
 
 	if (!run.input.push(userMessage(promptFor(input, run)))) {
 		return false;
+	}
+
+	if (input.event) {
+		run.entries.push(eventEntry(input));
+		run.emit(eventFrame(input));
+
+		return true;
 	}
 
 	run.entries.push({
@@ -641,6 +635,36 @@ export async function updateRun(conversationId: string, owner: string, change: R
 	return true;
 }
 
+/** A notice as the transcript files it. */
+function eventEntry(input: StartRunInput): AgentEntry {
+	return { kind: 'event', at: Date.now(), source: input.event!.source, label: input.event!.label, text: input.text };
+}
+
+function eventFrame(input: StartRunInput): AgentEvent {
+	return { type: 'event', source: input.event!.source, label: input.event!.label, text: input.text, at: Date.now() };
+}
+
+/**
+ * Report a finished background task or a fired trigger into its conversation:
+ * into the run going there, or as the start of a new one. It runs in the mode
+ * the conversation was last in, so an Auto conversation keeps working on its
+ * own and a Plan one still only plans.
+ */
+async function deliverNotice(notice: AgentNotice): Promise<void> {
+	await startRun({
+		conversationId: notice.ctx.conversationId,
+		owner: notice.ctx.owner,
+		text: notice.text,
+		locale: notice.ctx.locale,
+		origin: notice.ctx.origin,
+		machine: notice.ctx.machine,
+		mode: runs.get(notice.ctx.conversationId)?.mode ?? notice.ctx.mode,
+		event: { source: notice.source, label: notice.label }
+	});
+}
+
+setNoticeDeliverer(deliverNotice);
+
 /**
  * The words the model receives: the operator's text, then the notes riding
  * along with it. The page is a hint about what "this" means, attached to the
@@ -649,6 +673,10 @@ export async function updateRun(conversationId: string, owner: string, change: R
  * the persona described.
  */
 function promptFor(input: StartRunInput, run: Run): string {
+	if (input.event) {
+		return `<luna-event source="${input.event.source}">\n${input.text}\n</luna-event>\n\nThis is not the operator speaking: something you set up has reported back. Act on it as you planned, and tell the operator what you did.`;
+	}
+
 	const notes = [
 		...(input.attachments ?? []).map(
 			(file) => `<attachment id="${file.id}" name="${file.name.replace(/"/g, "'")}" bytes="${file.size}" />`
@@ -722,9 +750,196 @@ function consoleServer(run: Run): ReturnType<typeof createSdkMcpServer> {
 					}
 				},
 				{ annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }
-			)
+			),
+			...taskTools(run)
 		]
 	});
+}
+
+/** What `createSdkMcpServer` takes as its tool list. */
+type ConsoleTools = NonNullable<Parameters<typeof createSdkMcpServer>[0]['tools']>;
+
+/** Text answer for one of the console's own tools. */
+function answer(text: string, isError = false): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+	return isError
+		? { content: [{ type: 'text', text }], isError: true }
+		: { content: [{ type: 'text', text }] };
+}
+
+/** Where this run's background work reports back, in the mode the run is in now. */
+function deliveryContext(run: Run): DeliveryContext | null {
+	return run.context
+		? { ...run.context, mode: run.mode }
+		: null;
+}
+
+/**
+ * Background tasks and triggers: work the agent hands off while it keeps
+ * going, and waits for something to happen. Both report back into this
+ * conversation as a `<luna-event>` message when they settle (`background.ts`).
+ */
+function taskTools(run: Run): ConsoleTools {
+	return [
+		tool(
+			'task_start',
+			'Run one luna tool call in the background and keep working; its result arrives later in this conversation as a <luna-event> message. Use it for slow calls whose answer you do not need right away (a modpack install, a backup, a file_transfer of a big folder, a long log search), or to do several things at once. Give the tool name without any prefix (e.g. "modpack_install") and its arguments exactly as you would pass them directly. Only tools that would run without the operator\'s approval in the current mode can run in the background; anything needing approval must be called directly. Results come back in this conversation even if you have finished answering, which starts a new turn.',
+			{
+				tool: z.string().describe('The luna tool to call, e.g. "file_transfer"'),
+				arguments: z.record(z.string(), z.unknown()).describe('Its arguments, as you would pass them directly'),
+				label: z.string().optional().describe('A few words saying what it is for, shown to the operator')
+			},
+			async ({ tool: name, arguments: args, label }) => {
+				const ctx = deliveryContext(run);
+
+				if (!ctx) {
+					return answer('background work is not available in this run', true);
+				}
+
+				try {
+					const task = startTask(ctx, name.replace(/^mcp__luna__/, ''), args ?? {}, label ?? '');
+
+					return answer(`Started background task ${task.id} (${task.tool}). Its result will arrive as a <luna-event> message; carry on meanwhile.`);
+				} catch (err) {
+					return answer((err as Error).message, true);
+				}
+			},
+			{ annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }
+		),
+		tool(
+			'task_list',
+			'List the background tasks of this conversation: running ones first, then those finished in the last hour. Tasks live in the console\'s memory, so a console restart drops them.',
+			{},
+			async () => {
+				const list = run.context ? listTasks(run.context.conversationId) : [];
+
+				return answer(list.length ? JSON.stringify(list, null, 1) : 'No background tasks in this conversation.');
+			},
+			{ annotations: { readOnlyHint: true, openWorldHint: false } }
+		),
+		tool(
+			'task_cancel',
+			'Stop waiting for a background task: its result will not be reported. The call itself may still complete on the cluster; this does not undo it.',
+			{ id: z.string().describe('The task id, e.g. task_ab12cd34ef') },
+			async ({ id }) => {
+				const cancelled = run.context ? cancelTask(run.context.conversationId, id) : false;
+
+				return cancelled
+					? answer(`Task ${id} will not be reported.`)
+					: answer(`no running task ${id} in this conversation`, true);
+			},
+			{ annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }
+		),
+		tool(
+			'trigger_create',
+			`Wait for something to happen, then be told in this conversation (a <luna-event> message), even after you have finished answering. Kinds and their fields:
+- timer: afterSeconds. A wake-up to check on something later.
+- instance_state: instance, state (${INSTANCE_STATES.join(', ')}; "any" fires on any change). Fires at once if the instance is already in that state.
+- player_chat: optional player (exact username), server, contains (case-insensitive). Network chat lines, not commands.
+- player_join / player_leave: optional player, server.
+- log_match: instance, contains. New lines of the instance's latest.log that contain the text.
+- cluster_event: optional instance, eventKind (state, action, error), contains. Luna's own events (starts, stops, crashes, operator actions).
+A trigger fires once unless maxFires is higher (a repeating one reports at most every 30 seconds, collecting what happened in between), and expires after expiresInMinutes (default 60, at most ${MAX_TRIGGER_MINUTES}), reporting that too. Write in note what you intend to do when it fires; it is handed back to you then. Triggers live in the console's memory, so a console restart drops them.`,
+			{
+				kind: z.enum(TRIGGER_KINDS),
+				label: z.string().optional().describe('A few words saying what it waits for, shown to the operator'),
+				note: z.string().optional().describe('What you plan to do when it fires'),
+				afterSeconds: z.number().optional(),
+				instance: z.string().optional(),
+				state: z.string().optional(),
+				player: z.string().optional(),
+				server: z.string().optional(),
+				contains: z.string().optional(),
+				eventKind: z.enum(['state', 'action', 'error']).optional(),
+				maxFires: z.number().int().optional().describe(`How many times it may fire, 1 to ${MAX_TRIGGER_FIRES} (default 1)`),
+				expiresInMinutes: z.number().optional()
+			},
+			async (input) => {
+				const ctx = deliveryContext(run);
+
+				if (!ctx) {
+					return answer('triggers are not available in this run', true);
+				}
+
+				const spec = triggerSpec(input);
+
+				if (typeof spec === 'string') {
+					return answer(spec, true);
+				}
+
+				try {
+					const created = await createTrigger(ctx, spec, input);
+
+					return answer(`Armed trigger ${created.id} until ${new Date(created.expiresAt).toISOString()}${created.maxFires > 1 ? `, for up to ${created.maxFires} fires` : ''}. You will be told here when it fires; there is no need to poll.`);
+				} catch (err) {
+					return answer((err as Error).message, true);
+				}
+			},
+			{ annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }
+		),
+		tool(
+			'trigger_list',
+			'List the armed triggers of this conversation, with what each waits for, how often it fired and when it expires.',
+			{},
+			async () => {
+				const list = run.context ? listTriggers(run.context.conversationId) : [];
+
+				return answer(list.length ? JSON.stringify(list, null, 1) : 'No armed triggers in this conversation.');
+			},
+			{ annotations: { readOnlyHint: true, openWorldHint: false } }
+		),
+		tool(
+			'trigger_cancel',
+			'Disarm a trigger; nothing more is reported from it.',
+			{ id: z.string().describe('The trigger id, e.g. trg_ab12cd34ef') },
+			async ({ id }) => {
+				const cancelled = run.context ? cancelTrigger(run.context.conversationId, id) : false;
+
+				return cancelled
+					? answer(`Trigger ${id} is disarmed.`)
+					: answer(`no armed trigger ${id} in this conversation`, true);
+			},
+			{ annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }
+		)
+	];
+}
+
+/** A trigger_create call as a spec, or what is missing from it. */
+function triggerSpec(input: {
+	kind: (typeof TRIGGER_KINDS)[number];
+	afterSeconds?: number;
+	instance?: string;
+	state?: string;
+	player?: string;
+	server?: string;
+	contains?: string;
+	eventKind?: 'state' | 'action' | 'error';
+}): TriggerSpec | string {
+	switch (input.kind) {
+		case 'timer':
+			return input.afterSeconds === undefined
+				? 'a timer needs afterSeconds'
+				: { kind: 'timer', afterSeconds: input.afterSeconds };
+
+		case 'instance_state':
+			return input.instance && input.state
+				? { kind: 'instance_state', instance: input.instance, state: input.state }
+				: 'instance_state needs instance and state';
+
+		case 'player_chat':
+			return { kind: 'player_chat', player: input.player, server: input.server, contains: input.contains };
+
+		case 'player_join':
+		case 'player_leave':
+			return { kind: input.kind, player: input.player, server: input.server };
+
+		case 'log_match':
+			return input.instance && input.contains
+				? { kind: 'log_match', instance: input.instance, contains: input.contains }
+				: 'log_match needs instance and contains';
+
+		case 'cluster_event':
+			return { kind: 'cluster_event', instance: input.instance, contains: input.contains, eventKind: input.eventKind };
+	}
 }
 
 /**
@@ -1172,6 +1387,45 @@ export function followRun(conversationId: string, owner: string, listener: Liste
 
 	return () => {
 		run.listeners.delete(listener);
+	};
+}
+
+/** Chats open on an idle conversation, waiting to hear that a run started there. */
+const startWatchers = new Map<string, Set<{ owner: string; notify: () => void }>>();
+
+function announceRunStart(conversationId: string, owner: string): void {
+	for (const watcher of startWatchers.get(conversationId) ?? []) {
+		if (watcher.owner === owner) {
+			watcher.notify();
+		}
+	}
+}
+
+/**
+ * Be told when a run starts in a conversation: a background task or a trigger
+ * can start one while nobody is typing, and a chat sitting on that conversation
+ * has to attach to it. Fires at once when one is already going. Returns the
+ * unsubscriber.
+ */
+export function watchRunStarts(conversationId: string, owner: string, notify: () => void): () => void {
+	const watcher = { owner, notify };
+	const set = startWatchers.get(conversationId) ?? new Set();
+
+	set.add(watcher);
+	startWatchers.set(conversationId, set);
+
+	const live = runs.get(conversationId);
+
+	if (live?.running && live.owner === owner) {
+		queueMicrotask(notify);
+	}
+
+	return () => {
+		set.delete(watcher);
+
+		if (set.size === 0) {
+			startWatchers.delete(conversationId);
+		}
 	};
 }
 

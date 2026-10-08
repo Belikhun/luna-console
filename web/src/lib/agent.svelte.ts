@@ -47,7 +47,9 @@ export type ChatItem =
 		output?: string;
 		decidedBy?: string;
 	}
-	| { kind: 'error'; text: string; code?: string };
+	| { kind: 'error'; text: string; code?: string }
+	/** A background task or a trigger reporting back; nobody's message */
+	| { kind: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number };
 
 export interface ConversationRow {
 	id: string;
@@ -87,7 +89,9 @@ export interface AgentState {
 }
 
 interface StoredEntry {
-	kind: 'user' | 'assistant' | 'tool' | 'error';
+	kind: 'user' | 'assistant' | 'tool' | 'error' | 'event';
+	source?: 'task' | 'trigger';
+	label?: string;
 	at: number;
 	author?: string;
 	text?: string;
@@ -110,6 +114,7 @@ type StreamEvent =
 	| { type: 'screenshot'; id: string }
 	| { type: 'navigate'; id: string; path: string }
 	| { type: 'error'; text: string; code?: string }
+	| { type: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number }
 	| { type: 'done'; costUsd: number }
 	| { type: 'idle' }
 	| { type: 'ping' };
@@ -170,6 +175,8 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 			});
 		} else if (entry.kind === 'assistant') {
 			items.push({ kind: 'assistant', text: entry.text ?? '', streaming: false });
+		} else if (entry.kind === 'event') {
+			items.push({ kind: 'event', source: entry.source ?? 'task', label: entry.label ?? '', text: entry.text ?? '', at: entry.at });
 		} else if (entry.kind === 'tool') {
 			items.push({
 				kind: 'tool',
@@ -332,6 +339,8 @@ export class ChatSession {
 	readonly #persist: boolean;
 	readonly #relay: boolean;
 	#source: EventSource | null = null;
+	/** Held open while the chat sits on an idle conversation, to hear of a run a trigger starts */
+	#watch: EventSource | null = null;
 	#disposed = false;
 
 	constructor(options: ChatSessionOptions = {}) {
@@ -602,6 +611,51 @@ export class ChatSession {
 	#detach(): void {
 		this.#source?.close();
 		this.#source = null;
+		this.#watch?.close();
+		this.#watch = null;
+	}
+
+	/**
+	 * Listen for the next run in this conversation: a finished background task
+	 * or a fired trigger starts one with nobody typing, and this chat should
+	 * show it as it happens rather than on the next reload.
+	 */
+	#awaitNextRun(id: string): void {
+		if (this.#disposed || this.conversationId !== id) {
+			return;
+		}
+
+		this.#watch?.close();
+
+		const watch = new EventSource(`/api/agent/conversations/${id}/watch`);
+
+		this.#watch = watch;
+
+		watch.onmessage = (event) => {
+			const data = JSON.parse(event.data) as { type: string };
+
+			if (data.type !== 'run') {
+				return;
+			}
+
+			watch.close();
+
+			if (this.#watch === watch) {
+				this.#watch = null;
+			}
+
+			if (this.conversationId === id && !this.#disposed && !this.#source) {
+				this.running = true;
+				this.#attach(id);
+			}
+		};
+
+		// the browser re-opens an EventSource on its own after a drop; only a closed one is given up
+		watch.onerror = () => {
+			if (watch.readyState === EventSource.CLOSED && this.#watch === watch) {
+				this.#watch = null;
+			}
+		};
 	}
 
 	#attach(id: string): void {
@@ -762,6 +816,10 @@ export class ChatSession {
 				this.items.push({ kind: 'error', text: event.text, code: event.code });
 				break;
 
+			case 'event':
+				this.items.push({ kind: 'event', source: event.source, label: event.label, text: event.text, at: event.at });
+				break;
+
 			case 'state':
 				this.running = event.running;
 				break;
@@ -777,6 +835,7 @@ export class ChatSession {
 				}
 
 				void Agent.loadConversations();
+				this.#awaitNextRun(conversation);
 				break;
 
 			default:

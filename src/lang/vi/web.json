@@ -4594,6 +4594,10 @@
 				"title": "Sao lưu thế giới",
 				"prompt": "Sao lưu thế giới của survival ngay bây giờ, rồi cho tôi biết bản sao lưu nặng bao nhiêu và so với lần trước thế nào."
 			}
+		},
+		"event": {
+			"task": "Tác vụ nền",
+			"trigger": "Trigger"
 		}
 	},
 	"agentScreen": {

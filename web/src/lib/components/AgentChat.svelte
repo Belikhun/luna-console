@@ -12,6 +12,7 @@
 	import { Agent, type ChatItem, type ChatSession } from '$lib/agent.svelte';
 	import { renderMarkdown } from '$lib/markdown';
 	import { copyText } from '$lib/clipboard';
+	import { fmtTime } from '$lib/format';
 	import Icon from './Icon.svelte';
 	import Btn from './Btn.svelte';
 	import Spinner from './Spinner.svelte';
@@ -42,7 +43,8 @@
 
 	type Group =
 		| { kind: 'user'; item: Extract<ChatItem, { kind: 'user' }> }
-		| { kind: 'bot'; items: Exclude<ChatItem, { kind: 'user' }>[] };
+		| { kind: 'event'; item: Extract<ChatItem, { kind: 'event' }> }
+		| { kind: 'bot'; items: Exclude<ChatItem, { kind: 'user' } | { kind: 'event' }>[] };
 
 	let composer: AgentComposer | undefined = $state();
 	let scroller: HTMLDivElement | undefined = $state();
@@ -114,6 +116,12 @@
 		for (const item of session.items) {
 			if (item.kind === 'user') {
 				out.push({ kind: 'user', item });
+
+				continue;
+			}
+
+			if (item.kind === 'event') {
+				out.push({ kind: 'event', item });
 
 				continue;
 			}
@@ -362,7 +370,25 @@
 			{/if}
 
 			{#each groups as group, gi (gi)}
-				{#if group.kind === 'user'}
+				{#if group.kind === 'event'}
+					<div class="event" data-source={group.item.source}>
+						<button
+							class="row"
+							title={t('web.agent.details')}
+							aria-expanded={!!expanded[`ev${gi}`]}
+							onclick={() => (expanded[`ev${gi}`] = !expanded[`ev${gi}`])}
+						>
+							<Icon name={group.item.source === 'task' ? 'listCheck' : 'bell'} style="solid" size="0.75rem" />
+							<span class="what">{t(`web.agent.event.${group.item.source}`)}</span>
+							<span class="label">{group.item.label}</span>
+							<span class="at">{fmtTime(group.item.at)}</span>
+							<Icon name={expanded[`ev${gi}`] ? 'arrowUp' : 'arrowDown'} size="0.625rem" />
+						</button>
+						{#if expanded[`ev${gi}`]}
+							<pre>{group.item.text}</pre>
+						{/if}
+					</div>
+				{:else if group.kind === 'user'}
 					<div class="msg user">
 						<div class="author">
 							{#if account}
@@ -623,6 +649,65 @@
 		&:disabled {
 			opacity: 0.5;
 			cursor: default;
+		}
+	}
+
+	// a background task or a trigger reporting back: a quiet line between the messages
+	.event {
+		display: flex;
+		flex-direction: column;
+		margin: 1rem 1rem 0;
+		border: 0.1rem dashed var(--border-input);
+		border-radius: var(--radius-input);
+		background: var(--bg-panel-raised);
+
+		.row {
+			@include bare-button;
+
+			display: flex;
+			align-items: center;
+			gap: 0.5rem;
+			width: 100%;
+			padding: 0.375rem 0.75rem;
+			font-size: 0.75rem;
+			color: var(--text-secondary);
+			text-align: left;
+			cursor: pointer;
+		}
+
+		.what {
+			font-weight: 600;
+			color: var(--text-heading);
+		}
+
+		.label {
+			@include ellipsis;
+
+			flex: 1;
+			min-width: 0;
+		}
+
+		.at {
+			font-variant-numeric: tabular-nums;
+		}
+
+		pre {
+			margin: 0;
+			padding: 0.5rem 0.75rem 0.75rem;
+			max-height: 16rem;
+			overflow: auto;
+			white-space: pre-wrap;
+			overflow-wrap: anywhere;
+			font-size: 0.75rem;
+			color: var(--text-primary);
+		}
+
+		&[data-source='trigger'] .row :global(icon) {
+			color: var(--warning);
+		}
+
+		&[data-source='task'] .row :global(icon) {
+			color: var(--info);
 		}
 	}
 

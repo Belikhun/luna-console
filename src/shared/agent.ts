@@ -53,6 +53,25 @@ export const AGENT_NAVIGATE_TOOL = "console_navigate";
 export const AGENT_SCREEN_TOOLS: readonly string[] = [AGENT_SCREENSHOT_TOOL, AGENT_NAVIGATE_TOOL];
 
 /**
+ * The agent's own scheduling: work handed to the background and triggers that
+ * wait for something to happen, each reported back into the conversation when
+ * it settles. Managing them changes nothing on the cluster (a background task
+ * runs only a tool the mode would run unasked anyway), so like the screen tools
+ * they run unasked everywhere but Manual.
+ */
+export const AGENT_TASK_TOOLS: readonly string[] = [
+	"task_start",
+	"task_list",
+	"task_cancel",
+	"trigger_create",
+	"trigger_list",
+	"trigger_cancel",
+];
+
+/** The console's own tools, which never reach the cluster themselves. */
+export const AGENT_LOCAL_TOOLS: readonly string[] = [...AGENT_SCREEN_TOOLS, ...AGENT_TASK_TOOLS];
+
+/**
  * Whether a path is a console page the agent may open: same-origin, absolute,
  * and not an API route, so it can only ever move the operator between screens.
  */

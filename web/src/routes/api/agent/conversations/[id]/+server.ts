@@ -7,6 +7,7 @@ import { json, error } from '@sveltejs/kit';
 import { getAgentConversation, removeAgentConversation, renameAgentConversation } from '$core/agent';
 import { errorMessage, jsonBody } from '$lib/server/http';
 import { isRunning, stopRun } from '$lib/server/agent/runner';
+import { forgetConversation } from '$lib/server/agent/background';
 
 function owner(locals: App.Locals): string {
 	if (!locals.account) {
@@ -45,7 +46,11 @@ export async function DELETE({ params, locals }) {
 	stopRun(params.id, who);
 
 	try {
-		return json({ conversation: await removeAgentConversation(params.id, who) });
+		const conversation = await removeAgentConversation(params.id, who);
+
+		forgetConversation(params.id);
+
+		return json({ conversation });
 	} catch (err) {
 		throw error(404, errorMessage(err));
 	}

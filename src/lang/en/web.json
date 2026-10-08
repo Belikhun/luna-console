@@ -4594,6 +4594,10 @@
 				"title": "Back up a world",
 				"prompt": "Back up survival's world now, then tell me how big the backup is and how it compares with the last one."
 			}
+		},
+		"event": {
+			"task": "Background task",
+			"trigger": "Trigger"
 		}
 	},
 	"agentScreen": {

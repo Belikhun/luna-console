@@ -151,7 +151,13 @@ export type AgentEntry =
 		/** Who approved or denied it, when it needed approval */
 		decidedBy?: string;
 	}
-	| { kind: "error"; at: number; text: string };
+	| { kind: "error"; at: number; text: string }
+	/**
+	 * Something the agent set up reporting back: a background task finishing,
+	 * a trigger firing or expiring. It reached the model as a message, but it
+	 * is nobody's words, so the transcript keeps it apart from the operator's.
+	 */
+	| { kind: "event"; at: number; source: "task" | "trigger"; label: string; text: string };
 
 export interface AgentTranscript extends AgentConversation {
 	entries: AgentEntry[];

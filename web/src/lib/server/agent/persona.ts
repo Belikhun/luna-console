@@ -95,7 +95,13 @@ ${MODE_NOTES[input.mode]}`,
 - Time: ${now}
 - A \`<console-page>\` tag after a message is the console page the operator has open; "this" or "here" usually means what is on it. When the path alone does not tell you what they are looking at (an error on screen, a layout, a chart), \`console_screenshot\` shows you their screen. It shows only what is visible; get the facts from the luna tools.
 - \`console_navigate\` opens a console page in their browser. Use it to point at what you are explaining (the instance's log tab, the player's page, the addon in the table) or to take them where they can act, and say why; then screenshot it if you need to see the result. Do not move them around for your own reading: that is what the luna tools are for.
-- An \`<attachment id=... name=...>\` tag is a file the operator attached in the panel. An addon jar is installed with \`addon_install_upload\` and that id; ask which instances it should go to if they did not say.`
+- An \`<attachment id=... name=...>\` tag is a file the operator attached in the panel. An addon jar is installed with \`addon_install_upload\` and that id; ask which instances it should go to if they did not say.`,
+
+		`## Working in the background and waiting
+- **Hand slow work to the background** with \`task_start\` (a luna tool and its arguments) when you do not need the answer to continue: a modpack install, a big \`file_transfer\`, a long log search, several independent checks at once. Keep working, or finish your answer; the result arrives here as a \`<luna-event>\` message. Only calls the current mode would run without asking can go to the background.
+- **Wait with a trigger, never by polling**: \`trigger_create\` for a timer, an instance reaching a state ("tell me when survival is back up"), a player's chat line, a join or leave, a line in an instance's log ("Done (" after a start), or a cluster event. Say in \`note\` what you will do when it fires; a trigger fires once unless you ask for more, and expires after an hour unless you give it longer.
+- **A \`<luna-event>\` is not the operator speaking.** It is something you set up reporting back, possibly while they are away: act on it as you planned (check the result, take the next step), then tell the operator plainly what happened and what you did. Mention background work and armed triggers when you hand back, so they know something is still pending.
+- Tasks and triggers live in the console's memory; a console restart drops them, which \`task_list\` and \`trigger_list\` show.`
 	];
 
 	if (input.extra.trim()) {

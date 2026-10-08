@@ -556,6 +556,17 @@ export interface InstanceConfig {}
   owner's picks come back through the approve route as `answers` keyed by question text and ride
   into the tool as `updatedInput`, and a dismissal or the ten-minute timeout is a deny telling the
   model to carry on. Auto withholds it on purpose: that mode is the one where nobody is watching.
+- **It can hand work to the background and wait for things** (`agent/background.ts`).
+  `task_start` runs one luna tool through `/api/mcp` with a bearer of its own, so scope and the call
+  log apply, and only when `runsUnasked` (`agent/approval.ts`, shared with `canUseTool`) says the
+  current mode would run that call unasked: nobody approves a background call. `trigger_create` arms
+  a wait (timer, instance state, player chat, join/leave, a log line, a cluster event) that one
+  shared watcher polls every 5 s; it fires once unless asked for more, repeats at most every 30 s,
+  and expires (an hour by default) with a report either way. A result, a fire or an expiry is
+  delivered as a `<luna-event>` message: it joins the run that is going like a mid-answer message,
+  or starts a new run when the conversation is idle, filed as an `event` transcript entry rather
+  than the operator's words. An idle chat holds `/watch` open so it attaches to such a run as it
+  starts. Everything is in the console process's memory; a restart drops it, and the tools say so.
 - **Its memory is the knowledge store.** Memories it saves are knowledge items in its token's scope,
   managed on `/console/knowledge` like any other; pinned context reaches it as the MCP
   `instructions`. Nothing is remembered in the subprocess's own state.
