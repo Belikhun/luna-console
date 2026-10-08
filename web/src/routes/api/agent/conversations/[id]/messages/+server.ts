@@ -8,19 +8,9 @@ import { MAX_AGENT_MESSAGE } from '$core/agent';
 import { ensureConnected } from '$client/socket';
 import { errorMessage, jsonBody } from '$lib/server/http';
 import { journal } from '$lib/server/session';
+import { loopbackOrigin } from '$lib/server/agent/origin';
 import { AgentRunError, startRun } from '$lib/server/agent/runner';
 import { DEFAULT_AGENT_MODE, isAgentMode } from '$shared/agent';
-
-/**
- * Where this console answers on loopback. The agent's subprocess reaches
- * `/api/mcp` through it rather than through the address the browser used,
- * which behind nginx is a public name the host may not even resolve to itself.
- */
-function loopbackOrigin(url: URL): string {
-	const port = process.env.PORT || url.port || (url.protocol === 'https:' ? '443' : '80');
-
-	return `http://127.0.0.1:${port}`;
-}
 
 /**
  * POST { text, locale?, mode?, model?, effort?, page? } → { ok, joined } once the

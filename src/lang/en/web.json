@@ -4540,7 +4540,9 @@
 			"busy": "Mèo Béo is still answering the last message.",
 			"noExecutable": "No Claude Code executable was found on the console machine. Set its path in the agent settings.",
 			"bypassOff": "Bypass mode is switched off for this console. Pick another mode.",
-			"badModel": "That model or effort level is not valid; pick another in the model menu."
+			"badModel": "That model or effort level is not valid; pick another in the model menu.",
+			"nothingToCompact": "There is nothing to compact yet; this conversation has no history.",
+			"compactFailed": "The conversation could not be compacted; its history is unchanged."
 		},
 		"toolPlan": "Not run: plan mode",
 		"copyCode": "Copy",
@@ -4595,6 +4597,10 @@
 				"prompt": "Back up survival's world now, then tell me how big the backup is and how it compares with the last one."
 			}
 		},
+		"compacted": "Context compacted · {before} → {after} tokens",
+		"compactedFrom": "Context compacted from {before} tokens",
+		"compactedBy": "by {name}",
+		"compactedAuto": "automatically, near the limit",
 		"event": {
 			"task": "Background task",
 			"trigger": "Trigger"
@@ -4718,7 +4724,19 @@
 		"attach": "Attach a file",
 		"detach": "Remove attachment",
 		"uploadFailed": "upload failed",
-		"sendMidRun": "Send now; Mèo Béo reads it at its next step"
+		"sendMidRun": "Send now; Mèo Béo reads it at its next step",
+		"commands": "Commands",
+		"compactHint": "Summarise the history so far to free up context",
+		"context": "Context",
+		"contextTitle": "Context: {used} of {window} tokens",
+		"contextOf": "of {window} tokens · {pct}%",
+		"contextUnknown": "Measured after the next answer.",
+		"contextHint": "Near the limit, Mèo Béo summarises older messages on its own. Compacting earlier keeps the next answers faster and cheaper; say what to keep if something matters.",
+		"compactions": "Compactions",
+		"spend": "Spend so far",
+		"compactFocus": "What to keep (optional)",
+		"compactNow": "Compact",
+		"compacting": "Compacting…"
 	},
 	"domains": {
 		"pageDescription": "Hostnames under the network's base domain, and the server each one sends players to. A modded server needs its own: modded clients cannot pass through the vanilla lobby.",

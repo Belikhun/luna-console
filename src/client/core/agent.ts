@@ -27,6 +27,7 @@ export type {
 	AgentConversation,
 	AgentCredentialKind,
 	AgentEffort,
+	AgentContextUsage,
 	AgentEntry,
 	AgentLaunch,
 	AgentModelChoice,

@@ -38,7 +38,7 @@ import {
 	getAgentConversation,
 	recordAgentModels
 } from '$core/agent';
-import type { AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
+import type { AgentContextUsage, AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
 import { AGENT_ASK_TOOL, AGENT_NAVIGATE_TOOL, AGENT_SCREENSHOT_TOOL, AGENT_TASK_TOOLS, agentCanAsk, isConsolePath } from '$shared/agent';
 import type { AgentMode } from '$shared/agent';
 import { runsUnasked } from './approval';
@@ -92,6 +92,12 @@ const LINGER_MS = 15_000;
 /** Longest single tool call; lifecycle tools wait up to three minutes for a server to settle. */
 const TOOL_TIMEOUT_MS = 4 * 60 * 1000;
 
+/** How long the session gets to measure its context after a turn before the estimate is used. */
+const CONTEXT_TIMEOUT_MS = 5_000;
+
+/** Longest focus note a manual compaction takes; it rides along on the command line. */
+export const MAX_COMPACT_FOCUS = 500;
+
 /** What the panel receives over the stream. */
 export type AgentEvent =
 	| { type: 'state'; running: boolean }
@@ -118,6 +124,9 @@ export type AgentEvent =
 	| { type: 'navigate'; id: string; path: string }
 	| { type: 'error'; text: string; code?: AgentErrorCode }
 	| { type: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number }
+	| { type: 'context'; context: AgentContextUsage }
+	| { type: 'compacting'; active: boolean }
+	| { type: 'compact'; trigger: 'manual' | 'auto'; by?: string; preTokens: number; postTokens?: number; at: number }
 	| { type: 'done'; costUsd: number };
 
 /** Failures the panel words itself, in the operator's language; anything else shows its text. */
@@ -128,7 +137,9 @@ export type AgentErrorCode =
 	| 'busy'
 	| 'noExecutable'
 	| 'bypassOff'
-	| 'badModel';
+	| 'badModel'
+	| 'nothingToCompact'
+	| 'compactFailed';
 
 /** A refusal to start, carrying a code the panel can translate. */
 export class AgentRunError extends Error {
@@ -324,6 +335,24 @@ class Run {
 	model: string;
 	effort: string;
 
+	/** How full the session's context is, as last measured */
+	usage: AgentContextUsage | null = null;
+
+	/** What the latest main-loop response sent, the estimate used when the session cannot be asked */
+	lastPrompt: { tokens: number; model: string } | null = null;
+
+	/** Context windows by model, as the turn results report them */
+	readonly windows = new Map<string, number>();
+
+	/** Compactions seen during this run, saved with its transcript */
+	compactions = 0;
+
+	/** Who asked for the compaction the session is about to run; cleared when it reports back */
+	compactBy: string | null = null;
+
+	/** Set by a compaction until the turn is measured; see `measureContext` */
+	compactedSinceMeasure = false;
+
 	/** Settles when the run has saved its transcript and stopped */
 	readonly finished: Promise<void>;
 
@@ -447,6 +476,8 @@ export interface StartRunInput {
 	attachments?: Array<{ id: string; name: string; size: number }>;
 	/** Set when no person sent this: a background task or a trigger reporting back */
 	event?: { source: 'task' | 'trigger'; label: string };
+	/** Set to summarise the session's history instead of saying anything; `text` is then the focus */
+	compact?: true;
 }
 
 /** Refuse settings the run could not honour, before anything is saved or sent. */
@@ -502,6 +533,10 @@ export async function startRun(input: StartRunInput): Promise<boolean> {
 		return await startRun(input);
 	}
 
+	if (input.compact && !conversation.sessionId) {
+		throw new AgentRunError('nothingToCompact', 'This conversation has no history to compact yet');
+	}
+
 	const executable = findClaudeExecutable(launch.settings.executable);
 
 	if (executable.source === 'none') {
@@ -523,23 +558,28 @@ export async function startRun(input: StartRunInput): Promise<boolean> {
 		locale: input.locale
 	};
 
+	// a compaction says nothing and files itself once the session reports it;
 	// a notice is nobody's words: it is filed as an event, and never names the chat
-	await appendAgentTurn(input.conversationId, input.owner, input.event
-		? { entries: [eventEntry(input)] }
-		: {
-			entries: [{
-				kind: 'user',
-				at: Date.now(),
-				author: input.owner,
-				text: input.text,
-				mode: input.mode,
-				model: run.model,
-				...(input.attachments?.length
-					? { attachments: input.attachments.map(({ name, size }) => ({ name, size })) }
-					: {})
-			}],
-			title: input.text
-		});
+	if (input.compact) {
+		run.compactBy = input.owner;
+	} else {
+		await appendAgentTurn(input.conversationId, input.owner, input.event
+			? { entries: [eventEntry(input)] }
+			: {
+				entries: [{
+					kind: 'user',
+					at: Date.now(),
+					author: input.owner,
+					text: input.text,
+					mode: input.mode,
+					model: run.model,
+					...(input.attachments?.length
+						? { attachments: input.attachments.map(({ name, size }) => ({ name, size })) }
+						: {})
+				}],
+				title: input.text
+			});
+	}
 
 	if (input.event) {
 		run.emit(eventFrame(input));
@@ -570,6 +610,12 @@ async function joinRun(run: Run, input: StartRunInput): Promise<boolean> {
 
 	if (!run.input.push(userMessage(promptFor(input, run)))) {
 		return false;
+	}
+
+	if (input.compact) {
+		run.compactBy = input.owner;
+
+		return true;
 	}
 
 	if (input.event) {
@@ -673,6 +719,15 @@ setNoticeDeliverer(deliverNotice);
  * the persona described.
  */
 function promptFor(input: StartRunInput, run: Run): string {
+	// the session runs its own /compact; a focus note rides on the same line
+	if (input.compact) {
+		const focus = input.text.replace(/\s+/g, ' ').trim();
+
+		return focus
+			? `/compact ${focus}`
+			: '/compact';
+	}
+
 	if (input.event) {
 		return `<luna-event source="${input.event.source}">\n${input.text}\n</luna-event>\n\nThis is not the operator speaking: something you set up has reported back. Act on it as you planned, and tell the operator what you did.`;
 	}
@@ -1158,6 +1213,11 @@ async function drive(
 				failed = true;
 			}
 
+			// measured before the queue may close, since the session answers only while the query lives
+			if (outcome.turnDone) {
+				await refreshContext(run);
+			}
+
 			// a turn is over; with nothing queued in the session or still waiting
 			// to be read from ours, the queue closes and the query ends after it
 			if (outcome.turnDone && outcome.queued === 0 && run.input.buffered === 0) {
@@ -1193,7 +1253,9 @@ async function drive(
 				entries: run.entries,
 				sessionId,
 				costUsd,
-				completed: !failed
+				completed: !failed,
+				...(run.usage ? { context: run.usage } : {}),
+				...(run.compactions ? { compactions: run.compactions } : {})
 			});
 		} catch (err) {
 			console.error('[agent] could not save the transcript:', err);
@@ -1226,6 +1288,18 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 
 	switch (message.type) {
 		case 'system': {
+			if (message.subtype === 'compact_boundary') {
+				noteCompaction(run, message.compact_metadata);
+
+				return {};
+			}
+
+			if (message.subtype === 'status') {
+				noteStatus(run, message.status, message.compact_result, message.compact_error);
+
+				return {};
+			}
+
 			if (message.subtype !== 'init') {
 				return {};
 			}
@@ -1262,6 +1336,16 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 			// text; the result that follows reports it once, as an error, not as a reply
 			if (message.error) {
 				return {};
+			}
+
+			// a subagent's request is not the session's context
+			if (!message.parent_tool_use_id && message.message.usage) {
+				const usage = message.message.usage;
+
+				run.lastPrompt = {
+					tokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+					model: message.message.model
+				};
 			}
 
 			for (const block of message.message.content) {
@@ -1345,6 +1429,12 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 		case 'result': {
 			const turn = { turnDone: true, queued: message.queued_turn_count ?? 0 };
 
+			for (const [model, usage] of Object.entries(message.modelUsage ?? {})) {
+				if (usage.contextWindow) {
+					run.windows.set(model, usage.contextWindow);
+				}
+			}
+
 			if (message.subtype === 'success' && !message.is_error) {
 				return { ...turn, costUsd: message.total_cost_usd };
 			}
@@ -1369,6 +1459,125 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 		default:
 			return {};
 	}
+}
+
+/**
+ * File a compaction the session reported. A manual one is credited to whoever
+ * asked for it; one the session ran on its own near the limit names nobody.
+ */
+function noteCompaction(run: Run, meta: { trigger: 'manual' | 'auto'; pre_tokens: number; post_tokens?: number }): void {
+	const at = Date.now();
+	const by = meta.trigger === 'manual'
+		? run.compactBy ?? undefined
+		: undefined;
+	const detail = {
+		trigger: meta.trigger,
+		...(by ? { by } : {}),
+		preTokens: meta.pre_tokens,
+		...(meta.post_tokens !== undefined ? { postTokens: meta.post_tokens } : {})
+	};
+
+	run.compactBy = null;
+	run.compactions += 1;
+	run.compactedSinceMeasure = true;
+	run.entries.push({ kind: 'compact', at, ...detail });
+	run.emit({ type: 'compact', at, ...detail });
+
+	// the session's figures count the history alone, the meter the whole request (persona and
+	// tool schemas too), so what the summary freed is taken off; the turn's own measurement follows
+	if (meta.post_tokens !== undefined && run.usage) {
+		const freed = Math.max(0, meta.pre_tokens - meta.post_tokens);
+
+		run.usage = { ...run.usage, tokens: Math.max(0, run.usage.tokens - freed), at };
+		run.emit({ type: 'context', context: run.usage });
+	}
+}
+
+/** The session started or finished summarising its history. */
+function noteStatus(run: Run, status: string | null, result?: 'success' | 'failed', error?: string): void {
+	if (status === 'compacting') {
+		run.emit({ type: 'compacting', active: true });
+
+		return;
+	}
+
+	if (!result) {
+		return;
+	}
+
+	run.emit({ type: 'compacting', active: false });
+
+	if (result === 'failed') {
+		run.compactBy = null;
+		run.entries.push({ kind: 'error', at: Date.now(), text: '#compactFailed' });
+		run.emit({ type: 'error', text: error || 'The conversation could not be compacted.', code: 'compactFailed' });
+	}
+}
+
+/**
+ * Ask the session how full its context is, the way `/context` does, from the
+ * last response's usage without extra token-count calls. Right after a
+ * compaction that response is the summarising request, which still carried the
+ * whole old history, so the context is counted properly once instead. When the
+ * session cannot say in time, the last response's prompt size over the model's
+ * window stands in.
+ */
+async function refreshContext(run: Run): Promise<void> {
+	// the last response predates a compaction, so its size would undo the interim figure
+	const compacted = run.compactedSinceMeasure;
+	const measured = await measureContext(run);
+	const context = measured ?? (compacted ? run.usage : estimateContext(run));
+
+	if (!context) {
+		return;
+	}
+
+	run.usage = context;
+	run.emit({ type: 'context', context });
+}
+
+async function measureContext(run: Run): Promise<AgentContextUsage | null> {
+	if (!run.query) {
+		return null;
+	}
+
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const detail = run.compactedSinceMeasure
+		? 'full'
+		: 'summary';
+
+	run.compactedSinceMeasure = false;
+
+	try {
+		const usage = await Promise.race([
+			run.query.getContextUsage({ detail }),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(() => reject(new Error('no answer')), CONTEXT_TIMEOUT_MS);
+			})
+		]);
+
+		return { tokens: usage.totalTokens, window: usage.rawMaxTokens, model: usage.model, at: Date.now() };
+	} catch {
+		return null;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+function estimateContext(run: Run): AgentContextUsage | null {
+	const last = run.lastPrompt;
+
+	if (!last) {
+		return null;
+	}
+
+	const window = run.windows.get(last.model) ?? [...run.windows.values()][0];
+
+	if (!window) {
+		return null;
+	}
+
+	return { tokens: last.tokens, window, model: last.model, at: Date.now() };
 }
 
 /** Attach to a conversation's live run: replays what happened so far, then follows. Null when nothing runs. */

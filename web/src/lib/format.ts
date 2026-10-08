@@ -47,6 +47,21 @@ export function fmtBytes(n: number): string {
 	return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 }
 
+/** A token count the way model windows are quoted: 950, 84.2k, 1.2M. */
+export function fmtTokens(n: number): string {
+	if (n < 1000) {
+		return String(Math.round(n));
+	}
+
+	if (n < 1_000_000) {
+		const thousands = n / 1000;
+
+		return `${thousands >= 100 ? thousands.toFixed(0) : thousands.toFixed(1)}k`;
+	}
+
+	return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+}
+
 /** Wall-clock time of a timestamp, in the console's en-GB locale. */
 export function fmtTime(t: number): string {
 	return new Date(t).toLocaleTimeString('en-GB');

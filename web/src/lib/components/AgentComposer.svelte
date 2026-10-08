@@ -13,7 +13,9 @@
 	import Spinner from './Spinner.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import ConfirmModal from './ConfirmModal.svelte';
+	import Btn from './Btn.svelte';
 	import type { ContextMenuItem } from './contextmenu';
+	import { fmtTokens } from '$lib/format';
 
 	/**
 	 * Mèo Béo's message box: the text on top, the controls in a bar beneath it.
@@ -35,7 +37,8 @@
 	let addButton: HTMLButtonElement | undefined = $state();
 	let skillMenu: ContextMenu | undefined = $state();
 	let skillButton: HTMLButtonElement | undefined = $state();
-	let popover: 'model' | 'mode' | null = $state(null);
+	let popover: 'model' | 'mode' | 'context' | null = $state(null);
+	let compactFocus = $state('');
 	let filePicker: HTMLInputElement | undefined = $state();
 	let dragging = $state(false);
 	let confirmBypass = $state(false);
@@ -62,6 +65,26 @@
 	const modelValue = $derived(session.model || settings?.model || '');
 	const effortValue = $derived(session.effort || settings?.effort || 'medium');
 	const efforts = $derived(Agent.state?.efforts ?? []);
+
+	const context = $derived(session.context);
+	const contextShare = $derived(
+		context && context.window > 0
+			? Math.min(context.tokens / context.window, 1)
+			: 0
+	);
+	// the session compacts on its own at the window; these say it is getting close
+	const contextLevel = $derived(
+		!context
+			? ''
+			: contextShare >= 0.9
+				? 'bad'
+				: contextShare >= 0.7
+					? 'warn'
+					: ''
+	);
+
+	/** The meter's ring: radius 7 in an 18-unit box */
+	const RING = 2 * Math.PI * 7;
 
 	const modelLabel = $derived.by(() => {
 		const choice = Agent.state?.models.find((model) => model.value === modelValue);
@@ -93,7 +116,18 @@
 
 	const skillItems: ContextMenuItem[] = $derived.by(() => {
 		const skills = Agent.state?.skills ?? [];
-		const rows: ContextMenuItem[] = [{ label: t('web.agentComposer.skills'), header: true }];
+		const rows: ContextMenuItem[] = [
+			{ label: t('web.agentComposer.commands'), header: true },
+			{
+				id: 'compact',
+				label: '/compact',
+				hint: t('web.agentComposer.compactHint'),
+				disabled: !session.conversationId,
+				action: () => insertCommand('/compact')
+			},
+			{ separator: true },
+			{ label: t('web.agentComposer.skills'), header: true }
+		];
 
 		if (skills.length === 0) {
 			rows.push({ label: t('web.agentComposer.noSkills'), disabled: true });
@@ -125,6 +159,21 @@
 
 		textbox.style.height = 'auto';
 		textbox.style.height = `${Math.min(textbox.scrollHeight, COMPOSER_MAX)}px`;
+	}
+
+	async function insertCommand(command: string): Promise<void> {
+		draft = `${command} `;
+		await tick();
+		grow();
+		textbox?.focus();
+	}
+
+	async function runCompact(): Promise<void> {
+		const focus = compactFocus;
+
+		popover = null;
+		compactFocus = '';
+		await session.compact(focus);
 	}
 
 	async function insertSkill(name: string): Promise<void> {
@@ -220,7 +269,7 @@
 		}
 	}
 
-	function togglePopover(which: 'model' | 'mode', event: MouseEvent): void {
+	function togglePopover(which: 'model' | 'mode' | 'context', event: MouseEvent): void {
 		event.stopPropagation();
 		popover = popover === which
 			? null
@@ -322,6 +371,64 @@
 		</div>
 	{/if}
 
+	{#if popover === 'context'}
+		<div class="pop">
+			<div class="pophead">
+				<span>{t('web.agentComposer.context')}</span>
+				{#if context}
+					<span class="dim">{context.model}</span>
+				{/if}
+			</div>
+			<div class="ctx">
+				{#if context}
+					<div class="ctxline">
+						<b>{fmtTokens(context.tokens)}</b>
+						<span class="dim">
+							{t('web.agentComposer.contextOf', { window: fmtTokens(context.window), pct: Math.round(contextShare * 100) })}
+						</span>
+					</div>
+					<div class="ctxbar {contextLevel}">
+						<span style="width: {contextShare * 100}%"></span>
+					</div>
+				{:else}
+					<p class="dim">{t('web.agentComposer.contextUnknown')}</p>
+				{/if}
+				<p class="dim">{t('web.agentComposer.contextHint')}</p>
+				<dl>
+					<dt>{t('web.agentComposer.compactions')}</dt>
+					<dd>{session.row?.compactions ?? 0}</dd>
+					<dt>{t('web.agentComposer.spend')}</dt>
+					<dd>${(session.row?.costUsd ?? 0).toFixed(2)}</dd>
+				</dl>
+			</div>
+			<div class="compact">
+				<input
+					class="input"
+					type="text"
+					maxlength="500"
+					placeholder={t('web.agentComposer.compactFocus')}
+					bind:value={compactFocus}
+					onkeydown={(event) => {
+						// the composer is a form; Enter here compacts rather than sending the draft
+						if (event.key === 'Enter') {
+							event.preventDefault();
+							void runCompact();
+						}
+					}}
+				/>
+				<Btn
+					icon="compress"
+					loading={session.compacting}
+					disabled={!session.conversationId || session.compacting}
+					title={session.conversationId ? undefined : t('web.agent.err.nothingToCompact')}
+					onclick={runCompact}
+				>
+					{t('web.agentComposer.compactNow')}
+				</Btn>
+			</div>
+		</div>
+	{/if}
+
 	{#if session.attachments.length}
 		<div class="files">
 			{#each session.attachments as file}
@@ -403,6 +510,42 @@
 		{/if}
 
 		<span class="spacer"></span>
+
+		{#if session.conversationId}
+			<button
+				type="button"
+				class="chip meter {contextLevel}"
+				class:active={popover === 'context'}
+				class:busy={session.compacting}
+				title={context
+					? t('web.agentComposer.contextTitle', { used: fmtTokens(context.tokens), window: fmtTokens(context.window) })
+					: t('web.agentComposer.context')}
+				onclick={(event) => togglePopover('context', event)}
+			>
+				{#if session.compacting}
+					<Spinner size="0.875rem" />
+				{:else}
+					<svg viewBox="0 0 18 18" aria-hidden="true">
+						<circle class="track" cx="9" cy="9" r="7" />
+						<circle
+							class="fill"
+							cx="9"
+							cy="9"
+							r="7"
+							stroke-dasharray={RING}
+							stroke-dashoffset={RING * (1 - contextShare)}
+						/>
+					</svg>
+				{/if}
+				<span class="lbl">
+					{session.compacting
+						? t('web.agentComposer.compacting')
+						: context
+							? `${Math.round(contextShare * 100)}%`
+							: '–'}
+				</span>
+			</button>
+		{/if}
 
 		<button
 			type="button"
@@ -614,6 +757,51 @@
 			flex-shrink: 1;
 		}
 
+		&.meter {
+			background: none;
+			flex: none;
+			gap: 0.25rem;
+			padding: 0 0.375rem;
+			color: var(--text-secondary);
+
+			svg {
+				width: 0.875rem;
+				height: 0.875rem;
+				// the arc starts at twelve o'clock
+				transform: rotate(-90deg);
+			}
+
+			circle {
+				fill: none;
+				stroke-width: 2.5;
+			}
+
+			.track {
+				stroke: var(--bg-track);
+			}
+
+			.fill {
+				stroke: var(--link);
+				transition: stroke-dashoffset 0.4s ease;
+			}
+
+			&.warn {
+				color: var(--warning);
+
+				.fill {
+					stroke: var(--warning);
+				}
+			}
+
+			&.bad {
+				color: var(--error);
+
+				.fill {
+					stroke: var(--error);
+				}
+			}
+		}
+
 		&.mode {
 			background: none;
 			flex: none;
@@ -782,6 +970,84 @@
 			display: inline-flex;
 			align-items: center;
 			gap: 0.5rem;
+		}
+	}
+
+	.ctx {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.25rem 0.5rem 0.625rem;
+		font-size: 0.875rem;
+
+		p {
+			margin: 0;
+			font-size: 0.75rem;
+		}
+
+		dl {
+			display: grid;
+			grid-template-columns: auto 1fr;
+			gap: 0.25rem 1rem;
+			margin: 0;
+			font-size: 0.75rem;
+		}
+
+		dt {
+			color: var(--text-secondary);
+		}
+
+		dd {
+			margin: 0;
+			color: var(--text-heading);
+			text-align: right;
+		}
+	}
+
+	.ctxline {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+
+		b {
+			font-size: 1.25rem;
+			color: var(--text-heading);
+		}
+	}
+
+	.ctxbar {
+		height: 0.375rem;
+		border-radius: 1rem;
+		background: var(--bg-input);
+		overflow: hidden;
+
+		span {
+			display: block;
+			height: 100%;
+			border-radius: inherit;
+			background: var(--link);
+			transition: width 0.4s ease;
+		}
+
+		&.warn span {
+			background: var(--warning);
+		}
+
+		&.bad span {
+			background: var(--error);
+		}
+	}
+
+	.compact {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.625rem 0.5rem 0.375rem;
+		border-top: 0.1rem solid var(--border-divider);
+
+		.input {
+			flex: 1;
+			min-width: 0;
 		}
 	}
 

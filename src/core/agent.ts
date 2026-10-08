@@ -109,7 +109,27 @@ export interface AgentConversation {
 	sessionId?: string;
 	/** Estimated spend across every turn, in USD, as the SDK reports it */
 	costUsd: number;
+	/**
+	 * What sessions before the current one cost. The SDK's figure is the
+	 * session's running total, carried across resumes, so the conversation's
+	 * spend is this plus the latest total, never a sum of every run's.
+	 */
+	costBeforeUsd?: number;
 	turns: number;
+	/** How full the session's context was after its last response */
+	context?: AgentContextUsage;
+	/** How many times the session's history has been summarised, by hand or on its own */
+	compactions?: number;
+}
+
+/** A session's context as the SDK measured it after a response. */
+export interface AgentContextUsage {
+	/** Tokens the next request would carry */
+	tokens: number;
+	/** The window those are measured against: where the session compacts on its own */
+	window: number;
+	model: string;
+	at: number;
 }
 
 /** A model as the SDK described it to the last connection test. */
@@ -157,7 +177,16 @@ export type AgentEntry =
 	 * a trigger firing or expiring. It reached the model as a message, but it
 	 * is nobody's words, so the transcript keeps it apart from the operator's.
 	 */
-	| { kind: "event"; at: number; source: "task" | "trigger"; label: string; text: string };
+	| { kind: "event"; at: number; source: "task" | "trigger"; label: string; text: string }
+	/** The session's history was summarised; `by` is who asked, absent when it happened on its own */
+	| {
+		kind: "compact";
+		at: number;
+		trigger: "manual" | "auto";
+		by?: string;
+		preTokens: number;
+		postTokens?: number;
+	};
 
 export interface AgentTranscript extends AgentConversation {
 	entries: AgentEntry[];
@@ -593,8 +622,11 @@ function clipEntry(entry: AgentEntry): AgentEntry {
 export interface AgentTurnUpdate {
 	entries: AgentEntry[];
 	sessionId?: string;
-	/** The SDK's running total for this run, added to the conversation's */
+	/** The SDK's running total for the session, which already includes its earlier runs */
 	costUsd?: number;
+	context?: AgentContextUsage;
+	/** Compactions this run saw */
+	compactions?: number;
 	/** Set on the first message, so the list has something to show */
 	title?: string;
 	/** Whether this update closes a turn (counted) or only saves progress */
@@ -613,12 +645,25 @@ export async function appendAgentTurn(id: string, owner: string, update: AgentTu
 
 		conversation.updatedAt = Date.now();
 
+		// a new session's total starts from zero, so what the old one cost is banked first
+		if (update.sessionId && conversation.sessionId && update.sessionId !== conversation.sessionId) {
+			conversation.costBeforeUsd = conversation.costUsd;
+		}
+
 		if (update.sessionId) {
 			conversation.sessionId = update.sessionId;
 		}
 
 		if (update.costUsd) {
-			conversation.costUsd += update.costUsd;
+			conversation.costUsd = (conversation.costBeforeUsd ?? 0) + update.costUsd;
+		}
+
+		if (update.context) {
+			conversation.context = update.context;
+		}
+
+		if (update.compactions) {
+			conversation.compactions = (conversation.compactions ?? 0) + update.compactions;
 		}
 
 		if (update.completed) {

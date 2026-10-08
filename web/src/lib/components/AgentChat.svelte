@@ -12,7 +12,7 @@
 	import { Agent, type ChatItem, type ChatSession } from '$lib/agent.svelte';
 	import { renderMarkdown } from '$lib/markdown';
 	import { copyText } from '$lib/clipboard';
-	import { fmtTime } from '$lib/format';
+	import { fmtTime, fmtTokens } from '$lib/format';
 	import Icon from './Icon.svelte';
 	import Btn from './Btn.svelte';
 	import Spinner from './Spinner.svelte';
@@ -44,7 +44,8 @@
 	type Group =
 		| { kind: 'user'; item: Extract<ChatItem, { kind: 'user' }> }
 		| { kind: 'event'; item: Extract<ChatItem, { kind: 'event' }> }
-		| { kind: 'bot'; items: Exclude<ChatItem, { kind: 'user' } | { kind: 'event' }>[] };
+		| { kind: 'compact'; item: Extract<ChatItem, { kind: 'compact' }> }
+		| { kind: 'bot'; items: Exclude<ChatItem, { kind: 'user' } | { kind: 'event' } | { kind: 'compact' }>[] };
 
 	let composer: AgentComposer | undefined = $state();
 	let scroller: HTMLDivElement | undefined = $state();
@@ -122,6 +123,12 @@
 
 			if (item.kind === 'event') {
 				out.push({ kind: 'event', item });
+
+				continue;
+			}
+
+			if (item.kind === 'compact') {
+				out.push({ kind: 'compact', item });
 
 				continue;
 			}
@@ -370,7 +377,22 @@
 			{/if}
 
 			{#each groups as group, gi (gi)}
-				{#if group.kind === 'event'}
+				{#if group.kind === 'compact'}
+					<div class="compacted" role="note">
+						<Icon name="compress" style="solid" size="0.75rem" />
+						<span>
+							{group.item.postTokens !== undefined
+								? t('web.agent.compacted', { before: fmtTokens(group.item.preTokens), after: fmtTokens(group.item.postTokens) })
+								: t('web.agent.compactedFrom', { before: fmtTokens(group.item.preTokens) })}
+						</span>
+						<span class="who">
+							{group.item.by
+								? t('web.agent.compactedBy', { name: group.item.by })
+								: t('web.agent.compactedAuto')}
+						</span>
+						<span class="at">{fmtTime(group.item.at)}</span>
+					</div>
+				{:else if group.kind === 'event'}
 					<div class="event" data-source={group.item.source}>
 						<button
 							class="row"
@@ -653,6 +675,33 @@
 	}
 
 	// a background task or a trigger reporting back: a quiet line between the messages
+	// a rule across the transcript: everything above it reaches the model only as a summary
+	.compacted {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 1rem 1rem 0;
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+
+		&::before,
+		&::after {
+			content: '';
+			flex: 1;
+			min-width: 1rem;
+			border-top: 0.1rem dashed var(--border-input);
+		}
+
+		.who,
+		.at {
+			color: var(--text-disabled);
+		}
+
+		.at {
+			font-variant-numeric: tabular-nums;
+		}
+	}
+
 	.event {
 		display: flex;
 		flex-direction: column;

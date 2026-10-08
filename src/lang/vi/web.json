@@ -4540,7 +4540,9 @@
 			"busy": "Tui vẫn đang trả lời tin nhắn trước, bạn đợi xíu nha.",
 			"noExecutable": "Không tìm thấy Claude Code trên máy chạy console. Hãy đặt đường dẫn trong cài đặt trợ lý.",
 			"bypassOff": "Chế độ bỏ qua đã bị tắt trên console này. Hãy chọn chế độ khác.",
-			"badModel": "Model hoặc mức suy nghĩ không hợp lệ; hãy chọn lại trong menu model."
+			"badModel": "Model hoặc mức suy nghĩ không hợp lệ; hãy chọn lại trong menu model.",
+			"nothingToCompact": "Chưa có gì để nén; cuộc trò chuyện này chưa có lịch sử.",
+			"compactFailed": "Không nén được cuộc trò chuyện; lịch sử vẫn giữ nguyên."
 		},
 		"toolPlan": "Không chạy: đang lên kế hoạch",
 		"copyCode": "Sao chép",
@@ -4595,6 +4597,10 @@
 				"prompt": "Sao lưu thế giới của survival ngay bây giờ, rồi cho tôi biết bản sao lưu nặng bao nhiêu và so với lần trước thế nào."
 			}
 		},
+		"compacted": "Đã nén ngữ cảnh · {before} → {after} token",
+		"compactedFrom": "Đã nén ngữ cảnh từ {before} token",
+		"compactedBy": "bởi {name}",
+		"compactedAuto": "tự động, khi gần chạm giới hạn",
 		"event": {
 			"task": "Tác vụ nền",
 			"trigger": "Trigger"
@@ -4718,7 +4724,19 @@
 		"attach": "Đính kèm tệp",
 		"detach": "Bỏ tệp đính kèm",
 		"uploadFailed": "tải lên thất bại",
-		"sendMidRun": "Gửi ngay; Mèo Béo sẽ đọc ở bước tiếp theo"
+		"sendMidRun": "Gửi ngay; Mèo Béo sẽ đọc ở bước tiếp theo",
+		"commands": "Lệnh",
+		"compactHint": "Tóm tắt lịch sử đến giờ để giải phóng ngữ cảnh",
+		"context": "Ngữ cảnh",
+		"contextTitle": "Ngữ cảnh: {used} trên {window} token",
+		"contextOf": "trên {window} token · {pct}%",
+		"contextUnknown": "Sẽ được đo sau câu trả lời tiếp theo.",
+		"contextHint": "Khi gần chạm giới hạn, Mèo Béo tự tóm tắt các tin nhắn cũ. Nén sớm giúp các câu trả lời sau nhanh và rẻ hơn; hãy ghi rõ cần giữ lại gì nếu có điều quan trọng.",
+		"compactions": "Số lần nén",
+		"spend": "Chi phí đến giờ",
+		"compactFocus": "Cần giữ lại gì (không bắt buộc)",
+		"compactNow": "Nén",
+		"compacting": "Đang nén…"
 	},
 	"domains": {
 		"pageDescription": "Các tên miền con dưới tên miền gốc của mạng, và máy chủ mỗi tên dẫn người chơi tới. Máy chủ modded cần tên riêng: client modded không đi qua được lobby vanilla.",

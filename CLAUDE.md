@@ -567,6 +567,18 @@ export interface InstanceConfig {}
   or starts a new run when the conversation is idle, filed as an `event` transcript entry rather
   than the operator's words. An idle chat holds `/watch` open so it attaches to such a run as it
   starts. Everything is in the console process's memory; a restart drops it, and the tools say so.
+- **Its context is measured, and compacting is the session's own `/compact`.** After every turn the
+  runner asks the live query (`getContextUsage`, the `/context` numbers) and falls back to the last
+  response's prompt size over the model's window; the figure rides the stream as `context` and is
+  saved on the conversation, so the composer's meter shows it on an idle chat too. Right after a
+  compaction the cheap measurement reads the summarising request, which still held the old history,
+  so that one turn is counted in full. A manual compaction (the meter's popover, or `/compact
+  [focus]` typed in the composer) is `startRun` with `compact`: it joins a run that is going like a
+  mid-answer message, or starts one that only compacts, and says nothing in the transcript until the
+  session's `compact_boundary` files a `compact` entry, credited to who asked; one the session runs
+  on its own near the limit names nobody. The SDK's `total_cost_usd` is the **session's** running
+  total, carried across resumes, so a conversation's spend is set from it (plus what earlier
+  sessions cost), never summed per run.
 - **Its memory is the knowledge store.** Memories it saves are knowledge items in its token's scope,
   managed on `/console/knowledge` like any other; pinned context reaches it as the MCP
   `instructions`. Nothing is remembered in the subprocess's own state.

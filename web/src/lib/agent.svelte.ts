@@ -49,7 +49,18 @@ export type ChatItem =
 	}
 	| { kind: 'error'; text: string; code?: string }
 	/** A background task or a trigger reporting back; nobody's message */
-	| { kind: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number };
+	| { kind: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number }
+	/** The session's history was summarised; `by` is absent when it did so on its own */
+	| { kind: 'compact'; trigger: 'manual' | 'auto'; by?: string; preTokens: number; postTokens?: number; at: number };
+
+/** How full a session's context was after its last response. */
+export interface ContextUsage {
+	tokens: number;
+	/** Where the session compacts on its own */
+	window: number;
+	model: string;
+	at: number;
+}
 
 export interface ConversationRow {
 	id: string;
@@ -59,6 +70,8 @@ export interface ConversationRow {
 	costUsd: number;
 	turns: number;
 	running?: boolean;
+	context?: ContextUsage;
+	compactions?: number;
 }
 
 export interface AgentModelChoice {
@@ -89,8 +102,12 @@ export interface AgentState {
 }
 
 interface StoredEntry {
-	kind: 'user' | 'assistant' | 'tool' | 'error' | 'event';
+	kind: 'user' | 'assistant' | 'tool' | 'error' | 'event' | 'compact';
 	source?: 'task' | 'trigger';
+	trigger?: 'manual' | 'auto';
+	by?: string;
+	preTokens?: number;
+	postTokens?: number;
 	label?: string;
 	at: number;
 	author?: string;
@@ -115,6 +132,9 @@ type StreamEvent =
 	| { type: 'navigate'; id: string; path: string }
 	| { type: 'error'; text: string; code?: string }
 	| { type: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number }
+	| { type: 'context'; context: ContextUsage }
+	| { type: 'compacting'; active: boolean }
+	| { type: 'compact'; trigger: 'manual' | 'auto'; by?: string; preTokens: number; postTokens?: number; at: number }
 	| { type: 'done'; costUsd: number }
 	| { type: 'idle' }
 	| { type: 'ping' };
@@ -177,6 +197,15 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 			items.push({ kind: 'assistant', text: entry.text ?? '', streaming: false });
 		} else if (entry.kind === 'event') {
 			items.push({ kind: 'event', source: entry.source ?? 'task', label: entry.label ?? '', text: entry.text ?? '', at: entry.at });
+		} else if (entry.kind === 'compact') {
+			items.push({
+				kind: 'compact',
+				trigger: entry.trigger ?? 'auto',
+				by: entry.by,
+				preTokens: entry.preTokens ?? 0,
+				postTokens: entry.postTokens,
+				at: entry.at
+			});
 		} else if (entry.kind === 'tool') {
 			items.push({
 				kind: 'tool',
@@ -336,6 +365,12 @@ export class ChatSession {
 	/** Files attached to the next message; `id` is empty while the upload runs */
 	attachments: Attachment[] = $state([]);
 
+	/** How full the session's context is, once a response has measured it */
+	context: ContextUsage | null = $state(null);
+
+	/** Whether a compaction was asked for or is running, until the session reports it */
+	compacting = $state(false);
+
 	readonly #persist: boolean;
 	readonly #relay: boolean;
 	#source: EventSource | null = null;
@@ -455,6 +490,8 @@ export class ChatSession {
 		this.conversationId = id;
 		this.items = [];
 		this.running = false;
+		this.context = null;
+		this.compacting = false;
 
 		if (this.#persist) {
 			writeStored(CONVERSATION_KEY, id);
@@ -467,7 +504,7 @@ export class ChatSession {
 		this.loading = true;
 
 		try {
-			const data = await api<{ conversation: { entries: StoredEntry[] }; running: boolean }>(
+			const data = await api<{ conversation: { entries: StoredEntry[]; context?: ContextUsage }; running: boolean }>(
 				`/agent/conversations/${id}`
 			);
 
@@ -476,10 +513,14 @@ export class ChatSession {
 			}
 
 			this.items = itemsFromEntries(data.conversation.entries);
+			this.context = data.conversation.context ?? null;
 
+			// an idle chat still has to hear of a run a background task or trigger starts
 			if (data.running) {
 				this.running = true;
 				this.#attach(id);
+			} else {
+				this.#awaitNextRun(id);
 			}
 		} finally {
 			this.loading = false;
@@ -502,6 +543,13 @@ export class ChatSession {
 
 		if ((!message && files.length === 0) || this.sending) {
 			return { ok: false };
+		}
+
+		// typed as in Claude Code; what follows the command is the focus
+		const command = /^\/compact(?:\s+([\s\S]*))?$/.exec(message);
+
+		if (command && files.length === 0) {
+			return await this.compact(command[1] ?? '');
 		}
 
 		if (this.attachments.some((file) => !file.id && !file.error)) {
@@ -598,6 +646,52 @@ export class ChatSession {
 		}
 
 		await post(`/agent/conversations/${this.conversationId}/approve`, { toolUseId, allow, tool, ...(answers ? { answers } : {}) });
+	}
+
+	/**
+	 * Summarise the conversation's history so far, keeping what `focus` names.
+	 * Mid-answer it waits its turn in the run; otherwise it starts a run that
+	 * does only that. The result arrives on the stream as a compact row.
+	 */
+	async compact(focus = ''): Promise<SendResult> {
+		const id = this.conversationId;
+
+		if (this.compacting || this.sending) {
+			return { ok: false };
+		}
+
+		if (!id) {
+			this.items = [...this.items, { kind: 'error', text: '', code: 'nothingToCompact' }];
+
+			return { ok: false, code: 'nothingToCompact' };
+		}
+
+		const joining = this.running;
+		const settings = Agent.state?.settings;
+
+		this.compacting = true;
+
+		const result = await post<SendResult>(`/agent/conversations/${id}/compact`, {
+			focus: focus.trim(),
+			locale: currentLanguage(),
+			mode: this.mode,
+			model: this.model || (joining ? settings?.model : undefined),
+			effort: this.effort || (joining ? settings?.effort : undefined)
+		}).catch((err: Error): SendResult => ({ ok: false, error: err.message }));
+
+		if (!result.ok) {
+			this.compacting = false;
+			this.items = [...this.items, { kind: 'error', text: result.error ?? '', code: result.code }];
+
+			return result;
+		}
+
+		if (!result.joined || !this.#source) {
+			this.running = true;
+			this.#attach(id);
+		}
+
+		return result;
 	}
 
 	async stop(): Promise<void> {
@@ -820,6 +914,26 @@ export class ChatSession {
 				this.items.push({ kind: 'event', source: event.source, label: event.label, text: event.text, at: event.at });
 				break;
 
+			case 'context':
+				this.context = event.context;
+				break;
+
+			case 'compacting':
+				this.compacting = event.active;
+				break;
+
+			case 'compact':
+				this.compacting = false;
+				this.items.push({
+					kind: 'compact',
+					trigger: event.trigger,
+					by: event.by,
+					preTokens: event.preTokens,
+					postTokens: event.postTokens,
+					at: event.at
+				});
+				break;
+
 			case 'state':
 				this.running = event.running;
 				break;
@@ -827,6 +941,7 @@ export class ChatSession {
 			case 'done':
 			case 'idle':
 				this.running = false;
+				this.compacting = false;
 
 				for (const item of this.items) {
 					if (item.kind === 'assistant') {
