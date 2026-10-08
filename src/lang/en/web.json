@@ -869,6 +869,7 @@
 		"freed": "Freed {size} across {count} items",
 		"archived": "Archived {count} log files into {archives} monthly archive(s).",
 		"failed": "Cleanup failed",
+		"loadFailed": "Could not scan for files to clean up",
 		"pageDescription": "Caches, stale Paper versions, leftovers and rotated logs; worlds, configs and plugins are never touched",
 		"run": "Run cleanup",
 		"itemCount": "{count} item(s)",

@@ -119,7 +119,9 @@
 
 	let sessions: Session[] = $state([]);
 	let sessionsTotal = $state(0);
+	let sessionsLoaded = $state(false);
 	let moderation: ModEntry[] = $state([]);
+	let moderationLoaded = $state(false);
 	let servers: string[] = $state([]);
 
 	function pickInitialTab(): Tab {
@@ -157,17 +159,22 @@
 		}
 
 		const uuid = data.uuid;
-		const result = await loadWholeLog<Session>(async (offset) => {
-			const more = await api(
-				`/players/${uuid}/sessions?server=${encodeURIComponent(instance)}&limit=${LOG_PAGE}&offset=${offset}`
-			);
 
-			return more.available === false ? { total: 0, rows: [] } : { total: more.total ?? 0, rows: more.sessions ?? [] };
-		});
+		try {
+			const result = await loadWholeLog<Session>(async (offset) => {
+				const more = await api(
+					`/players/${uuid}/sessions?server=${encodeURIComponent(instance)}&limit=${LOG_PAGE}&offset=${offset}`
+				);
 
-		sessionsTotal = result.total;
-		// an older proxy ignores the server filter; hold the rows to it again
-		sessions = result.rows.filter((session) => session.server.toLowerCase() === instance.toLowerCase());
+				return more.available === false ? { total: 0, rows: [] } : { total: more.total ?? 0, rows: more.sessions ?? [] };
+			});
+
+			sessionsTotal = result.total;
+			// an older proxy ignores the server filter; hold the rows to it again
+			sessions = result.rows.filter((session) => session.server.toLowerCase() === instance.toLowerCase());
+		} finally {
+			sessionsLoaded = true;
+		}
 	}
 
 	async function loadModeration(): Promise<void> {
@@ -176,19 +183,24 @@
 		}
 
 		const uuid = data.uuid;
-		const result = await loadWholeLog<ModEntry>(async (offset) => {
-			const more = await api(`/players/${uuid}/moderation?limit=${LOG_PAGE}&offset=${offset}`);
 
-			return more.available === false ? { total: 0, rows: [] } : { total: more.total ?? 0, rows: more.entries ?? [] };
-		});
+		try {
+			const result = await loadWholeLog<ModEntry>(async (offset) => {
+				const more = await api(`/players/${uuid}/moderation?limit=${LOG_PAGE}&offset=${offset}`);
 
-		// an entry's server is the list of backends the action landed on
-		moderation = result.rows.filter((entry) =>
-			entry.server
-				.split(',')
-				.map((name) => name.trim().toLowerCase())
-				.includes(instance.toLowerCase())
-		);
+				return more.available === false ? { total: 0, rows: [] } : { total: more.total ?? 0, rows: more.entries ?? [] };
+			});
+
+			// an entry's server is the list of backends the action landed on
+			moderation = result.rows.filter((entry) =>
+				entry.server
+					.split(',')
+					.map((name) => name.trim().toLowerCase())
+					.includes(instance.toLowerCase())
+			);
+		} finally {
+			moderationLoaded = true;
+		}
 	}
 
 	function loadTab(id: string): void {
@@ -981,6 +993,7 @@
 					tableId="instance-player-sessions"
 					columns={sessionCols}
 					rows={sessions}
+					loading={!sessionsLoaded}
 					getId={(session) => String(session.id)}
 					noun={t('web.instancePlayer.nounSession')}
 					pageSize={25}
@@ -1020,6 +1033,7 @@
 					tableId="instance-player-moderation"
 					columns={modCols}
 					rows={moderation}
+					loading={!moderationLoaded}
 					getId={(entry) => String(entry.id)}
 					searchValue={(entry) => `${entry.action} ${entry.actor} ${entry.reason}`}
 					searchPlaceholder={t('web.instancePlayer.findEntry')}

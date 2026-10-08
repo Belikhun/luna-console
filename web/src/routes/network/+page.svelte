@@ -35,6 +35,8 @@
 	let busy = $state(false);
 	let loaded = $state(false);
 	let loading = $state(false);
+	/** Whether the first read has finished, failed or not; `loaded` only counts a success. */
+	let settled = $state(false);
 	let lastUpdated: number | null = $state(null);
 
 	const columns: Column[] = $derived([
@@ -95,6 +97,7 @@
 			Notify.error(t('web.ports.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			settled = true;
 		}
 	}
 
@@ -349,6 +352,7 @@
 		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
 		rows={ports}
+		loading={!settled}
 		getId={(row) => `${row.protocol}:${row.port}:${row.owner}`}
 		searchValue={(row) =>
 			`${row.port} ${row.protocol} ${row.owner} ${kindLabel(row.kind)} ${row.pool ?? ''} ${machineName(row.machine)} ${row.address}`}

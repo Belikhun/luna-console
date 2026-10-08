@@ -52,6 +52,7 @@
 	let audit: McpAuditRow[] = $state([]);
 
 	let loading = $state(false);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let tab = $state(page.url.searchParams.get('tab') ?? 'tokens');
 	let selected: Set<string> = $state(new Set());
@@ -82,6 +83,7 @@
 			Notify.error(t('web.mcp.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -398,6 +400,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="console-mcp-tokens"
+				loading={!loaded}
 				initialSearch={page.url.searchParams.get('q') ?? ''}
 				columns={tokenColumns}
 				filters={tokenFilters}
@@ -468,6 +471,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="console-mcp-calls"
+				loading={!loaded}
 				columns={callColumns}
 				filters={callFilters}
 				rows={calls}
@@ -520,6 +524,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="console-mcp-audit"
+				loading={!loaded}
 				columns={auditColumns}
 				filters={auditFilters}
 				rows={audit}

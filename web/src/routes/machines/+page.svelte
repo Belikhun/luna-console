@@ -168,11 +168,11 @@
 
 			daemons = data.daemons;
 			lastUpdated = Date.now();
-			loaded = true;
 		} catch (err) {
 			Notify.error(t('web.machines.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -410,6 +410,7 @@
 		tableId="daemons"
 		{columns}
 		rows={daemons}
+		loading={!loaded}
 		getId={(row) => row.name}
 		searchValue={(row) =>
 			`${row.name} ${row.mode} ${row.host ?? ''} ${row.addresses.join(' ')} ${row.instances.join(' ')}`}

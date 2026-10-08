@@ -64,6 +64,7 @@
 	let truncated = $state(false);
 	let depth = $state('300');
 	let loading = $state(false);
+	let loaded = $state(false);
 	let lastUpdated = $state<number | null>(null);
 	let selected: Set<string> = $state(new Set());
 
@@ -84,6 +85,7 @@
 			Notify.error(t('web.consoleLogs.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -239,6 +241,7 @@
 <Panel flush>
 	<ResourceTable
 		tableId="console-logs"
+		loading={!loaded}
 		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
 		{filters}

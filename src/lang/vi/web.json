@@ -869,6 +869,7 @@
 		"freed": "Đã giải phóng {size} trên {count} mục",
 		"archived": "Đã lưu trữ {count} tệp log vào {archives} kho theo tháng.",
 		"failed": "Dọn dẹp thất bại",
+		"loadFailed": "Không thể quét các tệp cần dọn dẹp",
 		"pageDescription": "Cache, các bản Paper cũ, tàn dư và log đã xoay vòng; thế giới, cấu hình và plugin không bao giờ bị động tới",
 		"run": "Chạy dọn dẹp",
 		"itemCount": "{count} mục",

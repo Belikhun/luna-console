@@ -35,6 +35,7 @@
 	let items: KnowledgeItem[] = $state([]);
 	let tokens: Array<{ id: string; name: string }> = $state([]);
 	let loading = $state(false);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let tab: string = $state(page.url.searchParams.get('kind') ?? 'context');
 	let selected: Set<string> = $state(new Set());
@@ -55,6 +56,7 @@
 			Notify.error(t('web.knowledge.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -244,6 +246,7 @@
 		{#key tab}
 			<ResourceTable
 				tableId="console-knowledge-{tab}"
+				loading={!loaded}
 				initialSearch={page.url.searchParams.get('q') ?? ''}
 				{columns}
 				{filters}

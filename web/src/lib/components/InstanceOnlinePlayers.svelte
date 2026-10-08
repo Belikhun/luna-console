@@ -584,6 +584,7 @@
 		tableId="instance-online-players"
 		{columns}
 		rows={rows}
+		loading={!loaded}
 		getId={(row) => row.uuid}
 		searchValue={(row) =>
 			`${row.username} ${row.uuid} ${row.clientVersion} ${row.vitals?.gameMode ?? ''} ${row.vitals ? dimensionLabel(row.vitals.position.dimension) : ''}`}

@@ -34,6 +34,7 @@
 	let reload = $state(true);
 	let busy = $state(false);
 	let loading = $state(false);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 
 	// the registration dialog: an empty target offers the instance picker
@@ -95,6 +96,7 @@
 			Notify.error(t('web.proxy.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -206,52 +208,57 @@
 	{:else}
 		<Flash kind="success">{t('web.proxy.matches')}</Flash>
 	{/if}
+{/if}
 
-	<div class="cols">
-		<Panel title={t('web.proxy.registeredServers')} flush>
-			<ResourceTable
-				tableId="proxy-routes"
-				initialSearch={page.url.searchParams.get('q') ?? ''}
-				{columns}
-				{rows}
-				getId={(row) => row.server}
-				searchValue={(row) => `${row.server} ${row.address} ${row.to ?? ''} ${row.state}`}
-				searchPlaceholder={t('web.proxy.findServer')}
-				searchWidth="18rem"
-				selectable="single"
-				bind:selected
-				{rowActions}
-				rowLabel={(row) => row.server}
-				noun={t('web.proxy.noun')}
-				pageSize={15}
-				emptyTitle={t('web.proxy.emptyTitle')}
-			>
-				{#snippet cell(row, col)}
-					{#if col === 'server'}
-						{row.server}
-					{:else if col === 'address'}
-						<span class="mono">{row.address || '–'}</span>
-					{:else if row.state === 'sync'}
-						<span class="ok">{t('web.proxy.inSync')}</span>
-					{:else if row.state === 'change'}
-						<span class="warn">→ {row.to}</span>
-					{:else if row.state === 'add'}
-						<span class="ok">{t('web.proxy.willBeAdded', { address: row.to ?? '' })}</span>
-					{:else}
-						<span class="err">{t('web.proxy.willBeRemoved')}</span>
-					{/if}
-				{/snippet}
-			</ResourceTable>
+<div class="cols">
+	<Panel title={t('web.proxy.registeredServers')} flush>
+		<ResourceTable
+			tableId="proxy-routes"
+			initialSearch={page.url.searchParams.get('q') ?? ''}
+			{columns}
+			{rows}
+			getId={(row) => row.server}
+			searchValue={(row) => `${row.server} ${row.address} ${row.to ?? ''} ${row.state}`}
+			searchPlaceholder={t('web.proxy.findServer')}
+			searchWidth="18rem"
+			selectable="single"
+			bind:selected
+			{rowActions}
+			rowLabel={(row) => row.server}
+			noun={t('web.proxy.noun')}
+			pageSize={15}
+			loading={!loaded}
+			emptyTitle={t('web.proxy.emptyTitle')}
+		>
+			{#snippet cell(row, col)}
+				{#if col === 'server'}
+					{row.server}
+				{:else if col === 'address'}
+					<span class="mono">{row.address || '–'}</span>
+				{:else if row.state === 'sync'}
+					<span class="ok">{t('web.proxy.inSync')}</span>
+				{:else if row.state === 'change'}
+					<span class="warn">→ {row.to}</span>
+				{:else if row.state === 'add'}
+					<span class="ok">{t('web.proxy.willBeAdded', { address: row.to ?? '' })}</span>
+				{:else}
+					<span class="err">{t('web.proxy.willBeRemoved')}</span>
+				{/if}
+			{/snippet}
+		</ResourceTable>
+		{#if data}
 			<div class="meta dim">
 				{t('web.proxy.tryOrder')} {data.tryList.join(' → ') || t('web.proxy.emptyList')}<br />
 				{t('web.proxy.forcedHosts')} {forcedHostsLabel}
 			</div>
-		</Panel>
-		<Panel title={t('web.proxy.generatedToml')} flush>
+		{/if}
+	</Panel>
+	<Panel title={t('web.proxy.generatedToml')} flush>
+		{#if data}
 			<pre class="code mono">{data.preview}</pre>
-		</Panel>
-	</div>
-{/if}
+		{/if}
+	</Panel>
+</div>
 
 <ProxyRegistrationModal
 	bind:open={regOpen}

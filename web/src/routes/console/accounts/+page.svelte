@@ -56,6 +56,7 @@
 	let self: string | null = $state(null);
 
 	let loading = $state(false);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let tab = $state('accounts');
 	let selected: Set<string> = $state(new Set());
@@ -80,6 +81,7 @@
 			Notify.error(t('web.accounts.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -433,6 +435,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="console-accounts"
+				loading={!loaded}
 				initialSearch={page.url.searchParams.get('q') ?? ''}
 				columns={accountColumns}
 				filters={accountFilters}
@@ -504,6 +507,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="console-sessions"
+				loading={!loaded}
 				columns={sessionColumns}
 				rows={sessions}
 				getId={(row) => row.id}
@@ -543,6 +547,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="console-audit"
+				loading={!loaded}
 				columns={auditColumns}
 				filters={auditFilters}
 				rows={audit}

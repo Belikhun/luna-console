@@ -23,6 +23,8 @@
 	let plan: any = $state(null);
 	let busy = $state(false);
 	let loading = $state(true);
+	let loaded = $state(false);
+	let scanError = $state('');
 	let lastUpdated: number | null = $state(null);
 	let confirmOpen = $state(false);
 
@@ -72,9 +74,14 @@
 
 		try {
 			plan = (await api('/cleanup')).plan;
+			scanError = '';
 			lastUpdated = Date.now();
+		} catch (err) {
+			scanError = (err as Error).message;
+			Notify.error(t('web.cleanup.loadFailed'), { detail: scanError });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -188,44 +195,46 @@
 	{#each plan.notes as note}
 		<p class="dim note">{t('web.cleanup.note')} {note}</p>
 	{/each}
-
-	<Panel title={t('web.cleanup.plannedDeletions')} count={plan.junk.length} flush>
-		<ResourceTable
-			tableId="cleanup-junk"
-			{columns}
-			rows={plan.junk}
-			getId={(item) => item.path}
-			searchValue={(item) => `${item.instance} ${item.kind} ${item.path}`}
-			searchPlaceholder={t('web.cleanup.findPath')}
-			filters={junkFilters}
-			selectable="single"
-			bind:selected
-			rowActions={junkActions}
-			rowLabel={(item) => item.path}
-			noun={t('web.cleanup.noun')}
-			sortValue={(item, col) => (col === 'size' ? item.bytes : (item as any)[col])}
-			maxHeight="46vh"
-			emptyTitle={t('web.cleanup.nothingToDelete')}
-		>
-			{#snippet cell(item, col)}
-				{#if col === 'instance'}
-					{item.instance}
-				{:else if col === 'kind'}
-					{item.kind}
-				{:else if col === 'path'}
-					<span class="mono dim">{item.path}</span>
-				{:else}
-					<ProgressBar
-						compact
-						value={item.bytes}
-						max={largestJunk}
-						right={fmtBytes(item.bytes)}
-					/>
-				{/if}
-			{/snippet}
-		</ResourceTable>
-	</Panel>
 {/if}
+
+<Panel title={t('web.cleanup.plannedDeletions')} count={plan ? plan.junk.length : undefined} flush>
+	<ResourceTable
+		tableId="cleanup-junk"
+		{columns}
+		rows={plan?.junk ?? []}
+		loading={!loaded}
+		getId={(item) => item.path}
+		searchValue={(item) => `${item.instance} ${item.kind} ${item.path}`}
+		searchPlaceholder={t('web.cleanup.findPath')}
+		filters={junkFilters}
+		selectable="single"
+		bind:selected
+		rowActions={junkActions}
+		rowLabel={(item) => item.path}
+		noun={t('web.cleanup.noun')}
+		sortValue={(item, col) => (col === 'size' ? item.bytes : (item as any)[col])}
+		maxHeight="46vh"
+		emptyTitle={scanError ? t('web.cleanup.loadFailed') : t('web.cleanup.nothingToDelete')}
+		emptyText={scanError}
+	>
+		{#snippet cell(item, col)}
+			{#if col === 'instance'}
+				{item.instance}
+			{:else if col === 'kind'}
+				{item.kind}
+			{:else if col === 'path'}
+				<span class="mono dim">{item.path}</span>
+			{:else}
+				<ProgressBar
+					compact
+					value={item.bytes}
+					max={largestJunk}
+					right={fmtBytes(item.bytes)}
+				/>
+			{/if}
+		{/snippet}
+	</ResourceTable>
+</Panel>
 
 <Modal title={t('web.cleanup.run')} bind:open={confirmOpen}>
 	<p>

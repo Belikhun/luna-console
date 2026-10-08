@@ -600,6 +600,7 @@
 				tableId="instances"
 				{columns}
 				rows={allRows}
+				{loading}
 				getId={(row) => row.name}
 				searchValue={(row) =>
 					`${row.name} ${row.state ?? 'external'} ${row.software ?? ''} ${row.mcVersion ?? ''} ${row.port ?? row.external ?? ''} ${row.daemon ?? hostName}`}

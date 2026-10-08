@@ -224,6 +224,7 @@
 <Panel flush>
 	<ResourceTable
 		tableId="schedules"
+		{loading}
 		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
 		rows={schedules}
@@ -289,6 +290,7 @@
 >
 	<ResourceTable
 		tableId="schedule-events"
+		{loading}
 		columns={eventCols}
 		rows={shownEvents}
 		getId={(event) => String(event.seq)}

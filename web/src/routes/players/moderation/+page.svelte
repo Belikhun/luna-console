@@ -125,6 +125,7 @@
 	let logLoadingMore = $state(false);
 
 	let loading = $state(true);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 
 	let selectedBans: Set<string> = $state(new Set());
@@ -225,6 +226,7 @@
 		await Promise.all([refreshLists(), refreshLog(), refreshNetBans()]);
 
 		loading = false;
+		loaded = true;
 		lastUpdated = Date.now();
 	}
 
@@ -939,6 +941,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="moderation-log"
+				loading={!loaded}
 				initialSearch={page.url.searchParams.get('q') ?? ''}
 				columns={logColumns}
 				rows={logEntries}
@@ -993,6 +996,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="moderation-bans"
+				loading={!loaded}
 				columns={banColumns}
 				rows={bans}
 				getId={rowKey}
@@ -1053,6 +1057,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="moderation-whitelist"
+				loading={!loaded}
 				columns={whitelistColumns}
 				rows={whitelist}
 				getId={rowKey}
@@ -1083,6 +1088,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="moderation-ops"
+				loading={!loaded}
 				columns={opColumns}
 				rows={ops}
 				getId={rowKey}
@@ -1122,6 +1128,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="moderation-netbans"
+				loading={!loaded}
 				columns={netBanColumns}
 				rows={netBans}
 				getId={(row) => row.ip}
@@ -1162,6 +1169,7 @@
 		<Panel flush>
 			<ResourceTable
 				tableId="moderation-ipbans"
+				loading={!loaded}
 				columns={ipBanColumns}
 				rows={ipBans}
 				getId={(row) => row.ip}

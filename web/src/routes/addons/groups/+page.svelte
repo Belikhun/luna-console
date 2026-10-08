@@ -31,6 +31,7 @@
 
 	let groups: GroupInfo[] = $state([]);
 	let loading = $state(true);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 
 	async function refresh(): Promise<void> {
@@ -44,6 +45,7 @@
 		}
 
 		loading = false;
+		loaded = true;
 	}
 
 	onMount(() => {
@@ -113,6 +115,7 @@
 		tableId="plugin-groups"
 		{columns}
 		rows={groups}
+		loading={!loaded}
 		getId={(group) => group.name}
 		searchValue={(group) =>
 			`${group.name} ${group.description} ${members(group).join(' ')} ${group.usedBy.join(' ')}`}

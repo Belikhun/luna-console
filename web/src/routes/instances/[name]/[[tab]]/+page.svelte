@@ -405,6 +405,9 @@
 	 * on a server with 322 mods, which reads as an answer rather than as a wait.
 	 */
 	let addonsLoaded = $state(false);
+	/** Whether the plugins and data packs tables have had a first answer, from the stream or a fetch. */
+	let pluginsSettled = $state(false);
+	let datapacksSettled = $state(false);
 	/**
 	 * The addon stream's indicator.
 	 *
@@ -419,6 +422,7 @@
 			: LOG_LIVE_LABEL[addonLive]
 	);
 	let instRespacks: any[] = $state([]);
+	let respacksLoaded = $state(false);
 
 	/**
 	 * Every variable this instance resolves, with the scope that won. Builtins are
@@ -435,6 +439,7 @@
 	}
 
 	let envVars: EnvVar[] = $state([]);
+	let envLoaded = $state(false);
 	/** Secrets revealed this session, dropped on reload */
 	let envRevealed: Record<string, string> = $state({});
 
@@ -449,6 +454,7 @@
 
 	let worldReport: WorldReport | null = $state(null);
 	let backups: BackupEntry[] = $state([]);
+	let worldLoaded = $state(false);
 	/** The world operation holding this instance, as the daemon reports it */
 	let worldLock: WorldJournal | null = $state(null);
 	let worldStage: StagedWorld | null = $state(null);
@@ -476,6 +482,7 @@
 		history: [],
 		events: []
 	});
+	let metricsLoaded = $state(false);
 	/**
 	 * Per-thread CPU of the running process; null until the first report lands.
 	 *
@@ -559,6 +566,8 @@
 	/** Fold one frame of the addon stream into the summary and the tabs it feeds. */
 	function applyAddonSnapshot(snapshot: any): void {
 		addonsLoaded = true;
+		pluginsSettled = true;
+		datapacksSettled = true;
 		instPlugins = snapshot.plugins;
 		instUnmanaged = snapshot.unmanaged ?? [];
 		pluginTotals = {
@@ -610,54 +619,78 @@
 		// stream can go live mid-request, and a late snapshot must not paint an
 		// older state over a newer frame.
 		if (which === 'plugins' && !addonStreamOwnsView()) {
-			const data = await api(`/instances/${name}/plugins`);
+			try {
+				const data = await api(`/instances/${name}/plugins`);
 
-			if (!addonStreamOwnsView()) {
-				addonsLoaded = true;
-				instPlugins = data.plugins;
-				pluginTotals = {
-					warnings: data.warnings,
-					errors: data.errors,
-					sessionComplete: data.sessionComplete
-				};
-				pluginSession = data.session ?? null;
+				if (!addonStreamOwnsView()) {
+					addonsLoaded = true;
+					instPlugins = data.plugins;
+					pluginTotals = {
+						warnings: data.warnings,
+						errors: data.errors,
+						sessionComplete: data.sessionComplete
+					};
+					pluginSession = data.session ?? null;
+				}
+			} finally {
+				pluginsSettled = true;
 			}
 		}
 
 		if (which === 'datapacks' && !addonStreamOwnsView()) {
-			const data = await api(`/instances/${name}/datapacks`);
+			try {
+				const data = await api(`/instances/${name}/datapacks`);
 
-			if (!addonStreamOwnsView()) {
-				instDatapacks = data.rows;
-				datapackWorld = data.world;
+				if (!addonStreamOwnsView()) {
+					instDatapacks = data.rows;
+					datapackWorld = data.world;
+				}
+			} finally {
+				datapacksSettled = true;
 			}
 		}
 
 		if (which === 'environment') {
-			const data = await api(`/instances/${name}/env`);
+			try {
+				const data = await api(`/instances/${name}/env`);
 
-			envVars = data.variables;
+				envVars = data.variables;
+			} finally {
+				envLoaded = true;
+			}
 		}
 
 		if (which === 'respacks') {
-			// the catalog is proxy-global; this tab shows how it lands here
-			instRespacks = (await api('/respacks')).packs;
+			try {
+				// the catalog is proxy-global; this tab shows how it lands here
+				instRespacks = (await api('/respacks')).packs;
+			} finally {
+				respacksLoaded = true;
+			}
 		}
 
 		if (which === 'world') {
-			const data = await api(`/instances/${name}/world`);
+			try {
+				const data = await api(`/instances/${name}/world`);
 
-			worldReport = data.world;
-			backups = data.backups;
-			// the lock comes from the daemon rather than from this page's own job
-			// list: a backup started in another tab, by the CLI or by a schedule
-			// holds the instance just as firmly, and a tab that only knew its own
-			// work would offer verbs the server is about to refuse
-			worldLock = data.lock;
+				worldReport = data.world;
+				backups = data.backups;
+				// the lock comes from the daemon rather than from this page's own job
+				// list: a backup started in another tab, by the CLI or by a schedule
+				// holds the instance just as firmly, and a tab that only knew its own
+				// work would offer verbs the server is about to refuse
+				worldLock = data.lock;
+			} finally {
+				worldLoaded = true;
+			}
 		}
 
 		if (which === 'monitoring' || which === 'checks') {
-			metrics = await api(`/instances/${name}/metrics`);
+			try {
+				metrics = await api(`/instances/${name}/metrics`);
+			} finally {
+				metricsLoaded = true;
+			}
 		}
 
 		// deliberately not awaited: the thread report is measured over a window, so it
@@ -2543,6 +2576,7 @@
 					tableId="instance-events"
 					columns={eventCols}
 					rows={metrics.events}
+					loading={!metricsLoaded}
 					getId={(event) => String(event.t) + event.message}
 					searchValue={(event) => `${event.kind} ${event.message}`}
 					searchPlaceholder={t('web.instanceDetail.findAnEvent')}
@@ -2773,6 +2807,7 @@
 					tableId="instance-plugins"
 					columns={pluginCols}
 					rows={instPlugins}
+					loading={!pluginsSettled}
 					getId={(plugin) => plugin.plugin}
 					searchValue={(plugin) =>
 						`${plugin.plugin} ${plugin.displayName ?? ''} ${plugin.state} ${plugin.version ?? ''} ${plugin.source} ${(plugin.groups ?? []).join(' ')}`}
@@ -3003,6 +3038,7 @@
 					tableId="instance-backups"
 					columns={backupCols}
 					rows={backups}
+					loading={!worldLoaded}
 					getId={(row) => row.id}
 					selectable="multi"
 					bind:selected={backupSelection}
@@ -3072,6 +3108,7 @@
 					tableId="instance-datapacks"
 					columns={datapackCols}
 					rows={instDatapacks}
+					loading={!datapacksSettled}
 					getId={(row) => row.file}
 					searchValue={(row) => `${row.file} ${row.name ?? ''} ${row.source ?? ''}`}
 					searchPlaceholder={t('web.instanceDetail.findADataPackIn')}
@@ -3161,6 +3198,7 @@
 					tableId="instance-respacks"
 					columns={respackCols}
 					rows={instRespacks}
+					loading={!respacksLoaded}
 					getId={(row) => row.key}
 					searchValue={(row) => `${row.key} ${row.name} ${row.servers.join(' ')}`}
 					searchPlaceholder={t('web.instanceDetail.findAResourcePack')}
@@ -3270,6 +3308,7 @@
 					columns={envCols}
 					filters={envFilters}
 					rows={envVars}
+					loading={!envLoaded}
 					getId={(row) => row.name}
 					searchValue={(row) =>
 						`${row.name} ${row.secret ? 'secret' : row.value} ${row.scope} ${row.description}`}

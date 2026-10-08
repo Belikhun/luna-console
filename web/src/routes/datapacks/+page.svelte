@@ -58,6 +58,7 @@
 	let packs: DataPackRow[] = $state([]);
 	let instanceNames: string[] = $state([]);
 	let loading = $state(true);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let busy = $state('');
 	let selected: Set<string> = $state(new Set());
@@ -75,6 +76,7 @@
 		}
 
 		loading = false;
+		loaded = true;
 	}
 
 	onMount(() => {
@@ -455,6 +457,7 @@
 <Panel flush>
 	<ResourceTable
 		tableId="datapacks"
+		loading={!loaded}
 		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
 		rows={packs}

@@ -141,6 +141,7 @@
 		}
 	]);
 	let tableSelected: Set<string> = $state(new Set(['bravo']));
+	let tableLoading = $state(false);
 
 	// a smooth-ish wave with a little jitter, sampled like the real metric history
 	const SPARK_POINTS = Array.from({ length: 40 }, (_unused, i) => ({
@@ -573,7 +574,8 @@
 		<DataTable
 			tableId="gallery"
 			columns={COLUMNS}
-			rows={ROWS}
+			rows={tableLoading ? [] : ROWS}
+			loading={tableLoading}
 			getId={(row) => row.name}
 			selectable="multi"
 			bind:selected={tableSelected}
@@ -586,6 +588,10 @@
 		>
 			{#snippet toolbar()}
 				<SearchInput value="" placeholder={t('web.gallery.findDemoRows')} width="16rem" />
+				<label class="demo-check">
+					<Toggle checked={tableLoading} label={t('web.gallery.loading')} onchange={(value) => (tableLoading = value)} />
+					{t('web.gallery.loading')}
+				</label>
 			{/snippet}
 			{#snippet cell(row, col)}
 				{#if col === 'name'}

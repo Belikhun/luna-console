@@ -447,6 +447,7 @@
 				tableId="group-edit-nodes"
 				columns={nodeCols}
 				rows={nodes}
+				{loading}
 				getId={nodeIdentity}
 				rowActions={nodeRowActions}
 				rowLabel={(node) => node.key}

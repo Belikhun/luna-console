@@ -291,6 +291,7 @@
 			{columns}
 			{filters}
 			{rows}
+			loading={!loaded}
 			getId={(row) => row.key}
 			searchValue={(row) => `${row.key} ${row.value}`}
 			searchPlaceholder={t('web.props.findProperty')}

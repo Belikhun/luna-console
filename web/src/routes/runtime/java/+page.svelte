@@ -64,6 +64,7 @@
 	let machines: Array<{ key: string; name: string; primary: boolean }> = $state([]);
 	let platforms: Record<string, string | null> = $state({});
 	let loading = $state(false);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let selected: Set<string> = $state(new Set());
 
@@ -140,6 +141,7 @@
 			Notify.error(t('web.runtimes.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -391,6 +393,7 @@
 <Panel flush>
 	<ResourceTable
 		tableId="runtime-java"
+		loading={!loaded}
 		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
 		{filters}

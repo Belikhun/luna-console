@@ -57,6 +57,7 @@
 	let supported = $state(true);
 	let problem = $state('');
 	let loading = $state(true);
+	let loaded = $state(false);
 	let type = $state('');
 
 	const network = $derived(instance === 'proxy');
@@ -103,6 +104,7 @@
 		}
 
 		loading = false;
+		loaded = true;
 	}
 
 	onMount(() => {
@@ -174,6 +176,7 @@
 		tableId={player ? 'instance-player-chat' : 'instance-chat'}
 		{columns}
 		rows={entries}
+		loading={!loaded}
 		getId={(entry) => String(entry.id)}
 		searchValue={(entry) => `${entry.username ?? ''} ${entry.content} ${entry.server}`}
 		searchPlaceholder={t('web.instanceChat.findInMessages')}

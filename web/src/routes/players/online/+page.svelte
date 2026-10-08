@@ -458,6 +458,7 @@
 	<Panel flush>
 		<ResourceTable
 			tableId="players"
+			{loading}
 			initialSearch={page.url.searchParams.get('q') ?? ''}
 			{columns}
 			rows={players}
@@ -513,6 +514,7 @@
 	>
 		<ResourceTable
 			tableId="player-activity"
+			{loading}
 			columns={activityCols}
 			rows={activity}
 			getId={(event) => `${event.atEpochMillis}-${event.uuid}-${event.type}`}

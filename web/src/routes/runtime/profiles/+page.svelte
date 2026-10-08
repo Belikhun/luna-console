@@ -38,6 +38,7 @@
 
 	let rows: ProfileRow[] = $state([]);
 	let loading = $state(false);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let selected: Set<string> = $state(new Set());
 
@@ -65,6 +66,7 @@
 			Notify.error(t('web.profiles.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -203,6 +205,7 @@
 <Panel flush>
 	<ResourceTable
 		tableId="runtime-profiles"
+		loading={!loaded}
 		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
 		{filters}

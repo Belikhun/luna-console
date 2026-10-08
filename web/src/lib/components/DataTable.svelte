@@ -57,7 +57,8 @@
 		emptyText = '',
 		emptyExtra,
 		defaultSort,
-		filtersActive = $bindable(false)
+		filtersActive = $bindable(false),
+		loading = false
 	}: {
 		/** persistence key for column prefs */
 		tableId?: string;
@@ -104,6 +105,10 @@
 		defaultSort?: { col: string; dir?: 'asc' | 'desc' };
 		/** true while any filter group is on something other than "any value" */
 		filtersActive?: boolean;
+		/** the rows are still on their way. With none yet, the body shows ghost rows
+		 *  in place of the empty state, which would claim there is nothing; with
+		 *  some, a refresh keeps showing them */
+		loading?: boolean;
 	} = $props();
 
 	// untracked on purpose: preferences are read once per mount, and a table's
@@ -646,6 +651,22 @@
 			.filter((col): col is Column => !!col)
 	);
 
+	const ghosting = $derived(loading && rows.length === 0);
+
+	// a screenful, not a page: enough to read as a table, few enough that the
+	// real rows landing does not collapse half the screen
+	const GHOST_ROWS = 6;
+
+	// a fixed rhythm of bar lengths, so the skeleton reads as varied text without
+	// shifting between renders
+	const GHOST_WIDTHS = [72, 48, 86, 60, 40, 78, 54, 66];
+
+	const ghostRows = $derived(Array.from({ length: Math.min(GHOST_ROWS, paging ? pageSize : GHOST_ROWS) }, (_, index) => index));
+
+	function ghostWidth(row: number, column: number): number {
+		return GHOST_WIDTHS[(row * 3 + column) % GHOST_WIDTHS.length] ?? 60;
+	}
+
 	const rangeText = $derived.by(() => {
 		if (!paging || sorted.length === 0) {
 			return '';
@@ -722,6 +743,7 @@
 	<div class="wrap" style:max-height={maxHeight} bind:this={wrapEl}>
 		<table
 			bind:this={tableEl}
+			aria-busy={loading}
 			style:table-layout={layoutReady ? 'fixed' : 'auto'}
 			style:width={layoutReady ? `${tableWidth / REM}rem` : '100%'}
 		>
@@ -791,6 +813,25 @@
 				</tr>
 			</thead>
 			<tbody>
+				{#if ghosting}
+					{#each ghostRows as ghost (ghost)}
+						<tr class="ghost-row" aria-hidden="true">
+							{#if selectable !== 'none'}
+								<td class="sel">
+									<div class="cell chk"><span class="ghost box"></span></div>
+								</td>
+							{/if}
+							{#each visibleCols as col, ci (col.id)}
+								<td data-align={col.align ?? 'left'}>
+									<div class="cell">
+										<span class="ghost" style:width="{ghostWidth(ghost, ci)}%"></span>
+									</div>
+								</td>
+							{/each}
+							<td class="filler"></td>
+						</tr>
+					{/each}
+				{/if}
 				{#each paged as row, i (getId(row))}
 					{@const locked = rowLocked?.(row) ?? false}
 					{@const dim = locked || (rowDim?.(row) ?? false)}
@@ -836,7 +877,7 @@
 				{/each}
 			</tbody>
 		</table>
-		{#if sorted.length === 0}
+		{#if sorted.length === 0 && !ghosting}
 			<div class="empty">
 				<div class="et">{emptyTitle}</div>
 				{#if emptyText}<div class="ec">{emptyText}</div>{/if}
@@ -1277,6 +1318,53 @@
 
 		&:hover > td {
 			background-color: var(--bg-hover);
+		}
+	}
+
+	// A loading row is a placeholder, not a target: no pointer, no hover.
+	tbody tr.ghost-row {
+		cursor: default;
+
+		&:hover > td {
+			background-color: transparent;
+		}
+	}
+
+	// One bar per cell, the height of a line of text, with a highlight sweeping
+	// across it. The sweep is a background wider than the bar sliding through it,
+	// so every bar in the table moves in step without any script.
+	.ghost {
+		display: inline-block;
+		max-width: 100%;
+		height: 0.75rem;
+		vertical-align: middle;
+		border-radius: 0.25rem;
+		background: linear-gradient(
+			90deg,
+			var(--bg-hover) 0%,
+			color-mix(in srgb, var(--text-secondary) 18%, var(--bg-hover)) 50%,
+			var(--bg-hover) 100%
+		);
+		background-size: 200% 100%;
+		animation: ghost-sweep 1.5s ease-in-out infinite;
+
+		&.box {
+			width: 1rem;
+			height: 1rem;
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			animation: none;
+		}
+	}
+
+	@keyframes ghost-sweep {
+		from {
+			background-position: 100% 0;
+		}
+
+		to {
+			background-position: -100% 0;
 		}
 	}
 

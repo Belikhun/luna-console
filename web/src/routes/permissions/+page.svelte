@@ -227,6 +227,7 @@
 	<Panel flush>
 		<ResourceTable
 			tableId="permission-groups"
+			{loading}
 			initialSearch={page.url.searchParams.get('q') ?? ''}
 			{columns}
 			rows={groups}

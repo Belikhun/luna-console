@@ -52,7 +52,8 @@
 		emptyTitle = t('web.table.emptyTitle'),
 		emptyText = '',
 		defaultSort,
-		noun = 'resource'
+		noun = 'resource',
+		loading = false
 	}: {
 		/** required; preferences (columns, page size, density) are stored per table */
 		tableId: string;
@@ -92,6 +93,8 @@
 		defaultSort?: { col: string; dir?: 'asc' | 'desc' };
 		/** what the rows are, for the "no matches" copy */
 		noun?: string;
+		/** the rows are still on their way; the table shows ghost rows until some arrive */
+		loading?: boolean;
 	} = $props();
 
 	// seeded once from the prop on purpose: after that the box owns the query
@@ -154,6 +157,7 @@
 	{maxHeight}
 	{rowActions}
 	{rowLabel}
+	loading={loading && rows.length === 0}
 	emptyTitle={noMatch ? `No ${noun} matches your search` : emptyTitle}
 	emptyText={noMatch ? 'Nothing here answers the current search and filters.' : emptyText}
 />

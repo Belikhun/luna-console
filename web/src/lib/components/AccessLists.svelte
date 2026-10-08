@@ -418,29 +418,33 @@
 
 {#if problem}
 	<Flash kind="error"><b>{t('web.access.unavailable')}</b> {problem}</Flash>
-{:else if loaded}
+{:else}
 	<Panel
 		title={t('web.access.whitelist')}
-		count={whitelist.length}
-		description={instState === 'running'
-			? t('web.access.liveNote')
-			: t('web.access.stoppedNote')}
+		count={loaded ? whitelist.length : undefined}
+		description={!loaded
+			? undefined
+			: instState === 'running'
+				? t('web.access.liveNote')
+				: t('web.access.stoppedNote')}
 		flush
 	>
 		{#snippet actions()}
 			<span class="wl">
-				<Toggle
-					checked={whitelistEnabled}
-					label={t('web.access.whitelistEnabled')}
-					onchange={(checked) => void toggleWhitelist(checked)}
-				/>
-				<span class="wl-label">
-					{whitelistEnabled ? t('web.access.onNote') : t('web.access.offNote')}
-				</span>
-				{#if whitelistEnabled && enforceWhitelist}
-					<StatusBadge state="warning" label={t('web.access.enforced')} />
+				{#if loaded}
+					<Toggle
+						checked={whitelistEnabled}
+						label={t('web.access.whitelistEnabled')}
+						onchange={(checked) => void toggleWhitelist(checked)}
+					/>
+					<span class="wl-label">
+						{whitelistEnabled ? t('web.access.onNote') : t('web.access.offNote')}
+					</span>
+					{#if whitelistEnabled && enforceWhitelist}
+						<StatusBadge state="warning" label={t('web.access.enforced')} />
+					{/if}
 				{/if}
-				<Btn variant="primary" icon="plus" onclick={() => openAdd('whitelist')}>
+				<Btn variant="primary" icon="plus" disabled={!loaded} onclick={() => openAdd('whitelist')}>
 					{t('web.access.addPlayer')}
 				</Btn>
 			</span>
@@ -448,6 +452,7 @@
 
 		<ResourceTable
 			tableId="access-whitelist"
+			loading={!loaded}
 			columns={whitelistCols}
 			rows={whitelist}
 			getId={(entry) => entry.uuid || entry.name}
@@ -478,15 +483,16 @@
 
 	<div class="gap"></div>
 
-	<Panel title={t('web.access.operators')} count={ops.length} flush>
+	<Panel title={t('web.access.operators')} count={loaded ? ops.length : undefined} flush>
 		{#snippet actions()}
-			<Btn variant="primary" icon="plus" onclick={() => openAdd('ops')}>
+			<Btn variant="primary" icon="plus" disabled={!loaded} onclick={() => openAdd('ops')}>
 				{t('web.access.addOperator')}
 			</Btn>
 		{/snippet}
 
 		<ResourceTable
 			tableId="access-ops"
+			loading={!loaded}
 			columns={opCols}
 			rows={ops}
 			getId={(entry) => entry.uuid || entry.name}
@@ -520,15 +526,16 @@
 
 	<div class="gap"></div>
 
-	<Panel title={t('web.access.playerBans')} count={bans.length} flush>
+	<Panel title={t('web.access.playerBans')} count={loaded ? bans.length : undefined} flush>
 		{#snippet actions()}
-			<Btn variant="primary" icon="plus" onclick={() => openAdd('bans')}>
+			<Btn variant="primary" icon="plus" disabled={!loaded} onclick={() => openAdd('bans')}>
 				{t('web.access.banPlayer')}
 			</Btn>
 		{/snippet}
 
 		<ResourceTable
 			tableId="access-bans"
+			loading={!loaded}
 			columns={banCols}
 			rows={bans}
 			getId={(entry) => entry.uuid || entry.name}
@@ -561,15 +568,16 @@
 
 	<div class="gap"></div>
 
-	<Panel title={t('web.access.ipBans')} count={ipBans.length} flush>
+	<Panel title={t('web.access.ipBans')} count={loaded ? ipBans.length : undefined} flush>
 		{#snippet actions()}
-			<Btn variant="primary" icon="plus" onclick={() => openAdd('ban-ips')}>
+			<Btn variant="primary" icon="plus" disabled={!loaded} onclick={() => openAdd('ban-ips')}>
 				{t('web.access.banAddress')}
 			</Btn>
 		{/snippet}
 
 		<ResourceTable
 			tableId="access-ipbans"
+			loading={!loaded}
 			columns={ipBanCols}
 			rows={ipBans}
 			getId={(entry) => entry.ip}

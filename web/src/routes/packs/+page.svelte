@@ -77,6 +77,7 @@
 	/** what the running proxy could say about runtime registrations */
 	let dynamic: { available: boolean; problem?: string } = $state({ available: true });
 	let loading = $state(true);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let busy = $state('');
 	let selected: Set<string> = $state(new Set());
@@ -102,6 +103,7 @@
 		}
 
 		loading = false;
+		loaded = true;
 	}
 
 	onMount(() => {
@@ -707,6 +709,7 @@
 		initialSearch={page.url.searchParams.get('q') ?? ''}
 		{columns}
 		rows={packs}
+		loading={!loaded}
 		getId={(row) => row.key}
 		searchValue={(row) =>
 			`${row.key} ${row.name} ${row.source} ${row.servers.join(' ')} ` +

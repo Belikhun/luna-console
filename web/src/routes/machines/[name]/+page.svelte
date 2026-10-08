@@ -488,6 +488,7 @@
 	}
 
 	let machineVars: MachineVar[] = $state([]);
+	let envLoaded = $state(false);
 	/** Secrets revealed this session, dropped on reload */
 	let revealedVars: Record<string, string> = $state({});
 
@@ -496,6 +497,14 @@
 	let overrideToRemove = $state<MachineVar | null>(null);
 
 	async function loadEnvironment(): Promise<void> {
+		try {
+			await readEnvironment();
+		} finally {
+			envLoaded = true;
+		}
+	}
+
+	async function readEnvironment(): Promise<void> {
 		if (!name) {
 			return;
 		}
@@ -936,12 +945,13 @@
 					</Btn>
 				{/snippet}
 
-				{#if machineVars.length}
+				{#if machineVars.length || !envLoaded}
 					<ResourceTable
 						tableId="machine-environment"
 						columns={envCols}
 						filters={envFilters}
 						rows={machineVars}
+						loading={!envLoaded}
 						getId={(entry) => entry.name}
 						searchValue={(entry) =>
 							`${entry.name} ${entry.secret ? 'secret' : entry.value} ${entry.source}`}

@@ -43,9 +43,11 @@
 	let records: RecordRow[] = $state([]);
 	let recordsZone = $state('');
 	let recordsLoading = $state(false);
+	let recordsLoaded = $state(false);
 	let recordsError: string | null = $state(null);
 
 	let loading = $state(false);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let tab = $state(page.url.searchParams.get('tab') ?? 'hostnames');
 	let selected: Set<string> = $state(new Set());
@@ -100,6 +102,7 @@
 			Notify.error(t('web.domains.loadFailed'), { detail: (err as Error).message });
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 
 		if (tab === 'records' && settings?.configured) {
@@ -120,6 +123,7 @@
 			recordsError = (err as Error).message;
 		} finally {
 			recordsLoading = false;
+			recordsLoaded = true;
 		}
 	}
 
@@ -128,7 +132,7 @@
 	});
 
 	$effect(() => {
-		if (tab === 'records' && settings?.configured && !records.length && !recordsLoading && !recordsError) {
+		if (tab === 'records' && settings?.configured && !recordsLoaded && !recordsLoading && !recordsError) {
 			void loadRecords();
 		}
 	});
@@ -167,6 +171,7 @@
 		}
 
 		records = [];
+		recordsLoaded = false;
 		await refresh();
 	}
 
@@ -192,6 +197,7 @@
 			Notify.success(t('web.domains.created', { fqdn: result.hostname.fqdn }));
 			createOpen = false;
 			records = [];
+			recordsLoaded = false;
 			await refresh();
 		} catch (err) {
 			Notify.error(t('web.domains.createFailed'), { detail: (err as Error).message });
@@ -243,6 +249,7 @@
 			Notify.success(t('web.domains.pointed', { fqdn: pointRow.fqdn, address: pointAddress.trim() }));
 			pointOpen = false;
 			records = [];
+			recordsLoaded = false;
 			await refresh();
 		} catch (err) {
 			Notify.error(t('web.domains.pointFailed'), { detail: (err as Error).message });
@@ -315,6 +322,7 @@
 		}
 
 		records = [];
+		recordsLoaded = false;
 		await refresh();
 	}
 
@@ -323,6 +331,7 @@
 			Notify.success(t('web.domains.settingsSaved'));
 			settingsOpen = false;
 			records = [];
+			recordsLoaded = false;
 			await refresh();
 		}
 	}
@@ -485,6 +494,7 @@
 				columns={hostnameColumns}
 				filters={hostnameFilters}
 				rows={hostnames}
+				loading={!loaded}
 				getId={(row) => row.fqdn}
 				searchValue={(row) => `${row.fqdn} ${row.instance ?? ''} ${row.address}`}
 				searchPlaceholder={t('web.domains.search')}
@@ -536,6 +546,7 @@
 					tableId="network-domain-records"
 					columns={recordColumns}
 					rows={records}
+					loading={!recordsLoaded}
 					getId={(row) => row.key}
 					searchValue={(row) => `${row.name} ${row.type} ${row.address}`}
 					searchPlaceholder={t('web.domains.searchRecords')}
@@ -570,6 +581,7 @@
 				tableId="network-domains-audit"
 				columns={auditColumns}
 				rows={audit}
+				loading={!loaded}
 				getId={(row) => row.key}
 				searchValue={(row) => `${row.action} ${row.actor} ${row.hostname ?? ''} ${row.instance ?? ''} ${row.detail ?? ''}`}
 				searchPlaceholder={t('web.domains.searchActivity')}

@@ -211,6 +211,7 @@
 	let userNodes: PermNode[] = $state([]);
 	let allGroups: Array<{ name: string; displayName: string }> = $state([]);
 	let permsLoaded = $state(false);
+	let tabLoaded: Record<string, boolean> = $state({});
 
 	let instances: string[] = $state([]);
 	let servers: string[] = $state([]);
@@ -459,16 +460,20 @@
 
 	/** Fetch the data a tab renders, the first time it is opened. */
 	async function loadTab(id: string, force = false): Promise<void> {
-		if (id === 'sessions' && (force || sessions.length === 0)) {
-			await loadSessions();
-		} else if (id === 'chat' && (force || chat.length === 0)) {
-			await loadChat();
-		} else if (id === 'moderation' && (force || moderation.length === 0)) {
-			await loadModeration();
-		} else if (id === 'permissions' && (force || !permsLoaded)) {
-			await loadPermissions();
-		} else if (id === 'economy' && (force || vaultTx.length === 0)) {
-			await loadVaultTransactions();
+		try {
+			if (id === 'sessions' && (force || sessions.length === 0)) {
+				await loadSessions();
+			} else if (id === 'chat' && (force || chat.length === 0)) {
+				await loadChat();
+			} else if (id === 'moderation' && (force || moderation.length === 0)) {
+				await loadModeration();
+			} else if (id === 'permissions' && (force || !permsLoaded)) {
+				await loadPermissions();
+			} else if (id === 'economy' && (force || vaultTx.length === 0)) {
+				await loadVaultTransactions();
+			}
+		} finally {
+			tabLoaded[id] = true;
 		}
 	}
 
@@ -1411,6 +1416,7 @@
 				<Panel flush>
 					<ResourceTable
 						tableId="player-transactions"
+						loading={!tabLoaded.economy}
 						columns={txCols}
 						rows={vaultTx}
 						getId={(entry) => entry.id}
@@ -1494,6 +1500,7 @@
 			<Panel flush>
 				<ResourceTable
 					tableId="player-sessions"
+					loading={!tabLoaded.sessions}
 					columns={sessionCols}
 					rows={sessions}
 					getId={(session) => String(session.id)}
@@ -1541,6 +1548,7 @@
 			<Panel flush>
 				<ResourceTable
 					tableId="player-chat"
+					loading={!tabLoaded.chat}
 					columns={chatCols}
 					rows={chat}
 					getId={(entry) => String(entry.id)}
@@ -1647,6 +1655,7 @@
 					</div>
 					<ResourceTable
 						tableId="player-nodes"
+						loading={!tabLoaded.permissions}
 						columns={nodeCols}
 						rows={userNodes}
 						getId={(node) => `${node.key}|${node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(',')}`}
@@ -1685,6 +1694,7 @@
 			<Panel flush>
 				<ResourceTable
 					tableId="player-moderation"
+					loading={!tabLoaded.moderation}
 					columns={modCols}
 					rows={moderation}
 					getId={(entry) => String(entry.id)}

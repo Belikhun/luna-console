@@ -187,6 +187,7 @@
 	]);
 
 	let loading = $state(true);
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 
 	async function refresh(): Promise<void> {
@@ -197,6 +198,7 @@
 			lastUpdated = Date.now();
 		} finally {
 			loading = false;
+			loaded = true;
 		}
 	}
 
@@ -650,6 +652,7 @@
 		tableId="{kind}-grouped"
 		{columns}
 		rows={addons}
+		loading={!loaded}
 		getId={(row) => row.plugin}
 		searchValue={(row) =>
 			`${row.plugin} ${row.displayName} ${row.sources.join(' ')} ${row.families

@@ -548,6 +548,7 @@
 	<Panel flush>
 		<ResourceTable
 			tableId="players-directory"
+			{loading}
 			initialSearch={page.url.searchParams.get('q') ?? ''}
 			{columns}
 			rows={players}

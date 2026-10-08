@@ -626,6 +626,7 @@
 				tableId="permission-group-nodes"
 				columns={nodeCols}
 				rows={nodes}
+				{loading}
 				getId={nodeId}
 				searchValue={(node) =>
 					`${node.key} ${node.type} ${node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(' ')}`}
@@ -689,6 +690,7 @@
 				tableId="permission-group-members"
 				columns={memberCols}
 				rows={members}
+				{loading}
 				getId={(member) => member.uuid}
 				searchValue={(member) => `${member.username} ${member.uuid}`}
 				searchPlaceholder={t('web.permGroup.findMember')}

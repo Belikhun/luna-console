@@ -80,6 +80,7 @@
 	let pluginNames: string[] = $state([]);
 	let rows: CheckRow[] = $state([]);
 	let checking = $state(false);
+	let validated = $state(false);
 	let fetching = $state('');
 	let overriding = $state('');
 	let addOpen = $state(false);
@@ -118,6 +119,7 @@
 		}
 
 		checking = false;
+		validated = true;
 	}
 
 	$effect(() => {
@@ -436,6 +438,7 @@
 	<DataTable
 		{columns}
 		rows={rows}
+		loading={!validated}
 		getId={(row) => row.plugin}
 		{rowActions}
 		rowLabel={(row) => row.plugin}

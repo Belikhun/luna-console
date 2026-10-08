@@ -368,6 +368,7 @@
 		tableId="instance-known-players"
 		{columns}
 		{rows}
+		loading={!loaded}
 		getId={(row) => row.uuid}
 		searchValue={(row) =>
 			`${row.name ?? ''} ${row.uuid} ${row.vitals?.gameMode ?? ''} ${row.vitals ? dimensionLabel(row.vitals.position.dimension) : ''}`}
