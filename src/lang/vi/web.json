@@ -4501,9 +4501,6 @@
 		"setupAction": "Mở cài đặt",
 		"welcomeTitle": "Meo! Tui là <strong>Mèo Béo</strong> 🐱",
 		"welcomeBody": "Tui sống trong console này. Bạn cứ hỏi tui tình hình mạng, nhờ tui xem lỗi, hay bật tắt server; tui sẽ hỏi bạn trước khi thay đổi bất cứ thứ gì.",
-		"suggestStatus": "Cluster đang thế nào vậy?",
-		"suggestPlayers": "Ai đang online vậy?",
-		"suggestLogs": "Log survival dạo này có lỗi gì không?",
 		"thinking": "Mèo Béo đang suy nghĩ…",
 		"placeholder": "Hỏi Mèo Béo…",
 		"placeholderOff": "Mèo Béo đang không khả dụng",
@@ -4547,7 +4544,66 @@
 		},
 		"toolPlan": "Không chạy: đang lên kế hoạch",
 		"copyCode": "Sao chép",
-		"thinkingVerbs": "Đang ngẫm|Đang rừ rừ|Đang nhồi bột|Đang lục log|Đang vươn vai|Đang đuổi con trỏ|Đang chợp mắt nghĩ|Đang đánh hơi|Đang liếm lông câu trả lời|Đang vờn từng byte|Đang cuộn tròn đọc tài liệu|Đang rình|Đang lượn lờ|Đang giật ria mép|Đang nằm bánh mì|Đang meo meo với server"
+		"thinkingVerbs": "Đang ngẫm|Đang rừ rừ|Đang nhồi bột|Đang lục log|Đang vươn vai|Đang đuổi con trỏ|Đang chợp mắt nghĩ|Đang đánh hơi|Đang liếm lông câu trả lời|Đang vờn từng byte|Đang cuộn tròn đọc tài liệu|Đang rình|Đang lượn lờ|Đang giật ria mép|Đang nằm bánh mì|Đang meo meo với server",
+		"deleteNothing": "Chưa có gì để xóa cho đến khi cuộc trò chuyện có tin nhắn",
+		"popOut": "Mở trong cửa sổ mới",
+		"fullScreen": "Mở toàn màn hình",
+		"deleteTitle": "Xóa cuộc trò chuyện này?",
+		"deleteLead": "Xóa \"{title}\" cùng toàn bộ nội dung trò chuyện?",
+		"deleteNote": "Không thể hoàn tác. Nếu Mèo Béo vẫn đang làm việc trong đó, lượt chạy sẽ bị dừng trước.",
+		"deleteConfirm": "Xóa",
+		"deleteFailed": "Không thể xóa cuộc trò chuyện",
+		"cap": {
+			"health": {
+				"title": "Kiểm tra sức khỏe cụm",
+				"prompt": "Kiểm tra mọi máy và máy chủ trong cụm, chỉ ra chỗ nào có vấn đề (bộ nhớ, ổ đĩa, crash, lag) và đề xuất cách xử lý."
+			},
+			"logs": {
+				"title": "Điều tra lỗi",
+				"prompt": "Đọc log của survival từ lần khởi động lại gần nhất, nhóm các lỗi và cảnh báo theo nguyên nhân, và cho tôi biết cái nào thực sự đáng lo."
+			},
+			"players": {
+				"title": "Hoạt động người chơi",
+				"prompt": "Tuần này ai đã chơi trên mạng, chơi bao lâu và ở những máy chủ nào? Có ai mới, hay có ai đã ngừng chơi không?"
+			},
+			"addons": {
+				"title": "Cập nhật plugin",
+				"prompt": "Kiểm tra bản cập nhật cho các plugin của survival, cho tôi biết bản nào an toàn với phiên bản Minecraft của nó, và cập nhật những bản an toàn sau khi tôi xác nhận."
+			},
+			"launch": {
+				"title": "Tạo máy chủ mới",
+				"prompt": "Tạo một máy chủ Paper thử nghiệm mới trên phiên bản Minecraft mới nhất với 4 GB bộ nhớ, khởi động nó và hướng dẫn tôi cách vào."
+			},
+			"tune": {
+				"title": "Tối ưu hiệu năng",
+				"prompt": "So sánh view-distance, simulation-distance và bộ nhớ JVM của từng backend, và đề xuất cấu hình giúp giảm lag mà không ảnh hưởng trải nghiệm chơi."
+			},
+			"domain": {
+				"title": "Đặt tên miền cho máy chủ",
+				"prompt": "Đặt cho máy chủ create một tên miền riêng dưới tên miền của mạng và định tuyến nó, để người chơi bản mod có thể vào thẳng."
+			},
+			"screen": {
+				"title": "Giải thích trang này",
+				"prompt": "Xem trang tôi đang mở trên console và giải thích tôi đang xem gì, kể cả những chỗ có vẻ không ổn."
+			},
+			"moderate": {
+				"title": "Xem lại kiểm duyệt",
+				"prompt": "Tóm tắt các lượt cấm, kick và cảnh cáo trong tuần trên toàn mạng, và chỉ ra người chơi nào liên tục gây rắc rối."
+			},
+			"backup": {
+				"title": "Sao lưu thế giới",
+				"prompt": "Sao lưu thế giới của survival ngay bây giờ, rồi cho tôi biết bản sao lưu nặng bao nhiêu và so với lần trước thế nào."
+			}
+		}
+	},
+	"agentScreen": {
+		"description": "Mở tối đa ba cuộc trò chuyện cạnh nhau; nhấp chuột phải vào một mục trong danh sách để xem thêm.",
+		"openHere": "Mở trong khung đang chọn",
+		"openBeside": "Mở bên cạnh",
+		"tooManyPanes": "Tối đa {max} khung cạnh nhau",
+		"closePane": "Đóng khung này",
+		"newPane": "Chat mới bên cạnh",
+		"backToConsole": "Mở trong console"
 	},
 	"agentSettings": {
 		"description": "Trợ lý trò chuyện của console: tài khoản Claude nó dùng, cách nó cư xử, và những gì nó được phép đụng tới",
@@ -4650,14 +4706,15 @@
 		"modeHint_plan": "Tìm hiểu rồi đề xuất kế hoạch, không thay đổi gì",
 		"modeHint_bypass": "Chạy mọi công cụ trong phạm vi mà không hỏi",
 		"bypassOff": "Đã bị tắt trong cài đặt trợ lý",
-		"placeholderBusy": "Mèo Béo đang trả lời…",
+		"placeholderBusy": "Mèo Béo đang làm việc; nhập để bổ sung hoặc điều chỉnh…",
 		"bypassTitle": "Chuyển sang chế độ bỏ qua?",
 		"bypassLead": "Mèo Béo sẽ bật, tắt, khởi động lại server, gửi lệnh console và thay đổi mọi thứ token của nó cho phép mà không hỏi bạn trước.",
 		"bypassNote": "Mọi lệnh gọi vẫn được ghi trong nhật ký MCP dưới tên bạn, và phạm vi token vẫn là giới hạn. Chuyển lại bằng Shift+Tab hoặc menu chế độ.",
 		"bypassConfirm": "Dùng chế độ bỏ qua",
 		"attach": "Đính kèm tệp",
 		"detach": "Bỏ tệp đính kèm",
-		"uploadFailed": "tải lên thất bại"
+		"uploadFailed": "tải lên thất bại",
+		"sendMidRun": "Gửi ngay; Mèo Béo sẽ đọc ở bước tiếp theo"
 	},
 	"domains": {
 		"pageDescription": "Các tên miền con dưới tên miền gốc của mạng, và máy chủ mỗi tên dẫn người chơi tới. Máy chủ modded cần tên riêng: client modded không đi qua được lobby vanilla.",

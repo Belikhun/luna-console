@@ -3,8 +3,11 @@
 // prohibited without written permission. See LICENSE at the repository root.
 
 /**
- * Mèo Béo's runs: one Claude Agent SDK query per message, driven from the
- * console's server process.
+ * Mèo Béo's runs: one Claude Agent SDK query per stretch of work, driven from
+ * the console's server process. The query reads its prompt from a queue, so the
+ * operator can keep talking while the agent works, as in Claude Code: a message
+ * sent mid-run is handed to the session and folded in at its next step, and the
+ * run ends once a turn finishes with nothing left to answer.
  *
  * A run is owned here, not by the request that started it: closing the panel or
  * reloading the page leaves it going, and the stream route re-attaches by
@@ -25,7 +28,7 @@
 
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import type { CanUseTool, PermissionResult, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, PermissionResult, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 
 import {
 	AGENT_EFFORTS,
@@ -36,7 +39,7 @@ import {
 	recordAgentModels
 } from '$core/agent';
 import type { AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
-import { allowedTools, mcpTool } from '$shared/mcptools';
+import { mcpTool } from '$shared/mcptools';
 import { AGENT_ASK_TOOL, AGENT_NAVIGATE_TOOL, AGENT_SCREEN_TOOLS, AGENT_SCREENSHOT_TOOL, agentCanAsk, isConsolePath } from '$shared/agent';
 import type { AgentMode } from '$shared/agent';
 import { issueRunBearer } from './bearer';
@@ -77,6 +80,14 @@ const TOOL_TIMEOUT_MS = 4 * 60 * 1000;
 /** What the panel receives over the stream. */
 export type AgentEvent =
 	| { type: 'state'; running: boolean }
+	| {
+		type: 'user';
+		text: string;
+		author: string;
+		at: number;
+		mode: AgentMode;
+		attachments?: Array<{ name: string; size: number }>;
+	}
 	| { type: 'text'; delta: string }
 	| { type: 'assistant'; text: string }
 	| {
@@ -120,6 +131,77 @@ export type AgentAnswers = Record<string, string>;
 
 interface Pending {
 	resolve: (allow: boolean, by: string, answers?: AgentAnswers) => void;
+}
+
+/**
+ * A run's prompt as the SDK reads it: an iterable the operator can keep adding
+ * to while the agent works. Closing it is what lets the query end; a message
+ * that arrives after that is refused here and starts the next run instead.
+ */
+class InputQueue implements AsyncIterable<SDKUserMessage> {
+	#items: SDKUserMessage[] = [];
+	#waiting: ((result: IteratorResult<SDKUserMessage>) => void) | null = null;
+	#closed = false;
+
+	/** Messages handed over but not yet read by the SDK */
+	get buffered(): number {
+		return this.#items.length;
+	}
+
+	push(message: SDKUserMessage): boolean {
+		if (this.#closed) {
+			return false;
+		}
+
+		const waiting = this.#waiting;
+
+		if (waiting) {
+			this.#waiting = null;
+			waiting({ done: false, value: message });
+		} else {
+			this.#items.push(message);
+		}
+
+		return true;
+	}
+
+	close(): void {
+		this.#closed = true;
+
+		const waiting = this.#waiting;
+
+		if (waiting) {
+			this.#waiting = null;
+			waiting({ done: true, value: undefined });
+		}
+	}
+
+	[Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+		return {
+			next: (): Promise<IteratorResult<SDKUserMessage>> => {
+				const item = this.#items.shift();
+
+				if (item) {
+					return Promise.resolve({ done: false, value: item });
+				}
+
+				if (this.#closed) {
+					return Promise.resolve({ done: true, value: undefined });
+				}
+
+				return new Promise((resolve) => {
+					this.#waiting = resolve;
+				});
+			}
+		};
+	}
+}
+
+/** What the operator may change on a run while it goes. */
+export interface RunSettings {
+	mode?: AgentMode;
+	model?: string;
+	effort?: string;
 }
 
 function stripPrefix(name: string): string {
@@ -254,10 +336,47 @@ class Run {
 
 	running = true;
 
+	/** Set once the last turn finished with nothing queued; a later message starts a new run */
+	closing = false;
+
+	/** The prompt queue the query reads from */
+	readonly input = new InputQueue();
+
+	/** The live query, once started; model and effort changes go through it */
+	query: Query | null = null;
+
+	/** The approval mode in force now; `canUseTool` reads it on every call */
+	mode: AgentMode;
+
+	/** The mode the persona was written for; a message sent after a switch says so */
+	readonly startMode: AgentMode;
+
+	model: string;
+	effort: string;
+
+	/** Settles when the run has saved its transcript and stopped */
+	readonly finished: Promise<void>;
+
+	#settle: () => void = () => {};
+
 	constructor(
 		readonly conversationId: string,
-		readonly owner: string
-	) {}
+		readonly owner: string,
+		settings: { mode: AgentMode; model: string; effort: string }
+	) {
+		this.mode = settings.mode;
+		this.startMode = settings.mode;
+		this.model = settings.model;
+		this.effort = settings.effort;
+		this.finished = new Promise((resolve) => {
+			this.#settle = resolve;
+		});
+	}
+
+	/** Mark the run over; whoever waits on `finished` may start the next one. */
+	settle(): void {
+		this.#settle();
+	}
 
 	emit(event: AgentEvent): void {
 		this.events.push(event);
@@ -331,6 +450,8 @@ class Run {
 			this.decide(id, false, by);
 		}
 
+		this.closing = true;
+		this.input.close();
 		this.abort.abort();
 	}
 }
@@ -356,16 +477,30 @@ export interface StartRunInput {
 	attachments?: Array<{ id: string; name: string; size: number }>;
 }
 
-/**
- * Start a run for one message. Resolves once the run is under way (the
- * message saved, the subprocess launching); the answer arrives on the stream.
- */
-export async function startRun(input: StartRunInput): Promise<void> {
-	// a finished run lingers for late reconnects; only one still going blocks the next message
-	if (runs.get(input.conversationId)?.running) {
-		throw new AgentRunError('busy', 'Mèo Béo is still answering the last message');
+/** Refuse settings the run could not honour, before anything is saved or sent. */
+function checkSettings(launch: AgentLaunch, change: RunSettings): void {
+	if (change.mode === 'bypass' && !launch.settings.bypassAllowed) {
+		throw new AgentRunError('bypassOff', 'Bypass mode is switched off in the agent settings');
 	}
 
+	if (change.model && !AGENT_MODEL_PATTERN.test(change.model)) {
+		throw new AgentRunError('badModel', `Not a model id: ${change.model}`);
+	}
+
+	if (change.effort && !(AGENT_EFFORTS as readonly string[]).includes(change.effort)) {
+		throw new AgentRunError('badModel', `Unknown effort level: ${change.effort}`);
+	}
+}
+
+/**
+ * Send a message to Mèo Béo. With no run going it starts one, resolving once
+ * the run is under way (the message saved, the subprocess launching). With one
+ * going, the message joins it: the session takes it at its next step, as Claude
+ * Code does with a message typed mid-answer. The answer arrives on the stream.
+ * Resolves true when the message joined a run already going, which the stream
+ * echoes; a run's first message is not echoed, since the sender shows it.
+ */
+export async function startRun(input: StartRunInput): Promise<boolean> {
 	const conversation = await getAgentConversation(input.conversationId, input.owner);
 
 	if (!conversation) {
@@ -373,25 +508,39 @@ export async function startRun(input: StartRunInput): Promise<void> {
 	}
 
 	const launch = await agentLaunch(input.owner);
+
+	checkSettings(launch, input);
+
+	const live = runs.get(input.conversationId);
+
+	if (live?.running && live.owner !== input.owner) {
+		throw new AgentRunError('busy', 'Mèo Béo is still answering the last message');
+	}
+
+	if (live?.running && !live.closing) {
+		if (await joinRun(live, input)) {
+			return true;
+		}
+	}
+
+	// a run winding down still owns the session; the next one resumes it once it is saved
+	if (live?.running) {
+		await live.finished;
+
+		return await startRun(input);
+	}
+
 	const executable = findClaudeExecutable(launch.settings.executable);
 
 	if (executable.source === 'none') {
 		throw new AgentRunError('noExecutable', 'No Claude Code executable found on this machine; set its path in the agent settings');
 	}
 
-	if (input.mode === 'bypass' && !launch.settings.bypassAllowed) {
-		throw new AgentRunError('bypassOff', 'Bypass mode is switched off in the agent settings');
-	}
-
-	if (input.model && !AGENT_MODEL_PATTERN.test(input.model)) {
-		throw new AgentRunError('badModel', `Not a model id: ${input.model}`);
-	}
-
-	if (input.effort && !(AGENT_EFFORTS as readonly string[]).includes(input.effort)) {
-		throw new AgentRunError('badModel', `Unknown effort level: ${input.effort}`);
-	}
-
-	const run = new Run(input.conversationId, input.owner);
+	const run = new Run(input.conversationId, input.owner, {
+		mode: input.mode,
+		model: input.model || launch.settings.model,
+		effort: input.effort || launch.settings.effort
+	});
 
 	runs.set(input.conversationId, run);
 
@@ -402,7 +551,7 @@ export async function startRun(input: StartRunInput): Promise<void> {
 			author: input.owner,
 			text: input.text,
 			mode: input.mode,
-			model: input.model || launch.settings.model,
+			model: run.model,
 			...(input.attachments?.length
 				? { attachments: input.attachments.map(({ name, size }) => ({ name, size })) }
 				: {})
@@ -410,9 +559,115 @@ export async function startRun(input: StartRunInput): Promise<void> {
 		title: input.text
 	});
 
+	run.input.push(userMessage(promptFor(input, run)));
 	run.emit({ type: 'state', running: true });
 
 	void drive(run, input, launch, executable.path, conversation.sessionId);
+
+	return false;
+}
+
+/**
+ * Hand a message to a run already going. The settings it was sent with apply
+ * from here on, it is filed in the transcript between what came before and
+ * after it, and every window following the run shows it. False when the run
+ * closed its queue in the meantime, so the caller starts a new one.
+ */
+async function joinRun(run: Run, input: StartRunInput): Promise<boolean> {
+	await applyRunSettings(run, input);
+
+	const at = Date.now();
+	const attachments = input.attachments?.length
+		? input.attachments.map(({ name, size }) => ({ name, size }))
+		: undefined;
+
+	if (!run.input.push(userMessage(promptFor(input, run)))) {
+		return false;
+	}
+
+	run.entries.push({
+		kind: 'user',
+		at,
+		author: input.owner,
+		text: input.text,
+		mode: run.mode,
+		model: run.model,
+		...(attachments ? { attachments } : {})
+	});
+	run.emit({
+		type: 'user',
+		text: input.text,
+		author: input.owner,
+		at,
+		mode: run.mode,
+		...(attachments ? { attachments } : {})
+	});
+
+	return true;
+}
+
+/** Bring a live run in line with what the operator picked; the query is told about model and effort. */
+async function applyRunSettings(run: Run, change: RunSettings): Promise<void> {
+	if (change.mode && change.mode !== run.mode) {
+		run.mode = change.mode;
+	}
+
+	if (change.model && change.model !== run.model) {
+		await run.query?.setModel(change.model);
+		run.model = change.model;
+	}
+
+	if (change.effort && change.effort !== run.effort) {
+		await run.query?.applyFlagSettings({ effortLevel: change.effort as AgentEffort });
+		run.effort = change.effort;
+	}
+}
+
+/**
+ * Change the mode, model or effort of a run while it goes. The mode applies
+ * from the next tool call, the model and effort from the next response. False
+ * when the conversation has no run to change.
+ */
+export async function updateRun(conversationId: string, owner: string, change: RunSettings): Promise<boolean> {
+	const run = runs.get(conversationId);
+
+	if (!run || run.owner !== owner || !run.running || run.closing) {
+		return false;
+	}
+
+	checkSettings(await agentLaunch(owner), change);
+	await applyRunSettings(run, change);
+
+	return true;
+}
+
+/**
+ * The words the model receives: the operator's text, then the notes riding
+ * along with it. The page is a hint about what "this" means, attached to the
+ * message rather than the persona so a resumed session keeps it next to the
+ * words it explains; the mode note appears only once it differs from the one
+ * the persona described.
+ */
+function promptFor(input: StartRunInput, run: Run): string {
+	const notes = [
+		...(input.attachments ?? []).map(
+			(file) => `<attachment id="${file.id}" name="${file.name.replace(/"/g, "'")}" bytes="${file.size}" />`
+		),
+		...(input.page ? [`<console-page>${input.page}</console-page>`] : []),
+		...(run.mode !== run.startMode ? [`<approval-mode>${run.mode}</approval-mode>`] : [])
+	];
+
+	return notes.length
+		? `${input.text}\n\n${notes.join('\n')}`
+		: input.text;
+}
+
+function userMessage(text: string): SDKUserMessage {
+	return {
+		type: 'user',
+		message: { role: 'user', content: text },
+		parent_tool_use_id: null
+	};
 }
 
 /**
@@ -548,11 +803,21 @@ async function drive(
 		via: 'meo-beo'
 	});
 
+	// Every call comes through here, none is pre-allowed: the operator can switch
+	// mode mid-run, so whether a call runs unasked is decided at the call, by the
+	// mode in force then, rather than by a list fixed when the run started.
 	const canUseTool: CanUseTool = async (toolName, toolInput, options) => {
 		const name = stripPrefix(toolName);
 
-		if (toolName === AGENT_ASK_TOOL && agentCanAsk(input.mode)) {
-			return await askOperator(run, toolInput, options.toolUseID, options.signal);
+		if (toolName === AGENT_ASK_TOOL) {
+			if (agentCanAsk(run.mode)) {
+				return await askOperator(run, toolInput, options.toolUseID, options.signal);
+			}
+
+			return {
+				behavior: 'deny',
+				message: 'Auto mode: nobody is watching the panel to answer questions. Decide with your best judgement and carry on.'
+			};
 		}
 
 		// only luna's tools and the console's own exist; anything else is refused outright
@@ -560,8 +825,12 @@ async function drive(
 			return { behavior: 'deny', message: 'Only the luna tools are available.' };
 		}
 
+		if (runsUnasked(SCREEN_SDK_NAMES[toolName] ?? name, run.mode)) {
+			return { behavior: 'allow', updatedInput: toolInput };
+		}
+
 		// plan mode never changes anything; the refusal tells the model what to do instead
-		if (input.mode === 'plan') {
+		if (run.mode === 'plan') {
 			run.calls.set(options.toolUseID, { name, input: toolInput, decidedBy: 'plan', denied: true });
 			run.emit({ type: 'tool', id: options.toolUseID, name, input: toolInput, status: 'denied', decidedBy: 'plan' });
 
@@ -618,20 +887,8 @@ async function drive(
 	let failed = false;
 
 	try {
-		// the page is a hint about what "this" means, attached to the message rather
-		// than the persona so a resumed session keeps it next to the words it explains
-		const notes = [
-			...(input.attachments ?? []).map(
-				(file) => `<attachment id="${file.id}" name="${file.name.replace(/"/g, "'")}" bytes="${file.size}" />`
-			),
-			...(input.page ? [`<console-page>${input.page}</console-page>`] : [])
-		];
-		const prompt = notes.length
-			? `${input.text}\n\n${notes.join('\n')}`
-			: input.text;
-
 		const stream = query({
-			prompt,
+			prompt: run.input,
 			options: {
 				systemPrompt: personaPrompt({
 					operator: input.owner,
@@ -640,8 +897,8 @@ async function drive(
 					locale: input.locale,
 					mode: input.mode
 				}),
-				model: input.model || launch.settings.model,
-				effort: (input.effort || launch.settings.effort) as AgentEffort,
+				model: run.model,
+				effort: run.effort as AgentEffort,
 				maxTurns: launch.settings.maxTurns,
 				// no built-in tool but the question one, and that only where someone is watching
 				tools: agentCanAsk(input.mode)
@@ -658,13 +915,6 @@ async function drive(
 					[CONSOLE_SERVER]: consoleServer(run)
 				},
 				strictMcpConfig: true,
-				// resolved from the scope against this console's catalog, not the daemon's list,
-				// which leaves out tools an older daemon build has not heard of
-				allowedTools: allowedTools(launch.token.scope)
-					.map((tool) => tool.name)
-					.filter((name) => runsUnasked(name, input.mode))
-					.map((name) => `${TOOL_PREFIX}${name}`)
-					.concat(Object.keys(SCREEN_SDK_NAMES).filter((sdkName) => runsUnasked(SCREEN_SDK_NAMES[sdkName]!, input.mode))),
 				canUseTool,
 				settingSources: [],
 				includePartialMessages: true,
@@ -676,8 +926,10 @@ async function drive(
 			}
 		});
 
+		run.query = stream;
+
 		for await (const message of stream) {
-			const outcome = handleMessage(run, message, input.mode);
+			const outcome = handleMessage(run, message);
 
 			if (outcome.sessionId) {
 				sessionId = outcome.sessionId;
@@ -689,6 +941,13 @@ async function drive(
 
 			if (outcome.failed) {
 				failed = true;
+			}
+
+			// a turn is over; with nothing queued in the session or still waiting
+			// to be read from ours, the queue closes and the query ends after it
+			if (outcome.turnDone && outcome.queued === 0 && run.input.buffered === 0) {
+				run.closing = true;
+				run.input.close();
 			}
 		}
 	} catch (err) {
@@ -710,6 +969,8 @@ async function drive(
 		}
 	} finally {
 		grant.revoke();
+		run.closing = true;
+		run.input.close();
 		run.running = false;
 
 		try {
@@ -725,6 +986,7 @@ async function drive(
 
 		run.emit({ type: 'done', costUsd });
 		run.emit({ type: 'state', running: false });
+		run.settle();
 
 		setTimeout(() => {
 			if (runs.get(input.conversationId) === run) {
@@ -738,9 +1000,15 @@ interface MessageOutcome {
 	sessionId?: string;
 	costUsd?: number;
 	failed?: boolean;
+	/** A turn's result arrived */
+	turnDone?: boolean;
+	/** Sends the session still holds after that result */
+	queued?: number;
 }
 
-function handleMessage(run: Run, message: SDKMessage, mode: AgentMode): MessageOutcome {
+function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
+	const mode = run.mode;
+
 	switch (message.type) {
 		case 'system': {
 			if (message.subtype !== 'init') {
@@ -860,15 +1128,17 @@ function handleMessage(run: Run, message: SDKMessage, mode: AgentMode): MessageO
 		}
 
 		case 'result': {
+			const turn = { turnDone: true, queued: message.queued_turn_count ?? 0 };
+
 			if (message.subtype === 'success' && !message.is_error) {
-				return { costUsd: message.total_cost_usd };
+				return { ...turn, costUsd: message.total_cost_usd };
 			}
 
 			if (message.subtype === 'error_max_turns') {
 				run.entries.push({ kind: 'error', at: Date.now(), text: '#maxTurns' });
 				run.emit({ type: 'error', text: 'Stopped at the turn limit.', code: 'maxTurns' });
 
-				return { costUsd: message.total_cost_usd, failed: true };
+				return { ...turn, costUsd: message.total_cost_usd, failed: true };
 			}
 
 			const text = message.subtype === 'success'
@@ -878,7 +1148,7 @@ function handleMessage(run: Run, message: SDKMessage, mode: AgentMode): MessageO
 			run.entries.push({ kind: 'error', at: Date.now(), text });
 			run.emit({ type: 'error', text });
 
-			return { costUsd: message.total_cost_usd, failed: true };
+			return { ...turn, costUsd: message.total_cost_usd, failed: true };
 		}
 
 		default:

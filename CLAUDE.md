@@ -509,11 +509,22 @@ export interface InstanceConfig {}
   `initialize` instructions.
 
 ### Mèo Béo, the console's chat agent
-- **It is a Claude Agent SDK run the console's server drives**, one query per message
-  (`web/src/lib/server/agent/runner.ts`), shown in the right-docked panel the top bar's button opens
-  (`AgentPanel.svelte`, state in `$lib/agent.svelte.ts`) and configured on `/console/agent`. A run
-  belongs to the server, not to the request: closing the panel leaves it going, and the stream route
-  replays its events so a reload picks up mid-answer.
+- **It is a Claude Agent SDK run the console's server drives** (`web/src/lib/server/agent/runner.ts`),
+  configured on `/console/agent`. A run belongs to the server, not to the request: closing a chat
+  leaves it going, and the stream route replays its events so a reload picks up mid-answer.
+- **A run's prompt is a queue, so the operator can talk mid-answer**, as in Claude Code. A message
+  sent while a run goes joins it (the route answers `joined`, the stream echoes it as a `user` event)
+  and the CLI folds it in at its next step; mode, model and effort change on the live run
+  (`PATCH …/run`: `setModel`, `applyFlagSettings`, and the mode `canUseTool` reads per call, which is
+  why no tool is pre-allowed). The run ends when a turn's result reports `queued_turn_count` 0 with
+  nothing left in the queue; a message arriving as it closes waits for it and starts the next run.
+- **A chat is a `ChatSession`, and several can be open at once.** `$lib/agent.svelte.ts` splits the
+  shared shell (`Agent`: panel open/width, status, the conversation list, the browser's last picks)
+  from one session per open chat, all rendered by `AgentChat.svelte`: the right-docked panel
+  (`AgentPanel.svelte`), each pane of `/agent` (up to three side by side, kept in `?c=`), and a
+  popped-out window at `/agent/window`, which the root layout renders bare. A pop-out has no console
+  to capture or navigate, so its session relays screenshots and navigation over a `BroadcastChannel`
+  to the visible console window (`startConsoleBridge`).
 - **Its only hands are luna's MCP tools.** `tools: []` removes every built-in Claude Code tool, and
   the luna tools are reached over the console's own `/api/mcp` (on loopback) with a per-run bearer
   that lives only in the server's memory (`agent/bearer.ts`). That bearer resolves to an ordinary

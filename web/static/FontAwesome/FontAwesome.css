@@ -262,6 +262,10 @@ icon[data-icon="penToSquare"]::after {
 	content: "\f044";
 }
 
+icon[data-icon="messagePlus"]::after {
+	content: "\f4a8";
+}
+
 icon[data-icon="chart"]::after {
 	content: "\f080";
 }

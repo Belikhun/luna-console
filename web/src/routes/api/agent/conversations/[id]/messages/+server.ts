@@ -23,8 +23,9 @@ function loopbackOrigin(url: URL): string {
 }
 
 /**
- * POST { text, locale?, mode?, model?, effort?, page? } → { ok } once the run is
- * under way; the answer arrives on the stream. `model` and `effort` override the
+ * POST { text, locale?, mode?, model?, effort?, page? } → { ok, joined } once the
+ * run is under way, or once the message joined the run already going (`joined`,
+ * in which case the stream echoes it); the answer arrives on the stream. `model` and `effort` override the
  * settings for this message, and `page` is the console path the operator chose
  * to share.
  */
@@ -66,8 +67,10 @@ export async function POST({ params, request, url, locals }) {
 			}))
 		: [];
 
+	let joined = false;
+
 	try {
-		await startRun({
+		joined = await startRun({
 			conversationId: params.id,
 			owner: actor,
 			text,
@@ -94,5 +97,5 @@ export async function POST({ params, request, url, locals }) {
 		journal(`Mèo Béo running in bypass mode in ${params.id}`, { actor, level: 'warn', detail: text.slice(0, 300) });
 	}
 
-	return json({ ok: true });
+	return json({ ok: true, joined });
 }

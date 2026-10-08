@@ -4501,9 +4501,6 @@
 		"setupAction": "Open settings",
 		"welcomeTitle": "Meow! I'm <strong>Mèo Béo</strong> 🐱",
 		"welcomeBody": "I live in this console. Ask me how the network is doing, look into a problem, or have me start and stop servers; I ask before changing anything.",
-		"suggestStatus": "How is the cluster doing?",
-		"suggestPlayers": "Who is online right now?",
-		"suggestLogs": "Any errors in the survival log lately?",
 		"thinking": "Mèo Béo is thinking…",
 		"placeholder": "Ask Mèo Béo…",
 		"placeholderOff": "Mèo Béo is not available",
@@ -4547,7 +4544,66 @@
 		},
 		"toolPlan": "Not run: plan mode",
 		"copyCode": "Copy",
-		"thinkingVerbs": "Pondering|Purring|Kneading|Pawing through logs|Stretching|Chasing the cursor|Napping on it|Sniffing around|Grooming the answer|Batting at bytes|Curling up with the docs|Hunting|Prowling|Whisker-twitching|Loafing|Meowing at the server"
+		"thinkingVerbs": "Pondering|Purring|Kneading|Pawing through logs|Stretching|Chasing the cursor|Napping on it|Sniffing around|Grooming the answer|Batting at bytes|Curling up with the docs|Hunting|Prowling|Whisker-twitching|Loafing|Meowing at the server",
+		"deleteNothing": "Nothing to delete until the chat has a message",
+		"popOut": "Open in a new window",
+		"fullScreen": "Open on the full screen",
+		"deleteTitle": "Delete this conversation?",
+		"deleteLead": "Delete \"{title}\" and its whole transcript?",
+		"deleteNote": "This cannot be undone. If Mèo Béo is still working in it, the run is stopped first.",
+		"deleteConfirm": "Delete",
+		"deleteFailed": "Could not delete the conversation",
+		"cap": {
+			"health": {
+				"title": "Cluster health check",
+				"prompt": "Check every machine and server in the cluster, flag anything unhealthy (memory, disk, crashes, lag) and suggest what to do about it."
+			},
+			"logs": {
+				"title": "Investigate errors",
+				"prompt": "Read survival's log since its last restart, group the errors and warnings by cause, and tell me which ones actually matter."
+			},
+			"players": {
+				"title": "Player activity",
+				"prompt": "Who has played on the network this week, for how long and on which servers? Is anyone new, or has anyone stopped coming?"
+			},
+			"addons": {
+				"title": "Plugin updates",
+				"prompt": "Check survival's plugins for updates, tell me which are safe for its Minecraft version, and update the safe ones once I confirm."
+			},
+			"launch": {
+				"title": "Launch a server",
+				"prompt": "Create a new Paper test server on the latest Minecraft version with 4 GB of memory, start it, and tell me how to join it."
+			},
+			"tune": {
+				"title": "Tune performance",
+				"prompt": "Compare view-distance, simulation-distance and the JVM memory of every backend, and suggest settings that cut lag without hurting gameplay."
+			},
+			"domain": {
+				"title": "Give a server a hostname",
+				"prompt": "Give the create server its own hostname under the network's domain and route it, so modded players can join it directly."
+			},
+			"screen": {
+				"title": "Explain this page",
+				"prompt": "Look at the page I have open in the console and explain what I am looking at, including anything that looks wrong."
+			},
+			"moderate": {
+				"title": "Moderation review",
+				"prompt": "Summarise this week's bans, kicks and warnings across the network, and point out any player who keeps causing trouble."
+			},
+			"backup": {
+				"title": "Back up a world",
+				"prompt": "Back up survival's world now, then tell me how big the backup is and how it compares with the last one."
+			}
+		}
+	},
+	"agentScreen": {
+		"description": "Open up to three conversations side by side; right-click one in the list for more.",
+		"openHere": "Open in the focused chat",
+		"openBeside": "Open beside",
+		"tooManyPanes": "At most {max} chats side by side",
+		"closePane": "Close this chat",
+		"newPane": "New chat beside",
+		"backToConsole": "Open in the console"
 	},
 	"agentSettings": {
 		"description": "The console's chat agent: the Claude account it runs on, how it behaves, and what it may touch",
@@ -4650,14 +4706,15 @@
 		"modeHint_plan": "Investigates, then proposes a plan without changing anything",
 		"modeHint_bypass": "Runs every tool in its scope without asking",
 		"bypassOff": "Switched off in the agent settings",
-		"placeholderBusy": "Mèo Béo is answering…",
+		"placeholderBusy": "Mèo Béo is working; type to add to or steer it…",
 		"bypassTitle": "Switch to bypass mode?",
 		"bypassLead": "Mèo Béo will start, stop and restart servers, send console commands and change whatever else its token allows, without asking you first.",
 		"bypassNote": "Every call is still recorded in the MCP call log under your name, and the token's scope is still the limit. Switch back with Shift+Tab or the mode menu.",
 		"bypassConfirm": "Use bypass",
 		"attach": "Attach a file",
 		"detach": "Remove attachment",
-		"uploadFailed": "upload failed"
+		"uploadFailed": "upload failed",
+		"sendMidRun": "Send now; Mèo Béo reads it at its next step"
 	},
 	"domains": {
 		"pageDescription": "Hostnames under the network's base domain, and the server each one sends players to. A modded server needs its own: modded clients cannot pass through the vanilla lobby.",

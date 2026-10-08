@@ -7,7 +7,7 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { Agent } from '$lib/agent.svelte';
+	import { Agent, type ChatSession } from '$lib/agent.svelte';
 	import { AGENT_MODES, type AgentMode } from '$shared/agent';
 	import Icon from './Icon.svelte';
 	import Spinner from './Spinner.svelte';
@@ -22,8 +22,12 @@
 	 *
 	 * Shift+Tab cycles the mode from the text box. Bypass asks once per page load
 	 * before it is picked, since from then on calls run without a prompt.
+	 *
+	 * Nothing here waits for the agent to finish: a message typed mid-answer
+	 * joins the run, and a new mode, model or effort applies to it from its next
+	 * step, the way Claude Code takes them.
 	 */
-	let { onsent }: { onsent?: () => void } = $props();
+	let { session, onsent }: { session: ChatSession; onsent?: () => void } = $props();
 
 	let draft = $state('');
 	let textbox: HTMLTextAreaElement | undefined = $state();
@@ -51,10 +55,12 @@
 
 	const ready = $derived(Agent.state?.ready ?? false);
 	const settings = $derived(Agent.state?.settings);
-	const pagePath = $derived(page.url.pathname);
+	// the agent's own screens are not a page worth describing to it; a popped-out
+	// window in particular is only the chat, wherever the console itself is
+	const pagePath = $derived(page.url.pathname.startsWith('/agent') ? '' : page.url.pathname);
 
-	const modelValue = $derived(Agent.model || settings?.model || '');
-	const effortValue = $derived(Agent.effort || settings?.effort || 'medium');
+	const modelValue = $derived(session.model || settings?.model || '');
+	const effortValue = $derived(session.effort || settings?.effort || 'medium');
 	const efforts = $derived(Agent.state?.efforts ?? []);
 
 	const modelLabel = $derived.by(() => {
@@ -72,15 +78,15 @@
 		},
 		{
 			label: t('web.agentComposer.sharePage'),
-			icon: Agent.sharePage ? 'check' : 'fileLines',
-			action: () => Agent.setSharePage(!Agent.sharePage)
+			icon: session.sharePage ? 'check' : 'fileLines',
+			action: () => session.setSharePage(!session.sharePage)
 		},
 		{ separator: true },
 		{
 			label: t('web.agent.newChat'),
-			icon: 'penToSquare',
-			disabled: Agent.items.length === 0,
-			action: () => Agent.newChat()
+			icon: 'messagePlus',
+			disabled: session.items.length === 0,
+			action: () => session.newChat()
 		},
 		{ label: t('web.agent.settings'), icon: 'gear', action: () => goto('/console/agent') }
 	]);
@@ -128,9 +134,10 @@
 		textbox?.focus();
 	}
 
-	const uploading = $derived(Agent.attachments.some((file) => !file.id && !file.error));
-	const attached = $derived(Agent.attachments.some((file) => file.id && !file.error));
-	const canSend = $derived(ready && !Agent.sending && !uploading && (!!draft.trim() || attached));
+	const uploading = $derived(session.attachments.some((file) => !file.id && !file.error));
+	const attached = $derived(session.attachments.some((file) => file.id && !file.error));
+	const canSend = $derived(ready && !session.sending && !uploading && (!!draft.trim() || attached));
+	const sharingPage = $derived(session.sharePage && !!pagePath);
 
 	function fmtSize(bytes: number): string {
 		return bytes >= 1024 * 1024
@@ -140,7 +147,7 @@
 
 	function attachFiles(files: FileList | null | undefined): void {
 		for (const file of files ?? []) {
-			void Agent.attach(file);
+			void session.attach(file);
 		}
 	}
 
@@ -155,9 +162,9 @@
 
 	/** Send what is typed, or a suggestion handed in from the panel. */
 	export async function send(text: string = draft): Promise<void> {
-		const hasFiles = Agent.attachments.some((file) => file.id && !file.error);
+		const hasFiles = session.attachments.some((file) => file.id && !file.error);
 
-		if ((!text.trim() && !hasFiles) || Agent.running || Agent.sending || !ready || uploading) {
+		if ((!text.trim() && !hasFiles) || session.sending || !ready || uploading) {
 			return;
 		}
 
@@ -168,7 +175,7 @@
 		await tick();
 		grow();
 		onsent?.();
-		await Agent.send(text, pagePath);
+		await session.send(text, pagePath || undefined);
 		textbox?.focus();
 	}
 
@@ -181,13 +188,13 @@
 			return;
 		}
 
-		Agent.setMode(mode);
+		session.setMode(mode);
 	}
 
 	function onKey(event: KeyboardEvent): void {
 		if (event.key === 'Tab' && event.shiftKey) {
 			event.preventDefault();
-			pickMode(Agent.nextMode());
+			pickMode(session.nextMode());
 
 			return;
 		}
@@ -237,8 +244,8 @@
 
 <form
 	class="composer"
-	class:bypass={Agent.mode === 'bypass'}
-	class:plan={Agent.mode === 'plan'}
+	class:bypass={session.mode === 'bypass'}
+	class:plan={session.mode === 'plan'}
 	class:dragging
 	ondragover={(event) => {
 		event.preventDefault();
@@ -262,7 +269,7 @@
 				<button
 					type="button"
 					class="opt {mode}"
-					class:on={Agent.mode === mode}
+					class:on={session.mode === mode}
 					disabled={off}
 					title={off ? t('web.agentComposer.bypassOff') : undefined}
 					onclick={() => pickMode(mode)}
@@ -272,7 +279,7 @@
 						<b>{t(`web.agentComposer.mode_${mode}`)}</b>
 						<span>{off ? t('web.agentComposer.bypassOff') : t(`web.agentComposer.modeHint_${mode}`)}</span>
 					</span>
-					{#if Agent.mode === mode}<Icon name="check" size="0.75rem" />{/if}
+					{#if session.mode === mode}<Icon name="check" size="0.75rem" />{/if}
 				</button>
 			{/each}
 		</div>
@@ -285,7 +292,7 @@
 						type="button"
 						class="opt"
 						class:on={modelValue === choice.value}
-						onclick={() => Agent.setModel(choice.value === settings?.model ? '' : choice.value)}
+						onclick={() => session.setModel(choice.value === settings?.model ? '' : choice.value)}
 					>
 						<span class="ot">
 							<b>{choice.label}</b>
@@ -307,7 +314,7 @@
 							aria-label={t(`web.agentSettings.effort_${level}`)}
 							class="dot"
 							class:filled={efforts.indexOf(effortValue) >= index}
-							onclick={() => Agent.setEffort(level === settings?.effort ? '' : level)}
+							onclick={() => session.setEffort(level === settings?.effort ? '' : level)}
 						></button>
 					{/each}
 				</span>
@@ -315,9 +322,9 @@
 		</div>
 	{/if}
 
-	{#if Agent.attachments.length}
+	{#if session.attachments.length}
 		<div class="files">
-			{#each Agent.attachments as file}
+			{#each session.attachments as file}
 				<span class="filechip" class:bad={!!file.error} title={file.error ?? file.name}>
 					{#if !file.id && !file.error}
 						<Spinner size="0.75rem" />
@@ -326,7 +333,7 @@
 					{/if}
 					<span class="lbl">{file.name}</span>
 					<span class="dim">{file.error ? t('web.agentComposer.uploadFailed') : fmtSize(file.size)}</span>
-					<button type="button" class="x" title={t('web.agentComposer.detach')} onclick={() => Agent.detach(file)}>
+					<button type="button" class="x" title={t('web.agentComposer.detach')} onclick={() => session.detach(file)}>
 						<Icon name="close" size="0.625rem" />
 					</button>
 				</span>
@@ -350,7 +357,7 @@
 		rows="1"
 		placeholder={!ready
 			? t('web.agent.placeholderOff')
-			: Agent.running
+			: session.running
 				? t('web.agentComposer.placeholderBusy')
 				: t('web.agent.placeholder')}
 		disabled={!ready}
@@ -385,11 +392,11 @@
 			<span class="dim">{t(`web.agentSettings.effort_${effortValue}`)}</span>
 		</button>
 
-		{#if Agent.sharePage}
+		{#if sharingPage}
 			<span class="chip file" title={t('web.agentComposer.sharedPage', { page: pagePath })}>
 				<Icon name="fileLines" size="0.75rem" />
 				<span class="lbl">{shortPath(pagePath)}</span>
-				<button type="button" class="x" title={t('web.agentComposer.unsharePage')} onclick={() => Agent.setSharePage(false)}>
+				<button type="button" class="x" title={t('web.agentComposer.unsharePage')} onclick={() => session.setSharePage(false)}>
 					<Icon name="close" size="0.625rem" />
 				</button>
 			</span>
@@ -399,22 +406,28 @@
 
 		<button
 			type="button"
-			class="chip mode {Agent.mode}"
+			class="chip mode {session.mode}"
 			class:active={popover === 'mode'}
 			title={t('web.agentComposer.modeTitle')}
 			onclick={(event) => togglePopover('mode', event)}
 		>
-			<Icon name={MODE_ICONS[Agent.mode]} size="0.75rem" />
-			<span class="lbl">{t(`web.agentComposer.mode_${Agent.mode}`)}</span>
+			<Icon name={MODE_ICONS[session.mode]} size="0.75rem" />
+			<span class="lbl">{t(`web.agentComposer.mode_${session.mode}`)}</span>
 		</button>
 
-		{#if Agent.running}
-			<button class="send stop" type="button" title={t('web.agent.stop')} onclick={() => Agent.stop()}>
+		{#if session.running}
+			<button class="send stop" type="button" title={t('web.agent.stop')} onclick={() => session.stop()}>
 				<Icon name="stop" size="0.75rem" />
 			</button>
-		{:else}
-			<button class="send" type="submit" title={t('web.agent.send')} disabled={!canSend}>
-				{#if Agent.sending}
+		{/if}
+		{#if !session.running || canSend || session.sending}
+			<button
+				class="send"
+				type="submit"
+				title={session.running ? t('web.agentComposer.sendMidRun') : t('web.agent.send')}
+				disabled={!canSend}
+			>
+				{#if session.sending}
 					<Spinner size="0.75rem" />
 				{:else}
 					<Icon name="paperPlaneTop" size="0.75rem" />
@@ -436,7 +449,7 @@
 	onconfirm={() => {
 		bypassConfirmed = true;
 		confirmBypass = false;
-		Agent.setMode('bypass');
+		session.setMode('bypass');
 	}}
 />
 

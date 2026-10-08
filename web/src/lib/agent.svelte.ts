@@ -3,14 +3,21 @@
 // prohibited without written permission. See LICENSE at the repository root.
 
 /**
- * The browser side of Mèo Béo: whether the panel is open, which conversation
- * it shows, and the chat as the panel renders it, kept in one place so the
- * navbar button and the panel agree.
+ * The browser side of Mèo Béo, in two parts.
  *
- * A run lives on the server. Sending a message only starts it; the answer comes
- * back over `/api/agent/conversations/<id>/stream`, which replays everything the
- * run has done so far, so reopening the panel or reloading mid-answer picks up
- * where it was rather than losing the reply.
+ * `Agent` is the shell every window shares: whether the docked panel is open
+ * and how wide, the agent's status, the conversation list, and the picks this
+ * browser last made (mode, model, effort, sharing the page).
+ *
+ * A `ChatSession` is one open chat: which conversation it shows, the messages
+ * as they render, its stream and its attachments. The docked panel has one, the
+ * full-page screen one per pane, and a popped-out window its own, so several
+ * chats can be open and running at once without seeing each other's state.
+ *
+ * A run lives on the server. Sending a message only starts it (or, mid-run,
+ * joins it); the answer comes back over `/api/agent/conversations/<id>/stream`,
+ * which replays everything the run has done so far, so reopening a chat or
+ * reloading mid-answer picks up where it was rather than losing the reply.
  */
 
 import { browser } from '$app/environment';
@@ -96,6 +103,7 @@ interface StoredEntry {
 
 type StreamEvent =
 	| { type: 'state'; running: boolean }
+	| { type: 'user'; text: string; author: string; at: number; mode: string; attachments?: Array<{ name: string; size: number }> }
 	| { type: 'text'; delta: string }
 	| { type: 'assistant'; text: string }
 	| { type: 'tool'; id: string; name: string; input?: unknown; status: ToolStatus; output?: string; decidedBy?: string }
@@ -114,10 +122,17 @@ const MODEL_KEY = 'luna:agent:model';
 const EFFORT_KEY = 'luna:agent:effort';
 const PAGE_KEY = 'luna:agent:sharePage';
 
+/** The channel a popped-out chat asks the console windows over; see `startConsoleBridge` */
+const BRIDGE_CHANNEL = 'luna:agent:bridge';
+
 /** px; the panel is resized by dragging, which is measured in device pixels */
 export const AGENT_MIN_WIDTH = 320;
 export const AGENT_MAX_WIDTH = 760;
 const DEFAULT_WIDTH = 420;
+
+/** px; the size a popped-out chat window opens at */
+const POPOUT_WIDTH = 560;
+const POPOUT_HEIGHT = 820;
 
 function readStored(key: string): string | null {
 	try {
@@ -187,12 +202,114 @@ export interface Attachment {
 	error?: string;
 }
 
-class AgentStore {
-	open = $state(false);
-	width = $state(DEFAULT_WIDTH);
+/**
+ * Answer the agent's `console_screenshot` from this window: render the console
+ * as it shows here, without the docked panel, and post it to the run. Every
+ * window that tries races; the first upload wins and the rest are refused.
+ */
+async function uploadScreenshot(conversation: string, requestId: string): Promise<void> {
+	try {
+		const { captureConsole } = await import('$lib/screenshot');
+		const shot = await captureConsole(Agent.open ? Agent.width : 0);
+		const query = new URLSearchParams({
+			request: requestId,
+			page: shot.page,
+			w: String(shot.width),
+			h: String(shot.height)
+		});
 
-	state: AgentState | null = $state(null);
-	conversations: ConversationRow[] = $state([]);
+		await fetch(`/api/agent/conversations/${encodeURIComponent(conversation)}/screenshot?${query}`, {
+			method: 'POST',
+			headers: { 'content-type': shot.image.type },
+			body: shot.image
+		});
+	} catch (err) {
+		// the run times out and tells the model; the console is the place to see why
+		console.error('screenshot failed', err);
+	}
+}
+
+/**
+ * Answer the agent's `console_navigate` from this window: open the page as a
+ * click would and report where it landed. The path is checked again here, so a
+ * request can only ever move the operator between console screens.
+ */
+async function navigateFor(conversation: string, requestId: string, path: string): Promise<void> {
+	let answer: { ok: boolean; page: string; error?: string };
+
+	try {
+		if (!isConsolePath(path)) {
+			throw new Error('not a console page');
+		}
+
+		await goto(path);
+		answer = { ok: true, page: `${location.pathname}${location.search}` };
+	} catch (err) {
+		answer = { ok: false, page: `${location.pathname}${location.search}`, error: (err as Error).message };
+	}
+
+	await post(`/agent/conversations/${conversation}/navigated`, { request: requestId, ...answer }).catch(() => {});
+}
+
+type BridgeRequest =
+	| { type: 'screenshot'; conversation: string; request: string }
+	| { type: 'navigate'; conversation: string; request: string; path: string };
+
+/**
+ * Let popped-out chats reach this console window. A pop-out has no console of
+ * its own: a screenshot of it would show the chat, and navigating it would
+ * replace the chat with a page. So it asks here instead, and the console the
+ * operator is looking at answers; a hidden tab stays out of it, so a request
+ * moves the screen in front of them rather than one in the background.
+ * Returns the teardown.
+ */
+export function startConsoleBridge(): () => void {
+	if (!browser || typeof BroadcastChannel === 'undefined') {
+		return () => {};
+	}
+
+	const channel = new BroadcastChannel(BRIDGE_CHANNEL);
+
+	channel.onmessage = (event: MessageEvent<BridgeRequest>) => {
+		if (document.visibilityState !== 'visible') {
+			return;
+		}
+
+		const request = event.data;
+
+		if (request.type === 'screenshot') {
+			void uploadScreenshot(request.conversation, request.request);
+		} else if (request.type === 'navigate') {
+			void navigateFor(request.conversation, request.request, request.path);
+		}
+	};
+
+	return () => channel.close();
+}
+
+function relayToConsole(request: BridgeRequest): void {
+	if (typeof BroadcastChannel === 'undefined') {
+		return;
+	}
+
+	const channel = new BroadcastChannel(BRIDGE_CHANNEL);
+
+	channel.postMessage(request);
+	channel.close();
+}
+
+export interface ChatSessionOptions {
+	/** Remember the conversation across reloads; only the docked panel does */
+	persist?: boolean;
+
+	/** Ask a console window to answer screenshots and navigation; a popped-out chat does */
+	relay?: boolean;
+}
+
+export type SendResult = { ok: boolean; joined?: boolean; error?: string; code?: string };
+
+/** One open chat; see the module comment. */
+export class ChatSession {
 	conversationId: string | null = $state(null);
 	items: ChatItem[] = $state([]);
 	running = $state(false);
@@ -202,7 +319,7 @@ class AgentStore {
 	/** How tool calls are approved; see `shared/agent.ts` */
 	mode: AgentMode = $state(DEFAULT_AGENT_MODE);
 
-	/** Per-browser overrides of the settings; empty means "use the settings" */
+	/** Overrides of the settings for this chat; empty means "use the settings" */
 	model = $state('');
 	effort = $state('');
 
@@ -212,64 +329,42 @@ class AgentStore {
 	/** Files attached to the next message; `id` is empty while the upload runs */
 	attachments: Attachment[] = $state([]);
 
+	readonly #persist: boolean;
+	readonly #relay: boolean;
 	#source: EventSource | null = null;
-	#booted = false;
+	#disposed = false;
 
-	/** Read the remembered panel state; called once the browser is there. */
-	boot(): void {
-		if (!browser || this.#booted) {
-			return;
-		}
-
-		this.#booted = true;
-		this.open = readStored(OPEN_KEY) === '1';
-
-		const width = Number(readStored(WIDTH_KEY));
-
-		if (width >= AGENT_MIN_WIDTH && width <= AGENT_MAX_WIDTH) {
-			this.width = width;
-		}
-
-		this.conversationId = readStored(CONVERSATION_KEY);
-
-		const mode = readStored(MODE_KEY);
-
-		if (isAgentMode(mode)) {
-			this.mode = mode;
-		}
-
-		this.model = readStored(MODEL_KEY) ?? '';
-		this.effort = readStored(EFFORT_KEY) ?? '';
-		this.sharePage = readStored(PAGE_KEY) !== '0';
-
-		if (this.open) {
-			void this.refresh();
-		}
+	constructor(options: ChatSessionOptions = {}) {
+		this.#persist = options.persist ?? false;
+		this.#relay = options.relay ?? false;
+		this.mode = Agent.lastMode;
+		this.model = Agent.lastModel;
+		this.effort = Agent.lastEffort;
+		this.sharePage = Agent.lastSharePage;
+		Agent.register(this);
 	}
 
-	toggle(): void {
-		this.setOpen(!this.open);
+	/** The conversation's row in the list, once it has one. */
+	get row(): ConversationRow | null {
+		return Agent.conversations.find((row) => row.id === this.conversationId) ?? null;
 	}
 
-	setOpen(open: boolean): void {
-		this.open = open;
-		writeStored(OPEN_KEY, open ? '1' : '0');
-
-		if (open) {
-			void this.refresh();
-		} else {
-			this.#detach();
-		}
+	/** Stop following the run and leave the shell's registry; the chat's window is closing. */
+	dispose(): void {
+		this.#disposed = true;
+		this.#detach();
+		Agent.unregister(this);
 	}
 
 	setMode(mode: AgentMode): void {
 		this.mode = mode;
-		writeStored(MODE_KEY, mode);
+		Agent.rememberMode(mode);
+		void this.#updateRun();
 	}
 
 	/** The next mode for Shift+Tab, skipping bypass when the console has it switched off. */
 	nextMode(): AgentMode {
-		const modes = AGENT_MODES.filter((mode) => mode !== 'bypass' || this.state?.settings.bypassAllowed);
+		const modes = AGENT_MODES.filter((mode) => mode !== 'bypass' || Agent.state?.settings.bypassAllowed);
 		const index = modes.indexOf(this.mode);
 
 		return modes[(index + 1) % modes.length] ?? DEFAULT_AGENT_MODE;
@@ -277,17 +372,38 @@ class AgentStore {
 
 	setModel(model: string): void {
 		this.model = model;
-		writeStored(MODEL_KEY, model || null);
+		Agent.rememberModel(model);
+		void this.#updateRun();
 	}
 
 	setEffort(effort: string): void {
 		this.effort = effort;
-		writeStored(EFFORT_KEY, effort || null);
+		Agent.rememberEffort(effort);
+		void this.#updateRun();
 	}
 
 	setSharePage(share: boolean): void {
 		this.sharePage = share;
-		writeStored(PAGE_KEY, share ? '1' : '0');
+		Agent.rememberSharePage(share);
+	}
+
+	/**
+	 * Carry a pick over to the run going in this chat, as Claude Code does when
+	 * the model or mode is switched mid-answer. The effective values are sent,
+	 * so going back to "the settings' model" is a change too.
+	 */
+	async #updateRun(): Promise<void> {
+		if (!this.running || !this.conversationId) {
+			return;
+		}
+
+		const settings = Agent.state?.settings;
+
+		await patch(`/agent/conversations/${this.conversationId}/run`, {
+			mode: this.mode,
+			model: this.model || settings?.model,
+			effort: this.effort || settings?.effort
+		}).catch(() => {});
 	}
 
 	/** Upload a file for the next message; it shows as a chip while it goes up. */
@@ -325,75 +441,39 @@ class AgentStore {
 		}
 	}
 
-	setWidth(width: number): void {
-		this.width = Math.round(Math.min(Math.max(width, AGENT_MIN_WIDTH), AGENT_MAX_WIDTH));
-		writeStored(WIDTH_KEY, String(this.width));
-	}
-
-	/** Reload status and the conversation list, then the open conversation. */
-	async refresh(): Promise<void> {
-		this.loading = true;
-
-		try {
-			const [state, list] = await Promise.all([
-				api<AgentState>('/agent'),
-				api<{ conversations: ConversationRow[] }>('/agent/conversations')
-			]);
-
-			this.state = state;
-			this.conversations = list.conversations;
-
-			const current = this.conversationId && list.conversations.some((row) => row.id === this.conversationId)
-				? this.conversationId
-				: null;
-
-			if (current) {
-				await this.select(current);
-			} else {
-				this.#reset(null);
-			}
-		} catch {
-			// the panel shows its own empty state; a failed load is retried on reopen
-		} finally {
-			this.loading = false;
-		}
-	}
-
-	async reloadState(): Promise<void> {
-		this.state = await api<AgentState>('/agent');
-	}
-
-	async loadConversations(): Promise<void> {
-		const list = await api<{ conversations: ConversationRow[] }>('/agent/conversations');
-
-		this.conversations = list.conversations;
-	}
-
 	#reset(id: string | null): void {
 		this.#detach();
 		this.conversationId = id;
 		this.items = [];
 		this.running = false;
-		writeStored(CONVERSATION_KEY, id);
+
+		if (this.#persist) {
+			writeStored(CONVERSATION_KEY, id);
+		}
 	}
 
 	/** Show a conversation: its saved transcript, then its live run if one is going. */
 	async select(id: string): Promise<void> {
 		this.#reset(id);
+		this.loading = true;
 
-		const data = await api<{ conversation: { entries: StoredEntry[] }; running: boolean }>(
-			`/agent/conversations/${id}`
-		);
+		try {
+			const data = await api<{ conversation: { entries: StoredEntry[] }; running: boolean }>(
+				`/agent/conversations/${id}`
+			);
 
-		if (this.conversationId !== id) {
-			return;
-		}
+			if (this.conversationId !== id) {
+				return;
+			}
 
-		this.items = itemsFromEntries(data.conversation.entries);
+			this.items = itemsFromEntries(data.conversation.entries);
 
-		if (data.running) {
-			this.running = true;
-			this.#attach(id);
+			if (data.running) {
+				this.running = true;
+				this.#attach(id);
+			}
+		} finally {
+			this.loading = false;
 		}
 	}
 
@@ -402,17 +482,24 @@ class AgentStore {
 		this.#reset(null);
 	}
 
-	async send(text: string, page?: string): Promise<{ ok: boolean; error?: string; code?: string }> {
+	/**
+	 * Send a message. With nothing running it starts a run and shows the message
+	 * at once; mid-run it joins the run, and the message appears when the run
+	 * echoes it, which is also how every other window following it sees it.
+	 */
+	async send(text: string, page?: string): Promise<SendResult> {
 		const message = text.trim();
 		const files = this.attachments.filter((file) => file.id && !file.error);
 
-		if ((!message && files.length === 0) || this.running || this.sending) {
+		if ((!message && files.length === 0) || this.sending) {
 			return { ok: false };
 		}
 
 		if (this.attachments.some((file) => !file.id && !file.error)) {
 			return { ok: false };
 		}
+
+		const joining = this.running;
 
 		this.sending = true;
 
@@ -424,34 +511,41 @@ class AgentStore {
 
 				id = created.conversation.id;
 				this.conversationId = id;
-				writeStored(CONVERSATION_KEY, id);
+
+				if (this.#persist) {
+					writeStored(CONVERSATION_KEY, id);
+				}
 			}
 
-			this.items = [
-				...this.items,
-				{
-					kind: 'user',
-					text: message,
-					author: '',
-					at: Date.now(),
-					mode: this.mode,
-					attachments: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined
-				}
-			];
+			if (!joining) {
+				this.items = [
+					...this.items,
+					{
+						kind: 'user',
+						text: message,
+						author: '',
+						at: Date.now(),
+						mode: this.mode,
+						attachments: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined
+					}
+				];
+			}
+
 			this.attachments = [];
 
-			const result = await post<{ ok: boolean; error?: string; code?: string }>(
+			const settings = Agent.state?.settings;
+			const result = await post<SendResult>(
 				`/agent/conversations/${id}/messages`,
 				{
 					text: message,
 					locale: currentLanguage(),
 					mode: this.mode,
-					model: this.model || undefined,
-					effort: this.effort || undefined,
+					model: this.model || (joining ? settings?.model : undefined),
+					effort: this.effort || (joining ? settings?.effort : undefined),
 					page: this.sharePage ? page : undefined,
 					attachments: files
 				}
-			).catch((err: Error) => ({ ok: false, error: err.message, code: undefined }));
+			).catch((err: Error): SendResult => ({ ok: false, error: err.message }));
 
 			if (!result.ok) {
 				this.items = [...this.items, { kind: 'error', text: result.error ?? '', code: result.code }];
@@ -459,75 +553,33 @@ class AgentStore {
 				return result;
 			}
 
-			this.running = true;
-			this.#attach(id);
-			void this.loadConversations();
+			// the run ended just before the message reached it, so it started a new
+			// one, whose first message is not echoed: show it here after all
+			if (joining && !result.joined) {
+				this.items = [
+					...this.items,
+					{
+						kind: 'user',
+						text: message,
+						author: '',
+						at: Date.now(),
+						mode: this.mode,
+						attachments: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined
+					}
+				];
+			}
+
+			if (!joining || !result.joined || !this.#source) {
+				this.running = true;
+				this.#attach(id);
+			}
+
+			void Agent.loadConversations();
 
 			return result;
 		} finally {
 			this.sending = false;
 		}
-	}
-
-	/**
-	 * Answer the agent's `console_screenshot`: render the console as this browser
-	 * shows it, without the panel, and post it to the run. Every tab following
-	 * the run tries; the first upload wins and the rest are refused, harmlessly.
-	 */
-	private async sendScreenshot(requestId: string): Promise<void> {
-		const conversation = this.conversationId;
-
-		if (!conversation || typeof document === 'undefined') {
-			return;
-		}
-
-		try {
-			const { captureConsole } = await import('$lib/screenshot');
-			const shot = await captureConsole(this.open ? this.width : 0);
-			const query = new URLSearchParams({
-				request: requestId,
-				page: shot.page,
-				w: String(shot.width),
-				h: String(shot.height)
-			});
-
-			await fetch(`/api/agent/conversations/${encodeURIComponent(conversation)}/screenshot?${query}`, {
-				method: 'POST',
-				headers: { 'content-type': shot.image.type },
-				body: shot.image
-			});
-		} catch (err) {
-			// the run times out and tells the model; the console is the place to see why
-			console.error('screenshot failed', err);
-		}
-	}
-
-	/**
-	 * Answer the agent's `console_navigate`: open the page in this browser, as a
-	 * click would, and report where it landed. The path is checked again here,
-	 * so a request can only ever move the operator between console screens.
-	 */
-	private async followNavigation(requestId: string, path: string): Promise<void> {
-		const conversation = this.conversationId;
-
-		if (!conversation || typeof window === 'undefined') {
-			return;
-		}
-
-		let answer: { ok: boolean; page: string; error?: string };
-
-		try {
-			if (!isConsolePath(path)) {
-				throw new Error('not a console page');
-			}
-
-			await goto(path);
-			answer = { ok: true, page: `${location.pathname}${location.search}` };
-		} catch (err) {
-			answer = { ok: false, page: `${location.pathname}${location.search}`, error: (err as Error).message };
-		}
-
-		await post(`/agent/conversations/${conversation}/navigated`, { request: requestId, ...answer }).catch(() => {});
 	}
 
 	/** Allow or deny a waiting call; `answers` answers a question the agent asked. */
@@ -547,21 +599,6 @@ class AgentStore {
 		await post(`/agent/conversations/${this.conversationId}/stop`);
 	}
 
-	async rename(id: string, title: string): Promise<void> {
-		await patch(`/agent/conversations/${id}`, { title });
-		await this.loadConversations();
-	}
-
-	async remove(id: string): Promise<void> {
-		await del(`/agent/conversations/${id}`);
-
-		if (this.conversationId === id) {
-			this.#reset(null);
-		}
-
-		await this.loadConversations();
-	}
-
 	#detach(): void {
 		this.#source?.close();
 		this.#source = null;
@@ -576,7 +613,7 @@ class AgentStore {
 		this.#source = source;
 
 		source.onmessage = (event) => {
-			if (this.conversationId !== id) {
+			if (this.conversationId !== id || this.#disposed) {
 				source.close();
 
 				return;
@@ -588,7 +625,7 @@ class AgentStore {
 				finished = true;
 			}
 
-			this.#apply(data);
+			this.#apply(data, id);
 		};
 
 		// the server closes the stream after `done`, which EventSource reports as an
@@ -602,7 +639,7 @@ class AgentStore {
 
 			if (!finished && this.conversationId === id) {
 				setTimeout(() => {
-					if (this.conversationId === id && this.open) {
+					if (this.conversationId === id && !this.#disposed) {
 						void this.select(id);
 					}
 				}, 2000);
@@ -626,8 +663,21 @@ class AgentStore {
 		return -1;
 	}
 
-	#apply(event: StreamEvent): void {
+	#apply(event: StreamEvent, conversation: string): void {
 		switch (event.type) {
+			case 'user': {
+				this.items.push({
+					kind: 'user',
+					text: event.text,
+					author: event.author,
+					at: event.at,
+					mode: event.mode,
+					attachments: event.attachments
+				});
+
+				break;
+			}
+
 			case 'text': {
 				const index = this.#lastStreaming();
 
@@ -655,13 +705,21 @@ class AgentStore {
 			}
 
 			case 'screenshot': {
-				void this.sendScreenshot(event.id);
+				if (this.#relay) {
+					relayToConsole({ type: 'screenshot', conversation, request: event.id });
+				} else {
+					void uploadScreenshot(conversation, event.id);
+				}
 
 				break;
 			}
 
 			case 'navigate': {
-				void this.followNavigation(event.id, event.path);
+				if (this.#relay) {
+					relayToConsole({ type: 'navigate', conversation, request: event.id, path: event.path });
+				} else {
+					void navigateFor(conversation, event.id, event.path);
+				}
 
 				break;
 			}
@@ -718,7 +776,7 @@ class AgentStore {
 					}
 				}
 
-				void this.loadConversations();
+				void Agent.loadConversations();
 				break;
 
 			default:
@@ -727,5 +785,195 @@ class AgentStore {
 	}
 }
 
-/** The one agent store the chrome and the panel share. */
-export const Agent = new AgentStore();
+class AgentShell {
+	open = $state(false);
+	width = $state(DEFAULT_WIDTH);
+
+	state: AgentState | null = $state(null);
+	conversations: ConversationRow[] = $state([]);
+
+	/** The picks this browser made last; a new chat starts from them */
+	lastMode: AgentMode = DEFAULT_AGENT_MODE;
+	lastModel = '';
+	lastEffort = '';
+	lastSharePage = true;
+
+	#sessions = new Set<ChatSession>();
+	#panel: ChatSession | null = null;
+	#booted = false;
+
+	/** The docked panel's chat; created on first use, so it starts from the stored picks. */
+	get panel(): ChatSession {
+		this.#readPicks();
+		this.#panel ??= new ChatSession({ persist: true });
+
+		return this.#panel;
+	}
+
+	register(session: ChatSession): void {
+		this.#sessions.add(session);
+	}
+
+	unregister(session: ChatSession): void {
+		this.#sessions.delete(session);
+	}
+
+	/** Read the remembered panel state; called once the browser is there. */
+	boot(): void {
+		if (!browser || this.#booted) {
+			return;
+		}
+
+		this.#booted = true;
+		this.open = readStored(OPEN_KEY) === '1';
+
+		const width = Number(readStored(WIDTH_KEY));
+
+		if (width >= AGENT_MIN_WIDTH && width <= AGENT_MAX_WIDTH) {
+			this.width = width;
+		}
+
+		if (this.open) {
+			void this.refresh();
+		}
+	}
+
+	#picksRead = false;
+
+	#readPicks(): void {
+		if (!browser || this.#picksRead) {
+			return;
+		}
+
+		this.#picksRead = true;
+
+		const mode = readStored(MODE_KEY);
+
+		if (isAgentMode(mode)) {
+			this.lastMode = mode;
+		}
+
+		this.lastModel = readStored(MODEL_KEY) ?? '';
+		this.lastEffort = readStored(EFFORT_KEY) ?? '';
+		this.lastSharePage = readStored(PAGE_KEY) !== '0';
+	}
+
+	rememberMode(mode: AgentMode): void {
+		this.lastMode = mode;
+		writeStored(MODE_KEY, mode);
+	}
+
+	rememberModel(model: string): void {
+		this.lastModel = model;
+		writeStored(MODEL_KEY, model || null);
+	}
+
+	rememberEffort(effort: string): void {
+		this.lastEffort = effort;
+		writeStored(EFFORT_KEY, effort || null);
+	}
+
+	rememberSharePage(share: boolean): void {
+		this.lastSharePage = share;
+		writeStored(PAGE_KEY, share ? '1' : '0');
+	}
+
+	toggle(): void {
+		this.setOpen(!this.open);
+	}
+
+	setOpen(open: boolean): void {
+		this.open = open;
+		writeStored(OPEN_KEY, open ? '1' : '0');
+
+		if (open) {
+			void this.refresh();
+		}
+	}
+
+	setWidth(width: number): void {
+		this.width = Math.round(Math.min(Math.max(width, AGENT_MIN_WIDTH), AGENT_MAX_WIDTH));
+		writeStored(WIDTH_KEY, String(this.width));
+	}
+
+	/** Reload status and the conversation list, then the panel's conversation. */
+	async refresh(): Promise<void> {
+		try {
+			await this.loadAll();
+
+			const panel = this.panel;
+			const stored = panel.conversationId ?? readStored(CONVERSATION_KEY);
+			const current = stored && this.conversations.some((row) => row.id === stored)
+				? stored
+				: null;
+
+			if (current) {
+				await panel.select(current);
+			} else {
+				panel.newChat();
+			}
+		} catch {
+			// the panel shows its own empty state; a failed load is retried on reopen
+		}
+	}
+
+	/** Status and the conversation list, without touching any chat. */
+	async loadAll(): Promise<void> {
+		this.#readPicks();
+
+		const [state, list] = await Promise.all([
+			api<AgentState>('/agent'),
+			api<{ conversations: ConversationRow[] }>('/agent/conversations')
+		]);
+
+		this.state = state;
+		this.conversations = list.conversations;
+	}
+
+	async reloadState(): Promise<void> {
+		this.state = await api<AgentState>('/agent');
+	}
+
+	async loadConversations(): Promise<void> {
+		const list = await api<{ conversations: ConversationRow[] }>('/agent/conversations');
+
+		this.conversations = list.conversations;
+	}
+
+	async rename(id: string, title: string): Promise<void> {
+		await patch(`/agent/conversations/${id}`, { title });
+		await this.loadConversations();
+	}
+
+	/** Delete a conversation; every chat in this window showing it starts over. */
+	async remove(id: string): Promise<void> {
+		await del(`/agent/conversations/${id}`);
+
+		for (const session of this.#sessions) {
+			if (session.conversationId === id) {
+				session.newChat();
+			}
+		}
+
+		await this.loadConversations();
+	}
+
+	/**
+	 * Open a chat in a window of its own. Each conversation gets one named
+	 * window, so popping the same chat out twice brings the first one forward
+	 * rather than opening a second copy; a new chat gets a fresh window.
+	 */
+	popOut(conversationId: string | null): void {
+		const path = conversationId
+			? `/agent/window?c=${encodeURIComponent(conversationId)}`
+			: '/agent/window';
+		const name = conversationId
+			? `meo-beo-${conversationId}`
+			: `meo-beo-new-${Date.now()}`;
+
+		window.open(path, name, `popup,width=${POPOUT_WIDTH},height=${POPOUT_HEIGHT}`);
+	}
+}
+
+/** The one agent shell every chat and the chrome share. */
+export const Agent = new AgentShell();

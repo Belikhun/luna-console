@@ -11,7 +11,7 @@
 	import TerminalDrawer from '$lib/components/TerminalDrawer.svelte';
 	import AgentPanel from '$lib/components/AgentPanel.svelte';
 	import AccountAvatar from '$lib/components/AccountAvatar.svelte';
-	import { Agent } from '$lib/agent.svelte';
+	import { Agent, startConsoleBridge } from '$lib/agent.svelte';
 	import Flashbar from '$lib/components/Flashbar.svelte';
 	import ShellGlyph from '$lib/components/ShellGlyph.svelte';
 	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
@@ -46,9 +46,13 @@
 	 * `/` by the `reroute` hook, and a pathname test would wrap it in the whole
 	 * console chrome - side nav, search, terminal drawer - on the one page that
 	 * must not show a stranger that any of it exists.
+	 *
+	 * A popped-out Mèo Béo window is bare for a third reason: the console is in
+	 * the window it came from, and this one is only the chat.
 	 */
 	const bare = $derived(
 		page.url.pathname === '/login' ||
+			page.route.id === '/agent/window' ||
 			page.route.id === '/public' ||
 			(page.route.id ?? '').startsWith('/public/')
 	);
@@ -106,6 +110,16 @@
 		if (!bare) {
 			Agent.boot();
 		}
+	});
+
+	// a popped-out Mèo Béo window asks the console in front of the operator to
+	// take its screenshots and follow its navigation; every console window listens
+	$effect(() => {
+		if (bare) {
+			return;
+		}
+
+		return startConsoleBridge();
 	});
 
 	let shellOpen = $state(false);
