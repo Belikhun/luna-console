@@ -166,13 +166,6 @@
 		.wrapped &:not(:last-of-type) {
 			border-bottom: 0.1rem solid var(--border-divider);
 		}
-
-		// every wrapped row spans the bar, as a property sheet's do, so the rows
-		// read as stacked strips rather than a ragged paragraph of labels
-		.wrapped & > .tab {
-			flex: 1 1 auto;
-			text-align: center;
-		}
 	}
 
 	// the unconstrained single-line copy the rows are packed from; it takes no
