@@ -15,6 +15,7 @@
 	import Tabs from '$lib/components/Tabs.svelte';
 	import AccessLists from '$lib/components/AccessLists.svelte';
 	import InstanceOnlinePlayers from '$lib/components/InstanceOnlinePlayers.svelte';
+	import InstanceKnownPlayers from '$lib/components/InstanceKnownPlayers.svelte';
 	import InstanceChatLog from '$lib/components/InstanceChatLog.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Icon from '$lib/components/Icon.svelte';
@@ -3220,6 +3221,8 @@
 			</p>
 		{:else if tab === 'access'}
 			<InstanceOnlinePlayers instance={name ?? ''} />
+			<div class="gap"></div>
+			<InstanceKnownPlayers instance={name ?? ''} />
 			<div class="gap"></div>
 			<AccessLists instance={name ?? ''} />
 		{:else if tab === 'chat'}

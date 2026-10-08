@@ -5,6 +5,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
 	import Panel from './Panel.svelte';
 	import Btn from './Btn.svelte';
@@ -336,6 +337,31 @@
 		}
 	]);
 
+	/**
+	 * A listed player's page on this server. The route takes a uuid or a name, and
+	 * an entry added by name before the player ever joined has no uuid.
+	 */
+	function playerPath(entry: { uuid: string; name: string }): string {
+		return `/instances/${encodeURIComponent(instance)}/players/${encodeURIComponent(entry.uuid || entry.name)}`;
+	}
+
+	/** The links every player row's menu opens with, ahead of the list's own verbs. */
+	function playerLinks(entry: { uuid: string; name: string }): ContextMenuItem[] {
+		return [
+			{
+				label: t('web.instancePlayers.viewOnThisServer'),
+				icon: 'userPortrait',
+				action: () => goto(playerPath(entry))
+			},
+			{
+				label: t('web.instancePlayers.viewNetworkProfile'),
+				icon: 'user',
+				action: () => goto(`/players/${encodeURIComponent(entry.uuid || entry.name)}`)
+			},
+			{ separator: true }
+		];
+	}
+
 	function removeAction(
 		list: string,
 		target: string,
@@ -352,6 +378,7 @@
 
 	function opActions(entry: OpEntry): ContextMenuItem[] {
 		return [
+			...playerLinks(entry),
 			{
 				label: t('web.access.editOperator'),
 				icon: 'pen',
@@ -367,6 +394,7 @@
 
 	function banActions(entry: BanEntry): ContextMenuItem[] {
 		return [
+			...playerLinks(entry),
 			{
 				label: t('web.access.editReason'),
 				icon: 'pen',
@@ -429,6 +457,7 @@
 			noun={t('web.access.nounPlayer')}
 			pageSize={15}
 			rowActions={(entry) => [
+				...playerLinks(entry),
 				removeAction('whitelist', entry.name, entry.uuid, t('web.access.removeFromWhitelist'))
 			]}
 			rowLabel={(entry) => entry.name}
@@ -439,7 +468,7 @@
 		>
 			{#snippet cell(entry, col)}
 				{#if col === 'name'}
-					<PlayerName player={entry.uuid || entry.name} name={entry.name} />
+					<PlayerName player={entry.uuid || entry.name} name={entry.name} href={playerPath(entry)} />
 				{:else if col === 'uuid'}
 					<span class="mono dim">{entry.uuid}</span>
 				{/if}
@@ -473,7 +502,7 @@
 		>
 			{#snippet cell(entry, col)}
 				{#if col === 'name'}
-					<PlayerName player={entry.uuid || entry.name} name={entry.name} />
+					<PlayerName player={entry.uuid || entry.name} name={entry.name} href={playerPath(entry)} />
 				{:else if col === 'level'}
 					{entry.level}
 				{:else if col === 'bypass'}
@@ -516,7 +545,7 @@
 		>
 			{#snippet cell(entry, col)}
 				{#if col === 'name'}
-					<PlayerName player={entry.uuid || entry.name} name={entry.name} />
+					<PlayerName player={entry.uuid || entry.name} name={entry.name} href={playerPath(entry)} />
 				{:else if col === 'created'}
 					<span class="dim">{entry.created}</span>
 				{:else if col === 'source'}

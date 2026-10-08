@@ -184,6 +184,19 @@ export interface SavedPlayer {
 	savedAt: number;
 }
 
+/**
+ * One row of an instance's "everyone who has played here" table: the save's
+ * summary, the same vitals the online roster carries, and the play time the
+ * stats file counts on this backend alone.
+ */
+export interface KnownPlayer extends PlayerRosterEntry {
+	name?: string;
+	/** When the backend last wrote the save, epoch ms */
+	savedAt: number;
+	/** Ticks played on this backend; null without a stats file */
+	playTicks: number | null;
+}
+
 /** The game mode a `playerGameType` id names. */
 export function gameModeOf(id: number): GameMode | "unknown" {
 	return GAME_MODES[id] ?? "unknown";

@@ -1498,6 +1498,7 @@ export const OPS: Record<string, OpSpec> = {
 	"playerstate.detail": { fn: playerstateCore.readPlayerDetail, cfg: 0, instance: 1 },
 	"playerstate.resolve": { fn: playerstateCore.resolvePlayerRef, cfg: 0, instance: 1 },
 	"playerstate.saved": { fn: playerstateCore.listSavedPlayers, cfg: 0, instance: 1 },
+	"playerstate.known": { fn: playerstateCore.readKnownPlayers, cfg: 0, instance: 1 },
 
 	// -- tracked lifecycle (log-derived live progress; run as jobs) -------------
 	"lifecycle.startTracked": {

@@ -31,6 +31,7 @@ import {
 } from "./playerdata";
 import type {
 	EquipmentSlot,
+	KnownPlayer,
 	PlayerAdvancement,
 	PlayerAdvancements,
 	PlayerDetail,
@@ -955,4 +956,66 @@ export async function listSavedPlayers(cfg: ClusterConfig, instance: string): Pr
 	out.sort((left, right) => right.savedAt - left.savedAt);
 
 	return out;
+}
+
+/**
+ * Everyone who has ever played on this backend, as the instance's own files
+ * remember them: one row per save, with the vitals and advancement count the
+ * online roster shows and the play time from the stats file. Newest save first.
+ * A save that fails to parse still yields a row, with null vitals, because the
+ * player did connect and the table is a list of people before it is a list of
+ * saves.
+ */
+export async function readKnownPlayers(cfg: ClusterConfig, instance: string): Promise<KnownPlayer[]> {
+	const saved = await listSavedPlayers(cfg, instance);
+
+	if (saved.length === 0) {
+		return [];
+	}
+
+	const inst = instanceOf(cfg, instance);
+	const dirs = await playerDirs(inst);
+	const roster = await readPlayerRoster(cfg, instance, saved.map((player) => player.uuid));
+	const rosterByUuid = new Map(roster.map((entry) => [entry.uuid, entry]));
+
+	return await Promise.all(
+		saved.map(async (player): Promise<KnownPlayer> => {
+			const entry = rosterByUuid.get(player.uuid);
+			const name = player.name ?? entry?.vitals?.lastKnownName;
+			let playTicks: number | null = null;
+
+			try {
+				const raw = await readJsonFile(dirs.stats, player.uuid);
+
+				if (raw) {
+					playTicks = playTicksOf(statsOf(raw));
+				}
+			} catch {
+				playTicks = null;
+			}
+
+			return {
+				uuid: player.uuid,
+				...(name ? { name } : {}),
+				savedAt: player.savedAt,
+				playTicks,
+				vitals: entry?.vitals ?? null,
+				advancements: entry?.advancements ?? null,
+			};
+		}),
+	);
+}
+
+/**
+ * Ticks played, under whichever key the save's version used: `play_time` since
+ * 1.17, `play_one_minute` before it (ticks despite the name), and the flat
+ * `stat.playOneMinute` of pre-1.13 saves.
+ */
+function playTicksOf(stats: PlayerStats): number | null {
+	const custom = stats.sections["minecraft:custom"];
+	const ticks = custom?.["minecraft:play_time"]
+		?? custom?.["minecraft:play_one_minute"]
+		?? stats.sections.legacy?.["stat.playOneMinute"];
+
+	return ticks ?? null;
 }

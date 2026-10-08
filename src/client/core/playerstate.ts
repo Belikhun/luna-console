@@ -17,3 +17,4 @@ export const readPlayerRoster = call("playerstate.roster", { cfg: 0 }) as typeof
 export const readPlayerDetail = call("playerstate.detail", { cfg: 0 }) as typeof core.readPlayerDetail;
 export const resolvePlayerRef = call("playerstate.resolve", { cfg: 0 }) as typeof core.resolvePlayerRef;
 export const listSavedPlayers = call("playerstate.saved", { cfg: 0 }) as typeof core.listSavedPlayers;
+export const readKnownPlayers = call("playerstate.known", { cfg: 0 }) as typeof core.readKnownPlayers;

@@ -3998,6 +3998,22 @@
 		"ipBanNote": "Mọi tài khoản đứng sau địa chỉ đó bị từ chối ngay khi kết nối, trên toàn mạng, cho tới khi gỡ cấm ở màn hình kiểm duyệt.",
 		"banAddress": "Cấm địa chỉ"
 	},
+	"instanceKnownPlayers": {
+		"title": "Người chơi đã từng vào",
+		"description": "Mọi người chơi mà máy chủ này có bản lưu, {online} người đang trực tuyến. Mỗi dòng phản ánh lần lưu gần nhất của người chơi đó.",
+		"colStatus": "Trạng thái",
+		"colLastSeen": "Lần cuối thấy",
+		"colFirstJoined": "Lần đầu vào",
+		"colPlayTime": "Thời gian chơi ở đây",
+		"filterStatus": "Lọc trạng thái",
+		"anyStatus": "Mọi trạng thái",
+		"online": "Trực tuyến",
+		"offline": "Ngoại tuyến",
+		"now": "Đang chơi",
+		"firstJoinedUnknown": "Chỉ Paper ghi lại lần đầu người chơi vào",
+		"empty": "Chưa có ai vào",
+		"emptyHint": "Người chơi xuất hiện ở đây khi máy chủ đã lưu họ, tức là ở lần tự động lưu đầu tiên hoặc khi họ thoát."
+	},
 	"instanceChat": {
 		"title": "Chat & lệnh",
 		"networkTitle": "Chat & lệnh trên toàn mạng",

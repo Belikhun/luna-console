@@ -39,4 +39,5 @@ export type {
 	PlayerDetail,
 	PlayerRosterEntry,
 	SavedPlayer,
+	KnownPlayer,
 } from "../../core/playerdata";

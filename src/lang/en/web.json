@@ -3998,6 +3998,22 @@
 		"ipBanNote": "Every account behind that address is turned away at connection time, network-wide, until the ban is lifted on the moderation screen.",
 		"banAddress": "Ban address"
 	},
+	"instanceKnownPlayers": {
+		"title": "Players who have joined",
+		"description": "Everyone this server holds a save for, {online} of them online now. Each row is as of that player's last save.",
+		"colStatus": "Status",
+		"colLastSeen": "Last seen",
+		"colFirstJoined": "First joined",
+		"colPlayTime": "Play time here",
+		"filterStatus": "Filter status",
+		"anyStatus": "Any status",
+		"online": "Online",
+		"offline": "Offline",
+		"now": "Now",
+		"firstJoinedUnknown": "Only Paper records when a player first joined",
+		"empty": "Nobody has joined yet",
+		"emptyHint": "A player appears here once the server has saved them, which it does on their first autosave or when they leave."
+	},
 	"instanceChat": {
 		"title": "Chat & commands",
 		"networkTitle": "Chat & commands on the network",
