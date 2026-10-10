@@ -6,16 +6,20 @@ import { json, error } from '@sveltejs/kit';
 
 import { loadCluster, managedInstances } from '$core/config';
 import { browseInstance, readInstanceFile, writeInstanceFile } from '$core/configfiles';
+import { findInstanceFiles, pathDetails } from '$core/instancefiles';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
 
 /**
  * The instance file browser and editor. Listing is one level at a time; a world
- * directory holds hundreds of thousands of region files, so nothing recurses.
+ * directory holds hundreds of thousands of region files, so nothing recurses
+ * unless asked to by name.
  *
- * GET ?path=<dir>        → that directory's entries
- * GET ?path=<file>&read=1 → the file's text, plus its template when managed
- * PUT { path, text }     → write it (a managed file's text *is* its template)
+ * GET ?path=<dir>              → that directory's entries
+ * GET ?path=<file>&read=1      → the file's text, plus its template when managed
+ * GET ?path=<dir>&find=<name>  → entries below it whose name matches, bounded
+ * GET ?path=<p>&details=1      → size, type and (for a directory) what sits below
+ * PUT { path, text }           → write it (a managed file's text *is* its template)
  */
 export async function GET({ params, url }) {
 	const cfg = await loadCluster();
@@ -29,6 +33,18 @@ export async function GET({ params, url }) {
 	try {
 		if (url.searchParams.get('read')) {
 			return json(await readInstanceFile(cfg, params.name, path));
+		}
+
+		if (url.searchParams.get('details')) {
+			return json(await pathDetails(cfg, params.name, path));
+		}
+
+		const find = url.searchParams.get('find');
+
+		if (find) {
+			const depth = Number(url.searchParams.get('depth') ?? 6);
+
+			return json(await findInstanceFiles(cfg, params.name, { path, name: `*${find}*`, depth, limit: 500 }));
 		}
 
 		return json(await browseInstance(cfg, params.name, path));

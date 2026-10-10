@@ -345,6 +345,21 @@ export interface InstanceConfig {}
   pulls it back in keeping the placeholders whose values still match. Client paths always go through
   `resolveInstancePath` (no escaping the instance dir), browsing never recurses, and editing is
   capped at 512 KB and refuses binaries.
+- **An instance's files are managed from the console, and the bytes never ride the RPC.** The
+  file manager (`/instances/<name>/files`) lists, searches (`findInstanceFiles`, bounded),
+  renames, moves, copies, deletes, downloads and uploads through `core/instancefiles.ts`, every
+  op routed to the owning daemon. An **upload is chunked**: the console stages it on the primary
+  (`PUT /files/stage/<token>?offset=&total=`, appended in order, the last chunk completing the
+  stage, `/status` saying how far it got so a dropped connection resumes a chunk and not a file),
+  then `instancefiles.placeUpload` runs on the owner, which pulls the staged copy over the link
+  when it is a follower, and the route discards the primary's copy. A **download is a stream**:
+  `GET /files/instance/<inst>/<path>?format=raw|zip|tar[&name=…]` serves one file's own bytes with
+  ranges (`rangedFile`), a folder or a selection as a zip the daemon packs as it goes, passed
+  through the primary for a follower's instance exactly as the cross-instance tar is. Nothing is
+  held in the console process. The screen is `DataTable` with multi-select, `rowActions`, row
+  drag-and-drop (`onRowDrop`, folders as targets) and a marquee box over the background; the
+  upload queue (`$lib/uploads.svelte.ts`, `UploadQueue.svelte`) is page state, so a reload drops
+  what was not yet staged.
 - **State files are primary-owned.** A follower writing `cluster.json`, `plugins.lock.json`,
   `environment.json` or `configfiles.json` forwards the save up the cluster link (`notifySave` → the
   follower's hook → the hub persists → the root watcher syncs it back). A new cluster-root state file

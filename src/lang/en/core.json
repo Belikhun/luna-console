@@ -738,7 +738,13 @@
 		"crossFetching": "receiving {path} from {instance}",
 		"crossReceiving": "{size} received",
 		"crossPlaced": "{path} is in place on {instance}",
-		"noRoute": "{instance} is on {daemon}, which this machine cannot reach"
+		"noRoute": "{instance} is on {daemon}, which this machine cannot reach",
+		"uploadMissing": "the upload for {path} is no longer staged; send it again",
+		"uploadIncomplete": "the upload for {path} holds {got} bytes, not the {expected} it should; send it again",
+		"uploadOntoDir": "{path} is a directory; an uploaded file cannot replace it",
+		"namesNeedDir": "{path} is not a directory, so there are no entries to pack from it",
+		"rawIsOneFile": "{path} is not a single file; download it as an archive instead",
+		"badName": "{name} is not a plain entry name"
 	},
 	"hostshell": {
 		"disabled": "this machine does not accept host commands; its operator can enable mcpHostShell in the daemon config",

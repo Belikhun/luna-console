@@ -738,7 +738,13 @@
 		"crossFetching": "đang nhận {path} từ {instance}",
 		"crossReceiving": "đã nhận {size}",
 		"crossPlaced": "{path} đã nằm trên {instance}",
-		"noRoute": "{instance} nằm trên {daemon}, máy này không kết nối tới được"
+		"noRoute": "{instance} nằm trên {daemon}, máy này không kết nối tới được",
+		"uploadMissing": "tệp tải lên cho {path} không còn trong khu chuẩn bị; hãy gửi lại",
+		"uploadIncomplete": "tệp tải lên cho {path} có {got} byte, không phải {expected} như phải có; hãy gửi lại",
+		"uploadOntoDir": "{path} là thư mục; tệp tải lên không thể thay thế nó",
+		"namesNeedDir": "{path} không phải thư mục nên không có mục nào để đóng gói từ đó",
+		"rawIsOneFile": "{path} không phải một tệp đơn; hãy tải về dạng lưu trữ",
+		"badName": "{name} không phải tên mục hợp lệ"
 	},
 	"hostshell": {
 		"disabled": "máy này không nhận lệnh shell; người vận hành có thể bật mcpHostShell trong cấu hình daemon",

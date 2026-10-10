@@ -1580,6 +1580,8 @@ export const OPS: Record<string, OpSpec> = {
 	"domains.audit": { fn: domainsCore.domainAudit },
 
 	"instancefiles.uploadArchive": { fn: uploadInstanceArchive, cfg: 0, instance: 1 },
+	"instancefiles.placeUpload": { fn: placeUploadRouted, cfg: 0, instance: 1 },
+	"instancefiles.details": { fn: instancefilesCore.pathDetails, cfg: 0, instance: 1 },
 	"instancefiles.copyAcross": {
 		fn: instancefilesCore.copyAcrossInstances,
 		cfg: 0,
@@ -2078,16 +2080,40 @@ async function uploadInstanceArchive(
 	instance: string,
 	relPath: string,
 	token: string,
-): Promise<{ kind: string; name: string }> {
+	opts: instancefilesCore.ArchiveOptions = {},
+): Promise<{ kind: string; name: string; contentType: string; size?: number }> {
 	if (!uploadArchiveToPrimary) {
 		throw new Error(t("core.instancefiles.noRoute", { instance, daemon: "primary" }));
 	}
 
-	const archive = await instancefilesCore.instanceArchive(cfg, instance, relPath);
+	const archive = await instancefilesCore.instanceArchive(cfg, instance, relPath, opts);
 
 	await uploadArchiveToPrimary(archive, token);
 
-	return { kind: archive.kind, name: archive.name };
+	return {
+		kind: archive.kind,
+		name: archive.name,
+		contentType: archive.contentType,
+		...(archive.size !== undefined ? { size: archive.size } : {}),
+	};
+}
+
+/**
+ * Land a staged upload inside an instance, on the daemon that owns it. The
+ * console stages the bytes on the primary; when the owner is a follower, this
+ * runs there and pulls the staged copy over the link first. The owner's copy
+ * is consumed by the move; the primary's original is the route's to discard.
+ */
+async function placeUploadRouted(
+	cfg: ClusterConfig,
+	instance: string,
+	token: string,
+	relPath: string,
+	opts: instancefilesCore.PlaceUploadOptions = {},
+): Promise<instancefilesCore.PathInfo> {
+	const path = await localStagePath(token);
+
+	return await instancefilesCore.placeUploadedFile(cfg, instance, path, relPath, opts);
 }
 
 /** Install the staged-world fetcher (follower only). */

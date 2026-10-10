@@ -45,8 +45,13 @@
 		selected = $bindable(new Set<string>()),
 		sortValue,
 		onRowClick,
+		onRowDblClick,
 		onRowContextMenu,
 		rowActions,
+		rowDraggable,
+		onRowDragStart,
+		rowDropTarget,
+		onRowDrop,
 		rowLabel,
 		rowDim,
 		rowLocked,
@@ -74,6 +79,9 @@
 		selected?: Set<string>;
 		sortValue?: (row: T, columnId: string) => string | number | null;
 		onRowClick?: (row: T) => void;
+		/** double-click on a row; what "open" means for a table whose rows are
+		 *  containers (a file manager entering a folder) */
+		onRowDblClick?: (row: T) => void;
 		/** right-click on a row; the row is selected first, then this fires.
 		 *  Prefer `rowActions`: this is the escape hatch for a caller that owns its
 		 *  own menu (and is what ResourceTable used before the menu moved here) */
@@ -83,6 +91,14 @@
 		rowActions?: (row: T) => ContextMenuItem[];
 		/** heading of the row's context menu (defaults to the row's id) */
 		rowLabel?: (row: T) => string;
+		/** rows the user may pick up and drag; `onRowDragStart` then fills the
+		 *  transfer. Nothing is draggable unless both are given */
+		rowDraggable?: (row: T) => boolean;
+		onRowDragStart?: (row: T, event: DragEvent) => void;
+		/** rows something may be dropped on (a folder); the row lights up while a
+		 *  drag hovers it and `onRowDrop` receives the drop */
+		rowDropTarget?: (row: T, event: DragEvent) => boolean;
+		onRowDrop?: (row: T, event: DragEvent) => void;
 		/** rows rendered dimmed; de-emphasis only (disabled, withheld, not deployed).
 		 *  A dimmed row is still selectable, because the verb that un-dims it is
 		 *  usually the one the user came for */
@@ -338,6 +354,56 @@
 
 	function toggleAll(): void {
 		selected = allSelected ? new Set() : new Set(selectableRows.map(getId));
+	}
+
+	// ----- row drag and drop -----
+	/** id of the row a drag is hovering, when it may be dropped there */
+	let dropRow: string | null = $state(null);
+
+	function dragStart(row: T, event: DragEvent): void {
+		if (!rowDraggable?.(row) || !onRowDragStart) {
+			event.preventDefault();
+
+			return;
+		}
+
+		// dragging a row that is not in the selection makes it the selection, so
+		// what moves is what the user sees highlighted
+		if (selectable !== 'none' && !rowLocked?.(row) && !selected.has(getId(row))) {
+			selected = new Set([getId(row)]);
+		}
+
+		onRowDragStart(row, event);
+	}
+
+	function dragOver(row: T, event: DragEvent): void {
+		if (!rowDropTarget?.(row, event)) {
+			if (dropRow === getId(row)) {
+				dropRow = null;
+			}
+
+			return;
+		}
+
+		event.preventDefault();
+		dropRow = getId(row);
+	}
+
+	function dragLeave(row: T): void {
+		if (dropRow === getId(row)) {
+			dropRow = null;
+		}
+	}
+
+	function drop(row: T, event: DragEvent): void {
+		if (!rowDropTarget?.(row, event)) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+		dropRow = null;
+		onRowDrop?.(row, event);
 	}
 
 	// ----- column widths -----
@@ -842,8 +908,15 @@
 						class:after-selected={afterSelected}
 						class:dim
 						class:locked
+						class:drop-target={dropRow === getId(row)}
+						draggable={rowDraggable?.(row) ? 'true' : undefined}
 						onclick={() => rowClick(row)}
+						ondblclick={onRowDblClick ? () => onRowDblClick(row) : undefined}
 						oncontextmenu={(event) => rowContext(row, event)}
+						ondragstart={rowDraggable ? (event) => dragStart(row, event) : undefined}
+						ondragover={rowDropTarget ? (event) => dragOver(row, event) : undefined}
+						ondragleave={rowDropTarget ? () => dragLeave(row) : undefined}
+						ondrop={rowDropTarget ? (event) => drop(row, event) : undefined}
 					>
 						{#if selectable !== 'none'}
 							<td class="sel" class:sticky={stickyCount > 0} style={stickyStyle(0)}>
@@ -1418,6 +1491,13 @@
 	// still be selected, and the verb that un-dims it is the one being looked for.
 	tbody tr.dim {
 		color: var(--text-secondary);
+	}
+
+	// A drag hovering a row that will take it: an inset ring rather than a fill,
+	// so the row's own selection colour stays readable underneath.
+	tbody tr.drop-target > td {
+		background-color: var(--bg-selected);
+		box-shadow: inset 0 0.1rem 0 var(--link), inset 0 -0.1rem 0 var(--link);
 	}
 
 	// A locked row has nothing to click: no hover lift, no pointer, no checkbox.

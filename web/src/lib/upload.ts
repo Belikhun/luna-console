@@ -54,11 +54,11 @@ export class UploadError extends Error {
  * Stream a file to a console route, reporting progress as it goes.
  *
  * @param path route path under `/api`, e.g. `/worlds/stage/<token>`
- * @param file the picked file; sent as the raw request body
+ * @param file the picked file, or one slice of it; sent as the raw request body
  * @returns the route's parsed JSON answer
  * @throws {UploadError} on a non-2xx answer, a network failure, or an abort
  */
-export function uploadFile<T = unknown>(path: string, file: File, opts: UploadOptions = {}): Promise<T> {
+export function uploadFile<T = unknown>(path: string, file: Blob, opts: UploadOptions = {}): Promise<T> {
 	return new Promise<T>((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
 		const started = Date.now();

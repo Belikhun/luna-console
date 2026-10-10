@@ -62,6 +62,11 @@ export default defineConfig(({ command }) => ({
 		fs: {
 			// allow the dev server to import ../src/core
 			allow: [resolve(import.meta.dirname, '..')]
-		}
+		},
+		// a dev server reached through a reverse proxy on a public name needs that
+		// name allowed, or Vite's host check answers 403; comma-separated
+		...(process.env.LUNA_DEV_HOSTS
+			? { allowedHosts: process.env.LUNA_DEV_HOSTS.split(',').map((host) => host.trim()) }
+			: {})
 	}
 }));

@@ -10,7 +10,7 @@
  */
 
 import { join, normalize } from "node:path";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { mkdir, open as openFile, rename, rm, stat } from "node:fs/promises";
 import { t } from "../shared/i18n";
 import { existsSync, statSync } from "node:fs";
 
@@ -394,18 +394,23 @@ async function handleDatapackFile(subpath: string): Promise<Response> {
  * an RPC argument - those are JSON over the socket - and why the ops take a
  * staging token instead.
  */
-async function handleStageUpload(request: Request, token: string): Promise<Response> {
+async function handleStageUpload(request: Request, token: string, url: URL): Promise<Response> {
 	const clean = stageToken(token);
 
 	if (!clean) {
 		return errorResponse("invalid stage token", 400);
 	}
 
+	await mkdir(stagingDir(), { recursive: true });
+
+	// a chunk may legitimately be empty: an empty file is one zero-byte chunk
+	if (url.searchParams.has("offset")) {
+		return await handleStageChunk(request, clean, url);
+	}
+
 	if (!request.body) {
 		return errorResponse("empty body", 400);
 	}
-
-	await mkdir(stagingDir(), { recursive: true });
 
 	const path = join(stagingDir(), `${clean}.zip`);
 	const partial = `${path}.part`;
@@ -458,6 +463,103 @@ async function handleStageUpload(request: Request, token: string): Promise<Respo
 	await rename(partial, path);
 
 	return jsonResponse({ ok: true, token: clean, bytes });
+}
+
+/**
+ * PUT /files/stage/<token>?offset=N&total=M; one piece of an upload the
+ * console sends in chunks, appended to the staged file at `offset`.
+ *
+ * Chunks are what let a multi-gigabyte upload over a domestic connection
+ * survive a dropped request: the client re-asks where the file stands
+ * (`/status`) and resumes from there, instead of starting over. The offset is
+ * the ordering check: a chunk arriving for any other position is answered 409
+ * with the size actually on disk, and the client resumes from that. The last
+ * chunk (`offset + length === total`) completes the stage, so a half-arrived
+ * file is never visible to an op under the completed name.
+ */
+async function handleStageChunk(request: Request, token: string, url: URL): Promise<Response> {
+	const offset = Number(url.searchParams.get("offset"));
+	const total = Number(url.searchParams.get("total"));
+
+	if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(total) || total < 0 || offset > total) {
+		return errorResponse("offset and total must be byte counts, with offset within total", 400);
+	}
+
+	if (total > MAX_STAGE_BYTES) {
+		return errorResponse(t("daemon.stageTooLarge"), 413);
+	}
+
+	const path = join(stagingDir(), `${token}.zip`);
+	const partial = `${path}.part`;
+
+	if (existsSync(path)) {
+		return jsonResponse({ ok: false, error: "that upload is already complete", bytes: (await stat(path)).size, complete: true }, 409);
+	}
+
+	const current = existsSync(partial) ? (await stat(partial)).size : 0;
+
+	if (current !== offset) {
+		return jsonResponse({ ok: false, error: `the staged file holds ${current} bytes, not ${offset}`, bytes: current, complete: false }, 409);
+	}
+
+	const handle = await openFile(partial, "a");
+	const reader = request.body?.getReader();
+	let bytes = current;
+
+	try {
+		for (; reader;) {
+			const { done, value } = await reader.read();
+
+			if (done) {
+				break;
+			}
+
+			bytes += value.byteLength;
+
+			if (bytes > total) {
+				throw new Error("the chunk runs past the declared total");
+			}
+
+			await handle.write(value);
+		}
+	} catch (err) {
+		await reader?.cancel().catch(() => undefined);
+		await handle.close().catch(() => undefined);
+
+		// the appended bytes stay; the client learns the true size from /status
+		// and resumes from it, which is the whole point of chunking
+		return errorResponse(err instanceof Error ? err.message : String(err), 400);
+	}
+
+	await handle.close();
+
+	const complete = bytes === total;
+
+	if (complete) {
+		await rename(partial, path);
+	}
+
+	return jsonResponse({ ok: true, token, bytes, complete });
+}
+
+/** GET /files/stage/<token>/status; how much of a chunked upload has arrived. */
+async function handleStageStatus(token: string): Promise<Response> {
+	const clean = stageToken(token);
+
+	if (!clean) {
+		return errorResponse("invalid stage token", 400);
+	}
+
+	const path = join(stagingDir(), `${clean}.zip`);
+
+	if (existsSync(path)) {
+		return jsonResponse({ ok: true, token: clean, bytes: (await stat(path)).size, complete: true });
+	}
+
+	const partial = `${path}.part`;
+	const bytes = existsSync(partial) ? (await stat(partial)).size : 0;
+
+	return jsonResponse({ ok: true, token: clean, bytes, complete: false });
 }
 
 /** GET /files/stage/<token>; hand a staged zip to the follower that needs it. */
@@ -534,10 +636,15 @@ function encodePath(relPath: string): string {
  * sweep takes any copy a dropped reader leaves behind). For followers that
  * advertise no listen port, which the primary cannot dial.
  */
-async function stagedFollowerArchive(cfg: ClusterConfig, instance: string, relPath: string): Promise<Response> {
+async function stagedFollowerArchive(
+	cfg: ClusterConfig,
+	instance: string,
+	relPath: string,
+	opts: instancefilesCore.ArchiveOptions = {},
+): Promise<Response> {
 	const token = newStageToken();
-	const outcome = await runOp("instancefiles.uploadArchive", [cfg, instance, relPath, token]);
-	const meta = outcome.result as { kind: string; name: string };
+	const outcome = await runOp("instancefiles.uploadArchive", [cfg, instance, relPath, token, opts]);
+	const meta = outcome.result as { kind: string; name: string; contentType: string; size?: number };
 
 	const body = Bun.file(stagePath(token)).stream().pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
 		flush() {
@@ -546,12 +653,48 @@ async function stagedFollowerArchive(cfg: ClusterConfig, instance: string, relPa
 	}));
 
 	return new Response(body, {
-		headers: {
-			"content-type": "application/x-tar",
-			"x-luna-kind": meta.kind,
-			"x-luna-name": encodeURIComponent(meta.name),
-		},
+		headers: archiveHeaders(meta),
 	});
+}
+
+/** The headers an archive response carries, whoever packed it. */
+function archiveHeaders(meta: { kind: string; name: string; contentType: string; size?: number }): Record<string, string> {
+	const headers: Record<string, string> = {
+		"content-type": meta.contentType,
+		"x-luna-kind": meta.kind,
+		// header values are ASCII, so the name travels percent-encoded
+		"x-luna-name": encodeURIComponent(meta.name),
+	};
+
+	if (meta.size !== undefined) {
+		headers["content-length"] = String(meta.size);
+	}
+
+	return headers;
+}
+
+/** The archive options a request's query asks for. */
+function archiveOptionsOf(params: URLSearchParams): instancefilesCore.ArchiveOptions {
+	const format = params.get("format");
+	const names = params.getAll("name");
+
+	return {
+		format: format === "zip" || format === "raw" ? format : "tar",
+		...(names.length > 0 ? { names } : {}),
+	};
+}
+
+/** The query carrying archive options to another daemon, as a suffix. */
+function archiveQuery(opts: instancefilesCore.ArchiveOptions): string {
+	const params = new URLSearchParams();
+
+	params.set("format", opts.format ?? "tar");
+
+	for (const name of opts.names ?? []) {
+		params.append("name", name);
+	}
+
+	return `?${params.toString()}`;
 }
 
 /**
@@ -590,15 +733,17 @@ async function fetchInstanceArchive(cfg: ClusterConfig, instance: string, relPat
 }
 
 /**
- * GET /files/instance/<instance>/<path>; one file or directory of an instance
- * as a tar stream, for a copy whose destination is on another machine. The
- * owner packs it; the primary passes the request through to the owner when the
- * instance is a follower's.
+ * GET /files/instance/<instance>/<path>[?format=tar|zip|raw&name=…]; one file
+ * or directory of an instance as a stream: a tar for a copy whose destination
+ * is on another machine, a zip for a download, the raw bytes of one file for
+ * a download or a preview (`Range` honoured). The owner packs it; the primary
+ * passes the request through to the owner when the instance is a follower's.
  */
-async function handleInstanceArchive(subpath: string): Promise<Response> {
+async function handleInstanceArchive(subpath: string, request: Request, url: URL): Promise<Response> {
 	const slash = subpath.indexOf("/");
 	const instance = slash < 0 ? subpath : subpath.slice(0, slash);
 	const relPath = slash < 0 ? "" : subpath.slice(slash + 1);
+	const opts = archiveOptionsOf(url.searchParams);
 
 	if (!/^[a-z0-9_-]+$/i.test(instance)) {
 		return errorResponse("invalid instance", 400);
@@ -618,7 +763,7 @@ async function handleInstanceArchive(subpath: string): Promise<Response> {
 
 		if (!endpoint && isPrimary) {
 			try {
-				return await stagedFollowerArchive(cfg, instance, relPath);
+				return await stagedFollowerArchive(cfg, instance, relPath, opts);
 			} catch (err) {
 				return errorResponse(err instanceof Error ? err.message : String(err), 404);
 			}
@@ -628,8 +773,9 @@ async function handleInstanceArchive(subpath: string): Promise<Response> {
 			return errorResponse(t("core.instancefiles.noRoute", { instance, daemon: inst.daemon ?? "primary" }), 502);
 		}
 
-		const upstream = await fetch(`http://${endpoint}/files/instance/${encodeURIComponent(instance)}/${encodePath(relPath)}`, {
-			headers: { "x-luna-token": clusterToken ?? "" },
+		const range = request.headers.get("range");
+		const upstream = await fetch(`http://${endpoint}/files/instance/${encodeURIComponent(instance)}/${encodePath(relPath)}${archiveQuery(opts)}`, {
+			headers: { "x-luna-token": clusterToken ?? "", ...(range ? { range } : {}) },
 		}).catch(() => undefined);
 
 		if (!upstream) {
@@ -640,14 +786,22 @@ async function handleInstanceArchive(subpath: string): Promise<Response> {
 	}
 
 	try {
-		const archive = await instancefilesCore.instanceArchive(cfg, instance, relPath);
+		const archive = await instancefilesCore.instanceArchive(cfg, instance, relPath, opts);
+
+		// a raw file is served from disk with ranges, so a preview can seek and a
+		// dropped download can resume; a packer's output has no length to range over
+		if (archive.format === "raw") {
+			const resolved = instancefilesCore.resolveArchivePath(cfg, instance, relPath);
+			const response = await rangedFile(resolved, request, archive.contentType);
+
+			response.headers.set("x-luna-kind", archive.kind);
+			response.headers.set("x-luna-name", encodeURIComponent(archive.name));
+
+			return response;
+		}
 
 		return new Response(archive.stream, {
-			headers: {
-				"content-type": "application/x-tar",
-				"x-luna-kind": archive.kind,
-				"x-luna-name": encodeURIComponent(archive.name),
-			},
+			headers: archiveHeaders(archive),
 		});
 	} catch (err) {
 		return errorResponse(err instanceof Error ? err.message : String(err), 404);
@@ -889,7 +1043,7 @@ async function proxyFollowerMap(
 }
 
 /** A file response honouring a `Range` header, so a huge download can resume. */
-export async function rangedFile(path: string, request: Request): Promise<Response> {
+export async function rangedFile(path: string, request: Request, contentType = "application/zip"): Promise<Response> {
 	const file = Bun.file(path);
 	const size = file.size;
 	const range = request.headers.get("range");
@@ -898,7 +1052,7 @@ export async function rangedFile(path: string, request: Request): Promise<Respon
 	if (!match) {
 		return new Response(file, {
 			headers: {
-				"content-type": "application/zip",
+				"content-type": contentType,
 				"accept-ranges": "bytes",
 				"content-length": String(size),
 			},
@@ -922,7 +1076,7 @@ export async function rangedFile(path: string, request: Request): Promise<Respon
 	return new Response(file.slice(start, end + 1), {
 		status: 206,
 		headers: {
-			"content-type": "application/zip",
+			"content-type": contentType,
 			"accept-ranges": "bytes",
 			"content-range": `bytes ${start}-${end}/${size}`,
 			"content-length": String(end - start + 1),
@@ -1078,7 +1232,7 @@ export function buildHandler(
 		}
 
 		if (path.startsWith("/files/instance/") && request.method === "GET") {
-			return await handleInstanceArchive(decodeURIComponent(path.slice("/files/instance/".length)));
+			return await handleInstanceArchive(decodeURIComponent(path.slice("/files/instance/".length)), request, url);
 		}
 
 		if (path.startsWith("/files/pool/")) {
@@ -1088,8 +1242,12 @@ export function buildHandler(
 		if (path.startsWith("/files/stage/")) {
 			const token = decodeURIComponent(path.slice("/files/stage/".length));
 
+			if (token.endsWith("/status") && request.method === "GET") {
+				return await handleStageStatus(token.slice(0, -"/status".length));
+			}
+
 			if (request.method === "PUT" || request.method === "POST") {
-				return await handleStageUpload(request, token);
+				return await handleStageUpload(request, token, url);
 			}
 
 			return await handleStageFile(token);
