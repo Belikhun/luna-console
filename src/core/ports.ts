@@ -89,6 +89,22 @@ function dynmapWeb(configDir: string): PortBindingSpec {
 	};
 }
 
+/** BlueMap's webserver port, whose config lives in a per-platform directory. */
+function bluemapWeb(configDir: string): PortBindingSpec {
+	return {
+		id: "web",
+		protocol: "tcp",
+		scope: "instance",
+		pool: "map",
+		range: [8100, 8199],
+		config: {
+			file: `${configDir}/webserver.conf`,
+			format: "hocon",
+			key: "port",
+		},
+	};
+}
+
 /** Built-in port binding presets for known plugins, keyed by "<provider-slug>:<side>". */
 export const PORT_PRESETS: Record<string, PortBindingSpec[]> = {
 	"simple-voice-chat:paper": [
@@ -121,20 +137,12 @@ export const PORT_PRESETS: Record<string, PortBindingSpec[]> = {
 		},
 	],
 
-	"bluemap:paper": [
-		{
-			id: "web",
-			protocol: "tcp",
-			scope: "instance",
-			pool: "map",
-			range: [8100, 8199],
-			config: {
-				file: "plugins/BlueMap/webserver.conf",
-				format: "hocon",
-				key: "port",
-			},
-		},
-	],
+	// BlueMap's webserver: the plugin keeps its config under `plugins/BlueMap`, the
+	// mod builds under `config/bluemap` on every loader
+	"bluemap:paper": [bluemapWeb("plugins/BlueMap")],
+	"bluemap:forge": [bluemapWeb("config/bluemap")],
+	"bluemap:neoforge": [bluemapWeb("config/bluemap")],
+	"bluemap:fabric": [bluemapWeb("config/bluemap")],
 
 	// Dynmap's own webserver, one entry per platform because the same mod keeps its
 	// data directory somewhere different on each: a plugin's files go under
