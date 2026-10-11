@@ -502,13 +502,14 @@ export const MCP_TOOLS: McpToolSpec[] = [
 	{
 		name: "file_read",
 		group: "files",
-		description: "Read a text file inside an instance (configs, logs, scripts). Files over 512 KB and binary files are refused; use offset/limit to page through long files by line.",
+		description: "Read a range of lines from a text file inside an instance (configs, logs, scripts), without loading the rest, so a file of any size can be read; binary files are refused. Lines come back numbered as \"<n>\\t<text>\"; the number and tab are not part of the file, so leave them out when quoting text to file_edit. Lines longer than 2000 characters are cut. Read the part you need: a narrow offset/limit for a big config, a negative offset for the end of a log (-100 is the last hundred lines). A file luna manages as a template reads as the template by default, which is what file_edit changes.",
 		inputSchema: object(
 			{
 				instance: INSTANCE,
 				path: { type: "string", description: "File path relative to the instance root.", maxLength: 1024 },
-				offset: { type: "integer", description: "First line to return, 1-based (default 1).", minimum: 1 },
+				offset: { type: "integer", description: "First line to return, 1-based (default 1); negative counts from the end." },
 				limit: { type: "integer", description: "Most lines to return (default 400).", minimum: 1, maximum: 5000 },
+				source: { type: "string", enum: ["template", "disk"], description: "For a managed file: its template (default) or the rendered file on disk." },
 			},
 			["instance", "path"],
 		),
@@ -551,7 +552,7 @@ export const MCP_TOOLS: McpToolSpec[] = [
 	{
 		name: "file_write",
 		group: "files-write",
-		description: "Write a text file inside an instance, replacing its contents (parent folders are created). At most 512 KB. A file luna manages as a template is written as the new template. Most configs only apply after the server restarts or reloads.",
+		description: "Write a whole text file inside an instance, replacing its contents (parent folders are created). At most 512 KB. Use it to create a file or to rewrite one completely; to change part of an existing file use file_edit, which sends only the change. A file luna manages as a template is written as the new template. Most configs only apply after the server restarts or reloads.",
 		inputSchema: object(
 			{
 				instance: INSTANCE,
@@ -562,6 +563,31 @@ export const MCP_TOOLS: McpToolSpec[] = [
 			["instance", "path", "content"],
 		),
 		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+		instanceArg: "instance",
+	},
+	{
+		name: "file_edit",
+		group: "files-write",
+		description: "Change part of an existing text file inside an instance without rewriting it, like a code editor's find-and-replace. Each edit either replaces `oldString` with `newString` (the text must appear exactly once, matched character for character including indentation; give more surrounding lines to make it unique, or set replaceAll), or inserts `text` after line `afterLine` (0 inserts at the top). Edits apply in order, each to the result of the one before, and nothing is written unless all of them apply. Read the file with file_read first and copy the text without its line numbers. A file luna manages as a template is edited as the template. Most configs only apply after the server restarts or reloads.",
+		inputSchema: object(
+			{
+				instance: INSTANCE,
+				path: { type: "string", description: "File path relative to the instance root.", maxLength: 1024 },
+				edits: {
+					type: "array",
+					description: "The changes, in order (at most 50). Each is {oldString, newString, replaceAll?} or {afterLine, text}.",
+					items: object({
+						oldString: { type: "string", description: "Exact text to replace." },
+						newString: { type: "string", description: "What replaces it; empty deletes it." },
+						replaceAll: { type: "boolean", description: "Replace every occurrence instead of requiring exactly one." },
+						afterLine: { type: "integer", description: "Insert after this line number (0 for the top) instead of replacing.", minimum: 0 },
+						text: { type: "string", description: "Lines to insert with afterLine." },
+					}),
+				},
+			},
+			["instance", "path", "edits"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: false },
 		instanceArg: "instance",
 	},
 	{
@@ -1336,7 +1362,7 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		name: "skill_list",
 		group: "knowledge",
 		description:
-			"List the skills (named step-by-step procedures written by the operators) available to you, with a one-line description each.",
+			"List the skills (named step-by-step procedures) available to you, with a one-line description each. `editable` marks your own, which skill_save and skill_delete can change; the rest are the operators' console-wide skills.",
 		inputSchema: object(),
 		annotations: READ,
 	},
@@ -1394,6 +1420,29 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		group: "knowledge-write",
 		description: "Delete a memory that is wrong or obsolete, by id from memory_search.",
 		inputSchema: object({ id: { type: "string", description: "Memory id.", maxLength: 64 } }, ["id"]),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "skill_save",
+		group: "knowledge-write",
+		description:
+			"Create one of your own skills, or replace it when you already have one by that name: a named, step-by-step procedure for a task you will do again (installing a kind of modpack, a migration, a recurring fix), written so a later conversation can follow it from skill_get alone. The body is markdown: when to use it, the steps with exact tool calls and arguments, the checks, and the traps found along the way. Console-wide skills belong to the operators and cannot be changed here, and a name one of them uses is taken.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "Lowercase slug: letters, digits and dashes, e.g. \"modpack-install\".", maxLength: 64 },
+				description: { type: "string", description: "One line saying when to use it; skill_list shows this.", maxLength: 300 },
+				body: { type: "string", description: "The procedure, in markdown.", maxLength: 32000 },
+				tags: { type: "array", items: { type: "string", maxLength: 40 }, description: "Optional tags." },
+			},
+			["name", "description", "body"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "skill_delete",
+		group: "knowledge-write",
+		description: "Delete one of your own skills by name, when it is wrong or no longer needed.",
+		inputSchema: object({ name: { type: "string", description: "Skill name from skill_list.", maxLength: 64 } }, ["name"]),
 		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
 	},
 ];

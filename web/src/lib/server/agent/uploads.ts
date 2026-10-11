@@ -16,9 +16,9 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { mkdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 /** Largest file the panel accepts. */
 export const MAX_UPLOAD_BYTES = 128 * 1024 * 1024;
@@ -91,6 +91,23 @@ export async function readUpload(id: string): Promise<{ upload: StagedUpload; by
 	}
 
 	return { upload, bytes: new Uint8Array(await file.arrayBuffer()) };
+}
+
+/**
+ * Copy one of the owner's attachments to a path, without reading it into
+ * memory; false when it is unknown, expired or someone else's.
+ */
+export async function copyUpload(id: string, owner: string, dest: string): Promise<boolean> {
+	const upload = staged.get(id);
+
+	if (!upload || upload.owner !== owner || !(await Bun.file(pathOf(id)).exists())) {
+		return false;
+	}
+
+	await mkdir(dirname(dest), { recursive: true });
+	await copyFile(pathOf(id), dest);
+
+	return true;
 }
 
 /** Drop an attachment before it expires. */

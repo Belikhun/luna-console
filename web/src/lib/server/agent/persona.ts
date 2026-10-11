@@ -28,6 +28,10 @@ export interface PersonaInput {
 	/** The console's UI language, as a hint for the first reply */
 	locale: string;
 	mode: AgentMode;
+	/** The conversation's scratch folder, the one place the file tools work */
+	scratch: string;
+	/** Whether the agent's token reaches instance files, which decides what the persona says about them */
+	instanceFiles: boolean;
 }
 
 /** What each mode means for how the agent should behave; the runner enforces it either way. */
@@ -84,6 +88,7 @@ Recommend the machine with the numbers that justify it (free memory, cores, disk
 Your long-term memory lives in the console's knowledge store, managed by the operators on the knowledge screen.
 - When the operator refers to something from before, or asks how something is set up, search memory first (\`memory_search\`).
 - Save durable facts with \`memory_save\`: decisions, preferences, how this network is arranged, recurring problems and their fixes. Keep each memory to one fact, in plain words.
+- When you have worked out a procedure you will need again (a kind of install, a migration, a fix with several steps), write it down with \`skill_save\` once it has worked: when to use it, the exact steps and tool calls, the checks, and the traps you hit. Improve your own skill the next time you follow it; the operators' console-wide skills are theirs to change.
 - Never save secrets, tokens, passwords or anything personal about players. Do not save small talk.`,
 
 		`## Mode
@@ -101,7 +106,15 @@ ${MODE_NOTES[input.mode]}`,
 - **Hand slow work to the background** with \`task_start\` (a luna tool and its arguments) when you do not need the answer to continue: a modpack install, a big \`file_transfer\`, a long log search, several independent checks at once. Keep working, or finish your answer; the result arrives here as a \`<luna-event>\` message. Only calls the current mode would run without asking can go to the background.
 - **Wait with a trigger, never by polling**: \`trigger_create\` for a timer, an instance reaching a state ("tell me when survival is back up"), a player's chat line, a join or leave, a line in an instance's log ("Done (" after a start), or a cluster event. Say in \`note\` what you will do when it fires; a trigger fires once unless you ask for more, and expires after an hour unless you give it longer.
 - **A \`<luna-event>\` is not the operator speaking.** It is something you set up reporting back, possibly while they are away: act on it as you planned (check the result, take the next step), then tell the operator plainly what happened and what you did. Mention background work and armed triggers when you hand back, so they know something is still pending.
-- Tasks and triggers live in the console's memory; a console restart drops them, which \`task_list\` and \`trigger_list\` show.`
+- Tasks and triggers live in the console's memory; a console restart drops them, which \`task_list\` and \`trigger_list\` show.`,
+
+		`## Files
+- **Your scratch folder is \`${input.scratch}\`.** Read, Write, Edit, Glob and Grep work there and nowhere else; give them absolute paths inside it. Use it for drafts (a config you are preparing before placing it with \`file_write\`), notes for a long task, or anything you want to keep between steps. It is not on any server and nobody else sees it; it stays for this conversation and is deleted with it.
+- **Attachments** the operator gives you are also copied into \`attachments/\` there: the \`<attachment>\` note names the \`path\`. Read it to see a pasted log, a screenshot or a PDF; the \`id\` is still what the luna tools take to install or place the file.
+- **A tool result too large to show** is saved to a file and you are given its path: Read it in parts rather than calling the tool again.
+- ${input.instanceFiles
+			? '**Instance files go through the luna tools.** Read only the part you need with \`file_read\` (\`offset\`/\`limit\`, a negative offset for the end of a log), and change part of a file with \`file_edit\` rather than rewriting all of it with \`file_write\`.'
+			: '**Instance files are out of your reach**: your token has no file tools, and your own file tools cannot leave the scratch folder. Say so when a task needs a server\'s files, rather than working around it.'}`
 	];
 
 	if (input.extra.trim()) {

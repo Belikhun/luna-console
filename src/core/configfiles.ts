@@ -500,6 +500,300 @@ export async function writeInstanceFile(
 	return { path: rel, managed: true, rendered: result.text, missing: [] };
 }
 
+/** Characters of one line a ranged read returns before cutting it short. */
+export const READ_LINE_MAX_CHARS = 2000;
+
+/** Lines a ranged read returns when the caller does not say. */
+export const READ_DEFAULT_LINES = 400;
+
+export interface FileLines {
+	path: string;
+	size: number;
+	modified: number;
+	/** Rendered from a template on every start */
+	managed: boolean;
+	/** Which text the lines came from: the file on disk, or a managed file's template */
+	source: "disk" | "template";
+	totalLines: number;
+	/** 1-based, inclusive; 0 and 0 when the range holds nothing */
+	fromLine: number;
+	toLine: number;
+	lines: string[];
+	/** How many of the returned lines were cut at `READ_LINE_MAX_CHARS` */
+	cutLines: number;
+}
+
+/**
+ * Read a range of lines from a text file without loading the rest of it, the
+ * way Claude Code's Read pages through a file. The disk file is streamed, so a
+ * log far past the editor's cap reads as well as a small config. A negative
+ * offset counts from the end (-50 is the last fifty lines). A managed file can
+ * be read as its template instead, which is the text an edit applies to.
+ */
+export async function readInstanceLines(
+	cfg: ClusterConfig,
+	instance: string,
+	relPath: string,
+	opts: { offset?: number; limit?: number; source?: "disk" | "template" } = {},
+): Promise<FileLines> {
+	const { path, rel } = resolveInstancePath(cfg, instance, relPath);
+	const store = await loadConfigFiles();
+	const entry = store.instances[instance]?.[rel];
+	const limit = Math.max(1, Math.floor(opts.limit ?? READ_DEFAULT_LINES));
+	const offset = Math.trunc(opts.offset ?? 1) || 1;
+	const fromTemplate = !!entry && (opts.source === "template" || (opts.source !== "disk" && !existsSync(path)));
+
+	if (fromTemplate) {
+		const text = entry!.template;
+		const all = text.split("\n");
+
+		if (all.length > 1 && all[all.length - 1] === "") {
+			all.pop();
+		}
+		const start = offset < 0
+			? Math.max(1, all.length + offset + 1)
+			: offset;
+		const span = offset < 0
+			? Math.min(limit, -offset)
+			: limit;
+
+		return {
+			path: rel,
+			size: Buffer.byteLength(text),
+			modified: entry!.updatedAt ? Date.parse(entry!.updatedAt) : 0,
+			managed: true,
+			source: "template",
+			...numberLines(all.slice(start - 1, start - 1 + span), all.length, start),
+		};
+	}
+
+	if (!existsSync(path)) {
+		throw new Error(t("core.configfiles.noSuchFile", { path: rel }));
+	}
+
+	const info = await stat(path);
+
+	if (info.isDirectory()) {
+		throw new Error(t("core.configfiles.isDirectory", { path: rel }));
+	}
+
+	if (await looksBinary(path)) {
+		throw new Error(t("core.configfiles.notText", { path: rel }));
+	}
+
+	const scanned = await scanLines(path, offset, limit);
+
+	return {
+		path: rel,
+		size: info.size,
+		modified: info.mtimeMs,
+		managed: !!entry,
+		source: "disk",
+		...numberLines(scanned.kept.slice(0, limit), scanned.total, scanned.firstKept),
+	};
+}
+
+/**
+ * Stream a file once, keeping only what the range needs: from `offset` onwards
+ * for a positive one, the last `-offset` lines for a negative one.
+ */
+async function scanLines(
+	path: string,
+	offset: number,
+	limit: number,
+): Promise<{ kept: string[]; total: number; firstKept: number }> {
+	const decoder = new TextDecoder();
+	const kept: string[] = [];
+	const tail = offset < 0
+		? -offset
+		: 0;
+	let pending = "";
+	let total = 0;
+
+	const take = (line: string): void => {
+		total += 1;
+
+		if (tail) {
+			kept.push(line);
+
+			if (kept.length > tail) {
+				kept.shift();
+			}
+
+			return;
+		}
+
+		if (total >= offset && total < offset + limit) {
+			kept.push(line);
+		}
+	};
+
+	for await (const chunk of Bun.file(path).stream()) {
+		pending += decoder.decode(chunk, { stream: true });
+
+		const parts = pending.split("\n");
+
+		pending = parts.pop() ?? "";
+
+		for (const line of parts) {
+			take(line);
+		}
+	}
+
+	pending += decoder.decode();
+
+	// a final newline ends the last line rather than starting an empty one
+	if (pending !== "" || total === 0) {
+		take(pending);
+	}
+
+	const firstKept = tail
+		? total - kept.length + 1
+		: offset;
+
+	return { kept, total, firstKept };
+}
+
+/** Trim a range of lines that starts at line `start` of a file `total` lines long. */
+function numberLines(
+	window: string[],
+	total: number,
+	start: number,
+): Pick<FileLines, "totalLines" | "fromLine" | "toLine" | "lines" | "cutLines"> {
+	let cutLines = 0;
+
+	const trimmed = window.map((line) => {
+		const bare = line.endsWith("\r")
+			? line.slice(0, -1)
+			: line;
+
+		if (bare.length <= READ_LINE_MAX_CHARS) {
+			return bare;
+		}
+
+		cutLines += 1;
+
+		return `${bare.slice(0, READ_LINE_MAX_CHARS)}…`;
+	});
+
+	return {
+		totalLines: total,
+		fromLine: trimmed.length ? start : 0,
+		toLine: trimmed.length ? start + trimmed.length - 1 : 0,
+		lines: trimmed,
+		cutLines,
+	};
+}
+
+/**
+ * One change to a text file: replace an exact piece of text (once, unless
+ * `replaceAll`), or insert lines after a line number (0 puts them first).
+ */
+export type FileEdit =
+	| { oldString: string; newString: string; replaceAll?: boolean }
+	| { afterLine: number; text: string };
+
+export interface EditResult extends WriteResult {
+	/** Where each edit landed in the new text, 1-based */
+	lines: number[];
+	replacements: number;
+	size: number;
+}
+
+/**
+ * Change part of a text file without sending all of it, the way Claude Code's
+ * Edit does: each replacement must match exactly once (or be marked
+ * `replaceAll`), edits apply in order to the result of the one before, and
+ * nothing is written unless every one of them applies. A managed file is
+ * edited as its template, which `writeInstanceFile` then renders. Text written
+ * with `\n` is matched and inserted with `\r\n` in a file that uses them.
+ */
+export async function editInstanceFile(
+	cfg: ClusterConfig,
+	instance: string,
+	relPath: string,
+	edits: FileEdit[],
+): Promise<EditResult> {
+	const file = await readInstanceFile(cfg, instance, relPath);
+	let text = file.managed && file.template !== undefined
+		? file.template
+		: file.text;
+	const newline = text.includes("\r\n")
+		? "\r\n"
+		: "\n";
+	const eol = (value: string): string => value.replace(/\r?\n/g, newline);
+	const lines: number[] = [];
+	let replacements = 0;
+
+	for (const edit of edits) {
+		if ("afterLine" in edit) {
+			const all = text.split(newline);
+			const after = Math.trunc(edit.afterLine);
+			const count = all.length > 1 && all[all.length - 1] === ""
+				? all.length - 1
+				: all.length;
+
+			if (after < 0 || after > count) {
+				throw new Error(t("core.configfiles.editLineRange", { path: file.path, line: after, total: count }));
+			}
+
+			const inserted = edit.text.replace(/\r?\n$/, "").split(/\r?\n/);
+
+			all.splice(after, 0, ...inserted);
+			text = all.join(newline);
+			lines.push(after + 1);
+
+			continue;
+		}
+
+		const needle = eol(edit.oldString);
+		const replacement = eol(edit.newString);
+
+		if (!needle) {
+			throw new Error(t("core.configfiles.editEmpty", { path: file.path }));
+		}
+
+		if (needle === replacement) {
+			throw new Error(t("core.configfiles.editNoop", { path: file.path }));
+		}
+
+		const count = text.split(needle).length - 1;
+
+		if (count === 0) {
+			throw new Error(t("core.configfiles.editNotFound", { path: file.path, text: preview(edit.oldString) }));
+		}
+
+		if (count > 1 && !edit.replaceAll) {
+			throw new Error(t("core.configfiles.editAmbiguous", { path: file.path, count, text: preview(edit.oldString) }));
+		}
+
+		lines.push(text.slice(0, text.indexOf(needle)).split("\n").length);
+		text = edit.replaceAll
+			? text.split(needle).join(replacement)
+			: text.replace(needle, () => replacement);
+		replacements += edit.replaceAll ? count : 1;
+	}
+
+	const size = Buffer.byteLength(text);
+
+	if (size > MAX_EDIT_BYTES) {
+		throw new Error(t("core.configfiles.tooLargeEdit", { path: file.path, size: Math.round(size / 1024), cap: MAX_EDIT_BYTES / 1024 }));
+	}
+
+	const written = await writeInstanceFile(cfg, instance, file.path, text);
+
+	return { ...written, lines, replacements, size };
+}
+
+/** A piece of text short enough to quote back in an error. */
+function preview(text: string): string {
+	const flat = text.replace(/\s+/g, " ").trim();
+
+	return flat.length > 80
+		? `${flat.slice(0, 80)}…`
+		: flat;
+}
+
 /**
  * Take a file under management, adopting its current text as the template. The
  * file must exist: a template is a description of a real config, and adopting a

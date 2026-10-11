@@ -520,8 +520,16 @@ export interface InstanceConfig {}
   `_meta["dev.belikhun.luna/onBehalfOf"]` claim. Per-call traffic never rewrites a JSON store; a
   token's `lastUsedAt` and counters persist on an `MCP_TOUCH_MS` throttle.
 - Console-wide knowledge is readable by every token and writable only from the console or CLI; a
-  token's `memory_save` always lands in its own scope. Pinned context and memories become the
+  token's `memory_save` always lands in its own scope, and so do `skill_save`/`skill_delete`, which
+  refuse a console-wide skill's name rather than shadow it. Pinned context and memories become the
   `initialize` instructions.
+- **Instance files are read in ranges and changed in place**, as Claude Code's Read and Edit do.
+  `readInstanceLines` streams the file on the owning daemon, so `file_read` takes any size (lines
+  numbered, long ones cut, a negative offset for a log's tail) and reads a managed file's template
+  by default; `editInstanceFile` (`file_edit`) applies exact-string replacements, which must match
+  once unless `replaceAll`, and line inserts, all or nothing, keeping the file's line endings and
+  writing through `writeInstanceFile`, so a managed file is edited as its template. `file_write`
+  remains for creating or wholly rewriting a file.
 
 ### Mèo Béo, the console's chat agent
 - **It is a Claude Agent SDK run the console's server drives** (`web/src/lib/server/agent/runner.ts`),
@@ -540,13 +548,28 @@ export interface InstanceConfig {}
   popped-out window at `/agent/window`, which the root layout renders bare. A pop-out has no console
   to capture or navigate, so its session relays screenshots and navigation over a `BroadcastChannel`
   to the visible console window (`startConsoleBridge`).
-- **Its only hands are luna's MCP tools.** `tools: []` removes every built-in Claude Code tool, and
-  the luna tools are reached over the console's own `/api/mcp` (on loopback) with a per-run bearer
+- **Its only hands on the cluster are luna's MCP tools.** `tools` keeps no built-in Claude Code
+  tool but the scratch file tools below and the question tool, and the luna tools are reached over the console's own `/api/mcp` (on loopback) with a per-run bearer
   that lives only in the server's memory (`agent/bearer.ts`). That bearer resolves to an ordinary
   MCP token (`meo-beo`, created on first use by `ensureAgentToken`), so the token's scope **is** the
   agent's authorization, disabling the token stops it, and every call lands in the MCP call log with
   an `onBehalfOf` the console established rather than one a client claimed. Never give the agent a
   tool any other way.
+- **It has a scratch folder per conversation, and Claude Code's file tools work only there.**
+  `agentScratch` (core) creates `.data/agent/scratch/<conversation>/`, removed with the
+  conversation; the run adds it as an `additionalDirectories` root and keeps Read, Write, Edit,
+  Glob and Grep, and `agent/scratch.ts`'s `PreToolUse` hook, which sees every call whether or not
+  the CLI would ask, refuses any path whose real location is outside it (symlinks resolved, `..`
+  globs refused, a missing Glob/Grep path pointed at it). The one other readable place is the
+  session's own `tool-results`, where the CLI saves an oversized tool result for the model to read
+  back. The working directory stays the subprocess's HOME on purpose: sessions are filed by it, and
+  moving it would strand every conversation's resume. Attachments up to 32 MB are copied into
+  `attachments/` there too, so the agent can read a pasted log, a screenshot or a PDF.
+- **The turn limit is per message, counted by the runner.** The SDK's `maxTurns` counts across
+  the whole query, so a run the operator kept talking to, or triggers kept feeding, ran out of turns
+  however short each message was. The runner counts model responses since the session last took a
+  message from the queue (`InputQueue.onRead`) and interrupts the turn past the setting; the run
+  goes on to anything queued behind it.
 - **A mode decides when a person is asked; the token decides what is possible.** The modes are
   `shared/agent.ts`, chosen per message in the composer (Shift+Tab cycles them). **Auto**, the
   default: the agent works on its own, and only tools the catalog marks `destructiveHint` (stop,

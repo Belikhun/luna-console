@@ -260,6 +260,11 @@ function transcriptPath(id: string): string {
 	return join(transcriptsDir(), `${id}.json`);
 }
 
+/** A conversation's scratch folder: files the agent keeps while it works, removed with the conversation. */
+function scratchPath(id: string): string {
+	return join(transcriptsDir(), "scratch", id);
+}
+
 async function loadStore(): Promise<AgentStore> {
 	if (!existsSync(storePath())) {
 		return { settings: defaultSettings(), conversations: [] };
@@ -530,6 +535,23 @@ export async function agentLaunch(actor?: string): Promise<AgentLaunch> {
 
 // -- conversations ---------------------------------------------------------------
 
+/**
+ * The scratch folder of one of the owner's conversations, created on first use:
+ * the one place on disk the agent's own file tools may read and write. Nobody
+ * gets another account's folder, for the same reason nobody lists their chats.
+ */
+export async function agentScratch(id: string, owner: string): Promise<string> {
+	const store = await loadStore();
+
+	requireConversation(store, id, owner);
+
+	const dir = scratchPath(id);
+
+	await mkdir(dir, { recursive: true });
+
+	return dir;
+}
+
 function requireConversation(store: AgentStore, id: string, owner: string): AgentConversation {
 	const conversation = store.conversations.find((entry) => entry.id === id && entry.owner === owner);
 
@@ -603,6 +625,7 @@ export async function createAgentConversation(owner: string, title = ""): Promis
 		for (const old of excess) {
 			store.conversations = store.conversations.filter((entry) => entry !== old);
 			await rm(transcriptPath(old.id), { force: true });
+			await rm(scratchPath(old.id), { recursive: true, force: true });
 		}
 
 		await saveStore(store);
@@ -701,6 +724,7 @@ export async function removeAgentConversation(id: string, owner: string): Promis
 
 		store.conversations = store.conversations.filter((entry) => entry !== conversation);
 		await rm(transcriptPath(id), { force: true });
+		await rm(scratchPath(id), { recursive: true, force: true });
 		await saveStore(store);
 
 		return conversation;

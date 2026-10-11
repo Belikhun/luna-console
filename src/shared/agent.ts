@@ -69,7 +69,14 @@ export const AGENT_TASK_TOOLS: readonly string[] = [
 ];
 
 /** The console's own tools, which never reach the cluster themselves. */
-export const AGENT_LOCAL_TOOLS: readonly string[] = [...AGENT_SCREEN_TOOLS, ...AGENT_TASK_TOOLS];
+/**
+ * Claude Code's own file tools, kept for the agent's scratch folder: the runner's
+ * hook refuses any path outside it, so they reach nothing on the cluster and,
+ * like the screen and background tools, run unasked everywhere but Manual.
+ */
+export const AGENT_SCRATCH_TOOLS: readonly string[] = ["Read", "Write", "Edit", "Glob", "Grep"];
+
+export const AGENT_LOCAL_TOOLS: readonly string[] = [...AGENT_SCREEN_TOOLS, ...AGENT_TASK_TOOLS, ...AGENT_SCRATCH_TOOLS];
 
 /**
  * Whether a path is a console page the agent may open: same-origin, absolute,

@@ -17,7 +17,10 @@ export { DRIFT_SUFFIX, MAX_EDIT_BYTES, looksEditable, managedPathsOf } from "../
 export type {
 	ConfigFileStore,
 	DirEntry,
+	EditResult,
 	FileContent,
+	FileEdit,
+	FileLines,
 	ManagedConfigFile,
 	ManagedFileRow,
 	PlaceholderResult,
@@ -32,6 +35,8 @@ export const loadConfigFiles = call("configfiles.load") as typeof core.loadConfi
 export const browseInstance = call("configfiles.browse", { cfg: 0 }) as typeof core.browseInstance;
 export const readInstanceFile = call("configfiles.read", { cfg: 0 }) as typeof core.readInstanceFile;
 export const writeInstanceFile = call("configfiles.write", { cfg: 0 }) as typeof core.writeInstanceFile;
+export const readInstanceLines = call("configfiles.readLines", { cfg: 0 }) as typeof core.readInstanceLines;
+export const editInstanceFile = call("configfiles.edit", { cfg: 0 }) as typeof core.editInstanceFile;
 export const manageFile = call("configfiles.manage", { cfg: 0 }) as typeof core.manageFile;
 export const unmanageFile = call("configfiles.unmanage", { cfg: 0 }) as typeof core.unmanageFile;
 export const readoptFile = call("configfiles.readopt", { cfg: 0 }) as typeof core.readoptFile;

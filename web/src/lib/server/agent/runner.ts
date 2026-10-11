@@ -34,12 +34,21 @@ import {
 	AGENT_EFFORTS,
 	AGENT_MODEL_PATTERN,
 	agentLaunch,
+	agentScratch,
 	appendAgentTurn,
 	getAgentConversation,
 	recordAgentModels
 } from '$core/agent';
 import type { AgentContextUsage, AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
-import { AGENT_ASK_TOOL, AGENT_NAVIGATE_TOOL, AGENT_SCREENSHOT_TOOL, AGENT_TASK_TOOLS, agentCanAsk, isConsolePath } from '$shared/agent';
+import {
+	AGENT_ASK_TOOL,
+	AGENT_NAVIGATE_TOOL,
+	AGENT_SCRATCH_TOOLS,
+	AGENT_SCREENSHOT_TOOL,
+	AGENT_TASK_TOOLS,
+	agentCanAsk,
+	isConsolePath
+} from '$shared/agent';
 import type { AgentMode } from '$shared/agent';
 import { runsUnasked } from './approval';
 import {
@@ -59,6 +68,8 @@ import type { AgentNotice, DeliveryContext, TriggerSpec } from './background';
 import { issueRunBearer } from './bearer';
 import { findClaudeExecutable } from './executable';
 import { personaPrompt } from './persona';
+import { attachmentPath, SCRATCH_TOOL_MATCHER, scratchGate } from './scratch';
+import { copyUpload } from './uploads';
 import { INSTANCE_TABS } from '$lib/components/instancetabs';
 
 /** The name luna's MCP server is registered under; the SDK prefixes its tools with it. */
@@ -91,6 +102,9 @@ const LINGER_MS = 15_000;
 
 /** Longest single tool call; lifecycle tools wait up to three minutes for a server to settle. */
 const TOOL_TIMEOUT_MS = 4 * 60 * 1000;
+
+/** Attachments up to this size are also copied into the scratch folder, where the file tools can read them. */
+const SCRATCH_ATTACHMENT_BYTES = 32 * 1024 * 1024;
 
 /** How long the session gets to measure its context after a turn before the estimate is used. */
 const CONTEXT_TIMEOUT_MS = 5_000;
@@ -170,6 +184,9 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
 	#waiting: ((result: IteratorResult<SDKUserMessage>) => void) | null = null;
 	#closed = false;
 
+	/** Called as the session takes each message, which is when a message's turn budget starts */
+	onRead: () => void = () => {};
+
 	/** Messages handed over but not yet read by the SDK */
 	get buffered(): number {
 		return this.#items.length;
@@ -184,6 +201,7 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
 
 		if (waiting) {
 			this.#waiting = null;
+			this.onRead();
 			waiting({ done: false, value: message });
 		} else {
 			this.#items.push(message);
@@ -209,6 +227,8 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
 				const item = this.#items.shift();
 
 				if (item) {
+					this.onRead();
+
 					return Promise.resolve({ done: false, value: item });
 				}
 
@@ -353,6 +373,34 @@ class Run {
 	/** Set by a compaction until the turn is measured; see `measureContext` */
 	compactedSinceMeasure = false;
 
+	/**
+	 * Model responses since the session last took a message. The SDK's own
+	 * `maxTurns` counts across the whole query, so a run the operator kept
+	 * talking to (or that triggers kept feeding) ran out of turns however short
+	 * each message was; the limit is counted here instead, per message.
+	 */
+	turns = 0;
+
+	/** The response the last assistant message belonged to; one response arrives as several messages */
+	lastResponseId = '';
+
+	maxTurns = 0;
+
+	/** Set when the turn limit interrupted the session, so the result that follows says so */
+	turnCapped = false;
+
+	/** The limit's stop was reported; the SDK may still throw over the interrupted turn */
+	capReported = false;
+
+	/** The conversation's scratch folder, where the file tools are confined */
+	scratch = '';
+
+	/** The SDK session, once the run's first message says which */
+	sessionId: string | null = null;
+
+	/** Attachments copied into the scratch folder, by upload id */
+	readonly attachmentPaths = new Map<string, string>();
+
 	/** Settles when the run has saved its transcript and stopped */
 	readonly finished: Promise<void>;
 
@@ -370,6 +418,9 @@ class Run {
 		this.finished = new Promise((resolve) => {
 			this.#settle = resolve;
 		});
+		this.input.onRead = () => {
+			this.turns = 0;
+		};
 	}
 
 	/** Mark the run over; whoever waits on `finished` may start the next one. */
@@ -550,6 +601,7 @@ export async function startRun(input: StartRunInput): Promise<boolean> {
 	});
 
 	runs.set(input.conversationId, run);
+	run.scratch = await agentScratch(input.conversationId, input.owner);
 	run.context = {
 		conversationId: input.conversationId,
 		owner: input.owner,
@@ -585,6 +637,7 @@ export async function startRun(input: StartRunInput): Promise<boolean> {
 		run.emit(eventFrame(input));
 	}
 
+	await copyAttachments(run, input);
 	run.input.push(userMessage(promptFor(input, run)));
 	run.emit({ type: 'state', running: true });
 	announceRunStart(input.conversationId, input.owner);
@@ -607,6 +660,8 @@ async function joinRun(run: Run, input: StartRunInput): Promise<boolean> {
 	const attachments = input.attachments?.length
 		? input.attachments.map(({ name, size }) => ({ name, size }))
 		: undefined;
+
+	await copyAttachments(run, input);
 
 	if (!run.input.push(userMessage(promptFor(input, run)))) {
 		return false;
@@ -733,9 +788,14 @@ function promptFor(input: StartRunInput, run: Run): string {
 	}
 
 	const notes = [
-		...(input.attachments ?? []).map(
-			(file) => `<attachment id="${file.id}" name="${file.name.replace(/"/g, "'")}" bytes="${file.size}" />`
-		),
+		...(input.attachments ?? []).map((file) => {
+			const copy = run.attachmentPaths.get(file.id);
+			const path = copy
+				? ` path="${copy}"`
+				: '';
+
+			return `<attachment id="${file.id}" name="${file.name.replace(/"/g, "'")}" bytes="${file.size}"${path} />`;
+		}),
 		...(input.page ? [`<console-page>${input.page}</console-page>`] : []),
 		...(run.mode !== run.startMode ? [`<approval-mode>${run.mode}</approval-mode>`] : [])
 	];
@@ -743,6 +803,30 @@ function promptFor(input: StartRunInput, run: Run): string {
 	return notes.length
 		? `${input.text}\n\n${notes.join('\n')}`
 		: input.text;
+}
+
+/**
+ * Put a message's attachments in the scratch folder too, so the agent can read
+ * a pasted log, a screenshot or a PDF with its own file tools; the upload id
+ * still names the file for the luna tools that install or place it. Big files
+ * (jars, modpacks) stay staged only.
+ */
+async function copyAttachments(run: Run, input: StartRunInput): Promise<void> {
+	for (const file of input.attachments ?? []) {
+		if (run.attachmentPaths.has(file.id) || file.size > SCRATCH_ATTACHMENT_BYTES || !run.scratch) {
+			continue;
+		}
+
+		const dest = attachmentPath(run.scratch, file.id, file.name);
+
+		try {
+			if (await copyUpload(file.id, input.owner, dest)) {
+				run.attachmentPaths.set(file.id, dest);
+			}
+		} catch (err) {
+			console.error('[agent] could not copy an attachment into the scratch folder:', err);
+		}
+	}
 }
 
 function userMessage(text: string): SDKUserMessage {
@@ -1090,8 +1174,8 @@ async function drive(
 			};
 		}
 
-		// only luna's tools and the console's own exist; anything else is refused outright
-		if (!toolName.startsWith(TOOL_PREFIX) && !SCREEN_SDK_NAMES[toolName]) {
+		// only luna's tools, the console's own and the scratch file tools exist; anything else is refused outright
+		if (!toolName.startsWith(TOOL_PREFIX) && !SCREEN_SDK_NAMES[toolName] && !AGENT_SCRATCH_TOOLS.includes(toolName)) {
 			return { behavior: 'deny', message: 'Only the luna tools are available.' };
 		}
 
@@ -1165,15 +1249,29 @@ async function drive(
 					machine: input.machine,
 					extra: launch.settings.instructions,
 					locale: input.locale,
-					mode: input.mode
+					mode: input.mode,
+					scratch: run.scratch,
+					instanceFiles: launch.token.tools.includes('file_read')
 				}),
 				model: run.model,
 				effort: run.effort as AgentEffort,
-				maxTurns: launch.settings.maxTurns,
-				// no built-in tool but the question one, and that only where someone is watching
+				// the only built-ins: the file tools, confined to the scratch folder by the hook
+				// below, and the question one, only where someone is watching
 				tools: agentCanAsk(input.mode)
-					? [AGENT_ASK_TOOL]
-					: [],
+					? [...AGENT_SCRATCH_TOOLS, AGENT_ASK_TOOL]
+					: [...AGENT_SCRATCH_TOOLS],
+				additionalDirectories: [run.scratch],
+				hooks: {
+					PreToolUse: [{
+						matcher: SCRATCH_TOOL_MATCHER,
+						hooks: [scratchGate({
+							scratch: run.scratch,
+							home: launch.home,
+							sessionId: () => run.sessionId ?? resume ?? null,
+							unasked: (tool) => runsUnasked(tool, run.mode)
+						})]
+					}]
+				},
 				mcpServers: {
 					[SERVER]: {
 						type: 'http',
@@ -1197,6 +1295,7 @@ async function drive(
 		});
 
 		run.query = stream;
+		run.maxTurns = launch.settings.maxTurns;
 
 		for await (const message of stream) {
 			const outcome = handleMessage(run, message);
@@ -1226,7 +1325,8 @@ async function drive(
 			}
 		}
 	} catch (err) {
-		const reported = failed;
+		// the SDK throws after an interrupt the turn limit caused; that stop was already said
+		const reported = failed || run.capReported;
 
 		failed = true;
 
@@ -1313,6 +1413,8 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 				run.emit({ type: 'error', text, code: 'toolsUnavailable' });
 			}
 
+			run.sessionId = message.session_id;
+
 			return { sessionId: message.session_id };
 		}
 
@@ -1336,6 +1438,10 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 			// text; the result that follows reports it once, as an error, not as a reply
 			if (message.error) {
 				return {};
+			}
+
+			if (!message.parent_tool_use_id) {
+				countTurn(run, message.message.id);
 			}
 
 			// a subagent's request is not the session's context
@@ -1435,6 +1541,18 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 				}
 			}
 
+			// the interrupt ends the turn however the SDK words it; the run takes the next message
+			if (run.turnCapped) {
+				run.turnCapped = false;
+				run.capReported = true;
+				run.entries.push({ kind: 'error', at: Date.now(), text: '#maxTurns' });
+				run.emit({ type: 'error', text: 'Stopped at the turn limit for this message.', code: 'maxTurns' });
+
+				return { ...turn, costUsd: message.total_cost_usd };
+			}
+
+			run.capReported = false;
+
 			if (message.subtype === 'success' && !message.is_error) {
 				return { ...turn, costUsd: message.total_cost_usd };
 			}
@@ -1458,6 +1576,25 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 
 		default:
 			return {};
+	}
+}
+
+/**
+ * Count a model response against the message it is answering, and interrupt
+ * the session's turn once a message has used its share. Only the turn stops: a
+ * message queued behind it still gets its own answer.
+ */
+function countTurn(run: Run, responseId: string): void {
+	if (!responseId || responseId === run.lastResponseId) {
+		return;
+	}
+
+	run.lastResponseId = responseId;
+	run.turns += 1;
+
+	if (run.maxTurns > 0 && run.turns > run.maxTurns && !run.turnCapped) {
+		run.turnCapped = true;
+		void run.query?.interrupt().catch(() => {});
 	}
 }
 

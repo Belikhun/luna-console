@@ -45,7 +45,8 @@ import { agentDeletionRefusal, logRunDays } from '$shared/instanceguard';
 import { awaitJob } from './jobs';
 import type { JobView } from '$lib/jobs';
 import { lunaShellRefusal, scopeCoversInstance } from '$shared/mcptools';
-import { browseInstance, readInstanceFile, writeInstanceFile, MAX_EDIT_BYTES } from '$core/configfiles';
+import { browseInstance, editInstanceFile, readInstanceLines, writeInstanceFile, MAX_EDIT_BYTES } from '$core/configfiles';
+import type { FileEdit } from '$core/configfiles';
 import {
 	copyInstancePath,
 	copyAcrossInstances,
@@ -81,6 +82,9 @@ const LUNA_SHELL_MAX_OUTPUT = 64 * 1024;
 
 /** Lines file_read returns when the caller does not say. */
 const FILE_READ_DEFAULT_LINES = 400;
+
+/** Most edits one file_edit call applies. */
+const FILE_EDIT_MAX = 50;
 
 
 
@@ -973,24 +977,39 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	async file_read(args) {
 		const name = str(args, 'instance');
 		const cfg = await requireInstance(name);
-		const file = await readInstanceFile(cfg, name, str(args, 'path'));
-		const lines = file.text.split('\n');
-		const offset = num(args, 'offset', 1);
-		const limit = num(args, 'limit', FILE_READ_DEFAULT_LINES);
-		const slice = lines.slice(offset - 1, offset - 1 + limit);
+		const source = args.source === 'disk' || args.source === 'template'
+			? args.source
+			: undefined;
+		const file = await readInstanceLines(cfg, name, str(args, 'path'), {
+			offset: num(args, 'offset', 1),
+			limit: num(args, 'limit', FILE_READ_DEFAULT_LINES),
+			source
+		});
+		// numbered like cat -n, as Claude Code's Read shows them
+		const content = file.lines
+			.map((line, index) => `${String(file.fromLine + index).padStart(6)}\t${line}`)
+			.join('\n');
+		const more = file.toLine > 0 && file.toLine < file.totalLines;
 
 		return {
 			instance: name,
 			path: file.path,
 			size: file.size,
-			totalLines: lines.length,
-			fromLine: offset,
-			toLine: offset - 1 + slice.length,
+			totalLines: file.totalLines,
+			fromLine: file.fromLine,
+			toLine: file.toLine,
 			managed: file.managed || undefined,
-			note: file.managed
-				? 'luna renders this file from a template on every start; file_write changes the template'
-				: undefined,
-			content: slice.join('\n')
+			source: file.managed ? file.source : undefined,
+			note: [
+				file.managed
+					? file.source === 'template'
+						? 'luna renders this file from this template on every start; file_edit and file_write change the template'
+						: 'this is the rendered file; luna rewrites it from its template on every start, and file_edit changes the template'
+					: '',
+				file.cutLines ? `${file.cutLines} line(s) were longer than 2000 characters and are cut` : '',
+				more ? `more lines follow; continue with offset ${file.toLine + 1}` : ''
+			].filter(Boolean).join('; ') || undefined,
+			content
 		};
 	},
 
@@ -1040,6 +1059,55 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		pushEvent(name, 'action', `file written by ${ctx.actor}: ${path}`);
 
 		return { instance: name, path, written: Buffer.byteLength(content), result };
+	},
+
+	async file_edit(args, ctx) {
+		const name = str(args, 'instance');
+		const cfg = await requireInstance(name);
+		const path = str(args, 'path');
+		const raw = Array.isArray(args.edits)
+			? args.edits
+			: [];
+
+		if (raw.length === 0) {
+			throw new ToolError('give at least one edit');
+		}
+
+		if (raw.length > FILE_EDIT_MAX) {
+			throw new ToolError(`at most ${FILE_EDIT_MAX} edits per call`);
+		}
+
+		const edits = raw.map((item, index): FileEdit => {
+			const edit = (item ?? {}) as Record<string, unknown>;
+
+			if (typeof edit.afterLine === 'number') {
+				if (typeof edit.text !== 'string' || edit.oldString !== undefined) {
+					throw new ToolError(`edit ${index + 1}: an insert takes afterLine and text, nothing else`);
+				}
+
+				return { afterLine: edit.afterLine, text: edit.text };
+			}
+
+			if (typeof edit.oldString !== 'string' || typeof edit.newString !== 'string') {
+				throw new ToolError(`edit ${index + 1}: give oldString and newString, or afterLine and text`);
+			}
+
+			return { oldString: edit.oldString, newString: edit.newString, replaceAll: edit.replaceAll === true };
+		});
+
+		const result = await editInstanceFile(cfg, name, path, edits);
+
+		pushEvent(name, 'action', `file edited by ${ctx.actor}: ${result.path}`);
+
+		return {
+			instance: name,
+			path: result.path,
+			managed: result.managed || undefined,
+			edits: edits.length,
+			replacements: result.replacements || undefined,
+			atLines: result.lines,
+			size: result.size
+		};
 	},
 
 	async file_mkdir(args, ctx) {
@@ -1194,7 +1262,11 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	async skill_list(_args, ctx) {
 		const skills = await knowledgeFor(ctx.principal.id, 'skill');
 
-		return skills.map((skill) => ({ name: skill.title, description: skill.description }));
+		return skills.map((skill) => ({
+			name: skill.title,
+			description: skill.description,
+			editable: skill.scope.kind === 'token' || undefined
+		}));
 	},
 
 	async skill_get(args, ctx) {
@@ -1249,5 +1321,62 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		const item = await removeKnowledge(str(args, 'id'), ctx.actor, ctx.principal.id);
 
 		return { id: item.id, forgotten: true };
+	},
+
+	async skill_save(args, ctx) {
+		const name = str(args, 'name').trim();
+		const skills = await knowledgeFor(ctx.principal.id, 'skill');
+		const existing = skills.find((skill) => skill.title === name);
+		const tags = Array.isArray(args.tags)
+			? (args.tags as string[])
+			: undefined;
+
+		// a token writes only its own scope; the operators' skills are edited in the console
+		if (existing && existing.scope.kind !== 'token') {
+			throw new ToolError(`"${name}" is a console-wide skill; only an operator can change it, on /console/knowledge. Save yours under another name.`);
+		}
+
+		if (existing) {
+			await updateKnowledge(
+				existing.id,
+				{ description: str(args, 'description'), body: str(args, 'body'), tags },
+				ctx.actor,
+				ctx.principal.id
+			);
+
+			return { name, updated: true };
+		}
+
+		await createKnowledge(
+			{
+				kind: 'skill',
+				scope: { kind: 'token', token: ctx.principal.id },
+				title: name,
+				description: str(args, 'description'),
+				body: str(args, 'body'),
+				tags: tags ?? []
+			},
+			ctx.actor
+		);
+
+		return { name, created: true };
+	},
+
+	async skill_delete(args, ctx) {
+		const name = str(args, 'name').trim();
+		const skills = await knowledgeFor(ctx.principal.id, 'skill');
+		const skill = skills.find((entry) => entry.title === name);
+
+		if (!skill) {
+			throw new ToolError(`no skill named "${name}"; call skill_list for the list`);
+		}
+
+		if (skill.scope.kind !== 'token') {
+			throw new ToolError(`"${name}" is a console-wide skill; only an operator can remove it, on /console/knowledge.`);
+		}
+
+		await removeKnowledge(skill.id, ctx.actor, ctx.principal.id);
+
+		return { name, deleted: true };
 	}
 };
