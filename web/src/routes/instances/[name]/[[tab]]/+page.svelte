@@ -8,6 +8,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, post, patch, del } from '$lib/api';
+	import { lineBatcher } from '$lib/linebatch';
 	import { fmtDuration, fmtBytes, fmtDateTime, cpuCeiling, fmtCpuPct } from '$lib/format';
 	import SoftwareLabel from '$lib/components/SoftwareLabel.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
@@ -825,6 +826,16 @@
 
 		const keep = logLines;
 		const stream = new EventSource(`/api/instances/${name}/console`);
+		// one view update per frame, however fast the server prints
+		const batch = lineBatcher((incoming) => {
+			if (!followingLog()) {
+				return;
+			}
+
+			logStream = [...(logStream ?? []), ...incoming].slice(-keep);
+
+			void pinLogToBottom();
+		}, keep);
 
 		logStream = [];
 		logLive = 'connecting';
@@ -844,13 +855,17 @@
 				return;
 			}
 
-			logStream = [...(logStream ?? []), String(JSON.parse(event.data))].slice(-keep);
+			// a frame is several lines, or one from a daemon on an older build
+			const data = JSON.parse(event.data);
 
-			void pinLogToBottom();
+			for (const line of Array.isArray(data) ? data : [data]) {
+				batch.push(String(line));
+			}
 		};
 
 		return () => {
 			stream.close();
+			batch.stop();
 			logLive = 'off';
 		};
 	});

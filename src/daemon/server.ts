@@ -84,6 +84,86 @@ function errorResponse(message: string, status: number): Response {
 /** How much backlog a freshly opened console shows. */
 const CONSOLE_TAIL_LINES = 100;
 
+/** Most lines one console frame carries; a full frame goes out at once. */
+const CONSOLE_FRAME_LINES = 10;
+
+/** How long a frame's first line waits for company before the frame goes out. */
+const CONSOLE_FRAME_MS = 25;
+
+interface ConsoleFrames {
+	push(line: string): void;
+	/** Send what is waiting now; before closing, so a last line is not lost */
+	flush(): void;
+	stop(): void;
+}
+
+/**
+ * Lines of a console stream, written as SSE frames of up to CONSOLE_FRAME_LINES
+ * each, as a JSON array. A server printing hundreds of lines a second used to
+ * make one event per line, and the browser paid the dispatch, the parse and a
+ * view update for every one of them. A frame goes out when it is full, or
+ * CONSOLE_FRAME_MS after its first line, so a quiet console still shows a line
+ * as soon as it is printed. `onFail` is told once a write fails, which is how
+ * a client going away reaches the tail.
+ */
+function consoleFrames(controller: ReadableStreamDefaultController, onFail: () => void): ConsoleFrames {
+	const encoder = new TextEncoder();
+	let pending: string[] = [];
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let stopped = false;
+
+	const flush = (): void => {
+		if (timer) {
+			clearTimeout(timer);
+			timer = undefined;
+		}
+
+		if (stopped || pending.length === 0) {
+			return;
+		}
+
+		const frame = pending;
+
+		pending = [];
+
+		try {
+			controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+		} catch {
+			// client disconnected mid-write
+			stopped = true;
+			onFail();
+		}
+	};
+
+	return {
+		push(line: string): void {
+			if (stopped) {
+				return;
+			}
+
+			pending.push(line);
+
+			if (pending.length >= CONSOLE_FRAME_LINES) {
+				flush();
+			} else if (!timer) {
+				timer = setTimeout(flush, CONSOLE_FRAME_MS);
+			}
+		},
+
+		flush,
+
+		stop(): void {
+			stopped = true;
+			pending = [];
+
+			if (timer) {
+				clearTimeout(timer);
+				timer = undefined;
+			}
+		},
+	};
+}
+
 /**
  * The hub's console tunnel to a follower, injected by installHub; the server
  * module cannot import the hub (the hub imports this module), and a follower
@@ -133,26 +213,25 @@ export function setFollowerEndpoint(lookup: typeof followerEndpoint): void {
 function consoleStream(logPath: string): Response {
 	let tail: TailHandle | undefined;
 
+	let frames: ConsoleFrames | undefined;
+
 	const stream = new ReadableStream({
 		start(controller) {
-			const encoder = new TextEncoder();
+			frames = consoleFrames(controller, () => tail?.stop());
 
 			tail = tailFollow(
 				logPath,
 				CONSOLE_TAIL_LINES,
-				(line) => {
-					try {
-						controller.enqueue(encoder.encode(`data: ${JSON.stringify(line)}\n\n`));
-					} catch {
-						// client disconnected mid-write
-						tail?.stop();
-					}
+				(line) => frames?.push(line),
+				() => {
+					frames?.flush();
+					closeQuietly(controller);
 				},
-				() => closeQuietly(controller),
 			);
 		},
 
 		cancel() {
+			frames?.stop();
 			tail?.stop();
 		},
 	});
@@ -167,30 +246,24 @@ function consoleStream(logPath: string): Response {
  */
 function remoteConsoleStream(daemon: string, instance: string): Response {
 	let close: (() => void) | undefined;
+	let frames: ConsoleFrames | undefined;
 
 	const stream = new ReadableStream({
 		start(controller) {
-			const encoder = new TextEncoder();
+			frames = consoleFrames(controller, () => close?.());
 
-			const push = (line: string): void => {
-				try {
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify(line)}\n\n`));
-				} catch {
-					// client disconnected mid-write
-					close?.();
-				}
-			};
-
-			close = remoteConsole!.open(daemon, instance, CONSOLE_TAIL_LINES, push, (error) => {
+			close = remoteConsole!.open(daemon, instance, CONSOLE_TAIL_LINES, (line) => frames?.push(line), (error) => {
 				if (error) {
-					push(`[luna] console stream ended: ${error}`);
+					frames?.push(`[luna] console stream ended: ${error}`);
 				}
 
+				frames?.flush();
 				closeQuietly(controller);
 			});
 		},
 
 		cancel() {
+			frames?.stop();
 			close?.();
 		},
 	});

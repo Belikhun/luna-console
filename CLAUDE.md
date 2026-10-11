@@ -831,6 +831,15 @@ Wiring rules:
   `docs/console.svg` through `LunaBanner.svelte`, and a washed copy of it is the page background. A
   console with no accounts offers the first-run form instead of a sign-in, and core refuses that path
   the moment one account exists.
+- **A live console is framed on the way out and batched on the way in.** The daemon's console
+  stream (`consoleFrames` in `daemon/server.ts`, local tail and follower tunnel alike) writes up to
+  10 lines per SSE message, or whatever arrived within 25 ms of a frame's first line, as a JSON
+  array; a reader accepts a bare string too, from a daemon on an older build. In the browser the
+  lines go through `$lib/linebatch`, which hands the view one batch per animation frame, and the
+  console page colourises a line once on arrival and keys its rows. A server printing thousands of
+  lines a second used to be one event, one scrollback copy, one re-render and one scroll per line,
+  which froze the tab (measured 2026-10-11: a 3,000 line/s flood stopped the page answering
+  DevTools at all; framed and batched it holds 60 fps). Never update a streamed view per message.
 - Streaming (instance console, terminal drawer, events) is **SSE only**. The terminal drawer runs
   the real compiled CLI and gets its Tab-completion and ghost text from the CLI's own `__complete`
   engine; completion logic is never reimplemented in the browser.

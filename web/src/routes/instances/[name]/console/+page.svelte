@@ -4,7 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { api, post } from '$lib/api';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
@@ -12,6 +12,7 @@
 	import Btn from '$lib/components/Btn.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import Icon from '$lib/components/Icon.svelte';
+	import { lineBatcher } from '$lib/linebatch';
 
 	/** how much scrollback the view keeps before dropping the oldest lines */
 	const MAX_LINES = 1500;
@@ -21,7 +22,9 @@
 
 	const name = $derived(page.params.name);
 
-	let lines: string[] = $state([]);
+	/** Each line is colourised once, on arrival, and keyed so trimming the top only drops nodes */
+	let lines: Array<{ id: number; html: string }> = $state([]);
+	let nextLine = 0;
 	let cmd = $state('');
 	let connected = $state(false);
 	let inst: any = $state(null);
@@ -34,12 +37,14 @@
 		void api(`/instances/${name}`).then((loaded) => (inst = loaded));
 
 		const stream = new EventSource(`/api/instances/${name}/console`);
+		const batch = lineBatcher(append, MAX_LINES);
 
+		// a frame is several lines, or one from a daemon on an older build
 		stream.onmessage = (event) => {
-			lines = [...lines.slice(-MAX_LINES), JSON.parse(event.data)];
+			const data = JSON.parse(event.data);
 
-			if (autoscroll) {
-				queueMicrotask(() => view?.scrollTo({ top: view.scrollHeight }));
+			for (const line of Array.isArray(data) ? data : [data]) {
+				batch.push(String(line));
 			}
 		};
 
@@ -56,9 +61,21 @@
 
 		return () => {
 			stream.close();
+			batch.stop();
 			clearInterval(poll);
 		};
 	});
+
+	/** Add a frame's worth of lines, trim the scrollback and follow the bottom once. */
+	function append(incoming: string[]): void {
+		const added = incoming.map((line) => ({ id: nextLine++, html: colorize(line) }));
+
+		lines = [...lines, ...added].slice(-MAX_LINES);
+
+		if (autoscroll) {
+			void tick().then(() => view?.scrollTo({ top: view.scrollHeight }));
+		}
+	}
 
 	async function send(): Promise<void> {
 		const command = cmd.trim();
@@ -74,7 +91,7 @@
 		try {
 			await post(`/instances/${name}/console`, { command });
 		} catch (err) {
-			lines = [...lines, `[console] error: ${(err as Error).message}`];
+			append([`[console] error: ${(err as Error).message}`]);
 		}
 	}
 
@@ -189,8 +206,8 @@
 		/>
 	</div>
 	<div class="view mono" bind:this={view}>
-		{#each lines as line}
-			<div class="ln">{@html colorize(line)}</div>
+		{#each lines as line (line.id)}
+			<div class="ln">{@html line.html}</div>
 		{/each}
 	</div>
 	<div class="inputrow">
