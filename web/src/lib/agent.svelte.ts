@@ -230,7 +230,15 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 	return items;
 }
 
+/** Numbers composer chips; `crypto.randomUUID` is missing on a console served over plain HTTP. */
+let attachmentSeq = 0;
+
 export interface Attachment {
+	/**
+	 * Which composer chip this is, while the upload runs. Matched by value because
+	 * `$state` hands back a proxy of the object it was given, so identity never matches.
+	 */
+	key: string;
 	/** Staged upload id; empty until the upload finishes */
 	id: string;
 	name: string;
@@ -452,7 +460,8 @@ export class ChatSession {
 
 	/** Upload a file for the next message; it shows as a chip while it goes up. */
 	async attach(file: File): Promise<void> {
-		const pending: Attachment = { id: '', name: file.name, size: file.size };
+		const key = `att-${++attachmentSeq}`;
+		const pending: Attachment = { key, id: '', name: file.name, size: file.size };
 
 		this.attachments = [...this.attachments, pending];
 
@@ -469,16 +478,16 @@ export class ChatSession {
 
 			const staged = (await res.json()) as { id: string; name: string; size: number };
 
-			this.attachments = this.attachments.map((entry) => (entry === pending ? { ...staged } : entry));
+			this.attachments = this.attachments.map((entry) => (entry.key === key ? { key, ...staged } : entry));
 		} catch (err) {
 			this.attachments = this.attachments.map((entry) =>
-				entry === pending ? { ...entry, error: (err as Error).message } : entry
+				entry.key === key ? { ...entry, error: (err as Error).message } : entry
 			);
 		}
 	}
 
 	detach(attachment: Attachment): void {
-		this.attachments = this.attachments.filter((entry) => entry !== attachment);
+		this.attachments = this.attachments.filter((entry) => entry.key !== attachment.key);
 
 		if (attachment.id) {
 			void del(`/agent/uploads/${attachment.id}`).catch(() => {});
