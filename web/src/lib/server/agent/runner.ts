@@ -58,6 +58,7 @@ import {
 	INSTANCE_STATES,
 	listTasks,
 	listTriggers,
+	MAX_REFIRE_GAP_SECONDS,
 	MAX_TRIGGER_FIRES,
 	MAX_TRIGGER_MINUTES,
 	setNoticeDeliverer,
@@ -977,7 +978,7 @@ function taskTools(run: Run): ConsoleTools {
 - player_join / player_leave: optional player, server.
 - log_match: instance, contains. New lines of the instance's latest.log that contain the text.
 - cluster_event: optional instance, eventKind (state, action, error), contains. Luna's own events (starts, stops, crashes, operator actions).
-A trigger fires once unless maxFires is higher (a repeating one reports at most every 30 seconds, collecting what happened in between), and expires after expiresInMinutes (default 60, at most ${MAX_TRIGGER_MINUTES}), reporting that too. Write in note what you intend to do when it fires; it is handed back to you then. Triggers live in the console's memory, so a console restart drops them.`,
+A trigger fires once unless maxFires is higher; a repeating one leaves minGapSeconds between reports (default 5), collecting what happened in between, so raise it for a noisy source you only need a summary of. It expires after expiresInMinutes (default 60, at most ${MAX_TRIGGER_MINUTES}), reporting that too. Write in note what you intend to do when it fires; it is handed back to you then. Triggers live in the console's memory, so a console restart drops them.`,
 			{
 				kind: z.enum(TRIGGER_KINDS),
 				label: z.string().optional().describe('A few words saying what it waits for, shown to the operator'),
@@ -990,6 +991,7 @@ A trigger fires once unless maxFires is higher (a repeating one reports at most 
 				contains: z.string().optional(),
 				eventKind: z.enum(['state', 'action', 'error']).optional(),
 				maxFires: z.number().int().optional().describe(`How many times it may fire, 1 to ${MAX_TRIGGER_FIRES} (default 1)`),
+				minGapSeconds: z.number().optional().describe(`Least time between two reports of a repeating trigger, 0 to ${MAX_REFIRE_GAP_SECONDS} (default 5)`),
 				expiresInMinutes: z.number().optional()
 			},
 			async (input) => {

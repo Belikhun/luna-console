@@ -602,8 +602,11 @@ export interface InstanceConfig {}
   log apply, and only when `runsUnasked` (`agent/approval.ts`, shared with `canUseTool`) says the
   current mode would run that call unasked: nobody approves a background call. `trigger_create` arms
   a wait (timer, instance state, player chat, join/leave, a log line, a cluster event) that one
-  shared watcher polls every 5 s; it fires once unless asked for more, repeats at most every 30 s,
-  and expires (an hour by default) with a report either way. A result, a fire or an expiry is
+  shared watcher polls every 2 s, never two rounds at once; it fires once unless asked for more,
+  leaves `minGapSeconds` between repeated reports (5 s unless the agent asks for more; it was a
+  fixed 30 s, which made a chat game answer half a minute late), and expires (an hour by default)
+  with a report either way. Reports are queued per conversation and never awaited by the watcher,
+  so a conversation whose run is winding down holds up nobody else's. A result, a fire or an expiry is
   delivered as a `<luna-event>` message: it joins the run that is going like a mid-answer message,
   or starts a new run when the conversation is idle, filed as an `event` transcript entry rather
   than the operator's words. An idle chat holds `/watch` open so it attaches to such a run as it

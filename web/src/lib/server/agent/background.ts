@@ -59,12 +59,30 @@ export function setNoticeDeliverer(fn: Deliverer): void {
 	deliverer = fn;
 }
 
-async function deliver(notice: AgentNotice): Promise<void> {
-	try {
-		await deliverer?.(notice);
-	} catch (err) {
-		console.error('[agent] could not deliver a notice:', err);
-	}
+/** Each conversation's deliveries, chained so its notices arrive in the order they happened. */
+const deliveries = new Map<string, Promise<void>>();
+
+/**
+ * Hand a notice to its conversation without waiting for it. Delivery can wait
+ * on a run that is winding down, and the watcher must not: one slow
+ * conversation used to hold every other trigger's report behind it.
+ */
+function deliver(notice: AgentNotice): void {
+	const key = notice.ctx.conversationId;
+	const previous = deliveries.get(key) ?? Promise.resolve();
+
+	const next = previous
+		.then(() => deliverer?.(notice))
+		.catch((err) => {
+			console.error('[agent] could not deliver a notice:', err);
+		})
+		.finally(() => {
+			if (deliveries.get(key) === next) {
+				deliveries.delete(key);
+			}
+		});
+
+	deliveries.set(key, next);
 }
 
 /** Background tasks running at once in one conversation. */
@@ -80,11 +98,19 @@ const DEFAULT_TRIGGER_MINUTES = 60;
 /** Most times one trigger may fire. */
 export const MAX_TRIGGER_FIRES = 50;
 
-/** A repeating trigger reports at most this often; matches in between are collected. */
-const REFIRE_COOLDOWN_MS = 30_000;
+/**
+ * The gap a repeating trigger leaves between two reports unless it asks for
+ * more; matches in between are collected into the next one. It was 30 s, and a
+ * game run over chat felt every second of it: a reply came half a minute after
+ * the line it answered.
+ */
+const DEFAULT_REFIRE_GAP_MS = 5_000;
 
-/** How often the watcher looks. */
-const POLL_MS = 5_000;
+/** The longest gap a trigger may ask for. */
+export const MAX_REFIRE_GAP_SECONDS = 600;
+
+/** How often the watcher looks. Every source is one cheap local read, shared by all triggers. */
+const POLL_MS = 2_000;
 
 /** Longest a background call may take before it is given up on. */
 const TASK_TIMEOUT_MS = 30 * 60 * 1000;
@@ -217,7 +243,7 @@ export function startTask(ctx: DeliveryContext, tool: string, args: Record<strin
 		task.state = outcome.ok ? 'ok' : 'error';
 		task.finishedAt = Date.now();
 
-		await deliver({
+		deliver({
 			ctx,
 			source: 'task',
 			label: task.label,
@@ -304,7 +330,9 @@ export interface TriggerView {
 interface Trigger extends TriggerView {
 	ctx: DeliveryContext;
 	lastFiredAt: number;
-	/** What happened since the last report, waiting out the cooldown */
+	/** Least time between two reports of a repeating trigger */
+	gapMs: number;
+	/** What happened since the last report, waiting out the gap */
 	pending: string[];
 	/** Source position: the newest chat id, event time, log line or state seen */
 	cursor: {
@@ -319,6 +347,9 @@ interface Trigger extends TriggerView {
 
 const triggers = new Map<string, Trigger>();
 let timer: ReturnType<typeof setInterval> | undefined;
+
+/** Set while a round runs, so the next tick skips rather than overlaps it */
+let rounding = false;
 
 function lower(value: string | undefined): string {
 	return (value ?? '').trim().toLowerCase();
@@ -387,7 +418,7 @@ async function baseline(trigger: Trigger): Promise<void> {
 export async function createTrigger(
 	ctx: DeliveryContext,
 	spec: TriggerSpec,
-	opts: { label?: string; note?: string; maxFires?: number; expiresInMinutes?: number }
+	opts: { label?: string; note?: string; maxFires?: number; expiresInMinutes?: number; minGapSeconds?: number }
 ): Promise<TriggerView> {
 	validate(spec);
 
@@ -415,6 +446,9 @@ export async function createTrigger(
 		maxFires: Math.min(MAX_TRIGGER_FIRES, Math.max(1, Math.round(opts.maxFires ?? 1))),
 		ctx,
 		lastFiredAt: 0,
+		gapMs: opts.minGapSeconds === undefined
+			? DEFAULT_REFIRE_GAP_MS
+			: Math.min(MAX_REFIRE_GAP_SECONDS, Math.max(0, Math.round(opts.minGapSeconds))) * 1000,
 		pending: [],
 		cursor: {}
 	};
@@ -474,7 +508,18 @@ function ensureWatcher(): void {
 	}
 
 	timer = setInterval(() => {
-		void round().catch((err) => console.error('[agent] trigger round failed:', err));
+		// a round that outlasts the interval would read the same cursors twice
+		if (rounding) {
+			return;
+		}
+
+		rounding = true;
+
+		void round()
+			.catch((err) => console.error('[agent] trigger round failed:', err))
+			.finally(() => {
+				rounding = false;
+			});
 	}, POLL_MS);
 }
 
@@ -712,7 +757,7 @@ async function round(): Promise<void> {
 
 		trigger.pending.push(...observe(trigger, sources, now));
 
-		const due = trigger.pending.length > 0 && now - trigger.lastFiredAt >= REFIRE_COOLDOWN_MS;
+		const due = trigger.pending.length > 0 && now - trigger.lastFiredAt >= trigger.gapMs;
 
 		if (due) {
 			trigger.fired += 1;
@@ -731,7 +776,7 @@ async function round(): Promise<void> {
 			const note = trigger.note ? `\n\nWhen you set it, you planned: ${trigger.note}` : '';
 			const tail = last ? '' : `\n\nIt stays armed for ${trigger.maxFires - trigger.fired} more.`;
 
-			await deliver({ ctx: trigger.ctx, source: 'trigger', label: trigger.label, text: `${header}\n\n${shown.join('\n')}${more}${note}${tail}` });
+			deliver({ ctx: trigger.ctx, source: 'trigger', label: trigger.label, text: `${header}\n\n${shown.join('\n')}${more}${note}${tail}` });
 
 			continue;
 		}
@@ -739,7 +784,7 @@ async function round(): Promise<void> {
 		if (now >= trigger.expiresAt) {
 			triggers.delete(trigger.id);
 
-			await deliver({
+			deliver({
 				ctx: trigger.ctx,
 				source: 'trigger',
 				label: trigger.label,
