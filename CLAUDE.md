@@ -354,9 +354,12 @@ export interface InstanceConfig {}
   then `instancefiles.placeUpload` runs on the owner, which pulls the staged copy over the link
   when it is a follower, and the route discards the primary's copy. A **download is a stream**:
   `GET /files/instance/<inst>/<path>?format=raw|zip|tar[&name=…]` serves one file's own bytes with
-  ranges (`rangedFile`), a folder or a selection as a zip the daemon packs as it goes, passed
-  through the primary for a follower's instance exactly as the cross-instance tar is. Nothing is
-  held in the console process. The screen is `DataTable` with multi-select, `rowActions`, row
+  ranges (`rangedFile`), passed through the primary for a follower's instance exactly as the
+  cross-instance tar is. A folder or a selection the console downloads is a **job**:
+  `stageInstanceArchive` measures it, zips it into the owner's staging with progress read off
+  zip's own dots, a follower uploads the finished zip to the primary's staging, and the page's
+  `jobFlash` card triggers `GET …/files/download?stage=<token>`, which serves it once with a
+  length and discards it. Nothing is held in the console process. The screen is `DataTable` with multi-select, `rowActions`, row
   drag-and-drop (`onRowDrop`, folders as targets) and a marquee box over the background; the
   upload queue (`$lib/uploads.svelte.ts`, `UploadQueue.svelte`) is page state, so a reload drops
   what was not yet staged.

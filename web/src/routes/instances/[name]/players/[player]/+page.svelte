@@ -13,6 +13,7 @@
 	import { LOG_PAGE, loadWholeLog } from '$lib/log';
 	import { pingClass } from '$lib/players';
 	import {
+		disconnectPlayers,
 		kickPlayers,
 		messagePlayers,
 		moderatePlayers,
@@ -36,6 +37,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import Checkbox from '$lib/components/Checkbox.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -470,6 +472,7 @@
 	let transferTo = $state('');
 	let kickOpen = $state(false);
 	let kickReason = $state('');
+	let kickForce = $state(false);
 	let banOpen = $state(false);
 	let banReason = $state('');
 
@@ -553,9 +556,14 @@
 		}
 
 		const who = target;
+		const force = kickForce;
 
 		await act(async () => {
-			await kickPlayers([who], reason);
+			if (force) {
+				await disconnectPlayers([who], reason);
+			} else {
+				await kickPlayers([who], reason);
+			}
 
 			return t('web.instancePlayers.disconnected', { targets: who.username });
 		}, t('web.instancePlayers.disconnecting', { targets: who.username }));
@@ -667,6 +675,18 @@
 				disabled: !online,
 				hint: offlineHint,
 				action: () => {
+					kickForce = false;
+					kickOpen = true;
+				}
+			},
+			{
+				label: t('web.instancePlayers.forceDisconnect'),
+				icon: 'unlink',
+				color: 'danger',
+				disabled: !online,
+				hint: offlineHint,
+				action: () => {
+					kickForce = true;
 					kickOpen = true;
 				}
 			},
@@ -1094,6 +1114,13 @@
 		<span class="lbl">{t('web.instancePlayers.reasonShown')}</span>
 		<input class="input" bind:value={kickReason} placeholder={t('web.instancePlayers.reasonOptional')} />
 	</label>
+	<label class="force">
+		<Checkbox checked={kickForce} label={t('web.instancePlayers.force')} onchange={(on) => (kickForce = on)} />
+		<span>
+			{t('web.instancePlayers.force')}
+			<span class="dim">{t('web.instancePlayers.forceHint')}</span>
+		</span>
+	</label>
 	{#snippet footer()}
 		<Btn onclick={() => (kickOpen = false)}>{t('web.common.cancel')}</Btn>
 		<Btn variant="danger" onclick={doKick}>{t('web.instancePlayers.disconnect')}</Btn>
@@ -1115,6 +1142,20 @@
 </ConfirmModal>
 
 <style lang="scss">
+	.force {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+		font-size: 0.875rem;
+
+		.dim {
+			display: block;
+			margin-top: 0.125rem;
+			font-size: 0.8125rem;
+		}
+	}
+
 	.columns {
 		display: grid;
 		grid-template-columns: auto 1fr;

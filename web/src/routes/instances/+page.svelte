@@ -329,6 +329,13 @@
 				hint: busyHint,
 				action: () => goto(`/instances/${row.name}`)
 			},
+			{
+				label: t('web.instances.openFiles'),
+				icon: 'folder',
+				disabled: busy,
+				hint: busyHint,
+				action: () => goto(`/instances/${row.name}/files`)
+			},
 			{ separator: true },
 			{
 				label: t('web.instances.startInstance'),

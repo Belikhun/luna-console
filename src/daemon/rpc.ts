@@ -14,7 +14,7 @@
  * of running it locally.
  */
 
-import type { ProgressReporter } from "../core/progress";
+import { ProgressReporter } from "../core/progress";
 import { t } from "../shared/i18n";
 import { PROTOCOL_VERSION } from "../shared/protocol";
 import type {
@@ -1580,6 +1580,12 @@ export const OPS: Record<string, OpSpec> = {
 	"domains.audit": { fn: domainsCore.domainAudit },
 
 	"instancefiles.uploadArchive": { fn: uploadInstanceArchive, cfg: 0, instance: 1 },
+	"instancefiles.stageArchive": {
+		fn: stageArchiveRouted,
+		cfg: 0,
+		instance: 1,
+		reporter: { arg: 3, prop: "reporter" },
+	},
 	"instancefiles.placeUpload": { fn: placeUploadRouted, cfg: 0, instance: 1 },
 	"instancefiles.details": { fn: instancefilesCore.pathDetails, cfg: 0, instance: 1 },
 	"instancefiles.copyAcross": {
@@ -1953,6 +1959,7 @@ export const OPS: Record<string, OpSpec> = {
 	"lunaApi.packSessions": { fn: lunaApi.packSessions },
 	"lunaApi.broadcast": { fn: lunaApi.broadcast },
 	"lunaApi.kick": { fn: lunaApi.kick },
+	"lunaApi.disconnect": { fn: lunaApi.disconnect },
 	"lunaApi.message": { fn: lunaApi.message },
 	"lunaApi.transfer": { fn: lunaApi.transfer },
 	"lunaApi.registeredPlayers": { fn: lunaApi.registeredPlayers },
@@ -2099,6 +2106,59 @@ async function uploadInstanceArchive(
 		contentType: archive.contentType,
 		...(archive.size !== undefined ? { size: archive.size } : {}),
 	};
+}
+
+/**
+ * Pack a download zip on the daemon owning the instance and leave it in the
+ * primary's staging area, where the console serves it from. A follower packs
+ * into its own staging first and then uploads the finished file under the
+ * same token, so the console only ever reads the primary's disk.
+ */
+async function stageArchiveRouted(
+	cfg: ClusterConfig,
+	instance: string,
+	relPath: string,
+	opts: instancefilesCore.StageArchiveOptions = {},
+): Promise<instancefilesCore.StagedArchive> {
+	const root = opts.reporter ?? new ProgressReporter("archive");
+	const remote = uploadArchiveToPrimary;
+
+	root.weighOwn(0);
+
+	const staged = await instancefilesCore.stageInstanceArchive(cfg, instance, relPath, {
+		...(opts.names ? { names: opts.names } : {}),
+		reporter: root.child("zip", 9),
+	});
+
+	if (remote) {
+		const sending = root.child("upload", 2);
+		const path = stagingCore.stagePath(staged.token);
+
+		sending.info(0, t("core.instancefiles.archiveUploading"));
+
+		try {
+			await remote({
+				stream: Bun.file(path).stream(),
+				kind: staged.kind,
+				name: staged.fileName,
+				format: "zip",
+				contentType: instancefilesCore.ARCHIVE_TYPES.zip,
+				size: staged.size,
+				exited: Promise.resolve(0),
+			}, staged.token);
+		} catch (err) {
+			sending.error(0, (err as Error).message);
+			throw err;
+		} finally {
+			await stagingCore.discardStage(staged.token).catch(() => undefined);
+		}
+
+		sending.complete(t("core.instancefiles.archiveUploaded"));
+	}
+
+	root.complete();
+
+	return staged;
 }
 
 /**

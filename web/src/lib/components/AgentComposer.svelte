@@ -200,6 +200,49 @@
 		}
 	}
 
+	/**
+	 * Attach what the clipboard carries as files: a screenshot, an image copied
+	 * from a page, files copied in a file manager. A screenshot arrives with a
+	 * generic name (`image.png`), so it is renamed after the moment it was pasted.
+	 * Copied rich content (a document with an inline picture) also carries HTML,
+	 * and there the text is what was meant, so it still pastes alongside.
+	 */
+	function onPaste(event: ClipboardEvent): void {
+		const data = event.clipboardData;
+
+		if (!ready || !data) {
+			return;
+		}
+
+		const files = Array.from(data.items)
+			.filter((item) => item.kind === 'file')
+			.map((item) => item.getAsFile())
+			.filter((file): file is File => file !== null);
+
+		if (files.length === 0) {
+			return;
+		}
+
+		if (!data.types.includes('text/html')) {
+			event.preventDefault();
+		}
+
+		const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+
+		files.forEach((file, index) => {
+			const generic = file.name === '' || /^image\.[a-z0-9]+$/i.test(file.name);
+			const extension = (file.type.split('/')[1] ?? 'bin').replace('jpeg', 'jpg').replace(/\+.*$/, '');
+			const suffix = files.length > 1
+				? `-${index + 1}`
+				: '';
+			const named = generic
+				? new File([file], `pasted-${stamp}${suffix}.${extension}`, { type: file.type })
+				: file;
+
+			void session.attach(named);
+		});
+	}
+
 	function onDrop(event: DragEvent): void {
 		event.preventDefault();
 		dragging = false;
@@ -472,6 +515,7 @@
 		bind:value={draft}
 		oninput={grow}
 		onkeydown={onKey}
+		onpaste={onPaste}
 	></textarea>
 
 	<div class="bar">

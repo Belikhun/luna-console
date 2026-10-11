@@ -22,6 +22,7 @@
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import Checkbox from '$lib/components/Checkbox.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -73,6 +74,7 @@
 
 	let kickOpen = $state(false);
 	let kickReason = $state('');
+	let kickForce = $state(false);
 	let messageOpen = $state(false);
 	let messageText = $state('');
 	let transferOpen = $state(false);
@@ -246,7 +248,7 @@
 		}
 
 		await act(
-			{ action: 'kick', player: player.uuid, reason: kickReason },
+			{ action: kickForce ? 'disconnect' : 'kick', player: player.uuid, reason: kickReason },
 			`Disconnecting ${player.username}…`,
 			() => `${player.username} disconnected`
 		);
@@ -397,6 +399,17 @@
 				color: 'danger',
 				action: () => {
 					selected = new Set([player.uuid]);
+					kickForce = false;
+					kickOpen = true;
+				}
+			},
+			{
+				label: t('web.instancePlayers.forceDisconnect'),
+				icon: 'unlink',
+				color: 'danger',
+				action: () => {
+					selected = new Set([player.uuid]);
+					kickForce = true;
 					kickOpen = true;
 				}
 			}
@@ -565,6 +578,13 @@
 		<span class="hint">{t('web.playersOnline.optionalLunacoreSendsIts')}</span>
 		<input class="input" bind:value={kickReason} placeholder={t('web.playersOnline.eGRestartingTheLobby')} />
 	</label>
+	<label class="force">
+		<Checkbox checked={kickForce} label={t('web.instancePlayers.force')} onchange={(on) => (kickForce = on)} />
+		<span>
+			{t('web.instancePlayers.force')}
+			<span class="dim">{t('web.instancePlayers.forceHint')}</span>
+		</span>
+	</label>
 	{#snippet footer()}
 		<Btn onclick={() => (kickOpen = false)}>{t('web.playersOnline.cancel')}</Btn>
 		<Btn variant="danger" onclick={doKick}>{t('web.playersOnline.disconnect')}</Btn>
@@ -627,6 +647,20 @@
 </Modal>
 
 <style lang="scss">
+	.force {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+		font-size: 0.875rem;
+
+		.dim {
+			display: block;
+			margin-top: 0.125rem;
+			font-size: 0.8125rem;
+		}
+	}
+
 	.body {
 		display: flex;
 		flex-direction: column;

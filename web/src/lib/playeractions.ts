@@ -103,6 +103,17 @@ export async function kickPlayers(targets: PlayerTarget[], reason = ''): Promise
 }
 
 /**
+ * Close each target's connection outright. A kick waits for the client to take
+ * its packet, which never happens once the player's network has dropped; this
+ * frees a session the proxy is still holding so the player can log back in.
+ */
+export async function disconnectPlayers(targets: PlayerTarget[], reason = ''): Promise<void> {
+	for (const target of targets) {
+		await lunaAdmin({ action: 'disconnect', player: target.uuid, reason });
+	}
+}
+
+/**
  * `gamemode <mode> <player>` through the instance's console. Vanilla on every
  * JVM server, so it needs no plugin; it needs the instance to be running, which
  * the route reports as a 409 the caller shows.

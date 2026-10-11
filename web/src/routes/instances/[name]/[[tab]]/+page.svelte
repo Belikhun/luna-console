@@ -1653,7 +1653,13 @@
 				label: t('web.instanceDetail.players'),
 				value: inst.players ? `${inst.players.online}/${inst.players.max}` : null
 			},
-			{ label: t('web.instanceDetail.directory'), value: inst.dir, copyable: true, style: 'mono' }
+			{
+				label: t('web.instanceDetail.directory'),
+				value: inst.dir,
+				copyable: true,
+				style: 'mono',
+				href: `/instances/${name}/files`
+			}
 		];
 	});
 
@@ -2389,6 +2395,7 @@
 				storageKey="instance"
 			/>
 			<Btn onclick={() => goto(`/instances/${name}/console`)}>{t('web.instanceDetail.connect')}</Btn>
+			<Btn icon="folder" onclick={() => goto(`/instances/${name}/files`)}>{t('web.instanceDetail.configFiles')}</Btn>
 			<Dropdown
 				label={t('web.instanceDetail.instanceState')}
 				items={[
@@ -2422,7 +2429,7 @@
 						action: () => goto(`/instances/${name}/console`)
 					},
 					{
-						label: t('web.instanceDetail.configFiles'), icon: 'fileCode',
+						label: t('web.instanceDetail.configFiles'), icon: 'folder',
 						action: () => goto(`/instances/${name}/files`)
 					},
 					{ label: t('web.instanceDetail.deployPluginsHere'), icon: 'upload', action: () => deployPlugins() },

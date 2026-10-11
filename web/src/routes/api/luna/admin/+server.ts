@@ -60,6 +60,14 @@ export async function POST({ request }) {
 		return json(result);
 	}
 
+	if (action === 'disconnect') {
+		const result = await luna.disconnect(player, String(body.reason ?? ''));
+
+		pushEvent('proxy', 'action', `force-disconnected ${player}`);
+
+		return json(result);
+	}
+
 	if (action === 'message') {
 		const text = String(body.message ?? '').trim();
 

@@ -30,6 +30,7 @@
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import Checkbox from '$lib/components/Checkbox.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import PlayerSkin3D from '$lib/components/PlayerSkin3D.svelte';
@@ -219,6 +220,7 @@
 	// header verb dialogs
 	let kickOpen = $state(false);
 	let kickReason = $state('');
+	let kickForce = $state(false);
 	let messageOpen = $state(false);
 	let messageText = $state('');
 	let transferOpen = $state(false);
@@ -610,6 +612,18 @@
 				disabled: offline,
 				hint: offline ? 'player is offline' : undefined,
 				action: () => {
+					kickForce = false;
+					kickOpen = true;
+				}
+			},
+			{
+				label: t('web.instancePlayers.forceDisconnect'),
+				icon: 'unlink',
+				color: 'danger',
+				disabled: offline,
+				hint: offline ? 'player is offline' : undefined,
+				action: () => {
+					kickForce = true;
 					kickOpen = true;
 				}
 			},
@@ -732,7 +746,12 @@
 		kickOpen = false;
 
 		await act(
-			() => post('/luna/admin', { action: 'kick', player: detail?.uuid ?? detail?.username, reason: kickReason }),
+			() =>
+				post('/luna/admin', {
+					action: kickForce ? 'disconnect' : 'kick',
+					player: detail?.uuid ?? detail?.username,
+					reason: kickReason
+				}),
 			`Disconnecting ${detail?.username}…`,
 			`${detail?.username} disconnected`
 		);
@@ -1742,6 +1761,13 @@
 		<span class="lbl">{t('web.playerDetail.reasonShownToThe')}</span>
 		<input class="input" bind:value={kickReason} placeholder={t('web.playerDetail.eGRestartingTheLobby')} />
 	</label>
+	<label class="force">
+		<Checkbox checked={kickForce} label={t('web.instancePlayers.force')} onchange={(on) => (kickForce = on)} />
+		<span>
+			{t('web.instancePlayers.force')}
+			<span class="dim">{t('web.instancePlayers.forceHint')}</span>
+		</span>
+	</label>
 	{#snippet footer()}
 		<Btn onclick={() => (kickOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
 		<Btn variant="danger" onclick={doKick}>{t('web.playerDetail.disconnect')}</Btn>
@@ -1959,6 +1985,20 @@
 </Modal>
 
 <style lang="scss">
+	.force {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+		font-size: 0.875rem;
+
+		.dim {
+			display: block;
+			margin-top: 0.125rem;
+			font-size: 0.8125rem;
+		}
+	}
+
 	.columns {
 		display: grid;
 		grid-template-columns: auto 1fr;

@@ -750,7 +750,15 @@
 		"uploadOntoDir": "{path} is a directory; an uploaded file cannot replace it",
 		"namesNeedDir": "{path} is not a directory, so there are no entries to pack from it",
 		"rawIsOneFile": "{path} is not a single file; download it as an archive instead",
-		"badName": "{name} is not a plain entry name"
+		"badName": "{name} is not a plain entry name",
+		"archiveMeasuring": "counting what to pack",
+		"archiveMeasured": "{files} files · {size}",
+		"archivePacking": "packing {size}",
+		"archiveProgress": "{done} of {total} packed",
+		"archiveReady": "zip ready · {size}",
+		"archiveFailed": "the zip could not be made: {error}",
+		"archiveUploading": "sending the zip to the primary",
+		"archiveUploaded": "zip on the primary"
 	},
 	"hostshell": {
 		"disabled": "this machine does not accept host commands; its operator can enable mcpHostShell in the daemon config",

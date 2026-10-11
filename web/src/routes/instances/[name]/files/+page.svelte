@@ -8,6 +8,7 @@
 	import { page } from '$app/state';
 	import { api, post, put } from '$lib/api';
 	import { followJob } from '$lib/jobs';
+	import { jobFlash } from '$lib/jobflash';
 	import { fmtBytes, fmtDateTime } from '$lib/format';
 	import { copyText } from '$lib/clipboard';
 	import { matches } from '$lib/search/match';
@@ -724,17 +725,42 @@
 	// ----- verbs -----
 	/** Download one entry (a file as itself, a folder as a zip) or a selection as one zip. */
 	function download(targets: FileRow[]): void {
-		if (targets.length === 1) {
-			const [row] = targets as [FileRow];
-
-			triggerDownload(downloadUrl(name, row.path, { format: row.kind === 'dir' ? 'zip' : 'raw' }));
+		if (targets.length === 1 && targets[0]!.kind !== 'dir') {
+			triggerDownload(downloadUrl(name, targets[0]!.path, { format: 'raw' }));
 
 			return;
 		}
 
-		const dir = targets[0]?.dir ?? cwd;
+		if (targets.length === 1) {
+			void downloadZip(targets[0]!.path);
 
-		triggerDownload(downloadUrl(name, dir, { format: 'zip', names: targets.map((row) => row.name) }));
+			return;
+		}
+
+		void downloadZip(targets[0]?.dir ?? cwd, targets.map((row) => row.name));
+	}
+
+	/**
+	 * Pack a folder or a selection on the daemon as a job, with its progress on a
+	 * card, and start the browser's download once the zip exists.
+	 */
+	async function downloadZip(path: string, names: string[] = []): Promise<void> {
+		const label = names.length > 1
+			? t('web.instanceFiles.zipSelection', { count: names.length })
+			: (names[0] ?? path.split('/').pop()) || name;
+
+		await jobFlash({
+			title: t('web.instanceFiles.zipping', { name: label }),
+			start: () => post(`/instances/${name}/files/download`, { path, names }),
+			success: (result) => {
+				const staged = result as { token: string; fileName: string; size: number };
+				const params = new URLSearchParams({ stage: staged.token, file: staged.fileName });
+
+				triggerDownload(`/api/instances/${encodeURIComponent(name)}/files/download?${params.toString()}`);
+
+				return { message: t('web.instanceFiles.zipReady', { name: staged.fileName, size: fmtBytes(staged.size) }) };
+			}
+		});
 	}
 
 	/** Whether a selection can download as one zip: everything must sit in one directory. */
@@ -2080,7 +2106,13 @@
 	{/if}
 	{#snippet footer()}
 		{#if details}
-			<Btn icon="download" onclick={() => triggerDownload(downloadUrl(name, details!.path, { format: details!.kind === 'dir' ? 'zip' : 'raw' }))}>
+			<Btn
+				icon="download"
+				onclick={() =>
+					details!.kind === 'dir'
+						? void downloadZip(details!.path)
+						: triggerDownload(downloadUrl(name, details!.path, { format: 'raw' }))}
+			>
 				{t('web.instanceFiles.download')}
 			</Btn>
 		{/if}

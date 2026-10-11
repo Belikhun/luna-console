@@ -750,7 +750,15 @@
 		"uploadOntoDir": "{path} là thư mục; tệp tải lên không thể thay thế nó",
 		"namesNeedDir": "{path} không phải thư mục nên không có mục nào để đóng gói từ đó",
 		"rawIsOneFile": "{path} không phải một tệp đơn; hãy tải về dạng lưu trữ",
-		"badName": "{name} không phải tên mục hợp lệ"
+		"badName": "{name} không phải tên mục hợp lệ",
+		"archiveMeasuring": "đang đếm những gì cần nén",
+		"archiveMeasured": "{files} tệp · {size}",
+		"archivePacking": "đang nén {size}",
+		"archiveProgress": "đã nén {done} trên {total}",
+		"archiveReady": "tệp zip đã sẵn sàng · {size}",
+		"archiveFailed": "không tạo được tệp zip: {error}",
+		"archiveUploading": "đang gửi tệp zip về máy chính",
+		"archiveUploaded": "tệp zip đã ở máy chính"
 	},
 	"hostshell": {
 		"disabled": "máy này không nhận lệnh shell; người vận hành có thể bật mcpHostShell trong cấu hình daemon",

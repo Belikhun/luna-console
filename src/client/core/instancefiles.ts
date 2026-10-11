@@ -24,6 +24,8 @@ export type {
 	PathDetails,
 	PathInfo,
 	PlaceUploadOptions,
+	StageArchiveOptions,
+	StagedArchive,
 	TransferOptions,
 } from "../../core/instancefiles";
 
@@ -48,6 +50,17 @@ export const placeUpload = call("instancefiles.placeUpload", { cfg: 0 }) as (
 	relPath: string,
 	opts?: core.PlaceUploadOptions,
 ) => Promise<core.PathInfo>;
+
+/**
+ * Pack a directory or a selection into a zip on the owning daemon, reporting as
+ * it goes, and leave it in the primary's staging area under the returned token.
+ */
+export const stageInstanceArchive = jobCall("instancefiles.stageArchive", {
+	cfg: 0,
+	reporter: { arg: 3, prop: "reporter" },
+	kind: "file-archive",
+	targetArg: 1,
+}) as typeof core.stageInstanceArchive;
 
 /**
  * Copy between two instances, routed to the daemon owning the destination; a

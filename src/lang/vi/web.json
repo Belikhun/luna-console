@@ -691,6 +691,7 @@
 		"refreshFailed": "Không làm mới được danh sách instance",
 		"connectConsole": "Kết nối console",
 		"viewDetails": "Xem chi tiết",
+		"openFiles": "Mở trình quản lý tệp",
 		"startInstance": "Khởi động instance",
 		"stopInstance": "Dừng instance",
 		"restartInstance": "Khởi động lại instance",
@@ -2531,7 +2532,10 @@
 		"discardLead": "Bỏ thay đổi chưa lưu với {path}?",
 		"trayUploading": "Đang tải lên {count} tệp",
 		"trayExpand": "Hiện danh sách tệp",
-		"trayCollapse": "Thu gọn danh sách"
+		"trayCollapse": "Thu gọn danh sách",
+		"zipping": "Đang nén {name}…",
+		"zipSelection": "{count} mục",
+		"zipReady": "Đang tải {name} · {size}"
 	},
 	"permEdit": {
 		"saveChanges": "Lưu thay đổi",
@@ -4133,6 +4137,9 @@
 		"move": "Chuyển",
 		"disconnectTitle": "Ngắt kết nối {targets}",
 		"disconnectHint": "Họ bị đưa ra khỏi toàn mạng, không chỉ máy chủ này.",
+		"forceDisconnect": "Buộc ngắt kết nối…",
+		"force": "Buộc: đóng kết nối ngay, không chờ",
+		"forceHint": "Dành cho phiên bị rớt mạng mà proxy vẫn giữ, khiến người chơi vào lại bị báo \"already connected\". Người chơi sẽ không nhận được thông báo.",
 		"reasonShown": "Lý do hiện cho người chơi",
 		"reasonOptional": "không bắt buộc",
 		"reason": "Lý do",

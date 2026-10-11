@@ -486,6 +486,28 @@ export async function kick(player: string, reason = ""): Promise<LunaResult<{ us
 	);
 }
 
+export interface DisconnectResult {
+	username: string;
+	uuid: string;
+	/** Whether the proxy closed the socket itself, rather than falling back to a kick */
+	closed: boolean;
+	/** Whether the session was gone from the proxy by the time it answered */
+	released: boolean;
+}
+
+/**
+ * Close a player's connection without waiting for the client to take a kick.
+ * This is for a session whose network died while the proxy still holds it: the
+ * kick packet never flushes, and the player's next login is refused as already
+ * connected until the proxy lets go.
+ */
+export async function disconnect(player: string, reason = ""): Promise<LunaResult<DisconnectResult>> {
+	return await call<DisconnectResult>(
+		`/admin/players/${encodeURIComponent(player)}/disconnect`,
+		{ form: { reason }, timeoutMs: 8000 },
+	);
+}
+
 /** Send one player a message. */
 export async function message(
 	player: string,

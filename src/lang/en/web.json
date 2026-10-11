@@ -691,6 +691,7 @@
 		"refreshFailed": "Could not refresh instances",
 		"connectConsole": "Connect to console",
 		"viewDetails": "View details",
+		"openFiles": "Open file manager",
 		"startInstance": "Start instance",
 		"stopInstance": "Stop instance",
 		"restartInstance": "Restart instance",
@@ -2328,7 +2329,10 @@
 		"fieldDescription": "Description",
 		"trayUploading": "Uploading {count} file(s)",
 		"trayExpand": "Show the files",
-		"trayCollapse": "Fold the list away"
+		"trayCollapse": "Fold the list away",
+		"zipping": "Zipping {name}…",
+		"zipSelection": "{count} entries",
+		"zipReady": "{name} is downloading · {size}"
 	},
 	"machineDetail": {
 		"machineOverview": "Machine overview",
@@ -4133,6 +4137,9 @@
 		"move": "Move",
 		"disconnectTitle": "Disconnect {targets}",
 		"disconnectHint": "They are removed from the whole network, not just this server.",
+		"forceDisconnect": "Force disconnect…",
+		"force": "Force: close the connection without waiting",
+		"forceHint": "For a session whose network dropped while the proxy still holds it, which is what refuses a rejoin with \"already connected\". No message reaches the player.",
 		"reasonShown": "Reason shown to the player",
 		"reasonOptional": "optional",
 		"reason": "Reason",

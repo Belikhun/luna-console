@@ -25,6 +25,7 @@ import type { ClusterConfig } from "./types";
 import { t } from "../shared/i18n";
 import { resolveInstancePath } from "./configfiles";
 import { ProgressReporter } from "./progress";
+import { ensureStagingDir, newStageToken, stagePath } from "./staging";
 
 /** Most entries a find returns. */
 export const MAX_FIND_RESULTS = 500;
@@ -675,6 +676,194 @@ function packEntries(dir: string, names: string[], name: string, format: Exclude
 		contentType: ARCHIVE_TYPES[format],
 		exited: proc.exited,
 	};
+}
+
+export interface StageArchiveOptions {
+	/** Pack these entries of the directory at `relPath`, as {@link ArchiveOptions.names} does */
+	names?: string[];
+	reporter?: ProgressReporter;
+}
+
+/** A zip packed into this daemon's staging area, ready to be served by its token. */
+export interface StagedArchive {
+	token: string;
+	/** The file name the download should carry, extension included */
+	fileName: string;
+	kind: PathInfo["kind"];
+	size: number;
+	files: number;
+}
+
+/** How much input zip processes per progress dot. */
+const ZIP_DOT_BYTES = 1024 * 1024;
+
+/**
+ * Pack a directory, or a selection inside one, into a zip in this daemon's
+ * staging area, reporting as it goes. This is the download path for anything
+ * that is not a single file: the walk is measured first so the packing has a
+ * total to report against, and the finished zip has a length, so the browser
+ * shows a real download and can resume it. The caller serves the token and
+ * discards it; the stage sweep takes one nobody came back for.
+ */
+export async function stageInstanceArchive(
+	cfg: ClusterConfig,
+	instance: string,
+	relPath: string,
+	opts: StageArchiveOptions = {},
+): Promise<StagedArchive> {
+	const progress = opts.reporter ?? new ProgressReporter("archive");
+	const measuring = progress.child("measure", 1);
+	const packing = progress.child("pack", 8);
+	const resolved = resolveInstancePath(cfg, instance, relPath);
+	const names = opts.names?.filter((name) => name !== "") ?? [];
+
+	progress.weighOwn(0);
+
+	if (names.length === 0) {
+		requireInner(resolved, relPath);
+	}
+
+	const info = await statInstancePath(cfg, instance, relPath);
+
+	if (!info) {
+		throw new Error(t("core.instancefiles.missingIn", { path: relPath, instance }));
+	}
+
+	if (info.kind !== "dir" && names.length > 0) {
+		throw new Error(t("core.instancefiles.namesNeedDir", { path: relPath }));
+	}
+
+	for (const name of names) {
+		if (name.includes("/") || name.includes("\\") || name === "." || name === "..") {
+			throw new Error(t("core.instancefiles.badName", { name }));
+		}
+
+		if (!existsSync(join(resolved.path, name))) {
+			throw new Error(t("core.instancefiles.missingIn", { path: `${relPath}/${name}`.replace(/^\//, ""), instance }));
+		}
+	}
+
+	const dir = names.length > 0
+		? resolved.path
+		: dirname(resolved.path);
+	const entries = names.length > 0
+		? names
+		: [basename(resolved.path)];
+	const name = names.length === 1
+		? names[0]!
+		: basename(resolved.path);
+	const kind = names.length === 1
+		? kindOfSync(join(dir, names[0]!))
+		: names.length > 1
+			? "dir"
+			: info.kind;
+
+	const total = { files: 0, size: 0 };
+
+	measuring.info(0, t("core.instancefiles.archiveMeasuring"));
+
+	for (const entry of entries) {
+		const counted = await measure(join(dir, entry));
+
+		total.files += counted.files;
+		total.size += counted.size;
+	}
+
+	measuring.complete(t("core.instancefiles.archiveMeasured", { files: total.files, size: formatSize(total.size) }));
+
+	await ensureStagingDir();
+
+	const token = newStageToken();
+	const target = stagePath(token);
+	const partial = `${target}.part`;
+
+	try {
+		await packZip(dir, entries, partial, total.size, packing);
+		await rename(partial, target);
+	} catch (err) {
+		await rm(partial, { force: true });
+		progress.error(0, (err as Error).message);
+		throw err;
+	}
+
+	const size = (await stat(target)).size;
+
+	progress.complete(t("core.instancefiles.archiveReady", { size: formatSize(size) }));
+
+	return {
+		token,
+		fileName: `${name}.zip`,
+		kind,
+		size,
+		files: total.files,
+	};
+}
+
+/**
+ * Run zip over `entries` inside `dir` into `dest`. `-q -dg -ds` makes zip
+ * print nothing but one dot per {@link ZIP_DOT_BYTES} of input, across the
+ * whole archive, which is the only running figure it offers that is not
+ * interleaved with file names.
+ */
+async function packZip(
+	dir: string,
+	entries: string[],
+	dest: string,
+	totalBytes: number,
+	progress: ProgressReporter,
+): Promise<void> {
+	// `./name` rather than `--`: zip has no end-of-options marker, and a file
+	// called `-r` must not become a flag
+	const proc = Bun.spawn(
+		["zip", "-r", "-y", "-q", "-dg", "-ds", "1m", dest, ...entries.map((entry) => `./${entry}`)],
+		{ cwd: dir, stdout: "pipe", stderr: "pipe" },
+	);
+
+	progress.info(0, t("core.instancefiles.archivePacking", { size: formatSize(totalBytes) }));
+
+	// read alongside stdout, so a chatty failure cannot fill the pipe and stall zip
+	const errors = new Response(proc.stderr).text();
+	const reader = proc.stdout.getReader();
+	const decoder = new TextDecoder();
+	let dots = 0;
+
+	for (;;) {
+		const { done, value } = await reader.read();
+
+		if (done) {
+			break;
+		}
+
+		const text = decoder.decode(value, { stream: true });
+		const before = dots;
+
+		for (const char of text) {
+			if (char === ".") {
+				dots++;
+			}
+		}
+
+		if (dots === before || totalBytes <= 0) {
+			continue;
+		}
+
+		const packed = Math.min(dots * ZIP_DOT_BYTES, totalBytes);
+
+		progress.info(
+			Math.min(0.99, packed / totalBytes),
+			t("core.instancefiles.archiveProgress", { done: formatSize(packed), total: formatSize(totalBytes) }),
+		);
+	}
+
+	const code = await proc.exited;
+
+	if (code !== 0) {
+		const detail = (await errors).trim().split("\n").slice(-2).join(" ");
+
+		throw new Error(t("core.instancefiles.archiveFailed", { error: detail || `zip exited ${code}` }));
+	}
+
+	progress.complete();
 }
 
 function kindOfSync(path: string): PathInfo["kind"] {

@@ -11,6 +11,7 @@
 	import {
 		banAddressOnNetwork,
 		bareAddress,
+		disconnectPlayers,
 		kickPlayers,
 		messagePlayers,
 		moderatePlayers,
@@ -29,6 +30,7 @@
 	import Dropdown from './Dropdown.svelte';
 	import Select from './Select.svelte';
 	import Modal from './Modal.svelte';
+	import Checkbox from './Checkbox.svelte';
 	import ConfirmModal from './ConfirmModal.svelte';
 	import Flash from './Flash.svelte';
 	import StatusBadge from './StatusBadge.svelte';
@@ -251,6 +253,7 @@
 	let transferTo = $state('');
 	let kickOpen = $state(false);
 	let kickReason = $state('');
+	let kickForce = $state(false);
 	let banOpen = $state(false);
 	let banReason = $state('');
 	let ipBanOpen = $state(false);
@@ -330,6 +333,7 @@
 	async function doKick(): Promise<void> {
 		const targets = pending;
 		const reason = kickReason.trim();
+		const force = kickForce;
 
 		kickOpen = false;
 
@@ -338,7 +342,11 @@
 		}
 
 		await act(async () => {
-			await kickPlayers(targets, reason);
+			if (force) {
+				await disconnectPlayers(targets, reason);
+			} else {
+				await kickPlayers(targets, reason);
+			}
 
 			return t('web.instancePlayers.disconnected', { targets: names(targets) });
 		}, t('web.instancePlayers.disconnecting', { targets: names(targets) }));
@@ -402,14 +410,15 @@
 		}, t('web.instancePlayers.resendingPacks', { targets: names(targets) }));
 	}
 
-	function open(dialog: 'message' | 'transfer' | 'kick' | 'ban' | 'ipban', targets: Row[]): void {
+	function open(dialog: 'message' | 'transfer' | 'kick' | 'force' | 'ban' | 'ipban', targets: Row[]): void {
 		pending = targets;
+		kickForce = dialog === 'force';
 
 		if (dialog === 'message') {
 			messageOpen = true;
 		} else if (dialog === 'transfer') {
 			transferOpen = true;
-		} else if (dialog === 'kick') {
+		} else if (dialog === 'kick' || dialog === 'force') {
 			kickOpen = true;
 		} else if (dialog === 'ban') {
 			banOpen = true;
@@ -493,6 +502,14 @@
 				disabled: none,
 				hint: noneHint,
 				action: () => open('kick', targets)
+			},
+			{
+				label: t('web.instancePlayers.forceDisconnect'),
+				icon: 'unlink',
+				color: 'danger',
+				disabled: none,
+				hint: noneHint,
+				action: () => open('force', targets)
 			},
 			{
 				label: t('web.instancePlayers.banHere'),
@@ -728,6 +745,13 @@
 		<span class="lbl">{t('web.instancePlayers.reasonShown')}</span>
 		<input class="input" bind:value={kickReason} placeholder={t('web.instancePlayers.reasonOptional')} />
 	</label>
+	<label class="force">
+		<Checkbox checked={kickForce} label={t('web.instancePlayers.force')} onchange={(on) => (kickForce = on)} />
+		<span>
+			{t('web.instancePlayers.force')}
+			<span class="dim">{t('web.instancePlayers.forceHint')}</span>
+		</span>
+	</label>
 	{#snippet footer()}
 		<Btn onclick={() => (kickOpen = false)}>{t('web.common.cancel')}</Btn>
 		<Btn variant="danger" onclick={doKick}>{t('web.instancePlayers.disconnect')}</Btn>
@@ -763,6 +787,20 @@
 </ConfirmModal>
 
 <style lang="scss">
+	.force {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+		font-size: 0.875rem;
+
+		.dim {
+			display: block;
+			margin-top: 0.125rem;
+			font-size: 0.8125rem;
+		}
+	}
+
 	.pad {
 		padding: 1rem 1.25rem 0;
 	}

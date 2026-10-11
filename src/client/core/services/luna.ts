@@ -25,6 +25,7 @@ export type {
 	PackSession,
 	PackSessionList,
 	TransferResult,
+	DisconnectResult,
 	RegisteredPlayer,
 	RegisteredPlayerList,
 	RegisteredPlayerQuery,
@@ -71,6 +72,7 @@ export const runCommand = call("lunaApi.runCommand") as typeof core.runCommand;
 export const packSessions = call("lunaApi.packSessions") as typeof core.packSessions;
 export const broadcast = call("lunaApi.broadcast") as typeof core.broadcast;
 export const kick = call("lunaApi.kick") as typeof core.kick;
+export const disconnect = call("lunaApi.disconnect") as typeof core.disconnect;
 export const message = call("lunaApi.message") as typeof core.message;
 export const transfer = call("lunaApi.transfer") as typeof core.transfer;
 export const registeredPlayers = call("lunaApi.registeredPlayers") as typeof core.registeredPlayers;

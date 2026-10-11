@@ -2,10 +2,13 @@
 // Proprietary software: use, copying, modification and distribution are
 // prohibited without written permission. See LICENSE at the repository root.
 
-import { error } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
 
 import { loadCluster, managedInstances } from '$core/config';
+import { stageInstanceArchive } from '$core/instancefiles';
+import { discardStage } from '$core/world';
 import { daemonFetch } from '$lib/server/luna';
+import { startJob } from '$lib/server/jobs';
 
 /** Headers worth carrying from the daemon; the rest are ours to set. */
 const PASS_THROUGH = ['content-length', 'content-range', 'accept-ranges', 'content-type'];
@@ -26,6 +29,14 @@ export async function GET({ params, request, url, setHeaders }) {
 
 	if (!managedInstances(cfg)[params.name]) {
 		throw error(404, 'unknown instance');
+	}
+
+	const stage = url.searchParams.get('stage');
+
+	if (stage) {
+		setHeaders({ 'cache-control': 'private, no-store' });
+
+		return await stagedZip(stage, url.searchParams.get('file') ?? `${params.name}.zip`);
 	}
 
 	const path = (url.searchParams.get('path') ?? '').replace(/^\/+/, '');
@@ -80,6 +91,76 @@ export async function GET({ params, request, url, setHeaders }) {
 	setHeaders({ 'cache-control': 'private, no-store' });
 
 	return new Response(upstream.body, { status: upstream.status, headers });
+}
+
+/**
+ * POST { path, names? } → a job packing a directory or a selection into a zip.
+ *
+ * A folder can take minutes to pack, so it is a job the page follows, not a
+ * request the browser waits on with nothing to show. When it finishes, the
+ * result's token is fetched through `GET ?stage=<token>`.
+ */
+export async function POST({ params, request }) {
+	const cfg = await loadCluster();
+	const name = params.name;
+
+	if (!managedInstances(cfg)[name]) {
+		throw error(404, 'unknown instance');
+	}
+
+	const body = await request.json();
+	const path = String(body.path ?? '').replace(/^\/+/, '');
+	const names: string[] = Array.isArray(body.names)
+		? body.names.map((entry: unknown) => String(entry))
+		: [];
+	const label = names.length > 1
+		? `zip ${names.length} entries of ${name}`
+		: `zip ${names[0] ?? (path || name)}`;
+
+	const job = startJob('file-archive', name, label, async (reporter) => {
+		return await stageInstanceArchive(cfg, name, path, {
+			...(names.length > 0 ? { names } : {}),
+			reporter
+		});
+	});
+
+	return json({ ok: true, job });
+}
+
+/**
+ * One staged zip, served once: the primary's copy is discarded when the body
+ * has been read through, and the stage sweep takes one a dropped download left.
+ */
+async function stagedZip(token: string, fileName: string): Promise<Response> {
+	if (!/^[a-z0-9]{8,64}$/.test(token)) {
+		throw error(400, 'invalid stage token');
+	}
+
+	const upstream = await daemonFetch(`/files/stage/${encodeURIComponent(token)}`);
+
+	if (!upstream.ok || !upstream.body) {
+		throw error(upstream.status === 404 ? 404 : 502, await upstreamMessage(upstream));
+	}
+
+	const headers = new Headers({
+		'content-type': 'application/zip',
+		'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+	});
+	const length = upstream.headers.get('content-length');
+
+	if (length) {
+		headers.set('content-length', length);
+	}
+
+	const body = upstream.body.pipeThrough(
+		new TransformStream<Uint8Array, Uint8Array>({
+			flush() {
+				void discardStage(token).catch(() => undefined);
+			}
+		})
+	);
+
+	return new Response(body, { headers });
 }
 
 /** The daemon's own error text, when it sent one. */
