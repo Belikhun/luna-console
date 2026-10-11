@@ -5,9 +5,13 @@
 /**
  * CurseForge API client (api.curseforge.com), as an addon provider. Serves
  * mods, Bukkit plugins, resource packs and data packs; each a "class" of the
- * Minecraft game upstream. Requires an API key (console.curseforge.com), so
- * the provider reports itself unavailable until the daemon injects one
- * (`curseforgeApiKey` in the daemon config, or `LUNA_CURSEFORGE_KEY`).
+ * Minecraft game upstream. The official API wants a key (console.curseforge.com,
+ * injected as `curseforgeApiKey` in the daemon config or `LUNA_CURSEFORGE_KEY`);
+ * without one the client falls back to cfwidget.com, a keyless mirror of
+ * public project pages. That mirror has no search, so a keyless search only
+ * finds a project named exactly (slug, id or curseforge.com URL), and it
+ * carries no download URLs or hashes, so files come from the CDN path the
+ * file id implies and arrive unverified, as Smithed's do.
  *
  * Quirks the mapping absorbs:
  * - a file's `gameVersions` mixes MC versions with loader tags ("Fabric",
@@ -33,6 +37,7 @@ import type {
 } from "./providers";
 
 const API = "https://api.curseforge.com/v1";
+const CFWIDGET = "https://api.cfwidget.com";
 const GAME_ID = 432;
 
 /** CurseForge class ids of the addon types luna installs. */
@@ -153,21 +158,22 @@ function toProject(mod: CfMod): AddonProject {
 	};
 }
 
-/** The one modLoaderType filter the requested loader facets imply, if any. */
-function loaderFilter(type: AddonType, loaders: string[]): number | undefined {
+/** The one mod loader the requested facets filter on, if any. */
+function requestedLoader(type: AddonType, loaders: string[]): string | undefined {
 	if (type !== "mod") {
 		return undefined;
 	}
 
-	for (const loader of loaders) {
-		const mapped = MOD_LOADER_TYPES[loader];
+	return loaders.find((loader) => MOD_LOADER_TYPES[loader] !== undefined);
+}
 
-		if (mapped !== undefined) {
-			return mapped;
-		}
-	}
+/** The one modLoaderType filter the requested loader facets imply, if any. */
+function loaderFilter(type: AddonType, loaders: string[]): number | undefined {
+	const loader = requestedLoader(type, loaders);
 
-	return undefined;
+	return loader === undefined
+		? undefined
+		: MOD_LOADER_TYPES[loader];
 }
 
 /** Velocity plugins do not exist on CurseForge; fail with the reason, not silence. */
@@ -177,7 +183,7 @@ function rejectVelocity(type: AddonType, loaders: string[]): void {
 	}
 }
 
-async function search(
+async function apiSearch(
 	query: string,
 	type: AddonType,
 	loaders: string[],
@@ -204,7 +210,7 @@ async function search(
 	return (res?.data ?? []).map(toHit);
 }
 
-async function getProject(idOrSlug: string, type: AddonType): Promise<AddonProject | undefined> {
+async function apiGetProject(idOrSlug: string, type: AddonType): Promise<AddonProject | undefined> {
 	if (/^\d+$/.test(idOrSlug)) {
 		const res = await api<{ data: CfMod }>(`/mods/${idOrSlug}`);
 
@@ -288,7 +294,7 @@ function toVersion(ref: RemoteRef, type: AddonType, file: CfFile): AddonVersion 
 	};
 }
 
-async function getVersions(
+async function apiGetVersions(
 	ref: RemoteRef,
 	type: AddonType,
 	loaders: string[],
@@ -327,6 +333,185 @@ async function getVersions(
 		.map((file) => toVersion(ref, type, file));
 }
 
+
+interface WidgetFile {
+	id: number;
+	display: string;
+	name: string;
+	type: string;
+	filesize: number;
+	/** MC versions mixed with loader and environment tags, as on the site */
+	versions?: string[];
+	uploaded_at: string;
+}
+
+interface WidgetProject {
+	id: number;
+	title: string;
+	summary: string;
+	thumbnail?: string;
+	downloads?: { total?: number };
+	members?: Array<{ username: string }>;
+	urls?: { curseforge?: string };
+	files?: WidgetFile[];
+}
+
+const WIDGET_RELEASE_TYPES: Record<string, number> = { release: 1, beta: 2, alpha: 3 };
+
+/** Same cap the official path reaches with its two pages of files. */
+const WIDGET_FILE_LIMIT = 100;
+
+async function widget(path: string): Promise<WidgetProject | undefined> {
+	const res = await fetch(CFWIDGET + path, {
+		headers: { "User-Agent": USER_AGENT },
+	});
+
+	if (res.status === 404) {
+		return undefined;
+	}
+
+	// cfwidget answers 202 for a project it has not mirrored yet and fetches it in the background
+	if (res.status === 202) {
+		throw new Error(t("core.services.cfwidgetQueued"));
+	}
+
+	if (!res.ok) {
+		const body = (await res.text()).slice(0, 200);
+
+		throw new Error(`cfwidget ${path}: HTTP ${res.status} ${body}`);
+	}
+
+	return (await res.json()) as WidgetProject;
+}
+
+/** The project's slug, read off its canonical URL (the path asked for may be an old alias). */
+function widgetSlug(project: WidgetProject): string {
+	const url = project.urls?.curseforge ?? "";
+	const segment = url.split("/").filter(Boolean).pop();
+
+	return segment ?? String(project.id);
+}
+
+/** The cfwidget path for an id, a slug in the type's class, or a curseforge.com URL. */
+function widgetPath(idOrSlug: string, type: AddonType): string {
+	const trimmed = idOrSlug.trim();
+
+	if (/^\d+$/.test(trimmed)) {
+		return `/${trimmed}`;
+	}
+
+	const fromUrl = trimmed.match(/curseforge\.com\/minecraft\/([\w-]+)\/([\w-]+)/i);
+
+	if (fromUrl) {
+		return `/minecraft/${fromUrl[1]}/${fromUrl[2]}`;
+	}
+
+	const slug = trimmed
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+
+	return `/minecraft/${CLASS_PATHS[type]}/${encodeURIComponent(slug)}`;
+}
+
+/** Where the CDN keeps a file: its id split into thousands, no zero padding. */
+function cdnUrl(file: WidgetFile): string {
+	const head = Math.floor(file.id / 1000);
+	const tail = file.id % 1000;
+
+	return `https://mediafilez.forgecdn.net/files/${head}/${tail}/${encodeURIComponent(file.name)}`;
+}
+
+/** A mirrored file in the official API's shape, so one mapping serves both paths. */
+function widgetFileAsCf(file: WidgetFile): CfFile {
+	const tags = file.versions ?? [];
+
+	return {
+		id: file.id,
+		displayName: file.display,
+		fileName: file.name,
+		releaseType: WIDGET_RELEASE_TYPES[file.type] ?? 1,
+		fileDate: file.uploaded_at,
+		fileLength: file.filesize,
+		downloadUrl: cdnUrl(file),
+		gameVersions: tags,
+		sortableGameVersions: tags
+			.filter((tag) => /^\d+(?:\.\d+)+$/.test(tag))
+			.map((gameVersion) => ({ gameVersion })),
+	};
+}
+
+async function widgetSearch(
+	query: string,
+	type: AddonType,
+	loaders: string[],
+): Promise<AddonSearchHit[]> {
+	rejectVelocity(type, loaders);
+
+	if (!query.trim()) {
+		return [];
+	}
+
+	const project = await widget(widgetPath(query, type));
+
+	if (!project) {
+		return [];
+	}
+
+	return [
+		{
+			project_id: String(project.id),
+			slug: widgetSlug(project),
+			title: project.title,
+			description: project.summary,
+			downloads: project.downloads?.total ?? 0,
+			author: project.members?.[0]?.username,
+			icon_url: project.thumbnail,
+		},
+	];
+}
+
+async function widgetGetProject(idOrSlug: string, type: AddonType): Promise<AddonProject | undefined> {
+	const project = await widget(widgetPath(idOrSlug, type));
+
+	if (!project) {
+		return undefined;
+	}
+
+	return {
+		id: String(project.id),
+		slug: widgetSlug(project),
+		title: project.title,
+		description: project.summary,
+		loaders: [],
+		game_versions: [],
+	};
+}
+
+async function widgetGetVersions(
+	ref: RemoteRef,
+	type: AddonType,
+	loaders: string[],
+): Promise<AddonVersion[]> {
+	rejectVelocity(type, loaders);
+
+	const project = await widget(`/${ref.projectId}`);
+	const loader = requestedLoader(type, loaders);
+
+	const files = (project?.files ?? [])
+		.filter((file) => {
+			if (loader === undefined) {
+				return true;
+			}
+
+			return (file.versions ?? []).some((tag) => tag.toLowerCase() === loader);
+		})
+		.sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))
+		.slice(0, WIDGET_FILE_LIMIT);
+
+	return files.map((file) => toVersion(ref, type, widgetFileAsCf(file)));
+}
+
 export const client: ProviderClient = {
 	id: "curseforge",
 	label: "CurseForge",
@@ -336,13 +521,24 @@ export const client: ProviderClient = {
 		apiKey
 			? { available: true }
 			: {
-					available: false,
+					available: true,
 					reason: t("core.services.curseforgeKeyHint"),
 				},
 
-	search,
-	getProject,
-	getVersions,
+	search: (query, type, loaders) =>
+		apiKey
+			? apiSearch(query, type, loaders)
+			: widgetSearch(query, type, loaders),
+
+	getProject: (idOrSlug, type) =>
+		apiKey
+			? apiGetProject(idOrSlug, type)
+			: widgetGetProject(idOrSlug, type),
+
+	getVersions: (ref, type, loaders) =>
+		apiKey
+			? apiGetVersions(ref, type, loaders)
+			: widgetGetVersions(ref, type, loaders),
 
 	projectUrl: (ref, type) =>
 		`https://www.curseforge.com/minecraft/${CLASS_PATHS[type]}/${ref.slug}`,

@@ -109,7 +109,7 @@ export interface ProviderClient {
 	label: string;
 	/** Addon types this provider can serve at all */
 	types: AddonType[];
-	/** Whether the provider is usable right now (curseforge needs an API key) */
+	/** Whether the provider is usable right now; `reason` may also qualify an available one */
 	status(): { available: boolean; reason?: string };
 	search(query: string, type: AddonType, loaders: string[]): Promise<AddonSearchHit[]>;
 	getProject(idOrSlug: string, type: AddonType): Promise<AddonProject | undefined>;
