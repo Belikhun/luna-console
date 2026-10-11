@@ -601,8 +601,16 @@ export interface InstanceConfig {}
   `task_start` runs one luna tool through `/api/mcp` with a bearer of its own, so scope and the call
   log apply, and only when `runsUnasked` (`agent/approval.ts`, shared with `canUseTool`) says the
   current mode would run that call unasked: nobody approves a background call. `trigger_create` arms
-  a wait (timer, instance state, player chat, join/leave, a log line, a cluster event) that one
-  shared watcher polls every 2 s, never two rounds at once; it fires once unless asked for more,
+  a wait (timer, instance state, player chat, join/leave, a log line, a cluster event) that fires
+  **as it happens**: the watcher follows LunaCore's `/players/stream` (joins, leaves, and every
+  recorded chat line, pushed after it is stored), the daemon's `/events/stream` and the consoles
+  of instances a trigger reads (`?tail=0`, no backlog), through `agent/feeds.ts`, and a push only
+  *wakes* a round, which reads the sources through the same cursors the poll uses, so nothing is
+  reported twice or lost while a stream is down. A console line wakes only for a log_match's text
+  or a lifecycle line; a timer, a repeat gap ending and an expiry each get an exact timeout. The
+  poll remains as a fallback (3 s while a needed stream is down, 15 s otherwise), never two rounds
+  at once (measured 2026-10-11: a log line and a cluster event reported in about 70 ms, a 10 s
+  timer at 10.007 s). It fires once unless asked for more,
   leaves `minGapSeconds` between repeated reports (5 s unless the agent asks for more; it was a
   fixed 30 s, which made a chat game answer half a minute late), and expires (an hour by default)
   with a report either way. Reports are queued per conversation and never awaited by the watcher,

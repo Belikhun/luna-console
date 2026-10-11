@@ -28,10 +28,13 @@ import { loadCluster } from '$core/config';
 import { readInstanceLogs } from '$core/logs';
 import * as luna from '$core/services/luna';
 import { getEvents, listStatuses } from '$lib/server/luna';
+import { dfetch } from '$client/socket';
 import { mcpTool } from '$shared/mcptools';
 import type { AgentMode } from '$shared/agent';
 import { runsUnasked } from './approval';
 import { issueRunBearer } from './bearer';
+import { followFeed } from './feeds';
+import type { Feed } from './feeds';
 
 /** Where a notice goes, captured when the task or trigger was set up. */
 export interface DeliveryContext {
@@ -109,8 +112,39 @@ const DEFAULT_REFIRE_GAP_MS = 5_000;
 /** The longest gap a trigger may ask for. */
 export const MAX_REFIRE_GAP_SECONDS = 600;
 
-/** How often the watcher looks. Every source is one cheap local read, shared by all triggers. */
-const POLL_MS = 2_000;
+/**
+ * Triggers are woken by pushes: LunaCore's player stream (joins, leaves and,
+ * from luna-core's 2026-10 build, every recorded chat line), the daemon's event
+ * stream (state changes, actions) and the consoles of instances a trigger reads.
+ * A push does not report anything itself; it runs a round at once, which reads
+ * the sources through the same cursors the poll uses, so nothing is reported
+ * twice and nothing that happened while a stream was down is lost.
+ */
+
+/** A second look after a lifecycle line, for a status that lags the log. */
+const LIFECYCLE_RECHECK_MS = 1_500;
+
+/** How soon after a push the round runs, so a burst of pushes is one read. */
+const WAKE_DELAY_MS = 40;
+
+/** Least time between two rounds; a spamming console cannot turn into a read loop. */
+const MIN_ROUND_GAP_MS = 250;
+
+/** How often the fallback poll looks while some stream a trigger needs is down. */
+const DEGRADED_POLL_MS = 3_000;
+
+/** How often it looks with every stream up, as a safety net. */
+const HEALTHY_POLL_MS = 15_000;
+
+/** The fallback poll's own tick; each tick decides whether a round is due. */
+const POLL_TICK_MS = 1_000;
+
+/**
+ * Console lines that mean an instance is changing state, worth an immediate
+ * status read for an instance_state trigger; anything else on a busy console
+ * is not.
+ */
+const LIFECYCLE_LINE = /Done \(|Stopping (the )?server|Closing Server|Saving worlds|Starting minecraft server|\[luna\]|Exception in server tick|crashed/i;
 
 /** Longest a background call may take before it is given up on. */
 const TASK_TIMEOUT_MS = 30 * 60 * 1000;
@@ -346,10 +380,26 @@ interface Trigger extends TriggerView {
 }
 
 const triggers = new Map<string, Trigger>();
+
+/** The fallback poll, running while any trigger is armed */
 let timer: ReturnType<typeof setInterval> | undefined;
 
-/** Set while a round runs, so the next tick skips rather than overlaps it */
+/** Set while a round runs, so a wake or a tick waits rather than overlaps it */
 let rounding = false;
+
+/** A wake arrived during a round; another runs right after */
+let again = false;
+
+/** The scheduled round a wake asked for */
+let wakeTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** The next moment something is due on its own: a timer, a repeat gap ending, an expiry */
+let dueTimer: ReturnType<typeof setTimeout> | undefined;
+
+let lastRoundAt = 0;
+
+/** Streams some armed trigger needs, by key: `players`, `events` or `console:<instance>` */
+const feeds = new Map<string, Feed>();
 
 function lower(value: string | undefined): string {
 	return (value ?? '').trim().toLowerCase();
@@ -456,6 +506,8 @@ export async function createTrigger(
 	await baseline(trigger);
 	triggers.set(trigger.id, trigger);
 	ensureWatcher();
+	syncFeeds();
+	scheduleDue();
 
 	return triggerView(trigger);
 }
@@ -482,6 +534,8 @@ export function cancelTrigger(conversationId: string, id: string): boolean {
 	}
 
 	triggers.delete(id);
+	syncFeeds();
+	scheduleDue();
 
 	return true;
 }
@@ -493,6 +547,9 @@ export function forgetConversation(conversationId: string): void {
 			triggers.delete(id);
 		}
 	}
+
+	syncFeeds();
+	scheduleDue();
 
 	for (const task of tasks.values()) {
 		if (task.ctx.conversationId === conversationId && task.state === 'running') {
@@ -508,19 +565,192 @@ function ensureWatcher(): void {
 	}
 
 	timer = setInterval(() => {
-		// a round that outlasts the interval would read the same cursors twice
-		if (rounding) {
-			return;
+		const degraded = [...feeds.values()].some((feed) => !feed.healthy());
+		const every = degraded
+			? DEGRADED_POLL_MS
+			: HEALTHY_POLL_MS;
+
+		if (Date.now() - lastRoundAt >= every) {
+			runRound();
+		}
+	}, POLL_TICK_MS);
+}
+
+/** Run a round now, or right after the one in progress; never two at once. */
+function runRound(): void {
+	if (rounding) {
+		again = true;
+
+		return;
+	}
+
+	rounding = true;
+	again = false;
+	lastRoundAt = Date.now();
+
+	void round()
+		.catch((err) => console.error('[agent] trigger round failed:', err))
+		.finally(() => {
+			rounding = false;
+			scheduleDue();
+
+			if (again) {
+				wake();
+			}
+		});
+}
+
+/** Something happened that a trigger may be waiting for: look soon, coalescing a burst into one round. */
+function wake(): void {
+	if (wakeTimer || triggers.size === 0) {
+		return;
+	}
+
+	const delay = Math.max(WAKE_DELAY_MS, lastRoundAt + MIN_ROUND_GAP_MS - Date.now());
+
+	wakeTimer = setTimeout(() => {
+		wakeTimer = undefined;
+		runRound();
+	}, delay);
+}
+
+/**
+ * Arm one timeout for the earliest moment a trigger becomes due without any
+ * push: a timer trigger's time, the end of a repeating trigger's gap with
+ * matches waiting, an expiry. That is what makes a timer exact rather than
+ * "within a poll".
+ */
+function scheduleDue(): void {
+	clearTimeout(dueTimer);
+	dueTimer = undefined;
+
+	let next = Infinity;
+
+	for (const trigger of triggers.values()) {
+		if (trigger.spec.kind === 'timer' && trigger.fired === 0) {
+			next = Math.min(next, trigger.createdAt + trigger.spec.afterSeconds * 1000);
 		}
 
-		rounding = true;
+		if (trigger.pending.length > 0) {
+			next = Math.min(next, trigger.lastFiredAt + trigger.gapMs);
+		}
 
-		void round()
-			.catch((err) => console.error('[agent] trigger round failed:', err))
-			.finally(() => {
-				rounding = false;
-			});
-	}, POLL_MS);
+		next = Math.min(next, trigger.expiresAt);
+	}
+
+	if (next === Infinity) {
+		return;
+	}
+
+	dueTimer = setTimeout(() => {
+		dueTimer = undefined;
+		runRound();
+	}, Math.max(0, next - Date.now()) + 5);
+}
+
+/** The streams the armed triggers need. */
+function wantedFeeds(): Set<string> {
+	const wanted = new Set<string>();
+
+	for (const trigger of triggers.values()) {
+		const spec = trigger.spec;
+
+		if (spec.kind === 'player_chat' || spec.kind === 'player_join' || spec.kind === 'player_leave') {
+			wanted.add('players');
+		}
+
+		if (spec.kind === 'cluster_event' || spec.kind === 'instance_state') {
+			wanted.add('events');
+		}
+
+		if (spec.kind === 'log_match' || spec.kind === 'instance_state') {
+			wanted.add(`console:${spec.instance}`);
+		}
+	}
+
+	return wanted;
+}
+
+/** Open the streams armed triggers need and close the ones nobody needs any more. */
+function syncFeeds(): void {
+	const wanted = wantedFeeds();
+
+	for (const [key, feed] of feeds) {
+		if (!wanted.has(key)) {
+			feed.stop();
+			feeds.delete(key);
+		}
+	}
+
+	for (const key of wanted) {
+		if (feeds.has(key)) {
+			continue;
+		}
+
+		feeds.set(key, openFeed(key));
+	}
+}
+
+function openFeed(key: string): Feed {
+	if (key === 'players') {
+		// every event (join, switch, leave, chat, and the snapshot a reconnect opens with) is worth a look
+		return followFeed((signal) => luna.openStream('/players/stream', signal), () => wake(), () => wake());
+	}
+
+	if (key === 'events') {
+		return followFeed((signal) => dfetch('/events/stream', { signal }), () => wake(), () => wake());
+	}
+
+	const instance = key.slice('console:'.length);
+
+	return followFeed(
+		(signal) => dfetch(`/instances/${encodeURIComponent(instance)}/console?tail=0`, { signal }),
+		(_event, data) => onConsoleLines(instance, consoleLines(data)),
+		() => wake()
+	);
+}
+
+/** A console frame's lines: an array from a current daemon, one string from an older one. */
+function consoleLines(data: string): string[] {
+	try {
+		const parsed: unknown = JSON.parse(data);
+
+		return Array.isArray(parsed)
+			? parsed.map(String)
+			: [String(parsed)];
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Wake only for a console line some trigger on that instance could care about:
+ * one containing a log_match's text, or one that marks a state change. A busy
+ * console otherwise costs nothing.
+ */
+function onConsoleLines(instance: string, lines: string[]): void {
+	for (const trigger of triggers.values()) {
+		const spec = trigger.spec;
+
+		if (spec.kind === 'log_match' && spec.instance === instance) {
+			const needle = lower(spec.contains);
+
+			if (lines.some((line) => lower(line).includes(needle))) {
+				wake();
+
+				return;
+			}
+		}
+
+		if (spec.kind === 'instance_state' && spec.instance === instance && lines.some((line) => LIFECYCLE_LINE.test(line))) {
+			wake();
+
+			// the line can land a moment before the status a probe reads catches up with it
+			setTimeout(wake, LIFECYCLE_RECHECK_MS);
+
+			return;
+		}
+	}
 }
 
 /** One read of every source some trigger needs, shared by all of them. */
@@ -743,6 +973,7 @@ async function round(): Promise<void> {
 	if (armed.length === 0) {
 		clearInterval(timer);
 		timer = undefined;
+		syncFeeds();
 
 		return;
 	}
@@ -792,4 +1023,7 @@ async function round(): Promise<void> {
 			});
 		}
 	}
+
+	// fired and expired triggers may have been the last to need a stream
+	syncFeeds();
 }

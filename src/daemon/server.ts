@@ -31,7 +31,7 @@ import * as lunaApi from "../core/services/luna";
 
 import type { DaemonConfig } from "./config";
 import { consoleStamp } from "./console";
-import { getEvents } from "./events";
+import { getEvents, subscribeEvents } from "./events";
 import { ownsInstance } from "./identity";
 import * as instancefilesCore from "../core/instancefiles";
 import type { ClusterConfig } from "../core/types";
@@ -83,6 +83,64 @@ function errorResponse(message: string, status: number): Response {
 
 /** How much backlog a freshly opened console shows. */
 const CONSOLE_TAIL_LINES = 100;
+
+/**
+ * The backlog a console stream opens with: `?tail=N`, capped at the default.
+ * A reader that only wants what happens next (the agent's log triggers) asks
+ * for none.
+ */
+function consoleBacklog(url: URL): number {
+	const raw = url.searchParams.get("tail");
+	const asked = raw === null || raw === ""
+		? NaN
+		: Number(raw);
+
+	return Number.isInteger(asked) && asked >= 0
+		? Math.min(asked, CONSOLE_TAIL_LINES)
+		: CONSOLE_TAIL_LINES;
+}
+
+/** How often an otherwise idle event stream sends a comment, so proxies keep it open. */
+const EVENT_STREAM_KEEPALIVE_MS = 25_000;
+
+/**
+ * SSE of the cluster event log as it is written, with no backlog: a reader that
+ * needs history asks `/events`. The console's agent triggers hold this open so
+ * a state change or a logged action wakes them at once.
+ */
+function eventStream(): Response {
+	let unsubscribe: (() => void) | undefined;
+	let keepalive: ReturnType<typeof setInterval> | undefined;
+
+	const stop = (): void => {
+		unsubscribe?.();
+		clearInterval(keepalive);
+	};
+
+	const stream = new ReadableStream({
+		start(controller) {
+			const encoder = new TextEncoder();
+
+			const write = (chunk: string): void => {
+				try {
+					controller.enqueue(encoder.encode(chunk));
+				} catch {
+					stop();
+				}
+			};
+
+			write(": open\n\n");
+			unsubscribe = subscribeEvents((event) => write(`data: ${JSON.stringify(event)}\n\n`));
+			keepalive = setInterval(() => write(": keepalive\n\n"), EVENT_STREAM_KEEPALIVE_MS);
+		},
+
+		cancel() {
+			stop();
+		},
+	});
+
+	return new Response(stream, { headers: SSE_HEADERS });
+}
 
 /** Most lines one console frame carries; a full frame goes out at once. */
 const CONSOLE_FRAME_LINES = 10;
@@ -210,7 +268,7 @@ export function setFollowerEndpoint(lookup: typeof followerEndpoint): void {
 }
 
 /** SSE stream of an instance's live console; a tail of its latest.log. */
-function consoleStream(logPath: string): Response {
+function consoleStream(logPath: string, backlog: number): Response {
 	let tail: TailHandle | undefined;
 
 	let frames: ConsoleFrames | undefined;
@@ -221,7 +279,7 @@ function consoleStream(logPath: string): Response {
 
 			tail = tailFollow(
 				logPath,
-				CONSOLE_TAIL_LINES,
+				backlog,
 				(line) => frames?.push(line),
 				() => {
 					frames?.flush();
@@ -244,7 +302,7 @@ function consoleStream(logPath: string): Response {
  * cluster-link tunnel; the log lives on the follower's disk, so its daemon
  * tails it and the lines cross the WebSocket as stream frames.
  */
-function remoteConsoleStream(daemon: string, instance: string): Response {
+function remoteConsoleStream(daemon: string, instance: string, backlog: number): Response {
 	let close: (() => void) | undefined;
 	let frames: ConsoleFrames | undefined;
 
@@ -252,7 +310,7 @@ function remoteConsoleStream(daemon: string, instance: string): Response {
 		start(controller) {
 			frames = consoleFrames(controller, () => close?.());
 
-			close = remoteConsole!.open(daemon, instance, CONSOLE_TAIL_LINES, (line) => frames?.push(line), (error) => {
+			close = remoteConsole!.open(daemon, instance, backlog, (line) => frames?.push(line), (error) => {
 				if (error) {
 					frames?.push(`[luna] console stream ended: ${error}`);
 				}
@@ -1259,6 +1317,10 @@ export function buildHandler(
 			return daemonsStream();
 		}
 
+		if (path === "/events/stream") {
+			return eventStream();
+		}
+
 		if (path === "/events") {
 			return jsonResponse({
 				ok: true,
@@ -1288,10 +1350,10 @@ export function buildHandler(
 					);
 				}
 
-				return remoteConsoleStream(owner, consoleMatch[1]!);
+				return remoteConsoleStream(owner, consoleMatch[1]!, consoleBacklog(url));
 			}
 
-			return consoleStream(join(instanceDir(inst), "logs", "latest.log"));
+			return consoleStream(join(instanceDir(inst), "logs", "latest.log"), consoleBacklog(url));
 		}
 
 		if (path.startsWith("/luna/stream/")) {

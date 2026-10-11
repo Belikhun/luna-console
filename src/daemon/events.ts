@@ -36,6 +36,21 @@ export function installEventForwarder(hook: ((event: ClusterEvent) => void) | un
 	forwarder = hook;
 }
 
+/** Live readers of the log; the console's agent triggers wake on these instead of polling. */
+const subscribers = new Set<(event: ClusterEvent) => void>();
+
+/**
+ * Be told of every event as it is logged, followers' included (the hub logs
+ * those through `pushEvent` too). Returns the unsubscriber.
+ */
+export function subscribeEvents(listener: (event: ClusterEvent) => void): () => void {
+	subscribers.add(listener);
+
+	return () => {
+		subscribers.delete(listener);
+	};
+}
+
 /** Append to the event log, trimming it to MAX_EVENTS. */
 export function pushEvent(instance: string, kind: ClusterEvent["kind"], message: string): void {
 	const event: ClusterEvent = { t: Date.now(), instance, kind, message };
@@ -47,6 +62,14 @@ export function pushEvent(instance: string, kind: ClusterEvent["kind"], message:
 	}
 
 	forwarder?.(event);
+
+	for (const listener of subscribers) {
+		try {
+			listener(event);
+		} catch {
+			// a reader whose stream broke is dropped by its own cancel
+		}
+	}
 }
 
 /** Event log, newest first, optionally filtered to one instance. */
