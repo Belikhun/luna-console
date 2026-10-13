@@ -22,7 +22,8 @@
 
 import { mapAccess } from '$core/publicsite';
 import type { MapProviderId } from '$core/maps';
-import { readMapJson } from '$lib/server/mapfile';
+import { decodePng } from '$lib/server/imaging/png';
+import { fetchMapFile, readMapJson } from '$lib/server/mapfile';
 
 /**
  * How far zoomed out the card art is cut from.
@@ -32,6 +33,14 @@ import { readMapJson } from '$lib/server/mapfile';
  * few hundred blocks, which is a region rather than a rooftop.
  */
 const ART_LEVEL = 2;
+
+/**
+ * How much of a BlueMap frame must be rendered before the card settles for it.
+ *
+ * Below this the art is mostly empty ground, and the next finer level shows the
+ * same spawn area large enough to read.
+ */
+const MIN_FILL = 0.5;
 
 /** How long a resolved layout is trusted. Worlds do not move. */
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -148,33 +157,92 @@ async function bluemapArt(instance: string): Promise<MapArt | null> {
 	const tileSize = Number(settings?.lowres?.tileSize?.[0]) || 500;
 	const lodFactor = Number(settings?.lowres?.lodFactor) || 5;
 	const lodCount = Number(settings?.lowres?.lodCount) || 3;
-	const lod = Math.min(ART_LEVEL, Math.max(1, lodCount));
-
-	// each step out multiplies the blocks a tile covers by the lod factor
-	const span = tileSize * Math.pow(lodFactor, lod - 1);
 
 	const startX = Number(settings?.startPos?.[0]) || 0;
 	const startZ = Number(settings?.startPos?.[1]) || 0;
 
-	const tileX = Math.floor(startX / span);
-	const tileZ = Math.floor(startZ / span);
+	// coarsest first; a level whose frame is mostly unrendered gives way to the
+	// next finer one, since a world with a few hundred blocks explored is a small
+	// patch in a dark square at the region scale
+	let tiles: string[] = [];
 
-	// the 2x2 whose inner corner is spawn's own tile boundary, so the frame is
-	// centred on the part of the world people actually built in
-	const corners = [
-		{ x: tileX - 1, z: tileZ - 1 },
-		{ x: tileX, z: tileZ - 1 },
-		{ x: tileX - 1, z: tileZ },
-		{ x: tileX, z: tileZ }
-	];
+	for (let lod = Math.min(ART_LEVEL, Math.max(1, lodCount)); lod >= 1; lod--) {
+		// each step out multiplies the blocks a tile covers by the lod factor
+		const span = tileSize * Math.pow(lodFactor, lod - 1);
+
+		// the 2x2 whose inner corner is the tile boundary nearest spawn, so the
+		// frame is centred on the part of the world people actually built in
+		const tileX = Math.round(startX / span);
+		const tileZ = Math.round(startZ / span);
+
+		const corners = [
+			{ x: tileX - 1, z: tileZ - 1 },
+			{ x: tileX, z: tileZ - 1 },
+			{ x: tileX - 1, z: tileZ },
+			{ x: tileX, z: tileZ }
+		];
+
+		tiles = corners.map((tile) => `maps/${map}/tiles/${lod}/x${tile.x}/z${tile.z}.png`);
+
+		if (lod === 1) {
+			break;
+		}
+
+		const fill = await frameFill(instance, tiles);
+
+		if (fill >= MIN_FILL) {
+			break;
+		}
+	}
 
 	return {
 		provider: 'bluemap',
 		worlds: usable.map((entry) => entry.id),
 		world: map,
-		tiles: corners.map((tile) => `maps/${map}/tiles/${lod}/x${tile.x}/z${tile.z}.png`),
+		tiles,
 		crop: true
 	};
+}
+
+/**
+ * The share of a BlueMap frame's colour that is rendered, from 0 to 1.
+ *
+ * Unrendered ground is transparent in a lowres tile, and a tile with nothing in
+ * it is not written at all, so a missing tile counts as empty.
+ */
+async function frameFill(instance: string, tiles: string[]): Promise<number> {
+	const fills = await Promise.all(tiles.map((tile) => tileFill(instance, tile)));
+	const total = fills.reduce((sum, fill) => sum + fill, 0);
+
+	return total / tiles.length;
+}
+
+async function tileFill(instance: string, tile: string): Promise<number> {
+	const file = await fetchMapFile(instance, tile);
+
+	if (!file || file.status !== 200 || !file.body) {
+		void file?.body?.cancel();
+
+		return 0;
+	}
+
+	try {
+		const image = decodePng(new Uint8Array(await new Response(file.body).arrayBuffer()));
+
+		// only the top half is colour; the bottom is the heightmap the card crops
+		const rows = Math.floor(image.height / 2);
+		let opaque = 0;
+
+		for (let index = 3; index < rows * image.width * 4; index += 4) {
+			if (image.data[index]! > 0) {
+				opaque++;
+			}
+		}
+
+		return opaque / (rows * image.width || 1);
+	} catch {
+		return 0;
+	}
 }
 
 // -- Dynmap ---------------------------------------------------------------------
