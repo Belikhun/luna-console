@@ -26,6 +26,7 @@ import { USER_AGENT } from "../download";
 import { listRepoReleases, type RepoRelease } from "../github";
 import { compareMcVersionsDesc } from "../../software";
 import { t } from "../../../shared/i18n";
+import { buildPlatform } from "../../../version";
 import { memoized } from "./resolve";
 import type { ResolvedBuildSpec, SoftwareBuild, SoftwareProviderClient } from "./types";
 
@@ -66,6 +67,89 @@ function assetFor(platform: string): string | undefined {
 	}
 
 	return `pumpkin-${archName}-${osName}${osName === "Windows" ? ".exe" : ""}`;
+}
+
+/**
+ * How much of an executable to read for the glibc versions it needs. The
+ * dynamic string table naming them sits in the first few kilobytes of the ELF
+ * (8 KB into pumpkin 0.2.0's), so this is generous without fetching a 120 MB
+ * file to answer one question.
+ */
+const ELF_HEAD_BYTES = 65_536;
+
+/** A `major.minor` glibc version as one comparable number. */
+function glibcRank(version: string): number {
+	const [major, minor] = version.split(".").map(Number);
+
+	return (major ?? 0) * 1000 + (minor ?? 0);
+}
+
+/**
+ * The glibc this process runs against, or nothing on a host without one
+ * (musl, or a platform that is not linux at all).
+ */
+function runtimeGlibc(): string | undefined {
+	const report = (process as { report?: { getReport?: () => unknown } }).report?.getReport?.() as
+		| { header?: { glibcVersionRuntime?: string } }
+		| undefined;
+
+	return report?.header?.glibcVersionRuntime;
+}
+
+/**
+ * The newest glibc a published executable needs, read from its first bytes.
+ * Undefined when the range cannot be fetched, which the caller treats as "no
+ * evidence against the glibc build".
+ */
+async function glibcNeeded(url: string): Promise<string | undefined> {
+	try {
+		const response = await fetch(url, {
+			headers: { "User-Agent": USER_AGENT, Range: `bytes=0-${ELF_HEAD_BYTES - 1}` },
+		});
+
+		if (!response.ok) {
+			return undefined;
+		}
+
+		const head = Buffer.from(await response.arrayBuffer()).subarray(0, ELF_HEAD_BYTES).toString("latin1");
+		const versions = [...head.matchAll(/GLIBC_(\d+\.\d+)/g)].map((match) => match[1]!);
+
+		if (!versions.length) {
+			return undefined;
+		}
+
+		return versions.sort((a, b) => glibcRank(b) - glibcRank(a))[0];
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Whether the machine about to run a linux build needs the static musl one.
+ *
+ * Pumpkin links its linux builds against whatever glibc its CI runner had, and
+ * that differs per architecture: 0.2.0's x64 build needs 2.35, its ARM64 build
+ * 2.43, newer than the distribution a Raspberry Pi runs, where it dies before
+ * writing a single log line. The musl build is static and runs anywhere, but
+ * musl's allocator is the slower one, so it is only chosen when the glibc
+ * build cannot start. That can only be judged for this machine: a build
+ * resolved for another platform keeps the glibc asset, and the daemon that owns
+ * the instance, which is the one that installs it, resolves for itself.
+ */
+async function wantsMusl(platform: string, glibcUrl: string): Promise<boolean> {
+	if (!platform.startsWith("linux-") || platform !== buildPlatform()) {
+		return false;
+	}
+
+	const runtime = runtimeGlibc();
+
+	if (!runtime) {
+		return true;
+	}
+
+	const needed = await glibcNeeded(glibcUrl);
+
+	return needed !== undefined && glibcRank(needed) > glibcRank(runtime);
 }
 
 /** A tag taken apart, or nothing for the rolling releases. */
@@ -197,9 +281,17 @@ export const client: SoftwareProviderClient = {
 
 		const platform = spec.platform ?? "linux-x64";
 		const wanted = assetFor(platform);
-		const asset = wanted
+		let asset = wanted
 			? chosen.release.assets.find((entry) => entry.name === wanted)
 			: undefined;
+
+		if (asset && wanted && (await wantsMusl(platform, asset.url))) {
+			const musl = chosen.release.assets.find((entry) => entry.name === `${wanted}-musl`);
+
+			if (musl) {
+				asset = musl;
+			}
+		}
 
 		if (!asset) {
 			throw new Error(t("core.services.software.noAssetForPlatform", { software, platform }));
