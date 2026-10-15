@@ -24,6 +24,8 @@ import { existsSync, statSync } from "node:fs";
 const MAX_STAGE_BYTES = 64 * 1024 * 1024 * 1024;
 
 import { backupsDir, loadCluster, loadLock, managedInstances, instanceDir, poolDir, stagingDir } from "../core/config";
+import { MANIFEST_SUFFIX } from "../core/pumpkin";
+import { ADDON_EXTENSIONS } from "../core/software";
 import { datapacksDir } from "../core/datapacks";
 import { mapProvider, type MapProviderId } from "../core/maps";
 import { mapWebrootFor } from "../core/publicsite";
@@ -480,12 +482,18 @@ async function handleBinary(metaOnly: boolean): Promise<Response> {
 	});
 }
 
-/** GET /files/pool/<file>; jar streaming for follower pool mirroring. */
+/**
+ * GET /files/pool/<file>; addon streaming for follower pool mirroring. Every
+ * addon extension is served, and so is a component's consent manifest, which
+ * the owning daemon reads from its own pool copy when it approves the component.
+ */
 async function handlePoolFile(subpath: string): Promise<Response> {
 	// the pool has one flat level plus versions/; refuse anything that escapes
 	const clean = normalize(subpath);
+	const servable = ADDON_EXTENSIONS.some((extension) => clean.endsWith(extension))
+		|| clean.endsWith(`.wasm${MANIFEST_SUFFIX}`);
 
-	if (clean.startsWith("..") || clean.startsWith("/") || !clean.endsWith(".jar")) {
+	if (clean.startsWith("..") || clean.startsWith("/") || !servable) {
 		return errorResponse("invalid pool path", 400);
 	}
 

@@ -11,7 +11,7 @@
 
 import { existsSync } from "node:fs";
 import { t } from "../shared/i18n";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import {
@@ -28,6 +28,7 @@ import { setProxyHost } from "../core/environment";
 import { effectiveTargets } from "../core/families";
 import type { PacksLock } from "../core/packslock";
 import { ProgressReporter } from "../core/progress";
+import { MANIFEST_SUFFIX } from "../core/pumpkin";
 import type { BackendCard } from "../core/services/luna";
 import { sha512File } from "../core/services/download";
 import { ensureStagingDir, stagePath } from "../core/staging";
@@ -114,6 +115,34 @@ async function ensureMirroredFile(
 /** Fetch one pool file from the primary when missing or hash-mismatched. */
 async function ensurePoolFile(rel: string, sha512: string | undefined): Promise<void> {
 	await ensureMirroredFile("pool", poolDir(), rel, sha512);
+}
+
+/**
+ * Mirror a component's consent manifest. The lockfile records no hash for it,
+ * and a rebuild can change the list it holds, so it is fetched on every pass
+ * rather than only when missing; a component built without one (an upstream
+ * plugin asking for nothing) answers 404, and a stale local copy goes with it.
+ */
+async function ensureConsentManifest(componentFile: string): Promise<void> {
+	const rel = `${componentFile}${MANIFEST_SUFFIX}`;
+	const path = join(poolDir(), rel);
+	const url = `http://${dcfg!.primary!.address}/files/pool/${encodeURIComponent(rel)}`;
+	const response = await fetch(url, {
+		headers: { "x-luna-token": dcfg!.token ?? "" },
+	});
+
+	if (response.status === 404) {
+		await rm(path, { force: true });
+
+		return;
+	}
+
+	if (!response.ok) {
+		throw new Error(`pool fetch failed for ${rel}: HTTP ${response.status}`);
+	}
+
+	await mkdir(dirname(path), { recursive: true });
+	await Bun.write(path, response);
 }
 
 /**
@@ -209,6 +238,10 @@ async function ensurePoolMirror(cfg: ClusterConfig, lock: PluginsLock): Promise<
 		}
 
 		await ensurePoolFile(entry.file, entry.installed?.sha512);
+
+		if (entry.file.endsWith(".wasm")) {
+			await ensureConsentManifest(entry.file);
+		}
 
 		for (const variant of Object.values(entry.variants ?? {})) {
 			await ensurePoolFile(join("versions", variant.file), variant.sha512);

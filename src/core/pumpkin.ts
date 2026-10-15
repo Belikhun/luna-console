@@ -30,7 +30,7 @@ import { traitsOf } from "./software";
 import type { InstanceConfig } from "./types";
 
 /** Suffix of the file a build stages beside a component. */
-const MANIFEST_SUFFIX = ".permissions.json";
+export const MANIFEST_SUFFIX = ".permissions.json";
 
 /** What the server reads on startup, and what this writes. */
 const CACHE_FILE = "permission_cache.json";
