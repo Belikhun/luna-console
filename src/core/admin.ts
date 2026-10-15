@@ -1570,12 +1570,7 @@ export async function setPort(cfg: ClusterConfig, name: string, port: number): P
 	} else if (portConfig === "pumpkin-toml") {
 		const conf = join(instanceDir(inst), PUMPKIN_CONFIG);
 
-		// pumpkin binds one composite value rather than a bare port, so the host
-		// half of the address it already has is kept and only the port replaced
-		const current = await getConfValue(conf, "toml", "address");
-		const host = current?.replace(/^"|"$/g, "").split(":")[0] ?? "0.0.0.0";
-
-		if (!(await setConfValue(conf, "toml", "address", `"${host}:${port}"`))) {
+		if (!(await setPumpkinJavaPort(conf, port))) {
 			throw new Error(t("core.admin.portUpdateFailed", { file: conf }));
 		}
 	}
@@ -1585,6 +1580,50 @@ export async function setPort(cfg: ClusterConfig, name: string, port: number): P
 	releaseReservation(machineOf(inst), inst.port);
 
 	inst.port = port;
+}
+
+/**
+ * Rewrite the port of pumpkin's java listener, keeping the host half of the
+ * address it already binds, and touching that one line only.
+ *
+ * Every listener in `pumpkin.toml` (query, rcon, java, bedrock) has a key named
+ * `address`, and once pumpkin has merged its defaults the query block comes
+ * first, so a key-only edit lands on the wrong listener: it moved query and
+ * left java on the old port. Only the `[networking.java]` table is searched.
+ */
+async function setPumpkinJavaPort(conf: string, port: number): Promise<boolean> {
+	if (!existsSync(conf)) {
+		return false;
+	}
+
+	const lines = (await Bun.file(conf).text()).split("\n");
+	let table = "";
+
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index]!;
+		const header = line.match(/^\s*\[([^\]]+)\]/);
+
+		if (header) {
+			table = header[1]!.trim();
+
+			continue;
+		}
+
+		const assignment = line.match(/^(\s*address\s*=\s*)"([^"]*)"(.*)$/);
+
+		if (table !== "networking.java" || !assignment) {
+			continue;
+		}
+
+		const host = assignment[2]!.split(":")[0] || "0.0.0.0";
+
+		lines[index] = `${assignment[1]}"${host}:${port}"${assignment[3]}`;
+		await Bun.write(conf, lines.join("\n"));
+
+		return true;
+	}
+
+	return false;
 }
 
 /** Read one key from an instance's server.properties. */
