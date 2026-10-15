@@ -596,9 +596,11 @@ const SOFTWARE_ROWS: Record<Software, SoftwareRow> = {
 		// pumpkin is not vanilla-derived; its world loads without a word about packs
 		announcesDataPacks: false,
 		provider: "pumpkin",
+		// a release tag carries the Java version it serves, and the tag itself is
+		// the build: `26.3` + `0.2.0+26.3-26.51`
+		pinsLoaderVersion: true,
 		// the one directory luna-core's sandbox may read is its own data folder
 		hostMetricsFile: "plugins/data/luna-core/host-metrics",
-		experimental: true,
 	},
 
 	youer: {
@@ -875,8 +877,8 @@ export function compareMcVersionsDesc(a: string, b: string): number {
  *
  * Normally that is the newest plain release, so a default pick can never land
  * on a snapshot or a pre-release. Not every upstream versions itself by the
- * game though: pumpkin publishes release tags, and filtering those to
- * release-shaped strings leaves nothing at all. So a list with no release in it
+ * game though, and filtering such a list to release-shaped strings would
+ * leave nothing at all. So a list with no release in it
  * answers with its own first entry, which every provider returns newest-first.
  */
 export function newestRelease(versions: string[]): string | undefined {

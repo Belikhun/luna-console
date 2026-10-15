@@ -52,6 +52,19 @@ function formatFor(op: ConfigOp): ConfFormat {
 	return "yaml";
 }
 
+/**
+ * A value as one TOML line spells it. A template's values are text, and TOML,
+ * unlike YAML, will not read a bare word as a string, so anything that is not
+ * already a number, a boolean, a quoted string or an array is quoted.
+ */
+function tomlLiteral(text: string): string {
+	if (/^(-?\d+(\.\d+)?|true|false|"[^"]*"|'[^']*'|\[.*\])$/.test(text)) {
+		return text;
+	}
+
+	return JSON.stringify(text);
+}
+
 /** Apply one entry's ops to one instance. */
 async function applyOps(
 	plugin: string,
@@ -111,13 +124,19 @@ async function applyOps(
 			const format = formatFor(op);
 			const current = await getConfValue(path, format, key);
 
-			if (current === value.text) {
+			// read values come back unquoted, so the comparison is on the bare text
+			// and only the write is spelled as the format wants it
+			const spelled = format === "toml"
+				? tomlLiteral(value.text)
+				: value.text;
+
+			if (current === value.text.replace(/^["']|["']$/g, "")) {
 				results.push({ plugin, instance, file: op.file, key, outcome: "unchanged" });
 
 				continue;
 			}
 
-			const written = await setConfValue(path, format, key, value.text);
+			const written = await setConfValue(path, format, key, spelled);
 
 			results.push({
 				plugin,

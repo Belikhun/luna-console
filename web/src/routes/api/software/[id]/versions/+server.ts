@@ -36,8 +36,8 @@ export async function GET({ params, url }) {
 		const versions = await listMcVersions(id);
 		const releases = versions.filter(isReleaseVersion);
 
-		// a software that does not version itself by the game (pumpkin publishes
-		// release tags) has no release-shaped entries at all; filtering those to
+		// a software that does not version itself by the game has no
+		// release-shaped entries at all; filtering those to
 		// nothing would leave the picker empty rather than honest
 		return json({ mcVersions: releases.length ? releases : versions });
 	} catch (err) {

@@ -144,7 +144,7 @@ export function softwareIcon(software: string | null | undefined): string {
  * How finished a build claims to be.
  *
  * Not every upstream uses the same words - paper says stable/beta/alpha,
- * mojang says release/snapshot, pumpkin publishes nothing but nightlies - so
+ * mojang says release/snapshot, pumpkin tags semver pre-releases `-dev` - so
  * these are luna's own names for the idea, and a caller maps its provider's
  * vocabulary onto them. `release` is deliberately absent from the badge: an
  * ordinary build is the default and saying so on every row is noise.
@@ -201,7 +201,8 @@ export function channelOf(version: string | null | undefined): ReleaseChannel | 
 		return 'snapshot';
 	}
 
-	if (value.includes('-pre') || value.includes('-rc')) {
+	// pumpkin tags a pre-release the semver way, `0.1.0-dev+26.2-26.45`
+	if (value.includes('-pre') || value.includes('-rc') || /^\d+\.\d+\.\d+-(dev|alpha|beta)/.test(value)) {
 		return 'prerelease';
 	}
 

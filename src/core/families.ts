@@ -678,6 +678,33 @@ function lunaCoreTemplate(file: string): PluginEntry["config"] {
 	];
 }
 
+/**
+ * The pumpkin build's config, in its own data folder: the one directory the
+ * sandbox lets it open. It cannot read `pumpkin.toml` the way the bukkit build
+ * reads paper's forwarding block, and the plugin API names neither the port
+ * nor the secret, so both are handed to it here as well as where to report.
+ */
+const PUMPKIN_LUNA_CORE_TEMPLATE: PluginEntry["config"] = [
+	{
+		file: "plugins/data/luna-core/config.toml",
+		write:
+			"# Written by luna before first boot. Luna Core merges its remaining defaults.\n" +
+			"[heartbeat]\n" +
+			"enabled = true\n" +
+			'endpoint = "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat"\n' +
+			'serverName = "${LUNA_INSTANCE}"\n' +
+			'forwardingSecret = "${LUNA_FORWARDING_SECRET}"\n' +
+			"serverPort = ${LUNA_PORT}\n",
+		set: {
+			endpoint: "http://${LUNA_PROXY_HOST}:${LUNA_HTTP_PORT}/api/heartbeat",
+			serverName: "${LUNA_INSTANCE}",
+			forwardingSecret: "${LUNA_FORWARDING_SECRET}",
+			// a port move rewrites pumpkin.toml, and this is how the plugin hears of it
+			serverPort: "${LUNA_PORT}",
+		},
+	},
+];
+
 const LUCKPERMS_TEMPLATE: PluginEntry["config"] = [
 	{
 		file: "plugins/LuckPerms/config.yml",
@@ -694,6 +721,7 @@ const SEED_TEMPLATES: Record<string, PluginEntry["config"]> = {
 			lunaCoreTemplate(file),
 		]),
 	),
+	"luna-core@pumpkin": PUMPKIN_LUNA_CORE_TEMPLATE,
 	"luckperms@paper": LUCKPERMS_TEMPLATE,
 };
 
