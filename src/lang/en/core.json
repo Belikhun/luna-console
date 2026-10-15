@@ -122,6 +122,7 @@
 		"noInstallable": "no installable version of {slug} ({family}): {reasons}",
 		"noVersionsFound": "no versions found",
 		"notAJar": "the uploaded file is not a jar",
+		"notAComponent": "the uploaded file is not a WebAssembly component",
 		"badPluginName": "plugin name must be lowercase alphanumeric with - or _",
 		"jarNotFound": "{jar} not found in {path}",
 		"notInPool": "{name}: {file} is not in the pool, so it cannot be identified",

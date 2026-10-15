@@ -122,6 +122,7 @@
 		"noInstallable": "không có phiên bản cài được của {slug} ({family}): {reasons}",
 		"noVersionsFound": "không thấy phiên bản nào",
 		"notAJar": "tệp tải lên không phải jar",
+		"notAComponent": "tệp tải lên không phải WebAssembly component",
 		"badPluginName": "tên plugin phải là chữ thường/số với - hoặc _",
 		"jarNotFound": "không thấy {jar} trong {path}",
 		"notInPool": "{name}: {file} không có trong kho nên không định danh được",

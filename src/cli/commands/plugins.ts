@@ -793,7 +793,7 @@ command({
 			path
 				.split("/")
 				.at(-1)!
-				.replace(/\.jar$/i, "")
+				.replace(/\.(jar|wasm)$/i, "")
 				.replace(/[@_].*$/, "")
 				.toLowerCase();
 

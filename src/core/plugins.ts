@@ -1935,12 +1935,24 @@ export interface JarUpload {
 }
 
 /**
- * Decode an uploaded jar. A jar is a zip, so the magic check is the same one
+ * Decode an uploaded addon. A jar is a zip, so the magic check is the same one
  * the pack uploads use; enough to reject a wrong file picked by mistake
  * before it lands in the pool under a name something else will try to load.
+ * A pumpkin addon is a WebAssembly component instead, which opens `\0asm`.
  */
-function decodeJar(dataBase64: string): Uint8Array {
+function decodeJar(dataBase64: string, family: PluginFamily): Uint8Array {
 	const buf = Uint8Array.from(atob(dataBase64), (char) => char.charCodeAt(0));
+
+	if (family === "pumpkin") {
+		const isWasm = buf.length >= 4 && buf[0] === 0x00 && buf[1] === 0x61 && buf[2] === 0x73 && buf[3] === 0x6d;
+
+		if (!isWasm) {
+			throw new Error(t("core.plugins.notAComponent"));
+		}
+
+		return buf;
+	}
+
 	const isZip = buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03;
 
 	if (!isZip) {
@@ -1973,7 +1985,7 @@ export async function uploadJar(
 	// reject a typo before anything is written
 	expandTargets(cfg, targets);
 
-	const buf = decodeJar(opts.dataBase64);
+	const buf = decodeJar(opts.dataBase64, opts.family);
 	const name = `${plugin}@${opts.family}`;
 	const file = addonFileName(name, opts.family);
 
