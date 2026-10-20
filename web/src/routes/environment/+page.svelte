@@ -20,6 +20,7 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
@@ -327,7 +328,7 @@
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="environment" />
-		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), [meta.idOf(one.name)]) : []} />
 		<Btn variant="primary" icon="key" href="/environment/new">{t('web.env.defineVariable')}</Btn>
 	{/snippet}
 </PageHeader>
@@ -349,6 +350,7 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => `${row.name} (${row.scope})`}
+		resourceId={(row) => meta.idOf(row.name)}
 		noun={t('web.env.noun')}
 		onRowClick={(row) => goto(detailHref(row))}
 		emptyTitle={t('web.env.emptyTitle')}

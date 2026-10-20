@@ -15,6 +15,12 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import Panel from '$lib/components/Panel.svelte';
+	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import OwnerCell from '$lib/components/OwnerCell.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
+	import type { InfoCell } from '$lib/components/grid';
+	import { resourceId } from '$shared/iam/resources';
 	import { clearCrumbLabel, setCrumbLabel } from '$lib/crumbs.svelte';
 	import type { KnowledgeItem } from '$core/mcp';
 	import KnowledgeForm from '../KnowledgeForm.svelte';
@@ -30,6 +36,16 @@
 	let missing = $state(false);
 	let saving = $state(false);
 	let deleteOpen = $state(false);
+
+	const summaryCells: InfoCell[] = $derived(
+		!item
+			? []
+			: [
+					{ id: 'resourceId', label: t('web.resourceId.label'), colSpan: 2 },
+					{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
+					{ label: t('web.resourceMeta.createdAt'), value: fmtDateTime(item.createdAt) }
+				]
+	);
 
 	async function load(): Promise<void> {
 		try {
@@ -133,6 +149,20 @@
 		<Flash kind="info">{t('web.knowledge.writtenByMcp', { actor: item.createdBy })}</Flash>
 	{/if}
 
+	<Panel title={t('web.resourceId.summaryTitle')}>
+		<InfoGrid cells={summaryCells}>
+			{#snippet custom(cell)}
+				{#if cell.id === 'resourceId'}
+					<ResourceIdValue value={resourceId('knowledge', item!.id)} label={cell.label} />
+				{:else if cell.id === 'createdBy'}
+					<OwnerCell name={item!.createdBy} />
+				{/if}
+			{/snippet}
+		</InfoGrid>
+	</Panel>
+
+	<div class="gap"></div>
+
 	<KnowledgeForm bind:draft {tokens} />
 
 	<ConfirmModal
@@ -143,3 +173,9 @@
 		onconfirm={() => void removeConfirmed()}
 	/>
 {/if}
+
+<style lang="scss">
+	.gap {
+		height: 1rem;
+	}
+</style>

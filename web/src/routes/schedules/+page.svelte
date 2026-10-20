@@ -21,6 +21,7 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
@@ -239,7 +240,7 @@
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="schedules" />
-		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), [meta.idOf(one.id)]) : []} />
 		<Btn variant="primary" icon="clock" onclick={() => goto('/schedules/new')}>{t('web.schedules.create')}</Btn>
 	{/snippet}
 </PageHeader>
@@ -259,6 +260,7 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(schedule) => schedule.name}
+		resourceId={(schedule) => meta.idOf(schedule.id)}
 		noun={t('web.schedules.noun')}
 		emptyTitle={t('web.schedules.emptyTitle')}
 		emptyText={t('web.schedules.emptyText')}

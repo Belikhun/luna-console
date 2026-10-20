@@ -25,6 +25,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
@@ -37,6 +38,7 @@
 	import { ADDON_PROVIDERS } from '$lib/components/addons';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * One resource pack in full. The four sections answer the four questions an
@@ -607,6 +609,7 @@
 		return [
 			{ label: t('web.packDetail.displayName'), value: pack.name },
 			{ label: t('web.packDetail.registryKey'), value: pack.key, style: 'mono' },
+			{ id: 'resourceId', label: t('web.resourceId.label') },
 			{ label: t('web.packDetail.zipFile'), value: pack.filename, copyable: true, style: 'mono' },
 			{ label: t('web.packDetail.sizeOnDisk'), value: pack.present ? fmtBytes(pack.sizeBytes) : null },
 			{
@@ -963,6 +966,8 @@
 										/>
 									{:else if cell.id === 'createdBy'}
 										<OwnerCell name={ownerMeta?.createdBy} />
+									{:else if cell.id === 'resourceId'}
+										<ResourceIdValue value={resourceId('pack', pack.key)} label={cell.label} />
 									{:else if cell.id === 'groups'}
 										{#if pack.groups.length}
 											{#each pack.groups as group, index (group)}
@@ -1120,6 +1125,7 @@
 					getId={(row) => row.name}
 					rowActions={instanceActions}
 					rowLabel={(row) => row.name}
+					resourceId={(row) => resourceId('instance', row.name)}
 					rowDim={(row) => !row.served}
 				>
 					{#snippet cell(row, col)}

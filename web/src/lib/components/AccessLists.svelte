@@ -21,6 +21,7 @@
 	import type { Column, TableFilterGroup } from './table';
 	import type { ContextMenuItem } from './contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * One instance's player access lists: whitelist, operators, player bans and
@@ -452,6 +453,10 @@
 
 		<ResourceTable
 			tableId="access-whitelist"
+			resourceId={(entry) =>
+				entry.name
+					? resourceId('player', entry.name)
+					: null}
 			loading={!loaded}
 			columns={whitelistCols}
 			rows={whitelist}
@@ -492,6 +497,10 @@
 
 		<ResourceTable
 			tableId="access-ops"
+			resourceId={(entry) =>
+				entry.name
+					? resourceId('player', entry.name)
+					: null}
 			loading={!loaded}
 			columns={opCols}
 			rows={ops}
@@ -535,6 +544,10 @@
 
 		<ResourceTable
 			tableId="access-bans"
+			resourceId={(entry) =>
+				entry.name
+					? resourceId('player', entry.name)
+					: null}
 			loading={!loaded}
 			columns={banCols}
 			rows={bans}

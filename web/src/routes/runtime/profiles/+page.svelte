@@ -18,6 +18,8 @@
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 
 	/**
 	 * Java profiles: the named JVM flag sets instances launch with.
@@ -195,7 +197,7 @@
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="profiles" />
-		<Dropdown label={t('web.common.actions')} disabled={!one} menu={profileActions(one)} />
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? withCopyResourceId(profileActions(one), [resourceId('profile', one.name)]) : []} />
 		<Btn variant="primary" icon="sliders" href={wizardHref()}>
 			{t('web.profiles.newProfile')}
 		</Btn>
@@ -218,6 +220,7 @@
 		bind:selected
 		rowActions={(row) => profileActions(row)}
 		rowLabel={(row) => row.name}
+		resourceId={(row) => resourceId('profile', row.name)}
 		noun={t('web.profiles.noun')}
 		onRowClick={(row) => goto(wizardHref({ name: row.name }))}
 		emptyTitle={t('web.profiles.emptyTitle')}

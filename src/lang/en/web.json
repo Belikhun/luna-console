@@ -5477,7 +5477,6 @@
 		"editedBy": "Edited by",
 		"resourceId": "Resource id",
 		"statements": "Statements",
-		"builtinNoResource": "Built-in policies are code and have no resource record.",
 		"builtinNoTags": "Built-in policies ship with luna and carry no tags.",
 		"tabPermissions": "Permissions",
 		"tabEntities": "Entities attached ({count})",
@@ -5718,5 +5717,18 @@
 			"refused": "Not allowed",
 			"unchanged": "No change"
 		}
+	},
+	"resourceId": {
+		"label": "Resource id",
+		"labelMany": "Resource ids",
+		"chatLabel": "Chat resource id",
+		"chatHint": "Chat is permitted separately from the server: a policy that lets someone read this server's chat names this id.",
+		"copy": "Copy resource id",
+		"copyMany": "Copy {count} resource ids",
+		"copiedOne": "Copied {id}",
+		"copiedMany": "Copied {count} resource ids",
+		"copyFailed": "The browser refused to copy to the clipboard.",
+		"pickFirst": "Select a row first",
+		"summaryTitle": "Summary"
 	}
 }

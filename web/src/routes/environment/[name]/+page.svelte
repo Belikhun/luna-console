@@ -21,6 +21,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
@@ -31,6 +32,7 @@
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * One environment variable, as an object rather than a table row: the scopes
@@ -301,6 +303,10 @@
 					// no `id`: InfoGrid hands every identified cell to the `custom` snippet,
 					// and this one wants its plain value rendering
 					{ label: t('web.envDetail.name'), value: detail.name, style: 'mono', copyable: true },
+					// a builtin is computed per instance, never stored, so no policy names it
+					...(detail.builtin
+						? []
+						: [{ id: 'resourceId', label: t('web.resourceId.label') }]),
 					{ id: 'kind', label: t('web.envDetail.kind') },
 					{
 						label: t('web.envDetail.description'),
@@ -426,6 +432,8 @@
 							{detail!.consumers.length} instance(s)
 						{:else if cell.id === 'createdBy'}
 							<OwnerCell name={ownerMeta?.createdBy} />
+						{:else if cell.id === 'resourceId'}
+							<ResourceIdValue value={resourceId('env', detail!.name)} label={cell.label} />
 						{/if}
 					{/snippet}
 				</InfoGrid>
@@ -569,6 +577,7 @@
 						rows={detail.consumers}
 						getId={(row) => row.instance}
 						rowLabel={(row) => row.instance}
+						resourceId={(row) => resourceId('instance', row.instance)}
 						rowActions={(row) => [
 							{
 								label: `Open ${row.instance}`,

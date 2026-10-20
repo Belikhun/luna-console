@@ -24,6 +24,13 @@
 		savePrefs
 	} from './table';
 	import type { ContextMenuItem } from './contextmenu';
+	import ResourceIdValue from './ResourceIdValue.svelte';
+	import {
+		type ResourceIdOf,
+		RESOURCE_ID_COLUMN,
+		resourceIdList,
+		withCopyResourceId
+	} from '$lib/resourceid';
 
 	/**
 	 * Resource table: darker sticky header with column dividers and
@@ -35,7 +42,9 @@
 	 */
 	let {
 		tableId,
-		columns,
+		// renamed on the way in: the table appends its own resource id column
+		// and sort key to what the screen declares
+		columns: baseColumns,
 		rows,
 		getId,
 		cell,
@@ -43,7 +52,7 @@
 		filters,
 		selectable = 'none',
 		selected = $bindable(new Set<string>()),
-		sortValue,
+		sortValue: baseSortValue,
 		onRowClick,
 		onRowDblClick,
 		onRowContextMenu,
@@ -65,7 +74,8 @@
 		filtersActive = $bindable(false),
 		loading = false,
 		expanded,
-		expandable
+		expandable,
+		resourceId
 	}: {
 		/** persistence key for column prefs */
 		tableId?: string;
@@ -132,7 +142,56 @@
 		expanded?: Snippet<[T]>;
 		/** rows that may unfold; every row when omitted */
 		expandable?: (row: T) => boolean;
+		/** the resource id (or ids) a row stands for; adds a hidden "Resource id"
+		 *  column and a "Copy resource id" entry at the end of the row's menu */
+		resourceId?: ResourceIdOf<T>;
 	} = $props();
+
+	const columns: Column[] = $derived(
+		resourceId && !baseColumns.some((col) => col.id === RESOURCE_ID_COLUMN)
+			? [
+				...baseColumns,
+				{
+					id: RESOURCE_ID_COLUMN,
+					label: t('web.resourceId.label'),
+					sortable: true,
+					width: 260,
+					hidden: true
+				}
+			]
+			: baseColumns
+	);
+
+	const sortValue = $derived.by(() => {
+		if (!resourceId) {
+			return baseSortValue;
+		}
+
+		const idOf = resourceId;
+
+		return (row: T, col: string): string | number | null => {
+			if (col === RESOURCE_ID_COLUMN) {
+				return resourceIdList(idOf(row)).join(' ');
+			}
+
+			return baseSortValue?.(row, col) ?? null;
+		};
+	});
+
+	/** The row's menu: the screen's verbs, then the copy entry when it has an id. */
+	function menuFor(row: T): ContextMenuItem[] {
+		const items = rowActions?.(row) ?? [];
+
+		if (!resourceId) {
+			return items;
+		}
+
+		const ids = resourceIdList(resourceId(row));
+
+		return ids.length > 0
+			? withCopyResourceId(items, ids)
+			: items;
+	}
 
 	// untracked on purpose: preferences are read once per mount, and a table's
 	// id never changes under it; re-reading them would fight the user's edits
@@ -370,7 +429,7 @@
 	 * that is in this menu. Only a *locked* row is kept out of the selection.
 	 */
 	async function rowContext(row: T, event: MouseEvent): Promise<void> {
-		if (!onRowContextMenu && !rowActions) {
+		if (!onRowContextMenu && !rowActions && !resourceId) {
 			return;
 		}
 
@@ -381,7 +440,7 @@
 			selected = new Set([getId(row)]);
 		}
 
-		if (rowActions) {
+		if (rowActions || resourceId) {
 			menuRow = row;
 
 			await rowMenu?.openAt(event.clientX, event.clientY);
@@ -1026,7 +1085,7 @@
 								class:sticky-last={stickyLast && overflowing && ci === visibleCols.length - 1}
 								style={stickyStyle(index)}
 							>
-								<div class="cell">{@render cell(row, col.id)}</div>
+								<div class="cell">{#if resourceId && col.id === RESOURCE_ID_COLUMN}<ResourceIdValue value={resourceId(row)} />{:else}{@render cell(row, col.id)}{/if}</div>
 							</td>
 						{/each}
 						<td class="filler"></td>
@@ -1055,7 +1114,7 @@
 
 <ContextMenu
 	bind:this={rowMenu}
-	items={menuRow && rowActions ? rowActions(menuRow) : []}
+	items={menuRow ? menuFor(menuRow) : []}
 	header={menuRow ? (rowLabel?.(menuRow) ?? getId(menuRow)) : undefined}
 	minWidth="14rem"
 />

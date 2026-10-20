@@ -22,6 +22,7 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
@@ -45,6 +46,7 @@
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { resourceId } from '$shared/iam/resources';
 	import type {
 		DaemonDetail,
 		DaemonRow,
@@ -378,6 +380,7 @@
 		return [
 			{ id: 'state', label: t('web.machineDetail.daemonState') },
 			{ label: t('web.machineDetail.role'), value: row.mode },
+			{ id: 'resourceId', label: t('web.resourceId.label') },
 			{ label: t('web.machineDetail.routingHost'), value: row.host, copyable: !!row.host, style: 'mono' },
 			{ label: t('web.machineDetail.ipAddresses'), value: row.addresses.join(', ') || null, style: 'mono' },
 			{ label: t('web.machineDetail.clusterRoot'), value: row.root, copyable: !!row.root, style: 'mono' },
@@ -753,6 +756,8 @@
 					{#snippet custom(cell)}
 						{#if cell.id === 'state'}
 							<StatusBadge state={badge.state} label={badge.label} />
+						{:else if cell.id === 'resourceId'}
+							<ResourceIdValue value={resourceId('machine', row!.name)} label={cell.label} />
 						{:else if cell.id === 'version'}
 							<span class="mono">{row!.version ?? '–'}</span>
 							{#if row!.outdated}
@@ -957,6 +962,7 @@
 						searchPlaceholder={t('web.machineDetail.findAVariable')}
 						rowActions={envActions}
 						rowLabel={(entry) => entry.name}
+						resourceId={(entry) => resourceId('env', entry.name)}
 						noun={t('web.machineDetail.variable')}
 						onRowClick={(entry) => goto(`/environment/${encodeURIComponent(entry.name)}`)}
 						emptyTitle={t('web.machineDetail.noVariablesDefined')}
@@ -1098,6 +1104,7 @@
 					searchWidth="18rem"
 					rowActions={instanceActions}
 					rowLabel={(entry) => entry.instance}
+					resourceId={(entry) => resourceId('instance', entry.instance)}
 					noun={t('web.machineDetail.instance')}
 					pageSize={15}
 					emptyTitle={t('web.machineDetail.noInstancesAreAssignedTo')}

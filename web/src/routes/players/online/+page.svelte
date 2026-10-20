@@ -27,6 +27,8 @@
 	import PlayerName from '$lib/components/PlayerName.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 
 	/**
 	 * Everyone on the network, from LunaCore's own view of the proxy.
@@ -437,7 +439,7 @@
 <PageHeader title={t('web.playersOnline.onlinePlayers')} count="{selected.size ? `${selected.size}/` : ''}{players.length}" info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players" />
-		<Dropdown label={t('web.playersOnline.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.playersOnline.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), [resourceId('player', one.username)]) : []} />
 		<Btn icon="bullhorn" onclick={() => (broadcastOpen = true)}>{t('web.playersOnline.broadcast')}</Btn>
 	{/snippet}
 </PageHeader>
@@ -483,6 +485,7 @@
 			bind:selected
 			{rowActions}
 			rowLabel={(player) => player.username}
+			resourceId={(player) => resourceId('player', player.username)}
 			noun={t('web.playersOnline.player')}
 			{sortValue}
 			{filters}

@@ -5477,7 +5477,6 @@
 		"editedBy": "Người sửa",
 		"resourceId": "Mã tài nguyên",
 		"statements": "Câu lệnh",
-		"builtinNoResource": "Chính sách có sẵn là mã nguồn nên không có bản ghi tài nguyên.",
 		"builtinNoTags": "Chính sách có sẵn đi kèm luna và không mang thẻ.",
 		"tabPermissions": "Quyền",
 		"tabEntities": "Đối tượng được gắn ({count})",
@@ -5718,5 +5717,18 @@
 			"refused": "Không được phép",
 			"unchanged": "Không thay đổi"
 		}
+	},
+	"resourceId": {
+		"label": "Mã tài nguyên",
+		"labelMany": "Các mã tài nguyên",
+		"chatLabel": "Mã tài nguyên trò chuyện",
+		"chatHint": "Quyền đọc trò chuyện được cấp riêng với máy chủ: chính sách cho phép đọc trò chuyện của máy chủ này phải ghi mã này.",
+		"copy": "Sao chép mã tài nguyên",
+		"copyMany": "Sao chép {count} mã tài nguyên",
+		"copiedOne": "Đã sao chép {id}",
+		"copiedMany": "Đã sao chép {count} mã tài nguyên",
+		"copyFailed": "Trình duyệt không cho phép sao chép vào bộ nhớ tạm.",
+		"pickFirst": "Hãy chọn một dòng trước",
+		"summaryTitle": "Tóm tắt"
 	}
 }

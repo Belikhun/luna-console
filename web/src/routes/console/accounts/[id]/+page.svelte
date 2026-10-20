@@ -20,7 +20,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
-	import CopyValue from '$lib/components/CopyValue.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import AccountAvatar from '$lib/components/AccountAvatar.svelte';
@@ -832,7 +832,7 @@
 		<InfoGrid cells={summaryCells}>
 			{#snippet custom(cell)}
 				{#if cell.id === 'resourceId'}
-					<CopyValue
+					<ResourceIdValue
 						value={iamResourceId('account', detail!.account.username)}
 						label={t('web.accountDetail.resourceId')}
 					/>
@@ -914,6 +914,7 @@
 						bind:selected={selectedGroups}
 						rowActions={groupActions}
 						rowLabel={(row) => row.name}
+						resourceId={(row) => iamResourceId('group', row.name)}
 						emptyTitle={t('web.accountDetail.noGroupsTitle')}
 						emptyText={t('web.accountDetail.noGroups')}
 					>

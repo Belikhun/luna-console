@@ -31,6 +31,8 @@
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import type { DaemonRow, UpgradeResult } from '$client/daemon';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 
 	let daemons: DaemonRow[] = $state([]);
 	let loaded = $state(false);
@@ -400,7 +402,7 @@
 				}
 			]}
 		/>
-		<Dropdown label={t('web.machines.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.machines.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), [resourceId('machine', one.name)]) : []} />
 		<Btn variant="primary" icon="plus" onclick={() => (joinOpen = true)}>{t('web.machines.addAFollower')}</Btn>
 	{/snippet}
 </PageHeader>
@@ -420,6 +422,7 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.name}
+		resourceId={(row) => resourceId('machine', row.name)}
 		noun={t('web.machines.machine')}
 		{sortValue}
 		onRowClick={(row) => goto(`/machines/${row.name}`)}

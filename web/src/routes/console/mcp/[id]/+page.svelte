@@ -21,6 +21,7 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import FormGrid from '$lib/components/FormGrid.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
@@ -33,6 +34,7 @@
 	import { Notify } from '$lib/notifications.svelte';
 	import { clearCrumbLabel, setCrumbLabel } from '$lib/crumbs.svelte';
 	import { allowedTools, type McpScope } from '$shared/mcptools';
+	import { resourceId } from '$shared/iam/resources';
 	import type { KnowledgeItem } from '$core/mcp';
 	import {
 		behalfLabel,
@@ -320,6 +322,7 @@
 			: [
 					{ label: t('web.mcp.colName'), value: token.name, copyable: true },
 					{ id: 'state', label: t('web.common.state') },
+					{ id: 'resourceId', label: t('web.resourceId.label') },
 					{ label: t('web.mcpNew.purpose'), value: token.description || '–', colSpan: 2 },
 					{ id: 'tokenId', label: t('web.mcpDetail.tokenId') },
 					{ label: t('web.mcp.colScope'), value: scopeSummary(token) },
@@ -465,6 +468,8 @@
 					{#snippet custom(cell)}
 						{#if cell.id === 'state'}
 							<StatusBadge state={tokenState(token!)} label={tokenStateLabel(token!)} />
+						{:else if cell.id === 'resourceId'}
+							<ResourceIdValue value={resourceId('mcp-token', token!.name)} label={cell.label} />
 						{:else if cell.id === 'tokenId'}
 							<span class="mono dim">{token!.id}</span>
 						{:else if cell.id === 'endpoint'}
@@ -558,6 +563,7 @@
 					searchPlaceholder={t('web.knowledge.searchPlaceholder')}
 					rowActions={knowledgeActions}
 					rowLabel={(row) => row.title}
+					resourceId={(row) => resourceId('knowledge', row.id)}
 					rowDim={(row) => !row.enabled}
 					noun={t('web.knowledge.noun')}
 					onRowClick={(row) => goto(`/console/knowledge/${row.id}`)}

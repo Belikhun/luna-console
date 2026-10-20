@@ -9,6 +9,7 @@
 	import AccountAvatar from './AccountAvatar.svelte';
 	import type { Column } from './table';
 	import type { AccountSummary } from '$core/accounts';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * A table to pick console accounts (IAM users) from, keyed by id: AWS's
@@ -41,6 +42,7 @@
 	{columns}
 	rows={accounts}
 	getId={(row) => row.id}
+	resourceId={(row) => resourceId('account', row.username)}
 	searchValue={(row) => `${row.username} ${row.displayName} ${row.email}`}
 	searchPlaceholder={t('web.iamList.searchUsers')}
 	searchWidth="18rem"

@@ -28,6 +28,8 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import type { AuditRow, HostnameRow, RecordRow, SettingsView } from './domains';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 
 	/**
 	 * Hostnames under the network's base domain: which exist, which instance each
@@ -443,7 +445,7 @@
 <PageHeader title={t('web.nav.domains')} count={hostnames.length} description={t('web.domains.pageDescription')} info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="network-domains" />
-		<Dropdown label={t('web.common.actions')} disabled={tab !== 'hostnames' || picked.length === 0} menu={hostnameActions(picked)} />
+		<Dropdown label={t('web.common.actions')} disabled={tab !== 'hostnames' || picked.length === 0} menu={withCopyResourceId(hostnameActions(picked), picked.map((row) => resourceId('domain', row.label)))} />
 		<Btn icon="gear" onclick={openSettings}>{t('web.domains.settings')}</Btn>
 		<Btn variant="primary" icon="plus" disabled={!settings?.configured} onclick={openCreate}>{t('web.domains.create')}</Btn>
 	{/snippet}
@@ -502,6 +504,7 @@
 				bind:selected
 				{rowActions}
 				rowLabel={(row) => row.fqdn}
+				resourceId={(row) => resourceId('domain', row.label)}
 				rowDim={(row) => !row.instance}
 				noun={t('web.domains.noun')}
 				sortValue={(row, col) =>

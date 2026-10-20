@@ -26,6 +26,7 @@
 	import type { Column, TableFilterGroup } from './table';
 	import type { ContextMenuItem } from './contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * Everyone who has ever played on this backend, online or not.
@@ -378,6 +379,10 @@
 		bind:selected
 		{rowActions}
 		rowLabel={displayName}
+		resourceId={(row) =>
+			row.name
+				? resourceId('player', row.name)
+				: null}
 		rowDim={(row) => !row.online}
 		noun={t('web.instancePlayers.nounPlayer')}
 		{sortValue}

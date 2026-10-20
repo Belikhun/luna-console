@@ -26,6 +26,8 @@
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import {
 		behalfLabel,
 		clientSnippet,
@@ -368,7 +370,7 @@
 <PageHeader title={t('web.nav.mcp')} count={tokens.length} description={t('web.mcp.pageDescription')} info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-mcp" />
-		<Dropdown label={t('web.common.actions')} disabled={headerDisabled} menu={tokenActions(picked)} />
+		<Dropdown label={t('web.common.actions')} disabled={headerDisabled} menu={withCopyResourceId(tokenActions(picked), picked.map((row) => resourceId('mcp-token', row.name)))} />
 		<Btn icon="book" href="/console/knowledge">{t('web.mcp.knowledge')}</Btn>
 		<Btn variant="primary" icon="plus" href="/console/mcp/new">{t('web.mcp.createToken')}</Btn>
 	{/snippet}
@@ -412,6 +414,7 @@
 				bind:selected
 				{rowActions}
 				rowLabel={(row) => row.name}
+				resourceId={(row) => resourceId('mcp-token', row.name)}
 				rowDim={(row) => !row.enabled || row.expired}
 				noun={t('web.mcp.tokenNoun')}
 				onRowClick={(row) => goto(detailHref(row))}

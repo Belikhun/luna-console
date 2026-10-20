@@ -21,6 +21,8 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 	import { jobFlash } from '$lib/jobflash';
+	import { resourceId } from '$shared/iam/resources';
+	import { selectedResourceIds, withCopyResourceId } from '$lib/resourceid';
 
 	/**
 	 * Java runtimes: the JDKs luna has installed, per machine.
@@ -382,7 +384,7 @@
 		<Dropdown
 			label={t('web.common.actions')}
 			disabled={selRows.length === 0 || !!busy}
-			menu={selRows.length ? runtimeActions(selRows) : []}
+			menu={selRows.length ? withCopyResourceId(runtimeActions(selRows), selectedResourceIds(selRows, (row) => resourceId('runtime', row.runtimeId))) : []}
 		/>
 		<Btn variant="primary" icon="download" onclick={openInstall}>
 			{t('web.runtimes.installRuntime')}
@@ -407,6 +409,7 @@
 		{rowActions}
 		rowLabel={(row) => `${row.runtimeId} (${row.machineName})`}
 		rowLocked={(row) => row.unreachable}
+		resourceId={(row) => resourceId('runtime', row.runtimeId)}
 		noun={t('web.runtimes.noun')}
 		emptyTitle={t('web.runtimes.emptyTitle')}
 		emptyText={t('web.runtimes.emptyText')}

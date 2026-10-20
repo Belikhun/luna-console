@@ -28,6 +28,7 @@
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -504,7 +505,9 @@
 	const identityCells: InfoCell[] = $derived(
 		detail
 			? [
-					{ id: 'uuid', label: t('web.playerDetail.uuid'), value: detail.uuid, style: 'mono', copyable: true },
+					// no `id`: an identified cell is handed to the `custom` snippet below
+					{ label: t('web.playerDetail.uuid'), value: detail.uuid, style: 'mono', copyable: true },
+					{ id: 'resourceId', label: t('web.resourceId.label') },
 					{
 						label: t('web.playerDetail.accountType'),
 						value: detail.onlineMode ? 'Premium (Mojang)' : 'Offline / proxy-authenticated'
@@ -1337,7 +1340,13 @@
 		</Panel>
 
 		<Panel title={t('web.playerDetail.identity')}>
-			<InfoGrid cells={identityCells} columns={[2, 2, 1]} />
+			<InfoGrid cells={identityCells} columns={[2, 2, 1]}>
+				{#snippet custom(cell)}
+					{#if cell.id === 'resourceId'}
+						<ResourceIdValue value={resourceId('player', detail!.username)} label={cell.label} />
+					{/if}
+				{/snippet}
+			</InfoGrid>
 		</Panel>
 	</div>
 

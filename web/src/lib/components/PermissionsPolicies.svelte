@@ -41,6 +41,7 @@
 		type PolicyRow
 	} from '$lib/iam';
 	import type { AccountPermissions, GroupSummary } from '$core/iam';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * AWS's "Permissions policies" panel, shared by an account's screen and a
@@ -374,6 +375,10 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.name}
+		resourceId={(row) =>
+			row.kind === 'inline'
+				? null
+				: resourceId('policy', row.name)}
 		loading={!loaded && rows.length === 0}
 		sortValue={(row, col) =>
 			col === 'type'

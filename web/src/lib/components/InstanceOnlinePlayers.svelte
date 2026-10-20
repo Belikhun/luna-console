@@ -41,6 +41,7 @@
 	import type { Column, TableFilterGroup } from './table';
 	import type { ContextMenuItem } from './contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * Who is on this backend right now, with what the backend last saved about
@@ -611,6 +612,7 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.username}
+		resourceId={(row) => resourceId('player', row.username)}
 		noun={t('web.instancePlayers.nounPlayer')}
 		{sortValue}
 		{filters}

@@ -22,6 +22,8 @@
 	import { Authz } from '$lib/authz.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { groupHref, notifyEach, runEach, type GroupRow } from '$lib/iam';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 
 	/**
 	 * User groups, AWS's list: each group with how many accounts it holds,
@@ -132,7 +134,9 @@
 		return groupActions(selected.has(row.name) && picked.length > 1 ? picked : [row]);
 	}
 
-	const headerMenu = $derived(groupActions(picked));
+	const headerMenu = $derived(
+		withCopyResourceId(groupActions(picked), picked.map((row) => resourceId('group', row.name)))
+	);
 	const deleteReason = $derived(picked.length === 0 ? t('web.iamList.pickGroups') : denied('iam:DeleteGroup'));
 
 	const columns: Column[] = $derived([
@@ -192,6 +196,7 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.name}
+		resourceId={(row) => resourceId('group', row.name)}
 		noun={t('web.iam.groupNoun')}
 		sortValue={(row, col) =>
 			col === 'users'

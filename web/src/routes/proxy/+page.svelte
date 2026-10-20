@@ -20,6 +20,7 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { resourceId } from '$shared/iam/resources';
 	import { goto } from '$app/navigation';
 
 	/** One row of the sync preview: what velocity.toml has vs what it should have. */
@@ -105,6 +106,15 @@
 	/** The registry entry behind a route row; a stale velocity.toml line has none. */
 	function instanceOf(server: string): any | undefined {
 		return (data?.instances ?? []).find((entry: any) => entry.name === server);
+	}
+
+	/** A route stands for an instance only when luna owns the server behind it. */
+	function routeResourceId(row: RouteRow): string | null {
+		const entry = instanceOf(row.server);
+
+		return !entry || entry.external
+			? null
+			: resourceId('instance', row.server);
 	}
 
 	function editRegistration(server: string): void {
@@ -225,6 +235,7 @@
 			bind:selected
 			{rowActions}
 			rowLabel={(row) => row.server}
+			resourceId={routeResourceId}
 			noun={t('web.proxy.noun')}
 			pageSize={15}
 			loading={!loaded}

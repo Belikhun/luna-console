@@ -33,6 +33,7 @@
 	import { loadOneResourceMeta } from '$lib/resourcemeta.svelte';
 	import type { ResourceView } from '$core/resources';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { OverviewDetail, OverviewNode } from '$lib/components/nodeoverview';
 	import type { ThreadReport, ThreadSample } from '$client/daemon';
@@ -1655,6 +1656,9 @@
 		return [
 			{ id: 'state', label: t('web.instanceDetail.instanceState') },
 			{ id: 'software', label: t('web.instanceDetail.software') },
+			{ id: 'resourceId', label: t('web.resourceId.label') },
+			// chat is permitted on its own, so a policy reading this server's chat names this id
+			{ id: 'chatResourceId', label: t('web.resourceId.chatLabel'), help: t('web.resourceId.chatHint') },
 			{ label: t('web.instanceDetail.pingVersion'), value: inst.pingVersion },
 			{ label: t('web.instanceDetail.gameAddress'), value: inst.address, copyable: true, style: 'mono' },
 			{ label: t('web.instanceDetail.memoryHeap'), value: inst.memory },
@@ -2543,6 +2547,10 @@
 							/>
 						{:else if cell.id === 'createdBy'}
 							<OwnerCell name={ownerMeta?.createdBy} />
+						{:else if cell.id === 'resourceId'}
+							<ResourceIdValue value={resourceId('instance', name ?? '')} label={cell.label} />
+						{:else if cell.id === 'chatResourceId'}
+							<ResourceIdValue value={resourceId('chat', name ?? '')} label={cell.label} />
 						{:else if cell.id === 'cpu'}
 							{#if inst.cpu == null}
 								<span class="dim">–</span>
@@ -2869,6 +2877,7 @@
 					searchPlaceholder={t('web.instanceDetail.findAnAddonOnThis')}
 					rowActions={pluginActions}
 					rowLabel={(plugin) => plugin.plugin}
+					resourceId={(plugin) => resourceId('plugin', plugin.key)}
 					noun={t('web.instanceDetail.plugin')}
 					pageSize={25}
 					rowDim={(plugin) => plugin.disabled}
@@ -3169,6 +3178,10 @@
 					searchPlaceholder={t('web.instanceDetail.findADataPackIn')}
 					rowActions={datapackActions}
 					rowLabel={(row) => row.file}
+					resourceId={(row) =>
+						row.managed && row.name
+							? resourceId('datapack', row.name)
+							: null}
 					noun={t('web.instanceDetail.dataPack')}
 					pageSize={25}
 					rowDim={(row) => row.managed && !row.targeted}
@@ -3259,6 +3272,7 @@
 					searchPlaceholder={t('web.instanceDetail.findAResourcePack')}
 					rowActions={respackActions}
 					rowLabel={(row) => row.key}
+					resourceId={(row) => resourceId('pack', row.key)}
 					noun={t('web.instanceDetail.pack')}
 					pageSize={25}
 					rowDim={(row) => !row.matched.includes(name ?? '')}
@@ -3370,6 +3384,10 @@
 					searchPlaceholder={t('web.instanceDetail.findAVariable')}
 					rowActions={envActions}
 					rowLabel={(row) => row.name}
+					resourceId={(row) =>
+						row.scope === 'builtin'
+							? null
+							: resourceId('env', row.name)}
 					noun={t('web.instanceDetail.variable')}
 					emptyTitle={t('web.instanceDetail.nothingResolved')}
 					emptyText={t('web.instanceDetail.thisInstanceResolvesNoVariables')}

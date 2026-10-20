@@ -22,6 +22,8 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Authz } from '$lib/authz.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import {
 		POLICY_KIND_ICONS,
 		attachedCount,
@@ -143,7 +145,11 @@
 		];
 	}
 
-	const headerMenu = $derived(policyActions(picked));
+	const headerMenu = $derived(
+		picked
+			? withCopyResourceId(policyActions(picked), [resourceId('policy', picked.name)])
+			: policyActions(picked)
+	);
 	const deleteReason = $derived(picked ? policyDeleteReason(picked) || denied('iam:DeletePolicy') : t('web.iamList.pickPolicy'));
 
 	const columns: Column[] = $derived([
@@ -243,6 +249,7 @@
 		bind:selected
 		rowActions={(row) => policyActions(row)}
 		rowLabel={(row) => row.name}
+		resourceId={(row) => resourceId('policy', row.name)}
 		noun={t('web.iam.policyNoun')}
 		{sortValue}
 		emptyTitle={t('web.iam.noPoliciesTitle')}

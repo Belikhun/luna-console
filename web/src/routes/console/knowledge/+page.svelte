@@ -21,6 +21,8 @@
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import type { KnowledgeItem, KnowledgeKind } from '$core/mcp';
 	import { scopeName } from './knowledge';
 
@@ -228,7 +230,7 @@
 <PageHeader title={t('web.nav.knowledge')} count={items.length} description={t('web.knowledge.pageDescription')} info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-knowledge" />
-		<Dropdown label={t('web.common.actions')} disabled={picked.length === 0} menu={itemActions(picked)} />
+		<Dropdown label={t('web.common.actions')} disabled={picked.length === 0} menu={withCopyResourceId(itemActions(picked), picked.map((row) => resourceId('knowledge', row.id)))} />
 		<Btn icon="plug" href="/console/mcp">{t('web.knowledge.tokens')}</Btn>
 		<Btn variant="primary" icon="plus" href="/console/knowledge/new?kind={tab}">
 			{t(`web.knowledge.create.${tab}`)}
@@ -258,6 +260,7 @@
 				bind:selected
 				{rowActions}
 				rowLabel={(row) => row.title}
+				resourceId={(row) => resourceId('knowledge', row.id)}
 				rowDim={(row) => !row.enabled}
 				noun={t('web.knowledge.noun')}
 				onRowClick={(row) => goto(`/console/knowledge/${row.id}`)}

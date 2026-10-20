@@ -8,6 +8,7 @@
 	import ResourceTable from './ResourceTable.svelte';
 	import type { Column } from './table';
 	import { groupHref, type GroupRow } from '$lib/iam';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * A table to pick user groups from: AWS's "Add user to group" list. Groups
@@ -41,6 +42,7 @@
 	{columns}
 	rows={groups}
 	getId={(row) => row.name}
+	resourceId={(row) => resourceId('group', row.name)}
 	searchValue={(row) => `${row.name} ${row.description} ${row.policies.join(' ')}`}
 	searchPlaceholder={t('web.iamList.searchGroups')}
 	searchWidth="18rem"

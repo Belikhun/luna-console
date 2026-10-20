@@ -29,6 +29,7 @@
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
@@ -442,7 +443,7 @@
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="datapacks" />
-		<Dropdown label={t('web.datapacks.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.datapacks.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), [meta.idOf(one.name)]) : []} />
 		<Btn icon="download" loading={busy === 'update'} disabled={!!busy} onclick={() => checkUpdates()}>
 			{t('web.datapacks.checkUpdates')}
 		</Btn>
@@ -478,6 +479,7 @@
 		selectable="single"
 		bind:selected
 		{rowActions}
+		resourceId={(row) => meta.idOf(row.name)}
 		rowLabel={(row) => row.name}
 		noun={t('web.datapacks.pack')}
 		{sortValue}

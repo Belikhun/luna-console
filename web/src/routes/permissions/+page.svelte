@@ -18,6 +18,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * LuckPerms group management. This screen is the roster; weight-ordered,
@@ -238,6 +239,7 @@
 			bind:selected
 			{rowActions}
 			rowLabel={(group) => group.name}
+			resourceId={(group) => resourceId('permission-group', group.name)}
 			onRowClick={(group) => goto(`/permissions/${encodeURIComponent(group.name)}`)}
 			noun={t('web.perms.group')}
 			{sortValue}

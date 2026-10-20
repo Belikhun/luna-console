@@ -18,6 +18,8 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 
 	interface GroupInfo {
 		name: string;
@@ -103,7 +105,7 @@
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="addon-groups" />
-		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), [resourceId('addon-group', one.name)]) : []} />
 		<Btn variant="primary" icon="layerGroup" onclick={() => goto('/addons/groups/new')}>
 			{t('web.addonGroups.createGroup')}
 		</Btn>
@@ -123,6 +125,7 @@
 		selectable="single"
 		bind:selected
 		{rowActions}
+		resourceId={(group) => resourceId('addon-group', group.name)}
 		rowLabel={(group) => group.name}
 		noun={t('web.addonGroups.noun')}
 		onRowClick={(group) => goto(`/addons/groups/${group.name}`)}

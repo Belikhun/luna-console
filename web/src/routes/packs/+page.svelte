@@ -31,6 +31,7 @@
 	import InlineEdit from '$lib/components/InlineEdit.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
@@ -682,7 +683,7 @@
 		<Dropdown
 			label={t('web.packs.actions')}
 			disabled={selRows.length === 0}
-			menu={selRows.length ? packActions(selRows) : []}
+			menu={selRows.length ? withCopyResourceId(packActions(selRows), selRows.map((row) => meta.idOf(row.key))) : []}
 		/>
 		<Btn icon="download" loading={busy === 'update'} disabled={!!busy} onclick={() => checkUpdates()}>
 			{t('web.packs.checkUpdates')}
@@ -728,6 +729,7 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.key}
+		resourceId={(row) => meta.idOf(row.key)}
 		noun={t('web.packs.pack')}
 		{sortValue}
 		{defaultSort}

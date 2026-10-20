@@ -25,6 +25,8 @@
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import {
 		accountState,
 		auditTone,
@@ -303,7 +305,11 @@
 	 * and its own verbs, and the activity trail has none, so the control is disabled
 	 * with the tab rather than disappearing between them.
 	 */
-	const headerMenu = $derived(tab === 'sessions' ? sessionActions(pickedSessions) : accountActions(picked));
+	const headerMenu = $derived(
+		tab === 'sessions'
+			? sessionActions(pickedSessions)
+			: withCopyResourceId(accountActions(picked), picked.map((row) => resourceId('account', row.username)))
+	);
 
 	const headerDisabled = $derived(
 		tab === 'activity' || (tab === 'sessions' ? pickedSessions.length === 0 : picked.length === 0)
@@ -448,6 +454,7 @@
 				bind:selected
 				{rowActions}
 				rowLabel={(row) => row.username}
+				resourceId={(row) => resourceId('account', row.username)}
 				rowDim={(row) => !row.enabled}
 				noun={t('web.accounts.noun')}
 				onRowClick={(row) => goto(detailHref(row))}

@@ -11,6 +11,7 @@
 	import type { Column, TableFilterGroup } from './table';
 	import type { ContextMenuItem } from './contextmenu';
 	import { matches, rowText } from '$lib/search/match';
+	import { type ResourceIdOf, resourceIdList } from '$lib/resourceid';
 
 	/**
 	 * The console's standard resource table (DESIGN.md §5.1): search, optional
@@ -55,7 +56,8 @@
 		noun = 'resource',
 		loading = false,
 		expanded,
-		expandable
+		expandable,
+		resourceId
 	}: {
 		/** required; preferences (columns, page size, density) are stored per table */
 		tableId: string;
@@ -101,6 +103,9 @@
 		expanded?: Snippet<[T]>;
 		/** rows that may unfold; every row when omitted */
 		expandable?: (row: T) => boolean;
+		/** the resource id (or ids) a row stands for: a hidden "Resource id"
+		 *  column, a "Copy resource id" menu entry, and words the search finds */
+		resourceId?: ResourceIdOf<T>;
 	} = $props();
 
 	// seeded once from the prop on purpose: after that the box owns the query
@@ -111,7 +116,15 @@
 	// its own generic instantiation is what TS cannot resolve
 	let table: { clearFilters: () => void } | undefined = $state();
 
-	const haystack = (row: T): string => searchValue?.(row) ?? rowText(row);
+	function haystack(row: T): string {
+		const own = searchValue?.(row) ?? rowText(row);
+
+		if (!resourceId) {
+			return own;
+		}
+
+		return `${own} ${resourceIdList(resourceId(row)).join(' ')}`;
+	}
 
 	const visible = $derived(
 		search.trim() ? rows.filter((row) => matches(haystack(row), search)) : rows
@@ -165,6 +178,7 @@
 	{rowLabel}
 	{expanded}
 	{expandable}
+	{resourceId}
 	loading={loading && rows.length === 0}
 	emptyTitle={noMatch ? `No ${noun} matches your search` : emptyTitle}
 	emptyText={noMatch ? 'Nothing here answers the current search and filters.' : emptyText}

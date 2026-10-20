@@ -44,6 +44,7 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { IAM_RESOURCE_TYPES } from '$shared/iam/actions';
 	import { MAX_TAGS } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import type { ResourceView } from '$core/resources';
 
 	/**
@@ -490,7 +491,6 @@
 		{ id: 'tags', label: t('web.resources.colTags'), sortable: true },
 		{ id: 'updatedBy', label: t('web.resources.colUpdatedBy'), sortable: true, width: 140, hidden: true },
 		{ id: 'updated', label: t('web.resources.colUpdated'), sortable: true, width: 170, hidden: true },
-		{ id: 'id', label: t('web.resources.colId'), width: 260, hidden: true },
 		...tagKeys.map((key) => ({
 			id: `tag:${key}`,
 			label: t('web.tagSearch.colTag', { key }),
@@ -547,7 +547,7 @@
 <PageHeader title={t('web.tagSearch.title')} description={t('web.tagSearch.pageDescription')} info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-resources" />
-		<Dropdown label={t('web.common.actions')} disabled={picked.length === 0} menu={resourceActions(picked)} />
+		<Dropdown label={t('web.common.actions')} disabled={picked.length === 0} menu={withCopyResourceId(resourceActions(picked), picked.map((row) => row.id))} />
 		<Btn icon="fileExport" disabled={results.length === 0} title={results.length === 0 ? t('web.tagSearch.nothingToExport') : undefined} onclick={exportCsv}>
 			{t('web.tagSearch.exportCsv')}
 		</Btn>
@@ -636,6 +636,7 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.name}
+		resourceId={(row) => row.id}
 		{sortValue}
 		defaultSort={{ col: 'type' }}
 		noun={t('web.resources.noun')}
@@ -671,8 +672,6 @@
 				<span class="dim">{row.updatedAt ? fmtDateTime(row.updatedAt) : '–'}</span>
 			{:else if col === 'updatedBy'}
 				<OwnerCell name={row.updatedBy} />
-			{:else if col === 'id'}
-				<span class="mono dim">{row.id}</span>
 			{/if}
 		{/snippet}
 	</ResourceTable>

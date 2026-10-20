@@ -20,6 +20,9 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
+	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 
 	/**
 	 * One addon group in full: its three member lists (plugins with per-family
@@ -389,6 +392,14 @@
 	</PageHeader>
 
 	<Panel title={t('web.groupDetail.groupDetails')}>
+		<div class="ids">
+			<InfoGrid cells={[{ id: 'resourceId', label: t('web.resourceId.label') }]} columns={1}>
+				{#snippet custom(cell)}
+					<ResourceIdValue value={resourceId('addon-group', name ?? '')} label={cell.label} />
+				{/snippet}
+			</InfoGrid>
+		</div>
+
 		<label class="field desc">
 			<span class="lbl">{t('web.groupDetail.description')}</span>
 			<input
@@ -432,6 +443,10 @@
 			pageSize={25}
 			rowActions={pluginActions}
 			rowLabel={(row) => row.plugin}
+			resourceId={(row) =>
+				row.families.length > 0
+					? row.families.map((family: any) => resourceId('plugin', family.key))
+					: resourceId('plugin', row.plugin)}
 			emptyTitle={t('web.groupDetail.noPluginsYet')}
 			emptyText={t('web.groupDetail.addMembersWithTheControl')}
 		>
@@ -479,6 +494,7 @@
 			pageSize={25}
 			rowActions={respackActions}
 			rowLabel={(row) => row.key}
+			resourceId={(row) => resourceId('pack', row.key)}
 			emptyTitle={t('web.groupDetail.noResourcePacks')}
 			emptyText={t('web.groupDetail.addOneToServeIt')}
 		>
@@ -532,6 +548,7 @@
 			pageSize={25}
 			rowActions={datapackActions}
 			rowLabel={(row) => row.name}
+			resourceId={(row) => resourceId('datapack', row.name)}
 			emptyTitle={t('web.groupDetail.noDataPacks')}
 			emptyText={t('web.groupDetail.addOneToDeployIt')}
 		>
@@ -574,6 +591,7 @@
 			columns={instCols}
 			rows={data.instances}
 			getId={(row) => row.name}
+			resourceId={(row) => resourceId('instance', row.name)}
 			searchValue={(row) => row.name}
 			searchPlaceholder={t('web.groupDetail.findAnInstance')}
 			searchWidth="18rem"
@@ -650,6 +668,10 @@
 <style lang="scss">
 	.gap {
 		height: 1rem;
+	}
+
+	.ids {
+		margin-bottom: 1rem;
 	}
 
 	.desc {

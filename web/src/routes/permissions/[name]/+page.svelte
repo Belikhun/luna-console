@@ -17,6 +17,7 @@
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
@@ -29,6 +30,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { resourceId } from '$shared/iam/resources';
 
 	/**
 	 * One LuckPerms group, read like a resource: identity and meta, the full
@@ -378,6 +380,7 @@
 
 	const summaryCells: InfoCell[] = $derived([
 		{ label: t('web.permGroup.name'), value: name, style: 'mono', copyable: true },
+		{ id: 'resourceId', label: t('web.resourceId.label') },
 		{ label: t('web.permGroup.displayName'), value: displayName || '–' },
 		{ label: t('web.permGroup.weight'), value: weight },
 		{ label: t('web.permGroup.prefix'), value: prefix || '–', style: prefix ? 'mono' : 'default' },
@@ -607,6 +610,8 @@
 						{:else}
 							<span class="dim">–</span>
 						{/if}
+					{:else if cell.id === 'resourceId'}
+						<ResourceIdValue value={resourceId('permission-group', name)} label={cell.label} />
 					{/if}
 				{/snippet}
 			</InfoGrid>
@@ -698,6 +703,10 @@
 				sortValue={(member, col) => (col === 'username' ? member.username.toLowerCase() : null)}
 				rowActions={memberActions}
 				rowLabel={(member) => member.username || member.uuid}
+				resourceId={(member) =>
+					member.username
+						? resourceId('player', member.username)
+						: null}
 				pageSize={25}
 				emptyTitle={t('web.permGroup.noDirectMembers')}
 				emptyText={t('web.permGroup.addOneHereOrFrom')}

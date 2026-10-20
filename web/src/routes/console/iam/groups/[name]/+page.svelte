@@ -18,7 +18,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import FormGrid from '$lib/components/FormGrid.svelte';
-	import CopyValue from '$lib/components/CopyValue.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -344,7 +344,7 @@
 		<InfoGrid cells={summaryCells}>
 			{#snippet custom(cell)}
 				{#if cell.id === 'resourceId'}
-					<CopyValue value={iamResourceId('group', group!.name)} label={t('web.iamPolicyDetail.resourceId')} />
+					<ResourceIdValue value={iamResourceId('group', group!.name)} label={t('web.iamPolicyDetail.resourceId')} />
 				{/if}
 			{/snippet}
 		</InfoGrid>
@@ -397,6 +397,7 @@
 					bind:selected={selectedMembers}
 					rowActions={memberActions}
 					rowLabel={(row) => row.username}
+					resourceId={(row) => iamResourceId('account', row.username)}
 					sortValue={(row, col) =>
 						col === 'lastSignIn'
 							? (row.account?.lastSignInAt ?? 0)

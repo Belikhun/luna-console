@@ -22,6 +22,8 @@
 	import { consumersLine } from '$lib/pools';
 	import { goto } from '$app/navigation';
 	import { instanceTabPath } from '$lib/components/instancetabs';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
+	import { resourceId } from '$shared/iam/resources';
 
 	let ports: any[] = $state([]);
 	let issues: any[] = $state([]);
@@ -311,6 +313,10 @@
 					{consumersLine(consumers, pool.id)}
 				</div>
 
+				<div class="pid">
+					<ResourceIdValue value={resourceId('port-pool', pool.id)} />
+				</div>
+
 				<div class="pmachines">
 					{#each usageOf(pool.id) as view (view.machine)}
 						<div class="prow">
@@ -462,6 +468,11 @@
 		font-size: 0.75rem;
 		margin: 0.125rem 0 0.5rem;
 		@include ellipsis;
+	}
+
+	.pid {
+		font-size: 0.75rem;
+		margin: -0.25rem 0 0.5rem;
 	}
 
 	.tag {

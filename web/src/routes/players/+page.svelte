@@ -24,6 +24,8 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
+	import { resourceId } from '$shared/iam/resources';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
 	import DetailPanel from '$lib/components/DetailPanel.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -515,7 +517,7 @@
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players-directory" />
-		<Dropdown label={t('web.players.actions')} disabled={selection.length === 0} menu={bulkActions(selection)} />
+		<Dropdown label={t('web.players.actions')} disabled={selection.length === 0} menu={withCopyResourceId(bulkActions(selection), selection.map((player) => resourceId('player', player.username)))} />
 		<Btn icon="userPortrait" onclick={() => goto('/players/online')}>Online players</Btn>
 	{/snippet}
 </PageHeader>
@@ -560,6 +562,7 @@
 			bind:selected
 			{rowActions}
 			rowLabel={(player) => player.username}
+			resourceId={(player) => resourceId('player', player.username)}
 			noun={t('web.players.player')}
 			{sortValue}
 			{filters}

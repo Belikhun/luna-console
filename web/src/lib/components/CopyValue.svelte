@@ -41,7 +41,10 @@
 	let copied = $state(false);
 	let resetTimer: ReturnType<typeof setTimeout> | undefined;
 
-	async function copy(): Promise<void> {
+	// a copy inside a clickable row (a table cell) must not also open the row
+	async function copy(event: MouseEvent): Promise<void> {
+		event.stopPropagation();
+
 		if (!(await copyText(value))) {
 			return;
 		}

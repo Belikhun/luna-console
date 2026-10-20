@@ -19,7 +19,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
-	import CopyValue from '$lib/components/CopyValue.svelte';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -395,11 +395,7 @@
 						{policyKindLabel(policyKind(policy!))}
 					</span>
 				{:else if cell.id === 'resourceId'}
-					{#if policy!.builtin}
-						<span class="dim">{t('web.iamPolicyDetail.builtinNoResource')}</span>
-					{:else}
-						<CopyValue value={iamResourceId('policy', policy!.name)} label={t('web.iamPolicyDetail.resourceId')} />
-					{/if}
+					<ResourceIdValue value={iamResourceId('policy', policy!.name)} label={t('web.iamPolicyDetail.resourceId')} />
 				{/if}
 			{/snippet}
 		</InfoGrid>
@@ -473,6 +469,7 @@
 					bind:selected={selectedEntities}
 					rowActions={entityActions}
 					rowLabel={(row) => row.name}
+					resourceId={(row) => iamResourceId(row.kind, row.name)}
 					sortValue={(row, col) => (col === 'kind' ? row.kind : null)}
 					cell={entityCell}
 					emptyTitle={t('web.iamPolicyDetail.noEntities')}
@@ -529,6 +526,7 @@
 			selectable="multi"
 			bind:selected={attachPicked}
 			rowLocked={(row) => attachedKeys.has(row.key)}
+			resourceId={(row) => iamResourceId(row.kind, row.name)}
 			pageSize={10}
 			maxHeight="26rem"
 			noun={t('web.iamPolicyDetail.entityNoun')}

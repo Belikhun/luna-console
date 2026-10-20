@@ -39,6 +39,8 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { jobFlash } from '$lib/jobflash';
+	import { resourceId } from '$shared/iam/resources';
+	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 
 	/**
 	 * One plugin identity in full: its families (one pooled build per platform),
@@ -333,6 +335,13 @@
 
 		return [
 			{ label: t('web.addonDetail.plugin'), value: data.plugin },
+			{
+				id: 'resourceId',
+				label: data.families.length > 1
+					? t('web.resourceId.labelMany')
+					: t('web.resourceId.label'),
+				colSpan: 2
+			},
 			{ label: t('web.addonDetail.families'), value: data.families.map((family: any) => family.family).join(', ') },
 			{
 				label: t('web.addonDetail.inGroups'),
@@ -559,6 +568,11 @@
 									<OwnerCell name={creator} />
 								{/each}
 							{/if}
+						{:else if cell.id === 'resourceId'}
+							<ResourceIdValue
+								value={data!.families.map((family: any) => resourceId('plugin', family.key))}
+								label={cell.label}
+							/>
 						{/if}
 					{/snippet}
 				</InfoGrid>
@@ -665,6 +679,7 @@
 					pageSize={15}
 					rowActions={usageActions}
 					rowLabel={(row) => row.instance}
+					resourceId={(row) => resourceId('instance', row.instance)}
 					rowDim={(row) => row.disabled}
 					emptyTitle={t('web.addonDetail.notUsedAnywhere')}
 					emptyText={t('web.addonDetail.addItToAnInstance')}
@@ -708,6 +723,7 @@
 					columns={familyCols}
 					rows={data.families}
 					getId={(family) => family.key}
+					resourceId={(family) => resourceId('plugin', family.key)}
 					onRowClick={(family) => (familySel = family.key)}
 				>
 					{#snippet cell(family, col)}

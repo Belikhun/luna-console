@@ -46,6 +46,7 @@
 	} from '$lib/components/addoncatalog';
 	import { CATALOG_KINDS } from '$lib/components/addoncatalog';
 	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import { withCopyResourceId } from '$lib/resourceid';
 	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
@@ -124,6 +125,9 @@
 	const meta = new ResourceMetaIndex('plugin');
 
 	const familyKeys = (row: AddonRow): string[] => row.families.map((family) => family.key);
+
+	/** One resource id per family build the row groups. */
+	const familyIds = (row: AddonRow): string[] => familyKeys(row).map((key) => meta.idOf(key));
 
 	$effect(() => {
 		void meta.sync(addons.flatMap(familyKeys));
@@ -628,7 +632,7 @@
 <PageHeader title={t(spec.label)} count={addons.length} info>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey={kind} />
-		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), familyIds(one)) : []} />
 		<Btn icon="search" loading={busy === 'scan'} disabled={!!busy} onclick={scan}>{t('web.catalog.scan')}</Btn>
 		<Btn icon="sync" loading={busy === 'check'} disabled={!!busy} onclick={checkUpdates}>
 			{t('web.catalog.checkUpdates')}
@@ -676,6 +680,7 @@
 		bind:selected
 		{rowActions}
 		rowLabel={(row) => row.plugin}
+		resourceId={familyIds}
 		noun={t(spec.noun)}
 		sortValue={(row, col) =>
 			col === 'name'

@@ -6,6 +6,7 @@
 	import { t } from '$lib/i18n.svelte';
 	import ResourceTable from './ResourceTable.svelte';
 	import Icon from './Icon.svelte';
+	import { resourceId } from '$shared/iam/resources';
 	import PolicyYamlPreview from './PolicyYamlPreview.svelte';
 	import type { Column, TableFilterGroup } from './table';
 	import {
@@ -65,6 +66,7 @@
 	{filters}
 	rows={policies}
 	getId={(row) => row.name}
+	resourceId={(row) => resourceId('policy', row.name)}
 	searchValue={(row) => `${row.name} ${row.description}`}
 	searchPlaceholder={t('web.iamList.searchPolicies')}
 	searchWidth="18rem"

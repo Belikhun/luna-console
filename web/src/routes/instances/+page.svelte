@@ -39,6 +39,7 @@
 	import { onJobFlash } from '$lib/jobflash';
 	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
 	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
+	import { selectedResourceIds, withCopyResourceId } from '$lib/resourceid';
 
 	type Row = InstanceRow & { externalOnly?: boolean };
 
@@ -138,6 +139,13 @@
 
 	// who created each instance and its tags, for the owner/tag columns and the tag filter
 	const meta = new ResourceMetaIndex('instance');
+
+	// a server the proxy routes to but luna does not own is no resource of ours
+	function instanceId(row: Row): string | null {
+		return row.externalOnly
+			? null
+			: meta.idOf(row.name);
+	}
 
 	$effect(() => {
 		void meta.sync(allRows.map((row) => row.name));
@@ -652,7 +660,7 @@
 				/>
 				<!-- the selection's verbs are the row's verbs; one declaration, two
 				     places to reach it (here and the row's context menu) -->
-				<Dropdown label={t('web.common.actions')} disabled={selRows.length === 0} menu={instanceActions(selRows)} />
+				<Dropdown label={t('web.common.actions')} disabled={selRows.length === 0} menu={withCopyResourceId(instanceActions(selRows), selectedResourceIds(selRows, instanceId))} />
 				<SplitButton
 					label={t('web.nav.launchInstance')}
 					disabled={!canCreate}
@@ -690,6 +698,7 @@
 				noun={t('web.instances.noun')}
 				{sortValue}
 				rowLocked={(row) => !!row.externalOnly}
+				resourceId={instanceId}
 				{filters}
 				pageSize={25}
 				emptyTitle={t('web.instances.emptyTitle')}
