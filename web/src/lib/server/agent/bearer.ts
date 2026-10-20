@@ -56,7 +56,7 @@ export function isRunBearer(bearer: string): boolean {
  */
 export async function authorizeRunBearer(
 	bearer: string
-): Promise<{ principal: McpPrincipal; onBehalfOf: McpOnBehalfOf } | null> {
+): Promise<{ principal: McpPrincipal; onBehalfOf: McpOnBehalfOf; account?: string } | null> {
 	const match = /^agent_([0-9a-f]{16})\.([0-9a-f]{64})$/.exec(bearer.trim());
 
 	if (!match) {
@@ -76,8 +76,15 @@ export async function authorizeRunBearer(
 		return null;
 	}
 
+	// the account a run belongs to is the console's own record, never a claim, so
+	// it is what the account's IAM policies are evaluated for
+	const account = typeof grant.onBehalfOf.account === 'string' && grant.onBehalfOf.account !== ''
+		? grant.onBehalfOf.account
+		: undefined;
+
 	return {
 		principal: { id: token.id, name: token.name, scope: token.scope, tools: token.tools },
-		onBehalfOf: grant.onBehalfOf
+		onBehalfOf: grant.onBehalfOf,
+		account
 	};
 }

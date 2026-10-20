@@ -17,6 +17,11 @@ export interface ToolContext {
 	actor: string;
 	/** Who the client says it acts for; a claim, used only to narrow what a call may do */
 	onBehalfOf?: McpOnBehalfOf;
+	/**
+	 * The console account the call runs for, when the console established it (a
+	 * Mèo Béo run); its IAM policies bound the call and its listings
+	 */
+	account?: string;
 }
 
 export type ToolArgs = Record<string, unknown>;

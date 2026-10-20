@@ -21,6 +21,9 @@ import { knowledgeFor, mcpInstructions, mcpServerVersion, recordMcpCall } from '
 import type { McpOnBehalfOf, McpPrincipal } from '$core/mcp';
 import { allowedTools, mcpTool, scopeCoversInstance, validateMcpArgs } from '$shared/mcptools';
 import { TOOL_HANDLERS, ToolError } from './handlers';
+import { refuseFor, toolChecks, toolPossible } from './iam';
+import { withActor } from '$client/actor';
+import type { PrincipalContext } from '$shared/iam/grammar';
 import type { ToolArgs } from './handlers';
 
 /** Protocol revisions this server speaks, newest first. */
@@ -54,6 +57,10 @@ export interface RequestContext {
 	ip?: string;
 	/** `clientInfo` from the session's initialize, when the client sends it as a header */
 	client?: string;
+	/** The console account the call runs for (a Mèo Béo run); its policies bound every tool */
+	account?: string;
+	/** That account's policies, for deciding which tools to offer */
+	iam?: PrincipalContext | null;
 }
 
 export const RPC_PARSE_ERROR = -32700;
@@ -146,8 +153,29 @@ function toolsOf(principal: McpPrincipal): string[] {
 	return allowedTools(principal.scope).map((tool) => tool.name);
 }
 
+/**
+ * The tools a request may see: the token's, minus the ones the account behind a
+ * run could never be allowed, so the agent does not plan around a verb that
+ * will only be refused.
+ */
+function offeredTools(ctx: RequestContext): string[] {
+	const names = toolsOf(ctx.principal);
+
+	if (!ctx.account) {
+		return names;
+	}
+
+	const context = ctx.iam;
+
+	if (!context) {
+		return [];
+	}
+
+	return names.filter((name) => toolPossible(context, name));
+}
+
 function listTools(request: JsonRpcRequest, ctx: RequestContext): JsonRpcResponse {
-	const tools = toolsOf(ctx.principal)
+	const tools = offeredTools(ctx)
 		.map((name) => mcpTool(name))
 		.filter((tool) => tool !== undefined)
 		.map((tool) => ({
@@ -201,7 +229,33 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 		const instance = args[tool.instanceArg];
 
 		if (typeof instance === 'string' && instance !== '' && !scopeCoversInstance(ctx.principal.scope, instance)) {
-			return await finish(false, `this token may not reach the instance "${instance}"`, 'instance not in scope');
+			const who = ctx.account
+				? `${ctx.account} may not see`
+				: 'this token may not reach';
+
+			return await finish(false, `${who} the instance "${instance}"`, 'instance not in scope');
+		}
+	}
+
+	// a run for a console account may do only what that account may do: every
+	// action and resource the tool touches is decided against its policies, and
+	// a tool the table does not describe is refused rather than let through
+	if (ctx.account) {
+		const checks = toolChecks(name, args);
+
+		if (!checks) {
+			return await finish(false, `tool "${name}" is not available when acting for a console account`, 'no iam rule');
+		}
+
+		const refusal = await refuseFor(ctx.account, checks);
+
+		if (refusal) {
+			const where = refusal.check.resource
+				? ` on ${refusal.check.resource}`
+				: '';
+			const message = `${ctx.account} may not ${refusal.check.action}${where} (${refusal.reason}); ask an administrator to grant it, and do not try another way around it`;
+
+			return await finish(false, message, `iam: ${refusal.check.action}${where}`);
 		}
 	}
 
@@ -212,11 +266,18 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 	}
 
 	try {
-		const payload = await handler(args, {
+		const toolCtx = {
 			principal: ctx.principal,
-			actor: `mcp:${ctx.principal.name}`,
-			onBehalfOf: ctx.onBehalfOf ?? onBehalfOf(request.params)
-		});
+			actor: ctx.account ?? `mcp:${ctx.principal.name}`,
+			onBehalfOf: ctx.onBehalfOf ?? onBehalfOf(request.params),
+			account: ctx.account
+		};
+
+		// what the agent creates for an account is that account's: the daemon
+		// records the creator from the actor scope, which is what OwnerAccess reads
+		const payload = ctx.account
+			? await withActor(ctx.account, () => handler(args, toolCtx))
+			: await handler(args, toolCtx);
 
 		return await finish(true, payload ?? { ok: true });
 	} catch (err) {

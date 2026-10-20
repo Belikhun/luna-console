@@ -66,6 +66,8 @@ import { NETWORK_HANDLERS } from './network';
 import { DOMAIN_HANDLERS } from './domains';
 import { PACK_HANDLERS } from './packs';
 import { MODPACK_HANDLERS } from './modpacks';
+import { iamVisible } from './iam';
+import { resourceId } from '$shared/iam/resources';
 
 export { ToolError } from './errors';
 export type { ToolArgs, ToolContext, ToolHandler } from './errors';
@@ -343,6 +345,76 @@ function knowledgeView(item: KnowledgeItem): Record<string, unknown> {
 	};
 }
 
+/** Every value `env_list` would show, before the account's own view is applied. */
+async function envListRows(args: ToolArgs, ctx: ToolContext): Promise<Array<Record<string, unknown>>> {
+	const store = await loadEnv();
+	const instance = optStr(args, 'instance');
+	const secret = (name: string) => !!store.variables[name]?.secret || BUILTIN_SECRETS.has(name);
+	const shown = (name: string, value: string) => (secret(name) ? '••••••' : value);
+	const fleet = await listDaemons().catch(() => []);
+	const machine = optStr(args, 'machine');
+
+	if (machine) {
+		const key = machineKeyFor(fleet, machine);
+
+		if (key === undefined) {
+			throw new ToolError(`unknown machine "${machine}"; call fleet_status for the names`);
+		}
+
+		return Object.entries(store.machines[key] ?? {}).map(([name, value]) => ({
+			name,
+			value: shown(name, value),
+			scope: 'machine',
+			machine: machineNameFor(fleet, key)
+		}));
+	}
+
+	if (instance) {
+		if (!scopeCoversInstance(ctx.principal.scope, instance)) {
+			throw new ToolError(`this token may not reach ${instance}`);
+		}
+
+		const values = store.instances[instance] ?? {};
+
+		return Object.entries(values).map(([name, value]) => ({
+			name,
+			value: shown(name, value),
+			scope: 'instance',
+			instance
+		}));
+	}
+
+	const rows: Array<Record<string, unknown>> = [];
+
+	for (const [name, def] of Object.entries(store.variables)) {
+		rows.push({
+			name,
+			value: shown(name, def.value),
+			scope: 'global',
+			description: def.description,
+			secret: secret(name) || undefined
+		});
+	}
+
+	for (const [machine, values] of Object.entries(store.machines)) {
+		for (const [name, value] of Object.entries(values)) {
+			rows.push({ name, value: shown(name, value), scope: 'machine', machine: machineNameFor(fleet, machine) });
+		}
+	}
+
+	for (const [owner, values] of Object.entries(store.instances)) {
+		if (!scopeCoversInstance(ctx.principal.scope, owner)) {
+			continue;
+		}
+
+		for (const [name, value] of Object.entries(values)) {
+			rows.push({ name, value: shown(name, value), scope: 'instance', instance: owner });
+		}
+	}
+
+	return rows;
+}
+
 export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	...ADDON_HANDLERS,
 	...NETWORK_HANDLERS,
@@ -545,8 +617,8 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		};
 	},
 
-	async fleet_status() {
-		const rows = await listDaemons();
+	async fleet_status(_args, ctx) {
+		const rows = await iamVisible(ctx, 'machine:Describe', await listDaemons(), (row) => resourceId('machine', row.name));
 
 		return rows.map((row) => ({
 			name: row.name,
@@ -629,9 +701,10 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 		// a wildcard target cannot be judged against an allowlist, so a limited token
 		// sees only the schedules naming its instances outright
-		const schedules = store.schedules.filter((entry) =>
+		const inScope = store.schedules.filter((entry) =>
 			entry.instances.every((target) => scopeCoversInstance(ctx.principal.scope, target))
 		);
+		const schedules = await iamVisible(ctx, 'schedule:Describe', inScope, (entry) => resourceId('schedule', entry.id));
 
 		return schedules.map((entry) => ({
 			name: entry.name,
@@ -839,72 +912,9 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 	// -- config ----------------------------------------------------------------
 	async env_list(args, ctx) {
-		const store = await loadEnv();
-		const instance = optStr(args, 'instance');
-		const secret = (name: string) => !!store.variables[name]?.secret || BUILTIN_SECRETS.has(name);
-		const shown = (name: string, value: string) => (secret(name) ? '••••••' : value);
-		const fleet = await listDaemons().catch(() => []);
-		const machine = optStr(args, 'machine');
+		const rows = await envListRows(args, ctx);
 
-		if (machine) {
-			const key = machineKeyFor(fleet, machine);
-
-			if (key === undefined) {
-				throw new ToolError(`unknown machine "${machine}"; call fleet_status for the names`);
-			}
-
-			return Object.entries(store.machines[key] ?? {}).map(([name, value]) => ({
-				name,
-				value: shown(name, value),
-				scope: 'machine',
-				machine: machineNameFor(fleet, key)
-			}));
-		}
-
-		if (instance) {
-			if (!scopeCoversInstance(ctx.principal.scope, instance)) {
-				throw new ToolError(`this token may not reach ${instance}`);
-			}
-
-			const values = store.instances[instance] ?? {};
-
-			return Object.entries(values).map(([name, value]) => ({
-				name,
-				value: shown(name, value),
-				scope: 'instance',
-				instance
-			}));
-		}
-
-		const rows: Array<Record<string, unknown>> = [];
-
-		for (const [name, def] of Object.entries(store.variables)) {
-			rows.push({
-				name,
-				value: shown(name, def.value),
-				scope: 'global',
-				description: def.description,
-				secret: secret(name) || undefined
-			});
-		}
-
-		for (const [machine, values] of Object.entries(store.machines)) {
-			for (const [name, value] of Object.entries(values)) {
-				rows.push({ name, value: shown(name, value), scope: 'machine', machine: machineNameFor(fleet, machine) });
-			}
-		}
-
-		for (const [owner, values] of Object.entries(store.instances)) {
-			if (!scopeCoversInstance(ctx.principal.scope, owner)) {
-				continue;
-			}
-
-			for (const [name, value] of Object.entries(values)) {
-				rows.push({ name, value: shown(name, value), scope: 'instance', instance: owner });
-			}
-		}
-
-		return rows;
+		return await iamVisible(ctx, 'env:Describe', rows, (row) => resourceId('env', String(row.name)));
 	},
 
 	async env_set(args, ctx) {

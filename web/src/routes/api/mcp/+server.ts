@@ -18,6 +18,9 @@
 import { authorizeMcpToken } from '$core/mcp';
 import type { McpOnBehalfOf, McpPrincipal } from '$core/mcp';
 import { authorizeRunBearer, isRunBearer } from '$lib/server/agent/bearer';
+import { accountPrincipal } from '$lib/server/mcp/iam';
+import { principalContext } from '$core/iam';
+import type { PrincipalContext } from '$shared/iam/grammar';
 import { clientIp } from '$lib/server/session';
 import {
 	dispatch,
@@ -99,6 +102,8 @@ interface Caller {
 	principal: McpPrincipal;
 	/** Set for Mèo Béo's runs: who the run belongs to, established by the console itself */
 	onBehalfOf?: McpOnBehalfOf;
+	/** The console account a run belongs to; its IAM policies bound every call */
+	account?: string;
 }
 
 async function authorize(request: Request): Promise<Caller | null> {
@@ -133,7 +138,22 @@ export async function POST({ request, url, getClientAddress }) {
 		return unauthorized();
 	}
 
-	const principal = caller.principal;
+	let principal = caller.principal;
+	let iam: PrincipalContext | null = null;
+
+	// a run for a console account is bounded by that account as well as by the
+	// token: its policies are read fresh for every request, so a detach or a
+	// deny takes effect on the agent's next call, and an account that no longer
+	// exists ends the run's access outright
+	if (caller.account) {
+		iam = await principalContext(caller.account).catch(() => null);
+
+		if (!iam) {
+			return unauthorized();
+		}
+
+		principal = await accountPrincipal(caller.account, principal);
+	}
 
 	if (!takeToken(principal.id)) {
 		return jsonResponse(rpcError(RPC_INVALID_REQUEST, 'rate limit exceeded; slow down'), 429, {
@@ -166,6 +186,8 @@ export async function POST({ request, url, getClientAddress }) {
 	const ctx = {
 		principal,
 		onBehalfOf: caller.onBehalfOf,
+		account: caller.account,
+		iam,
 		ip: clientIp(request, address),
 		client: request.headers.get('user-agent')?.slice(0, 120) ?? undefined
 	};

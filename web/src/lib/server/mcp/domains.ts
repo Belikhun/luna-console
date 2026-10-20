@@ -26,6 +26,8 @@ import type { HostnameOutcome } from '$core/domains';
 import { pushEvent } from '$lib/server/luna';
 import { optBool, optStr, requireWholeCluster, str } from './args';
 import { ToolError } from './errors';
+import { iamVisible } from './iam';
+import { resourceId } from '$shared/iam/resources';
 import type { ToolHandler } from './errors';
 
 function outcome(result: HostnameOutcome): Record<string, unknown> {
@@ -48,8 +50,9 @@ async function attempt<T>(work: () => Promise<T>): Promise<T> {
 }
 
 export const DOMAIN_HANDLERS: Record<string, ToolHandler> = {
-	async domain_list() {
-		const [settings, hostnames] = await Promise.all([domainSettings(), listHostnames()]);
+	async domain_list(_args, ctx) {
+		const [settings, all] = await Promise.all([domainSettings(), listHostnames()]);
+		const hostnames = await iamVisible(ctx, 'domain:Describe', all, (entry) => resourceId('domain', entry.label));
 
 		return {
 			baseDomain: settings.baseDomain,

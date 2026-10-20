@@ -49,6 +49,8 @@ import { pushEvent } from '$lib/server/luna';
 import { readUpload } from '$lib/server/agent/uploads';
 import { optBool, optInt, optList, optStr, requireWholeCluster, str } from './args';
 import { ToolError } from './errors';
+import { iamVisible } from './iam';
+import { resourceId } from '$shared/iam/resources';
 import type { ToolArgs, ToolHandler } from './errors';
 
 /** Search hits pack_search returns. */
@@ -137,21 +139,23 @@ function changedCount(actions: Array<{ action: string }>): number {
 }
 
 export const PACK_HANDLERS: Record<string, ToolHandler> = {
-	async respacks_list() {
+	async respacks_list(_args, ctx) {
 		const cfg = await loadCluster();
 		const lock = await loadPacksLock();
 		const { rows, dynamic } = await listResourcePacksLive(cfg, lock, (await loadLock()).groups);
+		const visible = await iamVisible(ctx, 'pack:Describe', rows, (row) => resourceId('pack', row.key));
 
 		return {
-			packs: rows.map(respackBrief),
+			packs: visible.map(respackBrief),
 			proxyAnswered: dynamic.available
 		};
 	},
 
-	async datapacks_list() {
+	async datapacks_list(_args, ctx) {
 		const cfg = await loadCluster();
 		const lock = await loadPacksLock();
-		const rows = await listDataPacks(cfg, lock, (await loadLock()).groups);
+		const all = await listDataPacks(cfg, lock, (await loadLock()).groups);
+		const rows = await iamVisible(ctx, 'datapack:Describe', all, (row) => resourceId('datapack', row.name));
 
 		return rows.map((row) => ({
 			name: row.name,

@@ -586,10 +586,20 @@ export interface InstanceConfig {}
 - **Its only hands on the cluster are luna's MCP tools.** `tools` keeps no built-in Claude Code
   tool but the scratch file tools below and the question tool, and the luna tools are reached over the console's own `/api/mcp` (on loopback) with a per-run bearer
   that lives only in the server's memory (`agent/bearer.ts`). That bearer resolves to an ordinary
-  MCP token (`meo-beo`, created on first use by `ensureAgentToken`), so the token's scope **is** the
-  agent's authorization, disabling the token stops it, and every call lands in the MCP call log with
-  an `onBehalfOf` the console established rather than one a client claimed. Never give the agent a
-  tool any other way.
+  MCP token (`meo-beo`, created on first use by `ensureAgentToken`), so disabling the token stops it,
+  and every call lands in the MCP call log with an `onBehalfOf` the console established rather than
+  one a client claimed. Never give the agent a tool any other way.
+- **A run is bounded by the token *and* by the account that owns the conversation.** The run bearer
+  carries the owner, and `/api/mcp` re-reads that account's policies on every request: each tool maps
+  to the IAM actions and resources it touches in `web/src/lib/server/mcp/iam.ts` (`TOOL_IAM`; a tool
+  missing from it is refused for an account, so a new tool is a rule there too), and a call runs only
+  when the account's policies allow every check. Data follows the same account: the token's instance
+  allowlist is intersected per request with the instances the account may describe, which every
+  handler's existing instance check honours, and the listings of other types go through `iamVisible`.
+  `tools/list` offers only the tools the account could ever be allowed (`toolPossible`), and a tool
+  call runs inside the account's actor scope, so what the agent creates is recorded as the account's
+  and `OwnerAccess` covers it afterwards. Other MCP clients (a bot, an editor) are unchanged: their
+  token's scope is still their whole authorization.
 - **It has a scratch folder per conversation, and Claude Code's file tools work only there.**
   `agentScratch` (core) creates `.data/agent/scratch/<conversation>/`, removed with the
   conversation; the run adds it as an `additionalDirectories` root and keeps Read, Write, Edit,

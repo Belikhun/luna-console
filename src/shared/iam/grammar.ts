@@ -685,5 +685,62 @@ export function evaluate(principal: PrincipalContext, request: AccessRequest): V
 	return { allowed: false, reason: "implicit-deny" };
 }
 
+/**
+ * Whether any policy could ever allow an action, for some resource. Used to
+ * offer only the tools an account could possibly use; it is a superset, never a
+ * decision: an Allow whose resource or condition never matches still counts,
+ * and only a Deny on every resource with no condition rules an action out.
+ */
+export function actionPossible(principal: PrincipalContext, action: string, resourceless = false): boolean {
+	let allowed = false;
+
+	for (const attached of principal.policies) {
+		for (const stmt of attached.document.Statement) {
+			const named = stmt.Action
+				? stmt.Action.some((pattern) => actionMatches(pattern, action))
+				: !(stmt.NotAction ?? []).some((pattern) => actionMatches(pattern, action));
+
+			if (!named) {
+				continue;
+			}
+
+			// an action that names no resource is matched against nothing, so a
+			// statement scoped to resources, or conditioned on one, can never apply
+			if (resourceless && stmt.Effect === "Allow" && !reachesResourceless(stmt)) {
+				continue;
+			}
+
+			const everywhere = (stmt.Resource ?? []).includes("*") && !stmt.NotResource && !stmt.Condition;
+
+			if (stmt.Effect === "Deny" && everywhere) {
+				return false;
+			}
+
+			if (stmt.Effect === "Allow") {
+				allowed = true;
+			}
+		}
+	}
+
+	return allowed;
+}
+
+/** Whether a statement could match a request that names no resource. */
+function reachesResourceless(stmt: PolicyStatement): boolean {
+	if (stmt.Resource && !stmt.Resource.includes("*")) {
+		return false;
+	}
+
+	for (const keys of Object.values(stmt.Condition ?? {})) {
+		for (const key of Object.keys(keys)) {
+			if (key.startsWith("luna:Resource")) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 /** The verdict for the machine itself; nothing is evaluated for `root`. */
 export const ROOT_VERDICT: Verdict = { allowed: true, reason: "root" };

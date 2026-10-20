@@ -41,6 +41,8 @@ import { pushEvent } from '$lib/server/luna';
 import { readUpload } from '$lib/server/agent/uploads';
 import { ToolError } from './errors';
 import type { ToolArgs, ToolContext, ToolHandler } from './errors';
+import { iamVisible } from './iam';
+import { resourceId } from '$shared/iam/resources';
 
 /** Versions addon_versions returns, newest first. */
 const VERSION_LIMIT = 40;
@@ -158,13 +160,14 @@ async function installFromBytes(
 }
 
 export const ADDON_HANDLERS: Record<string, ToolHandler> = {
-	async addons_list(args) {
+	async addons_list(args, ctx) {
 		const cfg = await loadCluster();
 		const lock = await loadLock();
 		const kind = str(args, 'kind');
 		const search = str(args, 'search').toLowerCase();
+		const visible = await iamVisible(ctx, 'plugin:Describe', Object.entries(lock.plugins), ([key]) => resourceId('plugin', key));
 
-		return Object.entries(lock.plugins)
+		return visible
 			.filter(([key, entry]) => {
 				const isMod = ['neoforge', 'fabric', 'forge'].includes(familyOf(entry));
 
