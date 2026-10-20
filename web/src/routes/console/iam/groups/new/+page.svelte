@@ -10,29 +10,32 @@
 	import Wizard from '$lib/components/Wizard.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import FormGrid from '$lib/components/FormGrid.svelte';
-	import Flash from '$lib/components/Flash.svelte';
-	import MultiSelect from '$lib/components/MultiSelect.svelte';
+	import AccountPickTable from '$lib/components/AccountPickTable.svelte';
+	import PolicyPickTable from '$lib/components/PolicyPickTable.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { IAM_NAME, groupHref, type PolicyRow } from '$lib/iam';
 	import type { AccountSummary } from '$core/accounts';
-	import { IAM_NAME, groupHref, policyKindLabel, type PolicyRow } from '../../iam';
 
 	/**
-	 * Create a group: a name, a line about it, and optionally who is in it and
-	 * which policies it carries from the start. Both pickers are optional; a group
-	 * is also fine as an empty shell filled in on its own screen.
+	 * Create a user group, AWS's single page: name it, pick the accounts that
+	 * start in it and the policies it carries. Both tables are optional; a group
+	 * can start empty and be filled on its own screen.
 	 */
 
 	let name = $state('');
 	let description = $state('');
-	let members: string[] = $state([]);
-	let policies: string[] = $state([]);
+	let members: Set<string> = $state(new Set());
+	let policies: Set<string> = $state(new Set());
 	let accounts: AccountSummary[] = $state([]);
 	let catalog: PolicyRow[] = $state([]);
 	let saving = $state(false);
 
 	onMount(async () => {
 		try {
-			const [accountData, policyData] = await Promise.all([api('/accounts'), api('/iam/policies')]);
+			const [accountData, policyData] = await Promise.all([
+				api<{ accounts: AccountSummary[] }>('/accounts'),
+				api<{ policies: PolicyRow[] }>('/iam/policies')
+			]);
 
 			accounts = accountData.accounts;
 			catalog = policyData.policies;
@@ -40,12 +43,6 @@
 			Notify.error(t('web.iam.loadFailed'), { detail: (err as Error).message });
 		}
 	});
-
-	const accountOptions = $derived(accounts.map((account) => ({ value: account.id, label: account.username })));
-
-	const policyOptions = $derived(
-		catalog.map((policy) => ({ value: policy.name, label: `${policy.name} (${policyKindLabel(policy)})` }))
-	);
 
 	const nameError = $derived(name && !IAM_NAME.test(name.trim()) ? t('web.iamGroup.nameRule') : '');
 	const ready = $derived(!!name.trim() && !nameError);
@@ -57,8 +54,8 @@
 			const result = await post('/iam/groups', {
 				name: name.trim(),
 				description: description.trim(),
-				members,
-				policies
+				members: [...members],
+				policies: [...policies]
 			});
 
 			Notify.success(t('web.iamGroup.created', { name: result.group.name }));
@@ -80,21 +77,21 @@
 	onsubmit={submit}
 >
 	{#snippet summary()}
-		{#if name}
-			<b>{name}</b>
+		{#if name.trim()}
+			<b>{name.trim()}</b>
 			·
-			{t('web.iamGroup.recapMembers', { count: members.length })}
+			{t('web.iamGroup.recapMembers', { count: members.size })}
 			·
-			{t('web.iamGroup.recapPolicies', { count: policies.length })}
+			{t('web.iamGroup.recapPolicies', { count: policies.size })}
 		{:else}
 			{t('web.iamGroup.recapEmpty')}
 		{/if}
 	{/snippet}
 
-	<Panel title={t('web.iamGroup.identityPanel')} description={t('web.iamGroup.identityHint')}>
+	<Panel title={t('web.iamGroupNew.namePanel')}>
 		<FormGrid>
 			<label class="field">
-				<span class="lbl">{t('web.iamGroup.name')}</span>
+				<span class="lbl">{t('web.iamGroupNew.groupName')}</span>
 				<span class="hint">{t('web.iamGroup.nameHint')}</span>
 				<input class="input" type="text" spellcheck="false" autocapitalize="none" bind:value={name} />
 				{#if nameError}<span class="err">{nameError}</span>{/if}
@@ -108,41 +105,21 @@
 		</FormGrid>
 	</Panel>
 
-	<div class="gap"></div>
-
-	<Panel title={t('web.iamGroup.membersPanel')} description={t('web.iamGroup.membersHint')}>
-		<div class="field">
-			<span class="lbl">{t('web.iamGroup.members')}</span>
-			<MultiSelect
-				options={accountOptions}
-				bind:value={members}
-				width="100%"
-				placeholder={t('web.iamGroup.noMembersPicked')}
-			/>
-		</div>
+	<Panel
+		title={t('web.iamGroupNew.usersPanel')}
+		count={members.size ? `${members.size}/${accounts.length}` : accounts.length}
+		description={t('web.iamGroupNew.usersHint')}
+		flush
+	>
+		<AccountPickTable tableId="iam-group-new-users" {accounts} bind:selected={members} />
 	</Panel>
 
-	<div class="gap"></div>
-
-	<Panel title={t('web.iamGroup.policiesPanel')} description={t('web.iamGroup.policiesHint')}>
-		<div class="field">
-			<span class="lbl">{t('web.iamGroup.policies')}</span>
-			<MultiSelect
-				options={policyOptions}
-				bind:value={policies}
-				width="100%"
-				placeholder={t('web.iamGroup.noPoliciesPicked')}
-			/>
-		</div>
+	<Panel
+		title={t('web.iamGroupNew.policiesPanel')}
+		count={policies.size ? `${policies.size}/${catalog.length}` : catalog.length}
+		description={t('web.iamGroupNew.policiesHint')}
+		flush
+	>
+		<PolicyPickTable tableId="iam-group-new-policies" policies={catalog} bind:selected={policies} />
 	</Panel>
-
-	<div class="gap"></div>
-
-	<Flash kind="info">{t('web.iamGroup.inlineNotice')}</Flash>
 </Wizard>
-
-<style lang="scss">
-	.gap {
-		height: 1rem;
-	}
-</style>

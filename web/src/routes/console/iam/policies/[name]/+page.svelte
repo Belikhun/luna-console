@@ -7,66 +7,84 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, del, patch } from '$lib/api';
+	import { api, del, post } from '$lib/api';
 	import { fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
-	import Dropdown from '$lib/components/Dropdown.svelte';
+	import ButtonGroup from '$lib/components/ButtonGroup.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
-	import FormGrid from '$lib/components/FormGrid.svelte';
+	import CopyValue from '$lib/components/CopyValue.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import DataTable from '$lib/components/DataTable.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
 	import PolicyEditor from '$lib/components/PolicyEditor.svelte';
-	import type { PolicyValidation } from '$lib/components/policyeditor';
+	import PolicySummaryTable from '$lib/components/PolicySummaryTable.svelte';
 	import type { InfoCell } from '$lib/components/grid';
-	import type { Column } from '$lib/components/table';
+	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { Authz } from '$lib/authz.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { clearCrumbLabel, setCrumbLabel } from '$lib/crumbs.svelte';
 	import {
-		IAM_NAME,
-		accountSearchHref,
-		attachedCount,
+		POLICY_KIND_ICONS,
+		accountHref,
 		groupHref,
 		iamAuditLabel,
 		iamAuditTone,
+		iamResourceId,
 		keyIamAudit,
+		notifyEach,
 		policyDeleteReason,
 		policyHref,
+		policyKind,
 		policyKindLabel,
+		runEach,
+		type GroupRow,
 		type IamAuditRow,
 		type PolicyRow
-	} from '../../iam';
+	} from '$lib/iam';
+	import type { AccountSummary } from '$core/accounts';
 
 	/**
-	 * One policy: what it is and where it is attached, its document (editable
-	 * when managed, shown as code when built-in), and what was done to it.
+	 * One policy, AWS's policy screen: its details, then tabs for what it
+	 * permits (as a summary or as YAML), the accounts and groups it is attached
+	 * to, its tags and what was done to it.
 	 */
+
+	/** An account or a group, as the "Entities attached" table lists them. */
+	interface Entity {
+		key: string;
+		kind: 'account' | 'group';
+		name: string;
+		/** an account's id, for its screen */
+		id: string | null;
+	}
 
 	const name = $derived(page.params.name ?? '');
 
 	let policy = $state<PolicyRow | null>(null);
 	let audit: IamAuditRow[] = $state([]);
+	let accounts: AccountSummary[] = $state([]);
+	let groups: GroupRow[] = $state([]);
 	let missing = $state(false);
 	let loading = $state(false);
 	let lastUpdated: number | null = $state(null);
-	let tab = $state(page.url.searchParams.get('tab') ?? 'details');
+	let tab = $state(page.url.searchParams.get('tab') ?? 'permissions');
+	let view: 'summary' | 'yaml' = $state('summary');
 
-	/** The document being edited: a working copy once the policy has loaded */
-	let draft = $state('');
-	let draftLoaded = $state(false);
-	let validation = $state<PolicyValidation | null>(null);
-	let savingDocument = $state(false);
-
-	let editOpen = $state(false);
-	let editName = $state('');
-	let editDescription = $state('');
+	let selectedEntities: Set<string> = $state(new Set());
+	let attachOpen = $state(false);
+	let attachPicked: Set<string> = $state(new Set());
+	let detachOpen = $state(false);
+	let detachRows: Entity[] = $state([]);
 	let deleteOpen = $state(false);
 	let busy = $state(false);
 
@@ -74,17 +92,12 @@
 		loading = true;
 
 		try {
-			const data = await api(`/iam/policies/${encodeURIComponent(name)}`);
+			const data = await api<{ policy: PolicyRow; audit: IamAuditRow[] }>(`/iam/policies/${encodeURIComponent(name)}`);
 
 			policy = data.policy;
 			audit = keyIamAudit(data.audit);
 			missing = false;
 			lastUpdated = Date.now();
-
-			if (!draftLoaded || !documentDirty) {
-				draft = data.policy.yaml;
-				draftLoaded = true;
-			}
 		} catch (err) {
 			if ((err as { status?: number }).status === 404) {
 				missing = true;
@@ -94,6 +107,21 @@
 		} finally {
 			loading = false;
 		}
+
+		// the entity table names accounts by id and offers groups to attach to;
+		// a refusal here leaves the policy itself readable
+		const [accountData, groupData] = await Promise.allSettled([
+			api<{ accounts: AccountSummary[] }>('/accounts'),
+			api<{ groups: GroupRow[] }>('/iam/groups')
+		]);
+
+		accounts = accountData.status === 'fulfilled'
+			? accountData.value.accounts
+			: [];
+
+		groups = groupData.status === 'fulfilled'
+			? groupData.value.groups
+			: [];
 	}
 
 	$effect(() => {
@@ -108,81 +136,131 @@
 		return () => clearCrumbLabel(path);
 	});
 
-	onMount(() => {
-		void refresh();
+	onMount(async () => {
+		await refresh();
+
+		if (page.url.searchParams.get('attach')) {
+			openAttach();
+		}
 	});
 
-	const documentDirty = $derived(!!policy && draftLoaded && draft !== policy.yaml);
-	const deleteReason = $derived(policy ? policyDeleteReason(policy) : '');
-
-	async function saveDocument(): Promise<void> {
-		if (!policy || !draftLoaded || !validation?.ok) {
-			return;
-		}
-
-		savingDocument = true;
-
-		try {
-			const result = await patch(`/iam/policies/${encodeURIComponent(policy.name)}`, { yaml: draft });
-
-			policy = result.policy;
-			draft = result.policy.yaml;
-			Notify.success(t('web.iamPolicy.documentSaved', { count: result.policy.document.Statement.length }));
-			await refresh();
-		} catch (err) {
-			Notify.error(t('web.iamPolicy.documentFailed'), { detail: (err as Error).message });
-		} finally {
-			savingDocument = false;
-		}
+	function denied(action: string): string {
+		return Authz.can(action)
+			? ''
+			: t('web.common.notAllowed', { action });
 	}
 
-	function resetDocument(): void {
-		if (policy) {
-			draft = policy.yaml;
-		}
+	const deleteReason = $derived(policy ? policyDeleteReason(policy) || denied('iam:DeletePolicy') : '');
+
+	const editReason = $derived(
+		!policy
+			? ''
+			: policy.builtin
+				? t('web.iam.builtinNoEdit')
+				: denied('iam:UpdatePolicy')
+	);
+
+	const entities: Entity[] = $derived(
+		!policy
+			? []
+			: [
+					...policy.attachedTo.accounts.map((username) => ({
+						key: `account:${username}`,
+						kind: 'account' as const,
+						name: username,
+						id: accounts.find((account) => account.username === username)?.id ?? null
+					})),
+					...policy.attachedTo.groups.map((group) => ({
+						key: `group:${group}`,
+						kind: 'group' as const,
+						name: group,
+						id: null
+					}))
+				]
+	);
+
+	/** Every account and group, for the attach dialog; the ones already holding the policy are locked. */
+	const candidates: Entity[] = $derived([
+		...accounts.map((account) => ({
+			key: `account:${account.username}`,
+			kind: 'account' as const,
+			name: account.username,
+			id: account.id
+		})),
+		...groups.map((group) => ({ key: `group:${group.name}`, kind: 'group' as const, name: group.name, id: null }))
+	]);
+
+	const attachedKeys = $derived(new Set(entities.map((entity) => entity.key)));
+	const pickedEntities = $derived(entities.filter((entity) => selectedEntities.has(entity.key)));
+
+	function entityHref(entity: Entity): string {
+		return entity.kind === 'group'
+			? groupHref(entity.name)
+			: accountHref(entity.name, entity.id);
 	}
 
-	function openEdit(): void {
+	function entityBody(entity: Entity): Record<string, string> {
+		return entity.kind === 'group'
+			? { group: entity.name }
+			: { account: entity.name };
+	}
+
+	function openAttach(): void {
+		attachPicked = new Set();
+		attachOpen = true;
+		tab = 'entities';
+	}
+
+	async function attachConfirmed(): Promise<void> {
 		if (!policy) {
 			return;
 		}
 
-		editName = policy.name;
-		editDescription = policy.description;
-		editOpen = true;
-	}
-
-	const editNameError = $derived(editName && !IAM_NAME.test(editName.trim()) ? t('web.iamPolicy.nameRule') : '');
-
-	async function saveEdit(): Promise<void> {
-		if (!policy) {
-			return;
-		}
+		const policyName = policy.name;
+		const targets = candidates.filter((entity) => attachPicked.has(entity.key));
 
 		busy = true;
 
-		const nextName = editName.trim();
-		const body: Record<string, unknown> = { description: editDescription.trim() };
+		const outcome = await runEach(
+			targets,
+			(entity) => post('/iam/attachments', { ...entityBody(entity), policy: policyName }),
+			(entity) => entity.name
+		);
 
-		if (nextName !== policy.name) {
-			body.name = nextName;
+		busy = false;
+		attachOpen = false;
+		notifyEach(outcome, t('web.iamPolicyDetail.attached', { count: outcome.done }), t('web.iamPolicyDetail.attachFailed'));
+		await refresh();
+	}
+
+	function askDetach(rows: Entity[]): void {
+		if (rows.length === 0) {
+			return;
 		}
 
-		try {
-			const result = await patch(`/iam/policies/${encodeURIComponent(policy.name)}`, body);
+		detachRows = rows;
+		detachOpen = true;
+	}
 
-			editOpen = false;
-
-			if (result.policy.name !== name) {
-				await goto(policyHref(result.policy.name));
-			}
-
-			await refresh();
-		} catch (err) {
-			Notify.error(t('web.iamPolicy.updateFailed'), { detail: (err as Error).message });
-		} finally {
-			busy = false;
+	async function detachConfirmed(): Promise<void> {
+		if (!policy) {
+			return;
 		}
+
+		const policyName = policy.name;
+
+		const outcome = await runEach(
+			detachRows,
+			(entity) => api('/iam/attachments', {
+				method: 'DELETE',
+				body: JSON.stringify({ ...entityBody(entity), policy: policyName })
+			}),
+			(entity) => entity.name
+		);
+
+		selectedEntities = new Set();
+		notifyEach(outcome, t('web.iamPolicyDetail.detached', { count: outcome.done }), t('web.iamPolicyDetail.detachFailed'));
+		await refresh();
 	}
 
 	async function removeConfirmed(): Promise<void> {
@@ -194,69 +272,70 @@
 			await del(`/iam/policies/${encodeURIComponent(policy.name)}`);
 
 			Notify.success(t('web.iamPolicy.removed', { name: policy.name }));
-			await goto('/console/iam');
+			await goto('/console/iam/policies');
 		} catch (err) {
 			Notify.error(t('web.iamPolicy.updateFailed'), { detail: (err as Error).message });
 		}
 	}
 
-	const verbs: ContextMenuItem[] = $derived(
+	function entityActions(row: Entity): ContextMenuItem[] {
+		const targets = selectedEntities.has(row.key) && pickedEntities.length > 1 ? pickedEntities : [row];
+
+		return [
+			{
+				label: row.kind === 'group' ? t('web.iamPolicyDetail.openGroup') : t('web.iamPolicyDetail.openAccount'),
+				icon: 'circleInfo',
+				action: () => goto(entityHref(row))
+			},
+			{ separator: true },
+			{
+				label: t('web.iamPolicyDetail.detachAction', { count: targets.length }),
+				icon: 'unlink',
+				color: 'danger',
+				disabled: !!denied('iam:Detach'),
+				hint: denied('iam:Detach') || undefined,
+				action: () => askDetach(targets)
+			}
+		];
+	}
+
+	const detailCells: InfoCell[] = $derived(
 		!policy
 			? []
 			: [
+					{ id: 'type', label: t('web.iamList.colType') },
 					{
-						label: t('web.iamPolicy.editDetails'),
-						icon: 'pen',
-						disabled: policy.builtin,
-						hint: policy.builtin ? t('web.iam.builtinNoEdit') : undefined,
-						action: openEdit
+						label: t('web.iamPolicyDetail.created'),
+						value: policy.createdAt ? fmtDateTime(policy.createdAt) : t('web.iamPolicy.shipsWithLuna')
 					},
 					{
-						label: t('web.iam.viewDocument'),
-						icon: 'fileLines',
-						action: () => {
-							tab = 'document';
-						}
+						label: t('web.iamPolicyDetail.edited'),
+						value: policy.updatedAt ? fmtDateTime(policy.updatedAt) : '–'
 					},
-					{ separator: true },
-					{
-						label: t('web.iam.deletePolicyAction', { count: 1 }),
-						icon: 'trash',
-						color: 'danger',
-						disabled: !!deleteReason,
-						hint: deleteReason || undefined,
-						action: () => {
-							deleteOpen = true;
-						}
-					}
+					{ id: 'resourceId', label: t('web.iamPolicyDetail.resourceId') },
+					{ label: t('web.iamPolicyDetail.createdBy'), value: policy.createdBy ?? '–' },
+					{ label: t('web.iamPolicyDetail.editedBy'), value: policy.updatedBy ?? '–' },
+					{ label: t('web.iamList.colUsedAs'), value: entities.length },
+					{ label: t('web.iamPolicyDetail.statements'), value: policy.document.Statement.length }
 				]
 	);
 
-	const summaryCells: InfoCell[] = $derived(
-		!policy
-			? []
-			: [
-					{ label: t('web.iam.colName'), value: policy.name, copyable: true },
-					{ id: 'kind', label: t('web.iam.colKind') },
-					{ label: t('web.iam.colDescription'), value: policy.description || '–', colSpan: 2 },
-					{ label: t('web.iam.colStatements'), value: policy.document.Statement.length },
-					{ label: t('web.iamPolicy.attachedCount'), value: attachedCount(policy) },
-					{
-						label: t('web.iam.colCreated'),
-						value: policy.createdAt
-							? `${fmtDateTime(policy.createdAt)}${policy.createdBy ? ` · ${policy.createdBy}` : ''}`
-							: t('web.iamPolicy.shipsWithLuna')
-					},
-					{
-						label: t('web.iam.colUpdated'),
-						value: policy.updatedAt
-							? `${fmtDateTime(policy.updatedAt)}${policy.updatedBy ? ` · ${policy.updatedBy}` : ''}`
-							: '–'
-					},
-					{ id: 'accounts', label: t('web.iamPolicy.attachedAccounts'), colSpan: 2 },
-					{ id: 'groups', label: t('web.iamPolicy.attachedGroups'), colSpan: 2 }
-				]
-	);
+	const entityColumns: Column[] = $derived([
+		{ id: 'name', label: t('web.iamPolicyDetail.colEntityName'), sortable: true, width: 260 },
+		{ id: 'kind', label: t('web.iamPolicyDetail.colEntityType'), sortable: true }
+	]);
+
+	const entityFilters: TableFilterGroup<Entity>[] = $derived([
+		{
+			id: 'kind',
+			label: t('web.iamPolicyDetail.filterEntityType'),
+			options: [
+				{ value: 'any', label: t('web.iamPolicyDetail.anyEntity') },
+				{ value: 'account', label: t('web.iamPolicyDetail.entityUser'), match: (row) => row.kind === 'account' },
+				{ value: 'group', label: t('web.iamPolicyDetail.entityGroup'), match: (row) => row.kind === 'group' }
+			]
+		}
+	]);
 
 	const auditColumns: Column[] = $derived([
 		{ id: 'when', label: t('web.iam.colWhen'), sortable: true, width: 180 },
@@ -268,92 +347,144 @@
 
 <svelte:head><title>{policy?.name ?? name} | Luna Console</title></svelte:head>
 
+{#snippet entityCell(row: Entity, col: string)}
+	{#if col === 'name'}
+		<span class="ename">
+			<Icon name={row.kind === 'group' ? 'users' : 'userShield'} size="0.875rem" />
+			<a href={entityHref(row)}>{row.name}</a>
+		</span>
+	{:else if col === 'kind'}
+		{row.kind === 'group' ? t('web.iamPolicyDetail.entityGroup') : t('web.iamPolicyDetail.entityUser')}
+	{/if}
+{/snippet}
+
 {#if missing}
 	<PageHeader title={name} description={t('web.iamPolicy.kind')} />
 	<Flash kind="error">
 		{t('web.iamPolicy.notFound', { name })}
-		<a href="/console/iam">{t('web.iam.back')}</a>
+		<a href="/console/iam/policies">{t('web.iamList.backToPolicies')}</a>
 	</Flash>
 {:else if policy}
 	<PageHeader title={policy.name} description={policy.description || t('web.iamPolicy.kind')} info>
 		{#snippet extra()}
-			<StatusBadge state={policy!.builtin ? 'info' : 'ok'} label={policyKindLabel(policy!)} />
+			<StatusBadge state={policy!.builtin ? 'info' : 'ok'} label={policyKindLabel(policyKind(policy!))} />
 		{/snippet}
 		{#snippet actions()}
 			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="iam-policy-detail" />
-			<Dropdown label={t('web.common.actions')} menu={verbs} />
-			<Btn icon="pen" disabled={policy!.builtin} onclick={openEdit}>{t('web.iamPolicy.editDetails')}</Btn>
+			<Btn icon="trash" disabled={!!deleteReason} title={deleteReason || undefined} onclick={() => (deleteOpen = true)}>
+				{t('web.common.delete')}
+			</Btn>
+			<Btn
+				variant="primary"
+				icon="pen"
+				href="{policyHref(policy!.name)}/edit"
+				disabled={!!editReason}
+				title={editReason || undefined}
+			>
+				{t('web.common.edit')}
+			</Btn>
 		{/snippet}
 	</PageHeader>
 
-	{#if policy.builtin}
-		<Flash kind="info">{t('web.iamPolicy.builtinNotice')}</Flash>
-	{/if}
+	<Panel title={t('web.iamPolicyDetail.details')}>
+		<InfoGrid cells={detailCells}>
+			{#snippet custom(cell)}
+				{#if cell.id === 'type'}
+					<span class="ptype">
+						<Icon name={POLICY_KIND_ICONS[policyKind(policy!)]} size="0.875rem" style={policy!.builtin ? 'solid' : 'regular'} />
+						{policyKindLabel(policyKind(policy!))}
+					</span>
+				{:else if cell.id === 'resourceId'}
+					{#if policy!.builtin}
+						<span class="dim">{t('web.iamPolicyDetail.builtinNoResource')}</span>
+					{:else}
+						<CopyValue value={iamResourceId('policy', policy!.name)} label={t('web.iamPolicyDetail.resourceId')} />
+					{/if}
+				{/if}
+			{/snippet}
+		</InfoGrid>
+	</Panel>
+
+	<div class="gap"></div>
 
 	<Tabs
 		tabs={[
-			{ id: 'details', label: t('web.iamPolicy.tabDetails') },
-			{ id: 'document', label: t('web.iamPolicy.tabDocument') },
-			{ id: 'activity', label: t('web.iamPolicy.tabActivity') }
+			{ id: 'permissions', label: t('web.iamPolicyDetail.tabPermissions') },
+			{ id: 'entities', label: t('web.iamPolicyDetail.tabEntities', { count: entities.length }) },
+			{ id: 'tags', label: t('web.iamPolicyDetail.tabTags') },
+			{ id: 'activity', label: t('web.iamPolicyDetail.tabActivity') }
 		]}
 		bind:active={tab}
 	/>
 
 	<div class="tabbody">
-		{#if tab === 'details'}
-			<Panel title={t('web.iamPolicy.summary')}>
-				<InfoGrid cells={summaryCells}>
-					{#snippet custom(cell)}
-						{#if cell.id === 'kind'}
-							<StatusBadge state={policy!.builtin ? 'info' : 'ok'} label={policyKindLabel(policy!)} />
-						{:else if cell.id === 'accounts'}
-							<div class="chips">
-								{#each policy!.attachedTo.accounts as username (username)}
-									<a class="chip" href={accountSearchHref(username)}>{username}</a>
-								{:else}
-									<span class="dim">{t('web.iamPolicy.noAccounts')}</span>
-								{/each}
-							</div>
-						{:else if cell.id === 'groups'}
-							<div class="chips">
-								{#each policy!.attachedTo.groups as group (group)}
-									<a class="chip" href={groupHref(group)}>{group}</a>
-								{:else}
-									<span class="dim">{t('web.iamPolicy.noGroups')}</span>
-								{/each}
-							</div>
-						{/if}
-					{/snippet}
-				</InfoGrid>
-			</Panel>
-		{:else if tab === 'document' && draftLoaded}
-			<Panel title={t('web.iamPolicy.documentPanel')} description={t('web.iamPolicy.documentHint')}>
+		{#if tab === 'permissions'}
+			<Panel title={t('web.iamPolicyDetail.permissionsPanel')} description={t('web.iamPolicyDetail.permissionsHint')}>
 				{#snippet actions()}
-					{#if !policy!.builtin}
-						<Btn disabled={!documentDirty} onclick={resetDocument}>{t('web.common.discard')}</Btn>
-						<Btn
-							variant="primary"
-							icon="floppyDisk"
-							disabled={!documentDirty || !validation?.ok}
-							loading={savingDocument}
-							onclick={saveDocument}
-						>
-							{t('web.iamPolicy.saveDocument')}
+					<ButtonGroup>
+						<Btn variant={view === 'summary' ? 'primary' : 'normal'} icon="listCheck" onclick={() => (view = 'summary')}>
+							{t('web.iamPolicyDetail.summary')}
 						</Btn>
-					{/if}
+						<Btn variant={view === 'yaml' ? 'primary' : 'normal'} icon="code" onclick={() => (view = 'yaml')}>
+							{t('web.policyEditor.yaml')}
+						</Btn>
+					</ButtonGroup>
+					<Btn icon="pen" href="{policyHref(policy!.name)}/edit" disabled={!!editReason} title={editReason || undefined}>
+						{t('web.common.edit')}
+					</Btn>
 				{/snippet}
-				{#if policy.builtin}
-					<Flash kind="info">{t('web.iamPolicy.builtinDocument')}</Flash>
-					<div class="gap"></div>
+				{#if view === 'summary'}
+					<PolicySummaryTable document={policy.document} />
+				{:else}
+					<PolicyEditor value={policy.yaml} readonly path="iam/{policy.name}.yaml" />
 				{/if}
-				<PolicyEditor
-					bind:value={draft}
-					readonly={policy.builtin}
-					path="iam/{policy.name}.yaml"
-					onvalidate={(result) => (validation = result)}
-					onsave={saveDocument}
+			</Panel>
+		{:else if tab === 'entities'}
+			<Panel
+				title={t('web.iamPolicyDetail.entitiesPanel')}
+				count={entities.length}
+				description={t('web.iamPolicyDetail.entitiesHint')}
+				flush
+			>
+				{#snippet actions()}
+					<Btn
+						icon="unlink"
+						disabled={pickedEntities.length === 0 || !!denied('iam:Detach')}
+						title={pickedEntities.length === 0 ? t('web.iamPolicyDetail.pickToDetach') : denied('iam:Detach') || undefined}
+						onclick={() => askDetach(pickedEntities)}
+					>
+						{t('web.iamPolicyDetail.detach')}
+					</Btn>
+					<Btn
+						variant="primary"
+						icon="link"
+						disabled={!!denied('iam:Attach')}
+						title={denied('iam:Attach') || undefined}
+						onclick={openAttach}
+					>
+						{t('web.iamPolicyDetail.attach')}
+					</Btn>
+				{/snippet}
+				<DataTable
+					columns={entityColumns}
+					rows={entities}
+					getId={(row) => row.key}
+					selectable="multi"
+					bind:selected={selectedEntities}
+					rowActions={entityActions}
+					rowLabel={(row) => row.name}
+					sortValue={(row, col) => (col === 'kind' ? row.kind : null)}
+					cell={entityCell}
+					emptyTitle={t('web.iamPolicyDetail.noEntities')}
+					emptyText={t('web.iamPolicyDetail.noEntitiesText')}
 				/>
 			</Panel>
+		{:else if tab === 'tags'}
+			{#if policy.builtin}
+				<Flash kind="info">{t('web.iamPolicyDetail.builtinNoTags')}</Flash>
+			{:else}
+				<ResourceMeta id={iamResourceId('policy', policy.name)} />
+			{/if}
 		{:else if tab === 'activity'}
 			<Panel flush>
 				<ResourceTable
@@ -384,27 +515,43 @@
 		{/if}
 	</div>
 
-	<Modal title={t('web.iamPolicy.editTitle', { name: policy.name })} bind:open={editOpen}>
-		<FormGrid>
-			<label class="field">
-				<span class="lbl">{t('web.iamPolicy.name')}</span>
-				<span class="hint">{t('web.iamPolicy.renameHint')}</span>
-				<input class="input" type="text" spellcheck="false" autocapitalize="none" bind:value={editName} />
-				{#if editNameError}<span class="err">{editNameError}</span>{/if}
-			</label>
-			<label class="field">
-				<span class="lbl">{t('web.iamPolicy.description')}</span>
-				<input class="input" type="text" bind:value={editDescription} />
-			</label>
-		</FormGrid>
+	<Modal title={t('web.iamPolicyDetail.attachTitle', { name: policy.name })} bind:open={attachOpen} wide>
+		<p class="note dim">{t('web.iamPolicyDetail.attachLead')}</p>
+		<ResourceTable
+			tableId="iam-policy-attach"
+			columns={entityColumns}
+			filters={entityFilters}
+			rows={candidates}
+			getId={(row) => row.key}
+			searchValue={(row) => row.name}
+			searchPlaceholder={t('web.iamPolicyDetail.searchEntities')}
+			searchWidth="18rem"
+			selectable="multi"
+			bind:selected={attachPicked}
+			rowLocked={(row) => attachedKeys.has(row.key)}
+			pageSize={10}
+			maxHeight="26rem"
+			noun={t('web.iamPolicyDetail.entityNoun')}
+			sortValue={(row, col) => (col === 'kind' ? row.kind : null)}
+			cell={entityCell}
+		/>
 
 		{#snippet footer()}
-			<Btn onclick={() => (editOpen = false)}>{t('web.common.cancel')}</Btn>
-			<Btn variant="primary" loading={busy} disabled={!editName.trim() || !!editNameError} onclick={saveEdit}>
-				{t('web.common.save')}
+			<Btn onclick={() => (attachOpen = false)}>{t('web.common.cancel')}</Btn>
+			<Btn variant="primary" loading={busy} disabled={attachPicked.size === 0} onclick={() => void attachConfirmed()}>
+				{t('web.iamPolicyDetail.attachAction', { count: attachPicked.size })}
 			</Btn>
 		{/snippet}
 	</Modal>
+
+	<ConfirmModal
+		bind:open={detachOpen}
+		title={t('web.iamPolicyDetail.detachTitle', { count: detachRows.length })}
+		lead={t('web.iamPolicyDetail.detachLead', { policy: policy.name, names: detachRows.map((row) => row.name).join(', ') })}
+		notes={[t('web.iamPolicyDetail.detachNote')]}
+		confirmLabel={t('web.iamPolicyDetail.detach')}
+		onconfirm={() => void detachConfirmed()}
+	/>
 
 	<ConfirmModal
 		bind:open={deleteOpen}
@@ -425,16 +572,15 @@
 		height: 1rem;
 	}
 
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
+	.ptype,
+	.ename {
+		display: inline-flex;
+		align-items: center;
 		gap: 0.5rem;
 	}
 
-	.chip {
-		font-size: 0.75rem;
-		border: 0.1rem solid var(--border-divider);
-		border-radius: 0.75rem;
-		padding: 0.125rem 0.5rem;
+	.note {
+		margin: 0 0 1rem;
+		font-size: 0.8125rem;
 	}
 </style>

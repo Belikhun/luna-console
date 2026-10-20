@@ -1599,6 +1599,8 @@ export const OPS: Record<string, OpSpec> = {
 	"iam.principalContext": { fn: iamCore.principalContext },
 	"iam.accountPermissions": { fn: iamCore.accountPermissions },
 	"iam.authorize": { fn: iamCore.authorize },
+	"iam.simulatePrincipal": { fn: iamCore.simulatePrincipal },
+	"iam.inlineCounts": { fn: iamCore.inlinePolicyCounts },
 	"iam.authorizeMany": { fn: iamCore.authorizeMany },
 	"iam.audit": { fn: iamCore.iamAudit },
 

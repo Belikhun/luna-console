@@ -28,6 +28,8 @@
 	import IdentifyAddonModal from '$lib/components/IdentifyAddonModal.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
+	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
 	 * Data packs: a shared pool in <root>/datapacks deployed into each target
@@ -339,6 +341,12 @@
 
 	// -- table ---------------------------------------------------------------------------
 
+	const meta = new ResourceMetaIndex('datapack');
+
+	$effect(() => {
+		void meta.sync(packs.map((row) => row.name));
+	});
+
 	const columns: Column[] = $derived([
 		{ id: 'name', label: t('web.datapacks.pack2'), sortable: true, minWidth: 160 },
 		{ id: 'state', label: t('web.datapacks.state') },
@@ -348,7 +356,8 @@
 		{ id: 'source', label: t('web.datapacks.source'), sortable: true, minWidth: 140 },
 		{ id: 'version', label: t('web.datapacks.version') },
 		{ id: 'mc', label: t('web.datapacks.mcVersions'), hidden: true },
-		{ id: 'auto', label: t('web.datapacks.autoUpdate'), sortable: true }
+		{ id: 'auto', label: t('web.datapacks.autoUpdate'), sortable: true },
+		...resourceMetaColumns()
 	]);
 
 	function sortValue(row: DataPackRow, col: string): string | number | null {
@@ -366,7 +375,7 @@
 				return row.entry.autoUpdate ? 0 : 1;
 
 			default:
-				return null;
+				return meta.sortValue(row.name, col);
 		}
 	}
 
@@ -464,7 +473,7 @@
 		getId={(row) => row.name}
 		searchValue={(row) =>
 			`${row.name} ${row.entry.source} ${row.effectiveTargets.join(' ')} ` +
-			`${row.groups.join(' ')} ${row.entry.installed?.versionNumber ?? ''}`}
+			`${row.groups.join(' ')} ${row.entry.installed?.versionNumber ?? ''} ${meta.searchText(row.name)}`}
 		searchPlaceholder={t('web.datapacks.findADataPack')}
 		selectable="single"
 		bind:selected
@@ -515,6 +524,8 @@
 					state={row.entry.autoUpdate ? 'ok' : 'stopped'}
 					label={row.entry.autoUpdate ? 'On' : 'Off'}
 				/>
+			{:else if col === 'createdBy' || col === 'tags'}
+				<ResourceMetaCell index={meta} names={row.name} {col} />
 			{/if}
 		{/snippet}
 	</ResourceTable>

@@ -27,6 +27,9 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
+	import OwnerCell from '$lib/components/OwnerCell.svelte';
+	import { loadOneResourceMeta } from '$lib/resourcemeta.svelte';
+	import type { ResourceView } from '$core/resources';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { OverviewDetail, OverviewNode } from '$lib/components/nodeoverview';
@@ -130,6 +133,20 @@
 	const name = $derived(page.params.name);
 
 	let inst: any = $state(null);
+
+	// who created the instance, for the summary; the Tags tab loads its own copy
+	let ownerMeta = $state<ResourceView | null>(null);
+
+	$effect(() => {
+		const target = `luna:instance/${name}`;
+
+		ownerMeta = null;
+		void loadOneResourceMeta(target).then((view) => {
+			if (target === `luna:instance/${name}`) {
+				ownerMeta = view;
+			}
+		});
+	});
 	/**
 	 * The open tab, which is the last path segment.
 	 *
@@ -1642,6 +1659,11 @@
 						? `/machines/${inst.daemon ?? hostName}`
 						: undefined
 			},
+			{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
+			{
+				label: t('web.resourceMeta.createdAt'),
+				value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null
+			},
 			{ label: t('web.instanceDetail.javaPid'), value: inst.javaPid },
 			{ id: 'cpu', label: t('web.instanceDetail.cpuUtilization') },
 			{ id: 'rss', label: t('web.instanceDetail.residentMemory') },
@@ -2511,6 +2533,8 @@
 								version={inst.mcVersion}
 								channel={channelOf(inst.mcVersion)}
 							/>
+						{:else if cell.id === 'createdBy'}
+							<OwnerCell name={ownerMeta?.createdBy} />
 						{:else if cell.id === 'cpu'}
 							{#if inst.cpu == null}
 								<span class="dim">–</span>
@@ -2576,8 +2600,6 @@
 			>
 				<code class="cmd mono">{inst.javaCommand}</code>
 			</Panel>
-			<div class="gap"></div>
-			<ResourceMeta id="luna:instance/{name}" />
 		{:else if tab === 'checks'}
 			<Panel title={t('web.instanceDetail.statusChecks')}>
 				{#each inst.checks as check}
@@ -3442,6 +3464,8 @@
 					{/each}
 				</Panel>
 			{/if}
+		{:else if tab === 'tags'}
+			<ResourceMeta id="luna:instance/{name}" />
 		{:else if tab === 'config'}
 			{#if cfgData}
 				<Panel

@@ -37,6 +37,8 @@
 	import { Notify } from '$lib/notifications.svelte';
 	import { instanceStateJob, type StateAction } from '$lib/instancejobs';
 	import { onJobFlash } from '$lib/jobflash';
+	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	type Row = InstanceRow & { externalOnly?: boolean };
 
@@ -130,6 +132,13 @@
 		selRows.some((row) => UP_STATES.includes(row.state ?? ''))
 	);
 
+	// who created each instance and its tags, for the owner/tag columns and the tag filter
+	const meta = new ResourceMetaIndex('instance');
+
+	$effect(() => {
+		void meta.sync(allRows.map((row) => row.name));
+	});
+
 	const filters: TableFilterGroup<Row>[] = $derived([
 		{
 			id: 'state',
@@ -170,7 +179,8 @@
 				})),
 				{ value: 'external', label: t('web.instances.externalServers'), match: (row) => !!row.externalOnly }
 			]
-		}
+		},
+		meta.tagFilter<Row>((row) => row.name)
 	]);
 
 	const columns: Column[] = $derived([
@@ -178,10 +188,15 @@
 		{ id: 'state', label: t('web.instances.colState'), sortable: true },
 		{ id: 'checks', label: t('web.instances.colChecks') },
 		{ id: 'machine', label: t('web.instances.colMachine'), sortable: true },
+		// who owns an instance is what an operator scans a fleet for, so it sits
+		// beside the machine rather than past the scroll edge with the tags
+		...resourceMetaColumns().filter((column) => column.id === 'createdBy'),
 		{ id: 'software', label: t('web.instances.colSoftware'), sortable: true },
 		{ id: 'version', label: t('web.groups.colVersion'), sortable: true },
 		{ id: 'port', label: t('web.instances.colPort'), sortable: true },
-		{ id: 'memory', label: t('web.instances.colMemory') },
+		// the configured heap is static and the RSS column beside it shows what the
+		// server really uses; hidden to make room for the owner
+		{ id: 'memory', label: t('web.instances.colMemory'), hidden: true },
 		{ id: 'cpu', label: 'CPU', sortable: true },
 		{ id: 'rss', label: t('web.instances.colRss'), sortable: true },
 		{ id: 'tps', label: 'TPS', sortable: true, width: 80, align: 'right' },
@@ -191,7 +206,8 @@
 		{ id: 'uptime', label: t('web.instances.colUptime'), sortable: true },
 		{ id: 'players', label: t('web.instances.colPlayers'), sortable: true },
 		{ id: 'profile', label: t('web.instances.colProfile'), hidden: true },
-		{ id: 'pid', label: t('web.instances.colPid'), hidden: true }
+		{ id: 'pid', label: t('web.instances.colPid'), hidden: true },
+		...resourceMetaColumns().filter((column) => column.id !== 'createdBy')
 	]);
 
 	function sortValue(row: Row, col: string): string | number | null {
@@ -235,7 +251,7 @@
 				return row.players?.online ?? -1;
 
 			default:
-				return null;
+				return meta.sortValue(row.name, col);
 		}
 	}
 
@@ -616,7 +632,7 @@
 				{loading}
 				getId={(row) => row.name}
 				searchValue={(row) =>
-					`${row.name} ${row.state ?? 'external'} ${row.software ?? ''} ${row.mcVersion ?? ''} ${row.port ?? row.external ?? ''} ${row.daemon ?? hostName}`}
+					`${row.name} ${row.state ?? 'external'} ${row.software ?? ''} ${row.mcVersion ?? ''} ${row.port ?? row.external ?? ''} ${row.daemon ?? hostName} ${meta.searchText(row.name)}`}
 				searchPlaceholder={t('web.instances.searchPlaceholder')}
 				selectable="multi"
 				bind:selected
@@ -631,7 +647,9 @@
 				emptyText={t('web.instances.emptyText')}
 			>
 				{#snippet cell(row, col)}
-					{#if row.externalOnly}
+					{#if col === 'createdBy' || col === 'tags'}
+						<ResourceMetaCell index={meta} names={row.name} {col} />
+					{:else if row.externalOnly}
 						{#if col === 'name'}
 							{row.name}
 						{:else if col === 'state'}

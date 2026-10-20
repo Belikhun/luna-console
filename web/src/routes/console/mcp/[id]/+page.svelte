@@ -13,6 +13,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
+	import OwnerCell from '$lib/components/OwnerCell.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -328,10 +329,8 @@
 							? t('web.mcp.everyInstance')
 							: token.scope.instances.join(', ') || '–'
 					},
-					{
-						label: t('web.mcp.colCreated'),
-						value: `${fmtDateTime(token.createdAt)}${token.createdBy ? ` · ${token.createdBy}` : ''}`
-					},
+					{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
+					{ label: t('web.mcp.colCreated'), value: fmtDateTime(token.createdAt) },
 					{
 						label: t('web.mcp.colLastUsed'),
 						value: token.lastUsedAt
@@ -453,7 +452,8 @@
 			{ id: 'scope', label: t('web.mcpDetail.tabScope') },
 			{ id: 'calls', label: t('web.mcpDetail.tabCalls') },
 			{ id: 'knowledge', label: t('web.mcpDetail.tabKnowledge') },
-			{ id: 'activity', label: t('web.mcpDetail.tabActivity') }
+			{ id: 'activity', label: t('web.mcpDetail.tabActivity') },
+			{ id: 'tags', label: t('web.resourceMeta.tags') }
 		]}
 		bind:active={tab}
 	/>
@@ -469,6 +469,8 @@
 							<span class="mono dim">{token!.id}</span>
 						{:else if cell.id === 'endpoint'}
 							<span class="mono">{page.url.origin}/api/mcp</span>
+						{:else if cell.id === 'createdBy'}
+							<OwnerCell name={token!.createdBy} />
 						{/if}
 					{/snippet}
 				</InfoGrid>
@@ -486,8 +488,6 @@
 				</div>
 			</Panel>
 
-			<div class="gap"></div>
-			<ResourceMeta id="luna:mcp-token/{token.name}" />
 		{:else if tab === 'scope' && draft}
 			<Panel title={t('web.mcpDetail.scopePanel')} description={t('web.mcpDetail.scopeHint')}>
 				{#snippet actions()}
@@ -605,6 +605,8 @@
 					{/snippet}
 				</ResourceTable>
 			</Panel>
+		{:else if tab === 'tags'}
+			<ResourceMeta id="luna:mcp-token/{token.name}" />
 		{/if}
 	</div>
 

@@ -18,6 +18,8 @@
  */
 
 import { getAccount } from '$core/accounts';
+import { loadLock } from '$core/config';
+import { entriesOf } from '$core/families';
 import { resourceId } from '$shared/iam/resources';
 import type { IamResourceType } from '$shared/iam/actions';
 
@@ -31,6 +33,12 @@ export interface RuleContext {
 
 export interface RouteRule {
 	action: string;
+	/**
+	 * When `resource` names several (a plugin identity spans one record per
+	 * platform), the request is allowed if the account may act on any of them.
+	 * Only ever used for reads: a screen about a thing the account can see part of.
+	 */
+	anyOf?: (ctx: RuleContext) => Promise<string[]>;
 	/** When the verb depends on the body, this resolves it; `action` is the fallback */
 	actionOf?: (ctx: RuleContext) => Promise<string>;
 	resource?: (ctx: RuleContext) => string | null | Promise<string | null>;
@@ -76,6 +84,32 @@ const body = (type: IamResourceType, key: string) => async (ctx: RuleContext): P
 	} catch {
 		return null;
 	}
+};
+
+/**
+ * The records a plugin URL names. The pool is keyed `<name>@<family>`, one
+ * record per platform, and the plugin screen is addressed by the identity
+ * (`luckperms`) or by one key (`luckperms@forge`); an identity resolves to every
+ * family it spans, so a policy naming any one of them reaches the screen.
+ */
+const pluginRecords = async (ctx: RuleContext): Promise<string[]> => {
+	const name = ctx.params.name;
+
+	if (!name) {
+		return [];
+	}
+
+	const lock = await loadLock();
+
+	if (lock.plugins[name]) {
+		return [resourceId('plugin', name)];
+	}
+
+	const keys = entriesOf(lock, name);
+
+	return keys.length > 0
+		? keys.map((key) => resourceId('plugin', key))
+		: [resourceId('plugin', name)];
 };
 
 /** Accounts are addressed by id in the URL; the resource id carries the username. */
@@ -170,6 +204,7 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/iam/attachments': { POST: { action: 'iam:Attach' }, DELETE: { action: 'iam:Detach' } },
 	'/api/iam/inline': { PUT: { action: 'iam:Attach' }, DELETE: { action: 'iam:Detach' } },
 	'/api/iam/simulate': { POST: { action: 'iam:Simulate' } },
+	'/api/iam/overview': { GET: { action: 'iam:ListPolicies' } },
 	'/api/iam/audit': { GET: { action: 'iam:ReadAudit' } },
 	'/api/iam/can': { POST: 'session' },
 	'/api/resources': { GET: { action: 'tag:List' } },
@@ -309,7 +344,7 @@ export const API_RULES: Record<string, MethodRules> = {
 	},
 	'/api/plugins/unpin': { POST: { action: 'plugin:Configure', resource: body('plugin', 'name') } },
 	'/api/plugins/[name]': {
-		GET: { action: 'plugin:Describe', resource: plugin },
+		GET: { action: 'plugin:Describe', anyOf: pluginRecords },
 		PATCH: { action: 'plugin:Configure', resource: plugin },
 		DELETE: { action: 'plugin:Remove', resource: plugin }
 	},
@@ -514,6 +549,7 @@ export const API_RULES: Record<string, MethodRules> = {
  * is in `$lib/authz/pages`, shared with the nav.
  */
 export const PAGE_ASYNC_RULES: Record<string, RouteRule> = {
+	'/plugins/[name]': { action: 'plugin:Describe', anyOf: pluginRecords },
 	'/console/accounts/[id]': { action: 'account:Describe', resource: account },
 	'/console/accounts/[id]/edit': { action: 'account:Update', resource: account }
 };

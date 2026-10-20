@@ -6,10 +6,16 @@
 	import { onDestroy } from 'svelte';
 	import { t } from '$lib/i18n.svelte';
 	import { post } from '$lib/api';
+	import type { Snippet } from 'svelte';
 	import CodeEditor from './CodeEditor.svelte';
+	import Btn from './Btn.svelte';
+	import ButtonGroup from './ButtonGroup.svelte';
 	import Icon from './Icon.svelte';
 	import Spinner from './Spinner.svelte';
-	import { POLICY_VALIDATE_DEBOUNCE_MS, type PolicyValidation } from './policyeditor';
+	import PolicyVisualEditor from './PolicyVisualEditor.svelte';
+	import { policyToYaml } from '$shared/iam/yaml';
+	import type { PolicyDocument } from '$shared/iam/grammar';
+	import { POLICY_VALIDATE_DEBOUNCE_MS, type PolicyEditorMode, type PolicyValidation } from './policyeditor';
 
 	/**
 	 * The editor for one IAM policy document: Monaco in YAML, with the daemon's
@@ -17,6 +23,11 @@
 	 * so every pause in typing asks `/api/iam/policies/validate` and the result is
 	 * shown as it comes back; a parent that saves the document reads the same
 	 * verdict through `onvalidate` to keep its Save button honest.
+	 *
+	 * With `showToggle` it also offers the visual editor (`mode="visual"`). The
+	 * YAML stays the value either way: the form's document is written out as
+	 * YAML on every change, and going back to the form asks the daemon for the
+	 * parsed document, so YAML is still only ever read in one place.
 	 */
 	let {
 		value = $bindable(''),
@@ -24,7 +35,10 @@
 		path = 'iam/policy.yaml',
 		height = '24rem',
 		onvalidate,
-		onsave
+		onsave,
+		mode = $bindable<PolicyEditorMode>('yaml'),
+		showToggle = false,
+		tools
 	}: {
 		value: string;
 		/** a built-in document: shown, never validated or edited */
@@ -36,7 +50,89 @@
 		onvalidate?: (result: PolicyValidation | null) => void;
 		/** Ctrl/Cmd+S inside the editor */
 		onsave?: () => void;
+		/** which face is showing; switching goes through the toggle so YAML is checked first */
+		mode?: PolicyEditorMode;
+		/** offer the Visual | YAML toggle above the editor */
+		showToggle?: boolean;
+		/** extra controls at the right of the toggle row, e.g. an Actions dropdown */
+		tools?: Snippet;
 	} = $props();
+
+	/** the document the visual editor starts from; replaced on every switch into it */
+	let visualDocument = $state<PolicyDocument | null>(null);
+	let visualKey = $state(0);
+	let switching = $state(false);
+	let switchError = $state('');
+
+	/** the text the last good verdict was about, so a switch can reuse its document */
+	let validatedText = '';
+	let validatedDocument: PolicyDocument | undefined;
+
+	/** Show the form or the text; into the form only from YAML that parses. */
+	export async function setMode(next: PolicyEditorMode): Promise<void> {
+		switchError = '';
+
+		if (next === mode) {
+			return;
+		}
+
+		if (next === 'yaml') {
+			mode = 'yaml';
+			visualDocument = null;
+
+			return;
+		}
+
+		if (!value.trim()) {
+			visualDocument = { Version: 1, Statement: [] };
+			visualKey += 1;
+			mode = 'visual';
+
+			return;
+		}
+
+		let document = validatedText === value ? validatedDocument : undefined;
+
+		if (!document) {
+			switching = true;
+
+			try {
+				const result = await post<PolicyValidation>('/iam/policies/validate', { yaml: value });
+
+				document = result.ok ? result.document : undefined;
+			} catch {
+				document = undefined;
+			} finally {
+				switching = false;
+			}
+		}
+
+		if (!document) {
+			switchError = t('web.policyEditor.fixBeforeVisual');
+
+			return;
+		}
+
+		visualDocument = document;
+		visualKey += 1;
+		mode = 'visual';
+	}
+
+	function visualChanged(document: PolicyDocument): void {
+		const text = policyToYaml(document);
+
+		if (text !== value) {
+			value = text;
+		}
+	}
+
+	// a parent that sets `mode` to visual before anything was loaded still gets a form
+	$effect(() => {
+		if (mode === 'visual' && !visualDocument && !switching) {
+			mode = 'yaml';
+			void setMode('visual');
+		}
+	});
 
 	let validation = $state<PolicyValidation | null>(null);
 	let checking = $state(false);
@@ -60,6 +156,11 @@
 			const result = await post<PolicyValidation>('/iam/policies/validate', { yaml: text });
 
 			if (mine === sequence) {
+				if (result.ok) {
+					validatedText = text;
+					validatedDocument = result.document;
+				}
+
 				publish(result);
 			}
 		} catch (err) {
@@ -101,7 +202,36 @@
 </script>
 
 <div class="policy-editor">
-	<CodeEditor bind:value {path} readOnly={readonly} {height} {onsave} />
+	{#if showToggle && !readonly}
+		<div class="toggle">
+			<ButtonGroup>
+				<Btn
+					icon="listCheck"
+					variant={mode === 'visual' ? 'primary' : 'normal'}
+					loading={switching}
+					onclick={() => void setMode('visual')}
+				>
+					{t('web.policyEditor.visual')}
+				</Btn>
+				<Btn icon="code" variant={mode === 'yaml' ? 'primary' : 'normal'} onclick={() => void setMode('yaml')}>
+					{t('web.policyEditor.yaml')}
+				</Btn>
+			</ButtonGroup>
+			{#if switchError}
+				<span class="switch-error">{switchError}</span>
+			{/if}
+			<span class="spacer"></span>
+			{#if tools}{@render tools()}{/if}
+		</div>
+	{/if}
+
+	{#if mode === 'visual' && visualDocument && !readonly}
+		{#key visualKey}
+			<PolicyVisualEditor document={visualDocument} onchange={visualChanged} />
+		{/key}
+	{:else}
+		<CodeEditor bind:value {path} readOnly={readonly} {height} {onsave} />
+	{/if}
 
 	{#if !readonly}
 		<div class="verdict" class:ok={validation?.ok} class:bad={validation && !validation.ok}>
@@ -142,6 +272,23 @@
 	// content-sized flex column that shrank it to nothing
 	.policy-editor {
 		display: block;
+	}
+
+	.toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		margin-bottom: 0.75rem;
+	}
+
+	.spacer {
+		flex: 1;
+	}
+
+	.switch-error {
+		color: var(--error);
+		font-size: 0.8125rem;
 	}
 
 	.verdict {

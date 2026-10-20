@@ -2,261 +2,222 @@
      Proprietary software: use, copying, modification and distribution are
      prohibited without written permission. See LICENSE at the repository root. -->
 
-<script lang="ts">
+<script lang="ts" generics="Row extends TagEditorRow = TagEditorRow">
 	import { t } from '$lib/i18n.svelte';
 	import { MAX_TAGS } from '$shared/iam/resources';
 	import Btn from './Btn.svelte';
-	import Icon from './Icon.svelte';
-	import { tagAddFault, tagEntries, type TagMap } from './tageditor';
+	import { blankTagRow, isBlankRow, type TagEditorRow, type TagRowFault } from './tageditor';
 
 	/**
-	 * A resource's tags as `key=value` chips, with a row to add one and a cross
-	 * on each to take it away.
+	 * The tag editing form AWS uses: one row per tag with a key field, a value
+	 * field and a Remove button, then "Add new tag" and how many more fit.
 	 *
-	 * The caller owns the data: `onadd`/`onremove` are called per change (the
-	 * route takes one write at a time, and a failure then leaves the other tags
-	 * as they were), or `onchange` receives the whole next map. Adding a key that
-	 * already exists replaces its value, which is what "set a tag" means.
+	 * The caller owns the rows (bound) and the faults, since it is the one that
+	 * decides whether Save may go ahead; a fault is drawn under its field once
+	 * the row has been typed in. A row flagged `mixed` (the bulk editor's key
+	 * whose value differs across the selection) shows "multiple values" until
+	 * its value is typed, which marks it `edited`.
 	 */
 
 	let {
-		tags,
-		onchange,
-		onadd,
-		onremove,
-		readonly = false,
+		rows = $bindable([]),
+		faults = {},
 		max = MAX_TAGS,
-		busy = false
+		disabled = false,
+		// the default only fits the default row type; a caller with richer rows passes its own
+		newRow = blankTagRow as () => Row,
+		onremove
 	}: {
-		tags: TagMap;
-		onchange?: (tags: TagMap) => void | Promise<void>;
-		onadd?: (key: string, value: string) => void | Promise<void>;
-		onremove?: (key: string) => void | Promise<void>;
-		readonly?: boolean;
+		rows: Row[];
+		faults?: Record<number, TagRowFault>;
 		max?: number;
-		busy?: boolean;
+		disabled?: boolean;
+		/** builds the row "Add new tag" appends */
+		newRow?: () => Row;
+		/** told about a row before it is taken out */
+		onremove?: (row: Row) => void;
 	} = $props();
 
-	let key = $state('');
-	let value = $state('');
-	let working = $state(false);
-	let touched = $state(false);
+	// faults show once a row was typed in or a save was attempted, not on a row just added
+	let touched = $state<Set<number>>(new Set());
 
-	const entries = $derived(tagEntries(tags));
-	const fault = $derived(tagAddFault(key.trim(), value.trim(), tags, max));
-	const full = $derived(entries.length >= max);
-	const disabled = $derived(readonly || busy || working);
+	const used = $derived(rows.filter((row) => !isBlankRow(row)).length);
+	const left = $derived(Math.max(0, max - used));
+	const full = $derived(rows.length >= max);
 
-	async function add(): Promise<void> {
-		touched = true;
+	/** Show every fault, for a caller whose save was refused. */
+	export function touchAll(): void {
+		touched = new Set(rows.map((row) => row.uid));
+	}
 
-		if (fault || disabled) {
-			return;
-		}
-
-		const nextKey = key.trim();
-		const nextValue = value.trim();
-
-		working = true;
-
-		try {
-			if (onadd) {
-				await onadd(nextKey, nextValue);
-			} else {
-				await onchange?.({ ...tags, [nextKey]: nextValue });
-			}
-
-			key = '';
-			value = '';
-			touched = false;
-		} finally {
-			working = false;
+	function touch(uid: number): void {
+		if (!touched.has(uid)) {
+			touched = new Set([...touched, uid]);
 		}
 	}
 
-	async function remove(target: string): Promise<void> {
-		if (disabled) {
+	function add(): void {
+		if (full || disabled) {
 			return;
 		}
 
-		working = true;
+		rows = [...rows, newRow()];
+	}
 
-		try {
-			if (onremove) {
-				await onremove(target);
-			} else {
-				const next = { ...tags };
+	function remove(row: Row): void {
+		onremove?.(row);
+		rows = rows.filter((entry) => entry.uid !== row.uid);
+	}
 
-				delete next[target];
-				await onchange?.(next);
-			}
-		} finally {
-			working = false;
+	function valueInput(row: Row): void {
+		touch(row.uid);
+
+		if (row.mixed) {
+			row.edited = true;
 		}
 	}
 
-	function onKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Enter') {
-			event.preventDefault();
-			void add();
-		}
+	function valuePlaceholder(row: Row): string {
+		return row.mixed && !row.edited
+			? t('web.tagEditor.multipleValues')
+			: t('web.tagEditor.valuePlaceholder');
 	}
 </script>
 
-<div class="tageditor" class:readonly>
-	<div class="chips">
-		{#each entries as entry (entry.key)}
-			<span class="chip mono" title="{entry.key}={entry.value}">
-				<span class="k">{entry.key}</span>
-				{#if entry.value !== ''}
-					<span class="eq">=</span>
-					<span class="v">{entry.value}</span>
-				{/if}
-				{#if !readonly}
-					<button
-						type="button"
-						class="x"
-						{disabled}
-						title={t('web.tagEditor.remove', { key: entry.key })}
-						aria-label={t('web.tagEditor.remove', { key: entry.key })}
-						onclick={() => void remove(entry.key)}
-					>
-						<Icon name="close" size="0.625rem" style="solid" />
-					</button>
-				{/if}
-			</span>
-		{:else}
-			<span class="dim empty">{t('web.tagEditor.none')}</span>
-		{/each}
-	</div>
-
-	{#if !readonly}
-		<div class="add">
-			<input
-				class="input mono"
-				type="text"
-				placeholder={t('web.tagEditor.keyPlaceholder')}
-				bind:value={key}
-				disabled={disabled || full}
-				onkeydown={onKeydown}
-				oninput={() => (touched = true)}
-			/>
-			<span class="eq dim">=</span>
-			<input
-				class="input mono"
-				type="text"
-				placeholder={t('web.tagEditor.valuePlaceholder')}
-				bind:value
-				disabled={disabled || full}
-				onkeydown={onKeydown}
-				oninput={() => (touched = true)}
-			/>
-			<Btn icon="plus" disabled={disabled || !!fault} loading={working} onclick={() => void add()}>
-				{t('web.tagEditor.add')}
-			</Btn>
+<div class="tagrows">
+	{#if rows.length > 0}
+		<div class="row head">
+			<span class="lbl">{t('web.tagEditor.key')}</span>
+			<span class="lbl">{t('web.tagEditor.valueOptional')}</span>
+			<span></span>
 		</div>
-
-		{#if touched && fault && key !== ''}
-			<span class="err">{t(fault, { max })}</span>
-		{:else if full}
-			<span class="hint dim">{t('web.tagEditor.full', { max })}</span>
-		{/if}
 	{/if}
+
+	{#each rows as row (row.uid)}
+		{@const fault = touched.has(row.uid) ? faults[row.uid] : undefined}
+		<div class="row">
+			<div class="field">
+				<input
+					class="input mono"
+					class:bad={!!fault?.key}
+					type="text"
+					placeholder={t('web.tagEditor.keyPlaceholder')}
+					aria-label={t('web.tagEditor.key')}
+					bind:value={row.key}
+					{disabled}
+					oninput={() => touch(row.uid)}
+				/>
+				{#if fault?.key}
+					<span class="err">{t(fault.key, { max })}</span>
+				{/if}
+			</div>
+
+			<div class="field">
+				<input
+					class="input mono"
+					class:bad={!!fault?.value}
+					type="text"
+					placeholder={valuePlaceholder(row)}
+					aria-label={t('web.tagEditor.value')}
+					bind:value={row.value}
+					{disabled}
+					oninput={() => valueInput(row)}
+				/>
+				{#if fault?.value}
+					<span class="err">{t(fault.value, { max })}</span>
+				{/if}
+			</div>
+
+			<div class="rm">
+				<Btn {disabled} onclick={() => remove(row)}>{t('web.tagEditor.removeRow')}</Btn>
+			</div>
+		</div>
+	{:else}
+		<p class="none dim">{t('web.tagEditor.noRows')}</p>
+	{/each}
+
+	<div class="foot">
+		<Btn icon="plus" disabled={disabled || full} title={full ? t('web.tagEditor.full', { max }) : undefined} onclick={add}>
+			{t('web.tagEditor.addNew')}
+		</Btn>
+		<span class="hint dim">{t('web.tagEditor.remaining', { count: left })}</span>
+	</div>
 </div>
 
 <style lang="scss">
-	.tageditor {
+	.tagrows {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
 		min-width: 0;
 	}
 
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-		align-items: center;
-	}
+	.row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+		gap: 0.75rem;
+		align-items: start;
 
-	// the same pill the token's tool list draws, with a key/value split inside
-	.chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.125rem;
-		max-width: 100%;
-		font-size: 0.75rem;
-		border: 0.1rem solid var(--border-divider);
-		border-radius: 0.75rem;
-		padding: 0.125rem 0.5rem;
-		line-height: 1.25rem;
-
-		.k {
-			@include ellipsis;
-
-			color: var(--text-heading);
+		&.head {
+			align-items: end;
 		}
 
-		.v {
-			@include ellipsis;
+		@include below($bp-narrow) {
+			grid-template-columns: minmax(0, 1fr) auto;
 
-			color: var(--text-secondary);
-		}
+			.field:nth-child(2) {
+				grid-column: 1;
+			}
 
-		.eq {
-			color: var(--text-secondary);
+			.rm {
+				grid-row: 1 / span 2;
+				grid-column: 2;
+			}
+
+			&.head {
+				display: none;
+			}
 		}
 	}
 
-	.x {
-		@include bare-button;
-
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 1rem;
-		height: 1rem;
-		margin-left: 0.125rem;
-		margin-right: -0.25rem;
-		border-radius: 50%;
-		color: var(--text-secondary);
-		cursor: pointer;
-
-		&:hover {
-			color: var(--text-heading);
-			background: var(--bg-hover);
-		}
-
-		&:disabled {
-			cursor: default;
-			opacity: 0.5;
-		}
-	}
-
-	.empty {
+	.lbl {
 		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--text-heading);
 	}
 
-	.add {
+	.field {
 		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		flex-wrap: wrap;
+		flex-direction: column;
+		gap: 0.25rem;
+		min-width: 0;
 
 		.input {
-			flex: 1 1 8rem;
-			min-width: 6rem;
+			width: 100%;
 			font-size: 0.8125rem;
-		}
 
-		.eq {
-			flex: 0 0 auto;
+			&.bad {
+				border-color: var(--error);
+			}
 		}
 	}
 
 	.err {
 		font-size: 0.75rem;
 		color: var(--error);
+	}
+
+	.none {
+		margin: 0;
+		font-size: 0.8125rem;
+	}
+
+	.foot {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		margin-top: 0.25rem;
 	}
 
 	.hint {

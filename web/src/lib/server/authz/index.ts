@@ -18,7 +18,7 @@ import { ROOT_ACTOR } from '$core/accounts';
 import { authorize, authorizeMany } from '$core/iam';
 import type { Verdict } from '$shared/iam/grammar';
 
-import { API_RULES, PAGE_ASYNC_RULES, ruleAction, type Method, type RuleContext } from './routes';
+import { API_RULES, PAGE_ASYNC_RULES, ruleAction, type Method, type RouteRule, type RuleContext } from './routes';
 import { PAGE_RULES } from '$lib/authz/pages';
 
 export interface Refusal {
@@ -62,18 +62,13 @@ export async function gate(event: RequestEvent): Promise<GateOutcome> {
 			return { kind: 'allowed' };
 		}
 
-		const action = await ruleAction(rule, ctx);
-		const resource = rule.resource ? await rule.resource(ctx) : null;
-
-		return await decide(username, action, resource);
+		return await decideRule(username, rule, ctx);
 	}
 
 	const asyncRule = PAGE_ASYNC_RULES[routeId];
 
 	if (asyncRule) {
-		const resource = asyncRule.resource ? await asyncRule.resource(ctx) : null;
-
-		return await decide(username, asyncRule.action, resource);
+		return await decideRule(username, asyncRule, ctx);
 	}
 
 	const pageRule = PAGE_RULES[routeId];
@@ -85,6 +80,32 @@ export async function gate(event: RequestEvent): Promise<GateOutcome> {
 	const resource = pageRule.resource ? pageRule.resource(ctx.params) : null;
 
 	return await decide(username, pageRule.action, resource);
+}
+
+/** One rule: its single resource, or the first of several the account may act on. */
+async function decideRule(username: string, rule: RouteRule, ctx: RuleContext): Promise<GateOutcome> {
+	const action = await ruleAction(rule, ctx);
+
+	if (rule.anyOf) {
+		const resources = await rule.anyOf(ctx);
+		let refused: GateOutcome | null = null;
+
+		for (const resource of resources) {
+			const outcome = await decide(username, action, resource);
+
+			if (outcome.kind === 'allowed') {
+				return outcome;
+			}
+
+			refused ??= outcome;
+		}
+
+		return refused ?? await decide(username, action, null);
+	}
+
+	const resource = rule.resource ? await rule.resource(ctx) : null;
+
+	return await decide(username, action, resource);
 }
 
 async function decide(username: string, action: string, resource: string | null): Promise<GateOutcome> {

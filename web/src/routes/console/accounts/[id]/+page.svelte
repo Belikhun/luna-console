@@ -20,24 +20,23 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import CopyValue from '$lib/components/CopyValue.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import AccountAvatar from '$lib/components/AccountAvatar.svelte';
 	import PlayerPicker from '$lib/components/PlayerPicker.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
-	import Select from '$lib/components/Select.svelte';
-	import MultiSelect from '$lib/components/MultiSelect.svelte';
 	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
-	import PolicyEditor from '$lib/components/PolicyEditor.svelte';
-	import { IAM_SERVICES, actionLabelKey, actionsOf, type IamActionSpec } from '$shared/iam/actions';
-	import { builtinPolicy } from '$shared/iam/builtin';
-	import type { AccountPermissions, InlineView, PolicySummary, SimulationResult } from '$core/iam';
+	import PermissionsPolicies from '$lib/components/PermissionsPolicies.svelte';
+	import GroupPickTable from '$lib/components/GroupPickTable.svelte';
+	import type { AccountPermissions } from '$core/iam';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { MIN_PASSWORD_LENGTH } from '$shared/accountrules';
+	import { groupHref, iamResourceId, notifyEach, runEach, type GroupRow } from '$lib/iam';
 	import {
 		accountState,
 		auditTone,
@@ -52,14 +51,16 @@
 	} from '../accounts';
 
 	/**
-	 * One console account: its fields, the credentials attached to it, the sessions
-	 * open under it, and everything that has been done to it.
+	 * One console account, AWS's user screen: a summary that is always in view,
+	 * then the permissions that reach the account, the groups it is in, its
+	 * tags, its security credentials (password, access keys, linked Minecraft
+	 * profiles, open sessions, picture) and everything done to it.
 	 *
-	 * The identities tab is the substance. An account is not one credential: a
-	 * console password is what a person signs in with, an access key is what a
-	 * script sends, and a linked Minecraft profile records which player this
-	 * operator is. They are retired independently, and a leaked access key has to be
-	 * killable without locking its owner out of the console.
+	 * An account is not one credential: a console password is what a person signs
+	 * in with, an access key is what a script sends, and a linked Minecraft
+	 * profile records which player this operator is. They are retired
+	 * independently, and a leaked access key has to be killable without locking
+	 * its owner out of the console.
 	 */
 
 	interface Detail {
@@ -70,13 +71,18 @@
 		self: boolean;
 	}
 
+	/** One group the account is in, as its permissions report it. */
+	type Membership = AccountPermissions['groups'][number];
+
+	const TABS = ['permissions', 'groups', 'tags', 'credentials', 'activity'];
+
 	const id = $derived(page.params.id!);
 
 	let detail = $state<Detail | null>(null);
 	let loading = $state(false);
 	let missing = $state(false);
 	let lastUpdated = $state<number | null>(null);
-	let tab = $state('details');
+	let tab = $state(TABS.includes(page.url.searchParams.get('tab') ?? '') ? page.url.searchParams.get('tab')! : 'permissions');
 
 	let passwordOpen = $state(false);
 	let keyOpen = $state(false);
@@ -88,31 +94,17 @@
 	/** the identity the remove dialog is about; set by the row verb, read on confirm */
 	let identityToRemove = $state<IdentityRow | null>(null);
 
-	// permissions tab: what the evaluator reads for this account, loaded beside the account
+	// what the evaluator reads for this account, loaded beside the account
 	let perms = $state<AccountPermissions | null>(null);
 	let permsError = $state('');
-	let permsBusy = $state(false);
 
-	let attachOpen = $state(false);
-	let attachPick = $state<string[]>([]);
-	let policyCatalog = $state<PolicySummary[]>([]);
-
-	let inlineOpen = $state(false);
-	let inlineEditing = $state(false);
-	let inlineName = $state('');
-	let inlineYaml = $state('');
-	let inlineRemoveOpen = $state(false);
-	let inlineToRemove = $state<InlineView | null>(null);
-
+	// groups tab
+	let selectedGroups: Set<string> = $state(new Set());
 	let leaveOpen = $state(false);
-	let groupToLeave = $state<AccountPermissions['groups'][number] | null>(null);
-
-	// simulator
-	let simService = $state(IAM_SERVICES[0] ?? 'instance');
-	let simAction = $state('');
-	let simResource = $state('');
-	let simBusy = $state(false);
-	let simResult = $state<SimulationResult | null>(null);
+	let leaveRows: Membership[] = $state([]);
+	let joinOpen = $state(false);
+	let joinPicked: Set<string> = $state(new Set());
+	let allGroups: GroupRow[] = $state([]);
 
 	// password form
 	let currentPassword = $state('');
@@ -297,6 +289,19 @@
 			openPassword();
 		}
 	});
+
+	/** A failure here is shown inside the tab: the rest of the account is still worth reading. */
+	async function loadPermissions(): Promise<void> {
+		try {
+			const data = await api<{ permissions: AccountPermissions }>(`/accounts/${encodeURIComponent(id)}/permissions`);
+
+			perms = data.permissions;
+			permsError = '';
+		} catch (err) {
+			perms = null;
+			permsError = (err as Error).message;
+		}
+	}
 
 	function openPassword(): void {
 		currentPassword = '';
@@ -549,24 +554,41 @@
 				]
 	);
 
+	/** Whether the account can sign in to the console, in AWS's "console access" words. */
+	const consoleAccess = $derived.by(() => {
+		const account = detail?.account;
+
+		if (!account) {
+			return { state: 'stopped', label: '' };
+		}
+
+		if (!account.enabled) {
+			return { state: 'stopped', label: t('web.accountDetail.accessDisabled') };
+		}
+
+		if (account.lockedUntil) {
+			return { state: 'failed', label: t('web.accountDetail.accessLocked') };
+		}
+
+		if (!account.hasPassword) {
+			return { state: 'warning', label: t('web.accountDetail.accessNoPassword') };
+		}
+
+		return { state: 'ok', label: t('web.accountDetail.accessEnabled') };
+	});
+
+	const accessKeys = $derived((detail?.account.identities ?? []).filter((identity) => identity.kind === 'accessKey'));
+
 	const summaryCells: InfoCell[] = $derived(
 		!detail
 			? []
 			: [
-					{ label: t('web.accountDetail.username'), value: detail.account.username, copyable: true },
-					{ id: 'state', label: t('web.common.state') },
-					{ label: t('web.accountDetail.displayName'), value: detail.account.displayName || '–' },
-					{ label: t('web.accountDetail.email'), value: detail.account.email || '–' },
-					{
-						label: t('web.accountDetail.purpose'),
-						value: detail.account.description || '–',
-						colSpan: 2
-					},
-					{ id: 'accountId', label: t('web.accountDetail.accountId') },
+					{ id: 'resourceId', label: t('web.accountDetail.resourceId'), colSpan: 2 },
 					{
 						label: t('web.accountDetail.created'),
 						value: `${fmtDateTime(detail.account.createdAt)}${detail.account.createdBy ? ` · ${detail.account.createdBy}` : ''}`
 					},
+					{ id: 'access', label: t('web.accountDetail.consoleAccess') },
 					{
 						label: t('web.accountDetail.lastSignIn'),
 						value: detail.account.lastSignInAt
@@ -574,10 +596,20 @@
 							: t('web.accounts.never')
 					},
 					{
-						label: t('web.accountDetail.failedAttempts'),
-						value: String(detail.account.failedAttempts)
+						label: t('web.accountDetail.accessKeys'),
+						value: accessKeys.length
+							? t('web.accountDetail.accessKeysActive', {
+									active: accessKeys.filter((key) => !key.disabled).length,
+									total: accessKeys.length
+								})
+							: t('web.accountDetail.accessKeysNone')
 					},
-					{ id: 'sessions', label: t('web.accountDetail.openSessions') }
+					{ label: t('web.accountDetail.openSessions'), value: detail.sessions.length },
+					{ label: t('web.accountDetail.failedAttempts'), value: String(detail.account.failedAttempts) },
+					{ label: t('web.accountDetail.displayName'), value: detail.account.displayName || '–' },
+					{ label: t('web.accountDetail.email'), value: detail.account.email || '–' },
+					{ label: t('web.accountDetail.purpose'), value: detail.account.description || '–' },
+					{ id: 'accountId', label: t('web.accountDetail.accountId') }
 				]
 	);
 
@@ -659,269 +691,92 @@
 		copied = await copyText(mintedSecret);
 	}
 
-	/** A failure here is shown inside the tab: the rest of the account is still worth reading. */
-	async function loadPermissions(): Promise<void> {
-		try {
-			const data = await api<{ permissions: AccountPermissions }>(`/accounts/${encodeURIComponent(id)}/permissions`);
+	const pickedGroups = $derived((perms?.groups ?? []).filter((row) => selectedGroups.has(row.name)));
+	const memberOf = $derived(new Set((perms?.groups ?? []).map((row) => row.name)));
 
-			perms = data.permissions;
-			permsError = '';
-		} catch (err) {
-			perms = null;
-			permsError = (err as Error).message;
-		}
-	}
-
-	async function openAttach(): Promise<void> {
-		attachPick = [];
-		attachOpen = true;
+	async function openJoin(): Promise<void> {
+		joinPicked = new Set();
+		joinOpen = true;
 
 		try {
-			const data = await api<{ policies: PolicySummary[] }>('/iam/policies');
+			const data = await api<{ groups: GroupRow[] }>('/iam/groups');
 
-			policyCatalog = data.policies;
+			allGroups = data.groups;
 		} catch (err) {
-			Notify.error(t('web.accountDetail.policiesLoadFailed'), { detail: (err as Error).message });
+			Notify.error(t('web.accountDetail.groupsLoadFailed'), { detail: (err as Error).message });
 		}
 	}
 
-	/** Policies the account does not hold directly yet; the attach dialog's choices. */
-	const attachable = $derived(
-		policyCatalog
-			.filter((policy) => !(perms?.policies ?? []).includes(policy.name))
-			.map((policy) => ({ value: policy.name, label: policy.name }))
-	);
-
-	async function attachPicked(): Promise<void> {
-		if (!perms || attachPick.length === 0) {
-			return;
-		}
-
-		permsBusy = true;
-
-		const failed: string[] = [];
-
-		for (const policy of attachPick) {
-			try {
-				await post('/iam/attachments', { account: perms.username, policy });
-			} catch (err) {
-				failed.push(`${policy}: ${(err as Error).message}`);
-			}
-		}
-
-		permsBusy = false;
-
-		if (failed.length === 0) {
-			Notify.success(t('web.accountDetail.attached', { count: attachPick.length }));
-			attachOpen = false;
-		} else {
-			Notify.warning(t('web.accountDetail.attachPartial', { failed: failed.length }), { detail: failed.join('\n') });
-		}
-
-		await loadPermissions();
-	}
-
-	async function detach(policy: string): Promise<void> {
+	async function joinConfirmed(): Promise<void> {
 		if (!perms) {
 			return;
 		}
 
-		try {
-			await api('/iam/attachments', {
-				method: 'DELETE',
-				body: JSON.stringify({ account: perms.username, policy })
-			});
-			Notify.success(t('web.accountDetail.detached', { policy }));
-			await loadPermissions();
-		} catch (err) {
-			Notify.error(t('web.accountDetail.detachFailed', { policy }), { detail: (err as Error).message });
-		}
+		const accountId = perms.accountId;
+
+		busy = true;
+
+		const outcome = await runEach(
+			[...joinPicked],
+			(name) => post(`/iam/groups/${encodeURIComponent(name)}/members`, { members: [accountId] }),
+			(name) => name
+		);
+
+		busy = false;
+		joinOpen = false;
+		notifyEach(outcome, t('web.accountDetail.joinedGroups', { count: outcome.done }), t('web.accountDetail.joinFailed'));
+		await loadPermissions();
 	}
 
-	function askLeave(group: AccountPermissions['groups'][number]): void {
-		groupToLeave = group;
+	function askLeave(rows: Membership[]): void {
+		if (rows.length === 0) {
+			return;
+		}
+
+		leaveRows = rows;
 		leaveOpen = true;
 	}
 
 	async function leaveConfirmed(): Promise<void> {
-		const group = groupToLeave;
-
-		if (!group || !perms) {
+		if (!perms) {
 			return;
 		}
 
-		try {
-			await api(`/iam/groups/${encodeURIComponent(group.name)}/members`, {
+		const accountId = perms.accountId;
+
+		const outcome = await runEach(
+			leaveRows,
+			(row) => api(`/iam/groups/${encodeURIComponent(row.name)}/members`, {
 				method: 'DELETE',
-				body: JSON.stringify({ members: [perms.accountId] })
-			});
-			Notify.success(t('web.accountDetail.leftGroup', { group: group.name }));
-			await loadPermissions();
-		} catch (err) {
-			Notify.error(t('web.accountDetail.leaveFailed', { group: group.name }), { detail: (err as Error).message });
-		}
+				body: JSON.stringify({ members: [accountId] })
+			}),
+			(row) => row.name
+		);
+
+		selectedGroups = new Set();
+		notifyEach(outcome, t('web.accountDetail.leftGroups', { count: outcome.done }), t('web.accountDetail.leaveGroupsFailed'));
+		await loadPermissions();
 	}
 
-	function openInline(existing: InlineView | null): void {
-		inlineEditing = existing !== null;
-		inlineName = existing?.name ?? '';
-		inlineYaml = existing?.yaml ?? 'Version: 1\nStatement:\n  - Effect: Allow\n    Action: []\n    Resource: "*"\n';
-		inlineOpen = true;
+	function groupActions(row: Membership): ContextMenuItem[] {
+		const targets = selectedGroups.has(row.name) && pickedGroups.length > 1 ? pickedGroups : [row];
+
+		return [
+			{ label: t('web.accountDetail.openGroup'), icon: 'users', action: () => goto(groupHref(row.name)) },
+			{ separator: true },
+			{
+				label: t('web.accountDetail.removeFromGroups', { count: targets.length }),
+				icon: 'userMinus',
+				color: 'danger',
+				action: () => askLeave(targets)
+			}
+		];
 	}
-
-	const inlineReady = $derived(inlineName.trim() !== '' && inlineYaml.trim() !== '');
-
-	async function saveInline(): Promise<void> {
-		if (!perms || !inlineReady) {
-			return;
-		}
-
-		permsBusy = true;
-
-		try {
-			await put('/iam/inline', { account: perms.username, name: inlineName.trim(), yaml: inlineYaml });
-			Notify.success(t('web.accountDetail.inlineSaved', { name: inlineName.trim() }));
-			inlineOpen = false;
-			await loadPermissions();
-		} catch (err) {
-			Notify.error(t('web.accountDetail.inlineSaveFailed'), { detail: (err as Error).message });
-		} finally {
-			permsBusy = false;
-		}
-	}
-
-	function askRemoveInline(row: InlineView): void {
-		inlineToRemove = row;
-		inlineRemoveOpen = true;
-	}
-
-	async function removeInlineConfirmed(): Promise<void> {
-		const row = inlineToRemove;
-
-		if (!row || !perms) {
-			return;
-		}
-
-		try {
-			await api('/iam/inline', {
-				method: 'DELETE',
-				body: JSON.stringify({ account: perms.username, name: row.name })
-			});
-			Notify.success(t('web.accountDetail.inlineRemoved', { name: row.name }));
-			await loadPermissions();
-		} catch (err) {
-			Notify.error(t('web.accountDetail.inlineRemoveFailed', { name: row.name }), { detail: (err as Error).message });
-		}
-	}
-
-	/** The catalog's own words for an action, or just its name when the locale has none. */
-	function actionLabel(spec: IamActionSpec): string {
-		const key = actionLabelKey(spec);
-		const label = t(key);
-
-		return label === key
-			? spec.name
-			: `${spec.verb} · ${label}`;
-	}
-
-	const serviceOptions = $derived(IAM_SERVICES.map((name) => ({ value: name, label: name })));
-
-	const actionOptions = $derived(actionsOf(simService).map((spec) => ({ value: spec.name, label: actionLabel(spec) })));
-
-	// a service change leaves the old verb behind; the first of the new service is the sensible pick
-	$effect(() => {
-		const first = actionsOf(simService)[0];
-
-		if (first && !actionsOf(simService).some((spec) => spec.name === simAction)) {
-			simAction = first.name;
-		}
-	});
-
-	async function simulate(): Promise<void> {
-		if (!perms || !simAction) {
-			return;
-		}
-
-		simBusy = true;
-
-		try {
-			simResult = await post<SimulationResult>('/iam/simulate', {
-				account: perms.username,
-				action: simAction,
-				resource: simResource.trim() || undefined
-			});
-		} catch (err) {
-			simResult = null;
-			Notify.error(t('web.accountDetail.simulateFailed'), { detail: (err as Error).message });
-		} finally {
-			simBusy = false;
-		}
-	}
-
-	const reasonLabels: Record<string, string> = $derived({
-		allow: t('web.accountDetail.reasonAllow'),
-		'explicit-deny': t('web.accountDetail.reasonExplicitDeny'),
-		'implicit-deny': t('web.accountDetail.reasonImplicitDeny'),
-		root: t('web.accountDetail.reasonRoot')
-	});
-
-	const sourceLabels: Record<string, string> = $derived({
-		builtin: t('web.accountDetail.sourceBuiltin'),
-		managed: t('web.accountDetail.sourceManaged'),
-		inline: t('web.accountDetail.sourceInline')
-	});
 
 	const groupColumns: Column[] = $derived([
-		{ id: 'name', label: t('web.accountDetail.colGroup'), sortable: true, width: 220 },
-		{ id: 'policies', label: t('web.accountDetail.colGroupPolicies') },
-		{ id: 'inline', label: t('web.accountDetail.colGroupInline'), width: 160 }
+		{ id: 'name', label: t('web.iamList.colGroupName'), sortable: true, width: 240 },
+		{ id: 'policies', label: t('web.iamList.colAttachedPolicies') }
 	]);
-
-	const policyColumns: Column[] = $derived([
-		{ id: 'name', label: t('web.accountDetail.colPolicy'), sortable: true, width: 260 },
-		{ id: 'kind', label: t('web.accountDetail.colPolicyKind'), sortable: true, width: 140 },
-		{ id: 'description', label: t('web.accountDetail.colPolicyDescription') }
-	]);
-
-	const inlineColumns: Column[] = $derived([
-		{ id: 'name', label: t('web.accountDetail.colInline'), sortable: true, width: 240 },
-		{ id: 'statements', label: t('web.accountDetail.colStatements'), width: 120 },
-		{ id: 'updated', label: t('web.accountDetail.colUpdated'), sortable: true, width: 180 },
-		{ id: 'updatedBy', label: t('web.accountDetail.colUpdatedBy'), sortable: true }
-	]);
-
-	function groupActions(row: AccountPermissions['groups'][number]): ContextMenuItem[] {
-		return [
-			{ label: t('web.accountDetail.openGroup'), icon: 'users', action: () => goto(`/console/iam/groups/${encodeURIComponent(row.name)}`) },
-			{ separator: true },
-			{ label: t('web.accountDetail.leaveGroup'), icon: 'userMinus', color: 'danger', action: () => askLeave(row) }
-		];
-	}
-
-	function policyActions(row: { name: string }): ContextMenuItem[] {
-		return [
-			{ label: t('web.accountDetail.openPolicy'), icon: 'shieldCheck', action: () => goto(`/console/iam/policies/${encodeURIComponent(row.name)}`) },
-			{ separator: true },
-			{ label: t('web.accountDetail.detachPolicy'), icon: 'unlink', color: 'danger', action: () => detach(row.name) }
-		];
-	}
-
-	function inlineActions(row: InlineView): ContextMenuItem[] {
-		return [
-			{ label: t('web.common.edit'), icon: 'pen', action: () => openInline(row) },
-			{ separator: true },
-			{ label: t('web.accountDetail.removeInline'), icon: 'trash', color: 'danger', action: () => askRemoveInline(row) }
-		];
-	}
-
-	/** The attached names as rows, with what the catalog says about each built-in. */
-	const policyRows = $derived(
-		(perms?.policies ?? []).map((name) => ({
-			name,
-			builtin: builtinPolicy(name) !== undefined,
-			description: builtinPolicy(name) ? t(builtinPolicy(name)!.descriptionKey) : ''
-		}))
-	);
 </script>
 
 <svelte:head><title>{detail?.account.username ?? id} | Luna Console</title></svelte:head>
@@ -973,19 +828,110 @@
 		</Flash>
 	{/if}
 
+	<Panel title={t('web.accountDetail.summary')}>
+		<InfoGrid cells={summaryCells}>
+			{#snippet custom(cell)}
+				{#if cell.id === 'resourceId'}
+					<CopyValue
+						value={iamResourceId('account', detail!.account.username)}
+						label={t('web.accountDetail.resourceId')}
+					/>
+				{:else if cell.id === 'access'}
+					<StatusBadge state={consoleAccess.state} label={consoleAccess.label} />
+				{:else if cell.id === 'accountId'}
+					<span class="mono dim">{detail!.account.id}</span>
+				{/if}
+			{/snippet}
+		</InfoGrid>
+	</Panel>
+
+	<div class="gap"></div>
+
 	<Tabs
 		tabs={[
-			{ id: 'details', label: t('web.accountDetail.tabDetails') },
 			{ id: 'permissions', label: t('web.accountDetail.tabPermissions') },
-			{ id: 'identities', label: t('web.accountDetail.tabIdentities') },
-			{ id: 'sessions', label: t('web.accountDetail.tabSessions') },
+			{ id: 'groups', label: t('web.accountDetail.tabGroups', { count: perms?.groups.length ?? 0 }) },
+			{ id: 'tags', label: t('web.accountDetail.tabTags') },
+			{ id: 'credentials', label: t('web.accountDetail.tabCredentials') },
 			{ id: 'activity', label: t('web.accountDetail.tabActivity') }
 		]}
 		bind:active={tab}
 	/>
 
 	<div class="tabbody">
-		{#if tab === 'details'}
+		{#if tab === 'permissions'}
+			{#if permsError}
+				<Flash kind="error">{t('web.accountDetail.permissionsLoadFailed', { detail: permsError })}</Flash>
+			{:else if !perms}
+				<p class="none dim">{t('web.common.loading')}</p>
+			{:else}
+				{#if perms.administrator}
+					<Flash kind="info">
+						<span class="adminrow">
+							<StatusBadge state="ok" label={t('web.accountDetail.administrator')} />
+							{t('web.accountDetail.administratorNotice')}
+						</span>
+					</Flash>
+					<div class="gap"></div>
+				{/if}
+
+				<PermissionsPolicies
+					subject={{ kind: 'account', username: perms.username, id: perms.accountId }}
+					permissions={perms}
+					onchange={loadPermissions}
+				/>
+			{/if}
+		{:else if tab === 'groups'}
+			{#if permsError}
+				<Flash kind="error">{t('web.accountDetail.permissionsLoadFailed', { detail: permsError })}</Flash>
+			{:else if !perms}
+				<p class="none dim">{t('web.common.loading')}</p>
+			{:else}
+				<Panel
+					title={t('web.accountDetail.groupsPanel')}
+					count={perms.groups.length}
+					description={t('web.accountDetail.groupsHint')}
+					flush
+				>
+					{#snippet actions()}
+						<Btn
+							icon="userMinus"
+							disabled={pickedGroups.length === 0}
+							title={pickedGroups.length === 0 ? t('web.accountDetail.pickGroups') : undefined}
+							onclick={() => askLeave(pickedGroups)}
+						>
+							{t('web.accountDetail.removeFromGroups', { count: pickedGroups.length })}
+						</Btn>
+						<Btn variant="primary" icon="userPlus" onclick={() => void openJoin()}>
+							{t('web.accountDetail.addToGroups')}
+						</Btn>
+					{/snippet}
+					<DataTable
+						columns={groupColumns}
+						rows={perms.groups}
+						getId={(row) => row.name}
+						selectable="multi"
+						bind:selected={selectedGroups}
+						rowActions={groupActions}
+						rowLabel={(row) => row.name}
+						emptyTitle={t('web.accountDetail.noGroupsTitle')}
+						emptyText={t('web.accountDetail.noGroups')}
+					>
+						{#snippet cell(row, col)}
+							{#if col === 'name'}
+								<a href={groupHref(row.name)}>{row.name}</a>
+							{:else if col === 'policies'}
+								<span class:dim={row.policies.length + row.inline.length === 0}>
+									{[...row.policies, ...row.inline].join(', ') || '–'}
+								</span>
+							{/if}
+						{/snippet}
+					</DataTable>
+				</Panel>
+			{/if}
+		{:else if tab === 'tags'}
+			<ResourceMeta id={iamResourceId('account', detail.account.username)} />
+		{:else if tab === 'credentials'}
 			<Panel title={t('web.accountDetail.avatarPanel')} description={t('web.accountDetail.avatarHint')}>
 				{#snippet actions()}
 					<Dropdown label={t('web.accountDetail.avatarOther')} menu={avatarVerbs} disabled={avatarBusy} />
@@ -1011,215 +957,17 @@
 
 			<div class="gap"></div>
 
-			<Panel title={t('web.accountDetail.summary')}>
-				<InfoGrid cells={summaryCells}>
-					{#snippet custom(cell)}
-						{#if cell.id === 'state'}
-							<StatusBadge
-								state={accountState(detail!.account)}
-								label={stateLabel(detail!.account)}
-							/>
-						{:else if cell.id === 'accountId'}
-							<span class="mono dim">{detail!.account.id}</span>
-						{:else if cell.id === 'sessions'}
-							{detail!.sessions.length}
-						{/if}
-					{/snippet}
-				</InfoGrid>
-			</Panel>
-
-			<div class="gap"></div>
-
-			<ResourceMeta id="luna:account/{detail.account.username}" />
-		{:else if tab === 'permissions'}
-			{#if permsError}
-				<Flash kind="error">{t('web.accountDetail.permissionsLoadFailed', { detail: permsError })}</Flash>
-			{:else if !perms}
-				<p class="none dim">{t('web.common.loading')}</p>
-			{:else}
-				{#if perms.administrator}
-					<Flash kind="info">
-						<span class="adminrow">
-							<StatusBadge state="ok" label={t('web.accountDetail.administrator')} />
-							{t('web.accountDetail.administratorNotice')}
-						</span>
-					</Flash>
-				{/if}
-
-				<Panel
-					title={t('web.accountDetail.groupsPanel')}
-					count={perms.groups.length}
-					description={t('web.accountDetail.groupsHint')}
-					flush
-				>
-					{#if perms.groups.length}
-						<DataTable
-							columns={groupColumns}
-							rows={perms.groups}
-							getId={(row) => row.id}
-							rowActions={groupActions}
-							rowLabel={(row) => row.name}
-						>
-							{#snippet cell(row, col)}
-								{#if col === 'name'}
-									<a href="/console/iam/groups/{encodeURIComponent(row.name)}"><b>{row.name}</b></a>
-								{:else if col === 'policies'}
-									<span class:dim={row.policies.length === 0}>{row.policies.join(', ') || '–'}</span>
-								{:else if col === 'inline'}
-									<span class:dim={row.inline.length === 0}>{row.inline.join(', ') || '–'}</span>
-								{/if}
-							{/snippet}
-						</DataTable>
-					{:else}
-						<p class="none dim">{t('web.accountDetail.noGroups')}</p>
-					{/if}
-				</Panel>
-
-				<div class="gap"></div>
-
-				<Panel
-					title={t('web.accountDetail.policiesPanel')}
-					count={policyRows.length}
-					description={t('web.accountDetail.policiesHint')}
-					flush
-				>
-					{#snippet actions()}
-						<Btn icon="plus" onclick={() => void openAttach()}>{t('web.accountDetail.attachPolicy')}</Btn>
-					{/snippet}
-					{#if policyRows.length}
-						<DataTable
-							columns={policyColumns}
-							rows={policyRows}
-							getId={(row) => row.name}
-							rowActions={policyActions}
-							rowLabel={(row) => row.name}
-						>
-							{#snippet cell(row, col)}
-								{#if col === 'name'}
-									<a href="/console/iam/policies/{encodeURIComponent(row.name)}"><b>{row.name}</b></a>
-								{:else if col === 'kind'}
-									{#if row.builtin}
-										<StatusBadge state="info" label={t('web.accountDetail.builtin')} />
-									{:else}
-										<span class="dim">{t('web.accountDetail.managed')}</span>
-									{/if}
-								{:else if col === 'description'}
-									<span class="dim">{row.description || '–'}</span>
-								{/if}
-							{/snippet}
-						</DataTable>
-					{:else}
-						<p class="none dim">{t('web.accountDetail.noPolicies')}</p>
-					{/if}
-				</Panel>
-
-				<div class="gap"></div>
-
-				<Panel
-					title={t('web.accountDetail.inlinePanel')}
-					count={perms.inline.length}
-					description={t('web.accountDetail.inlineHint')}
-					flush
-				>
-					{#snippet actions()}
-						<Btn icon="plus" onclick={() => openInline(null)}>{t('web.accountDetail.addInline')}</Btn>
-					{/snippet}
-					{#if perms.inline.length}
-						<DataTable
-							columns={inlineColumns}
-							rows={perms.inline}
-							getId={(row) => row.name}
-							rowActions={inlineActions}
-							rowLabel={(row) => row.name}
-							onRowClick={(row) => openInline(row)}
-						>
-							{#snippet cell(row, col)}
-								{#if col === 'name'}
-									<b class="mono">{row.name}</b>
-								{:else if col === 'statements'}
-									{row.document.Statement.length}
-								{:else if col === 'updated'}
-									<span class="dim">{fmtDateTime(row.updatedAt)}</span>
-								{:else if col === 'updatedBy'}
-									<span class:dim={!row.updatedBy}>{row.updatedBy ?? '–'}</span>
-								{/if}
-							{/snippet}
-						</DataTable>
-					{:else}
-						<p class="none dim">{t('web.accountDetail.noInline')}</p>
-					{/if}
-				</Panel>
-
-				<div class="gap"></div>
-
-				<Panel title={t('web.accountDetail.simulatePanel')} description={t('web.accountDetail.simulateHint')}>
-					<div class="simrow">
-						<Select label={t('web.accountDetail.simService')} bind:value={simService} options={serviceOptions} width="11rem" searchable />
-						<Select label={t('web.accountDetail.simAction')} bind:value={simAction} options={actionOptions} width="20rem" searchable />
-						<input
-							class="input mono simresource"
-							type="text"
-							placeholder="luna:instance/survival"
-							bind:value={simResource}
-							onkeydown={(event) => {
-								if (event.key === 'Enter') {
-									void simulate();
-								}
-							}}
-						/>
-						<Btn variant="primary" icon="play" loading={simBusy} disabled={!simAction} onclick={() => void simulate()}>
-							{t('web.accountDetail.simRun')}
-						</Btn>
-					</div>
-
-					{#if simResult}
-						<div class="simresult">
-							<StatusBadge
-								state={simResult.verdict.allowed ? 'ok' : 'failed'}
-								label={simResult.verdict.allowed ? t('web.accountDetail.simAllowed') : t('web.accountDetail.simDenied')}
-							/>
-							<span class="simreason">{reasonLabels[simResult.verdict.reason] ?? simResult.verdict.reason}</span>
-							<span class="mono dim simreq">
-								{simResult.request.action}
-								{#if simResult.request.resource}
-									{t('web.accountDetail.simOn')} {simResult.request.resource}
-								{/if}
-							</span>
-							{#if simResult.verdict.matched}
-								<span class="simmatch">
-									{t('web.accountDetail.simMatched', {
-										kind: sourceLabels[simResult.verdict.matched.source.kind] ?? simResult.verdict.matched.source.kind,
-										name: simResult.verdict.matched.source.name
-									})}
-									{#if simResult.verdict.matched.source.group}
-										{t('web.accountDetail.simViaGroup', { group: simResult.verdict.matched.source.group })}
-									{/if}
-									<span class="mono">
-										{simResult.verdict.matched.sid
-											? t('web.accountDetail.simSid', { sid: simResult.verdict.matched.sid })
-											: t('web.accountDetail.simStatement', { index: simResult.verdict.matched.index + 1 })}
-									</span>
-								</span>
-							{/if}
-							{#if simResult.resource}
-								<span class="dim simfacts">
-									{t('web.accountDetail.simResourceFacts', {
-										creator: simResult.resource.createdBy ?? '–',
-										tags: Object.entries(simResult.resource.tags).map(([key, value]) => `${key}=${value}`).join(', ') || '–'
-									})}
-								</span>
-							{/if}
-						</div>
-					{/if}
-				</Panel>
-			{/if}
-		{:else if tab === 'identities'}
 			<Panel
 				title={t('web.accountDetail.identitiesPanel')}
 				count={detail.account.identities.length}
 				description={t('web.accountDetail.identitiesHint')}
 				flush
 			>
+				{#snippet actions()}
+					<Btn icon="key" onclick={openPassword}>{t('web.accountDetail.setPassword')}</Btn>
+					<Btn icon="cube" onclick={() => openLink()}>{t('web.accountDetail.linkPlayer')}</Btn>
+					<Btn variant="primary" icon="terminal" onclick={openKey}>{t('web.accountDetail.createKey')}</Btn>
+				{/snippet}
 				{#if detail.account.identities.length}
 					<DataTable
 						columns={identityColumns}
@@ -1260,13 +1008,24 @@
 					<p class="none dim">{t('web.accountDetail.noIdentities')}</p>
 				{/if}
 			</Panel>
-		{:else if tab === 'sessions'}
+			<div class="gap"></div>
+
 			<Panel
 				title={t('web.accountDetail.sessionsPanel')}
 				count={detail.sessions.length}
 				description={t('web.accountDetail.sessionsHint')}
 				flush
 			>
+				{#snippet actions()}
+					<Btn
+						icon="rightFromBracket"
+						disabled={detail!.sessions.length === 0}
+						title={detail!.sessions.length ? undefined : t('web.accounts.noSessions')}
+						onclick={() => void revokeAll()}
+					>
+						{detail!.self ? t('web.accountDetail.revokeOthers') : t('web.accountDetail.revokeSessions')}
+					</Btn>
+				{/snippet}
 				{#if detail.sessions.length}
 					<DataTable
 						columns={sessionColumns}
@@ -1427,57 +1186,29 @@
 		{/snippet}
 	</Modal>
 
-	<Modal title={t('web.accountDetail.attachTitle')} bind:open={attachOpen}>
-		<p class="modalnote dim">{t('web.accountDetail.attachHint')}</p>
-		<div class="field">
-			<span class="lbl">{t('web.accountDetail.attachField')}</span>
-			<MultiSelect bind:value={attachPick} options={attachable} width="100%" placeholder={t('web.accountDetail.attachPlaceholder')} />
-		</div>
+	<Modal title={t('web.accountDetail.joinTitle', { name: detail.account.username })} bind:open={joinOpen} wide>
+		<p class="modalnote dim">{t('web.accountDetail.joinHint')}</p>
+		<GroupPickTable
+			tableId="account-join-groups"
+			groups={allGroups}
+			bind:selected={joinPicked}
+			locked={(row) => memberOf.has(row.name)}
+		/>
 
 		{#snippet footer()}
-			<Btn onclick={() => (attachOpen = false)}>{t('web.common.cancel')}</Btn>
-			<Btn variant="primary" disabled={attachPick.length === 0} loading={permsBusy} onclick={() => void attachPicked()}>
-				{t('web.accountDetail.attachAction', { count: attachPick.length })}
+			<Btn onclick={() => (joinOpen = false)}>{t('web.common.cancel')}</Btn>
+			<Btn variant="primary" disabled={joinPicked.size === 0} loading={busy} onclick={() => void joinConfirmed()}>
+				{t('web.accountDetail.joinAction', { count: joinPicked.size })}
 			</Btn>
 		{/snippet}
 	</Modal>
-
-	<Modal
-		title={inlineEditing ? t('web.accountDetail.inlineEditTitle', { name: inlineName }) : t('web.accountDetail.inlineAddTitle')}
-		bind:open={inlineOpen}
-		wide
-	>
-		<p class="modalnote dim">{t('web.accountDetail.inlineModalHint')}</p>
-		<label class="field">
-			<span class="lbl">{t('web.accountDetail.inlineName')}</span>
-			<input class="input mono" type="text" bind:value={inlineName} disabled={inlineEditing} />
-		</label>
-		<div class="field">
-			<span class="lbl">{t('web.accountDetail.inlineDocument')}</span>
-			<PolicyEditor bind:value={inlineYaml} />
-		</div>
-
-		{#snippet footer()}
-			<Btn onclick={() => (inlineOpen = false)}>{t('web.common.cancel')}</Btn>
-			<Btn variant="primary" disabled={!inlineReady} loading={permsBusy} onclick={() => void saveInline()}>
-				{t('web.common.save')}
-			</Btn>
-		{/snippet}
-	</Modal>
-
-	<ConfirmModal
-		bind:open={inlineRemoveOpen}
-		title={t('web.accountDetail.inlineRemoveTitle', { name: inlineToRemove?.name ?? '' })}
-		lead={t('web.accountDetail.inlineRemoveLead', { name: inlineToRemove?.name ?? '', account: detail.account.username })}
-		confirmLabel={t('web.accountDetail.removeInline')}
-		onconfirm={() => void removeInlineConfirmed()}
-	/>
 
 	<ConfirmModal
 		bind:open={leaveOpen}
-		title={t('web.accountDetail.leaveTitle', { group: groupToLeave?.name ?? '' })}
-		lead={t('web.accountDetail.leaveLead', { account: detail.account.username, group: groupToLeave?.name ?? '' })}
-		confirmLabel={t('web.accountDetail.leaveGroup')}
+		title={t('web.accountDetail.leaveGroupsTitle', { count: leaveRows.length })}
+		lead={t('web.accountDetail.leaveGroupsLead', { account: detail.account.username, groups: leaveRows.map((row) => row.name).join(', ') })}
+		notes={[t('web.accountDetail.leaveGroupsNote')]}
+		confirmLabel={t('web.common.remove')}
 		onconfirm={() => void leaveConfirmed()}
 	/>
 
@@ -1598,44 +1329,5 @@
 		align-items: center;
 		gap: 0.75rem;
 		flex-wrap: wrap;
-	}
-
-	.simrow {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		flex-wrap: wrap;
-	}
-
-	.simresource {
-		flex: 1 1 16rem;
-		min-width: 12rem;
-	}
-
-	// the verdict reads as one line: badge, reason, then what decided it
-	.simresult {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		flex-wrap: wrap;
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: var(--hairline) solid var(--border-divider);
-		font-size: 0.8125rem;
-	}
-
-	.simreq {
-		font-size: 0.75rem;
-	}
-
-	.simmatch {
-		display: inline-flex;
-		gap: 0.375rem;
-		flex-wrap: wrap;
-	}
-
-	.simfacts {
-		flex-basis: 100%;
-		font-size: 0.75rem;
 	}
 </style>

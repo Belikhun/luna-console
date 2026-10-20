@@ -16,6 +16,10 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
+	import OwnerCell from '$lib/components/OwnerCell.svelte';
+	import { loadResourceMeta } from '$lib/resourcemeta.svelte';
+	import { fmtDateTime } from '$lib/format';
+	import type { ResourceView } from '$core/resources';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -53,6 +57,45 @@
 
 	let data: any = $state(null);
 	let tab = $state('overview');
+
+	// each family build is its own resource (`name@family`); the summary names their creators
+	let familyMeta = $state<Record<string, ResourceView>>({});
+
+	const familyIds = $derived(
+		(data?.families ?? []).map((family: any) => `luna:plugin/${family.key}`) as string[]
+	);
+
+	const creators = $derived([
+		...new Set(
+			Object.values(familyMeta)
+				.map((view) => view.createdBy)
+				.filter((creator): creator is string => !!creator)
+		)
+	]);
+
+	const firstCreated = $derived.by(() => {
+		const stamps = Object.values(familyMeta)
+			.map((view) => view.createdAt)
+			.filter((stamp): stamp is number => !!stamp);
+
+		return stamps.length > 0 ? Math.min(...stamps) : null;
+	});
+
+	$effect(() => {
+		const ids = familyIds;
+
+		if (ids.length === 0) {
+			return;
+		}
+
+		void loadResourceMeta(ids)
+			.then((loaded) => {
+				familyMeta = loaded;
+			})
+			.catch(() => {
+				familyMeta = {};
+			});
+	});
 	let familySel = $state('');
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
@@ -309,7 +352,9 @@
 						.map((row: any) => row.instance)
 						.join(', ') || '(nowhere)',
 				colSpan: 2
-			}
+			},
+			{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
+			{ label: t('web.resourceMeta.createdAt'), value: firstCreated ? fmtDateTime(firstCreated) : null }
 		];
 	});
 
@@ -494,7 +539,8 @@
 		tabs={[
 			{ id: 'overview', label: t('web.addonDetail.overview') },
 			{ id: 'usage', label: t('web.addonDetail.instanceUsage') },
-			{ id: 'families', label: t('web.addonDetail.familiesVersions') }
+			{ id: 'families', label: t('web.addonDetail.familiesVersions') },
+			{ id: 'tags', label: t('web.resourceMeta.tags') }
 		]}
 		bind:active={tab}
 	/>
@@ -502,7 +548,20 @@
 	<div class="tabbody">
 		{#if tab === 'overview'}
 			<Panel title="{kindLabel.slice(0, -1)} summary">
-				<InfoGrid cells={overviewCells} />
+				<InfoGrid cells={overviewCells}>
+					{#snippet custom(cell)}
+						{#if cell.id === 'createdBy'}
+							{#if creators.length === 0}
+								<OwnerCell name={null} />
+							{:else}
+								{#each creators as creator, position (creator)}
+									{#if position > 0}<span class="dim">, </span>{/if}
+									<OwnerCell name={creator} />
+								{/each}
+							{/if}
+						{/if}
+					{/snippet}
+				</InfoGrid>
 			</Panel>
 			<div class="gap"></div>
 			{#each data.families as family (family.key)}
@@ -572,7 +631,16 @@
 				</Panel>
 				<div class="gap"></div>
 			{/each}
-			<ResourceMeta id="luna:plugin/{data.plugin}" />
+		{:else if tab === 'tags'}
+			{#each data.families as family, position (family.key)}
+				{#if position > 0}
+					<div class="gap"></div>
+				{/if}
+				<ResourceMeta
+					id="luna:plugin/{family.key}"
+					subject={data.families.length > 1 ? family.key : undefined}
+				/>
+			{/each}
 		{:else if tab === 'usage'}
 			<Panel
 				title="Instances using {data.plugin}"

@@ -5,74 +5,78 @@
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
-	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
-	import { api, del } from '$lib/api';
+	import { api } from '$lib/api';
 	import { fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
-	import Dropdown from '$lib/components/Dropdown.svelte';
-	import Tabs from '$lib/components/Tabs.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import ResourceTable from '$lib/components/ResourceTable.svelte';
+	import DataTable from '$lib/components/DataTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
-	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
-	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import type { Column } from '$lib/components/table';
+	import { Authz } from '$lib/authz.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import {
-		accountSearchHref,
 		attachedCount,
 		groupHref,
 		iamAuditLabel,
 		iamAuditTone,
 		keyIamAudit,
-		policyDeleteReason,
 		policyHref,
-		policyKindLabel,
 		type GroupRow,
 		type IamAuditRow,
 		type PolicyRow
-	} from './iam';
+	} from '$lib/iam';
+	import type { AccountSummary } from '$core/accounts';
+	import type { InlinePolicyCounts } from '$core/iam';
 
 	/**
-	 * Permissions: the policies that say what an account may do, the groups
-	 * those policies are attached to, and what was done to both. One subject read
-	 * three ways, like the Accounts screen, so three tabs rather than three screens.
+	 * The access management dashboard, AWS's IAM Dashboard: what is wrong with
+	 * the way access is set up right now, how many of each thing exist, the tools,
+	 * and the latest changes. Every fact here is computed from the lists the
+	 * other screens show, so it can never disagree with them.
 	 */
 
-	let policies: PolicyRow[] = $state([]);
-	let groups: GroupRow[] = $state([]);
-	let audit: IamAuditRow[] = $state([]);
+	/** The built-in policy that grants everything; core's `ADMINISTRATOR_POLICY`. */
+	const ADMINISTRATOR = 'AdministratorAccess';
 
+	/** Recent changes shown here; the full trail has its own screen. */
+	const RECENT = 8;
+
+	interface Recommendation {
+		id: string;
+		ok: boolean;
+		text: string;
+		/** where the operator goes to act on it */
+		href?: string;
+		link?: string;
+	}
+
+	let accounts: AccountSummary[] = $state([]);
+	let groups: GroupRow[] = $state([]);
+	let policies: PolicyRow[] = $state([]);
+	let audit: IamAuditRow[] = $state([]);
+	let inline = $state<InlinePolicyCounts | null>(null);
 	let loading = $state(false);
 	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
-	let tab = $state(page.url.searchParams.get('tab') ?? 'policies');
-	let selectedPolicies: Set<string> = $state(new Set());
-	let selectedGroups: Set<string> = $state(new Set());
-
-	let deletePoliciesOpen = $state(false);
-	let deletePolicyRows: PolicyRow[] = $state([]);
-	let deleteGroupsOpen = $state(false);
-	let deleteGroupRows: GroupRow[] = $state([]);
 
 	async function refresh(): Promise<void> {
 		loading = true;
 
 		try {
-			const [policyData, groupData, auditData] = await Promise.all([
-				api('/iam/policies'),
-				api('/iam/groups'),
-				api('/iam/audit?limit=500')
+			const [accountData, groupData, policyData] = await Promise.all([
+				api<{ accounts: AccountSummary[] }>('/accounts'),
+				api<{ groups: GroupRow[] }>('/iam/groups'),
+				api<{ policies: PolicyRow[] }>('/iam/policies')
 			]);
 
-			policies = policyData.policies;
+			accounts = accountData.accounts;
 			groups = groupData.groups;
-			audit = keyIamAudit(auditData.audit);
+			policies = policyData.policies;
 			lastUpdated = Date.now();
 		} catch (err) {
 			Notify.error(t('web.iam.loadFailed'), { detail: (err as Error).message });
@@ -80,468 +84,379 @@
 			loading = false;
 			loaded = true;
 		}
+
+		// the trail and the inline count are extras: either failing leaves the rest standing
+		const [auditData, overview] = await Promise.allSettled([
+			api<{ audit: IamAuditRow[] }>(`/iam/audit?limit=${RECENT}`),
+			api<{ inline: InlinePolicyCounts }>('/iam/overview')
+		]);
+
+		audit = auditData.status === 'fulfilled'
+			? keyIamAudit(auditData.value.audit)
+			: [];
+
+		inline = overview.status === 'fulfilled'
+			? overview.value.inline
+			: null;
 	}
 
 	onMount(() => {
 		void refresh();
 	});
 
-	const pickedPolicies = $derived(policies.filter((row) => selectedPolicies.has(row.name)));
-	const pickedGroups = $derived(groups.filter((row) => selectedGroups.has(row.name)));
+	const administrator = $derived(policies.find((policy) => policy.name === ADMINISTRATOR));
 
-	const counts = $derived({
-		builtin: policies.filter((row) => row.builtin).length,
-		managed: policies.filter((row) => !row.builtin).length,
-		members: groups.reduce((sum, group) => sum + group.members.length, 0)
-	});
+	/** Groups carrying the administrator policy; every member is an administrator. */
+	const adminGroups = $derived(
+		groups.filter((group) => group.policies.some((name) => name.toLowerCase() === ADMINISTRATOR.toLowerCase()))
+	);
 
-	async function runBulk<T extends { name: string }>(
-		rows: T[],
-		verb: string,
-		run: (row: T) => Promise<unknown>
-	): Promise<void> {
-		if (rows.length === 0) {
-			return;
+	/** Enabled accounts the administrator policy reaches, directly or through a group; core's own rule. */
+	const administrators = $derived(
+		accounts.filter(
+			(account) =>
+				account.enabled &&
+				((administrator?.attachedTo.accounts ?? []).includes(account.username) ||
+					adminGroups.some((group) => group.members.some((member) => member.id === account.id)))
+		)
+	);
+
+	const directAdmins = $derived(administrator?.attachedTo.accounts ?? []);
+
+	const noPassword = $derived(accounts.filter((account) => account.enabled && !account.hasPassword));
+
+	const ungrouped = $derived(
+		accounts.filter((account) => !groups.some((group) => group.members.some((member) => member.id === account.id)))
+	);
+
+	const unusedPolicies = $derived(policies.filter((policy) => !policy.builtin && attachedCount(policy) === 0));
+
+	const locked = $derived(accounts.filter((account) => account.enabled && account.lockedUntil));
+
+	const managedCount = $derived(policies.filter((policy) => !policy.builtin).length);
+	const builtinCount = $derived(policies.length - managedCount);
+
+	const recommendations: Recommendation[] = $derived.by(() => {
+		if (!loaded) {
+			return [];
 		}
 
-		const failed: string[] = [];
+		const out: Recommendation[] = [];
+		const adminCount = administrators.length;
 
-		for (const row of rows) {
-			try {
-				await run(row);
-			} catch (err) {
-				failed.push(`${row.name}: ${(err as Error).message}`);
-			}
-		}
+		out.push({
+			id: 'admins',
+			ok: adminCount > 1,
+			text: adminCount === 0
+				? t('web.iamDashboard.recNoAdmin')
+				: adminCount === 1
+					? t('web.iamDashboard.recOneAdmin', { name: administrators[0]!.username })
+					: t('web.iamDashboard.recAdmins', { count: adminCount }),
+			href: policyHref(ADMINISTRATOR),
+			link: t('web.iamDashboard.viewPolicy')
+		});
 
-		const done = rows.length - failed.length;
+		out.push({
+			id: 'direct',
+			ok: directAdmins.length === 0,
+			text: directAdmins.length === 0
+				? t('web.iamDashboard.recNoDirectAdmin')
+				: t('web.iamDashboard.recDirectAdmin', { count: directAdmins.length, names: directAdmins.join(', ') }),
+			href: directAdmins.length ? policyHref(ADMINISTRATOR) : undefined,
+			link: t('web.iamDashboard.viewEntities')
+		});
 
-		if (failed.length === 0) {
-			Notify.success(t('web.iam.bulkDone', { verb, count: done }));
-		} else if (done === 0) {
-			Notify.error(t('web.iam.bulkFailed', { verb }), { detail: failed.join('\n') });
-		} else {
-			Notify.warning(t('web.iam.bulkPartial', { verb, done, failed: failed.length }), {
-				detail: failed.join('\n')
+		out.push({
+			id: 'password',
+			ok: noPassword.length === 0,
+			text: noPassword.length === 0
+				? t('web.iamDashboard.recPasswords')
+				: t('web.iamDashboard.recNoPassword', { count: noPassword.length, names: noPassword.map((account) => account.username).join(', ') }),
+			href: noPassword.length ? '/console/accounts' : undefined,
+			link: t('web.iamDashboard.viewUsers')
+		});
+
+		out.push({
+			id: 'groups',
+			ok: ungrouped.length === 0,
+			text: ungrouped.length === 0
+				? t('web.iamDashboard.recGrouped')
+				: t('web.iamDashboard.recUngrouped', { count: ungrouped.length, names: ungrouped.map((account) => account.username).join(', ') }),
+			href: ungrouped.length ? '/console/iam/groups' : undefined,
+			link: t('web.iamDashboard.viewGroups')
+		});
+
+		out.push({
+			id: 'unused',
+			ok: unusedPolicies.length === 0,
+			text: unusedPolicies.length === 0
+				? t('web.iamDashboard.recPoliciesUsed')
+				: t('web.iamDashboard.recUnused', { count: unusedPolicies.length, names: unusedPolicies.map((policy) => policy.name).join(', ') }),
+			href: unusedPolicies.length ? '/console/iam/policies' : undefined,
+			link: t('web.iamDashboard.viewPolicies')
+		});
+
+		if (locked.length > 0) {
+			out.push({
+				id: 'locked',
+				ok: false,
+				text: t('web.iamDashboard.recLocked', { count: locked.length, names: locked.map((account) => account.username).join(', ') }),
+				href: '/console/accounts',
+				link: t('web.iamDashboard.viewUsers')
 			});
 		}
 
-		await refresh();
-	}
+		return out;
+	});
 
-	function removePolicies(rows: PolicyRow[]): void {
-		if (rows.length === 0) {
-			return;
-		}
-
-		deletePolicyRows = rows;
-		deletePoliciesOpen = true;
-	}
-
-	async function removePoliciesConfirmed(): Promise<void> {
-		await runBulk(deletePolicyRows, t('web.iam.verbDelete'), (row) => del(`/iam/policies/${encodeURIComponent(row.name)}`));
-	}
-
-	function removeGroups(rows: GroupRow[]): void {
-		if (rows.length === 0) {
-			return;
-		}
-
-		deleteGroupRows = rows;
-		deleteGroupsOpen = true;
-	}
-
-	async function removeGroupsConfirmed(): Promise<void> {
-		await runBulk(deleteGroupRows, t('web.iam.verbDelete'), (row) => del(`/iam/groups/${encodeURIComponent(row.name)}`));
-	}
-
-	function policyActions(rows: PolicyRow[]): ContextMenuItem[] {
-		const one = rows.length === 1 ? rows[0] : undefined;
-		const deletable = rows.filter((row) => !policyDeleteReason(row));
-
-		const deleteHint = one
-			? policyDeleteReason(one) || undefined
-			: deletable.length === 0
-				? t('web.iam.noneDeletable')
-				: undefined;
-
-		return [
-			{
-				label: t('web.iam.openPolicy'),
-				icon: 'circleInfo',
-				disabled: !one,
-				hint: one ? undefined : t('web.iam.pickOne'),
-				action: () => goto(policyHref(one!.name))
-			},
-			{
-				label: t('web.iam.viewDocument'),
-				icon: 'fileLines',
-				disabled: !one,
-				hint: one ? undefined : t('web.iam.pickOne'),
-				action: () => goto(`${policyHref(one!.name)}?tab=document`)
-			},
-			{ separator: true },
-			{
-				label: t('web.iam.deletePolicyAction', { count: deletable.length }),
-				icon: 'trash',
-				color: 'danger',
-				disabled: deletable.length === 0,
-				hint: deleteHint,
-				action: () => removePolicies(deletable)
-			}
-		];
-	}
-
-	function policyRowActions(row: PolicyRow): ContextMenuItem[] {
-		return policyActions(selectedPolicies.has(row.name) && pickedPolicies.length > 1 ? pickedPolicies : [row]);
-	}
-
-	function groupActions(rows: GroupRow[]): ContextMenuItem[] {
-		const one = rows.length === 1 ? rows[0] : undefined;
-
-		return [
-			{
-				label: t('web.iam.openGroup'),
-				icon: 'circleInfo',
-				disabled: !one,
-				hint: one ? undefined : t('web.iam.pickOne'),
-				action: () => goto(groupHref(one!.name))
-			},
-			{
-				label: t('web.iam.viewMembers'),
-				icon: 'users',
-				disabled: !one,
-				hint: one ? undefined : t('web.iam.pickOne'),
-				action: () => goto(`${groupHref(one!.name)}?tab=members`)
-			},
-			{ separator: true },
-			{
-				label: t('web.iam.deleteGroupAction', { count: rows.length }),
-				icon: 'trash',
-				color: 'danger',
-				disabled: rows.length === 0,
-				action: () => removeGroups(rows)
-			}
-		];
-	}
-
-	function groupRowActions(row: GroupRow): ContextMenuItem[] {
-		return groupActions(selectedGroups.has(row.name) && pickedGroups.length > 1 ? pickedGroups : [row]);
-	}
-
-	const headerMenu = $derived(
-		tab === 'groups'
-			? groupActions(pickedGroups)
-			: policyActions(pickedPolicies)
-	);
-
-	const headerDisabled = $derived(
-		tab === 'activity' || (tab === 'groups' ? pickedGroups.length === 0 : pickedPolicies.length === 0)
-	);
-
-	const policyColumns: Column[] = $derived([
-		{ id: 'name', label: t('web.iam.colName'), sortable: true, width: 220 },
-		{ id: 'kind', label: t('web.iam.colKind'), sortable: true, width: 120 },
-		{ id: 'description', label: t('web.iam.colDescription') },
-		{ id: 'statements', label: t('web.iam.colStatements'), sortable: true, width: 110 },
-		{ id: 'attached', label: t('web.iam.colAttachedTo'), sortable: true, width: 200 },
-		{ id: 'created', label: t('web.iam.colCreated'), sortable: true, width: 180, hidden: true },
-		{ id: 'updated', label: t('web.iam.colUpdated'), sortable: true, width: 180 }
-	]);
-
-	const policyFilters: TableFilterGroup<PolicyRow>[] = $derived([
-		{
-			id: 'kind',
-			label: t('web.iam.filterKind'),
-			options: [
-				{ value: 'any', label: t('web.iam.anyKind') },
-				{ value: 'managed', label: t('web.iam.managed'), match: (row) => !row.builtin },
-				{ value: 'builtin', label: t('web.iam.builtin'), match: (row) => row.builtin }
-			]
-		},
-		{
-			id: 'attached',
-			label: t('web.iam.filterAttached'),
-			options: [
-				{ value: 'any', label: t('web.iam.anyAttachment') },
-				{ value: 'attached', label: t('web.iam.attachedSomewhere'), match: (row) => attachedCount(row) > 0 },
-				{ value: 'unattached', label: t('web.iam.attachedNowhere'), match: (row) => attachedCount(row) === 0 }
-			]
-		}
-	]);
-
-	const groupColumns: Column[] = $derived([
-		{ id: 'name', label: t('web.iam.colName'), sortable: true, width: 220 },
-		{ id: 'description', label: t('web.iam.colDescription') },
-		{ id: 'members', label: t('web.iam.colMembers'), sortable: true, width: 110 },
-		{ id: 'policies', label: t('web.iam.colPolicies'), sortable: true, width: 110 },
-		{ id: 'created', label: t('web.iam.colCreated'), sortable: true, width: 180 },
-		{ id: 'updated', label: t('web.iam.colUpdated'), sortable: true, width: 180, hidden: true }
-	]);
+	const warnings = $derived(recommendations.filter((entry) => !entry.ok).length);
 
 	const auditColumns: Column[] = $derived([
-		{ id: 'when', label: t('web.iam.colWhen'), sortable: true, width: 180 },
-		{ id: 'action', label: t('web.iam.colAction'), sortable: true, width: 200 },
-		{ id: 'actor', label: t('web.iam.colActor'), sortable: true, width: 160 },
-		{ id: 'target', label: t('web.iam.colTarget'), sortable: true, width: 200 },
-		{ id: 'detail', label: t('web.iam.colDetail') }
+		{ id: 'when', label: t('web.iam.colWhen'), width: 180 },
+		{ id: 'action', label: t('web.iam.colAction'), width: 200 },
+		{ id: 'actor', label: t('web.iam.colActor'), width: 140 },
+		{ id: 'target', label: t('web.iam.colTarget') }
 	]);
-
-	const auditFilters: TableFilterGroup<IamAuditRow>[] = $derived([
-		{
-			id: 'kind',
-			label: t('web.iam.filterActivity'),
-			options: [
-				{ value: 'any', label: t('web.iam.anyActivity') },
-				{ value: 'policies', label: t('web.iam.policyActivity'), match: (row) => row.action.startsWith('policy.') },
-				{ value: 'groups', label: t('web.iam.groupActivity'), match: (row) => row.action.startsWith('group.') },
-				{
-					value: 'attachments',
-					label: t('web.iam.attachmentActivity'),
-					match: (row) => row.action === 'attach' || row.action === 'detach' || row.action.startsWith('inline.')
-				}
-			]
-		}
-	]);
-
-	function policySort(row: PolicyRow, col: string): string | number | null {
-		if (col === 'kind') {
-			return row.builtin ? 0 : 1;
-		}
-
-		if (col === 'statements') {
-			return row.document.Statement.length;
-		}
-
-		if (col === 'attached') {
-			return attachedCount(row);
-		}
-
-		if (col === 'created') {
-			return row.createdAt ?? 0;
-		}
-
-		if (col === 'updated') {
-			return row.updatedAt ?? 0;
-		}
-
-		return null;
-	}
-
-	function groupSort(row: GroupRow, col: string): string | number | null {
-		if (col === 'members') {
-			return row.members.length;
-		}
-
-		if (col === 'policies') {
-			return row.policies.length + row.inline.length;
-		}
-
-		if (col === 'created') {
-			return row.createdAt;
-		}
-
-		if (col === 'updated') {
-			return row.updatedAt;
-		}
-
-		return null;
-	}
 </script>
 
-<svelte:head><title>{t('web.iam.title')} | Luna Console</title></svelte:head>
+<svelte:head><title>{t('web.iamDashboard.title')} | Luna Console</title></svelte:head>
 
-<PageHeader title={t('web.iam.title')} count={policies.length + groups.length} description={t('web.iam.pageDescription')} info>
+<PageHeader title={t('web.iamDashboard.title')} description={t('web.iamDashboard.description')} info>
 	{#snippet actions()}
-		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-iam" />
-		<Dropdown label={t('web.common.actions')} disabled={headerDisabled} menu={headerMenu} />
-		<Btn variant={tab === 'groups' ? 'primary' : 'normal'} icon="users" href="/console/iam/groups/new">
-			{t('web.iam.createGroup')}
+		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="iam-dashboard" />
+		<Btn
+			icon="users"
+			href="/console/iam/groups/new"
+			disabled={!Authz.can('iam:CreateGroup')}
+			title={Authz.can('iam:CreateGroup') ? undefined : t('web.common.notAllowed', { action: 'iam:CreateGroup' })}
+		>
+			{t('web.iamList.createGroup')}
 		</Btn>
-		<Btn variant={tab === 'groups' ? 'normal' : 'primary'} icon="plus" href="/console/iam/policies/new">
-			{t('web.iam.createPolicy')}
+		<Btn
+			variant="primary"
+			icon="plus"
+			href="/console/iam/policies/new"
+			disabled={!Authz.can('iam:CreatePolicy')}
+			title={Authz.can('iam:CreatePolicy') ? undefined : t('web.common.notAllowed', { action: 'iam:CreatePolicy' })}
+		>
+			{t('web.iamList.createPolicy')}
 		</Btn>
 	{/snippet}
 </PageHeader>
 
-<OverviewBar title={t('web.iam.overview')}>
-	<OverviewCell label={t('web.iam.overviewPolicies')}>
-		{policies.length}
-		<span class="dim">({t('web.iam.overviewPolicyKinds', { managed: counts.managed, builtin: counts.builtin })})</span>
+<OverviewBar title={t('web.iamDashboard.resources')}>
+	<OverviewCell label={t('web.iamDashboard.users')}>
+		<a class="count" href="/console/accounts">{loaded ? accounts.length : '–'}</a>
 	</OverviewCell>
-	<OverviewCell label={t('web.iam.overviewGroups')}>{groups.length}</OverviewCell>
-	<OverviewCell label={t('web.iam.overviewMemberships')}>{counts.members}</OverviewCell>
-	<OverviewCell label={t('web.iam.overviewActivity')}>{audit.length}</OverviewCell>
+	<OverviewCell label={t('web.iamDashboard.groups')}>
+		<a class="count" href="/console/iam/groups">{loaded ? groups.length : '–'}</a>
+	</OverviewCell>
+	<OverviewCell label={t('web.iamDashboard.policies')}>
+		<a class="count" href="/console/iam/policies">{loaded ? policies.length : '–'}</a>
+		{#if loaded}
+			<span class="dim">{t('web.iamDashboard.policyKinds', { managed: managedCount, builtin: builtinCount })}</span>
+		{/if}
+	</OverviewCell>
+	<OverviewCell label={t('web.iamDashboard.inline')}>
+		{#if inline}
+			<span class="count">{inline.accounts + inline.groups}</span>
+			<span class="dim">{t('web.iamDashboard.inlineKinds', { accounts: inline.accounts, groups: inline.groups })}</span>
+		{:else}
+			<span class="dim">–</span>
+		{/if}
+	</OverviewCell>
 </OverviewBar>
 
-<Tabs
-	tabs={[
-		{ id: 'policies', label: t('web.iam.tabPolicies') },
-		{ id: 'groups', label: t('web.iam.tabGroups') },
-		{ id: 'activity', label: t('web.iam.tabActivity') }
-	]}
-	bind:active={tab}
-/>
+<div class="grid">
+	<Panel
+		title={t('web.iamDashboard.recommendations')}
+		count={loaded ? warnings : undefined}
+		description={t('web.iamDashboard.recommendationsHint')}
+	>
+		{#if !loaded}
+			<p class="dim none">{t('web.common.loading')}</p>
+		{:else}
+			<ul class="recs">
+				{#each recommendations as entry (entry.id)}
+					<li class:ok={entry.ok}>
+						<span class="mark">
+							<Icon
+								name={entry.ok ? 'circleCheck' : 'triangleExclamation'}
+								size="1rem"
+								style="solid"
+								color={entry.ok ? 'var(--success)' : 'var(--warning)'}
+							/>
+						</span>
+						<span class="text">{entry.text}</span>
+						{#if entry.href && entry.link}
+							<a class="go" href={entry.href}>{entry.link}</a>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Panel>
 
-<div class="tabbody">
-	{#if tab === 'policies'}
-		<Panel flush>
-			<ResourceTable
-				tableId="console-iam-policies"
-				loading={!loaded}
-				initialSearch={page.url.searchParams.get('q') ?? ''}
-				columns={policyColumns}
-				filters={policyFilters}
-				rows={policies}
-				getId={(row) => row.name}
-				searchValue={(row) => `${row.name} ${row.description}`}
-				searchPlaceholder={t('web.iam.searchPolicies')}
-				selectable="multi"
-				bind:selected={selectedPolicies}
-				rowActions={policyRowActions}
-				rowLabel={(row) => row.name}
-				noun={t('web.iam.policyNoun')}
-				onRowClick={(row) => goto(policyHref(row.name))}
-				sortValue={policySort}
-				emptyTitle={t('web.iam.noPoliciesTitle')}
-				emptyText={t('web.iam.noPoliciesText')}
-			>
-				{#snippet cell(row, col)}
-					{#if col === 'name'}
-						<a href={policyHref(row.name)}><b>{row.name}</b></a>
-					{:else if col === 'kind'}
-						<StatusBadge state={row.builtin ? 'info' : 'ok'} label={policyKindLabel(row)} />
-					{:else if col === 'description'}
-						<span class="dim text">{row.description || '–'}</span>
-					{:else if col === 'statements'}
-						<span class="mono">{row.document.Statement.length}</span>
-					{:else if col === 'attached'}
-						{#if attachedCount(row) === 0}
-							<span class="dim">{t('web.iam.attachedNowhere')}</span>
-						{:else}
-							<span>
-								{t('web.iam.attachedSummary', {
-									accounts: row.attachedTo.accounts.length,
-									groups: row.attachedTo.groups.length
-								})}
-							</span>
-						{/if}
-					{:else if col === 'created'}
-						<span class:dim={!row.createdAt}>{row.createdAt ? fmtDateTime(row.createdAt) : '–'}</span>
-					{:else if col === 'updated'}
-						<span class:dim={!row.updatedAt}>{row.updatedAt ? fmtDateTime(row.updatedAt) : '–'}</span>
-					{/if}
-				{/snippet}
-			</ResourceTable>
+	<div class="side">
+		<Panel title={t('web.iamDashboard.tools')}>
+			<ul class="tools">
+				<li>
+					<Icon name="flaskVial" size="1rem" style="solid" />
+					<span>
+						<a href="/console/iam/simulator">{t('web.iamDashboard.simulator')}</a>
+						<span class="dim">{t('web.iamDashboard.simulatorHint')}</span>
+					</span>
+				</li>
+				<li>
+					<Icon name="tags" size="1rem" style="solid" />
+					<span>
+						<a href="/console/resources">{t('web.iamDashboard.resourcesTool')}</a>
+						<span class="dim">{t('web.iamDashboard.resourcesToolHint')}</span>
+					</span>
+				</li>
+				<li>
+					<Icon name="clockRotateLeft" size="1rem" style="solid" />
+					<span>
+						<a href="/console/iam/activity">{t('web.iamDashboard.activityTool')}</a>
+						<span class="dim">{t('web.iamDashboard.activityToolHint')}</span>
+					</span>
+				</li>
+			</ul>
 		</Panel>
-	{:else if tab === 'groups'}
-		<Panel flush>
-			<ResourceTable
-				tableId="console-iam-groups"
-				loading={!loaded}
-				columns={groupColumns}
-				rows={groups}
-				getId={(row) => row.name}
-				searchValue={(row) => `${row.name} ${row.description} ${row.members.map((member) => member.username).join(' ')}`}
-				searchPlaceholder={t('web.iam.searchGroups')}
-				selectable="multi"
-				bind:selected={selectedGroups}
-				rowActions={groupRowActions}
-				rowLabel={(row) => row.name}
-				noun={t('web.iam.groupNoun')}
-				onRowClick={(row) => goto(groupHref(row.name))}
-				sortValue={groupSort}
-				emptyTitle={t('web.iam.noGroupsTitle')}
-				emptyText={t('web.iam.noGroupsText')}
-			>
-				{#snippet cell(row, col)}
-					{#if col === 'name'}
-						<a href={groupHref(row.name)}><b>{row.name}</b></a>
-					{:else if col === 'description'}
-						<span class="dim text">{row.description || '–'}</span>
-					{:else if col === 'members'}
-						<span class="mono">{row.members.length}</span>
-					{:else if col === 'policies'}
-						<span class="mono">{row.policies.length}</span>
-						{#if row.inline.length}
-							<span class="dim">· {t('web.iam.inlineShort', { count: row.inline.length })}</span>
-						{/if}
-					{:else if col === 'created'}
-						<span class="dim">{fmtDateTime(row.createdAt)}</span>
-					{:else if col === 'updated'}
-						<span class="dim">{fmtDateTime(row.updatedAt)}</span>
-					{/if}
-				{/snippet}
-			</ResourceTable>
-		</Panel>
-	{:else}
-		<Panel flush>
-			<ResourceTable
-				tableId="console-iam-audit"
-				loading={!loaded}
-				columns={auditColumns}
-				filters={auditFilters}
-				rows={audit}
-				getId={(row) => row.key}
-				searchValue={(row) => `${row.action} ${row.actor ?? ''} ${row.target ?? ''} ${row.detail ?? ''}`}
-				searchPlaceholder={t('web.iam.searchActivity')}
-				noun={t('web.iam.activityNoun')}
-				sortValue={(row, col) => (col === 'when' ? row.t : null)}
-				emptyTitle={t('web.iam.noActivityTitle')}
-				emptyText={t('web.iam.noActivityText')}
-			>
-				{#snippet cell(row, col)}
-					{#if col === 'when'}
-						<span class="dim">{fmtDateTime(row.t)}</span>
-					{:else if col === 'action'}
-						<StatusBadge state={iamAuditTone(row.action)} label={iamAuditLabel(row.action)} />
-					{:else if col === 'actor'}
-						<span class:dim={!row.actor}>{row.actor ?? t('web.iam.noActor')}</span>
-					{:else if col === 'target'}
-						{#if row.target?.startsWith('group ')}
-							<a href={groupHref(row.target.slice(6))}>{row.target}</a>
-						{:else if row.target && row.action.startsWith('policy.')}
-							<a href={policyHref(row.target)}>{row.target}</a>
-						{:else if row.target && (row.action === 'attach' || row.action === 'detach' || row.action.startsWith('inline.'))}
-							<a href={accountSearchHref(row.target)}>{row.target}</a>
-						{:else}
-							<span class:dim={!row.target}>{row.target ?? '–'}</span>
-						{/if}
-					{:else if col === 'detail'}
-						<span class="dim">{row.detail ?? '–'}</span>
-					{/if}
-				{/snippet}
-			</ResourceTable>
-		</Panel>
-	{/if}
+	</div>
 </div>
 
-<ConfirmModal
-	bind:open={deletePoliciesOpen}
-	title={t('web.iam.deletePolicyTitle', { count: deletePolicyRows.length })}
-	lead={t('web.iam.deletePolicyLead', { names: deletePolicyRows.map((row) => row.name).join(', ') })}
-	notes={[t('web.iam.deletePolicyNote')]}
-	confirmLabel={t('web.common.delete')}
-	onconfirm={() => void removePoliciesConfirmed()}
-/>
+<div class="gap"></div>
 
-<ConfirmModal
-	bind:open={deleteGroupsOpen}
-	title={t('web.iam.deleteGroupTitle', { count: deleteGroupRows.length })}
-	lead={t('web.iam.deleteGroupLead', { names: deleteGroupRows.map((row) => row.name).join(', ') })}
-	notes={[t('web.iam.deleteGroupNote')]}
-	confirmLabel={t('web.common.delete')}
-	onconfirm={() => void removeGroupsConfirmed()}
-/>
+<Panel title={t('web.iamDashboard.recent')} description={t('web.iamDashboard.recentHint')} flush>
+	{#snippet actions()}
+		<Btn icon="clockRotateLeft" href="/console/iam/activity">{t('web.iamDashboard.viewActivity')}</Btn>
+	{/snippet}
+	<DataTable
+		columns={auditColumns}
+		rows={audit}
+		getId={(row) => row.key}
+		loading={!loaded}
+		emptyTitle={t('web.iam.noActivityTitle')}
+		emptyText={t('web.iam.noActivityText')}
+	>
+		{#snippet cell(row, col)}
+			{#if col === 'when'}
+				<span class="dim">{fmtDateTime(row.t)}</span>
+			{:else if col === 'action'}
+				<StatusBadge state={iamAuditTone(row.action)} label={iamAuditLabel(row.action)} />
+			{:else if col === 'actor'}
+				<span class:dim={!row.actor}>{row.actor ?? t('web.iam.noActor')}</span>
+			{:else if col === 'target'}
+				{#if row.target?.startsWith('group ')}
+					<a href={groupHref(row.target.slice(6))}>{row.target}</a>
+				{:else if row.target && row.action.startsWith('policy.') && row.action !== 'policy.delete'}
+					<a href={policyHref(row.target)}>{row.target}</a>
+				{:else}
+					<span class:dim={!row.target}>{row.target ?? '–'}</span>
+				{/if}
+				{#if row.detail}
+					<span class="dim"> · {row.detail}</span>
+				{/if}
+			{/if}
+		{/snippet}
+	</DataTable>
+</Panel>
 
 <style lang="scss">
-	.tabbody {
+	.grid {
+		display: grid;
+		grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+		gap: 1rem;
 		margin-top: 1rem;
+		align-items: start;
+
+		@include below($bp-medium) {
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+
+	.side {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.gap {
+		height: 1rem;
+	}
+
+	.count {
+		font-size: 1.5rem;
+		font-weight: 700;
+		margin-right: 0.5rem;
+	}
+
+	.none {
+		margin: 0;
+		font-size: 0.875rem;
+	}
+
+	.recs {
+		display: flex;
+		flex-direction: column;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+
+		li {
+			display: flex;
+			align-items: flex-start;
+			gap: 0.75rem;
+			padding: 0.625rem 0;
+			border-bottom: 0.1rem solid var(--border-divider);
+			font-size: 0.875rem;
+
+			&:last-child {
+				border-bottom: none;
+			}
+		}
+	}
+
+	.mark {
+		display: inline-flex;
+		padding-top: 0.125rem;
 	}
 
 	.text {
-		@include ellipsis;
+		flex: 1;
+		min-width: 0;
+	}
 
-		display: block;
+	.go {
+		flex: none;
+		font-size: 0.8125rem;
+	}
+
+	.tools {
+		display: flex;
+		flex-direction: column;
+		gap: 0.875rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+
+		li {
+			display: flex;
+			align-items: flex-start;
+			gap: 0.75rem;
+			color: var(--text-secondary);
+
+			> span {
+				display: flex;
+				flex-direction: column;
+				gap: 0.125rem;
+				font-size: 0.875rem;
+			}
+		}
+
+		.dim {
+			font-size: 0.8125rem;
+		}
 	}
 </style>

@@ -12,6 +12,9 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
+	import OwnerCell from '$lib/components/OwnerCell.svelte';
+	import { loadOneResourceMeta } from '$lib/resourcemeta.svelte';
+	import type { ResourceView } from '$core/resources';
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -92,6 +95,20 @@
 	let missing = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let tab = $state('details');
+
+	// who defined the variable, for the summary; the Tags tab loads its own copy
+	let ownerMeta = $state<ResourceView | null>(null);
+
+	$effect(() => {
+		const target = `luna:env/${name}`;
+
+		ownerMeta = null;
+		void loadOneResourceMeta(target).then((view) => {
+			if (target === `luna:env/${name}`) {
+				ownerMeta = view;
+			}
+		});
+	});
 
 	/**
 	 * Values revealed this session, keyed by scope. Kept in memory only; a reload
@@ -294,6 +311,15 @@
 						label: t('web.envDetail.lastChanged'),
 						value: detail.updatedAt ? fmtDateTime(Date.parse(detail.updatedAt)) : '–'
 					},
+					...(detail.builtin
+						? []
+						: [
+								{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
+								{
+									label: t('web.resourceMeta.createdAt'),
+									value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null
+								}
+							]),
 					{ id: 'scopes', label: t('web.envDetail.definedAt') },
 					{ id: 'refs', label: t('web.envDetail.referencedBy') },
 					{ id: 'consumers', label: t('web.envDetail.resolvedBy') }
@@ -372,7 +398,9 @@
 			{ id: 'details', label: t('web.envDetail.details') },
 			{ id: 'usage', label: t('web.envDetail.usage') },
 			{ id: 'resolution', label: t('web.envDetail.resolution') },
-			{ id: 'history', label: t('web.envDetail.history') }
+			{ id: 'history', label: t('web.envDetail.history') },
+			// a builtin is computed per instance, so there is no resource to tag
+			...(detail.builtin ? [] : [{ id: 'tags', label: t('web.resourceMeta.tags') }])
 		]}
 		bind:active={tab}
 	/>
@@ -396,6 +424,8 @@
 							{detail!.references.length} reference(s)
 						{:else if cell.id === 'consumers'}
 							{detail!.consumers.length} instance(s)
+						{:else if cell.id === 'createdBy'}
+							<OwnerCell name={ownerMeta?.createdBy} />
 						{/if}
 					{/snippet}
 				</InfoGrid>
@@ -464,8 +494,6 @@
 				</Flash>
 			{/if}
 
-			<div class="gap"></div>
-			<ResourceMeta id="luna:env/{name}" />
 		{:else if tab === 'usage'}
 			<Panel
 				title={t('web.envDetail.managedConfigFiles')}
@@ -622,6 +650,8 @@
 					</p>
 				{/if}
 			</Panel>
+		{:else if tab === 'tags'}
+			<ResourceMeta id="luna:env/{name}" />
 		{/if}
 	</div>
 {/if}

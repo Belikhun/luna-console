@@ -30,6 +30,8 @@
 	import FileDrop from '$lib/components/FileDrop.svelte';
 	import InlineEdit from '$lib/components/InlineEdit.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
+	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
 	 * Resource packs: the luna-pack proxy plugin's catalog in <root>/packs.
@@ -466,6 +468,12 @@
 
 	// -- table ---------------------------------------------------------------------------
 
+	const meta = new ResourceMetaIndex('pack');
+
+	$effect(() => {
+		void meta.sync(packs.map((row) => row.key));
+	});
+
 	const columns: Column[] = $derived([
 		{ id: 'name', label: t('web.packs.pack2'), sortable: true, minWidth: 160 },
 		// the badge plus a registration tag ("plugin", "overrides plugin") needs the room
@@ -477,7 +485,8 @@
 		{ id: 'size', label: t('web.packs.size'), sortable: true, width: 100, align: 'right' },
 		{ id: 'source', label: t('web.packs.source'), sortable: true, minWidth: 140 },
 		{ id: 'version', label: t('web.packs.version') },
-		{ id: 'auto', label: t('web.packs.autoUpdate'), sortable: true }
+		{ id: 'auto', label: t('web.packs.autoUpdate'), sortable: true },
+		...resourceMetaColumns()
 	]);
 
 	/**
@@ -511,7 +520,7 @@
 				return row.autoUpdate ? 0 : 1;
 
 			default:
-				return null;
+				return meta.sortValue(row.key, col);
 		}
 	}
 
@@ -713,7 +722,7 @@
 		getId={(row) => row.key}
 		searchValue={(row) =>
 			`${row.key} ${row.name} ${row.source} ${row.servers.join(' ')} ` +
-			`${row.groups.join(' ')} ${row.versionNumber ?? ''}`}
+			`${row.groups.join(' ')} ${row.versionNumber ?? ''} ${meta.searchText(row.key)}`}
 		searchPlaceholder={t('web.packs.findAResourcePack')}
 		selectable="multi"
 		bind:selected
@@ -814,6 +823,8 @@
 				<span class="mono">{row.versionNumber ?? '–'}</span>
 			{:else if col === 'auto'}
 				<StatusBadge state={row.autoUpdate ? 'ok' : 'stopped'} label={row.autoUpdate ? 'On' : 'Off'} />
+			{:else if col === 'createdBy' || col === 'tags'}
+				<ResourceMetaCell index={meta} names={row.key} {col} />
 			{/if}
 		{/snippet}
 	</ResourceTable>

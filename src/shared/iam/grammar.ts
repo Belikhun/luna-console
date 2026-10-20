@@ -54,6 +54,14 @@ export interface PolicySource {
 	group?: string;
 }
 
+/**
+ * A key naming one attachment: the same policy reached directly and through a
+ * group are two attachments, and a simulation can leave either one out.
+ */
+export function policySourceKey(source: PolicySource): string {
+	return `${source.kind}:${source.group ?? ""}:${source.name}`;
+}
+
 export interface AttachedDocument {
 	source: PolicySource;
 	document: PolicyDocument;

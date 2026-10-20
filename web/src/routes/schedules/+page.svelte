@@ -20,6 +20,8 @@
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
+	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
 	 * Instance schedules, EventBridge-Scheduler style: one-time, cron or rate
@@ -141,6 +143,25 @@
 		}
 	}
 
+	const meta = new ResourceMetaIndex('schedule');
+
+	$effect(() => {
+		void meta.sync(schedules.map((schedule) => schedule.id));
+	});
+
+	function sortValue(schedule: Schedule, col: string): string | number | null {
+		switch (col) {
+			case 'name':
+				return schedule.name;
+
+			case 'next':
+				return schedule.nextRun ? new Date(schedule.nextRun).getTime() : Number.MAX_SAFE_INTEGER;
+
+			default:
+				return meta.sortValue(schedule.id, col);
+		}
+	}
+
 	const columns: Column[] = $derived([
 		{ id: 'state', label: t('web.schedules.colState'), width: 90 },
 		{ id: 'name', label: t('web.common.name'), sortable: true },
@@ -149,7 +170,8 @@
 		{ id: 'trigger', label: t('web.schedules.colTrigger') },
 		{ id: 'next', label: t('web.schedules.colNext'), sortable: true },
 		{ id: 'last', label: t('web.schedules.colLast') },
-		{ id: 'runs', label: t('web.schedules.colRuns'), width: 90, align: 'right' }
+		{ id: 'runs', label: t('web.schedules.colRuns'), width: 90, align: 'right' },
+		...resourceMetaColumns()
 	]);
 
 	/** A schedule's verbs; the row menu and the toolbar's Actions button. */
@@ -186,7 +208,8 @@
 			schedule.instances.join(' '),
 			triggerText(schedule),
 			schedule.enabled ? 'enabled' : 'disabled',
-			schedule.lastOutcome ?? ''
+			schedule.lastOutcome ?? '',
+			meta.searchText(schedule.id)
 		].join(' ');
 
 	const eventCols: Column[] = $derived([
@@ -230,6 +253,7 @@
 		rows={schedules}
 		getId={(schedule) => schedule.id}
 		searchValue={scheduleText}
+		{sortValue}
 		searchPlaceholder={t('web.schedules.searchPlaceholder')}
 		selectable="single"
 		bind:selected
@@ -271,6 +295,8 @@
 				{/if}
 			{:else if col === 'runs'}
 				{schedule.runs}{schedule.maxRuns ? ` / ${schedule.maxRuns}` : ''}
+			{:else if col === 'createdBy' || col === 'tags'}
+				<ResourceMetaCell index={meta} names={schedule.id} {col} />
 			{/if}
 		{/snippet}
 	</ResourceTable>

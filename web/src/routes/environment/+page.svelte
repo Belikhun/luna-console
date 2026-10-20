@@ -19,6 +19,8 @@
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
 	 * Environment manager: the variables every instance's JVM inherits at startup
@@ -211,12 +213,36 @@
 		revealed = next;
 	}
 
+	// a variable is one resource however many scoped values it has
+	const meta = new ResourceMetaIndex('env');
+
+	$effect(() => {
+		void meta.sync(rows.map((row) => row.name));
+	});
+
+	function sortValue(row: ValueRow, col: string): string | number | null {
+		switch (col) {
+			case 'name':
+				return row.name;
+
+			case 'source':
+				return row.scope;
+
+			case 'target':
+				return row.target ?? '';
+
+			default:
+				return meta.sortValue(row.name, col);
+		}
+	}
+
 	const columns: Column[] = $derived([
 		{ id: 'name', label: t('web.common.name'), sortable: true, width: 230 },
 		{ id: 'value', label: t('web.common.value') },
 		{ id: 'source', label: t('web.env.colSource'), sortable: true, width: 120 },
 		{ id: 'target', label: t('web.env.colTarget'), sortable: true, width: 190 },
-		{ id: 'description', label: t('web.env.colDescription') }
+		{ id: 'description', label: t('web.env.colDescription') },
+		...resourceMetaColumns()
 	]);
 
 	const filters: TableFilterGroup<ValueRow>[] = $derived([
@@ -243,7 +269,8 @@
 				{ value: 'secret', label: t('web.env.secret'), match: (row) => row.secret },
 				{ value: 'plain', label: t('web.env.plain'), match: (row) => !row.secret }
 			]
-		}
+		},
+		meta.tagFilter<ValueRow>((row) => row.name)
 	]);
 
 	function rowActions(row: ValueRow): ContextMenuItem[] {
@@ -315,7 +342,8 @@
 		{rows}
 		getId={(row) => row.id}
 		searchValue={(row) =>
-			`${row.name} ${row.secret ? 'secret' : row.value} ${row.scope} ${row.target ?? ''} ${row.description}`}
+			`${row.name} ${row.secret ? 'secret' : row.value} ${row.scope} ${row.target ?? ''} ${row.description} ${meta.searchText(row.name)}`}
+		{sortValue}
 		searchPlaceholder={t('web.env.searchPlaceholder')}
 		selectable="single"
 		bind:selected
@@ -362,6 +390,8 @@
 				{:else}
 					<span class="dim">{row.description || '–'}</span>
 				{/if}
+			{:else if col === 'createdBy' || col === 'tags'}
+				<ResourceMetaCell index={meta} names={row.name} {col} />
 			{/if}
 		{/snippet}
 	</ResourceTable>

@@ -154,6 +154,34 @@ const pages = (): SearchHit[] => [
 	},
 	{
 		group: 'web.searchGroups.pages',
+		label: t('web.nav.accessManagement'),
+		detail: t('web.searchPages.iamDashboard'),
+		href: '/console/iam',
+		icon: 'grid2'
+	},
+	{
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.iamGroups'),
+		detail: t('web.searchPages.iamGroups'),
+		href: '/console/iam/groups',
+		icon: 'users'
+	},
+	{
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.iamPolicies'),
+		detail: t('web.searchPages.iamPolicies'),
+		href: '/console/iam/policies',
+		icon: 'shieldCheck'
+	},
+	{
+		group: 'web.searchGroups.pages',
+		label: t('web.nav.iamSimulator'),
+		detail: t('web.searchPages.iamSimulator'),
+		href: '/console/iam/simulator',
+		icon: 'flaskVial'
+	},
+	{
+		group: 'web.searchGroups.pages',
 		label: t('web.nav.mcp'),
 		detail: t('web.searchPages.mcp'),
 		href: '/console/mcp',

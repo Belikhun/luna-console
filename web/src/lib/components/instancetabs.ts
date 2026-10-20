@@ -29,6 +29,7 @@ export const INSTANCE_TABS = [
 	'environment',
 	'logs',
 	'config',
+	'tags',
 ] as const;
 
 export type InstanceTab = (typeof INSTANCE_TABS)[number];
@@ -61,6 +62,7 @@ export const INSTANCE_TAB_LABELS: Record<InstanceTab, string> = {
 	environment: 'web.instanceDetail.environment',
 	logs: 'web.instanceDetail.logs',
 	config: 'web.instanceDetail.configuration',
+	tags: 'web.instanceDetail.tags',
 };
 
 /** Whether a path segment names a tab. */

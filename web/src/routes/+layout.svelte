@@ -234,11 +234,19 @@
 			items: [{ label: t('web.nav.machines'), href: '/machines', icon: 'hardDrive' }]
 		},
 		{
+			section: t('web.nav.accessManagement'),
+			items: [
+				{ label: t('web.nav.iamDashboard'), href: '/console/iam', icon: 'grid2' },
+				{ label: t('web.nav.iamUsers'), href: '/console/accounts', icon: 'userShield' },
+				{ label: t('web.nav.iamGroups'), href: '/console/iam/groups', icon: 'users' },
+				{ label: t('web.nav.iamPolicies'), href: '/console/iam/policies', icon: 'shieldCheck' },
+				{ label: t('web.nav.iamSimulator'), href: '/console/iam/simulator', icon: 'flaskVial' },
+				{ label: t('web.nav.resourcesTags'), href: '/console/resources', icon: 'tags' }
+			]
+		},
+		{
 			section: t('web.nav.console'),
 			items: [
-				{ label: t('web.nav.accounts'), href: '/console/accounts', icon: 'userShield' },
-				{ label: t('web.nav.iam'), href: '/console/iam', icon: 'shieldCheck' },
-				{ label: t('web.nav.resources'), href: '/console/resources', icon: 'tags' },
 				{ label: t('web.nav.agent'), href: '/console/agent', icon: 'cat' },
 				{ label: t('web.nav.mcp'), href: '/console/mcp', icon: 'plug' },
 				{ label: t('web.nav.knowledge'), href: '/console/knowledge', icon: 'bookOpen' },
@@ -333,6 +341,16 @@
 		'/console/accounts/[id]/edit',
 		'/console/accounts/new',
 		'/console/agent',
+		'/console/iam',
+		'/console/iam/activity',
+		'/console/iam/groups',
+		'/console/iam/groups/[name]',
+		'/console/iam/groups/new',
+		'/console/iam/policies',
+		'/console/iam/policies/[name]',
+		'/console/iam/policies/[name]/edit',
+		'/console/iam/policies/new',
+		'/console/iam/simulator',
 		'/console/knowledge',
 		'/console/knowledge/[id]',
 		'/console/knowledge/new',
@@ -384,6 +402,19 @@
 		'/schedules/new'
 	]);
 
+	/**
+	 * Route literals whose title-cased slug would read wrong: `iam` is not a
+	 * word, and AWS calls the groups screen "User groups". Keyed by route id, so
+	 * a dynamic segment that happens to spell one of these is untouched.
+	 */
+	const ROUTE_LABELS: Record<string, string> = $derived({
+		'/console/iam': t('web.nav.accessManagement'),
+		'/console/iam/groups': t('web.nav.iamGroups'),
+		'/console/iam/policies': t('web.nav.iamPolicies'),
+		'/console/iam/simulator': t('web.nav.iamSimulator'),
+		'/console/iam/activity': t('web.nav.iamActivity')
+	});
+
 	const crumbs = $derived.by(() => {
 		const parts = page.url.pathname.split('/').filter(Boolean);
 		// the matching route id, which is what says whether a segment is a literal
@@ -420,6 +451,7 @@
 			const label =
 				crumbLabel(path) ??
 				tabLabel ??
+				(!dynamic ? ROUTE_LABELS[route] : undefined) ??
 				(!dynamic && /^[a-z]+$/.test(part) ? part.charAt(0).toUpperCase() + part.slice(1) : part);
 
 			out.push({ label, href: PAGE_ROUTES.has(route) ? path : '' });

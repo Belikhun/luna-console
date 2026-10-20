@@ -45,6 +45,8 @@
 		AddonUpdate
 	} from '$lib/components/addoncatalog';
 	import { CATALOG_KINDS } from '$lib/components/addoncatalog';
+	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
+	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 
 	/**
 	 * The addon universe of one kind, one row per *identity*; an addon's paper,
@@ -118,6 +120,15 @@
 		updates.filter((candidate) => !candidate.groups.length && catalogKeys.has(candidate.name))
 	);
 
+	// one row is a plugin, but each family build is its own resource (`name@family`)
+	const meta = new ResourceMetaIndex('plugin');
+
+	const familyKeys = (row: AddonRow): string[] => row.families.map((family) => family.key);
+
+	$effect(() => {
+		void meta.sync(addons.flatMap(familyKeys));
+	});
+
 	const filters: TableFilterGroup<AddonRow>[] = $derived([
 		{
 			id: 'source',
@@ -163,7 +174,8 @@
 				{ value: 'auto-off', label: t('web.catalog.autoOff'), match: (row) => !row.autoUpdate },
 				{ value: 'pinned', label: t('web.catalog.hasPinned'), match: (row) => row.pinned }
 			]
-		}
+		},
+		meta.tagFilter<AddonRow>(familyKeys)
 	]);
 
 	const columns: Column[] = $derived([
@@ -175,7 +187,8 @@
 		{ id: 'version', label: t('web.groups.colVersion') },
 		{ id: 'update', label: t('web.catalog.colUpdate') },
 		{ id: 'auto', label: t('web.catalog.colAuto'), sortable: true },
-		{ id: 'targets', label: t('web.catalog.colTargets') }
+		{ id: 'targets', label: t('web.catalog.colTargets') },
+		...resourceMetaColumns()
 	]);
 
 	// The summary dialog's own table. No tableId on purpose: it would grow a
@@ -657,7 +670,7 @@
 		searchValue={(row) =>
 			`${row.plugin} ${row.displayName} ${row.sources.join(' ')} ${row.families
 				.map((family) => `${family.family} ${family.version ?? ''}`)
-				.join(' ')} ${row.effective.join(' ')} ${row.description ?? ''}`}
+				.join(' ')} ${row.effective.join(' ')} ${row.description ?? ''} ${meta.searchText(familyKeys(row))}`}
 		searchPlaceholder={t('web.catalog.findPlaceholder', { noun: t(spec.noun) })}
 		selectable="single"
 		bind:selected
@@ -671,7 +684,7 @@
 					? row.sources.join(',')
 					: col === 'auto'
 						? String(row.autoUpdate)
-						: ''}
+						: (meta.sortValue(familyKeys(row), col) ?? '')}
 		onRowClick={(row) => goto(`/plugins/${row.plugin}`)}
 		{filters}
 		pageSize={25}
@@ -728,6 +741,8 @@
 				/>
 			{:else if col === 'targets'}
 				<span class="dim">{row.effective.join(', ') || '–'}</span>
+			{:else if col === 'createdBy' || col === 'tags'}
+				<ResourceMetaCell index={meta} names={familyKeys(row)} {col} />
 			{/if}
 		{/snippet}
 	</ResourceTable>

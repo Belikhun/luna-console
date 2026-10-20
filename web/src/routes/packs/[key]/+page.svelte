@@ -13,6 +13,9 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
+	import OwnerCell from '$lib/components/OwnerCell.svelte';
+	import { loadOneResourceMeta } from '$lib/resourcemeta.svelte';
+	import type { ResourceView } from '$core/resources';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Modal from '$lib/components/Modal.svelte';
@@ -56,6 +59,20 @@
 
 	let detail: any = $state(null);
 	let tab = $state('overview');
+
+	// who added the pack, for the summary; the Tags tab loads its own copy
+	let ownerMeta = $state<ResourceView | null>(null);
+
+	$effect(() => {
+		const target = `luna:pack/${key}`;
+
+		ownerMeta = null;
+		void loadOneResourceMeta(target).then((view) => {
+			if (target === `luna:pack/${key}`) {
+				ownerMeta = view;
+			}
+		});
+	});
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
 	let busy = $state('');
@@ -624,6 +641,11 @@
 					? 'differs from the version recorded in packs.lock.json; the file was replaced by hand'
 					: undefined
 			},
+			{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
+			{
+				label: t('web.resourceMeta.createdAt'),
+				value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null
+			},
 			{
 				label: t('web.packDetail.description'),
 				value: manifest.description ?? null,
@@ -835,7 +857,8 @@
 		{
 			id: 'traffic',
 			label: detail?.traffic.available ? `Traffic (${detail.traffic.requests})` : 'Traffic'
-		}
+		},
+		{ id: 'tags', label: t('web.resourceMeta.tags') }
 	]);
 </script>
 
@@ -938,6 +961,8 @@
 											href={pack.providerUrl}
 											label={sourceLabel}
 										/>
+									{:else if cell.id === 'createdBy'}
+										<OwnerCell name={ownerMeta?.createdBy} />
 									{:else if cell.id === 'groups'}
 										{#if pack.groups.length}
 											{#each pack.groups as group, index (group)}
@@ -1081,7 +1106,6 @@
 						</p>
 					{/if}
 				</Panel>
-				<ResourceMeta id="luna:pack/{pack.key}" />
 			</div>
 		{:else if tab === 'backends'}
 			<Panel
@@ -1262,6 +1286,8 @@
 					</DataTable>
 				</Panel>
 			{/if}
+		{:else if tab === 'tags'}
+			<ResourceMeta id="luna:pack/{pack.key}" />
 		{/if}
 	</div>
 {/if}

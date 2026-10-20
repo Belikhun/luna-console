@@ -26,9 +26,12 @@ export type {
 	GroupSummary,
 	IamAuditAction,
 	IamAuditEntry,
+	InlinePolicyCounts,
 	InlineView,
 	PolicyPatch,
 	PolicySummary,
+	PolicyValidationResult,
+	SimulationOptions,
 	SimulationResult,
 } from "../../core/iam";
 
@@ -53,4 +56,6 @@ export const principalContext = call("iam.principalContext") as typeof core.prin
 export const accountPermissions = call("iam.accountPermissions") as typeof core.accountPermissions;
 export const authorize = call("iam.authorize") as typeof core.authorize;
 export const authorizeMany = call("iam.authorizeMany") as typeof core.authorizeMany;
+export const simulatePrincipal = call("iam.simulatePrincipal") as typeof core.simulatePrincipal;
+export const inlinePolicyCounts = call("iam.inlineCounts") as typeof core.inlinePolicyCounts;
 export const iamAudit = call("iam.audit") as typeof core.iamAudit;

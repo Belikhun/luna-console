@@ -53,7 +53,9 @@
 		emptyText = '',
 		defaultSort,
 		noun = 'resource',
-		loading = false
+		loading = false,
+		expanded,
+		expandable
 	}: {
 		/** required; preferences (columns, page size, density) are stored per table */
 		tableId: string;
@@ -95,6 +97,10 @@
 		noun?: string;
 		/** the rows are still on their way; the table shows ghost rows until some arrive */
 		loading?: boolean;
+		/** a row's unfolded body; adds the expander column (see DataTable) */
+		expanded?: Snippet<[T]>;
+		/** rows that may unfold; every row when omitted */
+		expandable?: (row: T) => boolean;
 	} = $props();
 
 	// seeded once from the prop on purpose: after that the box owns the query
@@ -157,6 +163,8 @@
 	{maxHeight}
 	{rowActions}
 	{rowLabel}
+	{expanded}
+	{expandable}
 	loading={loading && rows.length === 0}
 	emptyTitle={noMatch ? `No ${noun} matches your search` : emptyTitle}
 	emptyText={noMatch ? 'Nothing here answers the current search and filters.' : emptyText}

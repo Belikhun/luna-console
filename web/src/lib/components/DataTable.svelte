@@ -63,7 +63,9 @@
 		emptyExtra,
 		defaultSort,
 		filtersActive = $bindable(false),
-		loading = false
+		loading = false,
+		expanded,
+		expandable
 	}: {
 		/** persistence key for column prefs */
 		tableId?: string;
@@ -125,6 +127,11 @@
 		 *  in place of the empty state, which would claim there is nothing; with
 		 *  some, a refresh keeps showing them */
 		loading?: boolean;
+		/** a row's expanded body, drawn under it across the table; giving it adds a
+		 *  leading expander column, the way a policy list unfolds its document */
+		expanded?: Snippet<[T]>;
+		/** rows that may unfold; every row when omitted */
+		expandable?: (row: T) => boolean;
 	} = $props();
 
 	// untracked on purpose: preferences are read once per mount, and a table's
@@ -137,6 +144,9 @@
 
 	/** px; mirrors the `2.75rem` the selection column is given in CSS */
 	const SEL_COL_W = 44;
+
+	/** px; mirrors the `2.25rem` the expander column is given in CSS */
+	const EXP_COL_W = 36;
 
 	/**
 	 * px; how far the container may drift before the measured widths are re-fitted
@@ -151,12 +161,13 @@
 	/** px per rem, for turning measured geometry back into the rem scale */
 	const REM = 16;
 
-	// the column set is a static declaration of the screen, captured once so the
-	// stored order and hidden set below stay the user's, not the author's
-	const defaultHidden = untrack(() => columns.filter((col) => col.hidden).map((col) => col.id));
-
+	// `hidden` is what the reader hid; a column the author hides by default stays
+	// hidden until the reader turns it on, which `shown` remembers. Kept apart
+	// so that turning one on survives a reload, and so that a column arriving
+	// later (one per tag key, say) still starts hidden when its author says so
 	let widths: Record<string, number> = $state(initial.widths);
-	let hidden: Set<string> = $state(new Set([...initial.hidden, ...defaultHidden]));
+	let hidden: Set<string> = $state(new Set(initial.hidden));
+	let shown: Set<string> = $state(new Set(initial.shown ?? []));
 	let order: string[] = $state(initial.order ?? untrack(() => columns.map((col) => col.id)));
 	let effPageSize = $state(initial.pageSize ?? untrack(() => pageSize));
 	let wrapLines = $state(initial.wrapLines ?? false);
@@ -176,6 +187,25 @@
 	let rowMenu: ContextMenu | undefined = $state();
 	let menuRow: T | undefined = $state();
 
+	/** ids of the rows unfolded under the expander column */
+	let openRows: Set<string> = $state(new Set());
+
+	/** leading cells before the first data column: selection, then the expander */
+	const lead = $derived((selectable !== 'none' ? 1 : 0) + (expanded ? 1 : 0));
+
+	function toggleOpen(row: T): void {
+		const id = getId(row);
+		const next = new Set(openRows);
+
+		if (next.has(id)) {
+			next.delete(id);
+		} else {
+			next.add(id);
+		}
+
+		openRows = next;
+	}
+
 	// each group starts on its first option, which is the "any value" entry
 	const filterValues: Record<string, string> = $state(
 		untrack(() =>
@@ -186,7 +216,14 @@
 	);
 
 	const orderedColumns = $derived(applyOrder(columns, order));
-	const visibleCols = $derived(orderedColumns.filter((col) => !hidden.has(col.id)));
+	const hiddenNow = $derived(
+		new Set([
+			...hidden,
+			...columns.filter((col) => col.hidden && !shown.has(col.id)).map((col) => col.id)
+		])
+	);
+
+	const visibleCols = $derived(orderedColumns.filter((col) => !hiddenNow.has(col.id)));
 
 	const matchers = $derived(
 		(filters ?? []).flatMap((group) => {
@@ -261,6 +298,7 @@
 		const prefs: TablePrefs = {
 			widths,
 			hidden: [...hidden],
+			shown: [...shown],
 			order,
 			pageSize: effPageSize,
 			wrapLines,
@@ -444,7 +482,9 @@
 
 	const layoutReady = $derived(visibleCols.every((col) => autoWidths[col.id] !== undefined));
 
-	const selWidth = $derived(selectable !== 'none' ? SEL_COL_W : 0);
+	const selWidth = $derived(
+		(selectable !== 'none' ? SEL_COL_W : 0) + (expanded ? EXP_COL_W : 0)
+	);
 
 	const contentWidth = $derived(
 		visibleCols.reduce((acc, col) => acc + (sizeOf(col) ?? 0), selWidth)
@@ -495,7 +535,7 @@
 		const savedCols = cols.map((col) => col.style.width);
 		const savedLayout = table.style.tableLayout;
 		const savedWidth = table.style.width;
-		const offset = selectable !== 'none' ? 1 : 0;
+		const offset = lead;
 
 		// the selection column is left alone; it is a fixed box in CSS, not a
 		// measured one; while the filler must not hold space during the pass
@@ -577,7 +617,7 @@
 	let stickyOffsets: number[] = $state([]);
 
 	/** number of leading cells (selection column included) that stay pinned */
-	const stickyCount = $derived(stickyFirst === 0 ? 0 : stickyFirst + (selectable !== 'none' ? 1 : 0));
+	const stickyCount = $derived(stickyFirst === 0 ? 0 : stickyFirst + lead);
 
 	$effect(() => {
 		// anything that can change a leading column's width re-measures the offsets
@@ -663,7 +703,7 @@
 			stickyFirst,
 			stickyLast,
 			order: orderedColumns.map((col) => col.id),
-			hidden: new Set(hidden)
+			hidden: new Set(hiddenNow)
 		};
 
 		prefsOpen = true;
@@ -677,7 +717,14 @@
 		stickyFirst = draft.stickyFirst;
 		stickyLast = draft.stickyLast;
 		order = [...draft.order];
-		hidden = new Set(draft.hidden);
+		const byDefault = new Set(columns.filter((col) => col.hidden).map((col) => col.id));
+
+		hidden = new Set([...draft.hidden].filter((id) => !byDefault.has(id)));
+		// a column absent right now (a tag key nobody uses today) keeps its answer
+		shown = new Set([
+			...[...shown].filter((id) => !byDefault.has(id)),
+			...[...byDefault].filter((id) => !draft.hidden.has(id))
+		]);
 		page = 1;
 		prefsOpen = false;
 		persist();
@@ -815,6 +862,7 @@
 		>
 			<colgroup>
 				{#if selectable !== 'none'}<col style="width: 2.75rem" />{/if}
+				{#if expanded}<col style="width: 2.25rem" />{/if}
 				{#each visibleCols as col (col.id)}
 					<col style:width={colWidth(col)} />
 				{/each}
@@ -841,8 +889,19 @@
 							</div>
 						</th>
 					{/if}
+					{#if expanded}
+						{@const index = selectable !== 'none' ? 1 : 0}
+						<th
+							class="exp"
+							class:sticky={index < stickyCount}
+							style={stickyStyle(index)}
+							bind:this={headCells[index]}
+						>
+							<div class="hcell chk"></div>
+						</th>
+					{/if}
 					{#each visibleCols as col, ci (col.id)}
-						{@const index = ci + (selectable !== 'none' ? 1 : 0)}
+						{@const index = ci + lead}
 						<th
 							data-align={col.align ?? 'left'}
 							class:sticky={index < stickyCount}
@@ -886,6 +945,9 @@
 								<td class="sel">
 									<div class="cell chk"><span class="ghost box"></span></div>
 								</td>
+							{/if}
+							{#if expanded}
+								<td class="exp"><div class="cell chk"></div></td>
 							{/if}
 							{#each visibleCols as col, ci (col.id)}
 								<td data-align={col.align ?? 'left'}>
@@ -934,8 +996,30 @@
 								</div>
 							</td>
 						{/if}
+						{#if expanded}
+							{@const index = selectable !== 'none' ? 1 : 0}
+							{@const canOpen = expandable?.(row) ?? true}
+							<td class="exp" class:sticky={index < stickyCount} style={stickyStyle(index)}>
+								<div class="cell chk">
+									{#if canOpen}
+										<button
+											class="expander"
+											class:open={openRows.has(getId(row))}
+											aria-expanded={openRows.has(getId(row))}
+											aria-label={t('web.table.expandRow')}
+											onclick={(event) => {
+												event.stopPropagation();
+												toggleOpen(row);
+											}}
+										>
+											<Icon name="arrowRight" size="0.75rem" style="solid" />
+										</button>
+									{/if}
+								</div>
+							</td>
+						{/if}
 						{#each visibleCols as col, ci (col.id)}
-							{@const index = ci + (selectable !== 'none' ? 1 : 0)}
+							{@const index = ci + lead}
 							<td
 								data-align={col.align ?? 'left'}
 								class:sticky={index < stickyCount}
@@ -947,6 +1031,15 @@
 						{/each}
 						<td class="filler"></td>
 					</tr>
+					{#if expanded && openRows.has(getId(row))}
+						<tr class="expansion">
+							<td colspan={visibleCols.length + lead + 1}>
+								<div class="expansion-body" style:max-width={wrapWidth ? `${wrapWidth / REM}rem` : undefined}>
+									{@render expanded(row)}
+								</div>
+							</td>
+						</tr>
+					{/if}
 				{/each}
 			</tbody>
 		</table>
@@ -1365,6 +1458,62 @@
 		&[data-align='center'] .cell {
 			text-align: center;
 		}
+	}
+
+	// the expander column: as fixed a box as the selection column beside it
+	th.exp,
+	td.exp {
+		width: 2.25rem;
+	}
+
+	td.exp .cell:empty::before {
+		content: none;
+	}
+
+	.expander {
+		@include bare-button;
+
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.5rem;
+		height: 1.5rem;
+		border-radius: var(--radius-input);
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: transform 0.15s ease;
+
+		&:hover {
+			color: var(--text);
+			background: var(--bg-hover);
+		}
+
+		&.open {
+			transform: rotate(90deg);
+			color: var(--link);
+		}
+	}
+
+	// an unfolded row's body: pinned to the visible width so a wide table does
+	// not push it off screen, and never a selection or click target
+	tbody tr.expansion {
+		cursor: default;
+
+		&:hover > td {
+			background-color: transparent;
+		}
+
+		> td {
+			white-space: normal;
+			overflow: visible;
+			background: var(--bg-input);
+		}
+	}
+
+	.expansion-body {
+		position: sticky;
+		left: 0;
+		padding: 0.75rem 1rem;
 	}
 
 	// the selection column is legitimately empty on dimmed rows

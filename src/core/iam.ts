@@ -31,6 +31,7 @@ import { ADMINISTRATOR_POLICY, BUILTIN_POLICIES, DEFAULT_ATTACHMENTS, builtinPol
 import {
 	evaluate,
 	normalizeDocument,
+	policySourceKey,
 	ROOT_VERDICT,
 	type AccessRequest,
 	type AttachedDocument,
@@ -188,6 +189,28 @@ export interface AccountPermissions {
 /** What a policy, inline or managed, is attached to. */
 export type AttachTarget = { account: string } | { group: string };
 
+/** What a simulation may change about the request or the principal, for testing a policy before it is real. */
+export interface SimulationOptions {
+	/**
+	 * The attachments to evaluate, by `policySourceKey` or by plain policy name;
+	 * every attachment when absent. Leaving one out answers "what if this were
+	 * detached".
+	 */
+	policies?: string[];
+	/** Stand-in tags for the resource, replacing its recorded ones */
+	resourceTags?: Record<string, string>;
+	/** Stand-in creator for the resource, replacing the recorded one */
+	resourceCreator?: string | null;
+	/** Tags the request asks to set, for `luna:RequestTag/*` and `luna:TagKeys` */
+	requestTags?: Record<string, string>;
+}
+
+/** How many inline policies exist, per kind of holder. */
+export interface InlinePolicyCounts {
+	accounts: number;
+	groups: number;
+}
+
 export interface SimulationResult {
 	verdict: Verdict;
 	request: AccessRequest;
@@ -331,14 +354,27 @@ export function parsePolicyYaml(yaml: string): { document?: PolicyDocument; issu
 	return normalizeDocument(raw);
 }
 
-/** Validate without saving; what the editor calls as the operator types. */
-export async function validatePolicyYaml(yaml: string): Promise<{ ok: boolean; issues: PolicyIssue[]; statements: number }> {
+/** What validating a document answers; `document` is the normalized form, present only when it parses. */
+export interface PolicyValidationResult {
+	ok: boolean;
+	issues: PolicyIssue[];
+	statements: number;
+	document?: PolicyDocument;
+}
+
+/**
+ * Validate without saving; what the editor calls as the operator types. The
+ * normalized document comes back with a valid answer, which is how the
+ * console's visual editor reads YAML without parsing any itself.
+ */
+export async function validatePolicyYaml(yaml: string): Promise<PolicyValidationResult> {
 	const parsed = parsePolicyYaml(yaml);
 
 	return {
 		ok: parsed.document !== undefined,
 		issues: parsed.issues,
 		statements: parsed.document?.Statement.length ?? 0,
+		document: parsed.document,
 	};
 }
 
@@ -1245,6 +1281,72 @@ export async function authorize(
 		request,
 		resource: record ? { createdBy: record.createdBy, tags: record.tags } : null,
 	};
+}
+
+/**
+ * The policy simulator's question: decide one request for one account with
+ * only some of its attachments in play, and with the resource's facts or the
+ * request's tags replaced. Nothing is stored and nothing is enforced; the
+ * answer is what the gate would say if the account looked like this.
+ */
+export async function simulatePrincipal(
+	accountIdOrName: string,
+	action: string,
+	resource: string | null,
+	options: SimulationOptions = {},
+): Promise<SimulationResult> {
+	const spec = iamAction(action);
+	const parsed = resource ? parseResourceId(resource) : null;
+	const record = resource ? await describeResource(resource) : null;
+
+	const request: AccessRequest = {
+		action: spec?.name ?? action,
+		resource,
+		resourceType: parsed?.type ?? spec?.resourceType ?? null,
+		resourceTags: options.resourceTags ?? record?.tags ?? {},
+		resourceCreator: options.resourceCreator !== undefined
+			? options.resourceCreator
+			: (record?.createdBy ?? null),
+		requestTags: options.requestTags,
+	};
+
+	const facts = record
+		? { createdBy: record.createdBy, tags: record.tags }
+		: null;
+
+	if (accountIdOrName === ROOT_ACTOR) {
+		return { verdict: ROOT_VERDICT, request, resource: facts };
+	}
+
+	const principal = await principalContext(accountIdOrName);
+
+	if (!principal) {
+		return { verdict: { allowed: false, reason: "implicit-deny" }, request, resource: null };
+	}
+
+	if (options.policies) {
+		const wanted = new Set(options.policies);
+
+		principal.policies = principal.policies.filter(
+			(attached) => wanted.has(policySourceKey(attached.source)) || wanted.has(attached.source.name),
+		);
+	}
+
+	return { verdict: evaluate(principal, request), request, resource: facts };
+}
+
+/** How many inline policies the accounts and the groups hold; the IAM dashboard's count. */
+export async function inlinePolicyCounts(): Promise<InlinePolicyCounts> {
+	const store = await loadIam();
+	let accounts = 0;
+
+	for (const entry of Object.values(store.principals)) {
+		accounts += Object.keys(entry.inline).length;
+	}
+
+	const groups = store.groups.reduce((sum, group) => sum + Object.keys(group.inline).length, 0);
+
+	return { accounts, groups };
 }
 
 /**

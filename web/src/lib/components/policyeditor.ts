@@ -7,7 +7,7 @@
  * export types, so what a page needs to name lives here.
  */
 
-import type { PolicyIssue } from '$shared/iam/grammar';
+import type { PolicyDocument, PolicyIssue } from '$shared/iam/grammar';
 
 /** What the validate endpoint answers for one document. */
 export interface PolicyValidation {
@@ -15,7 +15,12 @@ export interface PolicyValidation {
 	issues: PolicyIssue[];
 	/** Statements the document parsed to; 0 while it does not parse */
 	statements: number;
+	/** The normalized document, when it parses; what the visual editor starts from */
+	document?: PolicyDocument;
 }
+
+/** Which face the editor shows: the form, or the text that is saved. */
+export type PolicyEditorMode = 'visual' | 'yaml';
 
 /** How long the editor waits after the last keystroke before asking the daemon. */
 export const POLICY_VALIDATE_DEBOUNCE_MS = 400;

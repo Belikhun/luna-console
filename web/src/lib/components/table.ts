@@ -42,6 +42,8 @@ export interface TablePrefs {
 	/** resized column widths in px, keyed by column id */
 	widths: Record<string, number>;
 	hidden: string[];
+	/** columns hidden by default that the reader turned on */
+	shown?: string[];
 	/** column ids in display order; unknown/missing ids fall back to declaration order */
 	order?: string[];
 	pageSize?: number;
