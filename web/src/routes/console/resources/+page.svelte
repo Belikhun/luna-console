@@ -408,7 +408,7 @@
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-resources" />
 		<Dropdown label={t('web.common.actions')} disabled={picked.length === 0} menu={resourceActions(picked)} />
-		<Btn icon="shieldHalved" href="/console/iam">{t('web.resources.iam')}</Btn>
+		<Btn icon="shieldCheck" href="/console/iam">{t('web.resources.iam')}</Btn>
 	{/snippet}
 </PageHeader>
 

@@ -900,7 +900,7 @@
 
 	function policyActions(row: { name: string }): ContextMenuItem[] {
 		return [
-			{ label: t('web.accountDetail.openPolicy'), icon: 'shieldHalved', action: () => goto(`/console/iam/policies/${encodeURIComponent(row.name)}`) },
+			{ label: t('web.accountDetail.openPolicy'), icon: 'shieldCheck', action: () => goto(`/console/iam/policies/${encodeURIComponent(row.name)}`) },
 			{ separator: true },
 			{ label: t('web.accountDetail.detachPolicy'), icon: 'unlink', color: 'danger', action: () => detach(row.name) }
 		];
