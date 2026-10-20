@@ -19,6 +19,8 @@ import { redirect, type Handle } from '@sveltejs/kit';
 import { version } from '$app/environment';
 
 import { resolveSession } from '$core/accounts';
+import { withActor } from '$client/actor';
+import { gate, refusalBody } from '$lib/server/authz';
 import { SESSION_COOKIE } from '$lib/server/session';
 
 /**
@@ -122,7 +124,54 @@ export const handle: Handle = async ({ event, resolve }) => {
 		throw redirect(303, event.url.searchParams.get('next') || '/instances');
 	}
 
-	return await resolve(event, {
-		transformPageChunk: ({ html }) => html.replace(STATIC_STYLESHEET, `$1?v=${version}"`)
-	});
+	// authorization: the catalogs name what every route needs, and the daemon
+	// decides it against the account's policies before any handler runs
+	if (gated && event.locals.account) {
+		const outcome = await gate(event);
+
+		if (outcome.kind !== 'allowed') {
+			const api = event.url.pathname.startsWith('/api/');
+
+			if (outcome.kind === 'unlisted') {
+				console.error(`no authorization rule for ${event.request.method} ${event.route.id}`);
+
+				return new Response(
+					JSON.stringify({ message: `${event.request.method} ${event.route.id} has no authorization rule` }),
+					{ status: 403, headers: { 'Content-Type': 'application/json' } }
+				);
+			}
+
+			if (api) {
+				return new Response(JSON.stringify(refusalBody(outcome.refusal)), {
+					status: 403,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+
+			const query = new URLSearchParams({
+				action: outcome.refusal.action,
+				next: event.url.pathname + event.url.search
+			});
+
+			if (outcome.refusal.resource) {
+				query.set('resource', outcome.refusal.resource);
+			}
+
+			throw redirect(303, `/denied?${query}`);
+		}
+	}
+
+	// every daemon call this request makes is attributed to the account, so the
+	// resource it creates records who made it
+	const actor = event.locals.account?.username;
+	const render = async (): Promise<Response> =>
+		await resolve(event, {
+			transformPageChunk: ({ html }) => html.replace(STATIC_STYLESHEET, `$1?v=${version}"`)
+		});
+
+	if (!actor) {
+		return await render();
+	}
+
+	return await withActor(actor, render);
 };

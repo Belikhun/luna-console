@@ -860,5 +860,255 @@
 		"recordsExist": "{fqdn} đã có bản ghi DNS; dùng adopt để thay thế",
 		"unmanaged": "luna không quản lý {fqdn}",
 		"unsupportedRecords": "{zone} có bản ghi mà API Namecheap không ghi lại được ({records}); lưu vùng DNS sẽ xoá chúng. Hãy tạo lại thủ công sau đó, hoặc cho phép luna bỏ chúng trong cấu hình DNS (chúng vẫn nằm trong bản sao lưu)."
+	},
+	"iam": {
+		"grammar": {
+			"notAString": "phải là chuỗi",
+			"conditionNotAMap": "Condition phải là map các toán tử",
+			"unknownOperator": "toán tử điều kiện \"{operator}\" không hợp lệ",
+			"operatorNotAMap": "{operator} phải ánh xạ khoá điều kiện sang giá trị",
+			"unknownConditionKey": "khoá điều kiện \"{key}\" không hợp lệ",
+			"conditionValue": "giá trị điều kiện phải là chuỗi, số hoặc boolean",
+			"notAMap": "tài liệu chính sách là một map gồm Version và Statement",
+			"badVersion": "Version phải là 1",
+			"missingStatement": "Thiếu Statement",
+			"statementNotAMap": "mỗi statement phải là một map",
+			"badEffect": "Effect phải là Allow hoặc Deny",
+			"badSid": "Sid chỉ gồm chữ, số, _ và -",
+			"duplicateSid": "Sid \"{sid}\" bị dùng hai lần",
+			"actionAndNotAction": "một statement chỉ nhận Action hoặc NotAction, không cả hai",
+			"noAction": "statement cần Action hoặc NotAction",
+			"resourceAndNotResource": "một statement chỉ nhận Resource hoặc NotResource, không cả hai",
+			"noResource": "statement cần Resource hoặc NotResource",
+			"badAction": "\"{value}\" không phải hành động (service:Verb, cho phép ký tự * và ?)",
+			"badResource": "\"{value}\" không phải id tài nguyên (luna:<loại>/<tên>, hoặc *)",
+			"unknownField": "trường \"{field}\" không hợp lệ"
+		},
+		"seeded": "{count} tài khoản hiện có đã được đặt làm quản trị viên",
+		"policyTooLarge": "tài liệu chính sách không được vượt quá {max} byte",
+		"yamlError": "YAML: {message}",
+		"invalidPolicy": "tài liệu có {count} lỗi; lỗi đầu tiên: {first}",
+		"badName": "\"{name}\" không phải tên hợp lệ (chữ, số và + = , . @ _ -)",
+		"unknownGroup": "không có nhóm tên {name}",
+		"unknownPolicy": "không có chính sách tên {name}",
+		"unknownInline": "không có chính sách nội tuyến tên {name}",
+		"policyTaken": "đã có chính sách tên {name}",
+		"groupTaken": "đã có nhóm tên {name}",
+		"builtinReadOnly": "{name} là chính sách tích hợp, không thể sửa hay xoá",
+		"policyAttached": "{name} vẫn đang gắn với {holders}; hãy gỡ trước",
+		"lastAdministrator": "làm vậy console sẽ không còn quản trị viên nào",
+		"builtin": {
+			"AdministratorAccess": "Mọi hành động trên mọi tài nguyên.",
+			"PowerUserAccess": "Mọi thứ trừ tài khoản, phân quyền và ngăn terminal.",
+			"ReadOnlyAccess": "Mọi hành động đọc trên mọi tài nguyên; không gì làm thay đổi cụm.",
+			"OwnerAccess": "Mọi hành động trên tài nguyên do chính tài khoản tạo ra, cùng các danh sách dẫn tới chúng.",
+			"SelfServiceAccess": "Mật khẩu, phiên, thông tin đăng nhập và chi tiết của chính tài khoản, cùng trò chuyện với Mèo Béo."
+		},
+		"actions": {
+			"instance": {
+				"List": "Liệt kê máy chủ",
+				"Describe": "Xem chi tiết và trạng thái một máy chủ",
+				"ReadConsole": "Theo dõi console trực tiếp của máy chủ",
+				"ReadLogs": "Đọc log của máy chủ",
+				"ReadMetrics": "Đọc chỉ số và thread dump của máy chủ",
+				"ReadChat": "Đọc chat và lệnh trên máy chủ",
+				"ReadFiles": "Đọc và tải tệp của máy chủ",
+				"Create": "Tạo hoặc tiếp nhận máy chủ",
+				"Configure": "Đổi cài đặt, properties và bản build của máy chủ",
+				"Start": "Khởi động máy chủ",
+				"Stop": "Dừng máy chủ",
+				"Restart": "Khởi động lại máy chủ",
+				"SendCommand": "Gửi lệnh console tới máy chủ",
+				"WriteFiles": "Tải lên, sửa, di chuyển và xoá tệp của máy chủ",
+				"ManageAddons": "Cài và gỡ addon trên máy chủ",
+				"ManageWorld": "Thao tác thế giới và sao lưu trên máy chủ",
+				"ManagePlayers": "Sửa whitelist, operator và ban của máy chủ",
+				"ManageEnvironment": "Ghi lại tệp môi trường của máy chủ",
+				"ManageNetwork": "Đổi cổng và đăng ký proxy của máy chủ",
+				"Delete": "Xoá máy chủ"
+			},
+			"machine": {
+				"List": "Liệt kê máy",
+				"Describe": "Xem tình trạng và chi tiết một máy",
+				"Upgrade": "Nâng cấp daemon của máy",
+				"Remove": "Gỡ đăng ký một follower"
+			},
+			"plugin": {
+				"List": "Liệt kê kho plugin",
+				"Describe": "Xem chi tiết plugin trong kho",
+				"Install": "Thêm plugin vào kho",
+				"Update": "Cập nhật plugin trong kho",
+				"Configure": "Ghim, triển khai, nhận diện và cấu hình plugin",
+				"Remove": "Gỡ plugin khỏi kho"
+			},
+			"pack": {
+				"List": "Liệt kê resource pack",
+				"Describe": "Xem chi tiết resource pack",
+				"Install": "Thêm resource pack",
+				"Update": "Cập nhật resource pack",
+				"Configure": "Cấu hình, gửi lại và nạp lại resource pack",
+				"Remove": "Gỡ resource pack"
+			},
+			"datapack": {
+				"List": "Liệt kê data pack",
+				"Describe": "Xem chi tiết data pack",
+				"Install": "Thêm data pack",
+				"Update": "Cập nhật data pack",
+				"Configure": "Triển khai và cấu hình data pack",
+				"Remove": "Gỡ data pack"
+			},
+			"addon-group": {
+				"List": "Liệt kê nhóm addon",
+				"Describe": "Xem một nhóm addon",
+				"Create": "Tạo nhóm addon",
+				"Update": "Sửa nhóm addon",
+				"Delete": "Xoá nhóm addon"
+			},
+			"runtime": {
+				"List": "Liệt kê Java runtime",
+				"Install": "Cài Java runtime",
+				"Remove": "Gỡ Java runtime"
+			},
+			"profile": {
+				"List": "Liệt kê hồ sơ Java",
+				"Describe": "Xem một hồ sơ Java",
+				"Create": "Tạo hồ sơ Java",
+				"Update": "Sửa hồ sơ Java",
+				"Delete": "Xoá hồ sơ Java"
+			},
+			"network": {
+				"Describe": "Xem bản đồ cổng và định tuyến proxy",
+				"ManageProxy": "Sửa định tuyến, menu, selector và cổng của proxy"
+			},
+			"port-pool": {
+				"List": "Liệt kê pool cổng",
+				"Create": "Tạo pool cổng",
+				"Update": "Sửa pool cổng",
+				"Delete": "Xoá pool cổng"
+			},
+			"domain": {
+				"List": "Liệt kê tên miền",
+				"Describe": "Xem một tên miền và bản ghi của nó",
+				"Create": "Tạo tên miền",
+				"Link": "Gắn hoặc gỡ tên miền khỏi máy chủ",
+				"ManageRecords": "Đổi bản ghi DNS của tên miền",
+				"ConfigureProvider": "Đổi cài đặt nhà cung cấp DNS",
+				"Delete": "Xoá tên miền"
+			},
+			"schedule": {
+				"List": "Liệt kê lịch và nhật ký",
+				"Describe": "Xem một lịch",
+				"Create": "Tạo lịch",
+				"Update": "Sửa, tạm dừng và chạy lịch",
+				"Delete": "Xoá lịch"
+			},
+			"env": {
+				"List": "Liệt kê biến môi trường",
+				"Describe": "Xem một biến và giá trị đến từ đâu",
+				"Reveal": "Hiện giá trị bí mật",
+				"Set": "Tạo hoặc đổi biến",
+				"Unset": "Xoá biến"
+			},
+			"player": {
+				"List": "Liệt kê người chơi và hồ sơ kiểm duyệt",
+				"Describe": "Xem hồ sơ, phiên và ví của người chơi",
+				"ReadChat": "Đọc lịch sử chat của người chơi",
+				"Act": "Chuyển, nhắn tin và quản trị một người chơi",
+				"Moderate": "Kick, ban, mute và cảnh cáo người chơi",
+				"ManagePermissions": "Sửa quyền trong game của người chơi"
+			},
+			"permission-group": {
+				"List": "Liệt kê nhóm quyền trong game",
+				"Describe": "Xem một nhóm quyền trong game",
+				"Create": "Tạo nhóm quyền trong game",
+				"Update": "Sửa nhóm quyền trong game",
+				"Delete": "Xoá nhóm quyền trong game"
+			},
+			"cleanup": {
+				"Describe": "Xem trước dọn dẹp",
+				"Run": "Chạy dọn dẹp"
+			},
+			"publicsite": {
+				"Describe": "Xem cài đặt trang công khai",
+				"Configure": "Đổi cài đặt trang công khai"
+			},
+			"catalog": {
+				"Read": "Duyệt phiên bản phần mềm, nhà cung cấp và tài nguyên game"
+			},
+			"event": {
+				"Read": "Theo dõi sự kiện và telemetry của cụm"
+			},
+			"job": {
+				"Describe": "Theo dõi một tác vụ đang chạy"
+			},
+			"journal": {
+				"Read": "Đọc nhật ký console"
+			},
+			"shell": {
+				"Execute": "Chạy CLI luna từ ngăn terminal"
+			},
+			"account": {
+				"List": "Liệt kê tài khoản console",
+				"Describe": "Xem một tài khoản và phiên của nó",
+				"ReadAudit": "Đọc nhật ký kiểm toán tài khoản",
+				"Create": "Tạo tài khoản console",
+				"Update": "Sửa thông tin tài khoản",
+				"SetPassword": "Đặt mật khẩu tài khoản",
+				"ManageIdentities": "Thêm và gỡ thông tin đăng nhập của tài khoản",
+				"ManageSessions": "Đóng phiên của tài khoản",
+				"Delete": "Xoá tài khoản console"
+			},
+			"iam": {
+				"ListPolicies": "Liệt kê chính sách",
+				"DescribePolicy": "Xem một chính sách",
+				"ListGroups": "Liệt kê nhóm",
+				"DescribeGroup": "Xem một nhóm",
+				"Simulate": "Mô phỏng quyền truy cập cho một tài khoản",
+				"ReadAudit": "Đọc nhật ký kiểm toán IAM",
+				"CreatePolicy": "Tạo chính sách",
+				"UpdatePolicy": "Sửa chính sách",
+				"CreateGroup": "Tạo nhóm",
+				"UpdateGroup": "Sửa nhóm và thành viên",
+				"Attach": "Gắn chính sách vào tài khoản và nhóm",
+				"Detach": "Gỡ chính sách khỏi tài khoản và nhóm",
+				"DeletePolicy": "Xoá chính sách",
+				"DeleteGroup": "Xoá nhóm"
+			},
+			"tag": {
+				"List": "Liệt kê tài nguyên đã ghi nhận",
+				"Describe": "Xem metadata và thẻ của tài nguyên",
+				"Tag": "Thêm hoặc đổi thẻ trên tài nguyên",
+				"Untag": "Gỡ thẻ khỏi tài nguyên"
+			},
+			"mcp": {
+				"ListTokens": "Liệt kê token MCP",
+				"DescribeToken": "Xem một token MCP",
+				"ReadCalls": "Đọc nhật ký gọi MCP",
+				"ReadAudit": "Đọc nhật ký kiểm toán MCP",
+				"CreateToken": "Tạo token MCP",
+				"UpdateToken": "Đổi phạm vi và cài đặt token",
+				"RotateToken": "Xoay bí mật của token",
+				"DeleteToken": "Xoá token MCP"
+			},
+			"knowledge": {
+				"List": "Liệt kê mục kiến thức",
+				"Describe": "Xem một mục kiến thức",
+				"Create": "Tạo mục kiến thức",
+				"Update": "Sửa mục kiến thức",
+				"Delete": "Xoá mục kiến thức"
+			},
+			"agent": {
+				"Describe": "Xem cài đặt của Mèo Béo",
+				"Chat": "Trò chuyện với Mèo Béo",
+				"Configure": "Đổi cài đặt và thông tin đăng nhập của Mèo Béo"
+			}
+		}
+	},
+	"resources": {
+		"badId": "\"{id}\" không phải id tài nguyên (luna:<loại>/<tên>)",
+		"tooManyTags": "một tài nguyên chỉ mang tối đa {max} thẻ",
+		"badTagKey": "khoá thẻ \"{tag}\" không hợp lệ (tối đa 128 ký tự chữ, số, dấu cách và _ . : / = + @ -)",
+		"badTagValue": "giá trị của thẻ \"{tag}\" không hợp lệ (tối đa 256 ký tự)",
+		"reservedTagKey": "khoá thẻ bắt đầu bằng luna: được dành riêng"
 	}
 }

@@ -40,6 +40,7 @@ import type { ClusterConfig } from "../core/types";
 import { discardStage, newStageToken, stagePath } from "../core/staging";
 import { getJob, startJob, watchJob, type JobView } from "./jobs";
 import { runOp } from "./rpc";
+import { ROOT_ACTOR } from "../core/accounts";
 import { tailFollow, type TailHandle } from "./tail";
 import { localBinaryMeta, localBinaryPath } from "./upgrade";
 import { BUILD_AT, COMMIT, VERSION, buildPlatform, buildVersion } from "../version";
@@ -406,6 +407,25 @@ function daemonsStream(): Response {
 	return new Response(stream, { headers: SSE_HEADERS });
 }
 
+/**
+ * Who a request is for: the `x-luna-actor` header every client sends, or `root`
+ * for a caller that predates it. Only ever recorded, never a decision: the
+ * socket's permissions are what admit the caller.
+ */
+function requestActor(request: Request): string {
+	const given = request.headers.get("x-luna-actor");
+
+	if (!given) {
+		return ROOT_ACTOR;
+	}
+
+	try {
+		return decodeURIComponent(given).trim() || ROOT_ACTOR;
+	} catch {
+		return ROOT_ACTOR;
+	}
+}
+
 async function handleRpc(op: string, request: Request): Promise<Response> {
 	let args: unknown[];
 
@@ -418,7 +438,7 @@ async function handleRpc(op: string, request: Request): Promise<Response> {
 	}
 
 	try {
-		const outcome = await runOp(op, args);
+		const outcome = await runOp(op, args, undefined, requestActor(request));
 
 		return jsonResponse({ ok: true, ...outcome });
 	} catch (err) {
@@ -444,11 +464,13 @@ async function handleJobStart(request: Request): Promise<Response> {
 		return errorResponse("op required", 400);
 	}
 
+	const actor = requestActor(request);
+
 	const job = startJob(
 		body.kind ?? op,
 		body.target ?? "",
 		body.label ?? op,
-		(reporter) => runOp(op, args ?? [], reporter),
+		(reporter) => runOp(op, args ?? [], reporter, actor),
 	);
 
 	return jsonResponse({ ok: true, job });

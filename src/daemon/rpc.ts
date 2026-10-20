@@ -29,6 +29,10 @@ import type {
 } from "../core/types";
 
 import * as accountsCore from "../core/accounts";
+import { ROOT_ACTOR } from "../core/accounts";
+import * as iamCore from "../core/iam";
+import * as resourcesCore from "../core/resources";
+import type { IamResourceType } from "../shared/iam/actions";
 import * as addonsCore from "../core/addons";
 import * as adminCore from "../core/admin";
 import * as backupsCore from "../core/backups";
@@ -102,6 +106,16 @@ export interface OpSpec {
 	/** Where a job's reporter is injected: argument index, property when the
 	 *  argument is an options object (created when absent) */
 	reporter?: { arg: number; prop?: string };
+	/**
+	 * The resource the op creates or deletes, recorded with the request's actor
+	 * once the op succeeds: the name is read off an argument (a property of it,
+	 * when it is an options object) or off the result by a dotted path.
+	 */
+	resource?: {
+		type: IamResourceType;
+		name: { arg: number; prop?: string } | { result: string };
+		on: "create" | "delete";
+	};
 }
 
 export interface OpResult {
@@ -1437,8 +1451,13 @@ export const OPS: Record<string, OpSpec> = {
 		fn: createInstanceRouted,
 		cfg: 0,
 		reporter: { arg: 2, prop: "reporter" },
+		resource: { type: "instance", name: { arg: 1 }, on: "create" },
 	},
-	"admin.adoptInstance": { fn: adoptInstanceRouted, cfg: 0 },
+	"admin.adoptInstance": {
+		fn: adoptInstanceRouted,
+		cfg: 0,
+		resource: { type: "instance", name: { arg: 1 }, on: "create" },
+	},
 	"admin.inspectInstanceDir": { fn: inspectInstanceDirRouted },
 
 	// -- modpacks ---------------------------------------------------------------
@@ -1449,6 +1468,7 @@ export const OPS: Record<string, OpSpec> = {
 		fn: installModpackRouted,
 		cfg: 0,
 		reporter: { arg: 2, prop: "reporter" },
+		resource: { type: "instance", name: { arg: 1 }, on: "create" },
 	},
 	"modpack.stageUrl": { fn: modpackCore.stageMrpackFromUrl },
 	"modpack.update": {
@@ -1478,6 +1498,7 @@ export const OPS: Record<string, OpSpec> = {
 		cfg: 0,
 		instance: 1,
 		reporter: { arg: 3 },
+		resource: { type: "instance", name: { arg: 1 }, on: "delete" },
 	},
 
 	// -- instance lifecycle ---------------------------------------------------
@@ -1557,6 +1578,39 @@ export const OPS: Record<string, OpSpec> = {
 	"accounts.revokeSession": { fn: accountsCore.revokeSession },
 	"accounts.revokeAccountSessions": { fn: accountsCore.revokeAccountSessions },
 
+	// -- authorization -----------------------------------------------------------
+	"iam.listPolicies": { fn: iamCore.listPolicies },
+	"iam.getPolicy": { fn: iamCore.getPolicy },
+	"iam.validatePolicy": { fn: iamCore.validatePolicyYaml },
+	"iam.createPolicy": { fn: iamCore.createPolicy },
+	"iam.updatePolicy": { fn: iamCore.updatePolicy },
+	"iam.deletePolicy": { fn: iamCore.deletePolicy },
+	"iam.listGroups": { fn: iamCore.listGroups },
+	"iam.getGroup": { fn: iamCore.getGroup },
+	"iam.createGroup": { fn: iamCore.createGroup },
+	"iam.updateGroup": { fn: iamCore.updateGroup },
+	"iam.deleteGroup": { fn: iamCore.deleteGroup },
+	"iam.addGroupMembers": { fn: iamCore.addGroupMembers },
+	"iam.removeGroupMembers": { fn: iamCore.removeGroupMembers },
+	"iam.attachPolicy": { fn: iamCore.attachPolicy },
+	"iam.detachPolicy": { fn: iamCore.detachPolicy },
+	"iam.putInlinePolicy": { fn: iamCore.putInlinePolicy },
+	"iam.deleteInlinePolicy": { fn: iamCore.deleteInlinePolicy },
+	"iam.principalContext": { fn: iamCore.principalContext },
+	"iam.accountPermissions": { fn: iamCore.accountPermissions },
+	"iam.authorize": { fn: iamCore.authorize },
+	"iam.authorizeMany": { fn: iamCore.authorizeMany },
+	"iam.audit": { fn: iamCore.iamAudit },
+
+	// -- resource metadata and tags ------------------------------------------------
+	"resources.describe": { fn: resourcesCore.describeResource },
+	"resources.describeMany": { fn: resourcesCore.describeResources },
+	"resources.list": { fn: resourcesCore.listResources },
+	"resources.tag": { fn: resourcesCore.tagResource },
+	"resources.untag": { fn: resourcesCore.untagResource },
+	"resources.vocabulary": { fn: resourcesCore.tagVocabulary },
+	"resources.sweep": { fn: resourcesCore.sweepResources },
+
 	// -- instance files beyond one text file (run on the instance's owner) --------
 	"instancefiles.stat": { fn: instancefilesCore.statInstancePath, cfg: 0, instance: 1 },
 	"instancefiles.find": { fn: instancefilesCore.findInstanceFiles, cfg: 0, instance: 1 },
@@ -1572,11 +1626,19 @@ export const OPS: Record<string, OpSpec> = {
 	"domains.get": { fn: domainsCore.getHostname },
 	"domains.records": { fn: domainsCore.hostnameRecords },
 	"domains.baseRecords": { fn: domainsCore.baseDomainRecords },
-	"domains.create": { fn: domainsCore.createHostname, cfg: 0 },
+	"domains.create": {
+		fn: domainsCore.createHostname,
+		cfg: 0,
+		resource: { type: "domain", name: { result: "hostname.label" }, on: "create" },
+	},
 	"domains.update": { fn: domainsCore.updateHostname },
 	"domains.link": { fn: domainsCore.linkHostname, cfg: 0 },
 	"domains.unlink": { fn: domainsCore.unlinkHostname, cfg: 0 },
-	"domains.delete": { fn: domainsCore.deleteHostname, cfg: 0 },
+	"domains.delete": {
+		fn: domainsCore.deleteHostname,
+		cfg: 0,
+		resource: { type: "domain", name: { result: "hostname.label" }, on: "delete" },
+	},
 	"domains.audit": { fn: domainsCore.domainAudit },
 
 	"instancefiles.uploadArchive": { fn: uploadInstanceArchive, cfg: 0, instance: 1 },
@@ -1604,11 +1666,17 @@ export const OPS: Record<string, OpSpec> = {
 	// As with accounts, no op returns the raw token store: digests stay in here.
 	"mcp.listTokens": { fn: mcpCore.listMcpTokens },
 	"mcp.getToken": { fn: mcpCore.getMcpToken },
-	"mcp.createToken": { fn: mcpCore.createMcpToken },
+	"mcp.createToken": {
+		fn: mcpCore.createMcpToken,
+		resource: { type: "mcp-token", name: { result: "token.name" }, on: "create" },
+	},
 	"mcp.updateToken": { fn: mcpCore.updateMcpToken },
 	"mcp.setTokenEnabled": { fn: mcpCore.setMcpTokenEnabled },
 	"mcp.rotateToken": { fn: mcpCore.rotateMcpToken },
-	"mcp.removeToken": { fn: mcpCore.removeMcpToken },
+	"mcp.removeToken": {
+		fn: mcpCore.removeMcpToken,
+		resource: { type: "mcp-token", name: { result: "removed.name" }, on: "delete" },
+	},
 	"mcp.audit": { fn: mcpCore.mcpAudit },
 	"mcp.authorize": { fn: mcpCore.authorizeMcpToken },
 	"mcp.recordCall": { fn: mcpCore.recordMcpCall },
@@ -1618,9 +1686,15 @@ export const OPS: Record<string, OpSpec> = {
 	"mcp.listKnowledge": { fn: mcpCore.listKnowledge },
 	"mcp.getKnowledge": { fn: mcpCore.getKnowledge },
 	"mcp.knowledgeFor": { fn: mcpCore.knowledgeFor },
-	"mcp.createKnowledge": { fn: mcpCore.createKnowledge },
+	"mcp.createKnowledge": {
+		fn: mcpCore.createKnowledge,
+		resource: { type: "knowledge", name: { result: "id" }, on: "create" },
+	},
 	"mcp.updateKnowledge": { fn: mcpCore.updateKnowledge },
-	"mcp.removeKnowledge": { fn: mcpCore.removeKnowledge },
+	"mcp.removeKnowledge": {
+		fn: mcpCore.removeKnowledge,
+		resource: { type: "knowledge", name: { result: "id" }, on: "delete" },
+	},
 	"mcp.searchMemories": { fn: mcpCore.searchMemories },
 
 	// -- Mèo Béo, the console's chat agent (primary-local; see core/agent.ts) ----------
@@ -1664,12 +1738,32 @@ export const OPS: Record<string, OpSpec> = {
 	// every other pooled jar does, through the deploy that follows.
 	"plugins.fitAddonToInstance": { fn: pluginsCore.fitAddonToInstance, cfg: 0, lock: 1 },
 	"plugins.deploy": { fn: deployRouted, cfg: 0, lock: 1, reporter: { arg: 2, prop: "reporter" } },
-	"plugins.installFromProvider": { fn: pluginsCore.installFromProvider, cfg: 0, lock: 1 },
+	"plugins.installFromProvider": {
+		fn: pluginsCore.installFromProvider,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "plugin", name: { result: "name" }, on: "create" },
+	},
 	"plugins.adopt": { fn: pluginsCore.adopt, cfg: 0, lock: 1, instance: 2 },
-	"plugins.uploadJar": { fn: pluginsCore.uploadJar, cfg: 0, lock: 1 },
+	"plugins.uploadJar": {
+		fn: pluginsCore.uploadJar,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "plugin", name: { result: "name" }, on: "create" },
+	},
 	"jarinstall.inspect": { fn: jarinstallCore.inspectJar },
-	"jarinstall.install": { fn: jarinstallCore.installJar, cfg: 0, lock: 1 },
-	"plugins.removePlugin": { fn: pluginsCore.removePlugin, cfg: 0, lock: 1 },
+	"jarinstall.install": {
+		fn: jarinstallCore.installJar,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "plugin", name: { result: "name" }, on: "create" },
+	},
+	"plugins.removePlugin": {
+		fn: pluginsCore.removePlugin,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "plugin", name: { arg: 2 }, on: "delete" },
+	},
 	// provider mapping: the probe writes nothing, the other two rewrite the entry
 	"plugins.probeIdentity": { fn: pluginsCore.probePluginIdentity, lock: 0 },
 	"plugins.identify": { fn: pluginsCore.identifyPlugin, cfg: 0, lock: 1 },
@@ -1694,14 +1788,29 @@ export const OPS: Record<string, OpSpec> = {
 	"respacks.identify": { fn: respacksCore.identifyResourcePack, cfg: 0, lock: 1 },
 	"respacks.forgetIdentity": { fn: respacksCore.forgetRespackIdentity, cfg: 0, lock: 1 },
 	"respacks.updateResourcePack": { fn: respacksCore.updateResourcePack, cfg: 0, lock: 1 },
-	"respacks.addResourcePackFile": { fn: respacksCore.addResourcePackFile, cfg: 0, lock: 1 },
-	"respacks.installFromProvider": { fn: respacksCore.installResourcePackFromProvider, cfg: 0, lock: 1 },
+	"respacks.addResourcePackFile": {
+		fn: respacksCore.addResourcePackFile,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "pack", name: { result: "key" }, on: "create" },
+	},
+	"respacks.installFromProvider": {
+		fn: respacksCore.installResourcePackFromProvider,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "pack", name: { result: "key" }, on: "create" },
+	},
 	"respacks.replaceFile": { fn: respacksCore.replaceResourcePackFile, cfg: 0, lock: 1 },
 	"respacks.versions": { fn: respacksCore.resourcePackVersions, lock: 0 },
 	"respacks.setVersion": { fn: respacksCore.setResourcePackVersion, cfg: 0, lock: 1 },
 	"respacks.checkUpdates": { fn: respacksCore.checkResourcePackUpdates, lock: 0 },
 	"respacks.applyUpdate": { fn: respacksCore.applyResourcePackUpdate, lock: 0 },
-	"respacks.removeResourcePack": { fn: respacksCore.removeResourcePack, cfg: 0, lock: 1 },
+	"respacks.removeResourcePack": {
+		fn: respacksCore.removeResourcePack,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "pack", name: { arg: 2 }, on: "delete" },
+	},
 	"respacks.setForInstance": { fn: respacksCore.setResourcePackForInstance, cfg: 0, lock: 1 },
 	"respacks.reload": { fn: respacksCore.reloadResourcePacks, cfg: 0 },
 	"respacks.resend": { fn: respacksCore.resendResourcePacks },
@@ -1724,15 +1833,30 @@ export const OPS: Record<string, OpSpec> = {
 		lock: 1,
 		reporter: { arg: 2, prop: "reporter" },
 	},
-	"datapacks.installFromProvider": { fn: datapacksCore.installDataPackFromProvider, cfg: 0, lock: 1 },
+	"datapacks.installFromProvider": {
+		fn: datapacksCore.installDataPackFromProvider,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "datapack", name: { result: "name" }, on: "create" },
+	},
 	"datapacks.checkUpdates": { fn: datapacksCore.checkDataPackUpdates, cfg: 0, lock: 1 },
 	"datapacks.applyUpdate": { fn: datapacksCore.applyDataPackUpdate, lock: 0 },
-	"datapacks.addFile": { fn: datapacksCore.addDataPackFile, cfg: 0, lock: 1 },
+	"datapacks.addFile": {
+		fn: datapacksCore.addDataPackFile,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "datapack", name: { result: "name" }, on: "create" },
+	},
 	"datapacks.probeIdentity": { fn: datapacksCore.probeDataPackIdentity, lock: 0 },
 	"datapacks.identify": { fn: datapacksCore.identifyDataPack, cfg: 0, lock: 1 },
 	"datapacks.forgetIdentity": { fn: datapacksCore.forgetDataPackIdentity, lock: 0 },
 	"datapacks.adopt": { fn: datapacksCore.adoptDataPack, cfg: 0, lock: 1, instance: 2 },
-	"datapacks.remove": { fn: removeDataPackRouted, cfg: 0, lock: 1 },
+	"datapacks.remove": {
+		fn: removeDataPackRouted,
+		cfg: 0,
+		lock: 1,
+		resource: { type: "datapack", name: { arg: 2 }, on: "delete" },
+	},
 	// the per-owner slice of a routed removal; the primary calls it on each
 	// follower, never a client
 	"datapacks.removeFiles": { fn: datapacksCore.removeDataPackFiles, cfg: 0, lock: 1 },
@@ -2202,10 +2326,70 @@ async function localStagePath(token: string): Promise<string> {
  * core function (or forward it to the owning follower), and echo back the
  * cfg/lock arguments so in-place mutations survive the wire.
  */
+/**
+ * Read the name of the resource an op created or deleted, from the argument or
+ * the result its registry entry points at. Undefined when the op left nothing
+ * behind to name (a provider install that resolved to an existing entry).
+ */
+function resourceName(spec: OpSpec, args: unknown[], result: unknown): string | undefined {
+	const where = spec.resource!.name;
+	let value: unknown;
+
+	if ("result" in where) {
+		value = result;
+
+		for (const step of where.result.split(".")) {
+			if (typeof value !== "object" || value === null) {
+				return undefined;
+			}
+
+			value = (value as Record<string, unknown>)[step];
+		}
+	} else if (where.prop) {
+		const options = args[where.arg];
+
+		value = typeof options === "object" && options !== null
+			? (options as Record<string, unknown>)[where.prop]
+			: undefined;
+	} else {
+		value = args[where.arg];
+	}
+
+	return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/**
+ * Record what an op did to the resource store, with the actor the request
+ * carried. A failure here is logged, never surfaced: the op itself succeeded,
+ * and metadata must not undo that.
+ */
+async function noteResource(spec: OpSpec, args: unknown[], result: unknown, actor: string): Promise<void> {
+	if (!spec.resource) {
+		return;
+	}
+
+	const name = resourceName(spec, args, result);
+
+	if (!name) {
+		return;
+	}
+
+	try {
+		if (spec.resource.on === "create") {
+			await resourcesCore.recordCreated(spec.resource.type, name, actor === ROOT_ACTOR ? null : actor);
+		} else {
+			await resourcesCore.forgetResource(spec.resource.type, name);
+		}
+	} catch (err) {
+		console.error(t("daemon.resourceNoteFailed", { name, message: err instanceof Error ? err.message : String(err) }));
+	}
+}
+
 export async function runOp(
 	op: string,
 	args: unknown[],
 	reporter?: ProgressReporter,
+	actor: string = ROOT_ACTOR,
 ): Promise<OpResult> {
 	const spec = OPS[op];
 
@@ -2217,7 +2401,11 @@ export async function runOp(
 		const remote = resolveRemote(op, spec, args);
 
 		if (remote) {
-			return await forwardOp(remote, op, args, reporter);
+			const forwarded = await forwardOp(remote, op, args, reporter);
+
+			await noteResource(spec, args, forwarded.result, actor);
+
+			return forwarded;
 		}
 	}
 
@@ -2235,6 +2423,8 @@ export async function runOp(
 	}
 
 	const result = await (spec.fn as (...fnArgs: unknown[]) => unknown)(...args);
+
+	await noteResource(spec, args, result, actor);
 
 	const out: OpResult = { result };
 

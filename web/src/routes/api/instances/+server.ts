@@ -23,6 +23,8 @@ import type { Software } from '$core/types';
 import { listStatuses, pushEvent } from '$lib/server/luna';
 import { listJobs, startJob } from '$lib/server/jobs';
 import { errorMessage } from '$lib/server/http';
+import { filterAllowed } from '$lib/server/authz';
+import { resourceId } from '$shared/iam/resources';
 
 /**
  * A placeholder row for an instance that only exists as a running job; a
@@ -69,7 +71,7 @@ function ghostRow(
  * mid-provision or mid-delete are overlaid with that transient state, so every
  * open console sees the transition; not just the browser that started it.
  */
-export async function GET() {
+export async function GET({ locals }) {
 	const data = (await listStatuses()) as { instances: Array<Record<string, unknown>> };
 
 	const running = (kind: string) => listJobs(kind).filter((job) => job.state === 'running');
@@ -104,6 +106,12 @@ export async function GET() {
 			data.instances.push(ghostRow(job.target, 'deleting', daemon));
 		}
 	}
+
+	// `instance:List` opened the screen; each row is the account's to see only if
+	// it may describe that instance, which is what an owner-only grant decides
+	data.instances = await filterAllowed(locals, 'instance:Describe', data.instances, (row) =>
+		resourceId('instance', String(row.name))
+	);
 
 	return json(data);
 }

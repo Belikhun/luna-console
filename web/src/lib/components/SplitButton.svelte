@@ -14,6 +14,7 @@
 		primary = true,
 		disabled = false,
 		loading = false,
+		title,
 		onclick,
 		items
 	}: {
@@ -21,6 +22,8 @@
 		primary?: boolean;
 		disabled?: boolean;
 		loading?: boolean;
+		/** Why the main action is disabled, as the hover text; the one place a refused verb explains itself */
+		title?: string;
 		onclick: () => void;
 		items: Item[];
 	} = $props();
@@ -51,7 +54,7 @@
 </script>
 
 <div class="split" class:primary>
-	<button class="main" disabled={disabled || loading} {onclick}>
+	<button class="main" disabled={disabled || loading} {title} {onclick}>
 		{#if loading}<Icon name="rotate" spin />{/if}
 		{label}
 	</button>

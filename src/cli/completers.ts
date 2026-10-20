@@ -114,3 +114,43 @@ export async function lunaModules(): Promise<string[]> {
 		return [];
 	}
 }
+
+/** Names of every IAM policy, built-ins included. */
+export async function policyNames(): Promise<string[]> {
+	try {
+		const { listPolicies } = await import("../client/core/iam");
+
+		return (await listPolicies()).map((policy) => policy.name);
+	} catch {
+		return [];
+	}
+}
+
+/** Names of every IAM group. */
+export async function groupNames(): Promise<string[]> {
+	try {
+		const { listGroups } = await import("../client/core/iam");
+
+		return (await listGroups()).map((group) => group.name);
+	} catch {
+		return [];
+	}
+}
+
+/** Ids of every recorded resource, `luna:<type>/<name>`. */
+export async function resourceIds(): Promise<string[]> {
+	try {
+		const { listResources } = await import("../client/core/resources");
+
+		return (await listResources()).map((resource) => resource.id);
+	} catch {
+		return [];
+	}
+}
+
+/** Every action in the IAM catalog, `service:Verb`; no daemon round trip, so it never fails. */
+export async function actionNames(): Promise<string[]> {
+	const { IAM_ACTIONS } = await import("../shared/iam/actions");
+
+	return IAM_ACTIONS.map((spec) => spec.name);
+}

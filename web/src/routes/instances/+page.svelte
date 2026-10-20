@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { Authz } from '$lib/authz.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { instanceTabPath } from '$lib/components/instancetabs';
@@ -59,6 +60,9 @@
 	let hostMemMb = $state(0);
 	let selected: Set<string> = $state(new Set());
 	let loading = $state(true);
+
+	/** whether the account may create instances at all; the verb says why when not */
+	const canCreate = $derived(Authz.can('instance:Create'));
 	let detailTab = $state('details');
 	let panelLocation: 'bottom' | 'right' = $state('bottom');
 	let panelSize = $state(42);
@@ -586,6 +590,8 @@
 				<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
 				<SplitButton
 					label={t('web.nav.launchInstance')}
+					disabled={!canCreate}
+					title={canCreate ? undefined : t('web.common.notAllowed', { action: 'instance:Create' })}
 					onclick={() => goto('/instances/launch')}
 					items={[
 						{

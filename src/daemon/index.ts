@@ -15,6 +15,8 @@ import { mkdir, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { clusterPath, ensureDataDir, saveCluster } from "../core/config";
+import { ensureIamSeeded } from "../core/iam";
+import { sweepResources } from "../core/resources";
 import { starterCluster } from "../shared/bootstrap";
 import { appendJournal, setJournalMachine, type JournalLevel } from "../core/journal";
 import { setHostShellEnabled } from "../core/hostshell";
@@ -144,6 +146,22 @@ export async function runDaemon(): Promise<void> {
 		await saveCluster(starterCluster());
 
 		console.log(t("daemon.seededRegistry", { path: clusterPath() }));
+	}
+
+	// authorization state is the primary's to seed: existing accounts become
+	// administrators once, and the resources the stores already know get records
+	if (dcfg.mode !== "follower") {
+		try {
+			await ensureIamSeeded();
+
+			const swept = await sweepResources();
+
+			if (swept.added > 0) {
+				console.log(t("daemon.sweptResources", { added: swept.added, total: swept.total }));
+			}
+		} catch (err) {
+			console.error(t("daemon.iamSeedFailed", { message: err instanceof Error ? err.message : String(err) }));
+		}
 	}
 
 	if (existsSync(dcfg.socket)) {

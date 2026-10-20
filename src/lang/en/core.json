@@ -860,5 +860,255 @@
 		"recordsExist": "{fqdn} already has DNS records; pass adopt to replace them",
 		"unmanaged": "luna does not manage {fqdn}",
 		"unsupportedRecords": "{zone} holds records the Namecheap API cannot write back ({records}); saving the zone would delete them. Re-create them by hand afterwards, or allow luna to drop them in the DNS settings (they stay in the zone backup)."
+	},
+	"iam": {
+		"grammar": {
+			"notAString": "must be a string",
+			"conditionNotAMap": "Condition must be a map of operators",
+			"unknownOperator": "unknown condition operator \"{operator}\"",
+			"operatorNotAMap": "{operator} must map condition keys to values",
+			"unknownConditionKey": "unknown condition key \"{key}\"",
+			"conditionValue": "a condition value must be a string, number or boolean",
+			"notAMap": "a policy document is a map with Version and Statement",
+			"badVersion": "Version must be 1",
+			"missingStatement": "Statement is required",
+			"statementNotAMap": "a statement must be a map",
+			"badEffect": "Effect must be Allow or Deny",
+			"badSid": "Sid may hold letters, digits, _ and -",
+			"duplicateSid": "Sid \"{sid}\" is used twice",
+			"actionAndNotAction": "a statement takes Action or NotAction, not both",
+			"noAction": "a statement needs Action or NotAction",
+			"resourceAndNotResource": "a statement takes Resource or NotResource, not both",
+			"noResource": "a statement needs Resource or NotResource",
+			"badAction": "\"{value}\" is not an action (service:Verb, with * and ? wildcards)",
+			"badResource": "\"{value}\" is not a resource id (luna:<type>/<name>, or *)",
+			"unknownField": "unknown field \"{field}\""
+		},
+		"seeded": "{count} existing account(s) made administrators",
+		"policyTooLarge": "a policy document may not exceed {max} bytes",
+		"yamlError": "YAML: {message}",
+		"invalidPolicy": "the document has {count} issue(s); first: {first}",
+		"badName": "\"{name}\" is not a valid name (letters, digits and + = , . @ _ -)",
+		"unknownGroup": "no group named {name}",
+		"unknownPolicy": "no policy named {name}",
+		"unknownInline": "no inline policy named {name}",
+		"policyTaken": "a policy named {name} already exists",
+		"groupTaken": "a group named {name} already exists",
+		"builtinReadOnly": "{name} is built in and cannot be changed or deleted",
+		"policyAttached": "{name} is still attached to {holders}; detach it first",
+		"lastAdministrator": "that would leave the console without an administrator",
+		"builtin": {
+			"AdministratorAccess": "Every action on every resource.",
+			"PowerUserAccess": "Everything except accounts, permissions and the terminal drawer.",
+			"ReadOnlyAccess": "Every read action on every resource; nothing that changes the cluster.",
+			"OwnerAccess": "Every action on the resources the account created itself, plus the listings that reach them.",
+			"SelfServiceAccess": "The account's own password, sessions, credentials and details, and chatting with Mèo Béo."
+		},
+		"actions": {
+			"instance": {
+				"List": "List instances",
+				"Describe": "Read an instance's details and status",
+				"ReadConsole": "Watch an instance's live console",
+				"ReadLogs": "Read an instance's logs",
+				"ReadMetrics": "Read an instance's metrics and thread dumps",
+				"ReadChat": "Read chat and commands on an instance",
+				"ReadFiles": "Read and download an instance's files",
+				"Create": "Create or adopt an instance",
+				"Configure": "Change an instance's settings, properties and build",
+				"Start": "Start an instance",
+				"Stop": "Stop an instance",
+				"Restart": "Restart an instance",
+				"SendCommand": "Send console commands to an instance",
+				"WriteFiles": "Upload, edit, move and delete an instance's files",
+				"ManageAddons": "Install and remove addons on an instance",
+				"ManageWorld": "World operations and backups on an instance",
+				"ManagePlayers": "Edit an instance's whitelist, operators and bans",
+				"ManageEnvironment": "Rewrite an instance's environment file",
+				"ManageNetwork": "Change an instance's port and proxy registration",
+				"Delete": "Delete an instance"
+			},
+			"machine": {
+				"List": "List machines",
+				"Describe": "Read a machine's health and details",
+				"Upgrade": "Upgrade a machine's daemon",
+				"Remove": "Drop a follower's registration"
+			},
+			"plugin": {
+				"List": "List the plugin pool",
+				"Describe": "Read a pooled plugin's details",
+				"Install": "Add plugins to the pool",
+				"Update": "Update pooled plugins",
+				"Configure": "Pin, deploy, identify and configure pooled plugins",
+				"Remove": "Remove plugins from the pool"
+			},
+			"pack": {
+				"List": "List resource packs",
+				"Describe": "Read a resource pack's details",
+				"Install": "Add resource packs",
+				"Update": "Update resource packs",
+				"Configure": "Configure, resend and reload resource packs",
+				"Remove": "Remove resource packs"
+			},
+			"datapack": {
+				"List": "List data packs",
+				"Describe": "Read a data pack's details",
+				"Install": "Add data packs",
+				"Update": "Update data packs",
+				"Configure": "Deploy and configure data packs",
+				"Remove": "Remove data packs"
+			},
+			"addon-group": {
+				"List": "List addon groups",
+				"Describe": "Read an addon group",
+				"Create": "Create addon groups",
+				"Update": "Edit addon groups",
+				"Delete": "Delete addon groups"
+			},
+			"runtime": {
+				"List": "List Java runtimes",
+				"Install": "Install Java runtimes",
+				"Remove": "Remove Java runtimes"
+			},
+			"profile": {
+				"List": "List Java profiles",
+				"Describe": "Read a Java profile",
+				"Create": "Create Java profiles",
+				"Update": "Edit Java profiles",
+				"Delete": "Delete Java profiles"
+			},
+			"network": {
+				"Describe": "Read the port map and the proxy's routing",
+				"ManageProxy": "Edit the proxy's routing, menu, selector and ports"
+			},
+			"port-pool": {
+				"List": "List port pools",
+				"Create": "Create port pools",
+				"Update": "Edit port pools",
+				"Delete": "Delete port pools"
+			},
+			"domain": {
+				"List": "List hostnames",
+				"Describe": "Read a hostname and its records",
+				"Create": "Create hostnames",
+				"Link": "Link or unlink a hostname to an instance",
+				"ManageRecords": "Change a hostname's DNS records",
+				"ConfigureProvider": "Change the DNS provider settings",
+				"Delete": "Delete hostnames"
+			},
+			"schedule": {
+				"List": "List schedules and their log",
+				"Describe": "Read a schedule",
+				"Create": "Create schedules",
+				"Update": "Edit, pause and run schedules",
+				"Delete": "Delete schedules"
+			},
+			"env": {
+				"List": "List environment variables",
+				"Describe": "Read a variable and where its value comes from",
+				"Reveal": "Reveal a secret's value",
+				"Set": "Create or change variables",
+				"Unset": "Remove variables"
+			},
+			"player": {
+				"List": "List players and moderation records",
+				"Describe": "Read a player's profile, sessions and wallet",
+				"ReadChat": "Read a player's chat history",
+				"Act": "Move, message and administer a player",
+				"Moderate": "Kick, ban, mute and warn players",
+				"ManagePermissions": "Edit a player's in-game permissions"
+			},
+			"permission-group": {
+				"List": "List in-game permission groups",
+				"Describe": "Read an in-game permission group",
+				"Create": "Create in-game permission groups",
+				"Update": "Edit in-game permission groups",
+				"Delete": "Delete in-game permission groups"
+			},
+			"cleanup": {
+				"Describe": "Preview a cleanup",
+				"Run": "Run a cleanup"
+			},
+			"publicsite": {
+				"Describe": "Read the public page's settings",
+				"Configure": "Change the public page's settings"
+			},
+			"catalog": {
+				"Read": "Browse software versions, providers and game assets"
+			},
+			"event": {
+				"Read": "Follow the cluster's events and telemetry"
+			},
+			"job": {
+				"Describe": "Follow a running job"
+			},
+			"journal": {
+				"Read": "Read the console journal"
+			},
+			"shell": {
+				"Execute": "Run the luna CLI from the terminal drawer"
+			},
+			"account": {
+				"List": "List console accounts",
+				"Describe": "Read an account and its sessions",
+				"ReadAudit": "Read the account audit trail",
+				"Create": "Create console accounts",
+				"Update": "Edit an account's details",
+				"SetPassword": "Set an account's password",
+				"ManageIdentities": "Add and remove an account's credentials",
+				"ManageSessions": "Close an account's sessions",
+				"Delete": "Delete console accounts"
+			},
+			"iam": {
+				"ListPolicies": "List policies",
+				"DescribePolicy": "Read a policy",
+				"ListGroups": "List groups",
+				"DescribeGroup": "Read a group",
+				"Simulate": "Simulate access for an account",
+				"ReadAudit": "Read the IAM audit trail",
+				"CreatePolicy": "Create policies",
+				"UpdatePolicy": "Edit policies",
+				"CreateGroup": "Create groups",
+				"UpdateGroup": "Edit groups and their members",
+				"Attach": "Attach policies to accounts and groups",
+				"Detach": "Detach policies from accounts and groups",
+				"DeletePolicy": "Delete policies",
+				"DeleteGroup": "Delete groups"
+			},
+			"tag": {
+				"List": "List recorded resources",
+				"Describe": "Read a resource's metadata and tags",
+				"Tag": "Add or change tags on resources",
+				"Untag": "Remove tags from resources"
+			},
+			"mcp": {
+				"ListTokens": "List MCP tokens",
+				"DescribeToken": "Read an MCP token",
+				"ReadCalls": "Read the MCP call log",
+				"ReadAudit": "Read the MCP audit trail",
+				"CreateToken": "Create MCP tokens",
+				"UpdateToken": "Change a token's scope and settings",
+				"RotateToken": "Rotate a token's secret",
+				"DeleteToken": "Delete MCP tokens"
+			},
+			"knowledge": {
+				"List": "List knowledge items",
+				"Describe": "Read a knowledge item",
+				"Create": "Create knowledge items",
+				"Update": "Edit knowledge items",
+				"Delete": "Delete knowledge items"
+			},
+			"agent": {
+				"Describe": "Read Mèo Béo's settings",
+				"Chat": "Chat with Mèo Béo",
+				"Configure": "Change Mèo Béo's settings and credential"
+			}
+		}
+	},
+	"resources": {
+		"badId": "\"{id}\" is not a resource id (luna:<type>/<name>)",
+		"tooManyTags": "a resource may carry at most {max} tags",
+		"badTagKey": "tag key \"{tag}\" is not valid (up to 128 letters, digits, spaces and _ . : / = + @ -)",
+		"badTagValue": "the value of tag \"{tag}\" is not valid (up to 256 characters)",
+		"reservedTagKey": "tag keys starting with luna: are reserved"
 	}
 }

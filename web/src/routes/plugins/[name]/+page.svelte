@@ -15,6 +15,7 @@
 	import type { ReleaseChannel } from '$core/channels';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
+	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -571,6 +572,7 @@
 				</Panel>
 				<div class="gap"></div>
 			{/each}
+			<ResourceMeta id="luna:plugin/{data.plugin}" />
 		{:else if tab === 'usage'}
 			<Panel
 				title="Instances using {data.plugin}"

@@ -26,6 +26,13 @@
 	import PlayerPicker from '$lib/components/PlayerPicker.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import Select from '$lib/components/Select.svelte';
+	import MultiSelect from '$lib/components/MultiSelect.svelte';
+	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
+	import PolicyEditor from '$lib/components/PolicyEditor.svelte';
+	import { IAM_SERVICES, actionLabelKey, actionsOf, type IamActionSpec } from '$shared/iam/actions';
+	import { builtinPolicy } from '$shared/iam/builtin';
+	import type { AccountPermissions, InlineView, PolicySummary, SimulationResult } from '$core/iam';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -80,6 +87,32 @@
 	let identityRemoveOpen = $state(false);
 	/** the identity the remove dialog is about; set by the row verb, read on confirm */
 	let identityToRemove = $state<IdentityRow | null>(null);
+
+	// permissions tab: what the evaluator reads for this account, loaded beside the account
+	let perms = $state<AccountPermissions | null>(null);
+	let permsError = $state('');
+	let permsBusy = $state(false);
+
+	let attachOpen = $state(false);
+	let attachPick = $state<string[]>([]);
+	let policyCatalog = $state<PolicySummary[]>([]);
+
+	let inlineOpen = $state(false);
+	let inlineEditing = $state(false);
+	let inlineName = $state('');
+	let inlineYaml = $state('');
+	let inlineRemoveOpen = $state(false);
+	let inlineToRemove = $state<InlineView | null>(null);
+
+	let leaveOpen = $state(false);
+	let groupToLeave = $state<AccountPermissions['groups'][number] | null>(null);
+
+	// simulator
+	let simService = $state(IAM_SERVICES[0] ?? 'instance');
+	let simAction = $state('');
+	let simResource = $state('');
+	let simBusy = $state(false);
+	let simResult = $state<SimulationResult | null>(null);
 
 	// password form
 	let currentPassword = $state('');
@@ -244,6 +277,7 @@
 			detail = { ...data, audit: keyAudit(data.audit) };
 			missing = false;
 			lastUpdated = Date.now();
+			await loadPermissions();
 		} catch (err) {
 			missing = true;
 			Notify.error(t('web.common.loadFailedNamed', { name: id }), {
@@ -624,6 +658,270 @@
 	async function copySecret(): Promise<void> {
 		copied = await copyText(mintedSecret);
 	}
+
+	/** A failure here is shown inside the tab: the rest of the account is still worth reading. */
+	async function loadPermissions(): Promise<void> {
+		try {
+			const data = await api<{ permissions: AccountPermissions }>(`/accounts/${encodeURIComponent(id)}/permissions`);
+
+			perms = data.permissions;
+			permsError = '';
+		} catch (err) {
+			perms = null;
+			permsError = (err as Error).message;
+		}
+	}
+
+	async function openAttach(): Promise<void> {
+		attachPick = [];
+		attachOpen = true;
+
+		try {
+			const data = await api<{ policies: PolicySummary[] }>('/iam/policies');
+
+			policyCatalog = data.policies;
+		} catch (err) {
+			Notify.error(t('web.accountDetail.policiesLoadFailed'), { detail: (err as Error).message });
+		}
+	}
+
+	/** Policies the account does not hold directly yet; the attach dialog's choices. */
+	const attachable = $derived(
+		policyCatalog
+			.filter((policy) => !(perms?.policies ?? []).includes(policy.name))
+			.map((policy) => ({ value: policy.name, label: policy.name }))
+	);
+
+	async function attachPicked(): Promise<void> {
+		if (!perms || attachPick.length === 0) {
+			return;
+		}
+
+		permsBusy = true;
+
+		const failed: string[] = [];
+
+		for (const policy of attachPick) {
+			try {
+				await post('/iam/attachments', { account: perms.username, policy });
+			} catch (err) {
+				failed.push(`${policy}: ${(err as Error).message}`);
+			}
+		}
+
+		permsBusy = false;
+
+		if (failed.length === 0) {
+			Notify.success(t('web.accountDetail.attached', { count: attachPick.length }));
+			attachOpen = false;
+		} else {
+			Notify.warning(t('web.accountDetail.attachPartial', { failed: failed.length }), { detail: failed.join('\n') });
+		}
+
+		await loadPermissions();
+	}
+
+	async function detach(policy: string): Promise<void> {
+		if (!perms) {
+			return;
+		}
+
+		try {
+			await api('/iam/attachments', {
+				method: 'DELETE',
+				body: JSON.stringify({ account: perms.username, policy })
+			});
+			Notify.success(t('web.accountDetail.detached', { policy }));
+			await loadPermissions();
+		} catch (err) {
+			Notify.error(t('web.accountDetail.detachFailed', { policy }), { detail: (err as Error).message });
+		}
+	}
+
+	function askLeave(group: AccountPermissions['groups'][number]): void {
+		groupToLeave = group;
+		leaveOpen = true;
+	}
+
+	async function leaveConfirmed(): Promise<void> {
+		const group = groupToLeave;
+
+		if (!group || !perms) {
+			return;
+		}
+
+		try {
+			await api(`/iam/groups/${encodeURIComponent(group.name)}/members`, {
+				method: 'DELETE',
+				body: JSON.stringify({ members: [perms.accountId] })
+			});
+			Notify.success(t('web.accountDetail.leftGroup', { group: group.name }));
+			await loadPermissions();
+		} catch (err) {
+			Notify.error(t('web.accountDetail.leaveFailed', { group: group.name }), { detail: (err as Error).message });
+		}
+	}
+
+	function openInline(existing: InlineView | null): void {
+		inlineEditing = existing !== null;
+		inlineName = existing?.name ?? '';
+		inlineYaml = existing?.yaml ?? 'Version: 1\nStatement:\n  - Effect: Allow\n    Action: []\n    Resource: "*"\n';
+		inlineOpen = true;
+	}
+
+	const inlineReady = $derived(inlineName.trim() !== '' && inlineYaml.trim() !== '');
+
+	async function saveInline(): Promise<void> {
+		if (!perms || !inlineReady) {
+			return;
+		}
+
+		permsBusy = true;
+
+		try {
+			await put('/iam/inline', { account: perms.username, name: inlineName.trim(), yaml: inlineYaml });
+			Notify.success(t('web.accountDetail.inlineSaved', { name: inlineName.trim() }));
+			inlineOpen = false;
+			await loadPermissions();
+		} catch (err) {
+			Notify.error(t('web.accountDetail.inlineSaveFailed'), { detail: (err as Error).message });
+		} finally {
+			permsBusy = false;
+		}
+	}
+
+	function askRemoveInline(row: InlineView): void {
+		inlineToRemove = row;
+		inlineRemoveOpen = true;
+	}
+
+	async function removeInlineConfirmed(): Promise<void> {
+		const row = inlineToRemove;
+
+		if (!row || !perms) {
+			return;
+		}
+
+		try {
+			await api('/iam/inline', {
+				method: 'DELETE',
+				body: JSON.stringify({ account: perms.username, name: row.name })
+			});
+			Notify.success(t('web.accountDetail.inlineRemoved', { name: row.name }));
+			await loadPermissions();
+		} catch (err) {
+			Notify.error(t('web.accountDetail.inlineRemoveFailed', { name: row.name }), { detail: (err as Error).message });
+		}
+	}
+
+	/** The catalog's own words for an action, or just its name when the locale has none. */
+	function actionLabel(spec: IamActionSpec): string {
+		const key = actionLabelKey(spec);
+		const label = t(key);
+
+		return label === key
+			? spec.name
+			: `${spec.verb} · ${label}`;
+	}
+
+	const serviceOptions = $derived(IAM_SERVICES.map((name) => ({ value: name, label: name })));
+
+	const actionOptions = $derived(actionsOf(simService).map((spec) => ({ value: spec.name, label: actionLabel(spec) })));
+
+	// a service change leaves the old verb behind; the first of the new service is the sensible pick
+	$effect(() => {
+		const first = actionsOf(simService)[0];
+
+		if (first && !actionsOf(simService).some((spec) => spec.name === simAction)) {
+			simAction = first.name;
+		}
+	});
+
+	async function simulate(): Promise<void> {
+		if (!perms || !simAction) {
+			return;
+		}
+
+		simBusy = true;
+
+		try {
+			simResult = await post<SimulationResult>('/iam/simulate', {
+				account: perms.username,
+				action: simAction,
+				resource: simResource.trim() || undefined
+			});
+		} catch (err) {
+			simResult = null;
+			Notify.error(t('web.accountDetail.simulateFailed'), { detail: (err as Error).message });
+		} finally {
+			simBusy = false;
+		}
+	}
+
+	const reasonLabels: Record<string, string> = $derived({
+		allow: t('web.accountDetail.reasonAllow'),
+		'explicit-deny': t('web.accountDetail.reasonExplicitDeny'),
+		'implicit-deny': t('web.accountDetail.reasonImplicitDeny'),
+		root: t('web.accountDetail.reasonRoot')
+	});
+
+	const sourceLabels: Record<string, string> = $derived({
+		builtin: t('web.accountDetail.sourceBuiltin'),
+		managed: t('web.accountDetail.sourceManaged'),
+		inline: t('web.accountDetail.sourceInline')
+	});
+
+	const groupColumns: Column[] = $derived([
+		{ id: 'name', label: t('web.accountDetail.colGroup'), sortable: true, width: 220 },
+		{ id: 'policies', label: t('web.accountDetail.colGroupPolicies') },
+		{ id: 'inline', label: t('web.accountDetail.colGroupInline'), width: 160 }
+	]);
+
+	const policyColumns: Column[] = $derived([
+		{ id: 'name', label: t('web.accountDetail.colPolicy'), sortable: true, width: 260 },
+		{ id: 'kind', label: t('web.accountDetail.colPolicyKind'), sortable: true, width: 140 },
+		{ id: 'description', label: t('web.accountDetail.colPolicyDescription') }
+	]);
+
+	const inlineColumns: Column[] = $derived([
+		{ id: 'name', label: t('web.accountDetail.colInline'), sortable: true, width: 240 },
+		{ id: 'statements', label: t('web.accountDetail.colStatements'), width: 120 },
+		{ id: 'updated', label: t('web.accountDetail.colUpdated'), sortable: true, width: 180 },
+		{ id: 'updatedBy', label: t('web.accountDetail.colUpdatedBy'), sortable: true }
+	]);
+
+	function groupActions(row: AccountPermissions['groups'][number]): ContextMenuItem[] {
+		return [
+			{ label: t('web.accountDetail.openGroup'), icon: 'users', action: () => goto(`/console/iam/groups/${encodeURIComponent(row.name)}`) },
+			{ separator: true },
+			{ label: t('web.accountDetail.leaveGroup'), icon: 'userMinus', color: 'danger', action: () => askLeave(row) }
+		];
+	}
+
+	function policyActions(row: { name: string }): ContextMenuItem[] {
+		return [
+			{ label: t('web.accountDetail.openPolicy'), icon: 'shieldHalved', action: () => goto(`/console/iam/policies/${encodeURIComponent(row.name)}`) },
+			{ separator: true },
+			{ label: t('web.accountDetail.detachPolicy'), icon: 'unlink', color: 'danger', action: () => detach(row.name) }
+		];
+	}
+
+	function inlineActions(row: InlineView): ContextMenuItem[] {
+		return [
+			{ label: t('web.common.edit'), icon: 'pen', action: () => openInline(row) },
+			{ separator: true },
+			{ label: t('web.accountDetail.removeInline'), icon: 'trash', color: 'danger', action: () => askRemoveInline(row) }
+		];
+	}
+
+	/** The attached names as rows, with what the catalog says about each built-in. */
+	const policyRows = $derived(
+		(perms?.policies ?? []).map((name) => ({
+			name,
+			builtin: builtinPolicy(name) !== undefined,
+			description: builtinPolicy(name) ? t(builtinPolicy(name)!.descriptionKey) : ''
+		}))
+	);
 </script>
 
 <svelte:head><title>{detail?.account.username ?? id} | Luna Console</title></svelte:head>
@@ -678,6 +976,7 @@
 	<Tabs
 		tabs={[
 			{ id: 'details', label: t('web.accountDetail.tabDetails') },
+			{ id: 'permissions', label: t('web.accountDetail.tabPermissions') },
 			{ id: 'identities', label: t('web.accountDetail.tabIdentities') },
 			{ id: 'sessions', label: t('web.accountDetail.tabSessions') },
 			{ id: 'activity', label: t('web.accountDetail.tabActivity') }
@@ -731,7 +1030,189 @@
 
 			<div class="gap"></div>
 
-			<Flash kind="info">{t('web.accountDetail.noPermissionsNotice')}</Flash>
+			<ResourceMeta id="luna:account/{detail.account.username}" />
+		{:else if tab === 'permissions'}
+			{#if permsError}
+				<Flash kind="error">{t('web.accountDetail.permissionsLoadFailed', { detail: permsError })}</Flash>
+			{:else if !perms}
+				<p class="none dim">{t('web.common.loading')}</p>
+			{:else}
+				{#if perms.administrator}
+					<Flash kind="info">
+						<span class="adminrow">
+							<StatusBadge state="ok" label={t('web.accountDetail.administrator')} />
+							{t('web.accountDetail.administratorNotice')}
+						</span>
+					</Flash>
+				{/if}
+
+				<Panel
+					title={t('web.accountDetail.groupsPanel')}
+					count={perms.groups.length}
+					description={t('web.accountDetail.groupsHint')}
+					flush
+				>
+					{#if perms.groups.length}
+						<DataTable
+							columns={groupColumns}
+							rows={perms.groups}
+							getId={(row) => row.id}
+							rowActions={groupActions}
+							rowLabel={(row) => row.name}
+						>
+							{#snippet cell(row, col)}
+								{#if col === 'name'}
+									<a href="/console/iam/groups/{encodeURIComponent(row.name)}"><b>{row.name}</b></a>
+								{:else if col === 'policies'}
+									<span class:dim={row.policies.length === 0}>{row.policies.join(', ') || '–'}</span>
+								{:else if col === 'inline'}
+									<span class:dim={row.inline.length === 0}>{row.inline.join(', ') || '–'}</span>
+								{/if}
+							{/snippet}
+						</DataTable>
+					{:else}
+						<p class="none dim">{t('web.accountDetail.noGroups')}</p>
+					{/if}
+				</Panel>
+
+				<div class="gap"></div>
+
+				<Panel
+					title={t('web.accountDetail.policiesPanel')}
+					count={policyRows.length}
+					description={t('web.accountDetail.policiesHint')}
+					flush
+				>
+					{#snippet actions()}
+						<Btn icon="plus" onclick={() => void openAttach()}>{t('web.accountDetail.attachPolicy')}</Btn>
+					{/snippet}
+					{#if policyRows.length}
+						<DataTable
+							columns={policyColumns}
+							rows={policyRows}
+							getId={(row) => row.name}
+							rowActions={policyActions}
+							rowLabel={(row) => row.name}
+						>
+							{#snippet cell(row, col)}
+								{#if col === 'name'}
+									<a href="/console/iam/policies/{encodeURIComponent(row.name)}"><b>{row.name}</b></a>
+								{:else if col === 'kind'}
+									{#if row.builtin}
+										<StatusBadge state="info" label={t('web.accountDetail.builtin')} />
+									{:else}
+										<span class="dim">{t('web.accountDetail.managed')}</span>
+									{/if}
+								{:else if col === 'description'}
+									<span class="dim">{row.description || '–'}</span>
+								{/if}
+							{/snippet}
+						</DataTable>
+					{:else}
+						<p class="none dim">{t('web.accountDetail.noPolicies')}</p>
+					{/if}
+				</Panel>
+
+				<div class="gap"></div>
+
+				<Panel
+					title={t('web.accountDetail.inlinePanel')}
+					count={perms.inline.length}
+					description={t('web.accountDetail.inlineHint')}
+					flush
+				>
+					{#snippet actions()}
+						<Btn icon="plus" onclick={() => openInline(null)}>{t('web.accountDetail.addInline')}</Btn>
+					{/snippet}
+					{#if perms.inline.length}
+						<DataTable
+							columns={inlineColumns}
+							rows={perms.inline}
+							getId={(row) => row.name}
+							rowActions={inlineActions}
+							rowLabel={(row) => row.name}
+							onRowClick={(row) => openInline(row)}
+						>
+							{#snippet cell(row, col)}
+								{#if col === 'name'}
+									<b class="mono">{row.name}</b>
+								{:else if col === 'statements'}
+									{row.document.Statement.length}
+								{:else if col === 'updated'}
+									<span class="dim">{fmtDateTime(row.updatedAt)}</span>
+								{:else if col === 'updatedBy'}
+									<span class:dim={!row.updatedBy}>{row.updatedBy ?? '–'}</span>
+								{/if}
+							{/snippet}
+						</DataTable>
+					{:else}
+						<p class="none dim">{t('web.accountDetail.noInline')}</p>
+					{/if}
+				</Panel>
+
+				<div class="gap"></div>
+
+				<Panel title={t('web.accountDetail.simulatePanel')} description={t('web.accountDetail.simulateHint')}>
+					<div class="simrow">
+						<Select label={t('web.accountDetail.simService')} bind:value={simService} options={serviceOptions} width="11rem" searchable />
+						<Select label={t('web.accountDetail.simAction')} bind:value={simAction} options={actionOptions} width="20rem" searchable />
+						<input
+							class="input mono simresource"
+							type="text"
+							placeholder="luna:instance/survival"
+							bind:value={simResource}
+							onkeydown={(event) => {
+								if (event.key === 'Enter') {
+									void simulate();
+								}
+							}}
+						/>
+						<Btn variant="primary" icon="play" loading={simBusy} disabled={!simAction} onclick={() => void simulate()}>
+							{t('web.accountDetail.simRun')}
+						</Btn>
+					</div>
+
+					{#if simResult}
+						<div class="simresult">
+							<StatusBadge
+								state={simResult.verdict.allowed ? 'ok' : 'failed'}
+								label={simResult.verdict.allowed ? t('web.accountDetail.simAllowed') : t('web.accountDetail.simDenied')}
+							/>
+							<span class="simreason">{reasonLabels[simResult.verdict.reason] ?? simResult.verdict.reason}</span>
+							<span class="mono dim simreq">
+								{simResult.request.action}
+								{#if simResult.request.resource}
+									{t('web.accountDetail.simOn')} {simResult.request.resource}
+								{/if}
+							</span>
+							{#if simResult.verdict.matched}
+								<span class="simmatch">
+									{t('web.accountDetail.simMatched', {
+										kind: sourceLabels[simResult.verdict.matched.source.kind] ?? simResult.verdict.matched.source.kind,
+										name: simResult.verdict.matched.source.name
+									})}
+									{#if simResult.verdict.matched.source.group}
+										{t('web.accountDetail.simViaGroup', { group: simResult.verdict.matched.source.group })}
+									{/if}
+									<span class="mono">
+										{simResult.verdict.matched.sid
+											? t('web.accountDetail.simSid', { sid: simResult.verdict.matched.sid })
+											: t('web.accountDetail.simStatement', { index: simResult.verdict.matched.index + 1 })}
+									</span>
+								</span>
+							{/if}
+							{#if simResult.resource}
+								<span class="dim simfacts">
+									{t('web.accountDetail.simResourceFacts', {
+										creator: simResult.resource.createdBy ?? '–',
+										tags: Object.entries(simResult.resource.tags).map(([key, value]) => `${key}=${value}`).join(', ') || '–'
+									})}
+								</span>
+							{/if}
+						</div>
+					{/if}
+				</Panel>
+			{/if}
 		{:else if tab === 'identities'}
 			<Panel
 				title={t('web.accountDetail.identitiesPanel')}
@@ -946,6 +1427,60 @@
 		{/snippet}
 	</Modal>
 
+	<Modal title={t('web.accountDetail.attachTitle')} bind:open={attachOpen}>
+		<p class="modalnote dim">{t('web.accountDetail.attachHint')}</p>
+		<div class="field">
+			<span class="lbl">{t('web.accountDetail.attachField')}</span>
+			<MultiSelect bind:value={attachPick} options={attachable} width="100%" placeholder={t('web.accountDetail.attachPlaceholder')} />
+		</div>
+
+		{#snippet footer()}
+			<Btn onclick={() => (attachOpen = false)}>{t('web.common.cancel')}</Btn>
+			<Btn variant="primary" disabled={attachPick.length === 0} loading={permsBusy} onclick={() => void attachPicked()}>
+				{t('web.accountDetail.attachAction', { count: attachPick.length })}
+			</Btn>
+		{/snippet}
+	</Modal>
+
+	<Modal
+		title={inlineEditing ? t('web.accountDetail.inlineEditTitle', { name: inlineName }) : t('web.accountDetail.inlineAddTitle')}
+		bind:open={inlineOpen}
+		wide
+	>
+		<p class="modalnote dim">{t('web.accountDetail.inlineModalHint')}</p>
+		<label class="field">
+			<span class="lbl">{t('web.accountDetail.inlineName')}</span>
+			<input class="input mono" type="text" bind:value={inlineName} disabled={inlineEditing} />
+		</label>
+		<div class="field">
+			<span class="lbl">{t('web.accountDetail.inlineDocument')}</span>
+			<PolicyEditor bind:value={inlineYaml} />
+		</div>
+
+		{#snippet footer()}
+			<Btn onclick={() => (inlineOpen = false)}>{t('web.common.cancel')}</Btn>
+			<Btn variant="primary" disabled={!inlineReady} loading={permsBusy} onclick={() => void saveInline()}>
+				{t('web.common.save')}
+			</Btn>
+		{/snippet}
+	</Modal>
+
+	<ConfirmModal
+		bind:open={inlineRemoveOpen}
+		title={t('web.accountDetail.inlineRemoveTitle', { name: inlineToRemove?.name ?? '' })}
+		lead={t('web.accountDetail.inlineRemoveLead', { name: inlineToRemove?.name ?? '', account: detail.account.username })}
+		confirmLabel={t('web.accountDetail.removeInline')}
+		onconfirm={() => void removeInlineConfirmed()}
+	/>
+
+	<ConfirmModal
+		bind:open={leaveOpen}
+		title={t('web.accountDetail.leaveTitle', { group: groupToLeave?.name ?? '' })}
+		lead={t('web.accountDetail.leaveLead', { account: detail.account.username, group: groupToLeave?.name ?? '' })}
+		confirmLabel={t('web.accountDetail.leaveGroup')}
+		onconfirm={() => void leaveConfirmed()}
+	/>
+
 	<ConfirmModal
 		bind:open={identityRemoveOpen}
 		title={t('web.accountDetail.removeIdentityTitle', { label: identityToRemove?.label ?? '' })}
@@ -1056,5 +1591,51 @@
 
 	.picker {
 		display: none;
+	}
+
+	.adminrow {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+	}
+
+	.simrow {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+	}
+
+	.simresource {
+		flex: 1 1 16rem;
+		min-width: 12rem;
+	}
+
+	// the verdict reads as one line: badge, reason, then what decided it
+	.simresult {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		margin-top: 1rem;
+		padding-top: 1rem;
+		border-top: var(--hairline) solid var(--border-divider);
+		font-size: 0.8125rem;
+	}
+
+	.simreq {
+		font-size: 0.75rem;
+	}
+
+	.simmatch {
+		display: inline-flex;
+		gap: 0.375rem;
+		flex-wrap: wrap;
+	}
+
+	.simfacts {
+		flex-basis: 100%;
+		font-size: 0.75rem;
 	}
 </style>

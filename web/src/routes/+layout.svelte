@@ -28,6 +28,8 @@
 	import { fmtBytes } from '$lib/format';
 	import { LANGUAGES, adoptAccountLanguage, currentLanguage, switchLanguage, t } from '$lib/i18n.svelte';
 	import { tooltip } from '$lib/tooltip.svelte';
+	import { Authz } from '$lib/authz.svelte';
+	import { pageRuleFor } from '$lib/authz/pages';
 
 	let { children, data } = $props();
 
@@ -59,6 +61,24 @@
 
 	/** The signed-in account, resolved server-side in `+layout.server.ts`. */
 	const account = $derived(data?.account ?? null);
+
+	// the principal's policies ride with the account; the nav and the verbs read them
+	$effect(() => {
+		Authz.adopt(data?.principal ?? null);
+	});
+
+	/** Whether the account may open the screen a nav entry links to. */
+	function canOpen(href: string): boolean {
+		const rule = pageRuleFor(href);
+
+		if (!rule) {
+			return true;
+		}
+
+		return Authz.can(rule.action);
+	}
+
+	const canShell = $derived(Authz.principal !== null && Authz.can('shell:Execute'));
 
 	$effect(() => {
 		adoptAccountLanguage(account?.language);
@@ -217,6 +237,8 @@
 			section: t('web.nav.console'),
 			items: [
 				{ label: t('web.nav.accounts'), href: '/console/accounts', icon: 'userShield' },
+				{ label: t('web.nav.iam'), href: '/console/iam', icon: 'shieldCheck' },
+				{ label: t('web.nav.resources'), href: '/console/resources', icon: 'tags' },
 				{ label: t('web.nav.agent'), href: '/console/agent', icon: 'cat' },
 				{ label: t('web.nav.mcp'), href: '/console/mcp', icon: 'plug' },
 				{ label: t('web.nav.knowledge'), href: '/console/knowledge', icon: 'bookOpen' },
@@ -237,6 +259,13 @@
 			: [])
 	]);
 
+	/** The nav minus every entry whose screen the account could not open; an emptied section goes too. */
+	const visibleNav = $derived(
+		nav
+			.map((group) => ({ ...group, items: group.items.filter((item) => canOpen(item.href)) }))
+			.filter((group) => group.items.length > 0)
+	);
+
 	/**
 	 * The account menu, top right, as the console this is modelled on places it.
 	 * "Your account" goes to the signed-in account's own detail screen, which is
@@ -253,16 +282,20 @@
 						icon: 'userPortrait',
 						action: () => goto(`/console/accounts/${account.id}`)
 					},
-					{
-						label: t('web.nav.accounts'),
-						icon: 'userShield',
-						action: () => goto('/console/accounts')
-					},
-					{
-						label: t('web.nav.consoleLogs'),
-						icon: 'fileLines',
-						action: () => goto('/console/logs')
-					},
+					...(canOpen('/console/accounts')
+						? [{
+								label: t('web.nav.accounts'),
+								icon: 'userShield',
+								action: () => goto('/console/accounts')
+							}]
+						: []),
+					...(canOpen('/console/logs')
+						? [{
+								label: t('web.nav.consoleLogs'),
+								icon: 'fileLines',
+								action: () => goto('/console/logs')
+							}]
+						: []),
 					{ separator: true },
 					{ label: t('web.layout.signOut'), icon: 'rightFromBracket', color: 'danger', action: signOut }
 				]
@@ -524,7 +557,7 @@
 						</button>
 						{#if !navCollapsed}
 							<div class="navhead"><a href="/instances">{t('web.layout.navTitle')}</a></div>
-							{#each nav as group, gi}
+							{#each visibleNav as group, gi}
 								{#if gi > 0}<hr />{/if}
 								<div class="group">
 									<div class="gt">{group.section}</div>
@@ -545,7 +578,7 @@
 					</main>
 				</div>
 
-				{#if shellOpen && browser}
+				{#if shellOpen && canShell && browser}
 					<TerminalDrawer
 						bind:height={shellHeight}
 						user={account?.username ?? 'root'}
@@ -560,10 +593,12 @@
 		</div>
 
 		<footer class="statusbar">
-			<button class="shellbtn" onclick={() => (shellOpen = !shellOpen)}>
-				<ShellGlyph size="0.8125rem" /> {t('web.layout.terminal')}
-			</button>
-			<span class="statusdiv"></span>
+			{#if canShell}
+				<button class="shellbtn" onclick={() => (shellOpen = !shellOpen)}>
+					<ShellGlyph size="0.8125rem" /> {t('web.layout.terminal')}
+				</button>
+				<span class="statusdiv"></span>
+			{/if}
 			<span class="spacer"></span>
 			<button
 				class="langpick"

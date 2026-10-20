@@ -130,5 +130,8 @@
 	"stageTooLarge": "The upload exceeds the maximum staged world size.",
 	"stageMissing": "No staged world {token} on this machine.",
 	"stageFetchFailed": "Could not fetch staged world {token} from the primary: HTTP {status}",
-	"noPrimaryForStage": "This daemon has no primary to fetch a staged world from."
+	"noPrimaryForStage": "This daemon has no primary to fetch a staged world from.",
+	"sweptResources": "resource records backfilled: {added} added, {total} total",
+	"iamSeedFailed": "authorization seeding failed: {message}",
+	"resourceNoteFailed": "could not record resource {name}: {message}"
 }

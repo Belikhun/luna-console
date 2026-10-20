@@ -130,5 +130,8 @@
 	"stageTooLarge": "Tệp tải lên vượt quá kích thước thế giới tối đa được phép.",
 	"stageMissing": "Không có thế giới đã chuẩn bị {token} trên máy này.",
 	"stageFetchFailed": "Không tải được thế giới đã chuẩn bị {token} từ máy chính: HTTP {status}",
-	"noPrimaryForStage": "Daemon này không có máy chính để tải thế giới đã chuẩn bị."
+	"noPrimaryForStage": "Daemon này không có máy chính để tải thế giới đã chuẩn bị.",
+	"sweptResources": "đã bổ sung bản ghi tài nguyên: thêm {added}, tổng {total}",
+	"iamSeedFailed": "khởi tạo phân quyền thất bại: {message}",
+	"resourceNoteFailed": "không ghi nhận được tài nguyên {name}: {message}"
 }

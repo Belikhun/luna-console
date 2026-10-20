@@ -205,7 +205,7 @@
 
 	<div class="gap"></div>
 
-	<Flash kind="info">{t('web.accountNew.noPermissionsNotice')}</Flash>
+	<Flash kind="info">{t('web.accountNew.defaultPoliciesNotice')}</Flash>
 </Wizard>
 
 <style lang="scss">

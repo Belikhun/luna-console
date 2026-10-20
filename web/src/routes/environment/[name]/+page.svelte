@@ -11,6 +11,7 @@
 	import { fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
+	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -462,6 +463,9 @@
 					{t('web.envDetail.intoWhateverConfigFile')}
 				</Flash>
 			{/if}
+
+			<div class="gap"></div>
+			<ResourceMeta id="luna:env/{name}" />
 		{:else if tab === 'usage'}
 			<Panel
 				title={t('web.envDetail.managedConfigFiles')}

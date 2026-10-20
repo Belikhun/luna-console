@@ -37,6 +37,7 @@ import { MIN_PASSWORD_LENGTH, USERNAME_PATTERN } from "../shared/accountrules";
 import { LANGUAGES, isLanguage, t } from "../shared/i18n";
 import type { LanguageCode } from "../shared/i18n";
 import { dataDir, notifySave, statePath } from "./config";
+import { forgetResource, recordCreated, renameResource } from "./resources";
 import { digest, newId, newSecret, sameDigest } from "./secrets";
 
 const ACCOUNTS_FILE = "accounts.json";
@@ -594,6 +595,12 @@ export async function createAccount(
 	input: CreateAccountInput,
 	actor?: string,
 ): Promise<AccountSummary> {
+	// seed authorization for the accounts that already exist before this one is
+	// added, so the new account gets the defaults and not an administrator's seat
+	const iam = await import("./iam");
+
+	await iam.ensureIamSeeded();
+
 	const store = await loadAccounts();
 
 	assertUsername(store, input.username);
@@ -635,6 +642,7 @@ export async function createAccount(
 	});
 
 	await saveAccounts(store);
+	await recordCreated("account", account.username, actor ?? null);
 
 	return summarize(account);
 }
@@ -672,6 +680,12 @@ export async function bootstrapAccount(
 	});
 
 	await saveAccounts(fresh);
+
+	// the first account is the first administrator, from this moment rather than
+	// from whichever later read happens to seed the store
+	const iam = await import("./iam");
+
+	await iam.ensureIamSeeded();
 
 	return created;
 }
@@ -712,6 +726,10 @@ export async function updateAccount(
 	if (patch.username !== undefined && patch.username !== account.username) {
 		assertUsername(store, patch.username, account.id);
 		changed.push("username");
+
+		// the resource record and the policies that name it follow the username
+		await renameResource("account", account.username, patch.username);
+
 		account.username = patch.username;
 	}
 
@@ -758,6 +776,12 @@ export async function updateAccount(
 	// of the console" is the question a trail is read for, and it should not be
 	// buried in a list of edited fields
 	if (patch.enabled !== undefined && patch.enabled !== account.enabled) {
+		if (!patch.enabled) {
+			const iam = await import("./iam");
+
+			await iam.assertNotLastAdministrator(account.id);
+		}
+
 		account.enabled = patch.enabled;
 
 		recordAudit(store, {
@@ -805,6 +829,11 @@ export async function deleteAccount(idOrName: string, actor?: string): Promise<v
 		throw new Error(t("core.accounts.lastAccount", { name: account.username }));
 	}
 
+	// a lazy import: iam reads this module, and a static cycle would be fragile
+	const iam = await import("./iam");
+
+	await iam.assertNotLastAdministrator(account.id);
+
 	store.accounts = store.accounts.filter((other) => other.id !== account.id);
 	await dropAvatarFile(account);
 
@@ -812,6 +841,8 @@ export async function deleteAccount(idOrName: string, actor?: string): Promise<v
 
 	await saveAccounts(store);
 	await revokeAccountSessions(account.id);
+	await iam.forgetPrincipal(account.id);
+	await forgetResource("account", account.username);
 }
 
 /**

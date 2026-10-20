@@ -12,6 +12,7 @@
 	import { fmtBytes, fmtDateTime, fmtDuration } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
+	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Modal from '$lib/components/Modal.svelte';
@@ -1080,6 +1081,7 @@
 						</p>
 					{/if}
 				</Panel>
+				<ResourceMeta id="luna:pack/{pack.key}" />
 			</div>
 		{:else if tab === 'backends'}
 			<Panel

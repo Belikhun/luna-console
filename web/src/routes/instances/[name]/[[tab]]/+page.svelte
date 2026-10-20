@@ -26,6 +26,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
+	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { OverviewDetail, OverviewNode } from '$lib/components/nodeoverview';
@@ -2575,6 +2576,8 @@
 			>
 				<code class="cmd mono">{inst.javaCommand}</code>
 			</Panel>
+			<div class="gap"></div>
+			<ResourceMeta id="luna:instance/{name}" />
 		{:else if tab === 'checks'}
 			<Panel title={t('web.instanceDetail.statusChecks')}>
 				{#each inst.checks as check}

@@ -7,6 +7,7 @@ import { t } from "../shared/i18n";
 
 import { PROTOCOL_VERSION } from "../shared/protocol";
 import { socketCandidates } from "../shared/sockpath";
+import { currentActor } from "./actor";
 
 /**
  * Daemon discovery and transport for every client (CLI and web console). The
@@ -113,11 +114,15 @@ export function clientRoot(): string {
 	return daemonInfo().root;
 }
 
-/** Fetch against the daemon's unix socket. */
+/** Fetch against the daemon's unix socket, naming the actor the call is for. */
 export async function dfetch(path: string, init?: RequestInit): Promise<Response> {
 	await ensureConnected();
 
-	return await fetch(`http://luna${path}`, { ...init, unix: connection!.socket });
+	const headers = new Headers(init?.headers);
+
+	headers.set("x-luna-actor", encodeURIComponent(currentActor()));
+
+	return await fetch(`http://luna${path}`, { ...init, headers, unix: connection!.socket });
 }
 
 /**

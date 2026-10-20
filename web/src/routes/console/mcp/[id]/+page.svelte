@@ -12,6 +12,7 @@
 	import { fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
+	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -484,6 +485,9 @@
 					{/each}
 				</div>
 			</Panel>
+
+			<div class="gap"></div>
+			<ResourceMeta id="luna:mcp-token/{token.name}" />
 		{:else if tab === 'scope' && draft}
 			<Panel title={t('web.mcpDetail.scopePanel')} description={t('web.mcpDetail.scopeHint')}>
 				{#snippet actions()}

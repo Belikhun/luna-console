@@ -435,9 +435,41 @@ export interface InstanceConfig {}
   returning in microseconds is the same leak by another route. Failures count toward a lockout
   (`MAX_SIGNIN_FAILURES` → `LOCKOUT_MS`). The audit trail records the scope and the actor and
   **never a value**, exactly as the environment trail does.
-- **Authorization is not in this phase.** Every console account can reach everything, and the
-  screens say so rather than implying a permission model that does not exist. Do not add per-account
-  checks piecemeal; RBAC/ABAC is its own phase.
+- **Authorization is IAM's model, and the catalogs are the law** (`docs/IAM.md`). A policy is a YAML
+  document in IAM's grammar (`shared/iam/grammar.ts`: Statement, Effect, Action/NotAction,
+  Resource/NotResource, Condition with the String/Numeric/Bool/Null operators, `IfExists`, the
+  `ForAnyValue`/`ForAllValues` prefixes, `${luna:username}` and `${luna:PrincipalTag/k}` variables),
+  attached to accounts and groups (`core/iam.ts`, `iam.json`, mirrored). Evaluation is IAM's: explicit
+  Deny, then any Allow, else denied; `root` (the CLI from a shell) is never evaluated. Every action is a
+  catalog entry (`shared/iam/actions.ts`, `service:Verb`, with its access class and resource type), every
+  resource is `luna:<type>/<name>`, and **every API route is a rule in
+  `web/src/lib/server/authz/routes.ts`**, read by `hooks.server.ts` before any handler; an API route with
+  no rule is refused, so a new endpoint is a rule first. Pages map to actions in `$lib/authz/pages.ts`,
+  which the side nav reads too, so a screen the account cannot open is not offered; a refused page lands
+  on `/denied`. A list route lets `*:List` open the screen and then `filterAllowed`s its rows by the
+  per-resource verb, because that is where an owner-only grant is decided. The browser evaluates the same
+  grammar over the principal context the layout loads (`$lib/authz.svelte`) for chrome and verbs, and
+  asks `/api/iam/can` about a resource it has no facts for; it never decides anything.
+- **Built-ins are code, defaults are lazy, and the last administrator is protected.**
+  `AdministratorAccess`, `PowerUserAccess`, `ReadOnlyAccess` (every `read` action), `OwnerAccess`
+  (everything on what `luna:ResourceCreator` says the account created, plus the listings) and
+  `SelfServiceAccess` live in `shared/iam/builtin.ts`; the store holds only names. An account with no
+  entry in `iam.json` has `OwnerAccess` + `SelfServiceAccess`, which is what "a user may do anything to
+  what they created" means with nothing to attach. The first read of an unseeded store on a console that
+  has accounts makes all of them administrators, so the release that introduces authorization locks
+  nobody out; detaching, disabling or deleting the last enabled administrator is refused.
+- **Resource metadata is one store, written by the dispatcher.** `resources.json` (mirrored) records
+  `createdBy`/`createdAt`/`updatedBy`/`updatedAt` and `tags` per resource id; an op that creates or
+  deletes a resource declares it in its registry entry (`resource: { type, name, on }`) and `runOp`
+  records the actor the request carried, so no core create function knows about it. The actor rides
+  every RPC as `x-luna-actor` (`client/actor.ts`: an `AsyncLocalStorage` scope the web hook opens per
+  request, `LUNA_ACTOR` or `root` elsewhere). Tags are AWS-shaped (50 per resource, 128/256 chars,
+  `luna:` keys reserved) and are what `luna:ResourceTag/k` and `luna:PrincipalTag/k` read. A boot sweep
+  backfills records for what the stores already hold, never touching an existing record.
+- **The CLI from a shell is unrestricted; the terminal drawer is an action.** The socket's permissions
+  remain the CLI's check, so `luna` run from a shell acts as `root`. The drawer runs that same CLI for a
+  signed-in account, which is why `/api/shell/*` needs `shell:Execute` and the drawer is hidden without
+  it; `PowerUserAccess` deliberately leaves it out.
 - **A new kind of console log goes in the journal, not a second log.** `core/journal.ts` is the
   append-only NDJSON record of what luna itself did (daemon lines, console routes, CLI, sign-ins),
   monthly files under `logs/console/`, **per machine** — a follower's journal stays on the follower.

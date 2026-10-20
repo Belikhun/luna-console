@@ -28,6 +28,8 @@ import "./commands/publicsite";
 import "./commands/daemon";
 import "./commands/setup";
 import "./commands/accounts";
+import "./commands/iam";
+import "./commands/resources";
 import "./commands/mcp";
 import "./commands/agent";
 

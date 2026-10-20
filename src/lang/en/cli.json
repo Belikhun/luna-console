@@ -2286,5 +2286,220 @@
 		},
 		"dropOn": "allowed (CAA and similar records are deleted on every write)",
 		"dropOff": "refused (writes stop while the zone holds them)"
+	},
+	"iam": {
+		"kindBuiltin": "builtin",
+		"kindManaged": "managed",
+		"kindInline": "inline",
+		"accessRead": "read",
+		"accessWrite": "write",
+		"accessDestructive": "destructive",
+		"viaGroup": "via group {group}",
+		"verdictAllowed": "allowed",
+		"verdictDenied": "denied",
+		"reasonExplicitDeny": "a matching statement denies it explicitly",
+		"reasonAllow": "a matching statement allows it",
+		"reasonImplicitDeny": "no statement allows it",
+		"reasonRoot": "root is never evaluated",
+		"pickSource": "pass exactly one of --file <path> or --stdin",
+		"noFile": "no file at {path}",
+		"stdinIsTerminal": "--stdin needs a piped document; stdin is a terminal",
+		"pickTarget": "pass exactly one of --account <name> or --group <name>",
+		"targetAccount": "account {name}",
+		"targetGroup": "group {name}",
+		"cancelled": "cancelled",
+		"unknownPolicy": "no policy named {name}",
+		"unknownGroup": "no group named {name}",
+		"inlineDocument": "inline policy {name}",
+		"yes": "yes",
+		"no": "no",
+		"optFile": "read the policy document from this YAML file",
+		"optStdin": "read the policy document from stdin",
+		"optDescription": "what it is for",
+		"optYes": "skip the confirmation",
+		"optAccount": "the account to act on",
+		"optGroup": "the group to act on",
+		"head": {
+			"statements": "statements",
+			"accounts": "accounts",
+			"groups": "groups",
+			"updated": "updated",
+			"policies": "policies",
+			"inline": "inline",
+			"access": "access",
+			"resourceType": "resource type",
+			"target": "target",
+			"actor": "actor"
+		},
+		"field": {
+			"id": "id",
+			"description": "description",
+			"statements": "statements",
+			"accounts": "attached to accounts",
+			"groups": "attached to groups",
+			"created": "created",
+			"updated": "updated",
+			"members": "members",
+			"policies": "attached policies",
+			"inline": "inline policies",
+			"administrator": "administrator",
+			"tags": "tags",
+			"effective": "effective documents"
+		},
+		"policies": {
+			"desc": "IAM policies: the built-ins and every managed policy, with what they are attached to",
+			"none": "no policies exist"
+		},
+		"policy": {
+			"show": {
+				"desc": "one policy: its fields, attachments and YAML document",
+				"document": "document"
+			},
+			"add": {
+				"desc": "create a managed policy from a YAML document",
+				"done": "created policy {name} with {count} statement(s)"
+			},
+			"edit": {
+				"desc": "replace a managed policy's document, description or name",
+				"optRename": "the policy's new name",
+				"nothing": "nothing to change: pass --file, --stdin, --description or --rename",
+				"done": "policy {name} updated"
+			},
+			"remove": {
+				"desc": "delete a managed policy, detaching it everywhere",
+				"confirm": "Delete policy {name}? It is attached in {attached} place(s).",
+				"done": "policy {name} deleted"
+			},
+			"validate": {
+				"desc": "check a policy document without saving it",
+				"ok": "the document is valid: {count} statement(s)",
+				"issues": "{count} issue(s)",
+				"failed": "the document is not valid"
+			}
+		},
+		"groups": {
+			"desc": "IAM groups: named sets of accounts with policies attached",
+			"none": "no groups exist",
+			"createHint": "create one with {command}"
+		},
+		"group": {
+			"show": {
+				"desc": "one group: its members, attached policies and inline documents"
+			},
+			"add": {
+				"desc": "create a group, optionally with policies and members from the start",
+				"optPolicies": "policy names to attach, comma-separated",
+				"optMembers": "account usernames to add, comma-separated",
+				"done": "created group {name} with {members} member(s) and {policies} policy/policies"
+			},
+			"remove": {
+				"desc": "delete a group; its members keep their own attachments",
+				"confirm": "Delete group {name} and drop its {members} member(s) from it?",
+				"done": "group {name} deleted"
+			},
+			"members": {
+				"add": {
+					"desc": "add accounts to a group",
+					"done": "added {count} account(s) to {name} ({total} member(s) now)"
+				},
+				"remove": {
+					"desc": "remove accounts from a group",
+					"done": "removed {count} account(s) from {name} ({total} member(s) now)"
+				}
+			}
+		},
+		"attach": {
+			"desc": "attach a policy to an account or a group",
+			"done": "attached {policy} to {target}"
+		},
+		"detach": {
+			"desc": "detach a policy from an account or a group",
+			"done": "detached {policy} from {target}"
+		},
+		"inline": {
+			"put": {
+				"desc": "set an inline policy on an account or a group, replacing one of the same name",
+				"done": "inline policy {name} set on {target} with {count} statement(s)"
+			},
+			"remove": {
+				"desc": "remove an inline policy from an account or a group",
+				"done": "inline policy {name} removed from {target}"
+			}
+		},
+		"simulate": {
+			"desc": "decide one action for one account, showing the statement that decided it",
+			"noResource": "(no resource)",
+			"verdict": "verdict",
+			"reason": "reason",
+			"source": "decided by",
+			"statement": "statement",
+			"resourceCreator": "resource creator",
+			"resourceTags": "resource tags"
+		},
+		"actions": {
+			"desc": "the action catalog, optionally one service's",
+			"unknownService": "unknown service {service}; known: {known}",
+			"clusterWide": "cluster-wide"
+		},
+		"audit": {
+			"desc": "the IAM audit trail, newest first",
+			"optTarget": "only entries about this policy, group or account",
+			"optLimit": "how many entries to show (default 50)",
+			"none": "the IAM audit trail is empty"
+		},
+		"permissions": {
+			"desc": "what an account may do: its groups, attached and inline policies, tags",
+			"administrator": "administrator",
+			"groups": "{count} group(s)",
+			"effective": "{count} effective document(s), in evaluation order",
+			"nothing": "no policy applies to this account, so every console request is denied"
+		}
+	},
+	"resources": {
+		"badId": "{id} is not a resource id; expected luna:<type>/<name>",
+		"badTag": "{tag} is not a tag; expected key=value",
+		"badType": "unknown resource type {type}; known: {known}",
+		"head": {
+			"type": "type",
+			"createdBy": "created by",
+			"modified": "modified",
+			"tags": "tags",
+			"key": "key"
+		},
+		"field": {
+			"type": "type",
+			"name": "name",
+			"createdBy": "created by",
+			"created": "created",
+			"modifiedBy": "modified by",
+			"modified": "modified"
+		},
+		"list": {
+			"desc": "every recorded resource with its creator, dates and tags",
+			"optType": "only resources of this type",
+			"optTag": "only resources carrying this tag, as key=value or key alone for any value",
+			"optCreatedBy": "only resources this account created",
+			"none": "no resources match",
+			"count": "{count} resource(s)"
+		},
+		"show": {
+			"desc": "one resource: its record and tags",
+			"unknown": "(no record; placeholders shown)",
+			"tags": "{count} tag(s)"
+		},
+		"tag": {
+			"desc": "set tags on a resource (key=value, existing keys overwritten)",
+			"none": "pass at least one key=value",
+			"done": "set {count} tag(s) on {id} ({total} now)"
+		},
+		"untag": {
+			"desc": "remove tags from a resource by key",
+			"nothing": "{id} carries none of those tags",
+			"done": "removed {count} tag(s) from {id} ({total} left)"
+		},
+		"sync": {
+			"desc": "backfill records for the resources the stores already know",
+			"done": "resource sweep: {added} added, {total} recorded"
+		}
 	}
 }

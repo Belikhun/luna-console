@@ -16,6 +16,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { saveAccounts, type AccountStore } from "../core/accounts";
+import { saveIam, type IamStore } from "../core/iam";
+import { saveResources, type ResourceStore } from "../core/resources";
 import { dataDir, loadCluster, saveCluster, saveLock, root, syncFilePath } from "../core/config";
 import { saveConfigFiles, type ConfigFileStore } from "../core/configfiles";
 import { saveEnv, type EnvironmentStore } from "../core/environment";
@@ -67,6 +69,8 @@ const SYNC_FILES = [
 	"environment.json",
 	"configfiles.json",
 	"accounts.json",
+	"iam.json",
+	"resources.json",
 	"proxy/forwarding.secret",
 ] as const;
 
@@ -1340,6 +1344,10 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 			await saveConfigFiles(frame.data as ConfigFileStore);
 		} else if (frame.file === "accounts") {
 			await saveAccounts(frame.data as AccountStore);
+		} else if (frame.file === "iam") {
+			await saveIam(frame.data as IamStore);
+		} else if (frame.file === "resources") {
+			await saveResources(frame.data as ResourceStore);
 		}
 
 		return;

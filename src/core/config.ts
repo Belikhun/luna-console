@@ -97,6 +97,8 @@ export const STATE_FILES = [
 	"knowledge.json",
 	"agent.json",
 	"domains.json",
+	"iam.json",
+	"resources.json",
 ] as const;
 
 /** Whether a directory is a cluster root: it holds the registry. */
@@ -222,7 +224,7 @@ export function stagingDir(): string {
 }
 
 /** A cluster-root state file whose single writer is the primary daemon. */
-export type SaveFile = "cluster" | "lock" | "env" | "configfiles" | "accounts";
+export type SaveFile = "cluster" | "lock" | "env" | "configfiles" | "accounts" | "iam" | "resources";
 
 /**
  * Save-through hook for follower daemons: the state files' single writer is the

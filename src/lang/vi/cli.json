@@ -2286,5 +2286,220 @@
 		},
 		"dropOn": "cho phép (CAA và bản ghi tương tự bị xoá mỗi lần ghi)",
 		"dropOff": "từ chối (dừng ghi khi vùng còn chúng)"
+	},
+	"iam": {
+		"kindBuiltin": "tích hợp sẵn",
+		"kindManaged": "được quản lý",
+		"kindInline": "nội tuyến",
+		"accessRead": "đọc",
+		"accessWrite": "ghi",
+		"accessDestructive": "phá hủy",
+		"viaGroup": "qua nhóm {group}",
+		"verdictAllowed": "được phép",
+		"verdictDenied": "bị từ chối",
+		"reasonExplicitDeny": "một câu lệnh khớp từ chối rõ ràng",
+		"reasonAllow": "một câu lệnh khớp cho phép",
+		"reasonImplicitDeny": "không có câu lệnh nào cho phép",
+		"reasonRoot": "root không bao giờ được đánh giá",
+		"pickSource": "truyền đúng một trong --file <đường dẫn> hoặc --stdin",
+		"noFile": "không có tệp tại {path}",
+		"stdinIsTerminal": "--stdin cần một tài liệu được truyền qua ống; stdin đang là terminal",
+		"pickTarget": "truyền đúng một trong --account <tên> hoặc --group <tên>",
+		"targetAccount": "tài khoản {name}",
+		"targetGroup": "nhóm {name}",
+		"cancelled": "đã hủy",
+		"unknownPolicy": "không có chính sách tên {name}",
+		"unknownGroup": "không có nhóm tên {name}",
+		"inlineDocument": "chính sách nội tuyến {name}",
+		"yes": "có",
+		"no": "không",
+		"optFile": "đọc tài liệu chính sách từ tệp YAML này",
+		"optStdin": "đọc tài liệu chính sách từ stdin",
+		"optDescription": "dùng để làm gì",
+		"optYes": "bỏ qua bước xác nhận",
+		"optAccount": "tài khoản cần thao tác",
+		"optGroup": "nhóm cần thao tác",
+		"head": {
+			"statements": "câu lệnh",
+			"accounts": "tài khoản",
+			"groups": "nhóm",
+			"updated": "cập nhật",
+			"policies": "chính sách",
+			"inline": "nội tuyến",
+			"access": "quyền",
+			"resourceType": "loại tài nguyên",
+			"target": "đối tượng",
+			"actor": "người thực hiện"
+		},
+		"field": {
+			"id": "id",
+			"description": "mô tả",
+			"statements": "câu lệnh",
+			"accounts": "gắn vào tài khoản",
+			"groups": "gắn vào nhóm",
+			"created": "tạo lúc",
+			"updated": "cập nhật lúc",
+			"members": "thành viên",
+			"policies": "chính sách đã gắn",
+			"inline": "chính sách nội tuyến",
+			"administrator": "quản trị viên",
+			"tags": "thẻ",
+			"effective": "tài liệu có hiệu lực"
+		},
+		"policies": {
+			"desc": "chính sách IAM: các chính sách tích hợp sẵn và mọi chính sách được quản lý, cùng nơi chúng được gắn",
+			"none": "chưa có chính sách nào"
+		},
+		"policy": {
+			"show": {
+				"desc": "một chính sách: các trường, nơi gắn và tài liệu YAML",
+				"document": "tài liệu"
+			},
+			"add": {
+				"desc": "tạo một chính sách được quản lý từ tài liệu YAML",
+				"done": "đã tạo chính sách {name} với {count} câu lệnh"
+			},
+			"edit": {
+				"desc": "thay tài liệu, mô tả hoặc tên của một chính sách được quản lý",
+				"optRename": "tên mới của chính sách",
+				"nothing": "không có gì để thay đổi: truyền --file, --stdin, --description hoặc --rename",
+				"done": "đã cập nhật chính sách {name}"
+			},
+			"remove": {
+				"desc": "xóa một chính sách được quản lý, gỡ nó khỏi mọi nơi",
+				"confirm": "Xóa chính sách {name}? Nó đang được gắn ở {attached} nơi.",
+				"done": "đã xóa chính sách {name}"
+			},
+			"validate": {
+				"desc": "kiểm tra một tài liệu chính sách mà không lưu",
+				"ok": "tài liệu hợp lệ: {count} câu lệnh",
+				"issues": "{count} lỗi",
+				"failed": "tài liệu không hợp lệ"
+			}
+		},
+		"groups": {
+			"desc": "nhóm IAM: các tập tài khoản có tên, được gắn chính sách",
+			"none": "chưa có nhóm nào",
+			"createHint": "tạo một nhóm bằng {command}"
+		},
+		"group": {
+			"show": {
+				"desc": "một nhóm: thành viên, chính sách đã gắn và tài liệu nội tuyến"
+			},
+			"add": {
+				"desc": "tạo một nhóm, có thể kèm chính sách và thành viên ngay từ đầu",
+				"optPolicies": "tên các chính sách cần gắn, cách nhau bằng dấu phẩy",
+				"optMembers": "tên đăng nhập các tài khoản cần thêm, cách nhau bằng dấu phẩy",
+				"done": "đã tạo nhóm {name} với {members} thành viên và {policies} chính sách"
+			},
+			"remove": {
+				"desc": "xóa một nhóm; các thành viên giữ nguyên những gì gắn riêng cho họ",
+				"confirm": "Xóa nhóm {name} và bỏ {members} thành viên khỏi nhóm?",
+				"done": "đã xóa nhóm {name}"
+			},
+			"members": {
+				"add": {
+					"desc": "thêm tài khoản vào một nhóm",
+					"done": "đã thêm {count} tài khoản vào {name} (hiện có {total} thành viên)"
+				},
+				"remove": {
+					"desc": "gỡ tài khoản khỏi một nhóm",
+					"done": "đã gỡ {count} tài khoản khỏi {name} (hiện có {total} thành viên)"
+				}
+			}
+		},
+		"attach": {
+			"desc": "gắn một chính sách vào tài khoản hoặc nhóm",
+			"done": "đã gắn {policy} vào {target}"
+		},
+		"detach": {
+			"desc": "gỡ một chính sách khỏi tài khoản hoặc nhóm",
+			"done": "đã gỡ {policy} khỏi {target}"
+		},
+		"inline": {
+			"put": {
+				"desc": "đặt một chính sách nội tuyến lên tài khoản hoặc nhóm, thay thế chính sách cùng tên",
+				"done": "đã đặt chính sách nội tuyến {name} lên {target} với {count} câu lệnh"
+			},
+			"remove": {
+				"desc": "gỡ một chính sách nội tuyến khỏi tài khoản hoặc nhóm",
+				"done": "đã gỡ chính sách nội tuyến {name} khỏi {target}"
+			}
+		},
+		"simulate": {
+			"desc": "quyết định một hành động cho một tài khoản, hiển thị câu lệnh đã quyết định",
+			"noResource": "(không có tài nguyên)",
+			"verdict": "kết luận",
+			"reason": "lý do",
+			"source": "quyết định bởi",
+			"statement": "câu lệnh",
+			"resourceCreator": "người tạo tài nguyên",
+			"resourceTags": "thẻ tài nguyên"
+		},
+		"actions": {
+			"desc": "danh mục hành động, hoặc chỉ của một dịch vụ",
+			"unknownService": "dịch vụ không rõ {service}; đã biết: {known}",
+			"clusterWide": "toàn cụm"
+		},
+		"audit": {
+			"desc": "nhật ký kiểm toán IAM, mới nhất trước",
+			"optTarget": "chỉ các mục về chính sách, nhóm hoặc tài khoản này",
+			"optLimit": "số mục hiển thị (mặc định 50)",
+			"none": "nhật ký kiểm toán IAM đang trống"
+		},
+		"permissions": {
+			"desc": "một tài khoản được làm gì: nhóm, chính sách đã gắn và nội tuyến, thẻ",
+			"administrator": "quản trị viên",
+			"groups": "{count} nhóm",
+			"effective": "{count} tài liệu có hiệu lực, theo thứ tự đánh giá",
+			"nothing": "không có chính sách nào áp dụng cho tài khoản này, nên mọi yêu cầu từ console đều bị từ chối"
+		}
+	},
+	"resources": {
+		"badId": "{id} không phải id tài nguyên; cần dạng luna:<loại>/<tên>",
+		"badTag": "{tag} không phải thẻ; cần dạng khóa=giá trị",
+		"badType": "loại tài nguyên không rõ {type}; đã biết: {known}",
+		"head": {
+			"type": "loại",
+			"createdBy": "người tạo",
+			"modified": "sửa đổi",
+			"tags": "thẻ",
+			"key": "khóa"
+		},
+		"field": {
+			"type": "loại",
+			"name": "tên",
+			"createdBy": "người tạo",
+			"created": "tạo lúc",
+			"modifiedBy": "người sửa",
+			"modified": "sửa lúc"
+		},
+		"list": {
+			"desc": "mọi tài nguyên đã ghi nhận cùng người tạo, thời điểm và thẻ",
+			"optType": "chỉ tài nguyên thuộc loại này",
+			"optTag": "chỉ tài nguyên mang thẻ này, dạng khóa=giá trị hoặc chỉ khóa để khớp mọi giá trị",
+			"optCreatedBy": "chỉ tài nguyên do tài khoản này tạo",
+			"none": "không có tài nguyên nào khớp",
+			"count": "{count} tài nguyên"
+		},
+		"show": {
+			"desc": "một tài nguyên: bản ghi và các thẻ",
+			"unknown": "(chưa có bản ghi; đang hiển thị giá trị thay thế)",
+			"tags": "{count} thẻ"
+		},
+		"tag": {
+			"desc": "đặt thẻ lên một tài nguyên (khóa=giá trị, khóa đã có sẽ bị ghi đè)",
+			"none": "truyền ít nhất một khóa=giá trị",
+			"done": "đã đặt {count} thẻ lên {id} (hiện có {total})"
+		},
+		"untag": {
+			"desc": "gỡ thẻ khỏi một tài nguyên theo khóa",
+			"nothing": "{id} không mang thẻ nào trong số đó",
+			"done": "đã gỡ {count} thẻ khỏi {id} (còn {total})"
+		},
+		"sync": {
+			"desc": "bổ sung bản ghi cho các tài nguyên mà kho dữ liệu đã biết",
+			"done": "quét tài nguyên: thêm {added}, tổng {total} đã ghi nhận"
+		}
 	}
 }

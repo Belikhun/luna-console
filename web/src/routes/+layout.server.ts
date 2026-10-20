@@ -10,6 +10,18 @@
 
 import type { LayoutServerLoad } from './$types';
 
-export const load: LayoutServerLoad = ({ locals }) => {
-	return { account: locals.account };
+import { principalContext } from '$core/iam';
+
+/**
+ * The principal's context travels with the account: the documents that apply
+ * to it and its tags, so the browser evaluates the same grammar the gate does
+ * when it hides a nav entry or disables a verb. It is a read, never a decision;
+ * every API call is still decided server-side.
+ */
+export const load: LayoutServerLoad = async ({ locals }) => {
+	const principal = locals.account
+		? await principalContext(locals.account.id).catch(() => null)
+		: null;
+
+	return { account: locals.account, principal };
 };
