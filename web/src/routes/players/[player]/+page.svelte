@@ -4,6 +4,8 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { Authz } from '$lib/authz.svelte';
+	import { resourceId } from '$shared/iam/resources';
 	import { traitsOf } from '$core/software';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
@@ -1345,7 +1347,9 @@
 			{ id: 'account', label: t('web.playerDetail.account') },
 			{ id: 'economy', label: t('web.playerDetail.economy') },
 			{ id: 'sessions', label: t('web.playerDetail.playHistory') },
-			{ id: 'chat', label: t('web.playerDetail.chatCommands') },
+			...(Authz.can('chat:ReadPlayer', resourceId('player', page.params.player ?? ''))
+				? [{ id: 'chat', label: t('web.playerDetail.chatCommands') }]
+				: []),
 			{ id: 'permissions', label: t('web.playerDetail.permissions') },
 			{ id: 'moderation', label: t('web.playerDetail.moderation') }
 		]}

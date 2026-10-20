@@ -15,12 +15,20 @@
  * `core.iam.actions.<service>.<verb>`; the name itself is protocol text.
  */
 
-/** What an action does to the cluster; `ReadOnlyAccess` is the `read` set. */
-export type IamAccess = "read" | "write" | "destructive";
+/**
+ * What an action does to the cluster; `ReadOnlyAccess` is the `read` set.
+ *
+ * `sensitive` is a read of private data (what players wrote in chat). It is a
+ * class of its own so a grant that sounds harmless ("read only", "everything an
+ * owner may see") never carries it: only a policy that names it, or
+ * `AdministratorAccess`, does.
+ */
+export type IamAccess = "read" | "sensitive" | "write" | "destructive";
 
 /** The resource types a resource id can name; `null` on an action means it names none. */
 export type IamResourceType =
 	| "instance"
+	| "chat"
 	| "machine"
 	| "plugin"
 	| "pack"
@@ -44,6 +52,7 @@ export type IamResourceType =
 /** Every resource type, in the order the resource explorer offers them. */
 export const IAM_RESOURCE_TYPES: IamResourceType[] = [
 	"instance",
+	"chat",
 	"machine",
 	"plugin",
 	"pack",
@@ -95,7 +104,6 @@ export const IAM_ACTIONS: IamActionSpec[] = [
 		["ReadConsole", "read"],
 		["ReadLogs", "read"],
 		["ReadMetrics", "read"],
-		["ReadChat", "read"],
 		["ReadFiles", "read"],
 		["Create", "write"],
 		["Configure", "write"],
@@ -196,10 +204,17 @@ export const IAM_ACTIONS: IamActionSpec[] = [
 	...service("player", "player", [
 		["List", "read"],
 		["Describe", "read"],
-		["ReadChat", "read"],
 		["Act", "write"],
 		["Moderate", "write"],
 		["ManagePermissions", "write"],
+	]),
+	// chat is its own service because it is the cluster's most private data: one
+	// server's chat is `luna:chat/<server>`, one player's history is that player,
+	// and a server's logs, console and log files carry the same lines, so reading
+	// them also asks for `chat:Read` on that server (see the route catalog)
+	...service("chat", "chat", [
+		["Read", "sensitive"],
+		["ReadPlayer", "sensitive"],
 	]),
 	...service("permission-group", "permission-group", [
 		["List", "read"],

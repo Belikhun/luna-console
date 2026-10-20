@@ -2,13 +2,17 @@ import { json, error } from '@sveltejs/kit';
 
 import { loadCluster, managedInstances } from '$core/config';
 import { readInstanceLogs, DEFAULT_LOG_LINES } from '$core/logs';
+import { noteChatRead } from '$lib/server/chataudit';
 
 /**
  * GET ?lines= → the tail of latest.log plus the instance's monthly archives,
  * read by the daemon that owns the instance; a follower's logs live on the
  * follower's disk, so reading them here would only ever find silence.
  */
-export async function GET({ params, url }) {
+export async function GET({ params, url, locals }) {
+	// a server's logs carry its chat, so reading them is a chat read
+	noteChatRead(locals.account?.username, `logs of ${params.name}`);
+
 	const cfg = await loadCluster();
 
 	if (!managedInstances(cfg)[params.name]) {

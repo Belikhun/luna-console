@@ -4503,7 +4503,9 @@
 			"domains": "Read domains",
 			"domains-write": "Manage domains",
 			"packs": "Read packs",
-			"packs-write": "Manage packs"
+			"packs-write": "Manage packs",
+			"iam": "Read access management",
+			"iam-write": "Manage access"
 		},
 		"groupHint": {
 			"observe": "status, logs, players, machines, events; reads only",
@@ -4523,7 +4525,9 @@
 			"domains": "hostnames under the base domain, their links and live DNS records",
 			"domains-write": "create, re-point, link, unlink and delete hostnames under the base domain (DNS changes on Namecheap)",
 			"packs": "resource packs and data packs, provider search and pending updates",
-			"packs-write": "install, upload, configure, update, push and remove resource packs and data packs"
+			"packs-write": "install, upload, configure, update, push and remove resource packs and data packs",
+			"iam": "IAM policies, groups, an account's permissions, the simulator, the IAM trail and resource tags; never credentials",
+			"iam-write": "create, edit and delete policies and groups, change members, attach and detach, inline policies and resource tags; a token acting for no console account cannot grant iam, account or shell permissions"
 		}
 	},
 	"mcpNew": {
@@ -5146,7 +5150,8 @@
 			"policy": "Policy",
 			"mcp-token": "MCP token",
 			"knowledge": "Knowledge",
-			"conversation": "Conversation"
+			"conversation": "Conversation",
+			"chat": "Chat"
 		}
 	},
 	"iam": {
@@ -5284,7 +5289,8 @@
 		"noRows": "This policy allows nothing",
 		"showRemaining": "Show remaining {count} services",
 		"allowHeading": "Allow ({count} of {total} services)",
-		"denyHeading": "Deny ({count} of {total} services)"
+		"denyHeading": "Deny ({count} of {total} services)",
+		"levelSensitive": "Sensitive"
 	},
 	"policyVisual": {
 		"service": "Service",
@@ -5357,7 +5363,8 @@
 		"tag": "Tags",
 		"mcp": "MCP access",
 		"knowledge": "Knowledge",
-		"agent": "Mèo Béo"
+		"agent": "Mèo Béo",
+		"chat": "Chat"
 	},
 	"iamList": {
 		"policiesTitle": "Policies",

@@ -6,6 +6,7 @@ import { json, error } from '@sveltejs/kit';
 
 import { allInstances, loadCluster } from '$core/config';
 import * as luna from '$core/services/luna';
+import { noteChatRead, readableChat } from '$lib/server/chataudit';
 
 /**
  * GET ?type=&search=&limit=&offset= → a page of this backend's chat and command
@@ -14,7 +15,7 @@ import * as luna from '$core/services/luna';
  * backend has a log too: the proxy records chat on the way, whoever runs the
  * server, so this route takes any registered instance, not just the managed ones.
  */
-export async function GET({ params, url }) {
+export async function GET({ params, url, locals }) {
 	const cfg = await loadCluster();
 	const name = params.name;
 	const inst = allInstances(cfg)[name];
@@ -44,5 +45,14 @@ export async function GET({ params, url }) {
 		});
 	}
 
-	return json({ available: true, supported: true, ...result.data });
+	// the proxy's page is the whole network's, so its lines are kept to the
+	// servers the account may read as well as gated on the proxy's own chat
+	const all = result.data?.entries ?? [];
+	const entries = name === 'proxy'
+		? await readableChat(locals.account?.username, all, (entry) => entry.server)
+		: all;
+
+	noteChatRead(locals.account?.username, `chat of ${name}`);
+
+	return json({ available: true, supported: true, ...result.data, entries });
 }

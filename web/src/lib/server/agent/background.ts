@@ -34,6 +34,8 @@ import type { AgentMode } from '$shared/agent';
 import { runsUnasked } from './approval';
 import { issueRunBearer } from './bearer';
 import { followFeed } from './feeds';
+import { authorize, authorizeMany } from '$core/iam';
+import { resourceId } from '$shared/iam/resources';
 import type { Feed } from './feeds';
 
 /** Where a notice goes, captured when the task or trigger was set up. */
@@ -471,6 +473,7 @@ export async function createTrigger(
 	opts: { label?: string; note?: string; maxFires?: number; expiresInMinutes?: number; minGapSeconds?: number }
 ): Promise<TriggerView> {
 	validate(spec);
+	await assertTriggerChatAccess(ctx.owner, spec);
 
 	const armed = [...triggers.values()].filter((trigger) => trigger.ctx.conversationId === ctx.conversationId);
 
@@ -818,7 +821,59 @@ async function readSources(armed: Trigger[]): Promise<Sources> {
 }
 
 /** What a trigger saw happen this round, as lines for the report; empty when nothing matched. */
-function observe(trigger: Trigger, sources: Sources, now: number): string[] {
+/**
+ * A trigger that reports chat, or a server's log lines (which carry chat), may
+ * only be armed by an account allowed to read that chat. Without a server named,
+ * a chat trigger is armed and its lines are kept to the readable servers.
+ */
+async function assertTriggerChatAccess(owner: string, spec: TriggerSpec): Promise<void> {
+	const server = spec.kind === 'player_chat'
+		? spec.server
+		: spec.kind === 'log_match'
+			? spec.instance
+			: undefined;
+
+	if (!server) {
+		return;
+	}
+
+	const result = await authorize(owner, 'chat:Read', resourceId('chat', server));
+
+	if (!result.verdict.allowed) {
+		throw new Error(`${owner} may not read the chat of ${server}, so a trigger cannot watch it there`);
+	}
+}
+
+/**
+ * The servers whose chat each trigger owner may read, for this round's sources:
+ * one decision per owner and server, so a policy change applies on the next
+ * round and a line from an unreadable server is never reported.
+ */
+async function readableServers(armed: Trigger[], sources: Sources): Promise<Map<string, Set<string>>> {
+	const servers = new Set<string>([
+		...(sources.chat ?? []).map((entry) => entry.server),
+		...sources.logs.keys()
+	]);
+	const owners = new Set(
+		armed
+			.filter((trigger) => trigger.spec.kind === 'player_chat' || trigger.spec.kind === 'log_match')
+			.map((trigger) => trigger.ctx.owner)
+	);
+	const out = new Map<string, Set<string>>();
+
+	for (const owner of owners) {
+		const ids = [...servers].map((server) => resourceId('chat', server));
+		const allowed = ids.length > 0
+			? await authorizeMany(owner, 'chat:Read', ids).catch(() => ({} as Record<string, boolean>))
+			: {};
+
+		out.set(owner, new Set([...servers].filter((server) => allowed[resourceId('chat', server)])));
+	}
+
+	return out;
+}
+
+function observe(trigger: Trigger, sources: Sources, now: number, readable: Set<string> = new Set()): string[] {
 	const spec = trigger.spec;
 	const cursor = trigger.cursor;
 
@@ -864,6 +919,7 @@ function observe(trigger: Trigger, sources: Sources, now: number): string[] {
 			return fresh
 				.filter((entry) => !spec.player || lower(entry.username) === lower(spec.player))
 				.filter((entry) => !spec.server || lower(entry.server) === lower(spec.server))
+				.filter((entry) => readable.has(entry.server))
 				.filter((entry) => !spec.contains || lower(entry.content).includes(lower(spec.contains)))
 				.map((entry) => `[${new Date(entry.atEpochMillis).toISOString()}] ${entry.username} on ${entry.server}: ${entry.content}`);
 		}
@@ -906,7 +962,7 @@ function observe(trigger: Trigger, sources: Sources, now: number): string[] {
 		case 'log_match': {
 			const lines = sources.logs.get(spec.instance);
 
-			if (!lines) {
+			if (!lines || !readable.has(spec.instance)) {
 				return [];
 			}
 
@@ -979,6 +1035,7 @@ async function round(): Promise<void> {
 	}
 
 	const sources = await readSources(armed);
+	const readable = await readableServers(armed, sources);
 	const now = Date.now();
 
 	for (const trigger of armed) {
@@ -986,7 +1043,7 @@ async function round(): Promise<void> {
 			continue;
 		}
 
-		trigger.pending.push(...observe(trigger, sources, now));
+		trigger.pending.push(...observe(trigger, sources, now, readable.get(trigger.ctx.owner)));
 
 		const due = trigger.pending.length > 0 && now - trigger.lastFiredAt >= trigger.gapMs;
 

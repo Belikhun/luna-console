@@ -478,6 +478,12 @@
 			return /^\/network(?!\/domains)/.test(page.url.pathname);
 		}
 
+		// every access management screen lives under the dashboard's path, and each
+		// has its own entry; the dashboard keeps only itself and its activity trail
+		if (href === '/console/iam') {
+			return /^\/console\/iam(\/activity)?\/?$/.test(page.url.pathname);
+		}
+
 		return page.url.pathname === href || page.url.pathname.startsWith(href + '/');
 	}
 </script>

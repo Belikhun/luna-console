@@ -39,6 +39,12 @@ export interface RouteRule {
 	 * Only ever used for reads: a screen about a thing the account can see part of.
 	 */
 	anyOf?: (ctx: RuleContext) => Promise<string[]>;
+	/**
+	 * Further checks the request must also pass, each its own action and
+	 * resource: how reading a server's logs also asks for its chat, since the
+	 * same lines are in both.
+	 */
+	and?: (ctx: RuleContext) => Promise<Array<{ action: string; resource: string | null }>>;
 	/** When the verb depends on the body, this resolves it; `action` is the fallback */
 	actionOf?: (ctx: RuleContext) => Promise<string>;
 	resource?: (ctx: RuleContext) => string | null | Promise<string | null>;
@@ -54,6 +60,79 @@ const of = (type: IamResourceType, param: string) => (ctx: RuleContext): string 
 };
 
 const instance = of('instance', 'name');
+
+/** The chat of the instance a URL names. */
+const chatOf = (ctx: RuleContext): Array<{ action: string; resource: string | null }> => {
+	const name = ctx.params.name;
+
+	return name ? [{ action: 'chat:Read', resource: resourceId('chat', name) }] : [];
+};
+
+/** Logs and consoles carry every chat line the server printed. */
+const alsoChat = async (ctx: RuleContext): Promise<Array<{ action: string; resource: string | null }>> => chatOf(ctx);
+
+/** Whether a path names log content: anything under a `logs/` folder, a log file or a crash report. */
+export function pathIsLog(path: string | null | undefined): boolean {
+	const clean = normalizePath(path);
+
+	return /(^|\/)logs(\/|$)/i.test(clean) || /\.log(\.gz)?$/i.test(clean) || /(^|\/)crash-reports(\/|$)/i.test(clean);
+}
+
+/** Whether an archive of a path would carry log content: the instance root does, as does any log path. */
+export function archiveHoldsChat(path: string | null | undefined): boolean {
+	const clean = normalizePath(path);
+
+	return clean === '' || clean === '.' || pathIsLog(clean);
+}
+
+function normalizePath(path: string | null | undefined): string {
+	return (path ?? '').replace(/\\/g, '/').replace(/^\.?\/+/, '').replace(/\/+$/, '');
+}
+
+/** The paths a file route names, from the query or the JSON body. */
+async function pathsOf(ctx: RuleContext): Promise<string[]> {
+	const fromQuery = ctx.url.searchParams.get('path');
+
+	if (fromQuery !== null) {
+		return [fromQuery];
+	}
+
+	if (ctx.request.method === 'GET') {
+		return [];
+	}
+
+	try {
+		const body = await ctx.request.clone().json();
+		const candidates = [body?.path, body?.from, ...(Array.isArray(body?.paths) ? body.paths : [])];
+
+		return candidates.filter((value): value is string => typeof value === 'string');
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Reading a log file's text, or copying or moving one somewhere readable, asks
+ * for the server's chat too. Listing a folder does not: names hold no chat.
+ */
+const chatIfLogFile = async (ctx: RuleContext): Promise<Array<{ action: string; resource: string | null }>> => {
+	if (ctx.request.method === 'GET' && ctx.url.pathname.endsWith('/files') && !ctx.url.searchParams.has('read')) {
+		return [];
+	}
+
+	return (await pathsOf(ctx)).some(pathIsLog) ? chatOf(ctx) : [];
+};
+
+/** Downloading a file or an archive that carries logs asks for the server's chat too. */
+const chatIfArchive = async (ctx: RuleContext): Promise<Array<{ action: string; resource: string | null }>> => {
+	if (ctx.url.searchParams.has('stage')) {
+		// a staged archive was checked when it was staged
+		return [];
+	}
+
+	return (await pathsOf(ctx)).some(archiveHoldsChat) ? chatOf(ctx) : [];
+};
+
 const plugin = of('plugin', 'name');
 const pack = of('pack', 'key');
 const datapack = of('datapack', 'name');
@@ -240,13 +319,13 @@ export const API_RULES: Record<string, MethodRules> = {
 		GET: { action: 'instance:Describe', resource: instance },
 		POST: { action: 'instance:Configure', resource: instance }
 	},
-	'/api/instances/[name]/chat': { GET: { action: 'instance:ReadChat', resource: instance } },
+	'/api/instances/[name]/chat': { GET: { action: 'chat:Read', resource: of('chat', 'name') } },
 	'/api/instances/[name]/config': {
 		GET: { action: 'instance:Describe', resource: instance },
 		PATCH: { action: 'instance:Configure', resource: instance }
 	},
 	'/api/instances/[name]/console': {
-		GET: { action: 'instance:ReadConsole', resource: instance },
+		GET: { action: 'instance:ReadConsole', resource: instance, and: alsoChat },
 		POST: { action: 'instance:SendCommand', resource: instance }
 	},
 	'/api/instances/[name]/datapacks': {
@@ -258,24 +337,24 @@ export const API_RULES: Record<string, MethodRules> = {
 		POST: { action: 'instance:ManageEnvironment', resource: instance }
 	},
 	'/api/instances/[name]/files': {
-		GET: { action: 'instance:ReadFiles', resource: instance },
+		GET: { action: 'instance:ReadFiles', resource: instance, and: chatIfLogFile },
 		PUT: { action: 'instance:WriteFiles', resource: instance }
 	},
 	'/api/instances/[name]/files/download': {
-		GET: { action: 'instance:ReadFiles', resource: instance },
-		POST: { action: 'instance:ReadFiles', resource: instance }
+		GET: { action: 'instance:ReadFiles', resource: instance, and: chatIfArchive },
+		POST: { action: 'instance:ReadFiles', resource: instance, and: chatIfArchive }
 	},
 	'/api/instances/[name]/files/manage': {
-		GET: { action: 'instance:ReadFiles', resource: instance },
+		GET: { action: 'instance:ReadFiles', resource: instance, and: chatIfLogFile },
 		POST: { action: 'instance:WriteFiles', resource: instance }
 	},
-	'/api/instances/[name]/files/ops': { POST: { action: 'instance:WriteFiles', resource: instance } },
+	'/api/instances/[name]/files/ops': { POST: { action: 'instance:WriteFiles', resource: instance, and: chatIfLogFile } },
 	'/api/instances/[name]/files/upload': {
 		GET: { action: 'instance:WriteFiles', resource: instance },
 		POST: { action: 'instance:WriteFiles', resource: instance }
 	},
 	'/api/instances/[name]/files/upload/[token]': { PUT: { action: 'instance:WriteFiles', resource: instance } },
-	'/api/instances/[name]/logs': { GET: { action: 'instance:ReadLogs', resource: instance } },
+	'/api/instances/[name]/logs': { GET: { action: 'instance:ReadLogs', resource: instance, and: alsoChat } },
 	'/api/instances/[name]/metrics': { GET: { action: 'instance:ReadMetrics', resource: instance } },
 	'/api/instances/[name]/threads': { GET: { action: 'instance:ReadMetrics', resource: instance } },
 	'/api/instances/[name]/modpack': {
@@ -298,7 +377,7 @@ export const API_RULES: Record<string, MethodRules> = {
 		GET: { action: 'instance:Describe', resource: instance },
 		PUT: { action: 'instance:ManageNetwork', resource: instance }
 	},
-	'/api/instances/[name]/unmanaged/[file]': { GET: { action: 'instance:ReadLogs', resource: instance } },
+	'/api/instances/[name]/unmanaged/[file]': { GET: { action: 'instance:ReadLogs', resource: instance, and: alsoChat } },
 	'/api/instances/[name]/world': { GET: { action: 'instance:Describe', resource: instance } },
 	'/api/instances/[name]/world/actions': { POST: { action: 'instance:ManageWorld', resource: instance } },
 	'/api/instances/[name]/world/backups/[id]': {
@@ -459,7 +538,7 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/players': { GET: { action: 'player:List' } },
 	'/api/players/moderate': { POST: { action: 'player:Moderate' } },
 	'/api/players/[player]': { GET: { action: 'player:Describe', resource: player } },
-	'/api/players/[player]/chat': { GET: { action: 'player:ReadChat', resource: player } },
+	'/api/players/[player]/chat': { GET: { action: 'chat:ReadPlayer', resource: player } },
 	'/api/players/[player]/sessions': { GET: { action: 'player:Describe', resource: player } },
 	'/api/players/[player]/vault': { GET: { action: 'player:Describe', resource: player } },
 	'/api/players/[player]/vault/transactions': { GET: { action: 'player:Describe', resource: player } },

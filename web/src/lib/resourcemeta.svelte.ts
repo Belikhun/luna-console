@@ -30,6 +30,7 @@ export const DESCRIBE_BATCH = 500;
  */
 export const RESOURCE_TYPE_ICONS: Record<IamResourceType, string> = {
 	instance: 'server',
+	chat: 'comment',
 	machine: 'hardDrive',
 	plugin: 'plug',
 	pack: 'image',

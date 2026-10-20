@@ -66,7 +66,9 @@ import { NETWORK_HANDLERS } from './network';
 import { DOMAIN_HANDLERS } from './domains';
 import { PACK_HANDLERS } from './packs';
 import { MODPACK_HANDLERS } from './modpacks';
+import { IAM_HANDLERS } from './iamtools';
 import { iamVisible } from './iam';
+import { noteChatRead, readableChat } from '$lib/server/chataudit';
 import { resourceId } from '$shared/iam/resources';
 
 export { ToolError } from './errors';
@@ -421,6 +423,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	...DOMAIN_HANDLERS,
 	...PACK_HANDLERS,
 	...MODPACK_HANDLERS,
+	...IAM_HANDLERS,
 
 	// -- observe ---------------------------------------------------------------
 	async cluster_status(_args, ctx) {
@@ -530,9 +533,15 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 				: `the proxy did not answer: ${result.error ?? 'unavailable'}`);
 		}
 
-		// an older LunaCore ignores the server filter, so it is applied again here
-		const entries = visibleRows(ctx, result.data.entries, (entry) => entry.server)
+		// an older LunaCore ignores the server filter, so it is applied again here;
+		// a run for a console account keeps only the servers whose chat it may read
+		const scoped = visibleRows(ctx, result.data.entries, (entry) => entry.server)
 			.filter((entry) => !server || entry.server === server);
+		const entries = ctx.account
+			? await readableChat(ctx.account, scoped, (entry) => entry.server)
+			: scoped;
+
+		noteChatRead(ctx.account ?? ctx.actor, `chat history of ${str(args, 'player')}`, 'agent');
 
 		return {
 			player,
@@ -571,7 +580,12 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 				: `the proxy did not answer: ${result.error ?? 'unavailable'}`);
 		}
 
-		const entries = visibleRows(ctx, result.data.entries, (entry) => entry.server);
+		const scoped = visibleRows(ctx, result.data.entries, (entry) => entry.server);
+		const entries = ctx.account
+			? await readableChat(ctx.account, scoped, (entry) => entry.server)
+			: scoped;
+
+		noteChatRead(ctx.account ?? ctx.actor, server ? `chat of ${server}` : 'network chat', 'agent');
 
 		return {
 			total: result.data.total,

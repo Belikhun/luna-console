@@ -72,6 +72,7 @@
 	const levelLabels: Record<SummaryAccessLevel, string> = $derived({
 		List: t('web.policySummary.levelList'),
 		Read: t('web.policySummary.levelRead'),
+		Sensitive: t('web.policySummary.levelSensitive'),
 		Write: t('web.policySummary.levelWrite'),
 		Delete: t('web.policySummary.levelDelete')
 	});

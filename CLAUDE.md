@@ -466,6 +466,19 @@ export interface InstanceConfig {}
   request, `LUNA_ACTOR` or `root` elsewhere). Tags are AWS-shaped (50 per resource, 128/256 chars,
   `luna:` keys reserved) and are what `luna:ResourceTag/k` and `luna:PrincipalTag/k` read. A boot sweep
   backfills records for what the stores already hold, never touching an existing record.
+- **Chat is the most private data, and it is opt-in.** Its actions (`chat:Read` on `luna:chat/<server>`,
+  `chat:ReadPlayer` on `luna:player/<name>`) are the catalog's `sensitive` access class, which
+  `ReadOnlyAccess` never includes; `PowerUserAccess` and `OwnerAccess` exclude `chat:*` outright (owning
+  a server is not a licence to read what its players wrote), `ChatReadAccess` grants it and
+  `DenyChatAccess` takes it away whatever else allows it. Every door to chat asks for it: the chat
+  routes, a player's history (and its lines are kept to servers the account may read, via
+  `readableChat`), a server's logs, console and log files (`and: alsoChat` / `chatIfLogFile` /
+  `chatIfArchive` in the route catalog, since the same lines are in them; folder listings and config
+  files stay open), the agent's chat, log and log-file tools, and Mèo Béo's chat and log triggers,
+  checked when armed and on every round. The LunaCore players stream the console forwards drops `chat`
+  events for everybody: the screens only use it to notice roster changes. Reads are journalled through
+  `$lib/server/chataudit.ts`, throttled per account and scope. A new route or tool that returns chat
+  lines must take the same checks.
 - **The CLI from a shell is unrestricted; the terminal drawer is an action.** The socket's permissions
   remain the CLI's check, so `luna` run from a shell acts as `root`. The drawer runs that same CLI for a
   signed-in account, which is why `/api/shell/*` needs `shell:Execute` and the drawer is hidden without
@@ -485,8 +498,11 @@ export interface InstanceConfig {}
 - **The catalog is data.** `shared/mcptools.ts` lists every tool with its group, model-facing
   description (protocol text, English), JSON schema and MCP annotations; a new tool is a catalog entry
   plus its adapter in `web/src/lib/server/mcp/handlers.ts`, which calls the `$core` bridge like any
-  route so follower routing still applies. Set-version, cleanup, accounts, secret reveal and
-  upgrades are deliberately never dedicated tools.
+  route so follower routing still applies. Set-version, cleanup, account credentials (passwords,
+  access keys, sessions), secret reveal and upgrades are deliberately never dedicated tools. IAM
+  policies, groups, attachments and resource tags do have their own opt-in groups (`iam`,
+  `iam-write`, `web/src/lib/server/mcp/iamtools.ts`), closed to instance-limited tokens; a token
+  acting for no console account may not grant `iam:*`, `account:*` or `shell:*` through them.
 - **An agent may only delete what nobody depends on.** `instance_delete` exists, but
   `agentDeletionRefusal` (`shared/instanceguard.ts`) refuses everything except a **test** instance
   (`InstanceConfig.test`, set at creation or by an operator, never over MCP) or a **new** one:

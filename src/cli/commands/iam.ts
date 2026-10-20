@@ -82,6 +82,9 @@ function paintAccess(access: IamAccess): string {
 		case "read":
 			return pc.dim(t("cli.iam.accessRead"));
 
+		case "sensitive":
+			return pc.magenta(t("cli.iam.accessSensitive"));
+
 		case "write":
 			return pc.yellow(t("cli.iam.accessWrite"));
 

@@ -104,8 +104,21 @@ async function decideRule(username: string, rule: RouteRule, ctx: RuleContext): 
 	}
 
 	const resource = rule.resource ? await rule.resource(ctx) : null;
+	const first = await decide(username, action, resource);
 
-	return await decide(username, action, resource);
+	if (first.kind !== 'allowed' || !rule.and) {
+		return first;
+	}
+
+	for (const check of await rule.and(ctx)) {
+		const outcome = await decide(username, check.action, check.resource);
+
+		if (outcome.kind !== 'allowed') {
+			return outcome;
+		}
+	}
+
+	return first;
 }
 
 async function decide(username: string, action: string, resource: string | null): Promise<GateOutcome> {

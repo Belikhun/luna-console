@@ -29,6 +29,7 @@ import type { IamResourceType } from '$shared/iam/actions';
 import { MCP_TOOLS, type McpScope } from '$shared/mcptools';
 
 import type { ToolArgs, ToolContext } from './errors';
+import { archiveHoldsChat, pathIsLog } from '$lib/server/authz/routes';
 
 export interface IamCheck {
 	action: string;
@@ -89,15 +90,29 @@ const when = (key: string, rule: Rule): Rule => (args) => (args[key] === undefin
 
 const instance = (action: string, key = 'instance'): Rule => on(action, 'instance', key);
 
+/** Reading or copying a log file through a tool also asks for that server's chat. */
+const chatIfLog = (pathKey: string, instanceKey: string): Rule => (args) =>
+	pathIsLog(text(args, pathKey))
+		? [{ action: 'chat:Read', resource: id('chat', text(args, instanceKey)) }]
+		: [];
+
+/** Copying a folder that holds logs (the instance root, a logs folder) asks for chat too. */
+const chatIfArchive = (pathKey: string, instanceKey: string): Rule => (args) =>
+	archiveHoldsChat(text(args, pathKey))
+		? [{ action: 'chat:Read', resource: id('chat', text(args, instanceKey)) }]
+		: [];
+
 export const TOOL_IAM: Record<string, Rule> = {
 	cluster_status: plain('instance:List'),
 	instance_status: instance('instance:Describe'),
-	instance_logs: instance('instance:ReadLogs'),
+	// a server's logs carry every chat line it printed
+	instance_logs: all(instance('instance:ReadLogs'), on('chat:Read', 'chat', 'instance')),
 	players_online: all(plain('player:List'), when('instance', instance('instance:Describe'))),
 	player_lookup: on('player:Describe', 'player', 'player'),
 	player_search: plain('player:List'),
-	player_chat: all(on('player:ReadChat', 'player', 'player'), when('server', instance('instance:ReadChat', 'server'))),
-	chat_log: all(plain('player:List'), when('server', instance('instance:ReadChat', 'server'))),
+	// chat is checked per server on the lines returned as well (`readableChat`)
+	player_chat: all(on('chat:ReadPlayer', 'player', 'player'), when('server', on('chat:Read', 'chat', 'server'))),
+	chat_log: all(plain('player:List'), when('server', on('chat:Read', 'chat', 'server'))),
 	fleet_status: plain('machine:List'),
 	daemon_detail: on('machine:Describe', 'machine', 'daemon'),
 	cluster_events: all(plain('event:Read'), when('instance', instance('instance:Describe'))),
@@ -122,16 +137,20 @@ export const TOOL_IAM: Record<string, Rule> = {
 	settings_get: instance('instance:Describe'),
 
 	file_list: instance('instance:ReadFiles'),
-	file_read: instance('instance:ReadFiles'),
+	file_read: all(instance('instance:ReadFiles'), chatIfLog('path', 'instance')),
 	file_stat: instance('instance:ReadFiles'),
 	file_find: instance('instance:ReadFiles'),
 	file_write: instance('instance:WriteFiles'),
 	file_edit: instance('instance:WriteFiles'),
 	file_mkdir: instance('instance:WriteFiles'),
-	file_copy: instance('instance:WriteFiles'),
-	file_move: instance('instance:WriteFiles'),
+	file_copy: all(instance('instance:WriteFiles'), chatIfLog('from', 'instance')),
+	file_move: all(instance('instance:WriteFiles'), chatIfLog('from', 'instance')),
 	file_delete: instance('instance:WriteFiles'),
-	file_transfer: all(instance('instance:ReadFiles', 'fromInstance'), instance('instance:WriteFiles', 'toInstance')),
+	file_transfer: all(
+		instance('instance:ReadFiles', 'fromInstance'),
+		instance('instance:WriteFiles', 'toInstance'),
+		chatIfArchive('from', 'fromInstance')
+	),
 
 	// the CLI and bash run with the machine's own authority, so only an account
 	// trusted with the terminal drawer may reach them through the agent
@@ -205,7 +224,32 @@ export const TOOL_IAM: Record<string, Rule> = {
 	memory_update: on('knowledge:Update', 'knowledge', 'id'),
 	memory_forget: on('knowledge:Delete', 'knowledge', 'id'),
 	skill_save: plain('knowledge:Create'),
-	skill_delete: plain('knowledge:Delete')
+	skill_delete: plain('knowledge:Delete'),
+
+	// access management: the same actions the /api/iam and /api/resources routes ask
+	iam_policies_list: plain('iam:ListPolicies'),
+	iam_policy_get: plain('iam:DescribePolicy'),
+	iam_policy_validate: plain('iam:ListPolicies'),
+	iam_groups_list: plain('iam:ListGroups'),
+	iam_group_get: plain('iam:DescribeGroup'),
+	iam_account_permissions: on('account:Describe', 'account', 'username'),
+	iam_simulate: plain('iam:Simulate'),
+	iam_audit: plain('iam:ReadAudit'),
+	resources_find: plain('tag:List'),
+	resource_get: plain('tag:Describe'),
+	iam_policy_create: plain('iam:CreatePolicy'),
+	iam_policy_update: plain('iam:UpdatePolicy'),
+	iam_policy_delete: plain('iam:DeletePolicy'),
+	iam_group_create: all(plain('iam:CreateGroup'), when('policies', plain('iam:Attach'))),
+	iam_group_update: plain('iam:UpdateGroup'),
+	iam_group_delete: plain('iam:DeleteGroup'),
+	iam_group_members: plain('iam:UpdateGroup'),
+	iam_attach: plain('iam:Attach'),
+	iam_detach: plain('iam:Detach'),
+	iam_inline_put: plain('iam:Attach'),
+	iam_inline_delete: plain('iam:Detach'),
+	resource_tag: (args) => [{ action: 'tag:Tag', resource: text(args, 'id') }],
+	resource_untag: (args) => [{ action: 'tag:Untag', resource: text(args, 'id') }]
 };
 
 /** Catalog tools with no rule; empty when every tool is covered. */

@@ -729,7 +729,32 @@
 		"bodyTooLong": "nội dung dài quá {max} ký tự",
 		"badSkillName": "tên kỹ năng là slug chữ thường: chữ cái, chữ số và gạch ngang, tối đa 64 ký tự",
 		"skillNameTaken": "đã có kỹ năng tên {name} trong phạm vi đó",
-		"unknownKnowledge": "không có mục kiến thức {id} mà bên gọi này được phép sửa"
+		"unknownKnowledge": "không có mục kiến thức {id} mà bên gọi này được phép sửa",
+		"tools": {
+			"iam_policies_list": "Liệt kê chính sách IAM",
+			"iam_policy_get": "Xem một chính sách IAM",
+			"iam_policy_validate": "Kiểm tra tài liệu chính sách",
+			"iam_groups_list": "Liệt kê nhóm IAM",
+			"iam_group_get": "Xem một nhóm IAM",
+			"iam_account_permissions": "Xem quyền của một tài khoản",
+			"iam_simulate": "Mô phỏng kiểm tra quyền",
+			"iam_audit": "Xem nhật ký IAM",
+			"resources_find": "Tìm tài nguyên",
+			"resource_get": "Xem bản ghi của một tài nguyên",
+			"iam_policy_create": "Tạo chính sách IAM",
+			"iam_policy_update": "Sửa chính sách IAM",
+			"iam_policy_delete": "Xoá chính sách IAM",
+			"iam_group_create": "Tạo nhóm IAM",
+			"iam_group_update": "Sửa nhóm IAM",
+			"iam_group_delete": "Xoá nhóm IAM",
+			"iam_group_members": "Đổi thành viên nhóm",
+			"iam_attach": "Gắn chính sách",
+			"iam_detach": "Gỡ chính sách",
+			"iam_inline_put": "Đặt chính sách nội tuyến",
+			"iam_inline_delete": "Xoá chính sách nội tuyến",
+			"resource_tag": "Gắn thẻ tài nguyên",
+			"resource_untag": "Gỡ thẻ khỏi tài nguyên"
+		}
 	},
 	"instancefiles": {
 		"rootRefused": "không thao tác trên chính thư mục instance ({path}); hãy chỉ định một mục bên trong",
@@ -902,7 +927,9 @@
 			"PowerUserAccess": "Mọi thứ trừ tài khoản, phân quyền và ngăn terminal.",
 			"ReadOnlyAccess": "Mọi hành động đọc trên mọi tài nguyên; không gì làm thay đổi cụm.",
 			"OwnerAccess": "Mọi hành động trên tài nguyên do chính tài khoản tạo ra, cùng các danh sách dẫn tới chúng.",
-			"SelfServiceAccess": "Mật khẩu, phiên, thông tin đăng nhập và chi tiết của chính tài khoản, cùng trò chuyện với Mèo Béo."
+			"SelfServiceAccess": "Mật khẩu, phiên, thông tin đăng nhập và chi tiết của chính tài khoản, cùng trò chuyện với Mèo Béo.",
+			"ChatReadAccess": "Đọc chat của mọi máy chủ và lịch sử chat của mọi người chơi.",
+			"DenyChatAccess": "Không bao giờ được đọc chat, dù các quyền khác cho phép gì. Gắn vào tài khoản hoặc nhóm để giữ chat tránh xa họ."
 		},
 		"actions": {
 			"instance": {
@@ -911,7 +938,6 @@
 				"ReadConsole": "Theo dõi console trực tiếp của máy chủ",
 				"ReadLogs": "Đọc log của máy chủ",
 				"ReadMetrics": "Đọc chỉ số và thread dump của máy chủ",
-				"ReadChat": "Đọc chat và lệnh trên máy chủ",
 				"ReadFiles": "Đọc và tải tệp của máy chủ",
 				"Create": "Tạo hoặc tiếp nhận máy chủ",
 				"Configure": "Đổi cài đặt, properties và bản build của máy chủ",
@@ -1012,7 +1038,6 @@
 			"player": {
 				"List": "Liệt kê người chơi và hồ sơ kiểm duyệt",
 				"Describe": "Xem hồ sơ, phiên và ví của người chơi",
-				"ReadChat": "Đọc lịch sử chat của người chơi",
 				"Act": "Chuyển, nhắn tin và quản trị một người chơi",
 				"Moderate": "Kick, ban, mute và cảnh cáo người chơi",
 				"ManagePermissions": "Sửa quyền trong game của người chơi"
@@ -1101,6 +1126,10 @@
 				"Describe": "Xem cài đặt của Mèo Béo",
 				"Chat": "Trò chuyện với Mèo Béo",
 				"Configure": "Đổi cài đặt và thông tin đăng nhập của Mèo Béo"
+			},
+			"chat": {
+				"Read": "Đọc chat của một máy chủ, cùng log và console của nó (chứa cùng các dòng đó)",
+				"ReadPlayer": "Đọc lịch sử chat của một người chơi (chỉ các dòng từ máy chủ được phép đọc chat)"
 			}
 		}
 	},

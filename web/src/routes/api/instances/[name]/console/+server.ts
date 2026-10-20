@@ -9,6 +9,7 @@ import { sendCommand } from '$core/instances';
 import { dfetch } from '$client/socket';
 import { pushEvent } from '$lib/server/luna';
 import { SSE_HEADERS } from '$lib/server/http';
+import { noteChatRead } from '$lib/server/chataudit';
 
 /**
  * GET → SSE stream of the instance's live console, piped through from the
@@ -16,7 +17,10 @@ import { SSE_HEADERS } from '$lib/server/http';
  * forwarded untouched; re-framing the events would only add a place to drop
  * one.
  */
-export async function GET({ params, request }) {
+export async function GET({ params, request, locals }) {
+	// the live console prints every chat line, so following it is a chat read
+	noteChatRead(locals.account?.username, `console of ${params.name}`);
+
 	const cfg = await loadCluster();
 	const inst = managedInstances(cfg)[params.name];
 

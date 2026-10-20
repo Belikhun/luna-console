@@ -729,7 +729,32 @@
 		"bodyTooLong": "the body is longer than {max} characters",
 		"badSkillName": "a skill name is a lowercase slug: letters, digits and dashes, up to 64 characters",
 		"skillNameTaken": "a skill named {name} is already visible in that scope",
-		"unknownKnowledge": "no knowledge item {id} that this caller may change"
+		"unknownKnowledge": "no knowledge item {id} that this caller may change",
+		"tools": {
+			"iam_policies_list": "List IAM policies",
+			"iam_policy_get": "Read an IAM policy",
+			"iam_policy_validate": "Validate a policy document",
+			"iam_groups_list": "List IAM groups",
+			"iam_group_get": "Read an IAM group",
+			"iam_account_permissions": "Read an account's permissions",
+			"iam_simulate": "Simulate a permission check",
+			"iam_audit": "Read the IAM trail",
+			"resources_find": "Find resources",
+			"resource_get": "Read a resource's record",
+			"iam_policy_create": "Create an IAM policy",
+			"iam_policy_update": "Edit an IAM policy",
+			"iam_policy_delete": "Delete an IAM policy",
+			"iam_group_create": "Create an IAM group",
+			"iam_group_update": "Edit an IAM group",
+			"iam_group_delete": "Delete an IAM group",
+			"iam_group_members": "Change group members",
+			"iam_attach": "Attach a policy",
+			"iam_detach": "Detach a policy",
+			"iam_inline_put": "Put an inline policy",
+			"iam_inline_delete": "Remove an inline policy",
+			"resource_tag": "Tag a resource",
+			"resource_untag": "Remove tags from a resource"
+		}
 	},
 	"instancefiles": {
 		"rootRefused": "refusing to touch the instance directory itself ({path}); name something inside it",
@@ -902,7 +927,9 @@
 			"PowerUserAccess": "Everything except accounts, permissions and the terminal drawer.",
 			"ReadOnlyAccess": "Every read action on every resource; nothing that changes the cluster.",
 			"OwnerAccess": "Every action on the resources the account created itself, plus the listings that reach them.",
-			"SelfServiceAccess": "The account's own password, sessions, credentials and details, and chatting with Mèo Béo."
+			"SelfServiceAccess": "The account's own password, sessions, credentials and details, and chatting with Mèo Béo.",
+			"ChatReadAccess": "Read the chat of every server and every player's chat history.",
+			"DenyChatAccess": "Never read chat, whatever else is allowed. Attach it to keep chat away from an account or group."
 		},
 		"actions": {
 			"instance": {
@@ -911,7 +938,6 @@
 				"ReadConsole": "Watch an instance's live console",
 				"ReadLogs": "Read an instance's logs",
 				"ReadMetrics": "Read an instance's metrics and thread dumps",
-				"ReadChat": "Read chat and commands on an instance",
 				"ReadFiles": "Read and download an instance's files",
 				"Create": "Create or adopt an instance",
 				"Configure": "Change an instance's settings, properties and build",
@@ -1012,7 +1038,6 @@
 			"player": {
 				"List": "List players and moderation records",
 				"Describe": "Read a player's profile, sessions and wallet",
-				"ReadChat": "Read a player's chat history",
 				"Act": "Move, message and administer a player",
 				"Moderate": "Kick, ban, mute and warn players",
 				"ManagePermissions": "Edit a player's in-game permissions"
@@ -1101,6 +1126,10 @@
 				"Describe": "Read Mèo Béo's settings",
 				"Chat": "Chat with Mèo Béo",
 				"Configure": "Change Mèo Béo's settings and credential"
+			},
+			"chat": {
+				"Read": "Read one server's chat, and its logs and console, which carry the same lines",
+				"ReadPlayer": "Read one player's chat history (only the lines from servers whose chat may be read)"
 			}
 		}
 	},

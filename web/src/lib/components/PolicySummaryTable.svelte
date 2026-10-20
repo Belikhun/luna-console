@@ -54,6 +54,7 @@
 	const levelLabels: Record<SummaryAccessLevel, string> = $derived({
 		List: t('web.policySummary.levelList'),
 		Read: t('web.policySummary.levelRead'),
+		Sensitive: t('web.policySummary.levelSensitive'),
 		Write: t('web.policySummary.levelWrite'),
 		Delete: t('web.policySummary.levelDelete')
 	});
@@ -162,22 +163,26 @@
 {/snippet}
 
 <div class="summary">
-	<div class="bar">
-		<label class="toggle">
-			<Toggle
-				checked={showRemaining}
-				label={t('web.policySummary.showRemaining', { count: summary.remaining.length })}
-				onchange={(checked) => (showRemaining = checked)}
-			/>
-			<span>{t('web.policySummary.showRemaining', { count: summary.remaining.length })}</span>
-		</label>
-	</div>
-
 	<section>
-		<h4>
-			<Icon name="circleCheck" size="0.875rem" style="solid" color="var(--success)" />
-			{t('web.policySummary.allowHeading', { count: summary.allow.length, total: summary.services })}
-		</h4>
+		<!-- the heading and the switch share one row: the switch is about the
+		     list under the heading, and a row of its own only pushed the table down -->
+		<div class="head">
+			<h4>
+				<Icon name="circleCheck" size="0.875rem" style="solid" color="var(--success)" />
+				{t('web.policySummary.allowHeading', { count: summary.allow.length, total: summary.services })}
+			</h4>
+
+			{#if summary.remaining.length > 0}
+				<label class="toggle">
+					<Toggle
+						checked={showRemaining}
+						label={t('web.policySummary.showRemaining', { count: summary.remaining.length })}
+						onchange={(checked) => (showRemaining = checked)}
+					/>
+					<span>{t('web.policySummary.showRemaining', { count: summary.remaining.length })}</span>
+				</label>
+			{/if}
+		</div>
 		{@render table(allowRows, 'allow')}
 	</section>
 
@@ -199,9 +204,17 @@
 		gap: 1rem;
 	}
 
-	.bar {
+	.head {
 		display: flex;
-		justify-content: flex-end;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.5rem 1rem;
+		margin-bottom: 0.5rem;
+
+		h4 {
+			margin: 0;
+		}
 	}
 
 	.toggle {

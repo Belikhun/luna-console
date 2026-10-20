@@ -4,6 +4,8 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { Authz } from '$lib/authz.svelte';
+	import { resourceId } from '$shared/iam/resources';
 	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -250,8 +252,14 @@
 	const instanceTabs = $derived.by(() => {
 		const worldless = !inst || traitsOf(inst.software as Software).isProxy || inst.external;
 
+		// chat and the logs that carry it are shown only to an account that may
+		// read this server's chat; the routes behind them refuse the rest anyway
+		const chatReadable = Authz.can('chat:Read', resourceId('chat', name ?? ''));
+
 		return INSTANCE_TABS.filter(
 			(id) => !worldless || !WORLD_TABS.has(id)
+		).filter(
+			(id) => chatReadable || (id !== 'chat' && id !== 'logs')
 		).map((id) => ({
 			id,
 			// the addon tab is the one whose name depends on the software

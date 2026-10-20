@@ -21,11 +21,15 @@
  * token limited to some instances (instance_set_port excepted, since it names
  * the one instance it changes).
  *
+ * `iam` / `iam-write` cover IAM policies, groups, attachments, inline policies
+ * and resource tags; both are cluster-wide too, and a token acting for no
+ * console account may not grant the access-management or shell powers.
+ *
  * Deliberately absent as dedicated tools: deleting instances, set-version,
- * cleanup, accounts, revealing secrets and upgrades. File writes and the two
- * shells exist, but in groups of their own that no token gets by default, and
- * the host shell additionally needs the machine itself to opt in
- * (`mcpHostShell` in that daemon's config).
+ * cleanup, account credentials (passwords, access keys, sessions), revealing
+ * secrets and upgrades. File writes and the two shells exist, but in groups of
+ * their own that no token gets by default, and the host shell additionally
+ * needs the machine itself to opt in (`mcpHostShell` in that daemon's config).
  */
 
 /** What a tool is for; the unit a scope is usually granted in. */
@@ -47,7 +51,9 @@ export type McpToolGroup =
 	| "packs"
 	| "packs-write"
 	| "knowledge"
-	| "knowledge-write";
+	| "knowledge-write"
+	| "iam"
+	| "iam-write";
 
 /** Every group, in the order the scope editor lists them. */
 export const MCP_TOOL_GROUPS: McpToolGroup[] = [
@@ -69,6 +75,8 @@ export const MCP_TOOL_GROUPS: McpToolGroup[] = [
 	"packs-write",
 	"knowledge",
 	"knowledge-write",
+	"iam",
+	"iam-write",
 ];
 
 /** What a freshly minted token may do until somebody widens it. */
@@ -163,6 +171,47 @@ const TARGETS = {
 
 /** Changes the cluster's addons and redeploys; never removes anything. */
 const ADDON_WRITE: McpToolAnnotations = { destructiveHint: false, idempotentHint: false, openWorldHint: true };
+
+const IAM_POLICY = {
+	type: "string",
+	description: "Policy name, as iam_policies_list shows it (e.g. \"AdministratorAccess\", \"EventsOperators\").",
+	maxLength: 128,
+} as const satisfies McpSchema;
+
+const IAM_GROUP = {
+	type: "string",
+	description: "Group name, as iam_groups_list shows it.",
+	maxLength: 128,
+} as const satisfies McpSchema;
+
+const IAM_ACCOUNT = {
+	type: "string",
+	description: "Console account username.",
+	maxLength: 64,
+} as const satisfies McpSchema;
+
+const IAM_YAML = {
+	type: "string",
+	description: "The policy document as YAML.",
+	maxLength: 65536,
+} as const satisfies McpSchema;
+
+const IAM_RESOURCE = {
+	type: "string",
+	description: "Resource id, \"luna:<type>/<name>\" (e.g. \"luna:instance/survival\", \"luna:plugin/luckperms@paper\", \"luna:account/alice\").",
+	maxLength: 300,
+} as const satisfies McpSchema;
+
+const IAM_RESOURCE_OPTIONAL = {
+	...IAM_RESOURCE,
+	description: "The resource the actions are on, \"luna:<type>/<name>\"; leave it out for actions that name none (listings, iam:*).",
+} as const satisfies McpSchema;
+
+/** Who a policy is attached to or put on: exactly one of the two. */
+const IAM_HOLDER: Record<string, McpSchema> = {
+	account: { type: "string", description: "Username of the account; give this or group, not both.", maxLength: 64 },
+	group: { type: "string", description: "Group name; give this or account, not both.", maxLength: 128 },
+};
 
 function object(properties: Record<string, McpSchema> = {}, required: string[] = []): McpSchema {
 	return { type: "object", properties, required, additionalProperties: false };
@@ -1443,6 +1492,267 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		group: "knowledge-write",
 		description: "Delete one of your own skills by name, when it is wrong or no longer needed.",
 		inputSchema: object({ name: { type: "string", description: "Skill name from skill_list.", maxLength: 64 } }, ["name"]),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+
+	// -- iam ---------------------------------------------------------------------
+	{
+		name: "iam_policies_list",
+		group: "iam",
+		description:
+			"List every IAM policy of the console, built-in ones first: name, whether it is built in, description, statement count and the accounts and groups it is attached to.",
+		inputSchema: object(),
+		annotations: READ,
+	},
+	{
+		name: "iam_policy_get",
+		group: "iam",
+		description: "One IAM policy by name: its YAML document, where it is attached, and who created and last edited it.",
+		inputSchema: object({ name: IAM_POLICY }, ["name"]),
+		annotations: READ,
+	},
+	{
+		name: "iam_policy_validate",
+		group: "iam",
+		description:
+			"Check a policy document's YAML without saving anything. Answers ok, the statement count, and every issue with the path it is at (e.g. \"/Statement/0/Action\"). Call this before iam_policy_create, iam_policy_update or iam_inline_put.",
+		inputSchema: object({ yaml: IAM_YAML }, ["yaml"]),
+		annotations: READ,
+	},
+	{
+		name: "iam_groups_list",
+		group: "iam",
+		description: "List every IAM group: name, description, members, attached policies and inline policy names.",
+		inputSchema: object(),
+		annotations: READ,
+	},
+	{
+		name: "iam_group_get",
+		group: "iam",
+		description: "One IAM group by name: members, attached policies, inline policies with their YAML, and who created and last edited it.",
+		inputSchema: object({ name: IAM_GROUP }, ["name"]),
+		annotations: READ,
+	},
+	{
+		name: "iam_account_permissions",
+		group: "iam",
+		description:
+			"What grants one console account its permissions: the groups it is in (with their policies), policies attached to it directly, its inline policy names, its tags, and whether it counts as an administrator. Credentials are never included.",
+		inputSchema: object({ username: IAM_ACCOUNT }, ["username"]),
+		annotations: READ,
+	},
+	{
+		name: "iam_simulate",
+		group: "iam",
+		description:
+			"Decide actions for a console account exactly as the console's gate would, without doing anything. For each action: allowed, the reason (allow, explicit-deny, implicit-deny, root) and the policy and statement Sid that decided it.",
+		inputSchema: object(
+			{
+				account: IAM_ACCOUNT,
+				actions: {
+					type: "array",
+					description: "Actions to decide, \"service:Verb\" (e.g. \"instance:Start\", \"iam:Attach\").",
+					items: { type: "string", maxLength: 80 },
+				},
+				resource: IAM_RESOURCE_OPTIONAL,
+			},
+			["account", "actions"],
+		),
+		annotations: READ,
+	},
+	{
+		name: "iam_audit",
+		group: "iam",
+		description: "The IAM change trail, newest first: policy, group, membership, attachment and inline policy changes, with who made them.",
+		inputSchema: object({
+			target: { type: "string", description: "Only entries about this policy, group or account name.", maxLength: 160 },
+			limit: { type: "integer", description: "How many entries (default 50).", minimum: 1, maximum: 500 },
+		}),
+		annotations: READ,
+	},
+	{
+		name: "resources_find",
+		group: "iam",
+		description:
+			"Find resources by type, tag and creator: id (\"luna:<type>/<name>\"), type, name, who created it and when, and its tags. Only resources with a recorded entry are listed.",
+		inputSchema: object({
+			type: { type: "string", description: "Resource type, e.g. instance, plugin, account, group, policy, domain.", maxLength: 40 },
+			tags: {
+				type: "array",
+				description: "Tag filters, every one must match: \"key=value\", or \"key\" alone for any value.",
+				items: { type: "string", maxLength: 400 },
+			},
+			createdBy: { type: "string", description: "Only resources this account or actor created.", maxLength: 120 },
+			limit: { type: "integer", description: "How many resources (default 100).", minimum: 1, maximum: 500 },
+		}),
+		annotations: READ,
+	},
+	{
+		name: "resource_get",
+		group: "iam",
+		description: "One resource's record by id: creator, dates and tags. A resource nobody recorded answers with empty placeholders.",
+		inputSchema: object({ id: IAM_RESOURCE }, ["id"]),
+		annotations: READ,
+	},
+
+	// -- iam-write ---------------------------------------------------------------
+	{
+		name: "iam_policy_create",
+		group: "iam-write",
+		description:
+			"Create a managed IAM policy from YAML. Grammar: `Version: 1` and a `Statement` list; each statement has `Effect: Allow` or `Deny`, an optional `Sid`, `Action` or `NotAction` (\"instance:Start\", \"instance:*\", \"*\"), `Resource` or `NotResource` (\"luna:instance/survival\", \"luna:instance/*\", \"*\"), and an optional `Condition` mapping an operator (StringEquals, StringNotEquals, StringLike, Bool, Null...) to keys such as `luna:ResourceTag/<key>`, `luna:PrincipalTag/<key>` or `luna:ResourceCreator`, whose values may use `${luna:username}`. A Deny always wins; nothing allowed is denied. Validate with iam_policy_validate first. Creating a policy grants nothing until it is attached.",
+		inputSchema: object(
+			{
+				name: IAM_POLICY,
+				description: { type: "string", description: "What the policy is for.", maxLength: 500 },
+				yaml: IAM_YAML,
+			},
+			["name", "yaml"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+	},
+	{
+		name: "iam_policy_update",
+		group: "iam-write",
+		description:
+			"Rename a managed policy, change its description or replace its YAML document (validate it first). A rename follows every attachment. Built-in policies cannot be changed. The new document applies at once to everything it is attached to.",
+		inputSchema: object(
+			{
+				name: IAM_POLICY,
+				newName: { type: "string", description: "New name.", maxLength: 128 },
+				description: { type: "string", maxLength: 500 },
+				yaml: IAM_YAML,
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "iam_policy_delete",
+		group: "iam-write",
+		description: "Delete a managed policy. Refused while it is attached anywhere; detach it first. Built-in policies cannot be deleted.",
+		inputSchema: object({ name: IAM_POLICY }, ["name"]),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "iam_group_create",
+		group: "iam-write",
+		description: "Create an IAM group, optionally with policies attached and members added from the start.",
+		inputSchema: object(
+			{
+				name: IAM_GROUP,
+				description: { type: "string", maxLength: 500 },
+				policies: { type: "array", description: "Policy names to attach.", items: { type: "string", maxLength: 128 } },
+				members: { type: "array", description: "Usernames to add.", items: { type: "string", maxLength: 64 } },
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+	},
+	{
+		name: "iam_group_update",
+		group: "iam-write",
+		description: "Rename an IAM group or change its description.",
+		inputSchema: object(
+			{
+				name: IAM_GROUP,
+				newName: { type: "string", description: "New name.", maxLength: 128 },
+				description: { type: "string", maxLength: 500 },
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "iam_group_delete",
+		group: "iam-write",
+		description: "Delete an IAM group; its members lose what it granted. Refused when it would leave the console without an administrator.",
+		inputSchema: object({ name: IAM_GROUP }, ["name"]),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "iam_group_members",
+		group: "iam-write",
+		description:
+			"Add accounts to an IAM group and/or remove them from it. Removing is refused when it would leave the console without an administrator.",
+		inputSchema: object(
+			{
+				group: IAM_GROUP,
+				add: { type: "array", description: "Usernames to add.", items: { type: "string", maxLength: 64 } },
+				remove: { type: "array", description: "Usernames to remove.", items: { type: "string", maxLength: 64 } },
+			},
+			["group"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "iam_attach",
+		group: "iam-write",
+		description: "Attach a managed or built-in policy to exactly one of an account or a group.",
+		inputSchema: object({ policy: IAM_POLICY, ...IAM_HOLDER }, ["policy"]),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "iam_detach",
+		group: "iam-write",
+		description:
+			"Detach a policy from exactly one of an account or a group. Refused when it would leave the console without an administrator.",
+		inputSchema: object({ policy: IAM_POLICY, ...IAM_HOLDER }, ["policy"]),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "iam_inline_put",
+		group: "iam-write",
+		description:
+			"Put an inline policy (YAML, same grammar as iam_policy_create) on exactly one of an account or a group, replacing one of the same name there.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "The inline policy's name.", maxLength: 128 },
+				yaml: IAM_YAML,
+				...IAM_HOLDER,
+			},
+			["name", "yaml"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "iam_inline_delete",
+		group: "iam-write",
+		description: "Remove an inline policy from exactly one of an account or a group.",
+		inputSchema: object(
+			{
+				name: { type: "string", description: "The inline policy's name.", maxLength: 128 },
+				...IAM_HOLDER,
+			},
+			["name"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "resource_tag",
+		group: "iam-write",
+		description:
+			"Set tags on a resource; keys already there are overwritten, others kept. Policies can read tags in conditions, so a tag can change who may act on the resource. Keys starting with \"luna:\" are reserved.",
+		inputSchema: object(
+			{
+				id: IAM_RESOURCE,
+				tags: { type: "object", description: "Tag key to value, e.g. {\"team\": \"events\"}." },
+			},
+			["id", "tags"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "resource_untag",
+		group: "iam-write",
+		description: "Remove tags from a resource by key; unknown keys are ignored.",
+		inputSchema: object(
+			{
+				id: IAM_RESOURCE,
+				keys: { type: "array", description: "Tag keys to remove.", items: { type: "string", maxLength: 128 } },
+			},
+			["id", "keys"],
+		),
 		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
 	},
 ];

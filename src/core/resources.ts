@@ -384,6 +384,12 @@ export async function sweepResources(): Promise<{ added: number; total: number }
 
 	const cfg = await loadCluster();
 
+	// the proxy is kept apart from the backends in the registry, but it is an
+	// instance like any other to a policy and to the screens
+	if (cfg.proxy) {
+		add("instance", "proxy");
+	}
+
 	for (const [name, instance] of Object.entries(cfg.instances)) {
 		add("instance", name, { createdAt: (instance as { createdAt?: number }).createdAt ?? null });
 	}

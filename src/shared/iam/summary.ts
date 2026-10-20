@@ -17,10 +17,10 @@ import { IAM_ACTIONS, IAM_SERVICES, type IamActionSpec } from "./actions";
 import { actionMatches, type PolicyDocument, type PolicyEffect, type PolicyStatement } from "./grammar";
 
 /** The access levels a summary groups actions by, in the order they are shown. */
-export type SummaryAccessLevel = "List" | "Read" | "Write" | "Delete";
+export type SummaryAccessLevel = "List" | "Read" | "Sensitive" | "Write" | "Delete";
 
 /** Every access level, in display order. */
-export const SUMMARY_ACCESS_LEVELS: SummaryAccessLevel[] = ["List", "Read", "Write", "Delete"];
+export const SUMMARY_ACCESS_LEVELS: SummaryAccessLevel[] = ["List", "Read", "Sensitive", "Write", "Delete"];
 
 /** One condition as a summary shows it: the operator, the key, the values it accepts. */
 export interface SummaryCondition {
@@ -75,6 +75,10 @@ export function accessLevelOf(spec: IamActionSpec): SummaryAccessLevel {
 
 	if (spec.access === "write") {
 		return "Write";
+	}
+
+	if (spec.access === "sensitive") {
+		return "Sensitive";
 	}
 
 	return spec.verb.startsWith("List") ? "List" : "Read";
@@ -209,7 +213,7 @@ export function summarizePolicyDocument(document: PolicyDocument): PolicyDocumen
  * under each level the way the summary's drill-down does.
  */
 export function actionsByLevel(row: ServiceSummaryRow): Record<SummaryAccessLevel, IamActionSpec[]> {
-	const out: Record<SummaryAccessLevel, IamActionSpec[]> = { List: [], Read: [], Write: [], Delete: [] };
+	const out: Record<SummaryAccessLevel, IamActionSpec[]> = { List: [], Read: [], Sensitive: [], Write: [], Delete: [] };
 
 	for (const spec of IAM_ACTIONS) {
 		if (row.actions.includes(spec.name)) {
