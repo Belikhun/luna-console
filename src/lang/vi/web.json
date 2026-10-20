@@ -2067,7 +2067,6 @@
 		"poolsAreDefinedOnceFor": "Pool được định nghĩa một lần cho cả cụm nên việc tạo instance có thể diễn ra ở bất cứ máy nào; ở đây bạn chỉ đặt dãy số mà máy này cấp. Để trống là kế thừa dải toàn cụm của pool.",
 		"thisMachineDepartsFromThe": "máy này lệch khỏi dải của cụm",
 		"heldBackNone": "giữ lại (không có)",
-		"everyValueInstancesOnThis": "Mọi giá trị mà instance trên host này phân giải; bộ giá trị toàn cụm với các ghi đè của riêng máy này áp lên trên. Cột nguồn cho biết lớp nào. Một instance đơn lẻ vẫn có thể lệch khỏi các giá trị này: dựng sẵn < toàn cục < máy < instance.",
 		"findAVariable": "Tìm một biến",
 		"variable": "biến",
 		"noVariablesDefined": "Chưa định nghĩa biến nào",
@@ -2171,7 +2170,9 @@
 		"upgrade": "Nâng cấp",
 		"byConnectingAgain": "bằng cách kết nối lại.",
 		"remove": "Gỡ",
-		"quarantineFix": "Máy vẫn trả lời nhịp tim nhưng bị từ chối mọi việc khác; nâng cấp daemon là cách đưa nó trở lại."
+		"quarantineFix": "Máy vẫn trả lời nhịp tim nhưng bị từ chối mọi việc khác; nâng cấp daemon là cách đưa nó trở lại.",
+		"environmentTitle": "Môi trường trên {name}",
+		"environmentHint": "Những gì các máy chủ trên máy này nhận được: giá trị toàn cụm cùng các giá trị ghi đè của máy này ({own}). Mỗi máy chủ vẫn có thể ghi đè bất kỳ giá trị nào."
 	},
 	"packDetail": {
 		"testing": "Đang kiểm tra {url}…",

@@ -928,13 +928,12 @@
 			</Panel>
 		{:else if tab === 'environment'}
 			<Panel
-				title="Environment on {row.name}"
+				title={t('web.machineDetail.environmentTitle', { name: row.name })}
 				count={machineVars.length}
-				description={t('web.machineDetail.everyValueInstancesOnThis')}
+				description={t('web.machineDetail.environmentHint', { own: machineOwnCount })}
 				flush
 			>
 				{#snippet actions()}
-					<span class="dim ownnote">{machineOwnCount} defined on this machine</span>
 					<Btn icon="key" href="/environment">{t('web.machineDetail.allVariables')}</Btn>
 					<Btn
 						variant="primary"
@@ -1247,9 +1246,6 @@
 		gap: 1rem;
 	}
 
-	.ownnote {
-		font-size: 0.75rem;
-	}
 
 	// one colour per layer, matching the environment screens
 	.scope {

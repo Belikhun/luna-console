@@ -2375,7 +2375,6 @@
 		"poolsAreDefinedOnceFor": "Pools are defined once for the cluster, so a provision can land on any machine; here you set only the numbers this machine hands out. Blank inherits the pool's cluster-wide range.",
 		"thisMachineDepartsFromThe": "this machine departs from the cluster range",
 		"heldBackNone": "held back (none)",
-		"everyValueInstancesOnThis": "Every value instances on this host resolve; the cluster-wide set with this machine's own overrides applied over it. The source column says which. A single instance can still depart from these: builtin < global < machine < instance.",
 		"findAVariable": "Find a variable",
 		"variable": "variable",
 		"noVariablesDefined": "No variables defined",
@@ -2487,7 +2486,9 @@
 		"upgrade": "Upgrade",
 		"byConnectingAgain": "by connecting again.",
 		"remove": "Remove",
-		"quarantineFix": "It answers heartbeats but is refused every other kind of work; upgrading the daemon is what brings it back."
+		"quarantineFix": "It answers heartbeats but is refused every other kind of work; upgrading the daemon is what brings it back.",
+		"environmentTitle": "Environment on {name}",
+		"environmentHint": "What instances on this machine resolve: the cluster-wide values with this machine's overrides ({own}) applied over them. An instance can still override any of them."
 	},
 	"packConfigure": {
 		"theRegistrationTheLunaPack": "The registration the luna-pack proxy plugin reads; saving rewrites the definition and reloads the proxy",
