@@ -269,7 +269,9 @@
 		"noteDirectory": "Thư mục instance, gồm cả thế giới, vẫn nằm trên đĩa trừ khi bạn chọn xóa bên dưới.",
 		"purgeLabel": "Xóa thư mục instance",
 		"purgeText": "Đồng thời xóa vĩnh viễn thư mục instance (gồm cả thế giới)",
-		"confirmAsk": "Để xác nhận xóa, gõ delete vào ô nhập bên dưới."
+		"confirmAsk": "Để xác nhận xóa, gõ delete vào ô nhập bên dưới.",
+		"titleMany": "Xoá máy chủ ({count})",
+		"leadMany": "Các máy chủ sau sẽ bị xoá ({count}):"
 	},
 	"access": {
 		"adding": "Đang thêm {target}…",
@@ -767,7 +769,10 @@
 		"tickingEntities": "được tick",
 		"nonTickingEntities": "không tick",
 		"noEntities": "không có thực thể nào được báo cáo",
-		"agoOf": "{age} trước"
+		"agoOf": "{age} trước",
+		"pickSingle": "Hãy chọn một máy chủ",
+		"noneStopped": "Không máy chủ nào được chọn đang dừng",
+		"noneRunning": "Không máy chủ nào được chọn đang chạy"
 	},
 	"software": {
 		"channelRelease": "Bản chính thức",
@@ -5287,7 +5292,7 @@
 		"noResources": "Không có tài nguyên",
 		"noAccess": "Không có quyền",
 		"noRows": "Chính sách này không cho phép gì",
-		"showRemaining": "Hiện {count} dịch vụ còn lại",
+		"showRemaining": "Hiện các dịch vụ còn lại ({count})",
 		"allowHeading": "Cho phép ({count}/{total} dịch vụ)",
 		"denyHeading": "Từ chối ({count}/{total} dịch vụ)",
 		"levelSensitive": "Nhạy cảm"

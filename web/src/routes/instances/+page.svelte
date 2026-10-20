@@ -72,7 +72,7 @@
 	let scheduleOpen = $state(false);
 	let scheduleTargets: string[] = $state([]);
 	let deleteOpen = $state(false);
-	let deleteTarget = $state('');
+	let deleteTargets = $state<string[]>([]);
 	/** name of the primary daemon; what "no owner" means in the registry */
 	let hostName = $state('');
 
@@ -90,8 +90,12 @@
 	 * Confirm a delete here rather than on the instance's own page; asking a
 	 * question must not navigate away from the table the user is working in.
 	 */
-	function askDelete(target: string): void {
-		deleteTarget = target;
+	function askDelete(targets: string[]): void {
+		if (targets.length === 0) {
+			return;
+		}
+
+		deleteTargets = targets;
 		deleteOpen = true;
 	}
 
@@ -283,9 +287,9 @@
 		return onJobFlash(() => void refresh());
 	});
 
-	async function stateAction(action: StateAction): Promise<void> {
+	async function stateAction(action: StateAction, among: Row[] = selRows): Promise<void> {
 		// only act on rows the action can actually apply to
-		const targets = selRows.filter((row) =>
+		const targets = among.filter((row) =>
 			action === 'start' ? row.state === 'stopped' : UP_STATES.includes(row.state ?? '')
 		);
 
@@ -326,118 +330,163 @@
 		return tps >= 15 ? 'warning' : 'danger';
 	}
 
-	/** An instance's verbs; the row menu and the toolbar's Actions button. */
-	function rowActions(row: Row): ContextMenuItem[] {
-		const up = UP_STATES.includes(row.state ?? '');
+	/**
+	 * The verbs for a set of instances: the toolbar's Actions menu over the
+	 * selection, and a row's own menu (`rowActions`). State changes, scheduling
+	 * and deletion act on every target they apply to; the verbs that open one
+	 * instance's screen are disabled with the reason when several are picked.
+	 */
+	function instanceActions(targets: Row[]): ContextMenuItem[] {
+		const single = targets.length === 1
+			? targets[0]!
+			: undefined;
+		const many = targets.length > 1;
+		const pickOne = many
+			? t('web.instances.pickSingle')
+			: undefined;
 
 		// a mid-provision instance has no directory or registry entry to act on yet
-		const busy = row.state === 'provisioning' || row.state === 'deleting';
-		const busyHint = busy ? `${row.name} is still ${row.state}` : undefined;
+		const busy = (row: Row): boolean => row.state === 'provisioning' || row.state === 'deleting';
+		const singleBlocked = !single || busy(single);
+		const singleHint = pickOne ?? (single && busy(single) ? `${single.name} is still ${single.state}` : undefined);
+
+		const startable = targets.filter((row) => row.state === 'stopped');
+		const running = targets.filter((row) => UP_STATES.includes(row.state ?? ''));
+		const schedulable = targets.filter((row) => !busy(row) && !row.externalOnly);
+		const deletable = targets.filter((row) => row.state === 'stopped' && row.name !== 'proxy' && !row.externalOnly);
+
+		// a bulk verb names how many of the picked instances it will touch
+		const counted = (label: string, applies: Row[]): string =>
+			many
+				? `${label} (${applies.length}/${targets.length})`
+				: label;
+
+		const deleteHint = deletable.length > 0
+			? undefined
+			: targets.some((row) => row.name === 'proxy') && targets.length === 1
+				? t('web.instances.proxyUndeletable')
+				: t('web.instances.stopFirst');
 
 		return [
 			{
 				label: t('web.instances.connectConsole'),
 				icon: 'code',
-				disabled: busy,
-				hint: busyHint,
-				action: () => goto(`/instances/${row.name}/console`)
+				disabled: singleBlocked,
+				hint: singleHint,
+				action: () => single && goto(`/instances/${single.name}/console`)
 			},
 			{
 				label: t('web.instances.viewDetails'),
 				icon: 'circleInfo',
-				disabled: busy,
-				hint: busyHint,
-				action: () => goto(`/instances/${row.name}`)
+				disabled: singleBlocked,
+				hint: singleHint,
+				action: () => single && goto(`/instances/${single.name}`)
 			},
 			{
 				label: t('web.instances.openFiles'),
 				icon: 'folder',
-				disabled: busy,
-				hint: busyHint,
-				action: () => goto(`/instances/${row.name}/files`)
+				disabled: singleBlocked,
+				hint: singleHint,
+				action: () => single && goto(`/instances/${single.name}/files`)
 			},
 			{ separator: true },
 			{
-				label: t('web.instances.startInstance'),
+				label: counted(t('web.instances.startInstance'), startable),
 				icon: 'play',
-				disabled: row.state !== 'stopped',
-				hint: row.state !== 'stopped' ? t('web.instances.alreadyState', { name: row.name, state: row.state ?? '' }) : undefined,
-				action: () => stateAction('start')
+				disabled: startable.length === 0,
+				hint: startable.length === 0
+					? (single ? t('web.instances.alreadyState', { name: single.name, state: single.state ?? '' }) : t('web.instances.noneStopped'))
+					: undefined,
+				action: () => stateAction('start', startable)
 			},
 			{
-				label: t('web.instances.stopInstance'),
+				label: counted(t('web.instances.stopInstance'), running),
 				icon: 'stop',
-				disabled: !up,
-				hint: !up ? `${row.name} is not running` : undefined,
-				action: () => stateAction('stop')
+				disabled: running.length === 0,
+				hint: running.length === 0
+					? (single ? `${single.name} is not running` : t('web.instances.noneRunning'))
+					: undefined,
+				action: () => stateAction('stop', running)
 			},
 			{
-				label: t('web.instances.restartInstance'),
+				label: counted(t('web.instances.restartInstance'), running),
 				icon: 'rotate',
-				disabled: !up,
-				hint: !up ? `${row.name} is not running` : undefined,
-				action: () => stateAction('restart')
+				disabled: running.length === 0,
+				hint: running.length === 0
+					? (single ? `${single.name} is not running` : t('web.instances.noneRunning'))
+					: undefined,
+				action: () => stateAction('restart', running)
 			},
 			{
-				label: t('web.instances.scheduleAction'),
+				label: counted(t('web.instances.scheduleAction'), schedulable),
 				icon: 'clock',
-				disabled: busy,
-				hint: busyHint,
-				action: () => openScheduler([row.name])
+				disabled: schedulable.length === 0,
+				hint: schedulable.length === 0 ? singleHint : undefined,
+				action: () => openScheduler(schedulable.map((row) => row.name))
 			},
 			{ separator: true },
 			{
 				label: t('web.instances.manage'),
 				icon: 'sliders',
-				disabled: busy,
-				hint: busyHint,
-				submenu: [
-					{
-						label: t('web.nav.plugins'),
-						icon: 'plug',
-						action: () => goto(instanceTabPath(row.name, 'plugins'))
-					},
-					{
-						label: t('web.instances.configuration'),
-						icon: 'sliders',
-						action: () => goto(instanceTabPath(row.name, 'config'))
-					},
-					{
-						label: t('web.instances.networking'),
-						icon: 'sitemap',
-						action: () => goto(instanceTabPath(row.name, 'network'))
-					},
-					{
-						label: t('web.instances.logs'),
-						icon: 'scroll',
-						action: () => goto(instanceTabPath(row.name, 'logs'))
-					}
-				]
+				disabled: singleBlocked,
+				hint: singleHint,
+				submenu: single
+					? [
+							{
+								label: t('web.nav.plugins'),
+								icon: 'plug',
+								action: () => goto(instanceTabPath(single.name, 'plugins'))
+							},
+							{
+								label: t('web.instances.configuration'),
+								icon: 'sliders',
+								action: () => goto(instanceTabPath(single.name, 'config'))
+							},
+							{
+								label: t('web.instances.networking'),
+								icon: 'sitemap',
+								action: () => goto(instanceTabPath(single.name, 'network'))
+							},
+							{
+								label: t('web.instances.logs'),
+								icon: 'scroll',
+								action: () => goto(instanceTabPath(single.name, 'logs'))
+							}
+						]
+					: undefined
 			},
 			{
 				label: t('web.instances.copyAddress'),
 				icon: 'copy',
 				// the daemon resolves this to the owning machine's host; an external
 				// server advertises its own, and a mid-provision row has none yet
-				disabled: !(row.address ?? row.external),
-				hint: (row.address ?? row.external) ? undefined : t('web.instances.noAddressYet'),
-				action: () => navigator.clipboard?.writeText(row.address ?? row.external ?? '')
+				disabled: !single || !(single.address ?? single.external),
+				hint: pickOne ?? (single && (single.address ?? single.external) ? undefined : t('web.instances.noAddressYet')),
+				action: () => single && navigator.clipboard?.writeText(single.address ?? single.external ?? '')
 			},
 			{ separator: true },
 			{
-				label: t('web.instances.deleteInstance'),
+				label: counted(t('web.instances.deleteInstance'), deletable),
 				icon: 'trash',
 				color: 'danger',
-				disabled: row.state !== 'stopped' || row.name === 'proxy',
-				hint:
-					row.name === 'proxy'
-						? t('web.instances.proxyUndeletable')
-						: row.state !== 'stopped'
-							? t('web.instances.stopFirst')
-							: undefined,
-				action: () => askDelete(row.name)
+				disabled: deletable.length === 0,
+				hint: deleteHint,
+				action: () => askDelete(deletable.map((row) => row.name))
 			}
 		];
+	}
+
+	/**
+	 * A row's menu acts on the whole selection when the row is part of it, and on
+	 * that row alone otherwise, so right-clicking one of five ticked rows offers
+	 * the same verbs as the Actions menu.
+	 */
+	function rowActions(row: Row): ContextMenuItem[] {
+		const targets = selected.has(row.name) && selRows.length > 0
+			? selRows
+			: [row];
+
+		return instanceActions(targets);
 	}
 
 	/**
@@ -603,7 +652,7 @@
 				/>
 				<!-- the selection's verbs are the row's verbs; one declaration, two
 				     places to reach it (here and the row's context menu) -->
-				<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? rowActions(one) : []} />
+				<Dropdown label={t('web.common.actions')} disabled={selRows.length === 0} menu={instanceActions(selRows)} />
 				<SplitButton
 					label={t('web.nav.launchInstance')}
 					disabled={!canCreate}
@@ -943,7 +992,7 @@
 
 <DeleteInstanceModal
 	bind:open={deleteOpen}
-	name={deleteTarget}
+	names={deleteTargets}
 	ondeleted={(target) => {
 		// the row reads "deleting" until the job finishes and then disappears;
 		// drop it from the selection so the detail panel is not left holding it

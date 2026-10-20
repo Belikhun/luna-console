@@ -10,7 +10,7 @@
 	import Checkbox from './Checkbox.svelte';
 
 	/**
-	 * Delete confirmation for one instance, modelled on the AWS confirm pattern:
+	 * Delete confirmation for one instance or several, modelled on the AWS confirm pattern:
 	 * lead question, consequence notes, then a divided type-to-confirm section.
 	 *
 	 * It lives in the component library because both places that can delete an
@@ -19,15 +19,21 @@
 	 */
 	let {
 		open = $bindable(false),
-		name,
+		name = '',
+		names,
 		ondeleted
 	}: {
 		open?: boolean;
 		/** the instance to delete; the dialog does nothing without one */
-		name: string;
-		/** fired once the job is handed to its flash card, for a redirect or a refresh */
+		name?: string;
+		/** several instances at once, from a table selection; wins over `name` */
+		names?: string[];
+		/** fired once per instance whose job is handed to its flash card, for a redirect or a refresh */
 		ondeleted?: (name: string) => void;
 	} = $props();
+
+	const targets = $derived(names && names.length > 0 ? names : name ? [name] : []);
+	const many = $derived(targets.length > 1);
 
 	let confirmText = $state('');
 	let purge = $state(false);
@@ -43,24 +49,40 @@
 	});
 
 	function submit(): void {
-		if (!name || !confirmed) {
+		if (targets.length === 0 || !confirmed) {
 			return;
 		}
 
 		open = false;
 
-		// the flash card follows the job from here; the row reads "deleting"
-		// until it (and a purge's directory walk) finishes
-		void deleteInstanceJob(name, purge);
+		// one flash card per instance follows its own job from here; each row reads
+		// "deleting" until it (and a purge's directory walk) finishes
+		for (const target of targets) {
+			void deleteInstanceJob(target, purge);
 
-		ondeleted?.(name);
+			ondeleted?.(target);
+		}
 	}
 </script>
 
-<Modal title={t('web.deleteInstance.title', { name })} bind:open>
-	<p class="del-lead">
-		{t('web.deleteInstance.leadBefore')} <b>{name}</b>{t('web.deleteInstance.leadAfter')}
-	</p>
+<Modal
+	title={many
+		? t('web.deleteInstance.titleMany', { count: targets.length })
+		: t('web.deleteInstance.title', { name: targets[0] ?? '' })}
+	bind:open
+>
+	{#if many}
+		<p class="del-lead">{t('web.deleteInstance.leadMany', { count: targets.length })}</p>
+		<ul class="del-list">
+			{#each targets as target (target)}
+				<li><b>{target}</b></li>
+			{/each}
+		</ul>
+	{:else}
+		<p class="del-lead">
+			{t('web.deleteInstance.leadBefore')} <b>{targets[0] ?? ''}</b>{t('web.deleteInstance.leadAfter')}
+		</p>
+	{/if}
 	<p class="del-note">{t('web.deleteInstance.noteDeregister')}</p>
 	<p class="del-note">{t('web.deleteInstance.noteDirectory')}</p>
 	<label class="purgerow">
@@ -91,6 +113,13 @@
 
 	.del-lead {
 		margin: 0 0 0.75rem;
+	}
+
+	.del-list {
+		margin: 0 0 0.75rem;
+		padding-left: 1.25rem;
+		max-height: 12rem;
+		overflow-y: auto;
 	}
 
 	.del-note {

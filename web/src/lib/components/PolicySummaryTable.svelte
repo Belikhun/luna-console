@@ -210,7 +210,9 @@
 		justify-content: space-between;
 		flex-wrap: wrap;
 		gap: 0.5rem 1rem;
-		margin-bottom: 0.5rem;
+		// the row reads as the table's heading, so it keeps the same distance from
+		// the table as a panel title does from its body
+		margin-bottom: 1rem;
 
 		h4 {
 			margin: 0;

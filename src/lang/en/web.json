@@ -269,7 +269,9 @@
 		"noteDirectory": "The instance directory, worlds included, stays on disk unless you also delete it below.",
 		"purgeLabel": "Delete the instance directory",
 		"purgeText": "Also permanently delete the instance directory (worlds included)",
-		"confirmAsk": "To confirm deletion, enter delete in the text input field."
+		"confirmAsk": "To confirm deletion, enter delete in the text input field.",
+		"titleMany": "Delete instances ({count})",
+		"leadMany": "These instances will be deleted ({count}):"
 	},
 	"access": {
 		"adding": "Adding {target}…",
@@ -767,7 +769,10 @@
 		"tickingEntities": "ticking",
 		"nonTickingEntities": "not ticked",
 		"noEntities": "no entities reported",
-		"agoOf": "{age} ago"
+		"agoOf": "{age} ago",
+		"pickSingle": "Pick a single instance",
+		"noneStopped": "None of the selected instances is stopped",
+		"noneRunning": "None of the selected instances is running"
 	},
 	"software": {
 		"channelRelease": "Release",
@@ -5287,7 +5292,7 @@
 		"noResources": "No resource",
 		"noAccess": "No access",
 		"noRows": "This policy allows nothing",
-		"showRemaining": "Show remaining {count} services",
+		"showRemaining": "Show remaining services ({count})",
 		"allowHeading": "Allow ({count} of {total} services)",
 		"denyHeading": "Deny ({count} of {total} services)",
 		"levelSensitive": "Sensitive"
