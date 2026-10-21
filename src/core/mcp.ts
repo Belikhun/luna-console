@@ -155,6 +155,11 @@ export interface McpPrincipal {
 	name: string;
 	scope: McpScope;
 	tools: string[];
+	/**
+	 * The token's own scope when `scope` was narrowed to a console account's view
+	 * of the instances; what decides whether the token itself is instance-limited.
+	 */
+	tokenScope?: McpScope;
 }
 
 export interface CreateMcpTokenInput {

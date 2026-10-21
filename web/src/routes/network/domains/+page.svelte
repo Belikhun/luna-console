@@ -10,6 +10,7 @@
 	import { fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
+	import { Authz } from '$lib/authz.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -76,6 +77,8 @@
 	let unlinkRows: HostnameRow[] = $state([]);
 
 	let settingsOpen = $state(false);
+	const configures = $derived(Authz.can('domain:ConfigureProvider'));
+	const configureRefusal = $derived(configures ? undefined : t('web.common.notAllowed', { action: 'domain:ConfigureProvider' }));
 	let formApiUser = $state('');
 	let formUserName = $state('');
 	let formClientIp = $state('');
@@ -353,8 +356,12 @@
 			{
 				label: t('web.domains.pointAction'),
 				icon: 'pen',
-				disabled: !one,
-				hint: one ? undefined : t('web.domains.pickOne'),
+				disabled: !one || !Authz.can('domain:ManageRecords'),
+				hint: !Authz.can('domain:ManageRecords')
+					? t('web.common.notAllowed', { action: 'domain:ManageRecords' })
+					: one
+						? undefined
+						: t('web.domains.pickOne'),
 				action: () => openPoint(one!)
 			},
 			{
@@ -446,7 +453,7 @@
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="network-domains" />
 		<Dropdown label={t('web.common.actions')} disabled={tab !== 'hostnames' || picked.length === 0} menu={withCopyResourceId(hostnameActions(picked), picked.map((row) => resourceId('domain', row.label)))} />
-		<Btn icon="gear" onclick={openSettings}>{t('web.domains.settings')}</Btn>
+		<Btn icon="gear" disabled={!configures} title={configureRefusal} onclick={openSettings}>{t('web.domains.settings')}</Btn>
 		<Btn variant="primary" icon="plus" disabled={!settings?.configured} onclick={openCreate}>{t('web.domains.create')}</Btn>
 	{/snippet}
 </PageHeader>
@@ -454,14 +461,14 @@
 {#if settings && !settings.configured}
 	<Flash kind="info">
 		{t('web.domains.notConfigured')}
-		<Btn icon="gear" onclick={openSettings}>{t('web.domains.configure')}</Btn>
+		<Btn icon="gear" disabled={!configures} title={configureRefusal} onclick={openSettings}>{t('web.domains.configure')}</Btn>
 	</Flash>
 {/if}
 
 <OverviewBar title={t('web.domains.overview')}>
 	<OverviewCell label={t('web.domains.overviewProvider')}>
 		{#if settings?.configured}
-			<StatusBadge state="ok" label={`Namecheap · ${settings.provider?.apiUser ?? ''}`} />
+			<StatusBadge state="ok" label={settings.provider ? `Namecheap · ${settings.provider.apiUser}` : 'Namecheap'} />
 		{:else}
 			<StatusBadge state="unknown" label={t('web.domains.notSet')} />
 		{/if}
@@ -481,7 +488,8 @@
 <Tabs
 	tabs={[
 		{ id: 'hostnames', label: t('web.domains.tabHostnames') },
-		{ id: 'records', label: t('web.domains.tabRecords') },
+		// the zone's every record, which only the provider's operators read
+		...(configures ? [{ id: 'records', label: t('web.domains.tabRecords') }] : []),
 		{ id: 'activity', label: t('web.domains.tabActivity') }
 	]}
 	bind:active={tab}

@@ -42,7 +42,7 @@ import {
 	probeIdentity,
 } from "./identify";
 import type { AddonProject, AddonVersion, AddonVersionFile } from "./services/providers";
-import { getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
+import { coversMc, getVersions, pickCompatible, primaryFile, remoteRefFor } from "./services/providers";
 import { getStatus } from "./instances";
 import { readBootSession } from "./pluginstate";
 import type { BootSession, PluginRuntimeState, ReportLifecycle } from "./pluginstate";
@@ -559,6 +559,28 @@ export async function installDataPackFromProvider(
 	opts: { channel?: PackChannel } = {},
 ): Promise<{ name: string; entry: DataPackEntry }> {
 	const name = packKeyFrom(project.slug);
+	const existing = lock.datapacks[name];
+
+	// the pool holds one zip per pack, shared by every server it targets, so an
+	// install of a pack already pooled only adds targets the pooled build supports
+	if (existing) {
+		const added = targets.filter((target) => !existing.targets.includes(target));
+		const unsupported = requiredMcVersions(cfg, expandTargets(cfg, added))
+			.filter((mc) => !coversMc(existing.installed?.gameVersions, mc));
+
+		if (unsupported.length > 0) {
+			throw new Error(t("core.datapacks.pooledBuildUnsupported", {
+				name,
+				version: existing.installed?.versionNumber ?? "?",
+				mc: unsupported.join(", "),
+			}));
+		}
+
+		existing.targets = [...existing.targets, ...added];
+
+		return { name, entry: existing };
+	}
+
 	const expanded = expandTargets(cfg, targets);
 	const required = requiredMcVersions(cfg, expanded);
 	const remote = remoteRefFor(provider, project);

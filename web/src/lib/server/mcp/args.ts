@@ -58,7 +58,9 @@ export function optList(args: ToolArgs, key: string): string[] | undefined {
  * changing them reaches instances such a token was never given.
  */
 export function requireWholeCluster(ctx: ToolContext, what: string): void {
-	if (ctx.principal.scope.instances !== null) {
+	// an account's narrowed view is not a limited token: its policies decide each
+	// change per instance, which is where a shared resource's targets are checked
+	if ((ctx.principal.tokenScope ?? ctx.principal.scope).instances !== null) {
 		throw new ToolError(`this token is limited to some instances, and ${what} is shared by all of them, so it cannot change it`);
 	}
 }

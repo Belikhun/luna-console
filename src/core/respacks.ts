@@ -938,6 +938,17 @@ export async function installResourcePackFromProvider(
 	opts: { channel?: PackChannel } = {},
 ): Promise<RespackRow> {
 	const key = packKeyFrom(project.slug);
+
+	// a pack already pooled is shared: installing it again changes nothing, and
+	// putting it on a server is a change of its rules, not a new download
+	if (lock.resourcepacks[key]) {
+		const pooled = (await listResourcePacks(cfg, lock)).find((candidate) => candidate.key === key);
+
+		if (pooled) {
+			return pooled;
+		}
+	}
+
 	const remote = remoteRefFor(provider, project);
 	const versions = await getVersions(remote, "resourcepack");
 

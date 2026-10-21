@@ -73,7 +73,7 @@ function family(args: ToolArgs, fallback?: PluginFamily): PluginFamily | undefin
 
 /** The pool is shared by every instance, so changing it needs a token that reaches all of them. */
 function requireWholeCluster(ctx: ToolContext): void {
-	if (ctx.principal.scope.instances !== null) {
+	if ((ctx.principal.tokenScope ?? ctx.principal.scope).instances !== null) {
 		throw new ToolError('this token is limited to some instances, and the addon pool is shared by all of them, so it cannot change addons');
 	}
 }

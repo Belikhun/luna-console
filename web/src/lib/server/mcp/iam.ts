@@ -42,8 +42,10 @@ import {
 	pluginRemovalChecks,
 	pluginTargetChecks,
 	pluginUnpinChecks,
+	respackEnableChecks,
 	respackServerChecks
 } from '$lib/server/authz/routes';
+import { packKeyFrom } from '$core/packslock';
 import { hiddenInstances } from '$lib/server/fleetscope';
 
 export interface IamCheck {
@@ -67,6 +69,24 @@ function list(args: ToolArgs, key: string): string[] {
 	}
 
 	return typeof value === 'string' && value !== '' ? [value] : [];
+}
+
+/** The pack key a name becomes, or '' (a pack not pooled yet) when it makes none. */
+function packKey(name: string | null): string {
+	try {
+		return name
+			? packKeyFrom(name)
+			: '';
+	} catch {
+		return '';
+	}
+}
+
+/** A list argument, or undefined when the call does not carry one. */
+function optionalList(args: ToolArgs, key: string): string[] | undefined {
+	return Array.isArray(args[key])
+		? list(args, key)
+		: undefined;
 }
 
 function id(type: IamResourceType, name: string | null): string | null {
@@ -153,6 +173,25 @@ const codeIfPackFile = (instanceKey: string): Rule => (args) =>
 /** `instance:ManageAddons` on every target a list argument names; a wildcard asks for `luna:instance/*`. */
 const addonTargets = (key: string): Rule => (args) => onInstances('instance:ManageAddons', list(args, key));
 
+/**
+ * A verb on a shared addon that names the servers it acts on reaches only
+ * those: it asks `instance:ManageAddons` on each and to see the addon, which is
+ * how the owner of a server manages what runs there. With no servers named it
+ * acts on the addon everywhere and asks the addon-wide verb.
+ */
+const perServer = (wide: string, type: 'plugin' | 'datapack', listKey: string): Rule => (args) => {
+	const servers = list(args, listKey);
+
+	if (servers.length === 0) {
+		return on(wide, type, 'name')(args);
+	}
+
+	return [
+		{ action: `${type}:Describe`, resource: id(type, text(args, 'name')) },
+		...addonTargets(listKey)(args)
+	];
+};
+
 /** The same for a resource pack's server rules (`!x` names x, `all` is every server). */
 const packServers: Rule = (args) => onInstances('instance:ManageAddons', packRuleTargets(list(args, 'servers')));
 
@@ -161,12 +200,18 @@ export const TOOL_IAM: Record<string, Rule> = {
 	instance_status: instance('instance:Describe'),
 	// a server's logs carry every chat line it printed
 	instance_logs: all(instance('instance:ReadLogs'), on('chat:Read', 'chat', 'instance')),
-	players_online: all(plain('player:List'), when('instance', instance('instance:Describe'))),
+	// rows are kept to the servers the call may reach, so who is online on them is
+	// a fact about those servers rather than the network's player directory
+	players_online: (args) => text(args, 'instance')
+		? instance('instance:Describe')(args)
+		: plain('instance:List')(args),
 	player_lookup: on('player:Describe', 'player', 'player'),
 	player_search: plain('player:List'),
 	// chat is checked per server on the lines returned as well (`readableChat`)
 	player_chat: all(on('chat:ReadPlayer', 'player', 'player'), when('server', on('chat:Read', 'chat', 'server'))),
-	chat_log: all(plain('player:List'), when('server', on('chat:Read', 'chat', 'server'))),
+	chat_log: (args) => text(args, 'server')
+		? on('chat:Read', 'chat', 'server')(args)
+		: plain('player:List')(args),
 	fleet_status: plain('machine:List'),
 	daemon_detail: on('machine:Describe', 'machine', 'daemon'),
 	cluster_events: all(plain('event:Read'), when('instance', instance('instance:Describe'))),
@@ -230,10 +275,10 @@ export const TOOL_IAM: Record<string, Rule> = {
 	// a change of targets is checked against the pool as it stands (`TOOL_IAM_LIVE`)
 	addon_configure: on('plugin:Configure', 'plugin', 'name'),
 	addon_update: each('plugin:Update', 'plugin', 'names'),
-	addon_pin: all(on('plugin:Configure', 'plugin', 'name'), addonTargets('targets')),
-	addon_unpin: all(on('plugin:Configure', 'plugin', 'name'), addonTargets('targets')),
-	addon_deploy: all(on('plugin:Configure', 'plugin', 'name'), addonTargets('instances')),
-	addon_remove: all(on('plugin:Remove', 'plugin', 'name'), addonTargets('from')),
+	addon_pin: perServer('plugin:Configure', 'plugin', 'targets'),
+	addon_unpin: perServer('plugin:Configure', 'plugin', 'targets'),
+	addon_deploy: perServer('plugin:Configure', 'plugin', 'instances'),
+	addon_remove: perServer('plugin:Remove', 'plugin', 'from'),
 	modpack_search: plain('catalog:Read'),
 	modpack_versions: plain('catalog:Read'),
 	modpack_install: all(on('instance:Create', 'instance', 'name'), codeIfPackFile('name')),
@@ -241,7 +286,14 @@ export const TOOL_IAM: Record<string, Rule> = {
 
 	domain_list: plain('domain:List'),
 	domain_records: (args) => [{ action: 'domain:Describe', resource: id('domain', domainLabel(text(args, 'name'))) }],
-	domain_create: all(plain('domain:Create'), when('instance', instance('instance:ManageNetwork'))),
+	domain_create: all(
+		plain('domain:Create'),
+		when('instance', instance('instance:ManageNetwork')),
+		// another address, or adopting an existing record, is editing DNS records
+		(args) => args.address || args.adopt === true
+			? [{ action: 'domain:ManageRecords', resource: null }]
+			: []
+	),
 	domain_update: (args) => [{ action: 'domain:ManageRecords', resource: id('domain', domainLabel(text(args, 'name'))) }],
 	domain_link: all(
 		(args) => [{ action: 'domain:Link', resource: id('domain', domainLabel(text(args, 'name'))) }],
@@ -275,7 +327,7 @@ export const TOOL_IAM: Record<string, Rule> = {
 	datapack_install_upload: all(plain('datapack:Install'), addonTargets('targets')),
 	datapack_configure: on('datapack:Configure', 'datapack', 'name'),
 	datapack_update: each('datapack:Update', 'datapack', 'names'),
-	datapack_remove: all(on('datapack:Remove', 'datapack', 'name'), addonTargets('from')),
+	datapack_remove: perServer('datapack:Remove', 'datapack', 'from'),
 
 	// the agent's own memory: what it remembers for one account it remembers for
 	// every account, so writing to it is a knowledge action like any other
@@ -338,9 +390,16 @@ const TOOL_IAM_LIVE: Record<string, (args: ToolArgs, hidden: Set<string> | null)
 	datapack_remove: async (args) => list(args, 'from').length === 0
 		? await datapackRemovalChecks(text(args, 'name') ?? '', [])
 		: [],
-	respack_configure: async (args, hidden) => Array.isArray(args.servers)
-		? await respackServerChecks(text(args, 'key') ?? '', list(args, 'servers'), hidden)
-		: []
+	respack_configure: async (args, hidden) => [
+		...(Array.isArray(args.servers)
+			? await respackServerChecks(text(args, 'key') ?? '', list(args, 'servers'), hidden)
+			: []),
+		...await respackEnableChecks(text(args, 'key') ?? '', args.enabled, optionalList(args, 'servers'), hidden)
+	],
+	respack_install: async (args, hidden) =>
+		await respackEnableChecks(packKey(text(args, 'slug')), args.enabled, optionalList(args, 'servers'), hidden),
+	respack_install_upload: async (args, hidden) =>
+		await respackEnableChecks(packKey(text(args, 'name')), args.enabled, optionalList(args, 'servers'), hidden)
 };
 
 /** The state-dependent checks a call makes on top of its static ones; empty for most tools. */
@@ -367,11 +426,15 @@ export function toolChecks(tool: string, args: ToolArgs): IamCheck[] | null {
  * possibility probe calls a rule with, so a check names a resource exactly when
  * a real call would, and the optional ones (`when`) stay out of it.
  */
-function requiredPlaceholders(tool: string): ToolArgs {
+function requiredPlaceholders(tool: string, withLists = false): ToolArgs {
 	const spec = MCP_TOOLS.find((entry) => entry.name === tool);
 	const out: ToolArgs = {};
+	const properties = spec?.inputSchema.properties ?? {};
+	const lists = withLists
+		? Object.keys(properties)
+		: [];
 
-	for (const key of spec?.inputSchema.required ?? []) {
+	for (const key of [...new Set([...(spec?.inputSchema.required ?? []), ...lists])]) {
 		const type = spec?.inputSchema.properties?.[key]?.type;
 
 		out[key] = type === 'array'
@@ -390,9 +453,13 @@ export function toolPossible(context: PrincipalContext, tool: string): boolean {
 		return false;
 	}
 
-	return rule(requiredPlaceholders(tool)).every((check) =>
+	const possible = (args: ToolArgs): boolean => rule(args).every((check) =>
 		actionPossible(context, check.action, check.resource === null)
 	);
+
+	// a verb that narrows to the servers (or the one server) it names is possible
+	// when its narrow form is
+	return possible(requiredPlaceholders(tool)) || possible(requiredPlaceholders(tool, true));
 }
 
 export interface IamRefusal {
@@ -443,7 +510,7 @@ export async function accountScope(username: string, scope: McpScope): Promise<M
 
 /** The principal a call for an account runs as: the token, with the account's instance view. */
 export async function accountPrincipal(username: string, principal: McpPrincipal): Promise<McpPrincipal> {
-	return { ...principal, scope: await accountScope(username, principal.scope) };
+	return { ...principal, scope: await accountScope(username, principal.scope), tokenScope: principal.scope };
 }
 
 /**

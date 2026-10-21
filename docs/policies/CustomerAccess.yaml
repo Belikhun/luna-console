@@ -9,7 +9,8 @@
 # What stays closed, whatever OwnerAccess would allow, is anything that runs
 # code of the customer's choosing on the host (code:*, the terminal, JVM flags
 # and environment variables), anything network-wide (moderation, permissions,
-# the proxy, ports, hostnames), and the console's own administration.
+# the proxy, port pools, DNS records), and the console's own administration.
+# Their own servers' network settings and hostnames are theirs.
 #
 # Mèo Béo is theirs to use: it acts with these same permissions, and what it
 # remembers in their conversations stays theirs (OwnerAccess covers it). The
@@ -74,6 +75,16 @@ Statement:
       ForAnyValue:StringEquals:
         luna:PlayerServerCreators: "${luna:username}"
 
+  # a hostname of their own for a server of their own (modded clients cannot
+  # come in through the lobby); it always points at the network, and linking it
+  # needs network rights on the instance, which OwnerAccess gives on theirs only
+  - Sid: OwnHostnames
+    Effect: Allow
+    Action:
+      - domain:List
+      - domain:Create
+    Resource: "*"
+
   # Mèo Béo, acting as the customer, with a memory of its own
   - Sid: UseAgent
     Effect: Allow
@@ -123,10 +134,11 @@ Statement:
       - permission-group:*
       - network:*
       - port-pool:*
-      - domain:*
+      # a record aimed anywhere but the network, and the DNS provider itself
+      - domain:ManageRecords
+      - domain:ConfigureProvider
       - machine:Upgrade
       - machine:Remove
-      - instance:ManageNetwork
       - event:Read
       - journal:Read
       - cleanup:*

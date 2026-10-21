@@ -1858,6 +1858,11 @@ export async function installFromProvider(
 	const file = addonFileName(name, family);
 	const remote = remoteRefFor(provider, project);
 	const versions = await getVersions(remote, projectTypeFor(family), loadersFor(family));
+	const existing = lock.plugins[name];
+
+	if (existing) {
+		return await addTargetsToExisting(cfg, lock, name, existing, versions, targets);
+	}
 
 	const entry: PluginEntry = {
 		file,
@@ -1918,6 +1923,55 @@ export async function installFromProvider(
 	lock.plugins[name] = entry;
 
 	await applyUpdate(lock, { name, entry, resolution, pendingGroups: resolution.groups });
+
+	return { name, entry, resolution };
+}
+
+/**
+ * Installing an addon the pool already holds adds the new targets and nothing
+ * else. The entry is shared, so its other targets, pins, channel, config ops
+ * and primary jar are other servers' business: a new target the pooled build
+ * already supports gets that build, and one it does not gets the newest
+ * compatible build as a variant assigned to it alone.
+ */
+async function addTargetsToExisting(
+	cfg: ClusterConfig,
+	lock: PluginsLock,
+	name: string,
+	entry: PluginEntry,
+	versions: AddonVersion[],
+	targets: string[],
+): Promise<{ name: string; entry: PluginEntry; resolution: EntryResolution }> {
+	const before = new Set(expandTargets(cfg, entry.targets));
+	const added = targets.filter((target) => !entry.targets.includes(target));
+
+	entry.targets = [...entry.targets, ...added];
+
+	const fresh = expandTargets(cfg, entry.targets).filter((target) => !before.has(target));
+	const insts = managedInstances(cfg);
+	const unsupported = fresh.filter((target) => {
+		const mcVersion = insts[target]?.mcVersion;
+
+		return !mcVersion || !coversMc(entry.installed?.gameVersions, mcVersion);
+	});
+	const resolution = resolveEntry(cfg, entry, versions, unsupported);
+	const pendingGroups = resolution.groups
+		.filter((group) => group.version.id !== entry.installed?.versionId)
+		.map((group) => ({ ...group, isPrimary: false }));
+
+	if (unsupported.length > 0 && resolution.groups.length === 0) {
+		const reasons = resolution.holdbacks
+			.map((holdback) => `${holdback.targets.join(",")}: ${holdback.reason}`)
+			.join("; ");
+
+		throw new Error(t("core.plugins.noInstallable", {
+			slug: entry.plugin ?? name,
+			family: entry.family,
+			reasons: reasons || t("core.plugins.noVersionsFound"),
+		}));
+	}
+
+	await applyUpdate(lock, { name, entry, resolution, pendingGroups });
 
 	return { name, entry, resolution };
 }

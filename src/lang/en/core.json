@@ -153,6 +153,7 @@
 		"noWorld": "{name} has no world to hold data packs",
 		"copying": "copying {file}",
 		"noVersionForMc": "no version of {slug} covers MC {mc}{newest}",
+		"pooledBuildUnsupported": "the pooled {name} {version} does not support MC {mc}, and the pool keeps one build for every server; an administrator has to update it first",
 		"fileNotInWorld": "{file} not found in {name}'s world",
 		"poolFileMissing": "pool file missing; reinstall or re-upload the pack"
 	},

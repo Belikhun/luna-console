@@ -153,6 +153,7 @@
 		"noWorld": "{name} không có thế giới để chứa gói dữ liệu",
 		"copying": "đang chép {file}",
 		"noVersionForMc": "không phiên bản nào của {slug} hỗ trợ MC {mc}{newest}",
+		"pooledBuildUnsupported": "bản {name} {version} trong kho không hỗ trợ MC {mc}, và kho chỉ giữ một bản cho mọi server; quản trị viên cần cập nhật nó trước",
 		"fileNotInWorld": "không thấy {file} trong thế giới của {name}",
 		"poolFileMissing": "thiếu tệp trong kho; cài lại hoặc tải lại gói"
 	},

@@ -292,4 +292,4 @@ export function keepHiddenRefs(next: string[], previous: string[] | undefined, h
 }
 
 /** Console API routes whose answers carry those side facts; the request hook scrubs them. */
-export const INSTANCE_REF_ROUTES = ['/api/plugins', '/api/respacks', '/api/datapacks', '/api/addons', '/api/profiles', '/api/runtimes'];
+export const INSTANCE_REF_ROUTES = ['/api/plugins', '/api/respacks', '/api/datapacks', '/api/addons', '/api/profiles', '/api/runtimes', '/api/domains'];

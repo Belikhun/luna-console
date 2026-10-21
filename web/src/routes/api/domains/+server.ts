@@ -8,18 +8,31 @@ import { loadCluster } from '$core/config';
 import { createHostname, domainAudit, domainSettings, listHostnames } from '$core/domains';
 import { errorMessage, jsonBody } from '$lib/server/http';
 import { journal } from '$lib/server/session';
+import { can, filterAllowed } from '$lib/server/authz';
+import { resourceId } from '$shared/iam/resources';
 
 /**
  * The domains screen: settings (the API key only as a hint), the managed
  * hostnames, the audit trail and the instance names a hostname can route to.
+ * An account that may not configure the provider sees the hostnames it may
+ * describe and their trail, and no provider details.
  */
-export async function GET() {
-	const [settings, hostnames, audit, cfg] = await Promise.all([
+export async function GET({ locals }) {
+	const [settings, all, fullAudit, cfg, configures] = await Promise.all([
 		domainSettings(),
 		listHostnames(),
 		domainAudit(300),
-		loadCluster()
+		loadCluster(),
+		can(locals, 'domain:ConfigureProvider')
 	]);
+	const hostnames = await filterAllowed(locals, 'domain:Describe', all, (entry) => resourceId('domain', entry.label));
+	const shown = new Set(hostnames.flatMap((entry) => [entry.label, entry.fqdn]));
+	const audit = configures
+		? fullAudit
+		: fullAudit.filter((entry) => entry.hostname !== undefined && shown.has(entry.hostname));
+	const view = configures
+		? settings
+		: { ...settings, provider: null, publicAddress: null };
 
 	// the proxy is not a target: velocity cannot route a forced host to itself
 	const instances = Object.entries(cfg.instances)
@@ -27,7 +40,7 @@ export async function GET() {
 		.map(([name]) => name)
 		.sort();
 
-	return json({ settings, hostnames, audit, instances });
+	return json({ settings: view, hostnames, audit, instances });
 }
 
 /** POST { name, instance?, address?, adopt? } → the created hostname. */

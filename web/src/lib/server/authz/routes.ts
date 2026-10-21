@@ -550,6 +550,67 @@ export async function respackServerChecks(key: string, next: string[], hidden: S
 	return onInstances('instance:ManageAddons', changed);
 }
 
+/**
+ * Switching a resource pack on or off reaches every server its rules name, and
+ * a pack nobody has given rules yet is sent everywhere (`*`): so a change of
+ * `enabled` asks `instance:ManageAddons` on all of them. `hidden` as for plugins.
+ */
+export async function respackEnableChecks(
+	key: string,
+	enabled: unknown,
+	servers: string[] | undefined,
+	hidden: Set<string> | null = null
+): Promise<RuleCheck[]> {
+	if (typeof enabled !== 'boolean') {
+		return [];
+	}
+
+	const cfg = await loadCluster();
+	const lock = await loadPacksLock();
+	const row = (await listResourcePacks(cfg, lock)).find((candidate) => candidate.key === key);
+
+	if (row && row.enabled === enabled) {
+		return [];
+	}
+
+	const current = row?.servers.length
+		? row.servers
+		: ['*'];
+	const rules = servers
+		? keepHiddenRefs(servers, row?.servers, hidden)
+		: current;
+
+	return onInstances('instance:ManageAddons', packRuleTargets(rules));
+}
+
+/**
+ * A hostname normally points at the network's own address; naming another
+ * address, or adopting a record the zone already holds, is editing DNS records,
+ * which can aim a name under the operators' domain anywhere.
+ */
+const recordsIfAddressed = async (ctx: RuleContext): Promise<RuleCheck[]> => {
+	const parsed = await jsonOf(ctx);
+
+	return parsed.address || parsed.adopt === true
+		? [{ action: 'domain:ManageRecords', resource: null }]
+		: [];
+};
+
+/**
+ * The verb a shared addon change asks for: naming the servers it acts on makes
+ * it a change to those servers (`instance:ManageAddons` on each, from the
+ * rule's `and`) plus seeing the addon; naming none acts everywhere.
+ */
+const perServerBody = (wide: string, narrow: string, key: string) => async (ctx: RuleContext): Promise<string> =>
+	stringList((await jsonOf(ctx))[key]).length > 0
+		? narrow
+		: wide;
+
+const perServerQuery = (wide: string, narrow: string, key: string) => async (ctx: RuleContext): Promise<string> =>
+	stringList(ctx.url.searchParams.get(key)?.split(',')).length > 0
+		? narrow
+		: wide;
+
 /** `instance:ManageAddons` on each instance a body list names; nothing when it names none. */
 const addonsOnBody = (key: string): AndRule => async (ctx: RuleContext): Promise<RuleCheck[]> =>
 	onInstances('instance:ManageAddons', stringList((await jsonOf(ctx))[key]));
@@ -612,6 +673,15 @@ const respackServersChange = async (ctx: RuleContext): Promise<RuleCheck[]> => {
 	}
 
 	return await respackServerChecks(key, stringList(parsed.servers), await hiddenInstances(ctx.account));
+};
+
+const respackEnable = async (ctx: RuleContext): Promise<RuleCheck[]> => {
+	const parsed = await jsonOf(ctx);
+	const servers = Array.isArray(parsed.servers)
+		? stringList(parsed.servers)
+		: undefined;
+
+	return await respackEnableChecks(ctx.params.key ?? '', parsed.enabled, servers, await hiddenInstances(ctx.account));
 };
 
 /** The instance verb each schedule action performs when it fires. */
@@ -996,17 +1066,31 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/plugins/fetch': { POST: { action: 'plugin:Install' } },
 	'/api/plugins/upload': { POST: { action: 'plugin:Install', and: both(alwaysCode, addonsOnBody('targets')) } },
 	'/api/plugins/update': { POST: { action: 'plugin:Update' } },
-	'/api/plugins/deploy': { POST: { action: 'plugin:Configure', and: addonsOnBody('instances') } },
+	'/api/plugins/deploy': {
+		POST: { action: 'plugin:Configure', actionOf: perServerBody('plugin:Configure', 'plugin:List', 'instances'), and: addonsOnBody('instances') }
+	},
 	'/api/plugins/scan': { POST: { action: 'plugin:Configure' } },
 	'/api/plugins/pin': {
 		GET: { action: 'plugin:Describe', resource: query('plugin', 'name') },
-		POST: { action: 'plugin:Configure', resource: body('plugin', 'name'), and: pluginPin }
+		POST: {
+			action: 'plugin:Configure',
+			actionOf: perServerBody('plugin:Configure', 'plugin:Describe', 'targets'),
+			resource: body('plugin', 'name'),
+			and: pluginPin
+		}
 	},
-	'/api/plugins/unpin': { POST: { action: 'plugin:Configure', resource: body('plugin', 'name'), and: pluginUnpin } },
+	'/api/plugins/unpin': {
+		POST: {
+			action: 'plugin:Configure',
+			actionOf: perServerBody('plugin:Configure', 'plugin:Describe', 'targets'),
+			resource: body('plugin', 'name'),
+			and: pluginUnpin
+		}
+	},
 	'/api/plugins/[name]': {
 		GET: { action: 'plugin:Describe', anyOf: pluginRecords },
 		PATCH: { action: 'plugin:Configure', resource: plugin, and: pluginTargetsChange },
-		DELETE: { action: 'plugin:Remove', resource: plugin, and: pluginRemoval }
+		DELETE: { action: 'plugin:Remove', actionOf: perServerQuery('plugin:Remove', 'plugin:Describe', 'from'), resource: plugin, and: pluginRemoval }
 	},
 	'/api/plugins/[name]/identify': {
 		GET: { action: 'plugin:Describe', resource: plugin },
@@ -1025,7 +1109,7 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/respacks/resend': { POST: { action: 'pack:Configure' } },
 	'/api/respacks/dynamic': { GET: { action: 'pack:List' }, POST: { action: 'pack:Configure' } },
 	'/api/respacks/[key]': {
-		PATCH: { action: 'pack:Configure', resource: pack, and: respackServersChange },
+		PATCH: { action: 'pack:Configure', resource: pack, and: both(respackServersChange, respackEnable) },
 		DELETE: { action: 'pack:Remove', resource: pack }
 	},
 	'/api/respacks/[key]/detail': { GET: { action: 'pack:Describe', resource: pack } },
@@ -1046,10 +1130,12 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/datapacks/add': { POST: { action: 'datapack:Install', and: addonsOnBody('targets') } },
 	'/api/datapacks/search': { GET: { action: 'catalog:Read' } },
 	'/api/datapacks/update': { POST: { action: 'datapack:Update' } },
-	'/api/datapacks/deploy': { POST: { action: 'datapack:Configure', and: addonsOnBody('instances') } },
+	'/api/datapacks/deploy': {
+		POST: { action: 'datapack:Configure', actionOf: perServerBody('datapack:Configure', 'datapack:List', 'instances'), and: addonsOnBody('instances') }
+	},
 	'/api/datapacks/[name]': {
 		PATCH: { action: 'datapack:Configure', resource: datapack, and: datapackTargetsChange },
-		DELETE: { action: 'datapack:Remove', resource: datapack, and: datapackRemoval }
+		DELETE: { action: 'datapack:Remove', actionOf: perServerQuery('datapack:Remove', 'datapack:Describe', 'from'), resource: datapack, and: datapackRemoval }
 	},
 	'/api/datapacks/[name]/identify': {
 		GET: { action: 'datapack:Describe', resource: datapack },
@@ -1091,7 +1177,10 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/selector/preview': { GET: { action: 'network:Describe' } },
 	'/api/selector/apply': { POST: { action: 'network:ManageProxy' } },
 	'/api/selector/import': { POST: { action: 'network:ManageProxy' } },
-	'/api/domains': { GET: { action: 'domain:List' }, POST: { action: 'domain:Create', and: networkOnBodyInstance } },
+	'/api/domains': {
+		GET: { action: 'domain:List' },
+		POST: { action: 'domain:Create', and: both(networkOnBodyInstance, recordsIfAddressed) }
+	},
 	'/api/domains/check': { POST: { action: 'domain:List' } },
 	'/api/domains/records': { GET: { action: 'domain:Describe', resource: query('domain', 'name') } },
 	'/api/domains/settings': { PATCH: { action: 'domain:ConfigureProvider' } },
