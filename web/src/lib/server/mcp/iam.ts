@@ -22,7 +22,7 @@
 
 import { authorize, authorizeMany } from '$core/iam';
 import { loadCluster } from '$core/config';
-import type { McpPrincipal } from '$core/mcp';
+import type { KnowledgeItem, McpPrincipal } from '$core/mcp';
 import { actionPossible, type PrincipalContext } from '$shared/iam/grammar';
 import { resourceId } from '$shared/iam/resources';
 import type { IamResourceType } from '$shared/iam/actions';
@@ -464,4 +464,39 @@ export async function iamVisible<T>(
 	const allowed = await authorizeMany(ctx.account, action, ids);
 
 	return rows.filter((row) => allowed[idOf(row)]);
+}
+
+/**
+ * Whether a knowledge item was written for a console account other than this
+ * one. What Mèo Béo saves in a conversation is that account's own memory, kept
+ * from every other account's runs as conversations are, whatever IAM would
+ * allow: one account's notes would otherwise steer another account's agent.
+ * Items written from the CLI (`root`) or by a token (`mcp:<name>`) are the
+ * operators' shared notes and follow IAM alone.
+ */
+function privateToAnother(item: KnowledgeItem, account: string): boolean {
+	const author = item.createdBy;
+
+	if (item.scope.kind !== 'token' || !author || author === account) {
+		return false;
+	}
+
+	return author !== 'root' && !author.startsWith('mcp:');
+}
+
+/**
+ * The knowledge items a call for an account may read: the account's own agent
+ * memory and the shared items its policies let it describe. Every item when the
+ * call is not made for an account.
+ */
+export async function knowledgeVisible(account: string | undefined, items: KnowledgeItem[]): Promise<KnowledgeItem[]> {
+	if (!account || items.length === 0) {
+		return items;
+	}
+
+	const candidates = items.filter((item) => !privateToAnother(item, account));
+	const ids = candidates.map((item) => resourceId('knowledge', item.id));
+	const allowed = await authorizeMany(account, 'knowledge:Describe', ids);
+
+	return candidates.filter((item) => allowed[resourceId('knowledge', item.id)]);
 }

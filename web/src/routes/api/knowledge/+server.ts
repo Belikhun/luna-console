@@ -7,20 +7,30 @@ import { json, error } from '@sveltejs/kit';
 import { createKnowledge, listKnowledge, listMcpTokens } from '$core/mcp';
 import type { KnowledgeKind } from '$core/mcp';
 import { errorMessage, jsonBody } from '$lib/server/http';
+import { can, filterAllowed } from '$lib/server/authz';
+import { resourceId } from '$shared/iam/resources';
 import { journal } from '$lib/server/session';
 import { parseKnowledge } from './parse';
 
-/** GET ?kind=&scope= → knowledge items, plus the tokens a scope can name. */
-export async function GET({ url }) {
+/**
+ * GET ?kind=&scope= → the knowledge items the account may describe, plus the
+ * tokens a scope can name when it may list them.
+ */
+export async function GET({ url, locals }) {
 	const kind = url.searchParams.get('kind') as KnowledgeKind | null;
 	const scope = url.searchParams.get('scope');
 
-	const [items, tokens] = await Promise.all([
+	const [all, tokens, listsTokens] = await Promise.all([
 		listKnowledge({ kind: kind ?? undefined, scope: scope ?? undefined }),
-		listMcpTokens()
+		listMcpTokens(),
+		can(locals, 'mcp:ListTokens')
 	]);
+	const items = await filterAllowed(locals, 'knowledge:Describe', all, (item) => resourceId('knowledge', item.id));
+	const named = listsTokens
+		? tokens.map((token) => ({ id: token.id, name: token.name }))
+		: [];
 
-	return json({ items, tokens: tokens.map((token) => ({ id: token.id, name: token.name })) });
+	return json({ items, tokens: named });
 }
 
 /** POST { kind, title, body, description?, tags?, pinned?, enabled?, scope?, expiresAt? } → create. */

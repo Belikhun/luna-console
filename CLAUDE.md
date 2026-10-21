@@ -691,7 +691,11 @@ export interface InstanceConfig {}
   sessions cost), never summed per run.
 - **Its memory is the knowledge store.** Memories it saves are knowledge items in its token's scope,
   managed on `/console/knowledge` like any other; pinned context reaches it as the MCP
-  `instructions`. Nothing is remembered in the subprocess's own state.
+  `instructions`. Nothing is remembered in the subprocess's own state. A run reads the store through
+  its account (`knowledgeVisible` in `mcp/iam.ts`, applied to every knowledge tool, the prompts, the
+  resources and the instructions): what the agent saved for another console account is never shown,
+  and the operators' notes need `knowledge:Describe`. Writing from the knowledge screen and pinning
+  need `knowledge:Publish` as well, since they reach every token's instructions.
 - **The credential is write-only.** A Claude subscription token from `claude setup-token`
   (`sk-ant-oat…`) or an API key (`sk-ant-api…`) is pasted on the settings screen or piped to
   `luna agent connect`; reads return only a hint, and `agentLaunch` is the one path it leaves the

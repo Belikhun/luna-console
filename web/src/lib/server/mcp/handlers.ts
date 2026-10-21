@@ -32,7 +32,7 @@ import {
 	searchMemories,
 	updateKnowledge
 } from '$core/mcp';
-import type { KnowledgeItem, McpPrincipal } from '$core/mcp';
+import type { KnowledgeItem, KnowledgeKind, McpPrincipal } from '$core/mcp';
 import * as luna from '$core/services/luna';
 import { listStatuses, getEvents, pushEvent, markTransition, clearTransition } from '$lib/server/luna';
 import type { ClusterEvent } from '$lib/server/luna';
@@ -67,7 +67,7 @@ import { DOMAIN_HANDLERS } from './domains';
 import { PACK_HANDLERS } from './packs';
 import { MODPACK_HANDLERS } from './modpacks';
 import { IAM_HANDLERS } from './iamtools';
-import { iamVisible } from './iam';
+import { iamVisible, knowledgeVisible } from './iam';
 import { noteChatRead, readableChat } from '$lib/server/chataudit';
 import { resourceId } from '$shared/iam/resources';
 
@@ -333,6 +333,25 @@ function statusSummary(row: Record<string, unknown>): Record<string, unknown> {
 
 function eventLine(event: ClusterEvent): Record<string, unknown> {
 	return { at: new Date(event.t).toISOString(), instance: event.instance, kind: event.kind, message: event.message };
+}
+
+/** The token's knowledge of one kind, narrowed to what the account behind the call may read. */
+async function visibleKnowledge(ctx: ToolContext, kind: KnowledgeKind): Promise<KnowledgeItem[]> {
+	return await knowledgeVisible(ctx.account, await knowledgeFor(ctx.principal.id, kind));
+}
+
+/** Refuse an item the account behind the call may not read, in the words an unknown id gets. */
+async function requireVisibleKnowledge(ctx: ToolContext, id: string): Promise<void> {
+	if (!ctx.account) {
+		return;
+	}
+
+	const items = await knowledgeFor(ctx.principal.id, 'memory');
+	const visible = await knowledgeVisible(ctx.account, items.filter((item) => item.id === id));
+
+	if (visible.length === 0) {
+		throw new ToolError(`no memory ${id}; call memory_search for the ids`);
+	}
 }
 
 function knowledgeView(item: KnowledgeItem): Record<string, unknown> {
@@ -1278,13 +1297,21 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 	// -- knowledge -------------------------------------------------------------
 	async memory_search(args, ctx) {
-		const hits = await searchMemories(ctx.principal.id, str(args, 'query'), num(args, 'limit', 8));
+		const limit = num(args, 'limit', 8);
 
-		return hits.map((hit) => ({ ...knowledgeView(hit.item), editable: hit.item.scope.kind === 'token' }));
+		// ranked over everything the token sees, so ask for all of it before the
+		// account's view narrows it down to the limit
+		const hits = await searchMemories(ctx.principal.id, str(args, 'query'), ctx.account ? 1000 : limit);
+		const visible = new Set(await knowledgeVisible(ctx.account, hits.map((hit) => hit.item)));
+
+		return hits
+			.filter((hit) => visible.has(hit.item))
+			.slice(0, limit)
+			.map((hit) => ({ ...knowledgeView(hit.item), editable: hit.item.scope.kind === 'token' }));
 	},
 
 	async skill_list(_args, ctx) {
-		const skills = await knowledgeFor(ctx.principal.id, 'skill');
+		const skills = await visibleKnowledge(ctx, 'skill');
 
 		return skills.map((skill) => ({
 			name: skill.title,
@@ -1294,7 +1321,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	},
 
 	async skill_get(args, ctx) {
-		const skills = await knowledgeFor(ctx.principal.id, 'skill');
+		const skills = await visibleKnowledge(ctx, 'skill');
 		const skill = skills.find((entry) => entry.title === str(args, 'name'));
 
 		if (!skill) {
@@ -1305,7 +1332,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	},
 
 	async context_get(_args, ctx) {
-		const items = await knowledgeFor(ctx.principal.id, 'context');
+		const items = await visibleKnowledge(ctx, 'context');
 
 		return items.map(knowledgeView);
 	},
@@ -1327,6 +1354,8 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	},
 
 	async memory_update(args, ctx) {
+		await requireVisibleKnowledge(ctx, str(args, 'id'));
+
 		const item = await updateKnowledge(
 			str(args, 'id'),
 			{
@@ -1342,6 +1371,8 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	},
 
 	async memory_forget(args, ctx) {
+		await requireVisibleKnowledge(ctx, str(args, 'id'));
+
 		const item = await removeKnowledge(str(args, 'id'), ctx.actor, ctx.principal.id);
 
 		return { id: item.id, forgotten: true };
@@ -1349,7 +1380,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 	async skill_save(args, ctx) {
 		const name = str(args, 'name').trim();
-		const skills = await knowledgeFor(ctx.principal.id, 'skill');
+		const skills = await visibleKnowledge(ctx, 'skill');
 		const existing = skills.find((skill) => skill.title === name);
 		const tags = Array.isArray(args.tags)
 			? (args.tags as string[])
@@ -1388,7 +1419,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 	async skill_delete(args, ctx) {
 		const name = str(args, 'name').trim();
-		const skills = await knowledgeFor(ctx.principal.id, 'skill');
+		const skills = await visibleKnowledge(ctx, 'skill');
 		const skill = skills.find((entry) => entry.title === name);
 
 		if (!skill) {

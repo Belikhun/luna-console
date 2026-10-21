@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { Authz } from '$lib/authz.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -109,6 +110,12 @@
 		const toPin = targets.filter((row) => !row.pinned);
 		const toUnpin = targets.filter((row) => row.pinned);
 
+		// pinning and switching items reach every token's instructions
+		const publishes = Authz.can('knowledge:Publish');
+		const refused = publishes
+			? undefined
+			: t('web.common.notAllowed', { action: 'knowledge:Publish' });
+
 		return [
 			{
 				label: t('web.knowledge.edit'),
@@ -121,30 +128,30 @@
 			{
 				label: t('web.knowledge.pinAction', { count: toPin.length }),
 				icon: 'thumbtack',
-				disabled: toPin.length === 0,
-				hint: toPin.length ? undefined : t('web.knowledge.allPinned'),
+				disabled: !publishes || toPin.length === 0,
+				hint: refused ?? (toPin.length ? undefined : t('web.knowledge.allPinned')),
 				action: () => setField(toPin, t('web.knowledge.verbPin'), 'pinned', true)
 			},
 			{
 				label: t('web.knowledge.unpinAction', { count: toUnpin.length }),
 				icon: 'thumbtack',
-				disabled: toUnpin.length === 0,
-				hint: toUnpin.length ? undefined : t('web.knowledge.nonePinned'),
+				disabled: !publishes || toUnpin.length === 0,
+				hint: refused ?? (toUnpin.length ? undefined : t('web.knowledge.nonePinned')),
 				action: () => setField(toUnpin, t('web.knowledge.verbUnpin'), 'pinned', false)
 			},
 			{
 				label: t('web.knowledge.enableAction', { count: toEnable.length }),
 				icon: 'circleCheck',
-				disabled: toEnable.length === 0,
-				hint: toEnable.length ? undefined : t('web.knowledge.allEnabled'),
+				disabled: !publishes || toEnable.length === 0,
+				hint: refused ?? (toEnable.length ? undefined : t('web.knowledge.allEnabled')),
 				action: () => setField(toEnable, t('web.knowledge.verbEnable'), 'enabled', true)
 			},
 			{
 				label: t('web.knowledge.disableAction', { count: toDisable.length }),
 				icon: 'ban',
 				color: 'warning',
-				disabled: toDisable.length === 0,
-				hint: toDisable.length ? undefined : t('web.knowledge.allDisabled'),
+				disabled: !publishes || toDisable.length === 0,
+				hint: refused ?? (toDisable.length ? undefined : t('web.knowledge.allDisabled')),
 				action: () => setField(toDisable, t('web.knowledge.verbDisable'), 'enabled', false)
 			},
 			{ separator: true },
@@ -231,8 +238,21 @@
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-knowledge" />
 		<Dropdown label={t('web.common.actions')} disabled={picked.length === 0} menu={withCopyResourceId(itemActions(picked), picked.map((row) => resourceId('knowledge', row.id)))} />
-		<Btn icon="plug" href="/console/mcp">{t('web.knowledge.tokens')}</Btn>
-		<Btn variant="primary" icon="plus" href="/console/knowledge/new?kind={tab}">
+		<Btn
+			icon="plug"
+			href="/console/mcp"
+			disabled={!Authz.can('mcp:ListTokens')}
+			title={Authz.can('mcp:ListTokens') ? undefined : t('web.common.notAllowed', { action: 'mcp:ListTokens' })}
+		>
+			{t('web.knowledge.tokens')}
+		</Btn>
+		<Btn
+			variant="primary"
+			icon="plus"
+			href="/console/knowledge/new?kind={tab}"
+			disabled={!Authz.can('knowledge:Publish')}
+			title={Authz.can('knowledge:Publish') ? undefined : t('web.common.notAllowed', { action: 'knowledge:Publish' })}
+		>
 			{t(`web.knowledge.create.${tab}`)}
 		</Btn>
 	{/snippet}

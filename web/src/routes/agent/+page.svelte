@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { Authz } from '$lib/authz.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
@@ -243,7 +244,14 @@
 
 <PageHeader title="Mèo Béo" description={t('web.agentScreen.description')}>
 	{#snippet actions()}
-		<Btn icon="gear" href="/console/agent">{t('web.agent.settings')}</Btn>
+		<Btn
+			icon="gear"
+			href="/console/agent"
+			disabled={!Authz.can('agent:Configure')}
+			title={Authz.can('agent:Configure') ? undefined : t('web.common.notAllowed', { action: 'agent:Configure' })}
+		>
+			{t('web.agent.settings')}
+		</Btn>
 		<Btn
 			icon="tableColumns"
 			disabled={panes.length >= MAX_PANES}

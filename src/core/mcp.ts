@@ -1243,10 +1243,14 @@ export async function searchMemories(tokenId: string, query: string, limit = 8):
 /**
  * The `initialize` instructions for a token: pinned context documents in full,
  * then pinned memories, then a pointer to the knowledge tools it can use. Empty
- * when there is nothing pinned and no knowledge tool in scope.
+ * when there is nothing pinned and no knowledge tool in scope. `only`, when
+ * given, keeps the items with those ids: the view of the account a call is for.
  */
-export async function mcpInstructions(principal: McpPrincipal): Promise<string> {
-	const items = await knowledgeFor(principal.id);
+export async function mcpInstructions(principal: McpPrincipal, only?: string[]): Promise<string> {
+	const visible = await knowledgeFor(principal.id);
+	const items = only
+		? visible.filter((item) => only.includes(item.id))
+		: visible;
 	const pinnedContext = items.filter((item) => item.kind === "context" && item.pinned);
 	const pinnedMemories = items.filter((item) => item.kind === "memory" && item.pinned);
 	const skills = items.filter((item) => item.kind === "skill");

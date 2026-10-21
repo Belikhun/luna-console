@@ -106,7 +106,7 @@ export const PAGE_RULES: Record<string, PageRule> = {
 	'/console/mcp/new': { action: 'mcp:CreateToken' },
 	'/console/mcp/[id]': { action: 'mcp:DescribeToken' },
 	'/console/knowledge': { action: 'knowledge:List' },
-	'/console/knowledge/new': { action: 'knowledge:Create' },
+	'/console/knowledge/new': { action: 'knowledge:Publish' },
 	'/console/knowledge/[id]': {
 		action: 'knowledge:Describe',
 		resource: (params) => resourceId('knowledge', params.id ?? '')

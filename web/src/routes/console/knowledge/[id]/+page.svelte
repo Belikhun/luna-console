@@ -10,6 +10,7 @@
 	import { api, del, patch } from '$lib/api';
 	import { fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import { Authz } from '$lib/authz.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
@@ -139,7 +140,14 @@
 		{#snippet actions()}
 			<Btn icon="trash" onclick={() => (deleteOpen = true)}>{t('web.common.delete')}</Btn>
 			<Btn disabled={!dirty} onclick={() => (draft = draftOf(item!))}>{t('web.common.discard')}</Btn>
-			<Btn variant="primary" icon="floppyDisk" disabled={!dirty || !draft!.title.trim()} loading={saving} onclick={save}>
+			<Btn
+				variant="primary"
+				icon="floppyDisk"
+				disabled={!Authz.can('knowledge:Publish') || !dirty || !draft!.title.trim()}
+				title={Authz.can('knowledge:Publish') ? undefined : t('web.common.notAllowed', { action: 'knowledge:Publish' })}
+				loading={saving}
+				onclick={save}
+			>
 				{t('web.common.save')}
 			</Btn>
 		{/snippet}

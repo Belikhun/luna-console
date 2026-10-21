@@ -8,6 +8,7 @@
 	import type { AgentQuestionState } from './agentquestion';
 	import { AGENT_ASK_TOOL } from '$shared/agent';
 	import { t } from '$lib/i18n.svelte';
+	import { Authz } from '$lib/authz.svelte';
 	import { tick } from 'svelte';
 	import { Agent, type ChatItem, type ChatSession } from '$lib/agent.svelte';
 	import { renderMarkdown } from '$lib/markdown';
@@ -355,7 +356,14 @@
 					<img class="big" src={AVATAR} alt="" />
 					<div class="title">{t('web.agent.setupTitle')}</div>
 					<p>{Agent.state.reason}</p>
-					<Btn variant="primary" href="/console/agent">{t('web.agent.setupAction')}</Btn>
+					<Btn
+						variant="primary"
+						href="/console/agent"
+						disabled={!Authz.can('agent:Configure')}
+						title={Authz.can('agent:Configure') ? undefined : t('web.common.notAllowed', { action: 'agent:Configure' })}
+					>
+						{t('web.agent.setupAction')}
+					</Btn>
 				</div>
 			{:else if session.items.length === 0}
 				<div class="welcome">

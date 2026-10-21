@@ -9,6 +9,8 @@ import type { AgentSettingsPatch } from '$core/agent';
 import { errorMessage, jsonBody } from '$lib/server/http';
 import { findClaudeExecutable } from '$lib/server/agent/executable';
 import { knowledgeFor } from '$core/mcp';
+import { can } from '$lib/server/authz';
+import { knowledgeVisible } from '$lib/server/mcp/iam';
 
 /**
  * Mèo Béo's state for the panel and its settings: whether it can answer, the
@@ -30,18 +32,32 @@ function modelName(id: string): string {
 	return `${family} ${version}`;
 }
 
-/** GET → status, executable and model choices. */
-export async function GET() {
+/**
+ * GET → status, executable and model choices. An account that may chat but not
+ * configure gets what the panel needs: the credential, the token, the
+ * executable and the operators' instructions stay with the settings screen.
+ */
+export async function GET({ locals }) {
 	const status = await agentStatus();
-	const executable = findClaudeExecutable(status.settings.executable);
+	const configures = await can(locals, 'agent:Configure');
 	const reported = status.models;
-	const skills = status.token
+	const tokenSkills = status.token
 		? await knowledgeFor(status.token.id, 'skill').catch(() => [])
 		: [];
+	const skills = await knowledgeVisible(locals.account?.username, tokenSkills);
+
+	const view = configures
+		? { ...status, executable: findClaudeExecutable(status.settings.executable) }
+		: {
+				...status,
+				credential: null,
+				token: null,
+				settings: { ...status.settings, instructions: '', executable: '' },
+				executable: { source: '' }
+			};
 
 	return json({
-		...status,
-		executable,
+		...view,
 		models: reported ?? AGENT_MODELS.map((value) => ({ value, label: modelName(value), description: '' })),
 		modelsReported: reported !== null,
 		efforts: AGENT_EFFORTS,

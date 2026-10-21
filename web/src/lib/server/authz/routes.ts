@@ -706,6 +706,11 @@ const env = of('env', 'name');
 const player = of('player', 'player');
 const permissionGroup = of('permission-group', 'name');
 const knowledge = of('knowledge', 'id');
+
+const publishKnowledge = async (ctx: RuleContext): Promise<RuleCheck[]> => [
+	{ action: 'knowledge:Publish', resource: knowledge(ctx) }
+];
+
 const machine = of('machine', 'name');
 
 /** A resource named by a query parameter. */
@@ -1164,10 +1169,12 @@ export const API_RULES: Record<string, MethodRules> = {
 	},
 	'/api/mcp-tokens/[id]/rotate': { POST: { action: 'mcp:RotateToken' } },
 	'/api/mcp-calls': { GET: { action: 'mcp:ReadCalls' } },
-	'/api/knowledge': { GET: { action: 'knowledge:List' }, POST: { action: 'knowledge:Create' } },
+	// the screen writes any scope and pins into every token's instructions, which
+	// is publishing; Mèo Béo's memory tools only write the account's own notes
+	'/api/knowledge': { GET: { action: 'knowledge:List' }, POST: { action: 'knowledge:Create', and: publishKnowledge } },
 	'/api/knowledge/[id]': {
 		GET: { action: 'knowledge:Describe', resource: knowledge },
-		PATCH: { action: 'knowledge:Update', resource: knowledge },
+		PATCH: { action: 'knowledge:Update', resource: knowledge, and: publishKnowledge },
 		DELETE: { action: 'knowledge:Delete', resource: knowledge }
 	},
 

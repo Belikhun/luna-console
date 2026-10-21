@@ -18,10 +18,10 @@
  */
 
 import { knowledgeFor, mcpInstructions, mcpServerVersion, recordMcpCall } from '$core/mcp';
-import type { McpOnBehalfOf, McpPrincipal } from '$core/mcp';
+import type { KnowledgeItem, KnowledgeKind, McpOnBehalfOf, McpPrincipal } from '$core/mcp';
 import { allowedTools, mcpTool, scopeCoversInstance, validateMcpArgs } from '$shared/mcptools';
 import { TOOL_HANDLERS, ToolError } from './handlers';
-import { refuseFor, toolChecks, toolLiveChecks, toolPossible } from './iam';
+import { knowledgeVisible, refuseFor, toolChecks, toolLiveChecks, toolPossible } from './iam';
 import { withActor } from '$client/actor';
 import type { PrincipalContext } from '$shared/iam/grammar';
 import type { ToolArgs } from './handlers';
@@ -129,7 +129,7 @@ async function initialize(request: JsonRpcRequest, ctx: RequestContext): Promise
 	const protocolVersion = MCP_PROTOCOL_VERSIONS.includes(asked)
 		? asked
 		: MCP_PROTOCOL_VERSIONS[0];
-	const [instructions, version] = await Promise.all([mcpInstructions(ctx.principal), mcpServerVersion()]);
+	const [instructions, version] = await Promise.all([instructionsFor(ctx), mcpServerVersion()]);
 
 	return reply(request.id, {
 		protocolVersion,
@@ -293,12 +293,28 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 	}
 }
 
+/** The token's knowledge of one kind, narrowed to what the account behind the request may read. */
+async function knowledgeOf(ctx: RequestContext, kind: KnowledgeKind): Promise<KnowledgeItem[]> {
+	return await knowledgeVisible(ctx.account, await knowledgeFor(ctx.principal.id, kind));
+}
+
+/** The `initialize` instructions, built from the account's view when the request is for one. */
+async function instructionsFor(ctx: RequestContext): Promise<string> {
+	if (!ctx.account) {
+		return await mcpInstructions(ctx.principal);
+	}
+
+	const visible = await knowledgeVisible(ctx.account, await knowledgeFor(ctx.principal.id));
+
+	return await mcpInstructions(ctx.principal, visible.map((item) => item.id));
+}
+
 async function listPrompts(request: JsonRpcRequest, ctx: RequestContext): Promise<JsonRpcResponse> {
 	if (!toolsOf(ctx.principal).includes('skill_get')) {
 		return reply(request.id, { prompts: [] });
 	}
 
-	const skills = await knowledgeFor(ctx.principal.id, 'skill');
+	const skills = await knowledgeOf(ctx, 'skill');
 
 	return reply(request.id, {
 		prompts: skills.map((skill) => ({ name: skill.title, description: skill.description }))
@@ -308,7 +324,7 @@ async function listPrompts(request: JsonRpcRequest, ctx: RequestContext): Promis
 async function getPrompt(request: JsonRpcRequest, ctx: RequestContext): Promise<JsonRpcResponse> {
 	const name = request.params?.name;
 	const skills = toolsOf(ctx.principal).includes('skill_get')
-		? await knowledgeFor(ctx.principal.id, 'skill')
+		? await knowledgeOf(ctx, 'skill')
 		: [];
 	const skill = skills.find((entry) => entry.title === name);
 
@@ -329,7 +345,7 @@ async function listResources(request: JsonRpcRequest, ctx: RequestContext): Prom
 		return reply(request.id, { resources: [] });
 	}
 
-	const items = await knowledgeFor(ctx.principal.id, 'context');
+	const items = await knowledgeOf(ctx, 'context');
 
 	return reply(request.id, {
 		resources: items.map((item) => ({
@@ -344,7 +360,7 @@ async function listResources(request: JsonRpcRequest, ctx: RequestContext): Prom
 async function readResource(request: JsonRpcRequest, ctx: RequestContext): Promise<JsonRpcResponse> {
 	const uri = String(request.params?.uri ?? '');
 	const items = toolsOf(ctx.principal).includes('context_get')
-		? await knowledgeFor(ctx.principal.id, 'context')
+		? await knowledgeOf(ctx, 'context')
 		: [];
 	const item = items.find((entry) => `${CONTEXT_URI}${entry.id}` === uri);
 

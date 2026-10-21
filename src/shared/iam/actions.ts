@@ -292,6 +292,8 @@ export const IAM_ACTIONS: IamActionSpec[] = [
 		["Create", "write"],
 		["Update", "write"],
 		["Delete", "destructive"],
+		// writing what every token reads, or pinning into the instructions
+		["Publish", "write"],
 	]),
 	...service("agent", "conversation", [
 		["Describe", "read"],

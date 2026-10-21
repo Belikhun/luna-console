@@ -9,7 +9,11 @@
 # What stays closed, whatever OwnerAccess would allow, is anything that runs
 # code of the customer's choosing on the host (code:*, the terminal, JVM flags
 # and environment variables), anything network-wide (moderation, permissions,
-# the proxy, ports, hostnames), and the shared agent and its memory.
+# the proxy, ports, hostnames), and the console's own administration.
+#
+# Mèo Béo is theirs to use: it acts with these same permissions, and what it
+# remembers in their conversations stays theirs (OwnerAccess covers it). The
+# operators' own notes are kept from it unless one is tagged for customers.
 Version: 1
 Statement:
   # starting things of their own: what they create is theirs from then on
@@ -70,6 +74,26 @@ Statement:
       ForAnyValue:StringEquals:
         luna:PlayerServerCreators: "${luna:username}"
 
+  # Mèo Béo, acting as the customer, with a memory of its own
+  - Sid: UseAgent
+    Effect: Allow
+    Action:
+      - agent:Describe
+      - agent:Chat
+      - knowledge:List
+      - knowledge:Create
+    Resource: "*"
+
+  # an operator note made for customers (tag it audience=customer), readable by
+  # their agent; every other operator note stays out of reach
+  - Sid: SharedAgentNotes
+    Effect: Allow
+    Action: knowledge:Describe
+    Resource: luna:knowledge/*
+    Condition:
+      StringEquals:
+        luna:ResourceTag/audience: customer
+
   # never run code of their choosing on the host: uploaded or linked jars and
   # modpacks, executable files, JVM flags and agents, the terminal, shells
   - Sid: NoArbitraryCode
@@ -109,15 +133,15 @@ Statement:
       - publicsite:*
     Resource: "*"
 
-  # the console's own administration, and the shared agent whose memory every
-  # account would read
+  # the console's own administration: the agent's settings and credential, and
+  # the notes every account's agent reads
   - Sid: NoConsoleAdministration
     Effect: Deny
     Action:
       - iam:*
       - mcp:*
-      - knowledge:*
-      - agent:*
+      - knowledge:Publish
+      - agent:Configure
       - account:List
       - account:Create
       - account:Delete
