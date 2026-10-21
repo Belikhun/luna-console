@@ -47,7 +47,8 @@ export async function gate(event: RequestEvent): Promise<GateOutcome> {
 	const ctx: RuleContext = {
 		params: event.params as Record<string, string>,
 		url: event.url,
-		request: event.request
+		request: event.request,
+		account: event.locals.account?.username
 	};
 
 	if (routeId.startsWith('/api/')) {

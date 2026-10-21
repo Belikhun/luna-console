@@ -10,13 +10,14 @@ import { loadPacksLock, savePacksLock } from '$core/packslock';
 import { isReleaseChannel } from '$core/services/providers';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
+import { hiddenInstances, keepHiddenRefs } from '$lib/server/fleetscope';
 
 /**
  * PATCH { targets?, autoUpdate?, channel? } → edit a data pack's deployment
  * policy. A target change deploys immediately, adding and removing world
  * copies to match.
  */
-export async function PATCH({ params, request }) {
+export async function PATCH({ params, request, locals }) {
 	const body = await request.json();
 	const cfg = await loadCluster();
 	const lock = await loadPacksLock();
@@ -28,7 +29,9 @@ export async function PATCH({ params, request }) {
 
 	try {
 		if (Array.isArray(body.targets)) {
-			entry.targets = body.targets.map((target: unknown) => String(target));
+			const targets = body.targets.map((target: unknown) => String(target));
+
+			entry.targets = keepHiddenRefs(targets, entry.targets, await hiddenInstances(locals.account?.username));
 		}
 
 		if (typeof body.channel === 'string' && !isReleaseChannel(body.channel)) {

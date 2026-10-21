@@ -68,6 +68,7 @@ import { PACK_HANDLERS } from './packs';
 import { MODPACK_HANDLERS } from './modpacks';
 import { IAM_HANDLERS } from './iamtools';
 import { iamVisible, knowledgeVisible } from './iam';
+import { scopeDetail } from '$lib/server/fleetscope';
 import { noteChatRead, readableChat } from '$lib/server/chataudit';
 import { resourceId } from '$shared/iam/resources';
 
@@ -662,7 +663,8 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 			outdated: row.outdated,
 			latencyMs: row.latencyMs,
 			uptimeMs: row.uptimeMs,
-			instances: row.instances,
+			// a machine row names everybody's servers; keep the ones this call may reach
+			instances: row.instances.filter((name) => scopeCoversInstance(ctx.principal.scope, name)),
 			health: row.health
 				? {
 						cpuPct: Math.round(row.health.cpuPct),
@@ -678,14 +680,14 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		}));
 	},
 
-	async daemon_detail(args) {
+	async daemon_detail(args, ctx) {
 		const detail = await daemonDetail(str(args, 'daemon'));
 
 		if (!detail) {
 			throw new ToolError(`no daemon named "${str(args, 'daemon')}"; call fleet_status for the list`);
 		}
 
-		return detail;
+		return await scopeDetail(ctx.account, detail as unknown as Record<string, unknown>);
 	},
 
 	async cluster_events(args, ctx) {

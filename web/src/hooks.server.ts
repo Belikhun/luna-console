@@ -15,12 +15,13 @@
  * the point: those run the real CLI, so an ungated console port was a shell.
  */
 
-import { redirect, type Handle } from '@sveltejs/kit';
+import { redirect, type Handle, type RequestEvent } from '@sveltejs/kit';
 import { version } from '$app/environment';
 
 import { resolveSession } from '$core/accounts';
 import { withActor } from '$client/actor';
 import { gate, refusalBody } from '$lib/server/authz';
+import { hiddenInstances, INSTANCE_REF_ROUTES, scrubInstanceRefs } from '$lib/server/fleetscope';
 import { SESSION_COOKIE } from '$lib/server/session';
 
 /**
@@ -173,5 +174,34 @@ export const handle: Handle = async ({ event, resolve }) => {
 		return await render();
 	}
 
-	return await withActor(actor, render);
+	const response = await withActor(actor, render);
+
+	return await scopeInstanceRefs(event, actor, response);
 };
+
+/**
+ * Keep an addon, pack, profile or runtime answer to the servers the account may
+ * see: the pool is shared, the list of who runs what is not (`fleetscope.ts`).
+ */
+async function scopeInstanceRefs(event: RequestEvent, actor: string, response: Response): Promise<Response> {
+	const path = event.url.pathname;
+	const listed = INSTANCE_REF_ROUTES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+	const json = response.headers.get('content-type')?.includes('application/json') ?? false;
+
+	if (event.request.method !== 'GET' || !listed || !json || !response.ok) {
+		return response;
+	}
+
+	const hidden = await hiddenInstances(actor);
+
+	if (!hidden || hidden.size === 0) {
+		return response;
+	}
+
+	const body = scrubInstanceRefs(await response.json(), hidden);
+	const headers = new Headers(response.headers);
+
+	headers.delete('content-length');
+
+	return new Response(JSON.stringify(body), { status: response.status, headers });
+}

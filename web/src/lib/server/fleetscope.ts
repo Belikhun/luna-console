@@ -17,6 +17,7 @@
 
 import { ROOT_ACTOR } from '$core/accounts';
 import { authorizeMany } from '$core/iam';
+import { loadCluster } from '$core/config';
 import { resourceId } from '$shared/iam/resources';
 
 type Row = Record<string, unknown>;
@@ -187,3 +188,108 @@ export function scopeStream(username: string | undefined, source: ReadableStream
 		}
 	}));
 }
+
+/**
+ * The instances an account may not describe, or null when it may describe them
+ * all. What the scrubbers below remove.
+ */
+export async function hiddenInstances(username: string | undefined): Promise<Set<string> | null> {
+	const cfg = await loadCluster();
+	const names = ['proxy', ...Object.keys(cfg.instances)];
+	const visible = await visibleInstances(username, names);
+
+	if (!visible) {
+		return null;
+	}
+
+	return new Set(names.filter((name) => !visible.has(name)));
+}
+
+/** Fields whose value is a list of instance names (wildcards such as `*paper` are not names, so they stay). */
+const NAME_LISTS = new Set(['targets', 'effective', 'effectiveTargets', 'matched', 'servers', 'usedBy', 'deployedTo', 'instances']);
+
+/** Fields whose value is a map keyed by instance name. */
+const NAME_MAPS = new Set(['assign', 'pins']);
+
+/** Fields whose value lists rows naming an instance in `name` (in `consumers`, one list per runtime). */
+const NAMED_ROWS = new Set(['instances', 'consumers']);
+
+/** A server rule's instance name: `!survival` excludes survival. */
+function bareName(rule: string): string {
+	return rule.startsWith('!')
+		? rule.slice(1)
+		: rule;
+}
+
+function scrubValue(value: unknown, hidden: Set<string>, key: string | null, rowsByName: boolean): unknown {
+	if (Array.isArray(value)) {
+		const kept = value.filter((entry) => {
+			if (typeof entry === 'string') {
+				return !(key !== null && NAME_LISTS.has(key) && hidden.has(bareName(entry)));
+			}
+
+			if (entry && typeof entry === 'object') {
+				const row = entry as Row;
+
+				if (typeof row.instance === 'string' && hidden.has(row.instance)) {
+					return false;
+				}
+
+				return !(rowsByName && typeof row.name === 'string' && hidden.has(row.name));
+			}
+
+			return true;
+		});
+
+		return kept.map((entry) => scrubValue(entry, hidden, null, false));
+	}
+
+	if (!value || typeof value !== 'object') {
+		return value;
+	}
+
+	const out: Row = {};
+
+	for (const [field, inner] of Object.entries(value as Row)) {
+		if (key !== null && NAME_MAPS.has(key) && hidden.has(field)) {
+			continue;
+		}
+
+		const byName = NAMED_ROWS.has(field) || (key === 'consumers');
+
+		out[field] = scrubValue(inner, hidden, field, byName);
+	}
+
+	return out;
+}
+
+/**
+ * Remove the hidden instances from a payload that mentions instances as a side
+ * fact: an addon's targets, pins and usage, a pack's servers, the instances a
+ * group, a profile or a runtime is used by. Every addon in the pool is visible
+ * to a customer, but which servers run it is about other people's servers.
+ */
+export function scrubInstanceRefs<T>(payload: T, hidden: Set<string> | null): T {
+	if (!hidden || hidden.size === 0) {
+		return payload;
+	}
+
+	return scrubValue(payload, hidden, null, false) as T;
+}
+
+/**
+ * A target list an account sends back, with the entries it was never shown put
+ * back: saving a scrubbed list must not drop other people's servers from it.
+ */
+export function keepHiddenRefs(next: string[], previous: string[] | undefined, hidden: Set<string> | null): string[] {
+	if (!hidden || hidden.size === 0) {
+		return next;
+	}
+
+	const withheld = (previous ?? []).filter((rule) => hidden.has(bareName(rule)) && !next.includes(rule));
+
+	return [...next, ...withheld];
+}
+
+/** Console API routes whose answers carry those side facts; the request hook scrubs them. */
+export const INSTANCE_REF_ROUTES = ['/api/plugins', '/api/respacks', '/api/datapacks', '/api/addons', '/api/profiles', '/api/runtimes'];

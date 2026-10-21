@@ -11,6 +11,7 @@ import { getAllStatuses } from '$core/instances';
 import { isReleaseChannel, projectUrl, versionUrl } from '$core/services/providers';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
+import { hiddenInstances, keepHiddenRefs } from '$lib/server/fleetscope';
 
 /**
  * GET → everything about one plugin *identity*: its families (one lock entry
@@ -118,7 +119,7 @@ export async function GET({ params }) {
  * Setting a channel moves the ceiling and nothing else; the jars follow on the
  * next update check, which is why this stays a lockfile edit rather than a job.
  */
-export async function PATCH({ params, request }) {
+export async function PATCH({ params, request, locals }) {
 	const body = await request.json();
 	const lock = await loadLock();
 	const entry = lock.plugins[params.name];
@@ -132,7 +133,7 @@ export async function PATCH({ params, request }) {
 	}
 
 	if (Array.isArray(body.targets)) {
-		entry.targets = body.targets;
+		entry.targets = keepHiddenRefs(body.targets, entry.targets, await hiddenInstances(locals.account?.username));
 	}
 
 	if (typeof body.channel === 'string') {

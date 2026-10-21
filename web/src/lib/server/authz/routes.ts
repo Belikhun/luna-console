@@ -24,6 +24,7 @@ import { loadPacksLock } from '$core/packslock';
 import { listResourcePacks } from '$core/respacks';
 import { resourceId } from '$shared/iam/resources';
 import type { IamResourceType } from '$shared/iam/actions';
+import { hiddenInstances, keepHiddenRefs } from '$lib/server/fleetscope';
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 
@@ -31,6 +32,8 @@ export interface RuleContext {
 	params: Record<string, string>;
 	url: URL;
 	request: Request;
+	/** The signed-in account the request is decided for */
+	account?: string;
 }
 
 export interface RouteRule {
@@ -462,13 +465,15 @@ async function pluginEntries(name: string): Promise<Array<{ key: string; targets
 
 /**
  * `instance:ManageAddons` on every instance a change of a plugin's targets
- * adds or drops; a list the plugin does not have yet is all additions.
+ * adds or drops; a list the plugin does not have yet is all additions. The
+ * instances in `hidden` were never shown to the account, so a list sent back
+ * without them keeps them (`keepHiddenRefs`) rather than dropping them.
  */
-export async function pluginTargetChecks(name: string, next: string[]): Promise<RuleCheck[]> {
+export async function pluginTargetChecks(name: string, next: string[], hidden: Set<string> | null = null): Promise<RuleCheck[]> {
 	const entries = await pluginEntries(name);
 	const changed = entries.length === 0
 		? next
-		: entries.flatMap((entry) => changedTargets(entry.targets, next));
+		: entries.flatMap((entry) => changedTargets(entry.targets, keepHiddenRefs(next, entry.targets, hidden)));
 
 	return onInstances('instance:ManageAddons', changed);
 }
@@ -513,13 +518,13 @@ async function datapackTargets(name: string): Promise<string[] | null> {
 	return lock.datapacks[name]?.targets ?? null;
 }
 
-/** `instance:ManageAddons` on every instance a change of a data pack's targets adds or drops. */
-export async function datapackTargetChecks(name: string, next: string[]): Promise<RuleCheck[]> {
+/** `instance:ManageAddons` on every instance a change of a data pack's targets adds or drops; `hidden` as for plugins. */
+export async function datapackTargetChecks(name: string, next: string[], hidden: Set<string> | null = null): Promise<RuleCheck[]> {
 	const current = await datapackTargets(name);
 
 	return onInstances('instance:ManageAddons', current === null
 		? next
-		: changedTargets(current, next));
+		: changedTargets(current, keepHiddenRefs(next, current, hidden)));
 }
 
 /** Removing a data pack from the instances named, or from all it targets and the pool. */
@@ -531,13 +536,13 @@ export async function datapackRemovalChecks(name: string, from: string[]): Promi
 	return onInstances('instance:ManageAddons', await datapackTargets(name) ?? []);
 }
 
-/** `instance:ManageAddons` on every server a change of a resource pack's rules adds or drops. */
-export async function respackServerChecks(key: string, next: string[]): Promise<RuleCheck[]> {
+/** `instance:ManageAddons` on every server a change of a resource pack's rules adds or drops; `hidden` as for plugins. */
+export async function respackServerChecks(key: string, next: string[], hidden: Set<string> | null = null): Promise<RuleCheck[]> {
 	const cfg = await loadCluster();
 	const lock = await loadPacksLock();
 	const rows = await listResourcePacks(cfg, lock);
 	const row = rows.find((candidate) => candidate.key === key);
-	const after = packRuleTargets(next);
+	const after = packRuleTargets(keepHiddenRefs(next, row?.servers, hidden));
 	const changed = row
 		? changedTargets(packRuleTargets(row.servers), after)
 		: after;
@@ -558,7 +563,7 @@ const pluginTargetsChange = async (ctx: RuleContext): Promise<RuleCheck[]> => {
 		return [];
 	}
 
-	return await pluginTargetChecks(name, stringList(parsed.targets));
+	return await pluginTargetChecks(name, stringList(parsed.targets), await hiddenInstances(ctx.account));
 };
 
 const pluginRemoval = async (ctx: RuleContext): Promise<RuleCheck[]> =>
@@ -592,7 +597,7 @@ const datapackTargetsChange = async (ctx: RuleContext): Promise<RuleCheck[]> => 
 		return [];
 	}
 
-	return await datapackTargetChecks(name, stringList(parsed.targets));
+	return await datapackTargetChecks(name, stringList(parsed.targets), await hiddenInstances(ctx.account));
 };
 
 const datapackRemoval = async (ctx: RuleContext): Promise<RuleCheck[]> =>
@@ -606,7 +611,7 @@ const respackServersChange = async (ctx: RuleContext): Promise<RuleCheck[]> => {
 		return [];
 	}
 
-	return await respackServerChecks(key, stringList(parsed.servers));
+	return await respackServerChecks(key, stringList(parsed.servers), await hiddenInstances(ctx.account));
 };
 
 /** The instance verb each schedule action performs when it fires. */

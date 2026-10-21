@@ -6,15 +6,23 @@ import { json, error } from '@sveltejs/kit';
 import { loadCluster, loadLock, saveLock } from '$core/config';
 import { pruneAddon } from '$core/families';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
-import { removeResourcePack, updateResourcePack } from '$core/respacks';
+import { listResourcePacks, removeResourcePack, updateResourcePack } from '$core/respacks';
 import { pushEvent } from '$lib/server/luna';
 import { errorMessage } from '$lib/server/http';
+import { hiddenInstances, keepHiddenRefs } from '$lib/server/fleetscope';
 
 /** PATCH { name?, priority?, required?, enabled?, servers?, autoUpdate?, channel? } */
-export async function PATCH({ params, request }) {
+export async function PATCH({ params, request, locals }) {
 	const body = await request.json();
 	const cfg = await loadCluster();
 	const lock = await loadPacksLock();
+	const groups = (await loadLock()).groups;
+	const hidden = Array.isArray(body.servers)
+		? await hiddenInstances(locals.account?.username)
+		: null;
+	const previous = hidden
+		? (await listResourcePacks(cfg, lock, groups)).find((row) => row.key === params.key)?.servers
+		: undefined;
 
 	try {
 		const row = await updateResourcePack(
@@ -26,11 +34,13 @@ export async function PATCH({ params, request }) {
 				priority: body.priority,
 				required: body.required,
 				enabled: body.enabled,
-				servers: body.servers,
+				servers: Array.isArray(body.servers)
+					? keepHiddenRefs(body.servers, previous, hidden)
+					: body.servers,
 				autoUpdate: body.autoUpdate,
 				channel: body.channel
 			},
-			(await loadLock()).groups
+			groups
 		);
 
 		await savePacksLock(lock);

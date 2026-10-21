@@ -17,6 +17,7 @@
 
 import { loadCluster, loadLock, saveLock } from '$core/config';
 import { pruneAddon } from '$core/families';
+import { hiddenInstances, keepHiddenRefs } from '$lib/server/fleetscope';
 import { loadPacksLock, savePacksLock } from '$core/packslock';
 import type { PacksLock } from '$core/packslock';
 import {
@@ -51,7 +52,7 @@ import { optBool, optInt, optList, optStr, requireWholeCluster, str } from './ar
 import { ToolError } from './errors';
 import { iamVisible } from './iam';
 import { resourceId } from '$shared/iam/resources';
-import type { ToolArgs, ToolHandler } from './errors';
+import type { ToolArgs, ToolContext, ToolHandler } from './errors';
 
 /** Search hits pack_search returns. */
 const SEARCH_LIMIT = 15;
@@ -100,11 +101,31 @@ function respackBrief(row: RespackRow) {
 	};
 }
 
+/**
+ * A pack's new server rules as an account sends them, with the rules naming
+ * servers it was never shown put back (`keepHiddenRefs`).
+ */
+async function serverRules(cfg: ClusterConfig, lock: PacksLock, key: string, args: ToolArgs, ctx: ToolContext): Promise<string[] | undefined> {
+	const servers = optList(args, 'servers');
+	const hidden = servers
+		? await hiddenInstances(ctx.account)
+		: null;
+
+	if (!servers || !hidden) {
+		return servers;
+	}
+
+	const rows = await listResourcePacksLive(cfg, lock, (await loadLock()).groups);
+	const previous = rows.rows.find((row) => row.key === key)?.servers;
+
+	return keepHiddenRefs(servers, previous, hidden);
+}
+
 /** Apply the registration fields an install call may carry; returns the refreshed row. */
-async function applyRegistration(cfg: ClusterConfig, lock: PacksLock, key: string, args: ToolArgs): Promise<RespackRow | null> {
+async function applyRegistration(cfg: ClusterConfig, lock: PacksLock, key: string, args: ToolArgs, ctx: ToolContext): Promise<RespackRow | null> {
 	const patch = {
 		enabled: optBool(args, 'enabled'),
-		servers: optList(args, 'servers'),
+		servers: await serverRules(cfg, lock, key, args, ctx),
 		priority: optInt(args, 'priority'),
 		required: optBool(args, 'required')
 	};
@@ -222,7 +243,7 @@ export const PACK_HANDLERS: Record<string, ToolHandler> = {
 
 		try {
 			const row = await installResourcePackFromProvider(cfg, lock, source, project, { channel: channel(args) });
-			const configured = await applyRegistration(cfg, lock, row.key, args);
+			const configured = await applyRegistration(cfg, lock, row.key, args, ctx);
 
 			await savePacksLock(lock);
 			await reloadResourcePacks(cfg);
@@ -246,7 +267,7 @@ export const PACK_HANDLERS: Record<string, ToolHandler> = {
 			if (replace) {
 				const result = await replaceResourcePackFile(cfg, lock, replace, file.data);
 
-				await applyRegistration(cfg, lock, replace, args);
+				await applyRegistration(cfg, lock, replace, args, ctx);
 				await savePacksLock(lock);
 
 				const reloaded = await reloadResourcePacks(cfg);
@@ -268,7 +289,7 @@ export const PACK_HANDLERS: Record<string, ToolHandler> = {
 			}
 
 			const row = await addResourcePackFile(cfg, lock, optStr(args, 'name') || file.name, file.data);
-			const configured = await applyRegistration(cfg, lock, row.key, args);
+			const configured = await applyRegistration(cfg, lock, row.key, args, ctx);
 
 			await savePacksLock(lock);
 			await reloadResourcePacks(cfg);
@@ -297,7 +318,7 @@ export const PACK_HANDLERS: Record<string, ToolHandler> = {
 					priority: optInt(args, 'priority'),
 					required: optBool(args, 'required'),
 					enabled: optBool(args, 'enabled'),
-					servers: optList(args, 'servers'),
+					servers: await serverRules(cfg, lock, key, args, ctx),
 					autoUpdate: optBool(args, 'autoUpdate'),
 					channel: channel(args)
 				},
@@ -528,7 +549,7 @@ export const PACK_HANDLERS: Record<string, ToolHandler> = {
 
 		try {
 			if (targets !== undefined) {
-				entry.targets = targets;
+				entry.targets = keepHiddenRefs(targets, entry.targets, await hiddenInstances(ctx.account));
 			}
 
 			updateDataPack(lock, name, {

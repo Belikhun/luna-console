@@ -42,6 +42,7 @@ import { readUpload } from '$lib/server/agent/uploads';
 import { ToolError } from './errors';
 import type { ToolArgs, ToolContext, ToolHandler } from './errors';
 import { iamVisible } from './iam';
+import { hiddenInstances, keepHiddenRefs } from '$lib/server/fleetscope';
 import { resourceId } from '$shared/iam/resources';
 
 /** Versions addon_versions returns, newest first. */
@@ -423,7 +424,7 @@ export const ADDON_HANDLERS: Record<string, ToolHandler> = {
 		const removed: string[] = [];
 
 		if (targets) {
-			entry.targets = targets;
+			entry.targets = keepHiddenRefs(targets, entry.targets, await hiddenInstances(ctx.account));
 
 			// deploy only adds, so instances the new targets no longer cover are
 			// cleared here, or the jar would stay behind on them

@@ -44,6 +44,7 @@ import {
 	pluginUnpinChecks,
 	respackServerChecks
 } from '$lib/server/authz/routes';
+import { hiddenInstances } from '$lib/server/fleetscope';
 
 export interface IamCheck {
 	action: string;
@@ -321,9 +322,9 @@ export const TOOL_IAM: Record<string, Rule> = {
  * for every instance it would reach. Kept apart because `toolPossible` probes the
  * static rules without touching the daemon.
  */
-const TOOL_IAM_LIVE: Record<string, (args: ToolArgs) => Promise<IamCheck[]>> = {
-	addon_configure: async (args) => Array.isArray(args.targets)
-		? await pluginTargetChecks(text(args, 'name') ?? '', list(args, 'targets'))
+const TOOL_IAM_LIVE: Record<string, (args: ToolArgs, hidden: Set<string> | null) => Promise<IamCheck[]>> = {
+	addon_configure: async (args, hidden) => Array.isArray(args.targets)
+		? await pluginTargetChecks(text(args, 'name') ?? '', list(args, 'targets'), hidden)
 		: [],
 	addon_unpin: async (args) => list(args, 'targets').length === 0
 		? await pluginUnpinChecks(text(args, 'name') ?? '', [])
@@ -331,23 +332,23 @@ const TOOL_IAM_LIVE: Record<string, (args: ToolArgs) => Promise<IamCheck[]>> = {
 	addon_remove: async (args) => list(args, 'from').length === 0
 		? await pluginRemovalChecks(text(args, 'name') ?? '', [])
 		: [],
-	datapack_configure: async (args) => Array.isArray(args.targets)
-		? await datapackTargetChecks(text(args, 'name') ?? '', list(args, 'targets'))
+	datapack_configure: async (args, hidden) => Array.isArray(args.targets)
+		? await datapackTargetChecks(text(args, 'name') ?? '', list(args, 'targets'), hidden)
 		: [],
 	datapack_remove: async (args) => list(args, 'from').length === 0
 		? await datapackRemovalChecks(text(args, 'name') ?? '', [])
 		: [],
-	respack_configure: async (args) => Array.isArray(args.servers)
-		? await respackServerChecks(text(args, 'key') ?? '', list(args, 'servers'))
+	respack_configure: async (args, hidden) => Array.isArray(args.servers)
+		? await respackServerChecks(text(args, 'key') ?? '', list(args, 'servers'), hidden)
 		: []
 };
 
 /** The state-dependent checks a call makes on top of its static ones; empty for most tools. */
-export async function toolLiveChecks(tool: string, args: ToolArgs): Promise<IamCheck[]> {
+export async function toolLiveChecks(tool: string, args: ToolArgs, account?: string): Promise<IamCheck[]> {
 	const rule = TOOL_IAM_LIVE[tool];
 
 	return rule
-		? await rule(args)
+		? await rule(args, await hiddenInstances(account))
 		: [];
 }
 

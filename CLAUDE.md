@@ -447,7 +447,13 @@ export interface InstanceConfig {}
   no rule is refused, so a new endpoint is a rule first. Pages map to actions in `$lib/authz/pages.ts`,
   which the side nav reads too, so a screen the account cannot open is not offered; a refused page lands
   on `/denied`. A list route lets `*:List` open the screen and then `filterAllowed`s its rows by the
-  per-resource verb, because that is where an owner-only grant is decided. The browser evaluates the same
+  per-resource verb, because that is where an owner-only grant is decided. Records that only *mention*
+  instances (a machine's instance list, an addon's targets, pins and usage, a pack's servers, what a
+  group, profile or runtime is used by) are scrubbed to the instances the account may describe
+  (`$lib/server/fleetscope.ts`: the machine routes, `INSTANCE_REF_ROUTES` in the request hook, every
+  MCP tool result for an account), and a write of such a list puts the hidden names back
+  (`keepHiddenRefs`, in the route and in the target checks alike). A new route answering with such a
+  list joins `INSTANCE_REF_ROUTES`, or its field joins the scrubber's lists. The browser evaluates the same
   grammar over the principal context the layout loads (`$lib/authz.svelte`) for chrome and verbs, and
   asks `/api/iam/can` about a resource it has no facts for; it never decides anything.
 - **Built-ins are code, defaults are lazy, and the last administrator is protected.**

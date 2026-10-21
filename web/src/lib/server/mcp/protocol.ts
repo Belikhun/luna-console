@@ -23,6 +23,7 @@ import { allowedTools, mcpTool, scopeCoversInstance, validateMcpArgs } from '$sh
 import { TOOL_HANDLERS, ToolError } from './handlers';
 import { knowledgeVisible, refuseFor, toolChecks, toolLiveChecks, toolPossible } from './iam';
 import { withActor } from '$client/actor';
+import { hiddenInstances, scrubInstanceRefs } from '$lib/server/fleetscope';
 import type { PrincipalContext } from '$shared/iam/grammar';
 import type { ToolArgs } from './handlers';
 
@@ -247,7 +248,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 			return await finish(false, `tool "${name}" is not available when acting for a console account`, 'no iam rule');
 		}
 
-		const refusal = await refuseFor(ctx.account, [...checks, ...await toolLiveChecks(name, args)]);
+		const refusal = await refuseFor(ctx.account, [...checks, ...await toolLiveChecks(name, args, ctx.account)]);
 
 		if (refusal) {
 			const where = refusal.check.resource
@@ -279,7 +280,13 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 			? await withActor(ctx.account, () => handler(args, toolCtx))
 			: await handler(args, toolCtx);
 
-		return await finish(true, payload ?? { ok: true });
+		// an addon's targets, a pack's servers and the like name other people's
+		// servers; the account sees only its own
+		const scoped = ctx.account
+			? scrubInstanceRefs(payload, await hiddenInstances(ctx.account))
+			: payload;
+
+		return await finish(true, scoped ?? { ok: true });
 	} catch (err) {
 		const message = err instanceof Error
 			? err.message
