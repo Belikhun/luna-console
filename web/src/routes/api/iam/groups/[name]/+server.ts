@@ -7,8 +7,7 @@ import { json, error } from '@sveltejs/kit';
 import { deleteGroup, getGroup, iamAudit, updateGroup } from '$core/iam';
 import { errorMessage, jsonBody } from '$lib/server/http';
 import { journal } from '$lib/server/session';
-import { can, filterAllowed } from '$lib/server/authz';
-import { resourceId } from '$shared/iam/resources';
+import { can, scopeGroups } from '$lib/server/authz';
 
 /**
  * GET → one group with the trail that names it. A member can open its own
@@ -21,15 +20,12 @@ export async function GET({ params, locals }) {
 		throw error(404, `no group named ${params.name}`);
 	}
 
-	const [members, readsAudit] = await Promise.all([
-		filterAllowed(locals, 'account:Describe', group.members, (member) => resourceId('account', member.username)),
-		can(locals, 'iam:ReadAudit')
-	]);
+	const [[scoped], readsAudit] = await Promise.all([scopeGroups(locals, [group]), can(locals, 'iam:ReadAudit')]);
 	const audit = readsAudit
 		? await iamAudit({ target: `group ${group.name}`, limit: 200 })
 		: [];
 
-	return json({ group: { ...group, members }, audit });
+	return json({ group: scoped ?? group, audit });
 }
 
 /** PATCH { name?, description? } → rename or describe the group. */

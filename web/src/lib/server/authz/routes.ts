@@ -934,14 +934,15 @@ export const API_RULES: Record<string, MethodRules> = {
 	},
 	'/api/accounts/[id]/permissions': { GET: { action: 'account:Describe', resource: account } },
 
-	'/api/iam/policies': { GET: { action: 'iam:ListPolicies' }, POST: { action: 'iam:CreatePolicy' } },
+	// the lists answer what the account may describe (`scopePolicies`, `scopeGroups`)
+	'/api/iam/policies': { GET: 'session', POST: { action: 'iam:CreatePolicy' } },
 	'/api/iam/policies/validate': { POST: { action: 'iam:ListPolicies' } },
 	'/api/iam/policies/[name]': {
 		GET: { action: 'iam:DescribePolicy', resource: iamPolicy },
 		PATCH: { action: 'iam:UpdatePolicy', resource: iamPolicy },
 		DELETE: { action: 'iam:DeletePolicy', resource: iamPolicy }
 	},
-	'/api/iam/groups': { GET: { action: 'iam:ListGroups' }, POST: { action: 'iam:CreateGroup' } },
+	'/api/iam/groups': { GET: 'session', POST: { action: 'iam:CreateGroup' } },
 	'/api/iam/groups/[name]': {
 		GET: { action: 'iam:DescribeGroup', resource: iamGroup },
 		PATCH: { action: 'iam:UpdateGroup', resource: iamGroup },
@@ -958,7 +959,7 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/iam/audit': { GET: { action: 'iam:ReadAudit' } },
 	'/api/iam/can': { POST: 'session' },
 	'/api/resources': { GET: { action: 'tag:List' } },
-	'/api/resources/describe': { POST: { action: 'tag:Describe' } },
+	'/api/resources/describe': { POST: 'session' },
 	'/api/resources/tags': {
 		PUT: { action: 'tag:Tag', resource: bodyId('id') },
 		DELETE: { action: 'tag:Untag', resource: bodyId('id') }

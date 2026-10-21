@@ -7,10 +7,11 @@ import { json, error } from '@sveltejs/kit';
 import { createPolicy, listPolicies } from '$core/iam';
 import { errorMessage, jsonBody } from '$lib/server/http';
 import { journal } from '$lib/server/session';
+import { scopePolicies } from '$lib/server/authz';
 
 /** GET → every policy, built-ins first. */
-export async function GET() {
-	return json({ policies: await listPolicies() });
+export async function GET({ locals }) {
+	return json({ policies: await scopePolicies(locals, await listPolicies()) });
 }
 
 /** POST { name, description?, yaml } → create a managed policy. */

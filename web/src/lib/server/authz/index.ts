@@ -15,8 +15,10 @@ import { error } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
 
 import { ROOT_ACTOR } from '$core/accounts';
-import { authorize, authorizeMany } from '$core/iam';
-import type { Verdict } from '$shared/iam/grammar';
+import { authorize, authorizeMany, principalContext } from '$core/iam';
+import { actionPossible, type Verdict } from '$shared/iam/grammar';
+import type { GroupSummary, PolicySummary } from '$core/iam';
+import { resourceId } from '$shared/iam/resources';
 
 import { API_RULES, PAGE_ASYNC_RULES, ruleAction, type Method, type RouteRule, type RuleContext } from './routes';
 import { PAGE_RULES } from '$lib/authz/pages';
@@ -79,6 +81,16 @@ export async function gate(event: RequestEvent): Promise<GateOutcome> {
 	}
 
 	const resource = pageRule.resource ? pageRule.resource(ctx.params) : null;
+
+	if (pageRule.listing) {
+		const principal = username === ROOT_ACTOR
+			? null
+			: await principalContext(username);
+
+		if (username === ROOT_ACTOR || (principal && actionPossible(principal, pageRule.action))) {
+			return { kind: 'allowed' };
+		}
+	}
 
 	return await decide(username, pageRule.action, resource);
 }
@@ -184,4 +196,44 @@ export async function filterAllowed<T>(
 	const allowed = await authorizeMany(username, action, ids);
 
 	return rows.filter((row) => allowed[idOf(row)]);
+}
+
+/**
+ * Managed and built-in policies as the account may see them: the ones it may
+ * describe, each naming only the accounts and groups it may describe among
+ * those it is attached to. One decision per resource type for the whole list.
+ */
+export async function scopePolicies(locals: App.Locals, policies: PolicySummary[]): Promise<PolicySummary[]> {
+	const visible = await filterAllowed(locals, 'iam:DescribePolicy', policies, (policy) => resourceId('policy', policy.name));
+	const username = locals.account?.username ?? ROOT_ACTOR;
+	const accountIds = [...new Set(visible.flatMap((policy) => policy.attachedTo.accounts))].map((name) => resourceId('account', name));
+	const groupIds = [...new Set(visible.flatMap((policy) => policy.attachedTo.groups))].map((name) => resourceId('group', name));
+	const [accounts, groups] = await Promise.all([
+		accountIds.length ? authorizeMany(username, 'account:Describe', accountIds) : Promise.resolve({} as Record<string, boolean>),
+		groupIds.length ? authorizeMany(username, 'iam:DescribeGroup', groupIds) : Promise.resolve({} as Record<string, boolean>)
+	]);
+
+	return visible.map((policy) => ({
+		...policy,
+		attachedTo: {
+			accounts: policy.attachedTo.accounts.filter((name) => accounts[resourceId('account', name)]),
+			groups: policy.attachedTo.groups.filter((name) => groups[resourceId('group', name)])
+		}
+	}));
+}
+
+/** Groups as the account may see them: the ones it may describe, with the members it may describe. */
+export async function scopeGroups(locals: App.Locals, groups: GroupSummary[]): Promise<GroupSummary[]> {
+	const visible = await filterAllowed(locals, 'iam:DescribeGroup', groups, (group) => resourceId('group', group.name));
+	const username = locals.account?.username ?? ROOT_ACTOR;
+	const memberIds = [...new Set(visible.flatMap((group) => group.members.map((member) => member.username)))]
+		.map((name) => resourceId('account', name));
+	const members = memberIds.length
+		? await authorizeMany(username, 'account:Describe', memberIds)
+		: {};
+
+	return visible.map((group) => ({
+		...group,
+		members: group.members.filter((member) => members[resourceId('account', member.username)])
+	}));
 }

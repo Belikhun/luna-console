@@ -20,6 +20,12 @@ export interface PageRule {
 	action: string;
 	/** The resource the screen is about, from its params; absent for a cluster-wide screen */
 	resource?: (params: Record<string, string>) => string;
+	/**
+	 * A list of resources filtered to the ones the account may act on: it opens
+	 * when `action` could be allowed on any resource at all, as "the policies
+	 * that reach me" can be for an account with no grant on every policy.
+	 */
+	listing?: boolean;
 }
 
 const instance = (params: Record<string, string>): string => resourceId('instance', params.name ?? '');
@@ -91,7 +97,7 @@ export const PAGE_RULES: Record<string, PageRule> = {
 	'/console/accounts': { action: 'account:List' },
 	'/console/accounts/new': { action: 'account:Create' },
 	'/console/iam': { action: 'iam:ListPolicies' },
-	'/console/iam/policies': { action: 'iam:ListPolicies' },
+	'/console/iam/policies': { action: 'iam:DescribePolicy', listing: true },
 	'/console/iam/policies/new': { action: 'iam:CreatePolicy' },
 	'/console/iam/policies/[name]': {
 		action: 'iam:DescribePolicy',
@@ -101,7 +107,7 @@ export const PAGE_RULES: Record<string, PageRule> = {
 		action: 'iam:UpdatePolicy',
 		resource: (params) => resourceId('policy', params.name ?? '')
 	},
-	'/console/iam/groups': { action: 'iam:ListGroups' },
+	'/console/iam/groups': { action: 'iam:DescribeGroup', listing: true },
 	'/console/iam/groups/new': { action: 'iam:CreateGroup' },
 	'/console/iam/groups/[name]': {
 		action: 'iam:DescribeGroup',

@@ -29,6 +29,7 @@
 	import { LANGUAGES, adoptAccountLanguage, currentLanguage, switchLanguage, t } from '$lib/i18n.svelte';
 	import { tooltip } from '$lib/tooltip.svelte';
 	import { Authz } from '$lib/authz.svelte';
+	import { actionPossible } from '$shared/iam/grammar';
 	import { pageRuleFor } from '$lib/authz/pages';
 
 	let { children, data } = $props();
@@ -73,6 +74,11 @@
 
 		if (!rule) {
 			return true;
+		}
+
+		// a filtered list opens for an account that could see any of its rows
+		if (rule.listing) {
+			return Authz.principal !== null && actionPossible(Authz.principal, rule.action);
 		}
 
 		return Authz.can(rule.action);

@@ -7,10 +7,11 @@ import { json, error } from '@sveltejs/kit';
 import { createGroup, listGroups } from '$core/iam';
 import { errorMessage, jsonBody } from '$lib/server/http';
 import { journal } from '$lib/server/session';
+import { scopeGroups } from '$lib/server/authz';
 
 /** GET → every group with its members and attachments. */
-export async function GET() {
-	return json({ groups: await listGroups() });
+export async function GET({ locals }) {
+	return json({ groups: await scopeGroups(locals, await listGroups()) });
 }
 
 /** POST { name, description?, policies?, members? } → create a group. */

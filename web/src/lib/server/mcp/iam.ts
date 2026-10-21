@@ -351,7 +351,7 @@ export const TOOL_IAM: Record<string, Rule> = {
 	iam_simulate: plain('iam:Simulate'),
 	iam_audit: plain('iam:ReadAudit'),
 	resources_find: plain('tag:List'),
-	resource_get: plain('tag:Describe'),
+	resource_get: (args) => [{ action: 'tag:Describe', resource: text(args, 'id') }],
 	iam_policy_create: plain('iam:CreatePolicy'),
 	iam_policy_update: on('iam:UpdatePolicy', 'policy', 'name'),
 	iam_policy_delete: on('iam:DeletePolicy', 'policy', 'name'),
