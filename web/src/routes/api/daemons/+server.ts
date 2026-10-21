@@ -5,8 +5,11 @@
 import { json } from '@sveltejs/kit';
 
 import { listDaemons } from '$client/daemon';
+import { scopeRows } from '$lib/server/fleetscope';
 
 /** GET → every daemon in the cluster: the primary plus known followers, live state included. */
-export async function GET() {
-	return json({ daemons: await listDaemons() });
+export async function GET({ locals }) {
+	const rows = (await listDaemons()) as unknown as Array<Record<string, unknown>>;
+
+	return json({ daemons: await scopeRows(locals.account?.username, rows) });
 }

@@ -8,16 +8,17 @@ import { loadCluster, saveCluster } from '$core/config';
 import { checkDaemonUpgrade, daemonDetail, listDaemons, upgradeDaemon } from '$client/daemon';
 import { pushEvent } from '$lib/server/luna';
 import { startJob } from '$lib/server/jobs';
+import { scopeDetail } from '$lib/server/fleetscope';
 
 /** GET → one daemon's row, health history and its own event log. */
-export async function GET({ params }) {
+export async function GET({ params, locals }) {
 	const detail = await daemonDetail(params.name);
 
 	if (!detail) {
 		throw error(404, `unknown daemon: ${params.name}`);
 	}
 
-	return json(detail);
+	return json(await scopeDetail(locals.account?.username, detail as unknown as Record<string, unknown>));
 }
 
 /**

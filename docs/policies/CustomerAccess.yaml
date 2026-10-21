@@ -43,6 +43,9 @@ Statement:
       - instance:List
       - schedule:List
       - job:Describe
+      # every machine, so a customer can choose where an instance runs
+      - machine:List
+      - machine:Describe
     Resource: "*"
 
   # the chat (and the logs and console that carry it) of servers they own: a
@@ -85,7 +88,7 @@ Statement:
     Resource: "*"
 
   # nothing network-wide: moderation, in-game permissions, the proxy, ports,
-  # hostnames, machines, the cluster feed and cleanup
+  # hostnames, changing machines, the cluster feed and cleanup
   - Sid: NoNetworkLevel
     Effect: Deny
     Action:
@@ -97,7 +100,8 @@ Statement:
       - network:*
       - port-pool:*
       - domain:*
-      - machine:*
+      - machine:Upgrade
+      - machine:Remove
       - instance:ManageNetwork
       - event:Read
       - journal:Read
