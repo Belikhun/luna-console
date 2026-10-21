@@ -7,6 +7,7 @@
 	import { goto } from '$app/navigation';
 	import { t } from '$lib/i18n.svelte';
 	import { api, put } from '$lib/api';
+	import { Authz } from '$lib/authz.svelte';
 	import Panel from './Panel.svelte';
 	import Btn from './Btn.svelte';
 	import SplitBtn from './SplitBtn.svelte';
@@ -89,6 +90,17 @@
 
 	const isAccount = $derived(subject.kind === 'account');
 
+	/** Why the account viewing cannot use a verb, or an empty string when it can. */
+	function refused(action: string): string {
+		return Authz.can(action)
+			? ''
+			: t('web.common.notAllowed', { action });
+	}
+
+	const attachRefusal = $derived(refused('iam:Attach'));
+	const detachRefusal = $derived(refused('iam:Detach'));
+	const simulateRefusal = $derived(refused('iam:Simulate'));
+
 	/** the body field the attach and inline routes take to name the subject */
 	const target = $derived(
 		subject.kind === 'account'
@@ -140,6 +152,10 @@
 	}
 
 	const removeHint = $derived.by(() => {
+		if (detachRefusal) {
+			return detachRefusal;
+		}
+
 		if (picked.length === 0) {
 			return t('web.permissionsPanel.pickToRemove');
 		}
@@ -294,12 +310,12 @@
 			{
 				label: t('web.permissionsPanel.editInline'),
 				icon: 'pen',
-				disabled: !row.inline,
-				hint: row.inline
+				disabled: !row.inline || !!attachRefusal,
+				hint: attachRefusal || (row.inline
 					? undefined
 					: row.kind === 'inline'
 						? removeReason(row)
-						: t('web.permissionsPanel.onlyInlineEdits'),
+						: t('web.permissionsPanel.onlyInlineEdits')),
 				action: () => openInline(row)
 			},
 			...(row.via
@@ -310,8 +326,8 @@
 				label: t('web.permissionsPanel.removeAction', { count: removable.length }),
 				icon: 'trash',
 				color: 'danger',
-				disabled: removable.length === 0,
-				hint: reason || (removable.length === 0 ? removeReason(row) : undefined),
+				disabled: removable.length === 0 || !!detachRefusal,
+				hint: detachRefusal || reason || (removable.length === 0 ? removeReason(row) : undefined),
 				action: () => askRemove(targets)
 			}
 		];
@@ -346,7 +362,12 @@
 	{#snippet actions()}
 		<Btn variant="tool" icon="rotate" title={t('web.common.refresh')} onclick={() => void refresh()} />
 		{#if subject.kind === 'account'}
-			<Btn icon="flaskVial" href="/console/iam/simulator?account={encodeURIComponent(subject.username)}">
+			<Btn
+				icon="flaskVial"
+				href="/console/iam/simulator?account={encodeURIComponent(subject.username)}"
+				disabled={!!simulateRefusal}
+				title={simulateRefusal || undefined}
+			>
 				{t('web.permissionsPanel.simulate')}
 			</Btn>
 		{/if}
@@ -362,6 +383,8 @@
 			primary
 			icon="plus"
 			label={isAccount ? t('web.permissionsPanel.addPermissions') : t('web.permissionsPanel.attachPolicies')}
+			disabled={!!attachRefusal}
+			title={attachRefusal || undefined}
 			menu={addMenu}
 			onclick={() => openAdd(isAccount ? 'groups' : 'policies')}
 		/>

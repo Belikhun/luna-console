@@ -1252,6 +1252,57 @@ interface ResourceFacts {
 	createdBy: string | null;
 	tags: Record<string, string>;
 	playerServerCreators?: string[];
+	/** `luna:PolicyPrincipals` / `luna:GroupMembers`, for a policy or a group */
+	keys?: Record<string, string[]>;
+}
+
+/**
+ * Who a managed policy reaches and who is in a group, as usernames: what lets
+ * a policy grant an account a look at its own policies and groups. A policy
+ * reaches an account attached directly (the defaults included, for an account
+ * the store has no entry for) or through any group the account is in.
+ */
+async function iamKeys(ids: string[]): Promise<Record<string, Record<string, string[]>>> {
+	const parsed = ids
+		.map((id) => ({ id, ref: parseResourceId(id) }))
+		.filter((entry) => entry.ref?.type === "policy" || entry.ref?.type === "group");
+
+	if (parsed.length === 0) {
+		return {};
+	}
+
+	const [store, accountStore] = await Promise.all([loadIam(), loadAccounts()]);
+	const usernameOf = new Map(accountStore.accounts.map((account) => [account.id, account.username]));
+	const out: Record<string, Record<string, string[]>> = {};
+
+	for (const { id, ref } of parsed) {
+		const name = ref!.name.toLowerCase();
+
+		if (ref!.type === "group") {
+			const group = store.groups.find((entry) => entry.name.toLowerCase() === name);
+			const members = (group?.members ?? [])
+				.map((member) => usernameOf.get(member))
+				.filter((username): username is string => username !== undefined);
+
+			out[id] = { "luna:GroupMembers": members };
+			continue;
+		}
+
+		const principals = accountStore.accounts
+			.filter((account) => {
+				const direct = principalEntry(store, account.id).policies;
+				const viaGroups = store.groups
+					.filter((group) => group.members.includes(account.id))
+					.flatMap((group) => group.policies);
+
+				return [...direct, ...viaGroups].some((policy) => policy.toLowerCase() === name);
+			})
+			.map((account) => account.username);
+
+		out[id] = { "luna:PolicyPrincipals": principals };
+	}
+
+	return out;
 }
 
 /** How long a player's servers are remembered between decisions. */
@@ -1329,7 +1380,7 @@ async function resourceFacts(ids: string[]): Promise<Record<string, ResourceFact
 		}
 	}
 
-	const records = await describeResources([...wanted]);
+	const [records, keys] = await Promise.all([describeResources([...wanted]), iamKeys(ids)]);
 	const out: Record<string, ResourceFacts> = {};
 
 	for (const id of ids) {
@@ -1361,6 +1412,10 @@ async function resourceFacts(ids: string[]): Promise<Record<string, ResourceFact
 			facts.playerServerCreators = [...creators];
 		}
 
+		if (keys[id]) {
+			facts.keys = keys[id];
+		}
+
 		out[id] = facts;
 	}
 
@@ -1384,6 +1439,7 @@ export async function authorize(
 		resourceTags: facts?.tags ?? {},
 		resourceCreator: facts?.createdBy ?? null,
 		playerServerCreators: facts?.playerServerCreators,
+		resourceKeys: facts?.keys,
 		requestTags,
 	};
 	const record = facts;
@@ -1430,6 +1486,7 @@ export async function simulatePrincipal(
 			? options.resourceCreator
 			: (record?.createdBy ?? null),
 		playerServerCreators: record?.playerServerCreators,
+		resourceKeys: record?.keys,
 		requestTags: options.requestTags,
 	};
 
@@ -1515,6 +1572,7 @@ export async function authorizeMany(
 			resourceTags: record?.tags ?? {},
 			resourceCreator: record?.createdBy ?? null,
 			playerServerCreators: record?.playerServerCreators,
+			resourceKeys: record?.keys,
 		}).allowed;
 	}
 

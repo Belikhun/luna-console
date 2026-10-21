@@ -94,6 +94,12 @@ export interface AccessRequest {
 	 * joined a server I own" without listing either.
 	 */
 	playerServerCreators?: string[];
+	/**
+	 * Further multi-valued keys a resource carries: `luna:PolicyPrincipals` (the
+	 * accounts a managed policy reaches) and `luna:GroupMembers` (a group's
+	 * members), which is how "my own policies" and "my own groups" are said.
+	 */
+	resourceKeys?: Record<string, string[]>;
 	/** Tags a create or tag call is asking to set */
 	requestTags?: Record<string, string>;
 }
@@ -139,6 +145,8 @@ export const CONDITION_KEYS = [
 	"luna:ResourceCreator",
 	"luna:ResourceType",
 	"luna:PlayerServerCreators",
+	"luna:PolicyPrincipals",
+	"luna:GroupMembers",
 	"luna:RequestTag/<k>",
 	"luna:TagKeys",
 ] as const;
@@ -236,7 +244,9 @@ function normalizeCondition(
 
 /** Whether a condition key is one the evaluator can answer. */
 export function isConditionKey(key: string): boolean {
-	if (key === "luna:username" || key === "luna:ResourceCreator" || key === "luna:ResourceType" || key === "luna:TagKeys" || key === "luna:PlayerServerCreators") {
+	const fixed = ["luna:username", "luna:ResourceCreator", "luna:ResourceType", "luna:TagKeys", "luna:PlayerServerCreators", "luna:PolicyPrincipals", "luna:GroupMembers"];
+
+	if (fixed.includes(key)) {
 		return true;
 	}
 
@@ -496,6 +506,14 @@ function conditionValues(key: string, principal: PrincipalContext, request: Acce
 	if (key === "luna:PlayerServerCreators") {
 		return request.playerServerCreators && request.playerServerCreators.length > 0
 			? request.playerServerCreators
+			: undefined;
+	}
+
+	const carried = request.resourceKeys?.[key];
+
+	if (carried !== undefined) {
+		return carried.length > 0
+			? carried
 			: undefined;
 	}
 

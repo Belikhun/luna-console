@@ -459,7 +459,10 @@ export interface InstanceConfig {}
 - **Built-ins are code, defaults are lazy, and the last administrator is protected.**
   `AdministratorAccess`, `PowerUserAccess`, `ReadOnlyAccess` (every `read` action), `OwnerAccess`
   (everything on what `luna:ResourceCreator` says the account created, plus the listings) and
-  `SelfServiceAccess` live in `shared/iam/builtin.ts`; the store holds only names. An account with no
+  `SelfServiceAccess` (its own account, chats, and a read of the policies that reach it and the groups
+  it is in, through `luna:PolicyPrincipals`/`luna:GroupMembers`) live in `shared/iam/builtin.ts`; the
+  store holds only names. Renaming, enabling, unlocking and the forced password change are
+  `account:Administer`, never self-service. An account with no
   entry in `iam.json` has `OwnerAccess` + `SelfServiceAccess`, which is what "a user may do anything to
   what they created" means with nothing to attach. The first read of an unseeded store on a console that
   has accounts makes all of them administrators, so the release that introduces authorization locks

@@ -93,11 +93,20 @@ export const PAGE_RULES: Record<string, PageRule> = {
 	'/console/iam': { action: 'iam:ListPolicies' },
 	'/console/iam/policies': { action: 'iam:ListPolicies' },
 	'/console/iam/policies/new': { action: 'iam:CreatePolicy' },
-	'/console/iam/policies/[name]': { action: 'iam:DescribePolicy' },
-	'/console/iam/policies/[name]/edit': { action: 'iam:UpdatePolicy' },
+	'/console/iam/policies/[name]': {
+		action: 'iam:DescribePolicy',
+		resource: (params) => resourceId('policy', params.name ?? '')
+	},
+	'/console/iam/policies/[name]/edit': {
+		action: 'iam:UpdatePolicy',
+		resource: (params) => resourceId('policy', params.name ?? '')
+	},
 	'/console/iam/groups': { action: 'iam:ListGroups' },
 	'/console/iam/groups/new': { action: 'iam:CreateGroup' },
-	'/console/iam/groups/[name]': { action: 'iam:DescribeGroup' },
+	'/console/iam/groups/[name]': {
+		action: 'iam:DescribeGroup',
+		resource: (params) => resourceId('group', params.name ?? '')
+	},
 	'/console/iam/simulator': { action: 'iam:Simulate' },
 	'/console/iam/activity': { action: 'iam:ReadAudit' },
 	'/console/resources': { action: 'tag:List' },

@@ -9,6 +9,8 @@
 
 import type { AccountPermissions, GroupSummary, InlineView, PolicySummary } from '$core/iam';
 import type { PolicyKind } from '$lib/iam';
+import type { AttachedDocument } from '$shared/iam/grammar';
+import { policyToYaml } from '$shared/iam/yaml';
 
 /** Whose policies the panel shows. */
 export type PermissionsSubject =
@@ -30,13 +32,22 @@ export interface PermissionRow {
 	inline: InlineView | null;
 }
 
-function managedRow(name: string, via: string | null, catalog: PolicySummary[]): PermissionRow {
+/**
+ * A managed or built-in policy's row. The catalog is only readable with
+ * `iam:ListPolicies`; without it, the account's own effective documents still
+ * say which kind each policy is.
+ */
+function managedRow(name: string, via: string | null, catalog: PolicySummary[], effective: AttachedDocument[] = []): PermissionRow {
 	const known = catalog.find((policy) => policy.name.toLowerCase() === name.toLowerCase());
+	const source = effective.find((entry) => entry.source.kind !== 'inline' && entry.source.name.toLowerCase() === name.toLowerCase())?.source;
+	const builtin = known
+		? known.builtin
+		: source?.kind === 'builtin';
 
 	return {
 		key: `${via ?? ''}:managed:${name}`,
 		name,
-		kind: known?.builtin ? 'builtin' : 'managed',
+		kind: builtin ? 'builtin' : 'managed',
 		via,
 		description: known?.description ?? '',
 		yaml: known?.yaml ?? null,
@@ -67,7 +78,7 @@ export function accountPermissionRows(
 	groups: GroupSummary[]
 ): PermissionRow[] {
 	const rows: PermissionRow[] = [
-		...permissions.policies.map((name) => managedRow(name, null, catalog)),
+		...permissions.policies.map((name) => managedRow(name, null, catalog, permissions.effective)),
 		...permissions.inline.map((inline) => inlineRow(inline, null, true))
 	];
 
@@ -75,11 +86,14 @@ export function accountPermissionRows(
 		const group = groups.find((entry) => entry.name === membership.name);
 
 		for (const name of membership.policies) {
-			rows.push(managedRow(name, membership.name, catalog));
+			rows.push(managedRow(name, membership.name, catalog, permissions.effective));
 		}
 
 		for (const name of membership.inline) {
 			const view = group?.inline.find((inline) => inline.name === name);
+			const document = permissions.effective.find(
+				(entry) => entry.source.kind === 'inline' && entry.source.group === membership.name && entry.source.name === name
+			)?.document;
 
 			rows.push(
 				view
@@ -90,7 +104,9 @@ export function accountPermissionRows(
 							kind: 'inline',
 							via: membership.name,
 							description: '',
-							yaml: null,
+							yaml: document
+								? policyToYaml(document)
+								: null,
 							inline: null
 						}
 			);

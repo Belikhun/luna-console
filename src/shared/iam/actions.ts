@@ -252,22 +252,31 @@ export const IAM_ACTIONS: IamActionSpec[] = [
 		["SetPassword", "write"],
 		["ManageIdentities", "write"],
 		["ManageSessions", "write"],
+		// renaming, switching on or off, unlocking and the forced password change:
+		// an account looking after itself does none of these
+		["Administer", "write"],
 		["Delete", "destructive"],
 	]),
+	// one service, three resource types: a policy's verbs name the policy and a
+	// group's the group, so "the policies that reach me" can be said in a policy
 	...service("iam", null, [
 		["ListPolicies", "read"],
-		["DescribePolicy", "read"],
 		["ListGroups", "read"],
-		["DescribeGroup", "read"],
 		["Simulate", "read"],
 		["ReadAudit", "read"],
 		["CreatePolicy", "write"],
-		["UpdatePolicy", "write"],
 		["CreateGroup", "write"],
-		["UpdateGroup", "write"],
 		["Attach", "write"],
 		["Detach", "write"],
+	]),
+	...service("iam", "policy", [
+		["DescribePolicy", "read"],
+		["UpdatePolicy", "write"],
 		["DeletePolicy", "destructive"],
+	]),
+	...service("iam", "group", [
+		["DescribeGroup", "read"],
+		["UpdateGroup", "write"],
 		["DeleteGroup", "destructive"],
 	]),
 	...service("tag", null, [

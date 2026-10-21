@@ -44,10 +44,11 @@ import { describeResource, isResourceType, listResources, tagResource, untagReso
 import type { ResourceFilter, ResourceView } from '$core/resources';
 import { IAM_ACTIONS } from '$shared/iam/actions';
 import { actionMatches, type PolicyDocument, type PolicyStatement } from '$shared/iam/grammar';
-import { parseResourceId } from '$shared/iam/resources';
+import { parseResourceId, resourceId } from '$shared/iam/resources';
 import { optInt, optList, optStr, str } from './args';
 import { ToolError } from './errors';
 import type { ToolArgs, ToolContext, ToolHandler } from './errors';
+import { iamVisible } from './iam';
 
 /** The most actions one simulation may ask about; the console route's limit. */
 const MAX_SIMULATED_ACTIONS = 200;
@@ -77,7 +78,8 @@ const BOUNDED_BUILTINS = new Set(['poweruseraccess', 'readonlyaccess', 'owneracc
  * narrowed to the instances such a token was given.
  */
 function requireWholeConsole(ctx: ToolContext): void {
-	if (ctx.principal.scope.instances !== null) {
+	// an account's narrowed view is not a limited token; its policies decide
+	if ((ctx.principal.tokenScope ?? ctx.principal.scope).instances !== null) {
 		throw new ToolError('this token is limited to some instances, and access management covers the whole console, so the IAM tools are not available to it');
 	}
 }
@@ -378,7 +380,13 @@ export const IAM_HANDLERS: Record<string, ToolHandler> = {
 			throw new ToolError(`no policy named "${name}"; iam_policies_list shows them`);
 		}
 
-		return policyDetail(policy);
+		// an account reading a policy that reaches it sees only the holders it may describe
+		const attachedTo = {
+			accounts: await iamVisible(ctx, 'account:Describe', policy.attachedTo.accounts, (holder) => resourceId('account', holder)),
+			groups: await iamVisible(ctx, 'iam:DescribeGroup', policy.attachedTo.groups, (holder) => resourceId('group', holder))
+		};
+
+		return policyDetail({ ...policy, attachedTo });
 	},
 
 	async iam_policy_validate(args, ctx) {
@@ -411,7 +419,9 @@ export const IAM_HANDLERS: Record<string, ToolHandler> = {
 			throw new ToolError(`no group named "${name}"; iam_groups_list shows them`);
 		}
 
-		return groupDetail(group);
+		const members = await iamVisible(ctx, 'account:Describe', group.members, (member) => resourceId('account', member.username));
+
+		return groupDetail({ ...group, members });
 	},
 
 	async iam_account_permissions(args, ctx) {

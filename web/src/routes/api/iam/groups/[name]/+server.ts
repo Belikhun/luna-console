@@ -7,18 +7,29 @@ import { json, error } from '@sveltejs/kit';
 import { deleteGroup, getGroup, iamAudit, updateGroup } from '$core/iam';
 import { errorMessage, jsonBody } from '$lib/server/http';
 import { journal } from '$lib/server/session';
+import { can, filterAllowed } from '$lib/server/authz';
+import { resourceId } from '$shared/iam/resources';
 
-/** GET → one group with the trail that names it. */
-export async function GET({ params }) {
+/**
+ * GET → one group with the trail that names it. A member can open its own
+ * group; it sees the members it may describe (itself) and no trail.
+ */
+export async function GET({ params, locals }) {
 	const group = await getGroup(params.name);
 
 	if (!group) {
 		throw error(404, `no group named ${params.name}`);
 	}
 
-	const audit = await iamAudit({ target: `group ${group.name}`, limit: 200 });
+	const [members, readsAudit] = await Promise.all([
+		filterAllowed(locals, 'account:Describe', group.members, (member) => resourceId('account', member.username)),
+		can(locals, 'iam:ReadAudit')
+	]);
+	const audit = readsAudit
+		? await iamAudit({ target: `group ${group.name}`, limit: 200 })
+		: [];
 
-	return json({ group, audit });
+	return json({ group: { ...group, members }, audit });
 }
 
 /** PATCH { name?, description? } → rename or describe the group. */

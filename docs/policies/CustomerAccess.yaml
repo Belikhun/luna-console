@@ -150,7 +150,17 @@ Statement:
   - Sid: NoConsoleAdministration
     Effect: Deny
     Action:
-      - iam:*
+      # every IAM verb but reading the policies that reach them and the groups
+      # they are in, which SelfServiceAccess grants
+      - iam:List*
+      - iam:Create*
+      - iam:Update*
+      - iam:Delete*
+      - iam:Attach
+      - iam:Detach
+      - iam:Simulate
+      - iam:ReadAudit
+      - account:Administer
       - mcp:*
       - knowledge:Publish
       - agent:Configure

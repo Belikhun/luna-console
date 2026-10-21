@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { Authz } from '$lib/authz.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
@@ -501,6 +502,13 @@
 	}
 
 	/** The account's own verbs; the header's Actions dropdown. */
+	/** Why the viewer may not use a verb (on this account, by default), or undefined when it may. */
+	function refusedTo(action: string, resource: string | null = detail ? `luna:account/${detail.account.username}` : null): string | undefined {
+		return Authz.can(action, resource)
+			? undefined
+			: t('web.common.notAllowed', { action });
+	}
+
 	const accountVerbs: ContextMenuItem[] = $derived(
 		!detail
 			? []
@@ -519,15 +527,17 @@
 							: t('web.accountDetail.enableAccount'),
 						icon: detail.account.enabled ? 'ban' : 'circleCheck',
 						color: detail.account.enabled ? 'warning' : 'default',
-						disabled: detail.self && detail.account.enabled,
-						hint: detail.self && detail.account.enabled ? t('web.accounts.notYourself') : undefined,
+						disabled: (detail.self && detail.account.enabled) || !!refusedTo('account:Administer'),
+						hint: refusedTo('account:Administer')
+							|| (detail.self && detail.account.enabled ? t('web.accounts.notYourself') : undefined),
 						action: () => setEnabled(!detail!.account.enabled)
 					},
 					{
 						label: t('web.accountDetail.unlockAccount'),
 						icon: 'unlock',
-						disabled: !detail.account.lockedUntil,
-						hint: detail.account.lockedUntil ? undefined : t('web.accounts.noneLocked'),
+						disabled: !detail.account.lockedUntil || !!refusedTo('account:Administer'),
+						hint: refusedTo('account:Administer')
+							|| (detail.account.lockedUntil ? undefined : t('web.accounts.noneLocked')),
 						action: unlock
 					},
 					{
@@ -545,8 +555,10 @@
 						label: t('web.accountDetail.deleteAccount'),
 						icon: 'trash',
 						color: 'danger',
-						disabled: detail.self,
-						hint: detail.self ? t('web.accounts.notYourself') : undefined,
+						disabled: detail.self || !!refusedTo('account:Delete'),
+						hint: detail.self
+							? t('web.accounts.notYourself')
+							: refusedTo('account:Delete'),
 						action: () => {
 							deleteOpen = true;
 						}
@@ -768,6 +780,8 @@
 				label: t('web.accountDetail.removeFromGroups', { count: targets.length }),
 				icon: 'userMinus',
 				color: 'danger',
+				disabled: !!refusedTo('iam:UpdateGroup', null),
+				hint: refusedTo('iam:UpdateGroup', null),
 				action: () => askLeave(targets)
 			}
 		];
@@ -896,13 +910,20 @@
 					{#snippet actions()}
 						<Btn
 							icon="userMinus"
-							disabled={pickedGroups.length === 0}
-							title={pickedGroups.length === 0 ? t('web.accountDetail.pickGroups') : undefined}
+							disabled={pickedGroups.length === 0 || !!refusedTo('iam:UpdateGroup', null)}
+							title={refusedTo('iam:UpdateGroup', null)
+								?? (pickedGroups.length === 0 ? t('web.accountDetail.pickGroups') : undefined)}
 							onclick={() => askLeave(pickedGroups)}
 						>
 							{t('web.accountDetail.removeFromGroups', { count: pickedGroups.length })}
 						</Btn>
-						<Btn variant="primary" icon="userPlus" onclick={() => void openJoin()}>
+						<Btn
+							variant="primary"
+							icon="userPlus"
+							disabled={!!refusedTo('iam:UpdateGroup', null)}
+							title={refusedTo('iam:UpdateGroup', null)}
+							onclick={() => void openJoin()}
+						>
 							{t('web.accountDetail.addToGroups')}
 						</Btn>
 					{/snippet}

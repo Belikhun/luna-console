@@ -781,6 +781,8 @@ const env = of('env', 'name');
 const player = of('player', 'player');
 const permissionGroup = of('permission-group', 'name');
 const knowledge = of('knowledge', 'id');
+const iamPolicy = of('policy', 'name');
+const iamGroup = of('group', 'name');
 
 const publishKnowledge = async (ctx: RuleContext): Promise<RuleCheck[]> => [
 	{ action: 'knowledge:Publish', resource: knowledge(ctx) }
@@ -834,6 +836,33 @@ const pluginRecords = async (ctx: RuleContext): Promise<string[]> => {
 };
 
 /** Accounts are addressed by id in the URL; the resource id carries the username. */
+/**
+ * An account edit that renames the account, switches it on or off, unlocks it
+ * or changes the forced password change is administering it: ownership is
+ * recorded by username, so a rename could take over a deleted account's
+ * resources, and the other three are an operator's decisions. The edit screen
+ * sends every field, so only a change counts.
+ */
+const accountEditVerb = async (ctx: RuleContext): Promise<string> => {
+	const parsed = await jsonOf(ctx);
+	const current = ctx.params.id
+		? await getAccount(ctx.params.id)
+		: undefined;
+
+	if (!current) {
+		return 'account:Update';
+	}
+
+	const renames = typeof parsed.username === 'string' && parsed.username !== current.username;
+	const switches = typeof parsed.enabled === 'boolean' && parsed.enabled !== current.enabled;
+	const forces = typeof parsed.mustChangePassword === 'boolean' && parsed.mustChangePassword !== current.mustChangePassword;
+	const unlocks = parsed.unlock === true;
+
+	return renames || switches || forces || unlocks
+		? 'account:Administer'
+		: 'account:Update';
+};
+
 const account = async (ctx: RuleContext): Promise<string | null> => {
 	const id = ctx.params.id;
 
@@ -890,7 +919,7 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/accounts': { GET: { action: 'account:List' }, POST: { action: 'account:Create' } },
 	'/api/accounts/[id]': {
 		GET: { action: 'account:Describe', resource: account },
-		PATCH: { action: 'account:Update', resource: account },
+		PATCH: { action: 'account:Update', actionOf: accountEditVerb, resource: account },
 		DELETE: { action: 'account:Delete', resource: account }
 	},
 	'/api/accounts/[id]/password': { POST: { action: 'account:SetPassword', resource: account } },
@@ -908,19 +937,19 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/iam/policies': { GET: { action: 'iam:ListPolicies' }, POST: { action: 'iam:CreatePolicy' } },
 	'/api/iam/policies/validate': { POST: { action: 'iam:ListPolicies' } },
 	'/api/iam/policies/[name]': {
-		GET: { action: 'iam:DescribePolicy' },
-		PATCH: { action: 'iam:UpdatePolicy' },
-		DELETE: { action: 'iam:DeletePolicy' }
+		GET: { action: 'iam:DescribePolicy', resource: iamPolicy },
+		PATCH: { action: 'iam:UpdatePolicy', resource: iamPolicy },
+		DELETE: { action: 'iam:DeletePolicy', resource: iamPolicy }
 	},
 	'/api/iam/groups': { GET: { action: 'iam:ListGroups' }, POST: { action: 'iam:CreateGroup' } },
 	'/api/iam/groups/[name]': {
-		GET: { action: 'iam:DescribeGroup' },
-		PATCH: { action: 'iam:UpdateGroup' },
-		DELETE: { action: 'iam:DeleteGroup' }
+		GET: { action: 'iam:DescribeGroup', resource: iamGroup },
+		PATCH: { action: 'iam:UpdateGroup', resource: iamGroup },
+		DELETE: { action: 'iam:DeleteGroup', resource: iamGroup }
 	},
 	'/api/iam/groups/[name]/members': {
-		POST: { action: 'iam:UpdateGroup' },
-		DELETE: { action: 'iam:UpdateGroup' }
+		POST: { action: 'iam:UpdateGroup', resource: iamGroup },
+		DELETE: { action: 'iam:UpdateGroup', resource: iamGroup }
 	},
 	'/api/iam/attachments': { POST: { action: 'iam:Attach' }, DELETE: { action: 'iam:Detach' } },
 	'/api/iam/inline': { PUT: { action: 'iam:Attach' }, DELETE: { action: 'iam:Detach' } },

@@ -6,6 +6,7 @@
 	import Select from '$lib/components/Select.svelte';
 	import { LANGUAGES } from '$lib/i18n.svelte';
 	import { t } from '$lib/i18n.svelte';
+	import { Authz } from '$lib/authz.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -70,6 +71,10 @@
 	let email = $state('');
 	let description = $state('');
 	let mustChange = $state(false);
+
+	/** renaming and the forced password change are an administrator's; why not, when they are not */
+	const administers = $derived(Authz.can('account:Administer'));
+	const administerRefusal = $derived(administers ? '' : t('web.common.notAllowed', { action: 'account:Administer' }));
 	/** '' is the console default */
 	let language = $state('');
 	let links = $state<PlayerLink[]>([]);
@@ -292,13 +297,13 @@
 			<FormGrid>
 				<label class="field">
 					<span class="lbl">{t('web.accountNew.username')}</span>
-					<span class="hint">{t('web.accountEdit.usernameHint')}</span>
+					<span class="hint">{administerRefusal || t('web.accountEdit.usernameHint')}</span>
 					<input
 						class="input"
 						type="text"
 						spellcheck="false"
 						autocapitalize="none"
-						disabled={loading}
+						disabled={loading || !administers}
 						bind:value={username}
 					/>
 					{#if nameError}<span class="err">{nameError}</span>{/if}
@@ -392,6 +397,7 @@
 			<label class="check">
 				<Checkbox
 					checked={mustChange}
+					disabled={!administers}
 					onchange={(value) => (mustChange = value)}
 					label={t('web.accountDetail.askForNewPassword')}
 				/>

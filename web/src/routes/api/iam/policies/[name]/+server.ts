@@ -7,18 +7,31 @@ import { json, error } from '@sveltejs/kit';
 import { deletePolicy, getPolicy, iamAudit, updatePolicy } from '$core/iam';
 import { errorMessage, jsonBody } from '$lib/server/http';
 import { journal } from '$lib/server/session';
+import { can, filterAllowed } from '$lib/server/authz';
+import { resourceId } from '$shared/iam/resources';
 
-/** GET → one policy with the trail that names it. */
-export async function GET({ params }) {
+/**
+ * GET → one policy with the trail that names it. An account can open a policy
+ * that reaches it; it sees the accounts and groups it may describe among those
+ * the policy is attached to, and no trail.
+ */
+export async function GET({ params, locals }) {
 	const policy = await getPolicy(params.name);
 
 	if (!policy) {
 		throw error(404, `no policy named ${params.name}`);
 	}
 
-	const audit = await iamAudit({ target: policy.name, limit: 200 });
+	const [accounts, groups, readsAudit] = await Promise.all([
+		filterAllowed(locals, 'account:Describe', policy.attachedTo.accounts, (name) => resourceId('account', name)),
+		filterAllowed(locals, 'iam:DescribeGroup', policy.attachedTo.groups, (name) => resourceId('group', name)),
+		can(locals, 'iam:ReadAudit')
+	]);
+	const audit = readsAudit
+		? await iamAudit({ target: policy.name, limit: 200 })
+		: [];
 
-	return json({ policy, audit });
+	return json({ policy: { ...policy, attachedTo: { accounts, groups } }, audit });
 }
 
 /** PATCH { name?, description?, yaml? } → edit a managed policy. */
