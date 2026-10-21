@@ -201,6 +201,13 @@ export const IAM_ACTIONS: IamActionSpec[] = [
 		["Set", "write"],
 		["Unset", "destructive"],
 	]),
+	// putting code on a host by any route but the addon catalog (an uploaded jar,
+	// a script, a modpack file, a JVM flag) is its own action, asked for beside the
+	// route's normal one, so a policy can hand out every instance verb and still
+	// refuse what would let an account run arbitrary code on the machine
+	...service("code", "instance", [["Deploy", "destructive"]]),
+	// `Moderate` is network-wide moderation; banning on one server is that
+	// instance's `instance:ManagePlayers`
 	...service("player", "player", [
 		["List", "read"],
 		["Describe", "read"],

@@ -88,6 +88,12 @@ export interface AccessRequest {
 	resourceType?: string | null;
 	resourceTags?: Record<string, string>;
 	resourceCreator?: string | null;
+	/**
+	 * For a player: who created each server the player has played on. What
+	 * `luna:PlayerServerCreators` reads, so a policy can grant "players who
+	 * joined a server I own" without listing either.
+	 */
+	playerServerCreators?: string[];
 	/** Tags a create or tag call is asking to set */
 	requestTags?: Record<string, string>;
 }
@@ -132,6 +138,7 @@ export const CONDITION_KEYS = [
 	"luna:ResourceTag/<k>",
 	"luna:ResourceCreator",
 	"luna:ResourceType",
+	"luna:PlayerServerCreators",
 	"luna:RequestTag/<k>",
 	"luna:TagKeys",
 ] as const;
@@ -229,7 +236,7 @@ function normalizeCondition(
 
 /** Whether a condition key is one the evaluator can answer. */
 export function isConditionKey(key: string): boolean {
-	if (key === "luna:username" || key === "luna:ResourceCreator" || key === "luna:ResourceType" || key === "luna:TagKeys") {
+	if (key === "luna:username" || key === "luna:ResourceCreator" || key === "luna:ResourceType" || key === "luna:TagKeys" || key === "luna:PlayerServerCreators") {
 		return true;
 	}
 
@@ -484,6 +491,12 @@ function conditionValues(key: string, principal: PrincipalContext, request: Acce
 
 	if (key === "luna:ResourceType") {
 		return request.resourceType ? [request.resourceType] : undefined;
+	}
+
+	if (key === "luna:PlayerServerCreators") {
+		return request.playerServerCreators && request.playerServerCreators.length > 0
+			? request.playerServerCreators
+			: undefined;
 	}
 
 	if (key === "luna:TagKeys") {

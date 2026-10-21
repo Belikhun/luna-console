@@ -1039,7 +1039,7 @@
 				"List": "List players and moderation records",
 				"Describe": "Read a player's profile, sessions and wallet",
 				"Act": "Move, message and administer a player",
-				"Moderate": "Kick, ban, mute and warn players",
+				"Moderate": "Kick, ban, mute and warn players across the whole network",
 				"ManagePermissions": "Edit a player's in-game permissions"
 			},
 			"permission-group": {
@@ -1130,6 +1130,9 @@
 			"chat": {
 				"Read": "Read one server's chat, and its logs and console, which carry the same lines",
 				"ReadPlayer": "Read one player's chat history (only the lines from servers whose chat may be read)"
+			},
+			"code": {
+				"Deploy": "Put executable code on a server or into the shared pool from anywhere but the addon catalog: uploaded jars, scripts, modpack files and JVM flags"
 			}
 		}
 	},

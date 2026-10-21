@@ -1247,6 +1247,126 @@ export async function accountPermissions(accountIdOrName: string): Promise<Accou
  * condition keys. `root` is allowed without evaluation. The web gate and the
  * simulator both call this; the simulator just shows its answer.
  */
+/** What a decision knows about one resource: its record, plus the facts it inherits. */
+interface ResourceFacts {
+	createdBy: string | null;
+	tags: Record<string, string>;
+	playerServerCreators?: string[];
+}
+
+/** How long a player's servers are remembered between decisions. */
+const PLAYER_SERVERS_TTL_MS = 60 * 1000;
+
+const playerServersCache = new Map<string, { at: number; servers: string[] }>();
+
+/**
+ * The servers a player has played on, from LunaCore's player directory, cached
+ * briefly because a list screen asks about many players at once. An unreachable
+ * directory answers no servers, so a grant that depends on them is refused
+ * rather than guessed.
+ */
+async function playerServers(name: string): Promise<string[]> {
+	const key = name.toLowerCase();
+	const cached = playerServersCache.get(key);
+
+	if (cached && Date.now() - cached.at < PLAYER_SERVERS_TTL_MS) {
+		return cached.servers;
+	}
+
+	const { registeredPlayer } = await import("./services/luna");
+	const result = await registeredPlayer(name).catch(() => null);
+	const servers = new Set<string>();
+
+	if (result?.ok && result.data) {
+		for (const entry of result.data.playtimeByServer ?? []) {
+			servers.add(entry.server);
+		}
+
+		if (result.data.lastServer) {
+			servers.add(result.data.lastServer);
+		}
+	}
+
+	const list = [...servers];
+
+	playerServersCache.set(key, { at: Date.now(), servers: list });
+
+	return list;
+}
+
+/**
+ * The facts every decision reads about its resources, in one pass.
+ *
+ * Two kinds of resource have no record of their own and inherit one, which is
+ * what lets a customer policy speak about "data related to what I own": a
+ * server's chat (`luna:chat/<server>`) takes the creator and tags of the
+ * instance of the same name, and a player carries the creators of every server
+ * they have played on (`luna:PlayerServerCreators`).
+ */
+async function resourceFacts(ids: string[]): Promise<Record<string, ResourceFacts>> {
+	const wanted = new Set(ids);
+
+	for (const id of ids) {
+		const parsed = parseResourceId(id);
+
+		if (parsed?.type === "chat") {
+			wanted.add(resourceId("instance", parsed.name));
+		}
+	}
+
+	const players = ids
+		.map((id) => parseResourceId(id))
+		.filter((parsed): parsed is { type: "player"; name: string } => parsed?.type === "player");
+	const serversByPlayer = new Map<string, string[]>();
+
+	for (const player of players) {
+		const servers = await playerServers(player.name);
+
+		serversByPlayer.set(player.name, servers);
+
+		for (const server of servers) {
+			wanted.add(resourceId("instance", server));
+		}
+	}
+
+	const records = await describeResources([...wanted]);
+	const out: Record<string, ResourceFacts> = {};
+
+	for (const id of ids) {
+		const parsed = parseResourceId(id);
+		const own = records[id];
+		const facts: ResourceFacts = {
+			createdBy: own?.createdBy ?? null,
+			tags: { ...(own?.tags ?? {}) },
+		};
+
+		if (parsed?.type === "chat") {
+			const instance = records[resourceId("instance", parsed.name)];
+
+			facts.createdBy ??= instance?.createdBy ?? null;
+			facts.tags = { ...(instance?.tags ?? {}), ...facts.tags };
+		}
+
+		if (parsed?.type === "player") {
+			const creators = new Set<string>();
+
+			for (const server of serversByPlayer.get(parsed.name) ?? []) {
+				const creator = records[resourceId("instance", server)]?.createdBy;
+
+				if (creator) {
+					creators.add(creator);
+				}
+			}
+
+			facts.playerServerCreators = [...creators];
+		}
+
+		out[id] = facts;
+	}
+
+	return out;
+}
+
 export async function authorize(
 	accountIdOrName: string,
 	action: string,
@@ -1255,16 +1375,18 @@ export async function authorize(
 ): Promise<SimulationResult> {
 	const spec = iamAction(action);
 	const parsed = resource ? parseResourceId(resource) : null;
-	const record = resource ? await describeResource(resource) : null;
+	const facts = resource ? (await resourceFacts([resource]))[resource] ?? null : null;
 
 	const request: AccessRequest = {
 		action: spec?.name ?? action,
 		resource,
 		resourceType: parsed?.type ?? spec?.resourceType ?? null,
-		resourceTags: record?.tags ?? {},
-		resourceCreator: record?.createdBy ?? null,
+		resourceTags: facts?.tags ?? {},
+		resourceCreator: facts?.createdBy ?? null,
+		playerServerCreators: facts?.playerServerCreators,
 		requestTags,
 	};
+	const record = facts;
 
 	if (accountIdOrName === ROOT_ACTOR) {
 		return { verdict: ROOT_VERDICT, request, resource: record ? { createdBy: record.createdBy, tags: record.tags } : null };
@@ -1297,7 +1419,7 @@ export async function simulatePrincipal(
 ): Promise<SimulationResult> {
 	const spec = iamAction(action);
 	const parsed = resource ? parseResourceId(resource) : null;
-	const record = resource ? await describeResource(resource) : null;
+	const record = resource ? (await resourceFacts([resource]))[resource] ?? null : null;
 
 	const request: AccessRequest = {
 		action: spec?.name ?? action,
@@ -1307,6 +1429,7 @@ export async function simulatePrincipal(
 		resourceCreator: options.resourceCreator !== undefined
 			? options.resourceCreator
 			: (record?.createdBy ?? null),
+		playerServerCreators: record?.playerServerCreators,
 		requestTags: options.requestTags,
 	};
 
@@ -1379,7 +1502,7 @@ export async function authorizeMany(
 	}
 
 	const spec = iamAction(action);
-	const records = await describeResources(resources);
+	const records = await resourceFacts(resources);
 
 	for (const id of resources) {
 		const record = records[id];
@@ -1391,6 +1514,7 @@ export async function authorizeMany(
 			resourceType: parsed?.type ?? spec?.resourceType ?? null,
 			resourceTags: record?.tags ?? {},
 			resourceCreator: record?.createdBy ?? null,
+			playerServerCreators: record?.playerServerCreators,
 		}).allowed;
 	}
 

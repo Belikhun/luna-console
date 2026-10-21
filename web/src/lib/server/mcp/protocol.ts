@@ -21,7 +21,7 @@ import { knowledgeFor, mcpInstructions, mcpServerVersion, recordMcpCall } from '
 import type { McpOnBehalfOf, McpPrincipal } from '$core/mcp';
 import { allowedTools, mcpTool, scopeCoversInstance, validateMcpArgs } from '$shared/mcptools';
 import { TOOL_HANDLERS, ToolError } from './handlers';
-import { refuseFor, toolChecks, toolPossible } from './iam';
+import { refuseFor, toolChecks, toolLiveChecks, toolPossible } from './iam';
 import { withActor } from '$client/actor';
 import type { PrincipalContext } from '$shared/iam/grammar';
 import type { ToolArgs } from './handlers';
@@ -247,7 +247,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 			return await finish(false, `tool "${name}" is not available when acting for a console account`, 'no iam rule');
 		}
 
-		const refusal = await refuseFor(ctx.account, checks);
+		const refusal = await refuseFor(ctx.account, [...checks, ...await toolLiveChecks(name, args)]);
 
 		if (refusal) {
 			const where = refusal.check.resource

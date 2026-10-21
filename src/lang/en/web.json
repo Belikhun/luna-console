@@ -5370,7 +5370,8 @@
 		"mcp": "MCP access",
 		"knowledge": "Knowledge",
 		"agent": "Mèo Béo",
-		"chat": "Chat"
+		"chat": "Chat",
+		"code": "Executable code"
 	},
 	"iamList": {
 		"policiesTitle": "Policies",

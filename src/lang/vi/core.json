@@ -1039,7 +1039,7 @@
 				"List": "Liệt kê người chơi và hồ sơ kiểm duyệt",
 				"Describe": "Xem hồ sơ, phiên và ví của người chơi",
 				"Act": "Chuyển, nhắn tin và quản trị một người chơi",
-				"Moderate": "Kick, ban, mute và cảnh cáo người chơi",
+				"Moderate": "Kick, ban, mute và cảnh cáo người chơi trên toàn mạng",
 				"ManagePermissions": "Sửa quyền trong game của người chơi"
 			},
 			"permission-group": {
@@ -1130,6 +1130,9 @@
 			"chat": {
 				"Read": "Đọc chat của một máy chủ, cùng log và console của nó (chứa cùng các dòng đó)",
 				"ReadPlayer": "Đọc lịch sử chat của một người chơi (chỉ các dòng từ máy chủ được phép đọc chat)"
+			},
+			"code": {
+				"Deploy": "Đưa mã thực thi lên máy chủ hoặc vào kho dùng chung từ bất kỳ nguồn nào ngoài danh mục addon: jar tải lên, script, tệp modpack và cờ JVM"
 			}
 		}
 	},

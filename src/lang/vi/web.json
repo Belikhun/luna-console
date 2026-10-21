@@ -5370,7 +5370,8 @@
 		"mcp": "Truy cập MCP",
 		"knowledge": "Kiến thức",
 		"agent": "Mèo Béo",
-		"chat": "Chat"
+		"chat": "Chat",
+		"code": "Mã thực thi"
 	},
 	"iamList": {
 		"policiesTitle": "Chính sách",

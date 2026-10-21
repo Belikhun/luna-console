@@ -1,0 +1,121 @@
+# CustomerAccess: for people who rent the cluster to run their own servers.
+#
+# Attached to the "customer" group, on top of the defaults every account keeps
+# (OwnerAccess: every action on what the account created, chat excluded;
+# SelfServiceAccess: its own password, sessions and details). Together they give
+# a customer full control of the instances they launched and of the data that
+# belongs to them, the whole addon catalog, and nothing of anybody else's.
+#
+# What stays closed, whatever OwnerAccess would allow, is anything that runs
+# code of the customer's choosing on the host (code:*, the terminal, JVM flags
+# and environment variables), anything network-wide (moderation, permissions,
+# the proxy, ports, hostnames), and the shared agent and its memory.
+Version: 1
+Statement:
+  # starting things of their own: what they create is theirs from then on
+  - Sid: CreateOwnResources
+    Effect: Allow
+    Action:
+      - instance:Create
+      - addon-group:Create
+      - schedule:Create
+    Resource: "*"
+
+  # the addon catalog and the shared pool, read in full, so any catalog addon
+  # can be found and put on their own servers
+  - Sid: BrowseCatalog
+    Effect: Allow
+    Action:
+      - catalog:Read
+      - plugin:List
+      - plugin:Describe
+      - plugin:Install
+      - pack:List
+      - pack:Describe
+      - pack:Install
+      - datapack:List
+      - datapack:Describe
+      - datapack:Install
+      - addon-group:List
+      - addon-group:Describe
+      - profile:List
+      - runtime:List
+      - instance:List
+      - schedule:List
+      - job:Describe
+    Resource: "*"
+
+  # the chat (and the logs and console that carry it) of servers they own: a
+  # server's chat inherits its instance's creator
+  - Sid: OwnChatAndLogs
+    Effect: Allow
+    Action: chat:Read
+    Resource: luna:chat/*
+    Condition:
+      StringEquals:
+        luna:ResourceCreator: "${luna:username}"
+
+  # players who have played on one of their servers: the profile, and the chat
+  # history (whose lines are kept to the servers they may read)
+  - Sid: PlayersOnOwnServers
+    Effect: Allow
+    Action:
+      - player:Describe
+      - chat:ReadPlayer
+    Resource: luna:player/*
+    Condition:
+      ForAnyValue:StringEquals:
+        luna:PlayerServerCreators: "${luna:username}"
+
+  # never run code of their choosing on the host: uploaded or linked jars and
+  # modpacks, executable files, JVM flags and agents, the terminal, shells
+  - Sid: NoArbitraryCode
+    Effect: Deny
+    Action:
+      - code:*
+      - shell:*
+      # environment variables reach the JVM unread by luna, and the cluster-wide
+      # ones carry other people's settings
+      - env:*
+      - profile:Create
+      - profile:Update
+      - profile:Delete
+      - runtime:Install
+      - runtime:Remove
+    Resource: "*"
+
+  # nothing network-wide: moderation, in-game permissions, the proxy, ports,
+  # hostnames, machines, the cluster feed and cleanup
+  - Sid: NoNetworkLevel
+    Effect: Deny
+    Action:
+      - player:List
+      - player:Act
+      - player:Moderate
+      - player:ManagePermissions
+      - permission-group:*
+      - network:*
+      - port-pool:*
+      - domain:*
+      - machine:*
+      - instance:ManageNetwork
+      - event:Read
+      - journal:Read
+      - cleanup:*
+      - publicsite:*
+    Resource: "*"
+
+  # the console's own administration, and the shared agent whose memory every
+  # account would read
+  - Sid: NoConsoleAdministration
+    Effect: Deny
+    Action:
+      - iam:*
+      - mcp:*
+      - knowledge:*
+      - agent:*
+      - account:List
+      - account:Create
+      - account:Delete
+      - account:ReadAudit
+    Resource: "*"

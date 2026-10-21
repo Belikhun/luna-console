@@ -29,7 +29,21 @@ import type { IamResourceType } from '$shared/iam/actions';
 import { MCP_TOOLS, type McpScope } from '$shared/mcptools';
 
 import type { ToolArgs, ToolContext } from './errors';
-import { archiveHoldsChat, pathIsLog } from '$lib/server/authz/routes';
+import {
+	archiveHoldsChat,
+	datapackRemovalChecks,
+	datapackTargetChecks,
+	envIsCode,
+	moveTargetIsCode,
+	onInstances,
+	packRuleTargets,
+	pathIsCode,
+	pathIsLog,
+	pluginRemovalChecks,
+	pluginTargetChecks,
+	pluginUnpinChecks,
+	respackServerChecks
+} from '$lib/server/authz/routes';
 
 export interface IamCheck {
 	action: string;
@@ -102,6 +116,45 @@ const chatIfArchive = (pathKey: string, instanceKey: string): Rule => (args) =>
 		? [{ action: 'chat:Read', resource: id('chat', text(args, instanceKey)) }]
 		: [];
 
+/** `code:Deploy` on the instance, whatever the arguments: a jar or a pack file from bytes or a URL. */
+const code = (instanceKey?: string): Rule => (args) => [
+	{ action: 'code:Deploy', resource: instanceKey ? id('instance', text(args, instanceKey)) : null }
+];
+
+/** Writing a file whose path is code (a jar, a script, the JVM's own argument files). */
+const codeIfPath = (pathKey: string, instanceKey = 'instance'): Rule => (args) =>
+	pathIsCode(text(args, pathKey))
+		? code(instanceKey)(args)
+		: [];
+
+/**
+ * Copying or moving to a destination that is code, or that carries a folder into
+ * a code folder; a `to` ending in "/" lands the source under its own name.
+ */
+const codeIfMoved = (instanceKey = 'instance'): Rule => (args) => {
+	const to = text(args, 'to') ?? '';
+	const from = text(args, 'from') ?? '';
+	const target = to.endsWith('/')
+		? `${to}${from.replace(/\/+$/, '').split('/').pop() ?? ''}`
+		: to;
+
+	return moveTargetIsCode(target)
+		? code(instanceKey)(args)
+		: [];
+};
+
+/** A modpack from an attachment or a URL rather than a Modrinth slug. */
+const codeIfPackFile = (instanceKey: string): Rule => (args) =>
+	text(args, 'upload') !== null || text(args, 'url') !== null
+		? code(instanceKey)(args)
+		: [];
+
+/** `instance:ManageAddons` on every target a list argument names; a wildcard asks for `luna:instance/*`. */
+const addonTargets = (key: string): Rule => (args) => onInstances('instance:ManageAddons', list(args, key));
+
+/** The same for a resource pack's server rules (`!x` names x, `all` is every server). */
+const packServers: Rule = (args) => onInstances('instance:ManageAddons', packRuleTargets(list(args, 'servers')));
+
 export const TOOL_IAM: Record<string, Rule> = {
 	cluster_status: plain('instance:List'),
 	instance_status: instance('instance:Describe'),
@@ -132,7 +185,14 @@ export const TOOL_IAM: Record<string, Rule> = {
 	player_message: on('player:Act', 'player', 'player'),
 
 	env_list: all(plain('env:List'), when('instance', instance('instance:Describe'))),
-	env_set: all(on('env:Set', 'env', 'name'), when('instance', instance('instance:ManageEnvironment'))),
+	env_set: all(
+		on('env:Set', 'env', 'name'),
+		when('instance', instance('instance:ManageEnvironment')),
+		// a variable the JVM or the shell reads by itself runs code at start
+		(args) => envIsCode(text(args, 'name'))
+			? [{ action: 'code:Deploy', resource: id('instance', text(args, 'instance')) }]
+			: []
+	),
 	env_unset: all(on('env:Unset', 'env', 'name'), when('instance', instance('instance:ManageEnvironment'))),
 	settings_get: instance('instance:Describe'),
 
@@ -140,16 +200,17 @@ export const TOOL_IAM: Record<string, Rule> = {
 	file_read: all(instance('instance:ReadFiles'), chatIfLog('path', 'instance')),
 	file_stat: instance('instance:ReadFiles'),
 	file_find: instance('instance:ReadFiles'),
-	file_write: instance('instance:WriteFiles'),
-	file_edit: instance('instance:WriteFiles'),
-	file_mkdir: instance('instance:WriteFiles'),
-	file_copy: all(instance('instance:WriteFiles'), chatIfLog('from', 'instance')),
-	file_move: all(instance('instance:WriteFiles'), chatIfLog('from', 'instance')),
+	file_write: all(instance('instance:WriteFiles'), codeIfPath('path')),
+	file_edit: all(instance('instance:WriteFiles'), codeIfPath('path')),
+	file_mkdir: all(instance('instance:WriteFiles'), codeIfPath('path')),
+	file_copy: all(instance('instance:WriteFiles'), chatIfLog('from', 'instance'), codeIfMoved()),
+	file_move: all(instance('instance:WriteFiles'), chatIfLog('from', 'instance'), codeIfMoved()),
 	file_delete: instance('instance:WriteFiles'),
 	file_transfer: all(
 		instance('instance:ReadFiles', 'fromInstance'),
 		instance('instance:WriteFiles', 'toInstance'),
-		chatIfArchive('from', 'fromInstance')
+		chatIfArchive('from', 'fromInstance'),
+		codeIfMoved('toInstance')
 	),
 
 	// the CLI and bash run with the machine's own authority, so only an account
@@ -162,19 +223,20 @@ export const TOOL_IAM: Record<string, Rule> = {
 	addon_search: plain('catalog:Read'),
 	addon_versions: all(plain('catalog:Read'), when('instance', instance('instance:Describe'))),
 	addon_check_updates: each('plugin:Describe', 'plugin', 'names'),
-	addon_install: plain('plugin:Install'),
-	addon_install_url: plain('plugin:Install'),
-	addon_install_upload: plain('plugin:Install'),
+	addon_install: all(plain('plugin:Install'), addonTargets('targets')),
+	addon_install_url: all(plain('plugin:Install'), code(), addonTargets('targets')),
+	addon_install_upload: all(plain('plugin:Install'), code(), addonTargets('targets')),
+	// a change of targets is checked against the pool as it stands (`TOOL_IAM_LIVE`)
 	addon_configure: on('plugin:Configure', 'plugin', 'name'),
 	addon_update: each('plugin:Update', 'plugin', 'names'),
-	addon_pin: on('plugin:Configure', 'plugin', 'name'),
-	addon_unpin: on('plugin:Configure', 'plugin', 'name'),
-	addon_deploy: all(on('plugin:Configure', 'plugin', 'name'), each('instance:ManageAddons', 'instance', 'instances')),
-	addon_remove: on('plugin:Remove', 'plugin', 'name'),
+	addon_pin: all(on('plugin:Configure', 'plugin', 'name'), addonTargets('targets')),
+	addon_unpin: all(on('plugin:Configure', 'plugin', 'name'), addonTargets('targets')),
+	addon_deploy: all(on('plugin:Configure', 'plugin', 'name'), addonTargets('instances')),
+	addon_remove: all(on('plugin:Remove', 'plugin', 'name'), addonTargets('from')),
 	modpack_search: plain('catalog:Read'),
 	modpack_versions: plain('catalog:Read'),
-	modpack_install: on('instance:Create', 'instance', 'name'),
-	modpack_update: instance('instance:Configure'),
+	modpack_install: all(on('instance:Create', 'instance', 'name'), codeIfPackFile('name')),
+	modpack_update: all(instance('instance:Configure'), codeIfPackFile('instance')),
 
 	domain_list: plain('domain:List'),
 	domain_records: (args) => [{ action: 'domain:Describe', resource: id('domain', domainLabel(text(args, 'name'))) }],
@@ -202,17 +264,17 @@ export const TOOL_IAM: Record<string, Rule> = {
 	datapacks_list: plain('datapack:List'),
 	pack_search: plain('catalog:Read'),
 	pack_check_updates: plain('catalog:Read'),
-	respack_install: plain('pack:Install'),
-	respack_install_upload: plain('pack:Install'),
+	respack_install: all(plain('pack:Install'), packServers),
+	respack_install_upload: all(plain('pack:Install'), packServers),
 	respack_configure: on('pack:Configure', 'pack', 'key'),
 	respack_update: each('pack:Update', 'pack', 'names'),
 	respack_push: all(on('pack:Configure', 'pack', 'key'), plain('player:Act')),
 	respack_remove: on('pack:Remove', 'pack', 'key'),
-	datapack_install: plain('datapack:Install'),
-	datapack_install_upload: plain('datapack:Install'),
+	datapack_install: all(plain('datapack:Install'), addonTargets('targets')),
+	datapack_install_upload: all(plain('datapack:Install'), addonTargets('targets')),
 	datapack_configure: on('datapack:Configure', 'datapack', 'name'),
 	datapack_update: each('datapack:Update', 'datapack', 'names'),
-	datapack_remove: on('datapack:Remove', 'datapack', 'name'),
+	datapack_remove: all(on('datapack:Remove', 'datapack', 'name'), addonTargets('from')),
 
 	// the agent's own memory: what it remembers for one account it remembers for
 	// every account, so writing to it is a knowledge action like any other
@@ -251,6 +313,43 @@ export const TOOL_IAM: Record<string, Rule> = {
 	resource_tag: (args) => [{ action: 'tag:Tag', resource: text(args, 'id') }],
 	resource_untag: (args) => [{ action: 'tag:Untag', resource: text(args, 'id') }]
 };
+
+/**
+ * The checks that depend on the cluster as it stands, run beside a tool's
+ * `TOOL_IAM` rule: a new target list is checked for every instance it adds or
+ * drops, and a verb with no list ("unpin everywhere", "remove from the pool")
+ * for every instance it would reach. Kept apart because `toolPossible` probes the
+ * static rules without touching the daemon.
+ */
+const TOOL_IAM_LIVE: Record<string, (args: ToolArgs) => Promise<IamCheck[]>> = {
+	addon_configure: async (args) => Array.isArray(args.targets)
+		? await pluginTargetChecks(text(args, 'name') ?? '', list(args, 'targets'))
+		: [],
+	addon_unpin: async (args) => list(args, 'targets').length === 0
+		? await pluginUnpinChecks(text(args, 'name') ?? '', [])
+		: [],
+	addon_remove: async (args) => list(args, 'from').length === 0
+		? await pluginRemovalChecks(text(args, 'name') ?? '', [])
+		: [],
+	datapack_configure: async (args) => Array.isArray(args.targets)
+		? await datapackTargetChecks(text(args, 'name') ?? '', list(args, 'targets'))
+		: [],
+	datapack_remove: async (args) => list(args, 'from').length === 0
+		? await datapackRemovalChecks(text(args, 'name') ?? '', [])
+		: [],
+	respack_configure: async (args) => Array.isArray(args.servers)
+		? await respackServerChecks(text(args, 'key') ?? '', list(args, 'servers'))
+		: []
+};
+
+/** The state-dependent checks a call makes on top of its static ones; empty for most tools. */
+export async function toolLiveChecks(tool: string, args: ToolArgs): Promise<IamCheck[]> {
+	const rule = TOOL_IAM_LIVE[tool];
+
+	return rule
+		? await rule(args)
+		: [];
+}
 
 /** Catalog tools with no rule; empty when every tool is covered. */
 export const TOOL_IAM_COVERAGE: string[] = MCP_TOOLS.map((tool) => tool.name).filter((name) => !TOOL_IAM[name]);

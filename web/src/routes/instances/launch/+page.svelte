@@ -100,10 +100,13 @@
 			setSource('modpack');
 		}
 
-		const [catalog, insts, cluster] = await Promise.all([
+		// an account that may not list machines (a customer) still launches: its
+		// instance goes to the primary, which is the default target anyway
+		const [catalog, insts, cluster, defaults] = await Promise.all([
 			api('/software'),
 			api('/instances'),
-			api('/daemons')
+			api('/daemons').catch(() => ({ daemons: [] })),
+			api('/instances/defaults')
 		]);
 
 		// a proxy is created by the cluster's own bootstrap, never from this form
@@ -129,23 +132,14 @@
 		primaryName = daemons.find((row) => row.mode === 'primary')?.name ?? '';
 		daemon = primaryName;
 
-		// the java profiles and the settings schema both come off any existing
-		// backend's config route; there is no instance yet to read them from
-		const other = existing.find((entry: string) => entry !== 'proxy');
+		profiles = defaults.profiles;
+		schema = defaults.schema;
+		groups = defaults.groups;
 
-		if (other) {
-			const cfg = await api(`/instances/${other}/config`);
-
-			profiles = cfg.profiles;
-			schema = cfg.schema;
-			groups = cfg.groups;
-
-			// a new instance starts from the schema's own defaults, never from the
-			// instance the schema happened to be read through
-			settings = Object.fromEntries(
-				cfg.schema.map((spec: any) => [spec.key, spec.fallback])
-			);
-		}
+		// a new instance starts from the schema's own defaults
+		settings = Object.fromEntries(
+			defaults.schema.map((spec: any) => [spec.key, spec.fallback])
+		);
 
 		// runtimes the fleet already holds; picking one the target machine lacks is
 		// allowed too, it just installs on the first start
