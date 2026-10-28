@@ -478,11 +478,17 @@ export async function broadcast(
 	return await call<{ reached: number; server: string }>("/admin/broadcast", { form });
 }
 
-/** Disconnect a player, by name or UUID. */
-export async function kick(player: string, reason = ""): Promise<LunaResult<{ username: string }>> {
+/** Disconnect a player, by name or UUID; `actor` names who did it in the moderation log. */
+export async function kick(player: string, reason = "", actor = ""): Promise<LunaResult<{ username: string }>> {
+	const form: Record<string, string> = { reason };
+
+	if (actor) {
+		form.actor = actor;
+	}
+
 	return await call<{ username: string }>(
 		`/admin/players/${encodeURIComponent(player)}/kick`,
-		{ form: { reason } },
+		{ form },
 	);
 }
 
@@ -957,7 +963,7 @@ export async function networkIpBans(): Promise<LunaResult<{ total: number; bans:
 export async function addNetworkIpBan(
 	ip: string,
 	opts: { reason?: string; actor?: string; expiresAt?: number } = {},
-): Promise<LunaResult<NetworkIpBan>> {
+): Promise<LunaResult<NetworkIpBanAdded>> {
 	const form: Record<string, string> = { action: "add", ip };
 
 	if (opts.reason) {
@@ -972,7 +978,7 @@ export async function addNetworkIpBan(
 		form.expiresAt = String(opts.expiresAt);
 	}
 
-	return await call<NetworkIpBan>("/network/ip-bans", { form });
+	return await call<NetworkIpBanAdded>("/network/ip-bans", { form });
 }
 
 /** Lift a network-level IP ban. */
@@ -987,6 +993,82 @@ export async function removeNetworkIpBan(
 	}
 
 	return await call<{ ip: string; removed: boolean }>("/network/ip-bans", { form });
+}
+
+/** What placing an IP ban did, beyond the ban itself (LunaCore 2026-10-28 and later). */
+export interface NetworkIpBanAdded extends NetworkIpBan {
+	/** The player whose address was banned, when the target was a player rather than an IP */
+	resolvedFrom?: string;
+	/** Players disconnected because they were online from that address */
+	kicked?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Network-level account bans, enforced by the proxy at pre-login (by name) and
+// login (by UUID)
+// ---------------------------------------------------------------------------
+
+export interface NetworkBan {
+	username: string;
+	/** Blank when the name was banned before the network ever saw it */
+	uuid: string;
+	reason: string;
+	actor: string;
+	createdAtEpochMillis: number;
+	/** 0 = permanent */
+	expiresAtEpochMillis: number;
+	/** Refused login attempts since the ban was placed */
+	hits: number;
+	lastHitAtEpochMillis: number;
+}
+
+/** Every account the proxy refuses, newest first. */
+export async function networkBans(): Promise<LunaResult<{ total: number; bans: NetworkBan[] }>> {
+	return await call<{ total: number; bans: NetworkBan[] }>("/network/bans");
+}
+
+/**
+ * Ban an account from the whole network: an online player, a player the
+ * directory knows, or a bare username never seen yet. Disconnects them when
+ * online; recorded in the moderation log by LunaCore.
+ */
+export async function addNetworkBan(
+	player: string,
+	opts: { reason?: string; actor?: string; expiresAt?: number } = {},
+): Promise<LunaResult<NetworkBan & { kicked: number }>> {
+	const form: Record<string, string> = { action: "add", player };
+
+	if (opts.reason) {
+		form.reason = opts.reason;
+	}
+
+	if (opts.actor) {
+		form.actor = opts.actor;
+	}
+
+	if (opts.expiresAt) {
+		form.expiresAt = String(opts.expiresAt);
+	}
+
+	return await call<NetworkBan & { kicked: number }>("/network/bans", { form });
+}
+
+/** Lift a network-level account ban, by name or UUID. */
+export async function removeNetworkBan(
+	player: string,
+	opts: { reason?: string; actor?: string } = {},
+): Promise<LunaResult<{ username: string; removed: boolean }>> {
+	const form: Record<string, string> = { action: "remove", player };
+
+	if (opts.reason) {
+		form.reason = opts.reason;
+	}
+
+	if (opts.actor) {
+		form.actor = opts.actor;
+	}
+
+	return await call<{ username: string; removed: boolean }>("/network/bans", { form });
 }
 
 // ---------------------------------------------------------------------------

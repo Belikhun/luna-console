@@ -754,7 +754,13 @@
 			"iam_inline_put": "Đặt chính sách nội tuyến",
 			"iam_inline_delete": "Xoá chính sách nội tuyến",
 			"resource_tag": "Gắn thẻ tài nguyên",
-			"resource_untag": "Gỡ thẻ khỏi tài nguyên"
+			"resource_untag": "Gỡ thẻ khỏi tài nguyên",
+			"bans_list": "Xem danh sách cấm",
+			"player_kick": "Kick người chơi",
+			"player_ban": "Cấm người chơi",
+			"player_unban": "Gỡ cấm người chơi",
+			"ip_ban": "Cấm IP",
+			"ip_unban": "Gỡ cấm IP"
 		}
 	},
 	"instancefiles": {

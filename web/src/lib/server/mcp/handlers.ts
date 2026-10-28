@@ -59,7 +59,9 @@ import {
 import type { ExistingPolicy } from '$core/instancefiles';
 import { runHostCommand } from '$core/hostshell';
 import { cliBinary, root } from '$lib/server/luna';
+import { requireWholeCluster } from './args';
 import { ToolError } from './errors';
+import { banExpiry } from '$shared/banduration';
 import type { ToolArgs, ToolContext, ToolHandler } from './errors';
 import { ADDON_HANDLERS } from './addons';
 import { NETWORK_HANDLERS } from './network';
@@ -943,6 +945,117 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		}
 
 		return { sent: true, player: result.data.username };
+	},
+
+	// -- moderation ------------------------------------------------------------
+	async bans_list(args) {
+		const kind = optStr(args, 'kind') ?? 'all';
+		const out: Record<string, unknown> = {};
+
+		if (kind !== 'ips') {
+			const players = await luna.networkBans();
+
+			if (!players.ok || !players.data) {
+				throw new ToolError(players.error ?? 'the proxy did not answer');
+			}
+
+			out.players = players.data;
+		}
+
+		if (kind !== 'players') {
+			const ips = await luna.networkIpBans();
+
+			if (!ips.ok || !ips.data) {
+				throw new ToolError(ips.error ?? 'the proxy did not answer');
+			}
+
+			out.ips = ips.data;
+		}
+
+		return out;
+	},
+
+	async player_kick(args, ctx) {
+		requireWholeCluster(ctx, 'network moderation');
+
+		const result = await luna.kick(str(args, 'player').trim(), optStr(args, 'reason') ?? '', ctx.account ?? ctx.actor);
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.error ?? 'the proxy did not answer');
+		}
+
+		return { kicked: true, player: result.data.username };
+	},
+
+	async player_ban(args, ctx) {
+		requireWholeCluster(ctx, 'network moderation');
+
+		const expiresAt = banExpiry(optStr(args, 'duration'));
+
+		if (expiresAt === null) {
+			throw new ToolError(`"${optStr(args, 'duration')}" is not a ban length; use 30m, 12h, 7d, 2w, 1d12h or perm`);
+		}
+
+		const result = await luna.addNetworkBan(str(args, 'player').trim(), {
+			reason: optStr(args, 'reason'),
+			actor: ctx.account ?? ctx.actor,
+			expiresAt,
+		});
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.error ?? 'the proxy did not answer');
+		}
+
+		return result.data;
+	},
+
+	async player_unban(args, ctx) {
+		requireWholeCluster(ctx, 'network moderation');
+
+		const result = await luna.removeNetworkBan(str(args, 'player').trim(), {
+			reason: optStr(args, 'reason'),
+			actor: ctx.account ?? ctx.actor,
+		});
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.error ?? 'the proxy did not answer');
+		}
+
+		return result.data;
+	},
+
+	async ip_ban(args, ctx) {
+		requireWholeCluster(ctx, 'network moderation');
+
+		const expiresAt = banExpiry(optStr(args, 'duration'));
+
+		if (expiresAt === null) {
+			throw new ToolError(`"${optStr(args, 'duration')}" is not a ban length; use 30m, 12h, 7d, 2w, 1d12h or perm`);
+		}
+
+		const result = await luna.addNetworkIpBan(str(args, 'target').trim(), {
+			reason: optStr(args, 'reason'),
+			actor: ctx.account ?? ctx.actor,
+			expiresAt,
+		});
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.error ?? 'the proxy did not answer');
+		}
+
+		return result.data;
+	},
+
+	async ip_unban(args, ctx) {
+		requireWholeCluster(ctx, 'network moderation');
+
+		const result = await luna.removeNetworkIpBan(str(args, 'ip').trim(), { actor: ctx.account ?? ctx.actor });
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.error ?? 'the proxy did not answer');
+		}
+
+		return result.data;
 	},
 
 	// -- config ----------------------------------------------------------------

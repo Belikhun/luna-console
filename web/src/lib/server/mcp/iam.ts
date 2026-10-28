@@ -230,6 +230,14 @@ export const TOOL_IAM: Record<string, Rule> = {
 	player_transfer: all(on('player:Act', 'player', 'player'), instance('instance:Describe', 'server')),
 	player_message: on('player:Act', 'player', 'player'),
 
+	// the same actions the console's Moderation page is gated on
+	bans_list: plain('player:List'),
+	player_kick: on('player:Moderate', 'player', 'player'),
+	player_ban: on('player:Moderate', 'player', 'player'),
+	player_unban: on('player:Moderate', 'player', 'player'),
+	ip_ban: plain('player:Moderate'),
+	ip_unban: plain('player:Moderate'),
+
 	env_list: all(plain('env:List'), when('instance', instance('instance:Describe'))),
 	env_set: all(
 		on('env:Set', 'env', 'name'),

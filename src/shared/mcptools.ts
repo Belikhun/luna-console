@@ -21,6 +21,11 @@
  * token limited to some instances (instance_set_port excepted, since it names
  * the one instance it changes).
  *
+ * `moderation` is network-wide kicks, bans and IP bans, kept apart from
+ * `players` so a token that may move or message players (the in-game chat
+ * bot) does not also get to ban them. Its writes reach every server, so they
+ * are closed to instance-limited tokens.
+ *
  * `iam` / `iam-write` cover IAM policies, groups, attachments, inline policies
  * and resource tags; both are cluster-wide too, and a token acting for no
  * console account may not grant the access-management or shell powers.
@@ -37,6 +42,7 @@ export type McpToolGroup =
 	| "observe"
 	| "control"
 	| "players"
+	| "moderation"
 	| "config"
 	| "files"
 	| "files-write"
@@ -60,6 +66,7 @@ export const MCP_TOOL_GROUPS: McpToolGroup[] = [
 	"observe",
 	"control",
 	"players",
+	"moderation",
 	"config",
 	"files",
 	"files-write",
@@ -478,6 +485,84 @@ export const MCP_TOOLS: McpToolSpec[] = [
 			["player", "message"],
 		),
 		annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+	},
+
+	// -- moderation ------------------------------------------------------------
+	{
+		name: "bans_list",
+		group: "moderation",
+		description: "Network-wide bans the proxy enforces: player bans (refused by name at pre-login and by UUID at login) and IP bans (refused at pre-login), with reason, who placed them, expiry and how often each was refused since.",
+		inputSchema: object({
+			kind: { type: "string", enum: ["players", "ips", "all"], description: "Which list (default all)." },
+		}),
+		annotations: READ,
+	},
+	{
+		name: "player_kick",
+		group: "moderation",
+		description: "Disconnect an online player from the network, with a reason they see. Recorded in the moderation log under your account.",
+		inputSchema: object(
+			{
+				player: { type: "string", description: "Exact username or UUID of an online player." },
+				reason: { type: "string", description: "Shown to the player (MiniMessage allowed).", maxLength: 300 },
+			},
+			["player"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: false },
+	},
+	{
+		name: "player_ban",
+		group: "moderation",
+		description: "Ban a player from the whole network: an online player, one the player directory knows, or a bare username never seen (a scanner's bot name). Disconnects them if online; refused at every later login. Confirm with the operator unless they asked for it.",
+		inputSchema: object(
+			{
+				player: { type: "string", description: "Username or UUID.", maxLength: 64 },
+				reason: { type: "string", description: "Why; shown to the player.", maxLength: 300 },
+				duration: { type: "string", description: "How long: 30m, 12h, 7d, 2w, 1d12h or perm. Omit for permanent.", maxLength: 20 },
+			},
+			["player"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "player_unban",
+		group: "moderation",
+		description: "Lift a network-wide player ban, by username or UUID.",
+		inputSchema: object(
+			{
+				player: { type: "string", description: "Username or UUID.", maxLength: 64 },
+				reason: { type: "string", description: "Why, for the moderation log.", maxLength: 300 },
+			},
+			["player"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "ip_ban",
+		group: "moderation",
+		description: "Ban an address from the whole network: a bare IP, or a player whose current or last known address is banned instead. Everyone online from it is disconnected and every later connection from it is refused before login. Mind shared addresses (VPNs, Cloudflare WARP, carrier NAT) that real players also use.",
+		inputSchema: object(
+			{
+				target: { type: "string", description: "A bare IPv4/IPv6 address, or a username.", maxLength: 64 },
+				reason: { type: "string", description: "Why; shown on refusal.", maxLength: 300 },
+				duration: { type: "string", description: "How long: 30m, 12h, 7d, 2w, 1d12h or perm. Omit for permanent.", maxLength: 20 },
+			},
+			["target"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
+		name: "ip_unban",
+		group: "moderation",
+		description: "Lift a network-wide IP ban.",
+		inputSchema: object(
+			{
+				ip: { type: "string", description: "The banned address, as bans_list shows it.", maxLength: 64 },
+				reason: { type: "string", description: "Why, for the moderation log.", maxLength: 300 },
+			},
+			["ip"],
+		),
+		annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
 	},
 
 	// -- config ----------------------------------------------------------------

@@ -4511,7 +4511,8 @@
 			"packs": "Read packs",
 			"packs-write": "Manage packs",
 			"iam": "Read access management",
-			"iam-write": "Manage access"
+			"iam-write": "Manage access",
+			"moderation": "Moderation"
 		},
 		"groupHint": {
 			"observe": "status, logs, players, machines, events; reads only",
@@ -4533,7 +4534,8 @@
 			"packs": "resource packs and data packs, provider search and pending updates",
 			"packs-write": "install, upload, configure, update, push and remove resource packs and data packs",
 			"iam": "IAM policies, groups, an account's permissions, the simulator, the IAM trail and resource tags; never credentials",
-			"iam-write": "create, edit and delete policies and groups, change members, attach and detach, inline policies and resource tags; a token acting for no console account cannot grant iam, account or shell permissions"
+			"iam-write": "create, edit and delete policies and groups, change members, attach and detach, inline policies and resource tags; a token acting for no console account cannot grant iam, account or shell permissions",
+			"moderation": "kick, ban and IP-ban players across the whole network"
 		}
 	},
 	"mcpNew": {

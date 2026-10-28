@@ -45,6 +45,8 @@ export type {
 	ModerationLogPage,
 	ModerationRecord,
 	NetworkIpBan,
+	NetworkIpBanAdded,
+	NetworkBan,
 	PermissionNode,
 	PermissionGroupSummary,
 	PermissionGroupDetail,
@@ -86,6 +88,9 @@ export const recordModeration = call("lunaApi.recordModeration") as typeof core.
 export const networkIpBans = call("lunaApi.networkIpBans") as typeof core.networkIpBans;
 export const addNetworkIpBan = call("lunaApi.addNetworkIpBan") as typeof core.addNetworkIpBan;
 export const removeNetworkIpBan = call("lunaApi.removeNetworkIpBan") as typeof core.removeNetworkIpBan;
+export const networkBans = call("lunaApi.networkBans") as typeof core.networkBans;
+export const addNetworkBan = call("lunaApi.addNetworkBan") as typeof core.addNetworkBan;
+export const removeNetworkBan = call("lunaApi.removeNetworkBan") as typeof core.removeNetworkBan;
 export const permissionGroups = call("lunaApi.permissionGroups") as typeof core.permissionGroups;
 export const permissionGroup = call("lunaApi.permissionGroup") as typeof core.permissionGroup;
 export const createPermissionGroup = call("lunaApi.createPermissionGroup") as typeof core.createPermissionGroup;

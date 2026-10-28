@@ -754,7 +754,13 @@
 			"iam_inline_put": "Put an inline policy",
 			"iam_inline_delete": "Remove an inline policy",
 			"resource_tag": "Tag a resource",
-			"resource_untag": "Remove tags from a resource"
+			"resource_untag": "Remove tags from a resource",
+			"bans_list": "List network bans",
+			"player_kick": "Kick a player",
+			"player_ban": "Ban a player",
+			"player_unban": "Unban a player",
+			"ip_ban": "Ban an IP",
+			"ip_unban": "Unban an IP"
 		}
 	},
 	"instancefiles": {

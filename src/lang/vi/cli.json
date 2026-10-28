@@ -1535,6 +1535,43 @@
 			"desc": "Chuyển một người chơi sang backend khác",
 			"failed": "{player} không được chuyển tới {server}: {status}",
 			"done": "đã chuyển {player} tới {server}"
+		},
+		"ban": {
+			"desc": "Cấm một người chơi khỏi toàn mạng (đang online, đã biết, hoặc chỉ tên)",
+			"optReason": "lý do; người chơi sẽ thấy",
+			"optDuration": "thời hạn: 30m, 12h, 7d, 2w, 1d12h hoặc perm (mặc định vĩnh viễn)",
+			"badDuration": "\"{value}\" không phải thời hạn; dùng 30m, 12h, 7d, 2w, 1d12h hoặc perm",
+			"done": "đã cấm {player} khỏi mạng {until}",
+			"forever": "vĩnh viễn",
+			"until": "đến {when}",
+			"kicked": "người chơi đang online và đã bị ngắt kết nối"
+		},
+		"unban": {
+			"desc": "Gỡ lệnh cấm người chơi toàn mạng",
+			"done": "đã gỡ cấm {player}",
+			"notBanned": "{player} không bị cấm"
+		},
+		"bans": {
+			"desc": "Liệt kê lệnh cấm người chơi toàn mạng",
+			"title": "Cấm người chơi toàn mạng",
+			"empty": "không có",
+			"permanent": "vĩnh viễn",
+			"by": "bởi {actor} · đã chặn {hits} lần"
+		},
+		"banip": {
+			"desc": "Cấm một địa chỉ khỏi toàn mạng (IP, hoặc địa chỉ của một người chơi)",
+			"done": "đã cấm {ip} khỏi mạng {until}",
+			"from": "(địa chỉ của {player})",
+			"kicked": "đã ngắt kết nối: {players}"
+		},
+		"unbanip": {
+			"desc": "Gỡ lệnh cấm IP toàn mạng",
+			"done": "đã gỡ cấm {ip}",
+			"notBanned": "{ip} không bị cấm"
+		},
+		"ipbans": {
+			"desc": "Liệt kê lệnh cấm IP toàn mạng",
+			"title": "Cấm IP toàn mạng"
 		}
 	},
 	"schedule": {

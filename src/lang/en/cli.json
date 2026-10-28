@@ -1535,6 +1535,43 @@
 			"desc": "Move a player to another backend",
 			"failed": "{player} was not moved to {server}: {status}",
 			"done": "moved {player} to {server}"
+		},
+		"ban": {
+			"desc": "Ban a player from the whole network (online, known, or a bare username)",
+			"optReason": "why; shown to the player",
+			"optDuration": "how long: 30m, 12h, 7d, 2w, 1d12h or perm (default permanent)",
+			"badDuration": "\"{value}\" is not a ban length; use 30m, 12h, 7d, 2w, 1d12h or perm",
+			"done": "banned {player} from the network {until}",
+			"forever": "permanently",
+			"until": "until {when}",
+			"kicked": "they were online and have been disconnected"
+		},
+		"unban": {
+			"desc": "Lift a network-wide player ban",
+			"done": "unbanned {player}",
+			"notBanned": "{player} is not banned"
+		},
+		"bans": {
+			"desc": "List network-wide player bans",
+			"title": "Network player bans",
+			"empty": "none",
+			"permanent": "permanent",
+			"by": "by {actor} · refused {hits}×"
+		},
+		"banip": {
+			"desc": "Ban an address from the whole network (an IP, or a player's address)",
+			"done": "banned {ip} from the network {until}",
+			"from": "(address of {player})",
+			"kicked": "disconnected: {players}"
+		},
+		"unbanip": {
+			"desc": "Lift a network-wide IP ban",
+			"done": "unbanned {ip}",
+			"notBanned": "{ip} is not banned"
+		},
+		"ipbans": {
+			"desc": "List network-wide IP bans",
+			"title": "Network IP bans"
 		}
 	},
 	"schedule": {

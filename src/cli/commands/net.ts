@@ -7,6 +7,8 @@ import { pc, Sym, ok, warn, info, printTable, fmtBytes, fmtDuration } from "../u
 import { instanceNames } from "../completers";
 import * as luna from "../../client/core/services/luna";
 import { t } from "../../shared/i18n";
+import { banExpiry } from "../../shared/banduration";
+import { activeUser } from "../actor";
 
 /** Coloured label for a backend's Luna-reported status. */
 function statusBadge(status: string): string {
@@ -300,13 +302,221 @@ command({
 	opts: [{ flag: "--reason", desc: t("cli.net.kick.optReason"), value: true }],
 
 	handler: async (args, opts) => {
-		const result = await luna.kick(args[0]!, (opts.reason as string) ?? "");
+		const result = await luna.kick(args[0]!, (opts.reason as string) ?? "", activeUser());
 
 		if (!result.ok || !result.data) {
 			bailUnavailable(result.error);
 		}
 
 		ok(t("cli.net.kick.done", { player: pc.bold(result.data.username) }));
+	},
+});
+
+/** A ban's end for the table: "permanent" or the local date and time. */
+function banEnds(expiresAt: number): string {
+	if (!expiresAt) {
+		return t("cli.net.bans.permanent");
+	}
+
+	return new Date(expiresAt).toLocaleString();
+}
+
+/** A placed ban's span for a confirmation line: "permanently" or "until <date>". */
+function banSpan(expiresAt: number): string {
+	if (!expiresAt) {
+		return t("cli.net.ban.forever");
+	}
+
+	return t("cli.net.ban.until", { when: new Date(expiresAt).toLocaleString() });
+}
+
+/** The --duration flag as epoch millis (0 = permanent), refusing what is not a length. */
+function durationFlag(value: unknown): number {
+	const expiresAt = banExpiry(value as string | undefined);
+
+	if (expiresAt === null) {
+		throw new Bail(t("cli.net.ban.badDuration", { value: String(value) }));
+	}
+
+	return expiresAt;
+}
+
+command({
+	path: ["net", "ban"],
+	desc: t("cli.net.ban.desc"),
+	args: [{ name: "player", required: true }],
+	opts: [
+		{ flag: "--reason", desc: t("cli.net.ban.optReason"), value: true },
+		{ flag: "--duration", desc: t("cli.net.ban.optDuration"), value: true },
+	],
+
+	handler: async (args, opts) => {
+		const expiresAt = durationFlag(opts.duration);
+		const result = await luna.addNetworkBan(args[0]!, {
+			reason: (opts.reason as string) ?? "",
+			actor: activeUser(),
+			expiresAt,
+		});
+
+		if (!result.ok || !result.data) {
+			bailUnavailable(result.error);
+		}
+
+		ok(
+			t("cli.net.ban.done", {
+				player: pc.bold(result.data.username),
+				until: banSpan(result.data.expiresAtEpochMillis),
+			}),
+		);
+
+		if (result.data.kicked > 0) {
+			info(t("cli.net.ban.kicked"));
+		}
+	},
+});
+
+command({
+	path: ["net", "unban"],
+	desc: t("cli.net.unban.desc"),
+	args: [{ name: "player", required: true }],
+
+	handler: async (args) => {
+		const result = await luna.removeNetworkBan(args[0]!, { actor: activeUser() });
+
+		if (!result.ok || !result.data) {
+			bailUnavailable(result.error);
+		}
+
+		if (!result.data.removed) {
+			warn(t("cli.net.unban.notBanned", { player: args[0]! }));
+
+			return;
+		}
+
+		ok(t("cli.net.unban.done", { player: pc.bold(result.data.username) }));
+	},
+});
+
+command({
+	path: ["net", "bans"],
+	desc: t("cli.net.bans.desc"),
+
+	handler: async () => {
+		const result = await luna.networkBans();
+
+		if (!result.ok || !result.data) {
+			bailUnavailable(result.error);
+		}
+
+		console.log(`\n  ${pc.bold(t("cli.net.bans.title"))} (${result.data.total})`);
+
+		if (result.data.bans.length === 0) {
+			console.log(`  ${pc.dim(t("cli.net.bans.empty"))}\n`);
+
+			return;
+		}
+
+		printTable(
+			result.data.bans.map((ban) => [
+				ban.username,
+				ban.reason || pc.dim("—"),
+				banEnds(ban.expiresAtEpochMillis),
+				pc.dim(t("cli.net.bans.by", { actor: ban.actor || "?", hits: ban.hits })),
+			]),
+		);
+		console.log();
+	},
+});
+
+command({
+	path: ["net", "banip"],
+	desc: t("cli.net.banip.desc"),
+	args: [{ name: "target", required: true }],
+	opts: [
+		{ flag: "--reason", desc: t("cli.net.ban.optReason"), value: true },
+		{ flag: "--duration", desc: t("cli.net.ban.optDuration"), value: true },
+	],
+
+	handler: async (args, opts) => {
+		const expiresAt = durationFlag(opts.duration);
+		const result = await luna.addNetworkIpBan(args[0]!, {
+			reason: (opts.reason as string) ?? "",
+			actor: activeUser(),
+			expiresAt,
+		});
+
+		if (!result.ok || !result.data) {
+			bailUnavailable(result.error);
+		}
+
+		const ban = result.data;
+
+		ok(
+			t("cli.net.banip.done", {
+				ip: pc.bold(ban.ip),
+				until: banSpan(ban.expiresAtEpochMillis),
+			}) +
+				(ban.resolvedFrom
+					? ` ${pc.dim(t("cli.net.banip.from", { player: ban.resolvedFrom }))}`
+					: ""),
+		);
+
+		if (ban.kicked && ban.kicked.length > 0) {
+			info(t("cli.net.banip.kicked", { players: ban.kicked.join(", ") }));
+		}
+	},
+});
+
+command({
+	path: ["net", "unbanip"],
+	desc: t("cli.net.unbanip.desc"),
+	args: [{ name: "ip", required: true }],
+
+	handler: async (args) => {
+		const result = await luna.removeNetworkIpBan(args[0]!, { actor: activeUser() });
+
+		if (!result.ok || !result.data) {
+			bailUnavailable(result.error);
+		}
+
+		if (!result.data.removed) {
+			warn(t("cli.net.unbanip.notBanned", { ip: args[0]! }));
+
+			return;
+		}
+
+		ok(t("cli.net.unbanip.done", { ip: pc.bold(result.data.ip) }));
+	},
+});
+
+command({
+	path: ["net", "ipbans"],
+	desc: t("cli.net.ipbans.desc"),
+
+	handler: async () => {
+		const result = await luna.networkIpBans();
+
+		if (!result.ok || !result.data) {
+			bailUnavailable(result.error);
+		}
+
+		console.log(`\n  ${pc.bold(t("cli.net.ipbans.title"))} (${result.data.total})`);
+
+		if (result.data.bans.length === 0) {
+			console.log(`  ${pc.dim(t("cli.net.bans.empty"))}\n`);
+
+			return;
+		}
+
+		printTable(
+			result.data.bans.map((ban) => [
+				ban.ip,
+				ban.reason || pc.dim("—"),
+				banEnds(ban.expiresAtEpochMillis),
+				pc.dim(t("cli.net.bans.by", { actor: ban.actor || "?", hits: ban.hits })),
+			]),
+		);
+		console.log();
 	},
 });
 
