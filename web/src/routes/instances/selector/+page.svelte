@@ -485,11 +485,13 @@
 		<Dropdown
 			label={t('web.selector.actions')}
 			items={[
+				{ label: t('web.selector.viewGeneratedYaml'), icon: 'file', action: showYaml },
+				{ divider: true, label: '' },
 				{ label: t('web.selector.importFromServersYml2'), icon: 'download', action: () => {
 						importOpen = true;
 					} },
-				{ label: t('web.selector.viewGeneratedYaml'), icon: 'file', action: showYaml },
 				{ label: t('web.selector.rebuildItemSprites'), icon: 'cube', action: extractAssets },
+				{ divider: true, label: '' },
 				{
 					label: t('web.selector.discardChanges'), icon: 'rotate', danger: true, disabled: !dirty, hint: dirty ? undefined : 'nothing has been changed',
 					action: () => {

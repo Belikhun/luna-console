@@ -24,7 +24,7 @@
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 	import { withCopyResourceId } from '$lib/resourceid';
@@ -197,54 +197,60 @@
 		const toEnable = rows.filter((row) => !row.enabled);
 		const toDisable = rows.filter((row) => row.enabled);
 
-		return [
-			{
-				label: t('web.mcp.openToken'),
-				icon: 'circleInfo',
-				disabled: !one,
-				hint: one ? undefined : t('web.mcp.pickOne'),
-				action: () => goto(detailHref(one!))
-			},
-			{
-				label: t('web.mcp.viewCalls'),
-				icon: 'list',
-				disabled: !one,
-				hint: one ? undefined : t('web.mcp.pickOne'),
-				action: () => goto(`${detailHref(one!)}?tab=calls`)
-			},
-			{ separator: true },
-			{
-				label: t('web.mcp.enableAction', { count: toEnable.length }),
-				icon: 'circleCheck',
-				disabled: toEnable.length === 0,
-				hint: toEnable.length ? undefined : t('web.mcp.allEnabled'),
-				action: () => setEnabled(toEnable, true)
-			},
-			{
-				label: t('web.mcp.disableAction', { count: toDisable.length }),
-				icon: 'ban',
-				color: 'warning',
-				disabled: toDisable.length === 0,
-				hint: toDisable.length ? undefined : t('web.mcp.allDisabled'),
-				action: () => setEnabled(toDisable, false)
-			},
-			{
-				label: t('web.mcp.rotateAction'),
-				icon: 'rotate',
-				color: 'warning',
-				disabled: !one,
-				hint: one ? undefined : t('web.mcp.pickOne'),
-				action: () => rotate(one!)
-			},
-			{ separator: true },
-			{
-				label: t('web.mcp.deleteAction', { count: rows.length }),
-				icon: 'trash',
-				color: 'danger',
-				disabled: rows.length === 0,
-				action: () => remove(rows)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.mcp.openToken'),
+					icon: 'circleInfo',
+					disabled: !one,
+					hint: one ? undefined : t('web.mcp.pickOne'),
+					action: () => goto(detailHref(one!))
+				},
+				{
+					label: t('web.mcp.viewCalls'),
+					icon: 'list',
+					disabled: !one,
+					hint: one ? undefined : t('web.mcp.pickOne'),
+					action: () => goto(`${detailHref(one!)}?tab=calls`)
+				}
+			],
+			[
+				{
+					label: t('web.mcp.enableAction', { count: toEnable.length }),
+					icon: 'circleCheck',
+					disabled: toEnable.length === 0,
+					hint: toEnable.length ? undefined : t('web.mcp.allEnabled'),
+					action: () => setEnabled(toEnable, true)
+				},
+				{
+					label: t('web.mcp.disableAction', { count: toDisable.length }),
+					icon: 'ban',
+					color: 'warning',
+					disabled: toDisable.length === 0,
+					hint: toDisable.length ? undefined : t('web.mcp.allDisabled'),
+					action: () => setEnabled(toDisable, false)
+				}
+			],
+			[
+				{
+					label: t('web.mcp.rotateAction'),
+					icon: 'rotate',
+					color: 'warning',
+					disabled: !one,
+					hint: one ? undefined : t('web.mcp.pickOne'),
+					action: () => rotate(one!)
+				}
+			],
+			[
+				{
+					label: t('web.mcp.deleteAction', { count: rows.length }),
+					icon: 'trash',
+					color: 'danger',
+					disabled: rows.length === 0,
+					action: () => remove(rows)
+				}
+			]
+		);
 	}
 
 	function rowActions(row: TokenRow): ContextMenuItem[] {
@@ -252,21 +258,26 @@
 	}
 
 	function callActions(row: CallRow): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.mcp.openToken'),
-				icon: 'circleInfo',
-				action: () => goto(`/console/mcp/${row.token}`)
-			},
-			{
-				label: t('web.mcp.copyArgs'),
-				icon: 'copy',
-				disabled: !row.args,
-				action: async () => {
-					await copyText(row.args ?? '');
+		return menuGroups(
+			[
+				{
+					label: t('web.mcp.openToken'),
+					icon: 'circleInfo',
+					action: () => goto(`/console/mcp/${row.token}`)
 				}
-			}
-		];
+			],
+			[
+				{
+					id: 'copy-args',
+					label: t('web.mcp.copyArgs'),
+					icon: 'copy',
+					disabled: !row.args,
+					action: async () => {
+						await copyText(row.args ?? '');
+					}
+				}
+			]
+		);
 	}
 
 	const headerDisabled = $derived(tab !== 'tokens' || picked.length === 0);

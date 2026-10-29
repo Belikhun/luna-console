@@ -49,7 +49,7 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import PlayerSkin3D from '$lib/components/PlayerSkin3D.svelte';
 	import PlayerVitals from '$lib/components/PlayerVitals.svelte';
 	import PlayerInventory from '$lib/components/PlayerInventory.svelte';
@@ -615,91 +615,105 @@
 		const online = data.online;
 		const offlineHint = online ? undefined : t('web.instancePlayer.notOnlineHere');
 
-		return [
-			{
-				label: t('web.instancePlayers.viewNetworkProfile'),
-				icon: 'user',
-				action: () => goto(`/players/${data?.uuid}`)
-			},
-			{
-				label: t('web.instancePlayers.copyUuid'),
-				icon: 'copy',
-				action: () => void copyText(data?.uuid ?? '')
-			},
-			{ separator: true },
-			{
-				label: t('web.instancePlayers.sendAMessage'),
-				icon: 'paperPlane',
-				disabled: !online,
-				hint: offlineHint,
-				action: () => {
-					messageOpen = true;
+		return menuGroups(
+			[
+				{
+					label: t('web.instancePlayers.viewNetworkProfile'),
+					icon: 'user',
+					action: () => goto(`/players/${data?.uuid}`)
 				}
-			},
-			{
-				label: t('web.instancePlayers.moveToAnotherBackend'),
-				icon: 'rightLeft',
-				disabled: !online || servers.length === 0,
-				hint: offlineHint ?? (servers.length === 0 ? t('web.instancePlayers.noOtherBackend') : undefined),
-				action: () => {
-					transferOpen = true;
+			],
+			[
+				{
+					label: t('web.instancePlayers.sendAMessage'),
+					icon: 'paperPlane',
+					disabled: !online,
+					hint: offlineHint,
+					action: () => {
+						messageOpen = true;
+					}
+				},
+				{
+					label: t('web.instancePlayers.moveToAnotherBackend'),
+					icon: 'rightLeft',
+					disabled: !online || servers.length === 0,
+					hint: offlineHint ?? (servers.length === 0 ? t('web.instancePlayers.noOtherBackend') : undefined),
+					action: () => {
+						transferOpen = true;
+					}
+				},
+				{
+					label: t('web.instancePlayers.resendPacks'),
+					icon: 'image',
+					disabled: !online,
+					hint: offlineHint,
+					action: () => void doResend()
+				},
+				{
+					label: t('web.instancePlayers.setGameMode'),
+					icon: 'joystick',
+					disabled: !online,
+					hint: offlineHint,
+					submenu: GAME_MODES.map((mode) => ({
+						label: t(`web.instancePlayers.mode.${mode}`),
+						action: () => void doGameMode(mode)
+					}))
 				}
-			},
-			{
-				label: t('web.instancePlayers.resendPacks'),
-				icon: 'image',
-				disabled: !online,
-				hint: offlineHint,
-				action: () => void doResend()
-			},
-			{
-				label: t('web.instancePlayers.setGameMode'),
-				icon: 'joystick',
-				disabled: !online,
-				hint: offlineHint,
-				submenu: GAME_MODES.map((mode) => ({
-					label: t(`web.instancePlayers.mode.${mode}`),
-					action: () => void doGameMode(mode)
-				}))
-			},
-			{ separator: true },
-			{ label: t('web.instancePlayers.addToWhitelist'), icon: 'userTick', action: () => void moderate('whitelist-add') },
-			{ label: t('web.instancePlayers.removeFromWhitelist'), icon: 'userMinus', action: () => void moderate('whitelist-remove') },
-			{ label: t('web.instancePlayers.grantOperator'), icon: 'userCog', action: () => void moderate('op') },
-			{ label: t('web.instancePlayers.revokeOperator'), icon: 'userLock', action: () => void moderate('deop') },
-			{ separator: true },
-			{
-				label: t('web.instancePlayers.disconnect'),
-				icon: 'userSlash',
-				color: 'danger',
-				disabled: !online,
-				hint: offlineHint,
-				action: () => {
-					kickForce = false;
-					kickOpen = true;
+			],
+			[
+				{
+					label: t('web.instancePlayers.accessLists'),
+					icon: 'userShield',
+					submenu: [
+						{ label: t('web.instancePlayers.addToWhitelist'), icon: 'userTick', action: () => void moderate('whitelist-add') },
+						{ label: t('web.instancePlayers.removeFromWhitelist'), icon: 'userMinus', action: () => void moderate('whitelist-remove') },
+						{ label: t('web.instancePlayers.grantOperator'), icon: 'userCog', action: () => void moderate('op') },
+						{ label: t('web.instancePlayers.revokeOperator'), icon: 'userLock', action: () => void moderate('deop') },
+						{ label: t('web.instancePlayer.pardonHere'), icon: 'handshake', action: () => void moderate('pardon') }
+					]
 				}
-			},
-			{
-				label: t('web.instancePlayers.forceDisconnect'),
-				icon: 'unlink',
-				color: 'danger',
-				disabled: !online,
-				hint: offlineHint,
-				action: () => {
-					kickForce = true;
-					kickOpen = true;
+			],
+			[
+				{
+					id: 'copy-uuid',
+					label: t('web.instancePlayers.copyUuid'),
+					icon: 'copy',
+					action: () => void copyText(data?.uuid ?? '')
 				}
-			},
-			{
-				label: t('web.instancePlayers.banHere'),
-				icon: 'gavel',
-				color: 'danger',
-				action: () => {
-					banOpen = true;
+			],
+			[
+				{
+					label: t('web.instancePlayers.disconnect'),
+					icon: 'userSlash',
+					color: 'danger',
+					disabled: !online,
+					hint: offlineHint,
+					action: () => {
+						kickForce = false;
+						kickOpen = true;
+					}
+				},
+				{
+					label: t('web.instancePlayers.forceDisconnect'),
+					icon: 'unlink',
+					color: 'danger',
+					disabled: !online,
+					hint: offlineHint,
+					action: () => {
+						kickForce = true;
+						kickOpen = true;
+					}
+				},
+				{
+					label: t('web.instancePlayers.banHere'),
+					icon: 'gavel',
+					color: 'danger',
+					action: () => {
+						banOpen = true;
+					}
 				}
-			},
-			{ label: t('web.instancePlayer.pardonHere'), icon: 'handshake', action: () => void moderate('pardon') }
-		];
+			]
+		);
 	}
 
 	const gameModeState = $derived(

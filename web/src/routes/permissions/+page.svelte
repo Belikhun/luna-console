@@ -16,6 +16,7 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
@@ -106,35 +107,43 @@
 	}
 
 	function rowActions(group: GroupSummary): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.perms.viewGroup'),
-				icon: 'key',
-				action: () => goto(`/permissions/${encodeURIComponent(group.name)}`)
-			},
-			{
-				label: t('web.perms.editGroup'),
-				icon: 'pen',
-				action: () => goto(`/permissions/${encodeURIComponent(group.name)}/edit`)
-			},
-			{
-				label: t('web.perms.copyName'),
-				icon: 'copy',
-				action: () => void copy(group.name)
-			},
-			{ separator: true },
-			{
-				label: t('web.perms.deleteGroup'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: group.name === 'default',
-				hint: group.name === 'default' ? 'LuckPerms requires it' : undefined,
-				action: () => {
-					deleteTarget = group.name;
-					deleteOpen = true;
+		return menuGroups(
+			[
+				{
+					label: t('web.perms.viewGroup'),
+					icon: 'key',
+					action: () => goto(`/permissions/${encodeURIComponent(group.name)}`)
 				}
-			}
-		];
+			],
+			[
+				{
+					label: t('web.perms.editGroup'),
+					icon: 'pen',
+					action: () => goto(`/permissions/${encodeURIComponent(group.name)}/edit`)
+				}
+			],
+			[
+				{
+					id: 'copy-name',
+					label: t('web.perms.copyName'),
+					icon: 'copy',
+					action: () => void copy(group.name)
+				}
+			],
+			[
+				{
+					label: t('web.perms.deleteGroup'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: group.name === 'default',
+					hint: group.name === 'default' ? 'LuckPerms requires it' : undefined,
+					action: () => {
+						deleteTarget = group.name;
+						deleteOpen = true;
+					}
+				}
+			]
+		);
 	}
 
 	async function copy(text: string): Promise<void> {

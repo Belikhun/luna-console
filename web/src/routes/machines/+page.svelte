@@ -29,7 +29,7 @@
 		swapPct
 	} from '$lib/daemons';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import type { DaemonRow, UpgradeResult } from '$client/daemon';
 	import { resourceId } from '$shared/iam/resources';
 	import { withCopyResourceId } from '$lib/resourceid';
@@ -79,69 +79,77 @@
 	]);
 
 	function rowActions(row: DaemonRow): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.machines.openDaemon'),
-				icon: 'circleInfo',
-				action: () => goto(`/machines/${row.name}`)
-			},
-			{
-				label: t('web.machines.monitoring'),
-				icon: 'chartLine',
-				action: () => goto(`/machines/${row.name}?tab=monitoring`)
-			},
-			{
-				label: t('web.machines.events'),
-				icon: 'clockRotateLeft',
-				action: () => goto(`/machines/${row.name}?tab=events`)
-			},
-			{
-				label: row.outdated ? 'Upgrade daemon' : 'Reinstall binary',
-				icon: 'download',
-				// a quarantined daemon is deliberately still upgradable: the upgrade
-				// is the one thing it will still accept, and the only way back
-				disabled: row.mode !== 'follower' || row.state === 'offline',
-				hint:
-					row.mode !== 'follower'
-						? 'the primary is the source of the binary'
-						: row.state === 'offline'
-							? 'the daemon is not connected'
-							: (row.quarantine ?? undefined),
-				action: () => goto(`/machines/${row.name}`)
-			},
-			{ separator: true },
-			{
-				label: t('web.machines.copyRoutingHost'),
-				icon: 'copy',
-				disabled: !row.host,
-				action: () => navigator.clipboard?.writeText(row.host ?? '')
-			},
-			{
-				label: t('web.machines.copyIpAddresses'),
-				icon: 'copy',
-				disabled: row.addresses.length === 0,
-				action: () => navigator.clipboard?.writeText(row.addresses.join(', '))
-			},
-			{ separator: true },
-			{
-				label: t('web.machines.removeRegistration'),
-				icon: 'trash',
-				color: 'danger',
-				// the primary is not a registration, and a follower holding a link -
-				// quarantined or not - would just re-register on its next reconnect
-				disabled:
-					row.mode !== 'follower' || row.state !== 'offline' || row.instances.length > 0,
-				hint:
-					row.mode !== 'follower'
-						? 'this is the primary daemon, not a registration'
-						: row.state !== 'offline'
-							? 'the daemon is connected; stop it first'
-							: row.instances.length > 0
-								? `it still owns ${row.instances.join(', ')}`
-								: undefined,
-				action: () => openRemove(row)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.machines.openDaemon'),
+					icon: 'circleInfo',
+					action: () => goto(`/machines/${row.name}`)
+				},
+				{
+					label: t('web.machines.monitoring'),
+					icon: 'chartLine',
+					action: () => goto(`/machines/${row.name}?tab=monitoring`)
+				},
+				{
+					label: t('web.machines.events'),
+					icon: 'clockRotateLeft',
+					action: () => goto(`/machines/${row.name}?tab=events`)
+				}
+			],
+			[
+				{
+					label: row.outdated ? 'Upgrade daemon' : 'Reinstall binary',
+					icon: 'download',
+					// a quarantined daemon is deliberately still upgradable: the upgrade
+					// is the one thing it will still accept, and the only way back
+					disabled: row.mode !== 'follower' || row.state === 'offline',
+					hint:
+						row.mode !== 'follower'
+							? 'the primary is the source of the binary'
+							: row.state === 'offline'
+								? 'the daemon is not connected'
+								: (row.quarantine ?? undefined),
+					action: () => goto(`/machines/${row.name}`)
+				}
+			],
+			[
+				{
+					id: 'copy-host',
+					label: t('web.machines.copyRoutingHost'),
+					icon: 'copy',
+					disabled: !row.host,
+					action: () => navigator.clipboard?.writeText(row.host ?? '')
+				},
+				{
+					id: 'copy-addresses',
+					label: t('web.machines.copyIpAddresses'),
+					icon: 'copy',
+					disabled: row.addresses.length === 0,
+					action: () => navigator.clipboard?.writeText(row.addresses.join(', '))
+				}
+			],
+			[
+				{
+					label: t('web.machines.removeRegistration'),
+					icon: 'trash',
+					color: 'danger',
+					// the primary is not a registration, and a follower holding a link -
+					// quarantined or not - would just re-register on its next reconnect
+					disabled:
+						row.mode !== 'follower' || row.state !== 'offline' || row.instances.length > 0,
+					hint:
+						row.mode !== 'follower'
+							? 'this is the primary daemon, not a registration'
+							: row.state !== 'offline'
+								? 'the daemon is connected; stop it first'
+								: row.instances.length > 0
+									? `it still owns ${row.instances.join(', ')}`
+									: undefined,
+					action: () => openRemove(row)
+				}
+			]
+		);
 	}
 
 	const columns: Column[] = $derived([

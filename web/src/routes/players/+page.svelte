@@ -32,7 +32,7 @@
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import DistributionBar from '$lib/components/DistributionBar.svelte';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
@@ -355,80 +355,99 @@
 		moderateOpen = true;
 	}
 
-	/** Verbs over a selection; the Actions dropdown and each row's menu share these. */
-	function bulkActions(rows: Player[]): ContextMenuItem[] {
+	/** The selection's verbs by group: state, change and removal (DESIGN.md §5.4). */
+	function bulkGroups(rows: Player[]): { state: ContextMenuItem[]; change: ContextMenuItem[]; remove: ContextMenuItem[] } {
 		const none = rows.length === 0;
 		const anyOnline = rows.some((player) => player.online);
 
-		return [
-			{
-				label: t('web.players.kickFromTheNetwork'),
-				icon: 'userSlash',
-				disabled: none || !anyOnline,
-				hint: none ? 'select players first' : anyOnline ? undefined : 'nobody selected is online',
-				action: () => openModerate('kick', rows.filter((player) => player.online))
-			},
-			{ separator: true },
-			{
-				label: t('web.players.addToWhitelist'),
-				icon: 'userTick',
-				disabled: none,
-				action: () => openModerate('whitelist-add', rows)
-			},
-			{
-				label: t('web.players.removeFromWhitelist'),
-				icon: 'userMinus',
-				disabled: none,
-				action: () => openModerate('whitelist-remove', rows)
-			},
-			{
-				label: t('web.players.grantOperator'),
-				icon: 'userCog',
-				disabled: none,
-				action: () => openModerate('op', rows)
-			},
-			{
-				label: t('web.players.revokeOperator'),
-				icon: 'userLock',
-				disabled: none,
-				action: () => openModerate('deop', rows)
-			},
-			{ separator: true },
-			{
-				label: t('web.players.ban'),
-				icon: 'gavel',
-				color: 'danger',
-				disabled: none,
-				action: () => openModerate('ban', rows)
-			},
-			{
-				label: t('web.players.pardon'),
-				icon: 'handshake',
-				disabled: none,
-				action: () => openModerate('pardon', rows)
-			}
-		];
+		return {
+			state: [
+				{
+					label: t('web.players.pardon'),
+					icon: 'handshake',
+					disabled: none,
+					action: () => openModerate('pardon', rows)
+				}
+			],
+			change: [
+				{
+					label: t('web.players.addToWhitelist'),
+					icon: 'userTick',
+					disabled: none,
+					action: () => openModerate('whitelist-add', rows)
+				},
+				{
+					label: t('web.players.removeFromWhitelist'),
+					icon: 'userMinus',
+					disabled: none,
+					action: () => openModerate('whitelist-remove', rows)
+				},
+				{
+					label: t('web.players.grantOperator'),
+					icon: 'userCog',
+					disabled: none,
+					action: () => openModerate('op', rows)
+				},
+				{
+					label: t('web.players.revokeOperator'),
+					icon: 'userLock',
+					disabled: none,
+					action: () => openModerate('deop', rows)
+				}
+			],
+			remove: [
+				{
+					label: t('web.players.kickFromTheNetwork'),
+					icon: 'userSlash',
+					color: 'danger',
+					disabled: none || !anyOnline,
+					hint: none ? 'select players first' : anyOnline ? undefined : 'nobody selected is online',
+					action: () => openModerate('kick', rows.filter((player) => player.online))
+				},
+				{
+					label: t('web.players.ban'),
+					icon: 'gavel',
+					color: 'danger',
+					disabled: none,
+					action: () => openModerate('ban', rows)
+				}
+			]
+		};
 	}
 
-	/** A row's menu: profile verbs first, then the bulk verbs over the selection. */
+	/** Verbs over a selection; the Actions dropdown and each row's menu share these. */
+	function bulkActions(rows: Player[]): ContextMenuItem[] {
+		const groups = bulkGroups(rows);
+
+		return menuGroups(groups.state, groups.change, groups.remove);
+	}
+
+	/** A row's menu: the profile, then the bulk verbs over the selection, the UUID copy among them. */
 	function rowActions(player: Player): ContextMenuItem[] {
 		// right-clicking inside the selection acts on all of it, outside on the row
 		const rows = selected.has(player.uuid) && selection.length > 1 ? selection : [player];
+		const groups = bulkGroups(rows);
 
-		return [
-			{
-				label: t('web.players.viewProfile'),
-				icon: 'user',
-				action: () => goto(`/players/${player.uuid}`)
-			},
-			{
-				label: t('web.players.copyUuid'),
-				icon: 'copy',
-				action: () => void copy(player.uuid)
-			},
-			{ separator: true },
-			...bulkActions(rows)
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.players.viewProfile'),
+					icon: 'user',
+					action: () => goto(`/players/${player.uuid}`)
+				}
+			],
+			groups.state,
+			groups.change,
+			[
+				{
+					id: 'copy-uuid',
+					label: t('web.players.copyUuid'),
+					icon: 'copy',
+					action: () => void copy(player.uuid)
+				}
+			],
+			groups.remove
+		);
 	}
 
 	async function copy(text: string): Promise<void> {

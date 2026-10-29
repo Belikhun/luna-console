@@ -18,6 +18,7 @@
 	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
@@ -308,21 +309,25 @@
 	]);
 
 	function nodeRowActions(node: PermNode): ContextMenuItem[] {
-		return [
-			{
-				label: node.value ? 'Negate node' : 'Grant node',
-				icon: 'rotate',
-				action: () => {
-					nodes = nodes.map((entry) => (entry === node ? { ...entry, value: !entry.value } : entry));
+		return menuGroups(
+			[
+				{
+					label: node.value ? 'Negate node' : 'Grant node',
+					icon: 'rotate',
+					action: () => {
+						nodes = nodes.map((entry) => (entry === node ? { ...entry, value: !entry.value } : entry));
+					}
 				}
-			},
-			{
-				label: t('web.permEdit.removeNode'),
-				icon: 'trash',
-				color: 'danger',
-				action: () => removeNode(node)
-			}
-		];
+			],
+			[
+				{
+					label: t('web.permEdit.removeNode'),
+					icon: 'trash',
+					color: 'danger',
+					action: () => removeNode(node)
+				}
+			]
+		);
 	}
 
 	const parentOptions = $derived([

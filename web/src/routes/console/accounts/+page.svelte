@@ -23,7 +23,7 @@
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 	import { withCopyResourceId } from '$lib/resourceid';
@@ -194,66 +194,72 @@
 		const removable = rows.filter((row) => row.id !== self);
 		const selfPicked = rows.some((row) => row.id === self);
 
-		return [
-			{
-				label: t('web.accounts.openAccount'),
-				icon: 'circleInfo',
-				disabled: !one,
-				hint: one ? undefined : t('web.accounts.pickOne'),
-				action: () => goto(detailHref(one!))
-			},
-			{
-				label: t('web.accounts.setPassword'),
-				icon: 'key',
-				disabled: !one,
-				hint: one ? undefined : t('web.accounts.pickOne'),
-				action: () => goto(`${detailHref(one!)}?password=1`)
-			},
-			{ separator: true },
-			{
-				label: t('web.accounts.enableAction', { count: toEnable.length }),
-				icon: 'circleCheck',
-				disabled: toEnable.length === 0,
-				hint: toEnable.length ? undefined : t('web.accounts.allEnabled'),
-				action: () => setEnabled(toEnable, true)
-			},
-			{
-				label: t('web.accounts.disableAction', { count: toDisable.length }),
-				icon: 'ban',
-				color: 'warning',
-				disabled: toDisable.length === 0,
-				hint: toDisable.length
-					? undefined
-					: selfPicked
-						? t('web.accounts.notYourself')
-						: t('web.accounts.allDisabled'),
-				action: () => setEnabled(toDisable, false)
-			},
-			{
-				label: t('web.accounts.unlockAction', { count: locked.length }),
-				icon: 'unlock',
-				disabled: locked.length === 0,
-				hint: locked.length ? undefined : t('web.accounts.noneLocked'),
-				action: () => unlock(locked)
-			},
-			{
-				label: t('web.accounts.revokeAction', { count: withSessions.length }),
-				icon: 'rightFromBracket',
-				color: 'warning',
-				disabled: withSessions.length === 0,
-				hint: withSessions.length ? undefined : t('web.accounts.noSessions'),
-				action: () => revokeAll(withSessions)
-			},
-			{ separator: true },
-			{
-				label: t('web.accounts.deleteAction', { count: removable.length }),
-				icon: 'trash',
-				color: 'danger',
-				disabled: removable.length === 0,
-				hint: removable.length ? undefined : t('web.accounts.notYourself'),
-				action: () => remove(removable)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.accounts.openAccount'),
+					icon: 'circleInfo',
+					disabled: !one,
+					hint: one ? undefined : t('web.accounts.pickOne'),
+					action: () => goto(detailHref(one!))
+				}
+			],
+			[
+				{
+					label: t('web.accounts.enableAction', { count: toEnable.length }),
+					icon: 'circleCheck',
+					disabled: toEnable.length === 0,
+					hint: toEnable.length ? undefined : t('web.accounts.allEnabled'),
+					action: () => setEnabled(toEnable, true)
+				},
+				{
+					label: t('web.accounts.disableAction', { count: toDisable.length }),
+					icon: 'ban',
+					color: 'warning',
+					disabled: toDisable.length === 0,
+					hint: toDisable.length
+						? undefined
+						: selfPicked
+							? t('web.accounts.notYourself')
+							: t('web.accounts.allDisabled'),
+					action: () => setEnabled(toDisable, false)
+				},
+				{
+					label: t('web.accounts.unlockAction', { count: locked.length }),
+					icon: 'unlock',
+					disabled: locked.length === 0,
+					hint: locked.length ? undefined : t('web.accounts.noneLocked'),
+					action: () => unlock(locked)
+				}
+			],
+			[
+				{
+					label: t('web.accounts.setPassword'),
+					icon: 'key',
+					disabled: !one,
+					hint: one ? undefined : t('web.accounts.pickOne'),
+					action: () => goto(`${detailHref(one!)}?password=1`)
+				}
+			],
+			[
+				{
+					label: t('web.accounts.revokeAction', { count: withSessions.length }),
+					icon: 'rightFromBracket',
+					color: 'danger',
+					disabled: withSessions.length === 0,
+					hint: withSessions.length ? undefined : t('web.accounts.noSessions'),
+					action: () => revokeAll(withSessions)
+				},
+				{
+					label: t('web.accounts.deleteAction', { count: removable.length }),
+					icon: 'trash',
+					color: 'danger',
+					disabled: removable.length === 0,
+					hint: removable.length ? undefined : t('web.accounts.notYourself'),
+					action: () => remove(removable)
+				}
+			]
+		);
 	}
 
 	/** A right-clicked row inside the selection acts on the whole selection. */

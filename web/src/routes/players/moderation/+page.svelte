@@ -27,7 +27,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
 	import PlayerPicker from '$lib/components/PlayerPicker.svelte';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
@@ -478,114 +478,142 @@
 		return rows.every((row) => row.instances.length >= reporting.length);
 	}
 
-	function banActions(rows: BanRow[]): ContextMenuItem[] {
-		const none = rows.length === 0;
-
-		return [
-			{
-				label: t('web.moderation.banOnAll'),
-				icon: 'gavel',
-				color: 'danger',
-				disabled: none || fullyCovered(rows),
-				hint: !none && fullyCovered(rows) ? t('web.moderation.everywhere') : undefined,
-				action: () => openModerate('ban', playerTargets(rows), [...reporting])
-			},
-			{
-				label: t('web.players.pardon'),
-				icon: 'handshake',
-				disabled: none,
-				action: () => openModerate('pardon', playerTargets(rows), coveredInstances(rows))
-			}
-		];
+	/** A player row's own verbs, the open and copy groups around the list's verbs. */
+	interface ProfileGroups {
+		open: ContextMenuItem[];
+		copy: ContextMenuItem[];
 	}
 
-	function whitelistActions(rows: WhitelistRow[]): ContextMenuItem[] {
+	const NO_PROFILE: ProfileGroups = { open: [], copy: [] };
+
+	function banActions(rows: BanRow[], profile: ProfileGroups = NO_PROFILE): ContextMenuItem[] {
 		const none = rows.length === 0;
 
-		return [
-			{
-				label: t('web.moderation.whitelistOnAll'),
-				icon: 'userTick',
-				disabled: none || fullyCovered(rows),
-				hint: !none && fullyCovered(rows) ? t('web.moderation.everywhere') : undefined,
-				action: () => openModerate('whitelist-add', playerTargets(rows), [...reporting])
-			},
-			{
-				label: t('web.players.removeFromWhitelist'),
-				icon: 'userMinus',
-				disabled: none,
-				action: () => openModerate('whitelist-remove', playerTargets(rows), coveredInstances(rows))
-			}
-		];
+		return menuGroups(
+			profile.open,
+			[
+				{
+					label: t('web.players.pardon'),
+					icon: 'handshake',
+					disabled: none,
+					action: () => openModerate('pardon', playerTargets(rows), coveredInstances(rows))
+				}
+			],
+			profile.copy,
+			[
+				{
+					label: t('web.moderation.banOnAll'),
+					icon: 'gavel',
+					color: 'danger',
+					disabled: none || fullyCovered(rows),
+					hint: !none && fullyCovered(rows) ? t('web.moderation.everywhere') : undefined,
+					action: () => openModerate('ban', playerTargets(rows), [...reporting])
+				}
+			]
+		);
 	}
 
-	function opActions(rows: OpRow[]): ContextMenuItem[] {
+	function whitelistActions(rows: WhitelistRow[], profile: ProfileGroups = NO_PROFILE): ContextMenuItem[] {
 		const none = rows.length === 0;
 
-		return [
-			{
-				label: t('web.moderation.opOnAll'),
-				icon: 'userCog',
-				disabled: none || fullyCovered(rows),
-				hint: !none && fullyCovered(rows) ? t('web.moderation.everywhere') : undefined,
-				action: () => openModerate('op', playerTargets(rows), [...reporting])
-			},
-			{
-				label: t('web.players.revokeOperator'),
-				icon: 'userLock',
-				disabled: none,
-				action: () => openModerate('deop', playerTargets(rows), coveredInstances(rows))
-			}
-		];
+		return menuGroups(
+			profile.open,
+			[
+				{
+					label: t('web.moderation.whitelistOnAll'),
+					icon: 'userTick',
+					disabled: none || fullyCovered(rows),
+					hint: !none && fullyCovered(rows) ? t('web.moderation.everywhere') : undefined,
+					action: () => openModerate('whitelist-add', playerTargets(rows), [...reporting])
+				},
+				{
+					label: t('web.players.removeFromWhitelist'),
+					icon: 'userMinus',
+					disabled: none,
+					action: () => openModerate('whitelist-remove', playerTargets(rows), coveredInstances(rows))
+				}
+			],
+			profile.copy
+		);
+	}
+
+	function opActions(rows: OpRow[], profile: ProfileGroups = NO_PROFILE): ContextMenuItem[] {
+		const none = rows.length === 0;
+
+		return menuGroups(
+			profile.open,
+			[
+				{
+					label: t('web.moderation.opOnAll'),
+					icon: 'userCog',
+					disabled: none || fullyCovered(rows),
+					hint: !none && fullyCovered(rows) ? t('web.moderation.everywhere') : undefined,
+					action: () => openModerate('op', playerTargets(rows), [...reporting])
+				},
+				{
+					label: t('web.players.revokeOperator'),
+					icon: 'userLock',
+					disabled: none,
+					action: () => openModerate('deop', playerTargets(rows), coveredInstances(rows))
+				}
+			],
+			profile.copy
+		);
 	}
 
 	function ipBanActions(rows: IpBanRow[]): ContextMenuItem[] {
 		const none = rows.length === 0;
 
-		return [
-			{
-				label: t('web.moderation.ipBanOnAll'),
-				icon: 'gavel',
-				color: 'danger',
-				disabled: none || fullyCovered(rows),
-				hint: !none && fullyCovered(rows) ? t('web.moderation.everywhere') : undefined,
-				action: () => openModerate('ban-ip', rows.map((row) => ({ name: row.ip })), [...reporting])
-			},
-			{
-				label: t('web.moderation.pardonAddress'),
-				icon: 'handshake',
-				disabled: none,
-				action: () => openModerate('pardon-ip', rows.map((row) => ({ name: row.ip })), coveredInstances(rows))
-			},
-			{ separator: true },
-			{
-				label: t('web.moderation.promoteToNetwork'),
-				icon: 'sitemap',
-				color: 'danger',
-				disabled: none,
-				action: () => openPromote(rows)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.moderation.pardonAddress'),
+					icon: 'handshake',
+					disabled: none,
+					action: () => openModerate('pardon-ip', rows.map((row) => ({ name: row.ip })), coveredInstances(rows))
+				}
+			],
+			[
+				{
+					label: t('web.moderation.ipBanOnAll'),
+					icon: 'gavel',
+					color: 'danger',
+					disabled: none || fullyCovered(rows),
+					hint: !none && fullyCovered(rows) ? t('web.moderation.everywhere') : undefined,
+					action: () => openModerate('ban-ip', rows.map((row) => ({ name: row.ip })), [...reporting])
+				},
+				{
+					label: t('web.moderation.promoteToNetwork'),
+					icon: 'sitemap',
+					color: 'danger',
+					disabled: none,
+					action: () => openPromote(rows)
+				}
+			]
+		);
 	}
 
-	function profileVerbs(uuid: string, name: string): ContextMenuItem[] {
-		return [
+	function profileVerbs(uuid: string, name: string): ProfileGroups {
+		const open: ContextMenuItem[] = [
 			{
 				label: t('web.players.viewProfile'),
 				icon: 'user',
 				action: () => goto(`/players/${uuid || name}`)
-			},
-			...(uuid
-				? [
-						{
-							label: t('web.players.copyUuid'),
-							icon: 'copy',
-							action: () => void copy(uuid)
-						}
-					]
-				: []),
-			{ separator: true } as ContextMenuItem
+			}
 		];
+
+		const copyGroup: ContextMenuItem[] = uuid
+			? [
+					{
+						id: 'copy-uuid',
+						label: t('web.players.copyUuid'),
+						icon: 'copy',
+						action: () => void copy(uuid)
+					}
+				]
+			: [];
+
+		return { open, copy: copyGroup };
 	}
 
 	async function copy(text: string): Promise<void> {
@@ -602,19 +630,19 @@
 	function banRowActions(row: BanRow): ContextMenuItem[] {
 		const rows = pick(row, banSelection, selectedBans.has(rowKey(row)));
 
-		return [...profileVerbs(row.uuid, row.name), ...banActions(rows)];
+		return banActions(rows, profileVerbs(row.uuid, row.name));
 	}
 
 	function whitelistRowActions(row: WhitelistRow): ContextMenuItem[] {
 		const rows = pick(row, whitelistSelection, selectedWhitelist.has(rowKey(row)));
 
-		return [...profileVerbs(row.uuid, row.name), ...whitelistActions(rows)];
+		return whitelistActions(rows, profileVerbs(row.uuid, row.name));
 	}
 
 	function opRowActions(row: OpRow): ContextMenuItem[] {
 		const rows = pick(row, opSelection, selectedOps.has(rowKey(row)));
 
-		return [...profileVerbs(row.uuid, row.name), ...opActions(rows)];
+		return opActions(rows, profileVerbs(row.uuid, row.name));
 	}
 
 	function ipBanRowActions(row: IpBanRow): ContextMenuItem[] {
@@ -628,7 +656,9 @@
 			return [];
 		}
 
-		return profileVerbs(entry.targetUuid, entry.targetName).filter((item) => !item.separator);
+		const profile = profileVerbs(entry.targetUuid, entry.targetName);
+
+		return menuGroups(profile.open, profile.copy);
 	}
 
 	// -- tables -----------------------------------------------------------------

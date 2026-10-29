@@ -26,6 +26,111 @@ export interface ContextMenuItem {
 	action?: () => void | Promise<void>;
 }
 
+/**
+ * A menu built from groups, one divider between each pair; a group left empty
+ * (its verbs did not apply) takes no divider with it. The groups follow the
+ * order DESIGN.md §5.4 sets: open, state, change, copy, remove.
+ *
+ * @param groups each group's items, empty ones allowed
+ * @returns the joined menu
+ */
+export function menuGroups(...groups: ContextMenuItem[][]): ContextMenuItem[] {
+	const out: ContextMenuItem[] = [];
+
+	for (const group of groups) {
+		if (group.length === 0) {
+			continue;
+		}
+
+		if (out.length > 0) {
+			out.push({ separator: true });
+		}
+
+		out.push(...group);
+	}
+
+	return out;
+}
+
+/**
+ * A menu as it is drawn: no divider at either end or next to another, no
+ * header left with nothing under it, no submenu without rows. Conditional
+ * items are then safe to leave out anywhere without stranding a divider.
+ *
+ * @param items the menu as a screen declared it
+ * @returns the menu with the dangling chrome dropped, submenus included
+ */
+export function tidyMenu(items: ContextMenuItem[]): ContextMenuItem[] {
+	const rows: ContextMenuItem[] = [];
+
+	for (const item of items) {
+		if (!item.submenu) {
+			rows.push(item);
+
+			continue;
+		}
+
+		const submenu = tidyMenu(item.submenu);
+
+		if (submenu.length > 0) {
+			rows.push({ ...item, submenu });
+		}
+	}
+
+	// a header whose section came out empty is followed by a divider, another
+	// header, or nothing at all; dropped before the dividers are collapsed,
+	// since its going can put two of them side by side
+	const kept = rows.filter((item, index) => {
+		if (!item.header) {
+			return true;
+		}
+
+		const next = rows[index + 1];
+
+		return !!next && !next.separator && !next.header;
+	});
+
+	const out: ContextMenuItem[] = [];
+
+	for (const item of kept) {
+		const last = out[out.length - 1];
+
+		if (item.separator && (!last || last.separator)) {
+			continue;
+		}
+
+		out.push(item);
+	}
+
+	while (out.length > 0 && out[out.length - 1]!.separator) {
+		out.pop();
+	}
+
+	return out;
+}
+
+/**
+ * Split a menu at its dividers.
+ *
+ * @param items a menu, separators included
+ * @returns the groups between the dividers, empty ones dropped
+ */
+export function splitMenuGroups(items: ContextMenuItem[]): ContextMenuItem[][] {
+	const groups: ContextMenuItem[][] = [[]];
+
+	for (const item of items) {
+		if (item.separator) {
+			groups.push([]);
+
+			continue;
+		}
+
+		groups[groups.length - 1]!.push(item);
+	}
+
+	return groups.filter((group) => group.length > 0);
+}
+
 export type MenuAnchor = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 
 /** What the registry needs of a menu: a way to shut it. */

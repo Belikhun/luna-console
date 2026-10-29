@@ -30,7 +30,7 @@
 	import McpScopeEditor from '$lib/components/McpScopeEditor.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { clearCrumbLabel, setCrumbLabel } from '$lib/crumbs.svelte';
 	import { allowedTools, type McpScope } from '$shared/mcptools';
@@ -275,36 +275,44 @@
 	const verbs: ContextMenuItem[] = $derived(
 		!token
 			? []
-			: [
-					{
-						label: token.enabled ? t('web.mcpDetail.disable') : t('web.mcpDetail.enable'),
-						icon: token.enabled ? 'ban' : 'circleCheck',
-						color: token.enabled ? 'warning' : undefined,
-						action: () => setEnabled(!token!.enabled)
-					},
-					{
-						label: t('web.mcp.rotateAction'),
-						icon: 'rotate',
-						color: 'warning',
-						action: openRotate
-					},
-					{
-						label: t('web.mcpDetail.copyId'),
-						icon: 'copy',
-						action: async () => {
-							await copyText(token!.id);
+			: menuGroups(
+					[
+						{
+							label: token.enabled ? t('web.mcpDetail.disable') : t('web.mcpDetail.enable'),
+							icon: token.enabled ? 'ban' : 'circleCheck',
+							color: token.enabled ? 'warning' : undefined,
+							action: () => setEnabled(!token!.enabled)
 						}
-					},
-					{ separator: true },
-					{
-						label: t('web.mcp.deleteAction', { count: 1 }),
-						icon: 'trash',
-						color: 'danger',
-						action: () => {
-							deleteOpen = true;
+					],
+					[
+						{
+							label: t('web.mcp.rotateAction'),
+							icon: 'rotate',
+							color: 'warning',
+							action: openRotate
 						}
-					}
-				]
+					],
+					[
+						{
+							id: 'copy-id',
+							label: t('web.mcpDetail.copyId'),
+							icon: 'copy',
+							action: async () => {
+								await copyText(token!.id);
+							}
+						}
+					],
+					[
+						{
+							label: t('web.mcp.deleteAction', { count: 1 }),
+							icon: 'trash',
+							color: 'danger',
+							action: () => {
+								deleteOpen = true;
+							}
+						}
+					]
+				)
 	);
 
 	const expiryOptions = $derived([
@@ -399,6 +407,7 @@
 	function callActions(row: CallRow): ContextMenuItem[] {
 		return [
 			{
+				id: 'copy-args',
 				label: t('web.mcp.copyArgs'),
 				icon: 'copy',
 				disabled: !row.args,

@@ -4088,6 +4088,7 @@
 	},
 	"instancePlayers": {
 		"title": "Người chơi trực tuyến",
+		"accessLists": "Danh sách truy cập",
 		"liveNote": "Những ai proxy đang thấy trên backend này. Máu, vị trí và chế độ chơi lấy từ lần lưu gần nhất của backend cho từng người.",
 		"savedNote": "Ping, phiên bản client và phiên là dữ liệu trực tiếp. Máu, vị trí, chế độ chơi và thành tựu lấy từ lần lưu gần nhất của backend; lưu mới nhất lúc {when}.",
 		"lunacoreUnreachable": "Không kết nối được LunaCore",

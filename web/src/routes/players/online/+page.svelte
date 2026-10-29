@@ -25,7 +25,7 @@
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 	import { withCopyResourceId } from '$lib/resourceid';
@@ -355,67 +355,74 @@
 
 	/** A player's verbs; the row menu and the toolbar's Actions button. */
 	function rowActions(player: Player): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.playersOnline.viewProfile'),
-				icon: 'user',
-				action: () => goto(`/players/${player.uuid}`)
-			},
-			{
-				label: `Open ${player.server}`,
-				icon: 'server',
-				action: () => goto(`/instances/${player.server}`)
-			},
-			{ separator: true },
-			{
-				label: t('web.playersOnline.sendAMessage'),
-				icon: 'paperPlane',
-				action: () => {
-					selected = new Set([player.uuid]);
-					messageOpen = true;
+		return menuGroups(
+			[
+				{
+					label: t('web.playersOnline.viewProfile'),
+					icon: 'user',
+					action: () => goto(`/players/${player.uuid}`)
+				},
+				{
+					label: `Open ${player.server}`,
+					icon: 'server',
+					action: () => goto(`/instances/${player.server}`)
 				}
-			},
-			{
-				label: t('web.playersOnline.moveToAnotherBackend'),
-				icon: 'rightLeft',
-				action: () => {
-					selected = new Set([player.uuid]);
-					transferOpen = true;
+			],
+			[
+				{
+					label: t('web.playersOnline.sendAMessage'),
+					icon: 'paperPlane',
+					action: () => {
+						selected = new Set([player.uuid]);
+						messageOpen = true;
+					}
+				},
+				{
+					label: t('web.playersOnline.moveToAnotherBackend'),
+					icon: 'rightLeft',
+					action: () => {
+						selected = new Set([player.uuid]);
+						transferOpen = true;
+					}
+				},
+				{
+					label: t('web.playersOnline.resendPacks'),
+					icon: 'image',
+					hint: t('web.playersOnline.resendWholeSet'),
+					action: () => void resendPacks(player)
 				}
-			},
-			{
-				label: t('web.playersOnline.resendPacks'),
-				icon: 'image',
-				hint: t('web.playersOnline.resendWholeSet'),
-				action: () => void resendPacks(player)
-			},
-			{
-				label: t('web.playersOnline.copyUuid'),
-				icon: 'copy',
-				action: () => void copy(player.uuid)
-			},
-			{ separator: true },
-			{
-				label: t('web.playersOnline.disconnectPlayer'),
-				icon: 'userSlash',
-				color: 'danger',
-				action: () => {
-					selected = new Set([player.uuid]);
-					kickForce = false;
-					kickOpen = true;
+			],
+			[
+				{
+					id: 'copy-uuid',
+					label: t('web.playersOnline.copyUuid'),
+					icon: 'copy',
+					action: () => void copy(player.uuid)
 				}
-			},
-			{
-				label: t('web.instancePlayers.forceDisconnect'),
-				icon: 'unlink',
-				color: 'danger',
-				action: () => {
-					selected = new Set([player.uuid]);
-					kickForce = true;
-					kickOpen = true;
+			],
+			[
+				{
+					label: t('web.playersOnline.disconnectPlayer'),
+					icon: 'userSlash',
+					color: 'danger',
+					action: () => {
+						selected = new Set([player.uuid]);
+						kickForce = false;
+						kickOpen = true;
+					}
+				},
+				{
+					label: t('web.instancePlayers.forceDisconnect'),
+					icon: 'unlink',
+					color: 'danger',
+					action: () => {
+						selected = new Set([player.uuid]);
+						kickForce = true;
+						kickOpen = true;
+					}
 				}
-			}
-		];
+			]
+		);
 	}
 
 	/** The console runs on plain HTTP, where navigator.clipboard does not exist. */

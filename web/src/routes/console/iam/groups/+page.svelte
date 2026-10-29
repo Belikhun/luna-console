@@ -18,7 +18,7 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Authz } from '$lib/authz.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { groupHref, notifyEach, runEach, type GroupRow } from '$lib/iam';
@@ -96,38 +96,43 @@
 		const pickOne = t('web.iam.pickOne');
 		const deleteReason = rows.length === 0 ? t('web.iamList.pickGroups') : denied('iam:DeleteGroup');
 
-		return [
-			{
-				label: t('web.iamList.viewDetails'),
-				icon: 'circleInfo',
-				disabled: !one,
-				hint: one ? undefined : pickOne,
-				action: () => goto(groupHref(one!.name))
-			},
-			{
-				label: t('web.iamList.addUsers'),
-				icon: 'userPlus',
-				disabled: !one,
-				hint: one ? undefined : pickOne,
-				action: () => goto(`${groupHref(one!.name)}?tab=users&add=1`)
-			},
-			{
-				label: t('web.iamList.attachPolicies'),
-				icon: 'link',
-				disabled: !one,
-				hint: one ? undefined : pickOne,
-				action: () => goto(`${groupHref(one!.name)}?tab=permissions`)
-			},
-			{ separator: true },
-			{
-				label: t('web.iamList.deleteGroups', { count: rows.length }),
-				icon: 'trash',
-				color: 'danger',
-				disabled: !!deleteReason,
-				hint: deleteReason || undefined,
-				action: () => askDelete(rows)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.iamList.viewDetails'),
+					icon: 'circleInfo',
+					disabled: !one,
+					hint: one ? undefined : pickOne,
+					action: () => goto(groupHref(one!.name))
+				}
+			],
+			[
+				{
+					label: t('web.iamList.addUsers'),
+					icon: 'userPlus',
+					disabled: !one,
+					hint: one ? undefined : pickOne,
+					action: () => goto(`${groupHref(one!.name)}?tab=users&add=1`)
+				},
+				{
+					label: t('web.iamList.attachPolicies'),
+					icon: 'link',
+					disabled: !one,
+					hint: one ? undefined : pickOne,
+					action: () => goto(`${groupHref(one!.name)}?tab=permissions`)
+				}
+			],
+			[
+				{
+					label: t('web.iamList.deleteGroups', { count: rows.length }),
+					icon: 'trash',
+					color: 'danger',
+					disabled: !!deleteReason,
+					hint: deleteReason || undefined,
+					action: () => askDelete(rows)
+				}
+			]
+		);
 	}
 
 	function rowActions(row: GroupRow): ContextMenuItem[] {

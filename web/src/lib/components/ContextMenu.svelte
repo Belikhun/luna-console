@@ -11,6 +11,7 @@
 		claimMenu,
 		clampMenu,
 		releaseMenu,
+		tidyMenu,
 		type ContextMenuItem,
 		type MenuAnchor
 	} from './contextmenu';
@@ -57,6 +58,9 @@
 	/** px; how far a submenu overlaps its parent row, vertically and horizontally */
 	const SUB_OFFSET_Y = 8;
 	const SUB_OFFSET_X = 4;
+
+	// what is drawn, never what was declared: a verb left out must not strand its divider
+	const drawn = $derived(tidyMenu(items));
 
 	const keyOf = (item: ContextMenuItem, index: number): string =>
 		item.id ?? item.label ?? `i${index}`;
@@ -353,12 +357,12 @@
 		{#if header}
 			<div class="header"><span class="title">{header}</span></div>
 		{/if}
-		{#each items as item, i (keyOf(item, i))}
+		{#each drawn as item, i (keyOf(item, i))}
 			{@render row(item, i, keyOf(item, i))}
 		{/each}
 	</div>
 
-	{#each items as item, i (keyOf(item, i))}
+	{#each drawn as item, i (keyOf(item, i))}
 		{#if item.submenu && openSub === keyOf(item, i)}
 			<div
 				bind:this={subView}

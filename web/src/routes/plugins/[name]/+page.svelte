@@ -34,6 +34,7 @@
 	import DataTable from '$lib/components/DataTable.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import Icon from '$lib/components/Icon.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
@@ -406,20 +407,32 @@
 			action: () => setOverride(row.instance, false, 'Disabling')
 		};
 
-		return [
-			row.disabled ? enable : row.origin === 'manual' ? remove : disable,
-			{ separator: true },
-			{
-				label: t('web.addonDetail.openOnThisInstance'),
-				icon: 'circleInfo',
-				action: () => goto(`/instances/${row.instance}/plugins/${data.plugin}`)
-			},
-			{
-				label: t('web.addonDetail.openInstance'),
-				icon: 'server',
-				action: () => goto(`/instances/${row.instance}`)
-			}
-		];
+		// a disabled row is turned back on; a running one is taken off, by
+		// removal where it was added by hand and by an override where a group put it
+		const takeOff = row.origin === 'manual'
+			? remove
+			: disable;
+
+		return menuGroups(
+			[
+				{
+					label: t('web.addonDetail.openOnThisInstance'),
+					icon: 'circleInfo',
+					action: () => goto(`/instances/${row.instance}/plugins/${data.plugin}`)
+				},
+				{
+					label: t('web.addonDetail.openInstance'),
+					icon: 'server',
+					action: () => goto(`/instances/${row.instance}`)
+				}
+			],
+			row.disabled
+				? [enable]
+				: [],
+			row.disabled
+				? []
+				: [takeOff]
+		);
 	}
 
 	const familyCols: Column[] = $derived([

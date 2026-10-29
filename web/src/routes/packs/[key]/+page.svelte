@@ -31,6 +31,7 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import Icon from '$lib/components/Icon.svelte';
@@ -519,82 +520,92 @@
 			return [];
 		}
 
-		return [
-			{
-				label: t('web.packDetail.configurePack'),
-				icon: 'pen',
-				action: () => goto(`/packs/${encodeURIComponent(pack.key)}/configure`)
-			},
-			{
-				label: t('web.packDetail.checkForUpdate'),
-				icon: 'download',
-				disabled: !pack.remote || !!busy,
-				hint: !pack.remote ? 'not identified with a provider' : undefined,
-				action: checkUpdate
-			},
-			{
-				label: t('web.packDetail.changeVersion'),
-				icon: 'clockRotateLeft',
-				disabled: !pack.remote || pack.registration === 'dynamic' || !!busy,
-				hint: !pack.remote
-					? t('web.packDetail.changeVersionNoProvider')
-					: pack.registration === 'dynamic'
-						? t('web.packDetail.replaceDynamicHint')
+		return menuGroups(
+			[
+				{
+					label: pack.remote ? `Open on ${pack.remote.provider}` : 'Open on provider',
+					icon: 'externalLink',
+					disabled: !pack.providerUrl,
+					hint: !pack.providerUrl ? 'not identified with a provider' : undefined,
+					action: () => {
+						window.open(pack.providerUrl, '_blank', 'noreferrer');
+					}
+				},
+				{
+					label: t('web.packDetail.manageAddonGroups'),
+					icon: 'layerGroup',
+					action: () => goto('/addons/groups')
+				},
+				{
+					label: t('web.packDetail.allResourcePacks'),
+					icon: 'image',
+					action: () => goto('/packs')
+				}
+			],
+			[
+				{
+					label: t('web.packDetail.checkForUpdate'),
+					icon: 'download',
+					disabled: !pack.remote || !!busy,
+					hint: !pack.remote ? 'not identified with a provider' : undefined,
+					action: checkUpdate
+				},
+				{
+					label: t('web.packDetail.resendPacks'),
+					icon: 'paperPlane',
+					// a folded menu with nothing it can do says why, rather than opening empty-handed
+					disabled: resendActions.every((entry) => entry.disabled),
+					hint: resendActions.every((entry) => entry.disabled)
+						? resendActions[0]?.hint
 						: undefined,
-				action: () => {
-					versionsOpen = true;
+					submenu: resendActions
+				},
+				{
+					label: t('web.packDetail.reloadOnProxy'),
+					icon: 'rotate',
+					action: doReload
+				},
+				{
+					label: t('web.packDetail.testReachability'),
+					icon: 'rotate',
+					disabled: !detail.url || !pack.present || !!busy,
+					hint: !detail.url || !pack.present ? 'there is no URL to test' : undefined,
+					action: retest
 				}
-			},
-			{
-				label: t('web.packDetail.replaceFile'),
-				icon: 'upload',
-				disabled: pack.registration === 'dynamic' || !!busy,
-				hint:
-					pack.registration === 'dynamic'
-						? t('web.packDetail.replaceDynamicHint')
-						: undefined,
-				action: () => {
-					replaceOpen = true;
+			],
+			[
+				{
+					label: t('web.packDetail.configurePack'),
+					icon: 'pen',
+					action: () => goto(`/packs/${encodeURIComponent(pack.key)}/configure`)
+				},
+				{
+					label: t('web.packDetail.changeVersion'),
+					icon: 'clockRotateLeft',
+					disabled: !pack.remote || pack.registration === 'dynamic' || !!busy,
+					hint: !pack.remote
+						? t('web.packDetail.changeVersionNoProvider')
+						: pack.registration === 'dynamic'
+							? t('web.packDetail.replaceDynamicHint')
+							: undefined,
+					action: () => {
+						versionsOpen = true;
+					}
+				},
+				{
+					label: t('web.packDetail.replaceFile'),
+					icon: 'upload',
+					disabled: pack.registration === 'dynamic' || !!busy,
+					hint:
+						pack.registration === 'dynamic'
+							? t('web.packDetail.replaceDynamicHint')
+							: undefined,
+					action: () => {
+						replaceOpen = true;
+					}
 				}
-			},
-			{
-				label: t('web.packDetail.resendPacks'),
-				icon: 'paperPlane',
-				submenu: resendActions
-			},
-			{
-				label: t('web.packDetail.testReachability'),
-				icon: 'rotate',
-				disabled: !detail.url || !pack.present || !!busy,
-				hint: !detail.url || !pack.present ? 'there is no URL to test' : undefined,
-				action: retest
-			},
-			{
-				label: t('web.packDetail.reloadOnProxy'),
-				icon: 'rotate',
-				action: doReload
-			},
-			{
-				label: t('web.packDetail.manageAddonGroups'),
-				icon: 'layerGroup',
-				action: () => goto('/addons/groups')
-			},
-			{
-				label: pack.remote ? `Open on ${pack.remote.provider}` : 'Open on provider',
-				icon: 'externalLink',
-				disabled: !pack.providerUrl,
-				hint: !pack.providerUrl ? 'not identified with a provider' : undefined,
-				action: () => {
-					window.open(pack.providerUrl, '_blank', 'noreferrer');
-				}
-			},
-			{ separator: true },
-			{
-				label: t('web.packDetail.allResourcePacks'),
-				icon: 'image',
-				action: () => goto('/packs')
-			}
-		];
+			]
+		);
 	});
 
 	// -- overview cells -------------------------------------------------------------
@@ -762,21 +773,24 @@
 	function instanceActions(row: any): ContextMenuItem[] {
 		const locked = row.granted && row.matched;
 
-		return [
-			{
-				label: row.matched ? `Stop serving on ${row.name}` : `Serve on ${row.name}`,
-				icon: row.matched ? 'toggleOff' : 'toggleOn',
-				disabled: !!busy || locked,
-				hint: locked ? 'an addon group grants this backend; edit the group instead' : undefined,
-				action: () => setInstance(row.name, !row.matched)
-			},
-			{ separator: true },
-			{
-				label: t('web.packDetail.openInstance'),
-				icon: 'server',
-				action: () => goto(instanceTabPath(row.name, 'respacks'))
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.packDetail.openInstance'),
+					icon: 'server',
+					action: () => goto(instanceTabPath(row.name, 'respacks'))
+				}
+			],
+			[
+				{
+					label: row.matched ? `Stop serving on ${row.name}` : `Serve on ${row.name}`,
+					icon: row.matched ? 'toggleOff' : 'toggleOn',
+					disabled: !!busy || locked,
+					hint: locked ? 'an addon group grants this backend; edit the group instead' : undefined,
+					action: () => setInstance(row.name, !row.matched)
+				}
+			]
+		);
 	}
 
 	// -- players ----------------------------------------------------------------------
@@ -790,24 +804,27 @@
 
 	/** One player's verbs, seen from this pack. */
 	function holderActions(row: any): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.packDetail.resendToPlayer', { player: row.username }),
-				icon: 'paperPlane',
-				disabled: !!busy,
-				hint: t('web.packDetail.resendSendsEverything'),
-				action: () =>
-					resend(t('web.packDetail.resendingPlayer', { player: row.username }), {
-						players: [row.username]
-					})
-			},
-			{ separator: true },
-			{
-				label: t('web.packDetail.openPlayer'),
-				icon: 'user',
-				action: () => goto(`/players?q=${encodeURIComponent(row.username)}`)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.packDetail.openPlayer'),
+					icon: 'user',
+					action: () => goto(`/players?q=${encodeURIComponent(row.username)}`)
+				}
+			],
+			[
+				{
+					label: t('web.packDetail.resendToPlayer', { player: row.username }),
+					icon: 'paperPlane',
+					disabled: !!busy,
+					hint: t('web.packDetail.resendSendsEverything'),
+					action: () =>
+						resend(t('web.packDetail.resendingPlayer', { player: row.username }), {
+							players: [row.username]
+						})
+				}
+			]
+		);
 	}
 
 	/** Holders first; the answer to "who has it" should not need scrolling. */

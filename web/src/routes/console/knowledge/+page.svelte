@@ -20,7 +20,7 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 	import { withCopyResourceId } from '$lib/resourceid';
@@ -116,56 +116,62 @@
 			? undefined
 			: t('web.common.notAllowed', { action: 'knowledge:Publish' });
 
-		return [
-			{
-				label: t('web.knowledge.edit'),
-				icon: 'pen',
-				disabled: !one,
-				hint: one ? undefined : t('web.knowledge.pickOne'),
-				action: () => goto(`/console/knowledge/${one!.id}`)
-			},
-			{ separator: true },
-			{
-				label: t('web.knowledge.pinAction', { count: toPin.length }),
-				icon: 'thumbtack',
-				disabled: !publishes || toPin.length === 0,
-				hint: refused ?? (toPin.length ? undefined : t('web.knowledge.allPinned')),
-				action: () => setField(toPin, t('web.knowledge.verbPin'), 'pinned', true)
-			},
-			{
-				label: t('web.knowledge.unpinAction', { count: toUnpin.length }),
-				icon: 'thumbtack',
-				disabled: !publishes || toUnpin.length === 0,
-				hint: refused ?? (toUnpin.length ? undefined : t('web.knowledge.nonePinned')),
-				action: () => setField(toUnpin, t('web.knowledge.verbUnpin'), 'pinned', false)
-			},
-			{
-				label: t('web.knowledge.enableAction', { count: toEnable.length }),
-				icon: 'circleCheck',
-				disabled: !publishes || toEnable.length === 0,
-				hint: refused ?? (toEnable.length ? undefined : t('web.knowledge.allEnabled')),
-				action: () => setField(toEnable, t('web.knowledge.verbEnable'), 'enabled', true)
-			},
-			{
-				label: t('web.knowledge.disableAction', { count: toDisable.length }),
-				icon: 'ban',
-				color: 'warning',
-				disabled: !publishes || toDisable.length === 0,
-				hint: refused ?? (toDisable.length ? undefined : t('web.knowledge.allDisabled')),
-				action: () => setField(toDisable, t('web.knowledge.verbDisable'), 'enabled', false)
-			},
-			{ separator: true },
-			{
-				label: t('web.knowledge.deleteAction', { count: targets.length }),
-				icon: 'trash',
-				color: 'danger',
-				disabled: targets.length === 0,
-				action: () => {
-					deleteRows = targets;
-					deleteOpen = true;
+		return menuGroups(
+			[
+				{
+					label: t('web.knowledge.edit'),
+					icon: 'pen',
+					disabled: !one,
+					hint: one ? undefined : t('web.knowledge.pickOne'),
+					action: () => goto(`/console/knowledge/${one!.id}`)
 				}
-			}
-		];
+			],
+			[
+				{
+					label: t('web.knowledge.enableAction', { count: toEnable.length }),
+					icon: 'circleCheck',
+					disabled: !publishes || toEnable.length === 0,
+					hint: refused ?? (toEnable.length ? undefined : t('web.knowledge.allEnabled')),
+					action: () => setField(toEnable, t('web.knowledge.verbEnable'), 'enabled', true)
+				},
+				{
+					label: t('web.knowledge.disableAction', { count: toDisable.length }),
+					icon: 'ban',
+					color: 'warning',
+					disabled: !publishes || toDisable.length === 0,
+					hint: refused ?? (toDisable.length ? undefined : t('web.knowledge.allDisabled')),
+					action: () => setField(toDisable, t('web.knowledge.verbDisable'), 'enabled', false)
+				}
+			],
+			[
+				{
+					label: t('web.knowledge.pinAction', { count: toPin.length }),
+					icon: 'thumbtack',
+					disabled: !publishes || toPin.length === 0,
+					hint: refused ?? (toPin.length ? undefined : t('web.knowledge.allPinned')),
+					action: () => setField(toPin, t('web.knowledge.verbPin'), 'pinned', true)
+				},
+				{
+					label: t('web.knowledge.unpinAction', { count: toUnpin.length }),
+					icon: 'thumbtack',
+					disabled: !publishes || toUnpin.length === 0,
+					hint: refused ?? (toUnpin.length ? undefined : t('web.knowledge.nonePinned')),
+					action: () => setField(toUnpin, t('web.knowledge.verbUnpin'), 'pinned', false)
+				}
+			],
+			[
+				{
+					label: t('web.knowledge.deleteAction', { count: targets.length }),
+					icon: 'trash',
+					color: 'danger',
+					disabled: targets.length === 0,
+					action: () => {
+						deleteRows = targets;
+						deleteOpen = true;
+					}
+				}
+			]
+		);
 	}
 
 	function rowActions(row: KnowledgeItem): ContextMenuItem[] {

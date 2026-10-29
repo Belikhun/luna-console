@@ -13,6 +13,7 @@
 	import Panel from '$lib/components/Panel.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
@@ -542,117 +543,129 @@
 		const updatable = rows.filter((row) => row.remote);
 		const updTargets = updatable.length ? updatable : rows;
 
-		return [
-			{
-				label: t('web.packs.packDetails'),
-				icon: 'circleInfo',
-				disabled: !only,
-				hint: only ? undefined : oneOnly,
-				action: () => goto(`/packs/${encodeURIComponent(only!.key)}`)
-			},
-			{
-				label: t('web.packs.configurePack'),
-				icon: 'pen',
-				disabled: !only,
-				hint: only ? undefined : oneOnly,
-				action: () => goto(`/packs/${encodeURIComponent(only!.key)}/configure`)
-			},
-			{ separator: true },
-			{
-				label: t('web.packs.enableWhat', { what: packNoun(toEnable.length ? toEnable : rows) }),
-				icon: 'toggleOn',
-				disabled: toEnable.length === 0,
-				hint: toEnable.length === 0 ? 'already enabled' : undefined,
-				action: () => setEnabledMany(toEnable, true)
-			},
-			{
-				label: t('web.packs.disableWhat', { what: packNoun(toDisable.length ? toDisable : rows) }),
-				icon: 'toggleOff',
-				disabled: toDisable.length === 0,
-				hint: toDisable.length === 0 ? 'already disabled' : undefined,
-				action: () => setEnabledMany(toDisable, false)
-			},
-			{
-				label: updTargets.length === 1 ? t('web.packs.checkForUpdate') : t('web.packs.checkManyUpdates', { count: updTargets.length }),
-				icon: 'download',
-				disabled: updatable.length === 0,
-				hint: updatable.length === 0 ? 'not identified with a provider' : undefined,
-				action: () => checkUpdates(updatable.map((row) => row.key))
-			},
-			{
-				label: t('web.packs.replaceFile'),
-				icon: 'upload',
-				disabled: !only || only.registration === 'dynamic',
-				hint: !only
-					? oneOnly
-					: only.registration === 'dynamic'
-						? t('web.packs.replaceDynamicHint')
-						: t('web.packs.replaceKeepsRegistration'),
-				action: () => {
-					replaceTarget = only!;
-					replaceOpen = true;
+		return menuGroups(
+			[
+				{
+					label: t('web.packs.packDetails'),
+					icon: 'circleInfo',
+					disabled: !only,
+					hint: only ? undefined : oneOnly,
+					action: () => goto(`/packs/${encodeURIComponent(only!.key)}`)
+				},
+				{
+					label: only?.remote ? t('web.catalog.openOn', { provider: only.remote.provider }) : t('web.packs.openOnProvider'),
+					icon: 'externalLink',
+					disabled: !only?.url,
+					hint: !only ? oneOnly : !only.url ? 'not identified with a provider' : undefined,
+					action: () => {
+						window.open(only!.url!, '_blank', 'noreferrer');
+					}
+				},
+				{
+					label: t('web.packs.manageAddonGroups'),
+					icon: 'layerGroup',
+					action: () => goto('/addons/groups')
 				}
-			},
-			{ separator: true },
-			{
-				label: only?.remote ? 'Change provider mapping…' : 'Map to a provider…',
-				icon: 'link',
-				disabled: !only,
-				hint: only ? 'record which project this zip came from' : oneOnly,
-				action: () => openIdentify(only!)
-			},
-			{
-				label: t('web.packs.takeOverFromItsPlugin'),
-				icon: 'handshake',
-				// only a pack a plugin registers can be taken over, and only once
-				disabled: only?.registration !== 'dynamic',
-				hint:
-					!only
+			],
+			[
+				{
+					label: t('web.packs.enableWhat', { what: packNoun(toEnable.length ? toEnable : rows) }),
+					icon: 'toggleOn',
+					disabled: toEnable.length === 0,
+					hint: toEnable.length === 0 ? 'already enabled' : undefined,
+					action: () => setEnabledMany(toEnable, true)
+				},
+				{
+					label: t('web.packs.disableWhat', { what: packNoun(toDisable.length ? toDisable : rows) }),
+					icon: 'toggleOff',
+					disabled: toDisable.length === 0,
+					hint: toDisable.length === 0 ? 'already disabled' : undefined,
+					action: () => setEnabledMany(toDisable, false)
+				},
+				{
+					label: updTargets.length === 1 ? t('web.packs.checkForUpdate') : t('web.packs.checkManyUpdates', { count: updTargets.length }),
+					icon: 'download',
+					disabled: updatable.length === 0,
+					hint: updatable.length === 0 ? 'not identified with a provider' : undefined,
+					action: () => checkUpdates(updatable.map((row) => row.key))
+				}
+			],
+			[
+				{
+					label: t('web.packs.configurePack'),
+					icon: 'pen',
+					disabled: !only,
+					hint: only ? undefined : oneOnly,
+					action: () => goto(`/packs/${encodeURIComponent(only!.key)}/configure`)
+				},
+				{
+					label: t('web.packs.replaceFile'),
+					icon: 'upload',
+					disabled: !only || only.registration === 'dynamic',
+					hint: !only
 						? oneOnly
 						: only.registration === 'dynamic'
-							? 'write a definition luna owns, copied from the running one'
-							: 'not registered by a plugin',
-				action: () => takeOver(only!)
-			},
-			{
-				label: t('web.packs.releaseBackToItsPlugin'),
-				icon: 'rotate',
-				disabled: !only?.shadowsDynamic,
-				hint:
-					!only
-						? oneOnly
-						: only.shadowsDynamic
-							? 'delete luna\'s definition and let the plugin decide again'
-							: 'no plugin registration behind this pack',
-				action: () => releaseBack(only!)
-			},
-			{ separator: true },
-			{
-				label: t('web.packs.manageAddonGroups'),
-				icon: 'layerGroup',
-				action: () => goto('/addons/groups')
-			},
-			{
-				label: only?.remote ? t('web.catalog.openOn', { provider: only.remote.provider }) : t('web.packs.openOnProvider'),
-				icon: 'externalLink',
-				disabled: !only?.url,
-				hint: !only ? oneOnly : !only.url ? 'not identified with a provider' : undefined,
-				action: () => {
-					window.open(only!.url!, '_blank', 'noreferrer');
+							? t('web.packs.replaceDynamicHint')
+							: t('web.packs.replaceKeepsRegistration'),
+					action: () => {
+						replaceTarget = only!;
+						replaceOpen = true;
+					}
+				},
+				{
+					label: t('web.packs.source'),
+					icon: 'link',
+					disabled: !only,
+					hint: only ? undefined : oneOnly,
+					submenu: [
+						{
+							label: only?.remote ? 'Change provider mapping…' : 'Map to a provider…',
+							icon: 'link',
+							disabled: !only,
+							hint: only ? 'record which project this zip came from' : oneOnly,
+							action: () => openIdentify(only!)
+						},
+						{
+							label: t('web.packs.takeOverFromItsPlugin'),
+							icon: 'handshake',
+							// only a pack a plugin registers can be taken over, and only once
+							disabled: only?.registration !== 'dynamic',
+							hint:
+								!only
+									? oneOnly
+									: only.registration === 'dynamic'
+										? 'write a definition luna owns, copied from the running one'
+										: 'not registered by a plugin',
+							action: () => takeOver(only!)
+						},
+						{
+							label: t('web.packs.releaseBackToItsPlugin'),
+							icon: 'rotate',
+							disabled: !only?.shadowsDynamic,
+							hint:
+								!only
+									? oneOnly
+									: only.shadowsDynamic
+										? 'delete luna\'s definition and let the plugin decide again'
+										: 'no plugin registration behind this pack',
+							action: () => releaseBack(only!)
+						}
+					]
 				}
-			},
-			{ separator: true },
-			{
-				label: t('web.packs.removeWhat', { what: packNoun(rows) }),
-				icon: 'trash',
-				color: 'danger',
-				action: () => {
-					removeTargets = rows;
-					removeKeepFile = false;
-					removeOpen = true;
+			],
+			[
+				{
+					label: t('web.packs.removeWhat', { what: packNoun(rows) }),
+					icon: 'trash',
+					color: 'danger',
+					action: () => {
+						removeTargets = rows;
+						removeKeepFile = false;
+						removeOpen = true;
+					}
 				}
-			}
-		];
+			]
+		);
 	}
 
 	/**

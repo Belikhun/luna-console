@@ -199,6 +199,12 @@
 				action: () => pane.session.newChat()
 			},
 			{ label: t('web.agent.popOut'), icon: 'arrowUpRightFromSquare', action: () => Agent.popOut(pane.session.conversationId) },
+			{
+				label: t('web.agentScreen.closePane'),
+				icon: 'close',
+				disabled: panes.length === 1,
+				action: () => closePane(index)
+			},
 			{ separator: true },
 			{
 				label: t('web.agent.deleteChat'),
@@ -211,12 +217,6 @@
 						deleting = { id: row.id, title: row.title };
 					}
 				}
-			},
-			{
-				label: t('web.agentScreen.closePane'),
-				icon: 'close',
-				disabled: panes.length === 1,
-				action: () => closePane(index)
 			}
 		];
 	}

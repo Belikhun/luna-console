@@ -18,7 +18,7 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { consumersLine } from '$lib/pools';
 	import { goto } from '$app/navigation';
 	import { instanceTabPath } from '$lib/components/instancetabs';
@@ -189,36 +189,42 @@
 	function rowActions(row: any): ContextMenuItem[] {
 		const lan = lanAddresses[row.machine] ?? null;
 
-		return [
-			{
-				label: t('web.cleanup.openInstance', { name: row.owner }),
-				icon: 'server',
-				action: () => goto(`/instances/${row.owner}`)
-			},
-			{
-				label: t('web.ports.openNetworking'),
-				icon: 'sitemap',
-				action: () => goto(instanceTabPath(row.owner, 'network'))
-			},
-			{ separator: true },
-			{
-				label: t('web.ports.copyPort'),
-				icon: 'copy',
-				action: () => navigator.clipboard?.writeText(String(row.port))
-			},
-			{
-				label: t('web.ports.copyAddressWith', { address: row.address }),
-				icon: 'copy',
-				action: () => navigator.clipboard?.writeText(row.address)
-			},
-			{
-				label: lan ? t('web.ports.copyLanWith', { address: `${lan}:${row.port}` }) : t('web.ports.copyLan'),
-				icon: 'globe',
-				disabled: !lan,
-				hint: lan ? undefined : t('web.ports.noLanKnown'),
-				action: () => navigator.clipboard?.writeText(`${lan}:${row.port}`)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.cleanup.openInstance', { name: row.owner }),
+					icon: 'server',
+					action: () => goto(`/instances/${row.owner}`)
+				},
+				{
+					label: t('web.ports.openNetworking'),
+					icon: 'sitemap',
+					action: () => goto(instanceTabPath(row.owner, 'network'))
+				}
+			],
+			[
+				{
+					id: 'copy-port',
+					label: t('web.ports.copyPort'),
+					icon: 'copy',
+					action: () => navigator.clipboard?.writeText(String(row.port))
+				},
+				{
+					id: 'copy-address',
+					label: t('web.ports.copyAddressWith', { address: row.address }),
+					icon: 'copy',
+					action: () => navigator.clipboard?.writeText(row.address)
+				},
+				{
+					id: 'copy-lan-address',
+					label: lan ? t('web.ports.copyLanWith', { address: `${lan}:${row.port}` }) : t('web.ports.copyLan'),
+					icon: 'globe',
+					disabled: !lan,
+					hint: lan ? undefined : t('web.ports.noLanKnown'),
+					action: () => navigator.clipboard?.writeText(`${lan}:${row.port}`)
+				}
+			]
+		);
 	}
 
 	let selected: Set<string> = $state(new Set());

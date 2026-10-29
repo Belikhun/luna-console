@@ -319,6 +319,7 @@
 
 		return [
 			{
+				id: 'copy-id',
 				label: t('web.runtimes.copyId'),
 				icon: 'copy',
 				disabled: real.length !== 1,

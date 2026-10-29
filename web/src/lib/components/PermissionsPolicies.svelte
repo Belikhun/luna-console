@@ -22,6 +22,7 @@
 	import PolicyPickTable from './PolicyPickTable.svelte';
 	import GroupPickTable from './GroupPickTable.svelte';
 	import type { Column } from './table';
+	import { menuGroups } from './contextmenu';
 	import type { ContextMenuItem } from './contextmenu';
 	import type { PolicyEditorMode, PolicyValidation } from './policyeditor';
 	import {
@@ -299,38 +300,49 @@
 		const reason = targets.length === 1 ? removeReason(row) : '';
 		const removable = targets.filter((entry) => !entry.via);
 
-		return [
-			{
-				label: t('web.permissionsPanel.openPolicy'),
-				icon: 'circleInfo',
-				disabled: row.kind === 'inline',
-				hint: row.kind === 'inline' ? t('web.permissionsPanel.inlineHasNoPage') : undefined,
-				action: () => goto(policyHref(row.name))
-			},
-			{
-				label: t('web.permissionsPanel.editInline'),
-				icon: 'pen',
-				disabled: !row.inline || !!attachRefusal,
-				hint: attachRefusal || (row.inline
-					? undefined
-					: row.kind === 'inline'
-						? removeReason(row)
-						: t('web.permissionsPanel.onlyInlineEdits')),
-				action: () => openInline(row)
-			},
-			...(row.via
-				? [{ label: t('web.permissionsPanel.openGroup'), icon: 'users', action: () => goto(groupHref(row.via!)) }]
-				: []),
-			{ separator: true },
-			{
-				label: t('web.permissionsPanel.removeAction', { count: removable.length }),
-				icon: 'trash',
-				color: 'danger',
-				disabled: removable.length === 0 || !!detachRefusal,
-				hint: detachRefusal || reason || (removable.length === 0 ? removeReason(row) : undefined),
-				action: () => askRemove(targets)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.permissionsPanel.openPolicy'),
+					icon: 'circleInfo',
+					disabled: row.kind === 'inline',
+					hint: row.kind === 'inline' ? t('web.permissionsPanel.inlineHasNoPage') : undefined,
+					action: () => goto(policyHref(row.name))
+				},
+				...(row.via
+					? [
+							{
+								label: t('web.permissionsPanel.openGroup'),
+								icon: 'users',
+								action: () => goto(groupHref(row.via!))
+							}
+						]
+					: [])
+			],
+			[
+				{
+					label: t('web.permissionsPanel.editInline'),
+					icon: 'pen',
+					disabled: !row.inline || !!attachRefusal,
+					hint: attachRefusal || (row.inline
+						? undefined
+						: row.kind === 'inline'
+							? removeReason(row)
+							: t('web.permissionsPanel.onlyInlineEdits')),
+					action: () => openInline(row)
+				}
+			],
+			[
+				{
+					label: t('web.permissionsPanel.removeAction', { count: removable.length }),
+					icon: 'trash',
+					color: 'danger',
+					disabled: removable.length === 0 || !!detachRefusal,
+					hint: detachRefusal || reason || (removable.length === 0 ? removeReason(row) : undefined),
+					action: () => askRemove(targets)
+				}
+			]
+		);
 	}
 
 	const addMenu: ContextMenuItem[] = $derived(

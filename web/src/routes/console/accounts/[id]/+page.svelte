@@ -34,7 +34,7 @@
 	import type { AccountPermissions } from '$core/iam';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { MIN_PASSWORD_LENGTH } from '$shared/accountrules';
 	import { groupHref, iamResourceId, notifyEach, runEach, type GroupRow } from '$lib/iam';
@@ -512,58 +512,62 @@
 	const accountVerbs: ContextMenuItem[] = $derived(
 		!detail
 			? []
-			: [
-					{
-						label: t('web.accountDetail.editDetails'),
-						icon: 'pen',
-						action: () => goto(`/console/accounts/${detail!.account.id}/edit`)
-					},
-					{ label: t('web.accountDetail.setPassword'), icon: 'key', action: openPassword },
-					{ label: t('web.accountDetail.linkPlayer'), icon: 'cube', action: () => openLink() },
-					{ separator: true },
-					{
-						label: detail.account.enabled
-							? t('web.accountDetail.disableAccount')
-							: t('web.accountDetail.enableAccount'),
-						icon: detail.account.enabled ? 'ban' : 'circleCheck',
-						color: detail.account.enabled ? 'warning' : 'default',
-						disabled: (detail.self && detail.account.enabled) || !!refusedTo('account:Administer'),
-						hint: refusedTo('account:Administer')
-							|| (detail.self && detail.account.enabled ? t('web.accounts.notYourself') : undefined),
-						action: () => setEnabled(!detail!.account.enabled)
-					},
-					{
-						label: t('web.accountDetail.unlockAccount'),
-						icon: 'unlock',
-						disabled: !detail.account.lockedUntil || !!refusedTo('account:Administer'),
-						hint: refusedTo('account:Administer')
-							|| (detail.account.lockedUntil ? undefined : t('web.accounts.noneLocked')),
-						action: unlock
-					},
-					{
-						label: detail.self
-							? t('web.accountDetail.revokeOthers')
-							: t('web.accountDetail.revokeSessions'),
-						icon: 'rightFromBracket',
-						color: 'warning',
-						disabled: detail.sessions.length === 0,
-						hint: detail.sessions.length ? undefined : t('web.accounts.noSessions'),
-						action: revokeAll
-					},
-					{ separator: true },
-					{
-						label: t('web.accountDetail.deleteAccount'),
-						icon: 'trash',
-						color: 'danger',
-						disabled: detail.self || !!refusedTo('account:Delete'),
-						hint: detail.self
-							? t('web.accounts.notYourself')
-							: refusedTo('account:Delete'),
-						action: () => {
-							deleteOpen = true;
+			: menuGroups(
+					[
+						{
+							label: detail.account.enabled
+								? t('web.accountDetail.disableAccount')
+								: t('web.accountDetail.enableAccount'),
+							icon: detail.account.enabled ? 'ban' : 'circleCheck',
+							color: detail.account.enabled ? 'warning' : 'default',
+							disabled: (detail.self && detail.account.enabled) || !!refusedTo('account:Administer'),
+							hint: refusedTo('account:Administer')
+								|| (detail.self && detail.account.enabled ? t('web.accounts.notYourself') : undefined),
+							action: () => setEnabled(!detail!.account.enabled)
+						},
+						{
+							label: t('web.accountDetail.unlockAccount'),
+							icon: 'unlock',
+							disabled: !detail.account.lockedUntil || !!refusedTo('account:Administer'),
+							hint: refusedTo('account:Administer')
+								|| (detail.account.lockedUntil ? undefined : t('web.accounts.noneLocked')),
+							action: unlock
 						}
-					}
-				]
+					],
+					[
+						{
+							label: t('web.accountDetail.editDetails'),
+							icon: 'pen',
+							action: () => goto(`/console/accounts/${detail!.account.id}/edit`)
+						},
+						{ label: t('web.accountDetail.setPassword'), icon: 'key', action: openPassword },
+						{ label: t('web.accountDetail.linkPlayer'), icon: 'cube', action: () => openLink() }
+					],
+					[
+						{
+							label: detail.self
+								? t('web.accountDetail.revokeOthers')
+								: t('web.accountDetail.revokeSessions'),
+							icon: 'rightFromBracket',
+							color: 'danger',
+							disabled: detail.sessions.length === 0,
+							hint: detail.sessions.length ? undefined : t('web.accounts.noSessions'),
+							action: revokeAll
+						},
+						{
+							label: t('web.accountDetail.deleteAccount'),
+							icon: 'trash',
+							color: 'danger',
+							disabled: detail.self || !!refusedTo('account:Delete'),
+							hint: detail.self
+								? t('web.accounts.notYourself')
+								: refusedTo('account:Delete'),
+							action: () => {
+								deleteOpen = true;
+							}
+						}
+					]
+				)
 	);
 
 	/** Whether the account can sign in to the console, in AWS's "console access" words. */
@@ -651,39 +655,45 @@
 	]);
 
 	function identityActions(row: IdentityRow): ContextMenuItem[] {
-		return [
-			{
-				label: row.disabled
-					? t('web.accountDetail.enableIdentity')
-					: t('web.accountDetail.disableIdentity'),
-				icon: row.disabled ? 'circleCheck' : 'ban',
-				// a disabled password identity is an account nobody can sign in as, which
-				// is what "disable the account" is for; the state stays visible either way
-				disabled: row.kind === 'password' && !row.disabled && detail?.self,
-				hint: row.kind === 'password' && !row.disabled && detail?.self
-					? t('web.accountDetail.notYourPassword')
-					: undefined,
-				action: () => toggleIdentity(row)
-			},
-			{
-				label: t('web.accountDetail.copyIdentityId'),
-				icon: 'copy',
-				action: async () => {
-					await copyText(row.id);
+		return menuGroups(
+			[
+				{
+					label: row.disabled
+						? t('web.accountDetail.enableIdentity')
+						: t('web.accountDetail.disableIdentity'),
+					icon: row.disabled ? 'circleCheck' : 'ban',
+					// a disabled password identity is an account nobody can sign in as, which
+					// is what "disable the account" is for; the state stays visible either way
+					disabled: row.kind === 'password' && !row.disabled && detail?.self,
+					hint: row.kind === 'password' && !row.disabled && detail?.self
+						? t('web.accountDetail.notYourPassword')
+						: undefined,
+					action: () => toggleIdentity(row)
 				}
-			},
-			{ separator: true },
-			{
-				label: row.kind === 'minecraft'
-					? t('web.accountDetail.unlinkPlayer')
-					: t('web.accountDetail.removeIdentity'),
-				icon: row.kind === 'minecraft' ? 'linkHorizontalSlash' : 'trash',
-				color: 'danger',
-				disabled: row.kind === 'password',
-				hint: row.kind === 'password' ? t('web.accountDetail.replacePasswordInstead') : undefined,
-				action: () => removeIdentity(row)
-			}
-		];
+			],
+			[
+				{
+					id: 'copy-identity-id',
+					label: t('web.accountDetail.copyIdentityId'),
+					icon: 'copy',
+					action: async () => {
+						await copyText(row.id);
+					}
+				}
+			],
+			[
+				{
+					label: row.kind === 'minecraft'
+						? t('web.accountDetail.unlinkPlayer')
+						: t('web.accountDetail.removeIdentity'),
+					icon: row.kind === 'minecraft' ? 'linkHorizontalSlash' : 'trash',
+					color: 'danger',
+					disabled: row.kind === 'password',
+					hint: row.kind === 'password' ? t('web.accountDetail.replacePasswordInstead') : undefined,
+					action: () => removeIdentity(row)
+				}
+			]
+		);
 	}
 
 	function sessionActions(row: SessionRow): ContextMenuItem[] {

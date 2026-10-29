@@ -14,6 +14,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import Icon from '$lib/components/Icon.svelte';
@@ -68,25 +69,31 @@
 	}
 
 	function rowActions(group: GroupInfo): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.addonGroups.openGroup'),
-				icon: 'layerGroup',
-				action: () => goto(`/addons/groups/${group.name}`)
-			},
-			{
-				label: t('web.addonGroups.addAddons'),
-				icon: 'plus',
-				action: () => goto(`/addons/groups/${group.name}?add=1`)
-			},
-			{ separator: true },
-			{
-				label: t('web.addonGroups.copyMembers'),
-				icon: 'copy',
-				disabled: members(group).length === 0,
-				action: () => navigator.clipboard?.writeText(members(group).join(', '))
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.addonGroups.openGroup'),
+					icon: 'layerGroup',
+					action: () => goto(`/addons/groups/${group.name}`)
+				}
+			],
+			[
+				{
+					label: t('web.addonGroups.addAddons'),
+					icon: 'plus',
+					action: () => goto(`/addons/groups/${group.name}?add=1`)
+				}
+			],
+			[
+				{
+					id: 'copy-members',
+					label: t('web.addonGroups.copyMembers'),
+					icon: 'copy',
+					disabled: members(group).length === 0,
+					action: () => navigator.clipboard?.writeText(members(group).join(', '))
+				}
+			]
+		);
 	}
 
 	let selected: Set<string> = $state(new Set());

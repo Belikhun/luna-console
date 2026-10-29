@@ -49,7 +49,7 @@
 	import FilePreview from '$lib/components/FilePreview.svelte';
 	import UploadQueuePanel from '$lib/components/UploadQueue.svelte';
 	import type { EditorSelection } from '$lib/components/codeeditor';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import type { Column } from '$lib/components/table';
 	import type { InfoCell } from '$lib/components/grid';
 	import { Notify } from '$lib/notifications.svelte';
@@ -1012,100 +1012,105 @@
 		const one = targets.length === 1 ? targets[0]! : null;
 		const none = targets.length === 0;
 
-		return [
-			{
-				id: 'open',
-				label: one?.kind === 'dir' ? t('web.instanceFiles.openFolder') : t('web.instanceFiles.open'),
-				icon: one?.kind === 'dir' ? 'folder' : 'arrowUpRightFromSquare',
-				disabled: !one,
-				hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintOneEntry'),
-				action: () => openRow(one!)
-			},
-			{
-				id: 'download',
-				label: targets.length > 1 ? t('web.instanceFiles.downloadZip') : t('web.instanceFiles.download'),
-				icon: 'download',
-				disabled: none || !sameDir(targets),
-				hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintSameFolder'),
-				action: () => download(targets)
-			},
-			{ separator: true },
-			{
-				id: 'rename',
-				label: t('web.instanceFiles.rename'),
-				icon: 'pen',
-				disabled: !one,
-				hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintOneEntry'),
-				action: () => askName('rename', targets)
-			},
-			{
-				id: 'cut',
-				label: t('web.instanceFiles.cut'),
-				icon: 'scissors',
-				disabled: none,
-				hint: t('web.instanceFiles.hintSelectSomething'),
-				action: () => cut(targets)
-			},
-			{
-				id: 'copy',
-				label: t('web.instanceFiles.copy'),
-				icon: 'copy',
-				disabled: none,
-				hint: t('web.instanceFiles.hintSelectSomething'),
-				action: () => copy(targets)
-			},
-			{
-				id: 'pasteInto',
-				label: t('web.instanceFiles.pasteInto'),
-				icon: 'paste',
-				disabled: !clipboard || one?.kind !== 'dir',
-				hint: !clipboard ? t('web.instanceFiles.hintClipboardEmpty') : t('web.instanceFiles.hintOneFolder'),
-				action: () => paste(one!.path)
-			},
-			{
-				id: 'moveTo',
-				label: t('web.instanceFiles.moveTo'),
-				icon: 'rightToBracket',
-				disabled: none,
-				hint: t('web.instanceFiles.hintSelectSomething'),
-				action: () => askName('moveTo', targets)
-			},
-			{
-				id: 'copyTo',
-				label: t('web.instanceFiles.copyTo'),
-				icon: 'fileExport',
-				disabled: none,
-				hint: t('web.instanceFiles.hintSelectSomething'),
-				action: () => askName('copyTo', targets)
-			},
-			{ separator: true },
-			{
-				id: 'details',
-				label: t('web.instanceFiles.details'),
-				icon: 'circleInfo',
-				disabled: !one,
-				hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintOneEntry'),
-				action: () => showDetails(one!)
-			},
-			{
-				id: 'copyPath',
-				label: t('web.instanceFiles.copyPath'),
-				icon: 'clipboard',
-				disabled: !one,
-				hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintOneEntry'),
-				action: () => copyPath(one!)
-			},
-			{ separator: true },
-			{
-				id: 'delete',
-				label: targets.length > 1 ? t('web.instanceFiles.deleteCount', { count: targets.length }) : t('web.common.delete'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: none,
-				hint: t('web.instanceFiles.hintSelectSomething'),
-				action: () => askDelete(targets)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					id: 'open',
+					label: one?.kind === 'dir' ? t('web.instanceFiles.openFolder') : t('web.instanceFiles.open'),
+					icon: one?.kind === 'dir' ? 'folder' : 'arrowUpRightFromSquare',
+					disabled: !one,
+					hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintOneEntry'),
+					action: () => openRow(one!)
+				},
+				{
+					id: 'details',
+					label: t('web.instanceFiles.details'),
+					icon: 'circleInfo',
+					disabled: !one,
+					hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintOneEntry'),
+					action: () => showDetails(one!)
+				}
+			],
+			[
+				{
+					id: 'rename',
+					label: t('web.instanceFiles.rename'),
+					icon: 'pen',
+					disabled: !one,
+					hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintOneEntry'),
+					action: () => askName('rename', targets)
+				},
+				{
+					id: 'cut',
+					label: t('web.instanceFiles.cut'),
+					icon: 'scissors',
+					disabled: none,
+					hint: t('web.instanceFiles.hintSelectSomething'),
+					action: () => cut(targets)
+				},
+				{
+					id: 'copy',
+					label: t('web.instanceFiles.copy'),
+					icon: 'copy',
+					disabled: none,
+					hint: t('web.instanceFiles.hintSelectSomething'),
+					action: () => copy(targets)
+				},
+				{
+					id: 'pasteInto',
+					label: t('web.instanceFiles.pasteInto'),
+					icon: 'paste',
+					disabled: !clipboard || one?.kind !== 'dir',
+					hint: !clipboard ? t('web.instanceFiles.hintClipboardEmpty') : t('web.instanceFiles.hintOneFolder'),
+					action: () => paste(one!.path)
+				},
+				{
+					id: 'moveTo',
+					label: t('web.instanceFiles.moveTo'),
+					icon: 'rightToBracket',
+					disabled: none,
+					hint: t('web.instanceFiles.hintSelectSomething'),
+					action: () => askName('moveTo', targets)
+				},
+				{
+					id: 'copyTo',
+					label: t('web.instanceFiles.copyTo'),
+					icon: 'fileExport',
+					disabled: none,
+					hint: t('web.instanceFiles.hintSelectSomething'),
+					action: () => askName('copyTo', targets)
+				}
+			],
+			[
+				{
+					id: 'copy-download',
+					label: targets.length > 1 ? t('web.instanceFiles.downloadZip') : t('web.instanceFiles.download'),
+					icon: 'download',
+					disabled: none || !sameDir(targets),
+					hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintSameFolder'),
+					action: () => download(targets)
+				},
+				{
+					id: 'copy-path',
+					label: t('web.instanceFiles.copyPath'),
+					icon: 'clipboard',
+					disabled: !one,
+					hint: none ? t('web.instanceFiles.hintSelectSomething') : t('web.instanceFiles.hintOneEntry'),
+					action: () => copyPath(one!)
+				}
+			],
+			[
+				{
+					id: 'delete',
+					label: targets.length > 1 ? t('web.instanceFiles.deleteCount', { count: targets.length }) : t('web.common.delete'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: none,
+					hint: t('web.instanceFiles.hintSelectSomething'),
+					action: () => askDelete(targets)
+				}
+			]
+		);
 	}
 
 	function rowActions(row: FileRow): ContextMenuItem[] {
@@ -1150,41 +1155,47 @@
 	const fileActions: ContextMenuItem[] = $derived(
 		!current
 			? []
-			: [
-					{
-						label: t('web.instanceFiles.createPlaceholderFromSelection'),
-						icon: 'key',
-						disabled: !selection.text.trim(),
-						hint: t('web.instanceFiles.selectAValueFirst'),
-						action: startPlaceholder
-					},
-					{
-						label: current.managed ? t('web.instanceFiles.stopManaging') : t('web.instanceFiles.manageAsTemplate'),
-						icon: current.managed ? 'linkSlash' : 'link',
-						action: () => manage(current!.managed ? 'unmanage' : 'manage')
-					},
-					{
-						label: t('web.instanceFiles.reAdoptFromDisk'),
-						icon: 'arrowDown',
-						disabled: !current.managed,
-						hint: t('web.instanceFiles.hintNotManaged'),
-						action: () => manage('readopt')
-					},
-					{ separator: true },
-					{
-						label: t('web.instanceFiles.download'),
-						icon: 'download',
-						action: () => triggerDownload(downloadUrl(name, current!.path))
-					},
-					{ separator: true },
-					{
-						label: t('web.instanceFiles.discardDriftCopy'),
-						icon: 'trash',
-						disabled: !current.drifted,
-						hint: t('web.instanceFiles.hintNotDrifted'),
-						action: () => manage('discard-drift')
-					}
-				]
+			: menuGroups(
+					[
+						{
+							label: t('web.instanceFiles.createPlaceholderFromSelection'),
+							icon: 'key',
+							disabled: !selection.text.trim(),
+							hint: t('web.instanceFiles.selectAValueFirst'),
+							action: startPlaceholder
+						},
+						{
+							label: current.managed ? t('web.instanceFiles.stopManaging') : t('web.instanceFiles.manageAsTemplate'),
+							icon: current.managed ? 'linkSlash' : 'link',
+							action: () => manage(current!.managed ? 'unmanage' : 'manage')
+						},
+						{
+							label: t('web.instanceFiles.reAdoptFromDisk'),
+							icon: 'arrowDown',
+							disabled: !current.managed,
+							hint: t('web.instanceFiles.hintNotManaged'),
+							action: () => manage('readopt')
+						}
+					],
+					[
+						{
+							id: 'copy-download',
+							label: t('web.instanceFiles.download'),
+							icon: 'download',
+							action: () => triggerDownload(downloadUrl(name, current!.path))
+						}
+					],
+					[
+						{
+							label: t('web.instanceFiles.discardDriftCopy'),
+							icon: 'trash',
+							color: 'danger',
+							disabled: !current.drifted,
+							hint: t('web.instanceFiles.hintNotDrifted'),
+							action: () => manage('discard-drift')
+						}
+					]
+				)
 	);
 
 	function openAreaMenu(event: MouseEvent): void {

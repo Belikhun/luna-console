@@ -39,7 +39,7 @@
 	import PlayerVitals from './PlayerVitals.svelte';
 	import ResourceTable from './ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from './table';
-	import type { ContextMenuItem } from './contextmenu';
+	import { menuGroups, type ContextMenuItem } from './contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 
@@ -428,13 +428,13 @@
 		}
 	}
 
-	/** Verbs over a selection; the panel's Actions dropdown and each row's menu share these. */
-	function selectionActions(targets: Row[]): ContextMenuItem[] {
+	/** The selection's verbs by group, so a row's menu can put its own links and copies between them. */
+	function selectionGroups(targets: Row[]): { state: ContextMenuItem[]; change: ContextMenuItem[]; remove: ContextMenuItem[] } {
 		const none = targets.length === 0;
 		const noneHint = none ? t('web.instancePlayers.selectFirst') : undefined;
 		const running = instState === 'running';
 
-		return [
+		const state: ContextMenuItem[] = [
 			{
 				label: t('web.instancePlayers.sendAMessage'),
 				icon: 'paperPlane',
@@ -465,37 +465,41 @@
 					label: t(`web.instancePlayers.mode.${mode}`),
 					action: () => void setGameMode(targets, mode)
 				}))
-			},
-			{ separator: true },
+			}
+		];
+
+		const change: ContextMenuItem[] = [
 			{
-				label: t('web.instancePlayers.addToWhitelist'),
-				icon: 'userTick',
+				label: t('web.instancePlayers.accessLists'),
+				icon: 'userShield',
 				disabled: none,
 				hint: noneHint,
-				action: () => void act(() => moderate('whitelist-add', targets), t('web.instancePlayers.updatingLists'))
-			},
-			{
-				label: t('web.instancePlayers.removeFromWhitelist'),
-				icon: 'userMinus',
-				disabled: none,
-				hint: noneHint,
-				action: () => void act(() => moderate('whitelist-remove', targets), t('web.instancePlayers.updatingLists'))
-			},
-			{
-				label: t('web.instancePlayers.grantOperator'),
-				icon: 'userCog',
-				disabled: none,
-				hint: noneHint,
-				action: () => void act(() => moderate('op', targets), t('web.instancePlayers.updatingLists'))
-			},
-			{
-				label: t('web.instancePlayers.revokeOperator'),
-				icon: 'userLock',
-				disabled: none,
-				hint: noneHint,
-				action: () => void act(() => moderate('deop', targets), t('web.instancePlayers.updatingLists'))
-			},
-			{ separator: true },
+				submenu: [
+					{
+						label: t('web.instancePlayers.addToWhitelist'),
+						icon: 'userTick',
+						action: () => void act(() => moderate('whitelist-add', targets), t('web.instancePlayers.updatingLists'))
+					},
+					{
+						label: t('web.instancePlayers.removeFromWhitelist'),
+						icon: 'userMinus',
+						action: () => void act(() => moderate('whitelist-remove', targets), t('web.instancePlayers.updatingLists'))
+					},
+					{
+						label: t('web.instancePlayers.grantOperator'),
+						icon: 'userCog',
+						action: () => void act(() => moderate('op', targets), t('web.instancePlayers.updatingLists'))
+					},
+					{
+						label: t('web.instancePlayers.revokeOperator'),
+						icon: 'userLock',
+						action: () => void act(() => moderate('deop', targets), t('web.instancePlayers.updatingLists'))
+					}
+				]
+			}
+		];
+
+		const remove: ContextMenuItem[] = [
 			{
 				label: t('web.instancePlayers.disconnect'),
 				icon: 'userSlash',
@@ -529,41 +533,65 @@
 				action: () => open('ipban', targets)
 			}
 		];
+
+		return { state, change, remove };
 	}
 
-	/** A row's menu: the row's own links first, then the verbs over the selection it is in. */
+	/** Verbs over a selection; the panel's Actions dropdown and each row's menu share these. */
+	function selectionActions(targets: Row[]): ContextMenuItem[] {
+		const groups = selectionGroups(targets);
+
+		return menuGroups(groups.state, groups.change, groups.remove);
+	}
+
+	/** A row's menu: the row's own links and copies around the verbs over the selection it is in. */
 	function rowActions(row: Row): ContextMenuItem[] {
 		const targets = selected.has(row.uuid) && selection.length > 1 ? selection : [row];
+		const groups = selectionGroups(targets);
 
-		return [
-			{
-				label: t('web.instancePlayers.viewOnThisServer'),
-				icon: 'userPortrait',
-				action: () => goto(detailPath(row))
-			},
-			{
-				label: t('web.instancePlayers.viewNetworkProfile'),
-				icon: 'user',
-				action: () => goto(`/players/${row.uuid}`)
-			},
-			{
-				label: t('web.instancePlayers.chatHistoryHere'),
-				icon: 'comment',
-				action: () => goto(`${detailPath(row)}?tab=chat`)
-			},
-			{
-				label: t('web.instancePlayers.copyUuid'),
-				icon: 'copy',
-				action: () => void copyText(row.uuid)
-			},
-			{
-				label: t('web.instancePlayers.copyName'),
-				icon: 'copy',
-				action: () => void copyText(row.username)
-			},
-			{ separator: true },
-			...selectionActions(targets)
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.instancePlayers.viewOnThisServer'),
+					icon: 'userPortrait',
+					action: () => goto(detailPath(row))
+				},
+				{
+					label: t('web.instancePlayers.viewNetworkProfile'),
+					icon: 'user',
+					action: () => goto(`/players/${row.uuid}`)
+				},
+				{
+					label: t('web.instancePlayers.chatHistoryHere'),
+					icon: 'comment',
+					action: () => goto(`${detailPath(row)}?tab=chat`)
+				}
+			],
+			groups.state,
+			groups.change,
+			[
+				{
+					id: 'copy-menu',
+					label: t('web.common.copy'),
+					icon: 'copy',
+					submenu: [
+						{
+							id: 'copy-uuid',
+							label: t('web.instancePlayers.copyUuid'),
+							icon: 'copy',
+							action: () => void copyText(row.uuid)
+						},
+						{
+							id: 'copy-name',
+							label: t('web.instancePlayers.copyName'),
+							icon: 'copy',
+							action: () => void copyText(row.username)
+						}
+					]
+				}
+			],
+			groups.remove
+		);
 	}
 </script>
 

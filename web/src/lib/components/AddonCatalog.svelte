@@ -37,6 +37,7 @@
 	import DataTable from '$lib/components/DataTable.svelte';
 	import { Notify, type NotificationHandle } from '$lib/notifications.svelte';
 	import { jobFlash } from '$lib/jobflash';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import type {
 		AddonFamily,
@@ -572,53 +573,60 @@
 				linked.remote.provider)
 			: t('web.catalog.providerWord');
 
-		return [
-			{
-				label: t('web.catalog.details', { label: t(spec.label) }),
-				icon: 'circleInfo',
-				action: () => goto(`/plugins/${row.plugin}`)
-			},
-			{
-				label: t('web.catalog.deployToTargets'),
-				icon: 'upload',
-				action: () => deployOne(row)
-			},
-			{
-				label: row.autoUpdate ? t('web.catalog.disableAuto') : t('web.catalog.enableAuto'),
-				icon: row.autoUpdate ? 'ban' : 'circleCheck',
-				action: () => toggleAutoUpdate(row)
-			},
-			{
-				label: row.families[0]?.remote ? t('web.catalog.changeMapping') : t('web.catalog.mapToProvider'),
-				icon: 'link',
-				disabled: row.families.length !== 1 || row.families[0]?.source === 'luna',
-				hint:
-					row.families[0]?.source === 'luna'
-						? t('web.catalog.inHouseHint')
-						: row.families.length !== 1
-							? t('web.catalog.multiBuildHint', { count: row.families.length, noun: t(spec.noun) })
-							: t('web.catalog.mapHint'),
-				action: () => openIdentify(row)
-			},
-			{
-				label: t('web.catalog.openOn', { provider: providerLabel }),
-				icon: 'externalLink',
-				disabled: !linked,
-				action: () => {
-					window.open(linked!.url!, '_blank', 'noreferrer');
+		return menuGroups(
+			[
+				{
+					label: t('web.catalog.details', { label: t(spec.label) }),
+					icon: 'circleInfo',
+					action: () => goto(`/plugins/${row.plugin}`)
+				},
+				{
+					label: t('web.catalog.openOn', { provider: providerLabel }),
+					icon: 'externalLink',
+					disabled: !linked,
+					action: () => {
+						window.open(linked!.url!, '_blank', 'noreferrer');
+					}
 				}
-			},
-			{ separator: true },
-			{
-				label: t('web.catalog.removeNoun', { noun: t(spec.noun) }),
-				icon: 'trash',
-				color: 'danger',
-				action: () => {
-					removeTarget = row;
-					removeOpen = true;
+			],
+			[
+				{
+					label: t('web.catalog.deployToTargets'),
+					icon: 'upload',
+					action: () => deployOne(row)
+				},
+				{
+					label: row.autoUpdate ? t('web.catalog.disableAuto') : t('web.catalog.enableAuto'),
+					icon: row.autoUpdate ? 'ban' : 'circleCheck',
+					action: () => toggleAutoUpdate(row)
 				}
-			}
-		];
+			],
+			[
+				{
+					label: row.families[0]?.remote ? t('web.catalog.changeMapping') : t('web.catalog.mapToProvider'),
+					icon: 'link',
+					disabled: row.families.length !== 1 || row.families[0]?.source === 'luna',
+					hint:
+						row.families[0]?.source === 'luna'
+							? t('web.catalog.inHouseHint')
+							: row.families.length !== 1
+								? t('web.catalog.multiBuildHint', { count: row.families.length, noun: t(spec.noun) })
+								: t('web.catalog.mapHint'),
+					action: () => openIdentify(row)
+				}
+			],
+			[
+				{
+					label: t('web.catalog.removeNoun', { noun: t(spec.noun) }),
+					icon: 'trash',
+					color: 'danger',
+					action: () => {
+						removeTarget = row;
+						removeOpen = true;
+					}
+				}
+			]
+		);
 	}
 
 	let selected: Set<string> = $state(new Set());

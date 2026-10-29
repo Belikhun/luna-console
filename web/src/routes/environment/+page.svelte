@@ -17,7 +17,7 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
 	import { withCopyResourceId } from '$lib/resourceid';
@@ -275,40 +275,49 @@
 	]);
 
 	function rowActions(row: ValueRow): ContextMenuItem[] {
-		return [
-			{ label: t('web.env.openDetails'), icon: 'circleInfo', action: () => goto(detailHref(row)) },
-			{ label: t('web.env.editValue'), icon: 'pen', action: () => goto(editHref(row)) },
-			{
-				label: t('web.env.addOverride'),
-				icon: 'layerGroup',
-				action: () => goto(`/environment/new?name=${encodeURIComponent(row.name)}`)
-			},
-			{
-				label: revealed[row.id] !== undefined ? t('web.env.hideValue') : t('web.env.revealValue'),
-				icon: revealed[row.id] !== undefined ? 'eyeSlash' : 'eye',
-				disabled: !row.secret,
-				action: () => (revealed[row.id] !== undefined ? hide(row.id) : reveal(row))
-			},
-			{
-				label: t('web.env.copyName'),
-				icon: 'copy',
-				action: () => navigator.clipboard?.writeText(row.name)
-			},
-			{
-				label: t('web.env.copyValue'),
-				icon: 'copy',
-				// a secret's value only reaches the browser once it has been revealed
-				disabled: row.secret && revealed[row.id] === undefined,
-				action: () => navigator.clipboard?.writeText(revealed[row.id] ?? row.value)
-			},
-			{ separator: true },
-			{
-				label: row.scope === 'global' ? t('web.env.removeVariable') : t('web.env.removeOverride'),
-				icon: 'trash',
-				color: 'danger',
-				action: () => remove(row)
-			}
-		];
+		return menuGroups(
+			[
+				{ label: t('web.env.openDetails'), icon: 'circleInfo', action: () => goto(detailHref(row)) }
+			],
+			[
+				{ label: t('web.env.editValue'), icon: 'pen', action: () => goto(editHref(row)) },
+				{
+					label: t('web.env.addOverride'),
+					icon: 'layerGroup',
+					action: () => goto(`/environment/new?name=${encodeURIComponent(row.name)}`)
+				},
+				{
+					label: revealed[row.id] !== undefined ? t('web.env.hideValue') : t('web.env.revealValue'),
+					icon: revealed[row.id] !== undefined ? 'eyeSlash' : 'eye',
+					disabled: !row.secret,
+					action: () => (revealed[row.id] !== undefined ? hide(row.id) : reveal(row))
+				}
+			],
+			[
+				{
+					id: 'copy-name',
+					label: t('web.env.copyName'),
+					icon: 'copy',
+					action: () => navigator.clipboard?.writeText(row.name)
+				},
+				{
+					id: 'copy-value',
+					label: t('web.env.copyValue'),
+					icon: 'copy',
+					// a secret's value only reaches the browser once it has been revealed
+					disabled: row.secret && revealed[row.id] === undefined,
+					action: () => navigator.clipboard?.writeText(revealed[row.id] ?? row.value)
+				}
+			],
+			[
+				{
+					label: row.scope === 'global' ? t('web.env.removeVariable') : t('web.env.removeOverride'),
+					icon: 'trash',
+					color: 'danger',
+					action: () => remove(row)
+				}
+			]
+		);
 	}
 
 	/** The row the header's Actions dropdown acts on. */

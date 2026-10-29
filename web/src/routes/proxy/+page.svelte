@@ -19,7 +19,7 @@
 	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { Column } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { resourceId } from '$shared/iam/resources';
 	import { goto } from '$app/navigation';
 
@@ -128,29 +128,35 @@
 		const target = row.to ?? row.address;
 		const entry = instanceOf(row.server);
 
-		return [
-			{
-				// an external server has no instance page; its registration is
-				// still editable below
-				label: t('web.cleanup.openInstance', { name: row.server }),
-				icon: 'server',
-				disabled: !entry || entry.external,
-				action: () => goto(`/instances/${row.server}`)
-			},
-			{
-				label: t('web.proxy.editRegistration'),
-				icon: 'route',
-				disabled: !entry,
-				action: () => editRegistration(row.server)
-			},
-			{ separator: true },
-			{
-				label: t('web.proxy.copyAddress'),
-				icon: 'copy',
-				disabled: !target,
-				action: () => navigator.clipboard?.writeText(target)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					// an external server has no instance page; its registration is
+					// still editable below
+					label: t('web.cleanup.openInstance', { name: row.server }),
+					icon: 'server',
+					disabled: !entry || entry.external,
+					action: () => goto(`/instances/${row.server}`)
+				}
+			],
+			[
+				{
+					label: t('web.proxy.editRegistration'),
+					icon: 'route',
+					disabled: !entry,
+					action: () => editRegistration(row.server)
+				}
+			],
+			[
+				{
+					id: 'copy-address',
+					label: t('web.proxy.copyAddress'),
+					icon: 'copy',
+					disabled: !target,
+					action: () => navigator.clipboard?.writeText(target)
+				}
+			]
+		);
 	}
 
 	async function apply(): Promise<void> {

@@ -41,7 +41,7 @@
 		type TagDiff
 	} from '$lib/components/tageditor';
 	import type { Column } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { IAM_RESOURCE_TYPES } from '$shared/iam/actions';
 	import { MAX_TAGS } from '$shared/iam/resources';
 	import { withCopyResourceId } from '$lib/resourceid';
@@ -456,26 +456,30 @@
 		const href = one ? resourceHref(one.type, one.name) : null;
 		const blocked = bulkBlocked(targets);
 
-		return [
-			{
-				label: t('web.resources.open'),
-				icon: 'arrowUpRightFromSquare',
-				disabled: !href,
-				hint: !one
-					? t('web.resources.pickOne')
-					: href
-						? undefined
-						: t('web.resources.noScreen'),
-				action: () => goto(href!)
-			},
-			{
-				label: t('web.tagSearch.manageSelected', { count: targets.length }),
-				icon: 'tags',
-				disabled: !!blocked,
-				hint: blocked || undefined,
-				action: () => openBulk(targets)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.resources.open'),
+					icon: 'arrowUpRightFromSquare',
+					disabled: !href,
+					hint: !one
+						? t('web.resources.pickOne')
+						: href
+							? undefined
+							: t('web.resources.noScreen'),
+					action: () => goto(href!)
+				}
+			],
+			[
+				{
+					label: t('web.tagSearch.manageSelected', { count: targets.length }),
+					icon: 'tags',
+					disabled: !!blocked,
+					hint: blocked || undefined,
+					action: () => openBulk(targets)
+				}
+			]
+		);
 	}
 
 	function rowActions(row: ResourceView): ContextMenuItem[] {

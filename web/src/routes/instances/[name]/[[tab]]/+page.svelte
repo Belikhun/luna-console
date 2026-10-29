@@ -74,7 +74,7 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import BrandLink from '$lib/components/BrandLink.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import SettingsForm from '$lib/components/SettingsForm.svelte';
 	import ProgressTree from '$lib/components/ProgressTree.svelte';
 	import GroupsField from '$lib/components/GroupsField.svelte';
@@ -1955,25 +1955,29 @@
 
 	/** A plugin row's verbs on this instance. */
 	function pluginActions(plugin: any): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.instanceDetail.openOnThisInstance'),
-				icon: 'circleInfo',
-				action: () => goto(`/instances/${name}/plugins/${plugin.plugin}`)
-			},
-			{
-				label: t('web.instanceDetail.openThePlugin'),
-				icon: 'plug',
-				action: () => goto(`/plugins/${encodeURIComponent(plugin.plugin)}`)
-			},
-			{ separator: true },
-			{
-				label: t('web.instanceDetail.copyVersion'),
-				icon: 'copy',
-				disabled: !plugin.version,
-				action: () => navigator.clipboard?.writeText(plugin.version ?? '')
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.instanceDetail.openOnThisInstance'),
+					icon: 'circleInfo',
+					action: () => goto(`/instances/${name}/plugins/${plugin.plugin}`)
+				},
+				{
+					label: t('web.instanceDetail.openThePlugin'),
+					icon: 'plug',
+					action: () => goto(`/plugins/${encodeURIComponent(plugin.plugin)}`)
+				}
+			],
+			[
+				{
+					id: 'copy-version',
+					label: t('web.instanceDetail.copyVersion'),
+					icon: 'copy',
+					disabled: !plugin.version,
+					action: () => navigator.clipboard?.writeText(plugin.version ?? '')
+				}
+			]
+		);
 	}
 
 	// --- world & backups -------------------------------------------------------
@@ -2024,51 +2028,59 @@
 		const one = rows.length === 1 ? rows[0] : undefined;
 		const pickOne = t('web.instanceWorld.pickOne');
 
-		return [
-			{
-				label: t('web.instanceWorld.restoreThis'),
-				icon: 'rotateLeft',
-				disabled: !one || !!worldBlockedReason,
-				hint: !one ? pickOne : worldBlockedReason,
-				action: () => restoreBackup(one!)
-			},
-			{
-				label: t('web.instanceWorld.download'),
-				icon: 'download',
-				disabled: !one,
-				hint: one ? t('web.instanceWorld.downloadHint', { size: fmtBytes(one.sizeBytes) }) : pickOne,
-				action: () => downloadBackup(one!)
-			},
-			{
-				label: one?.pinned ? t('web.instanceWorld.unpin') : t('web.instanceWorld.pin'),
-				icon: 'thumbtack',
-				disabled: !one,
-				hint: !one ? pickOne : t('web.instanceWorld.pinHint'),
-				action: () => void setPinned(one!, !one!.pinned)
-			},
-			{
-				label: t('web.instanceWorld.rename'),
-				icon: 'pen',
-				disabled: !one,
-				hint: pickOne,
-				action: () => renameBackup(one!)
-			},
-			{
-				label: t('web.instanceWorld.verify'),
-				icon: 'shieldCheck',
-				disabled: rows.length === 0,
-				hint: t('web.instanceWorld.verifyHint'),
-				action: () => void verifyBackups(rows)
-			},
-			{ separator: true },
-			{
-				label: t('web.instanceWorld.delete'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: rows.length === 0,
-				action: () => removeBackups(rows)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.instanceWorld.restoreThis'),
+					icon: 'rotateLeft',
+					disabled: !one || !!worldBlockedReason,
+					hint: !one ? pickOne : worldBlockedReason,
+					action: () => restoreBackup(one!)
+				},
+				{
+					label: t('web.instanceWorld.verify'),
+					icon: 'shieldCheck',
+					disabled: rows.length === 0,
+					hint: t('web.instanceWorld.verifyHint'),
+					action: () => void verifyBackups(rows)
+				}
+			],
+			[
+				{
+					label: one?.pinned ? t('web.instanceWorld.unpin') : t('web.instanceWorld.pin'),
+					icon: 'thumbtack',
+					disabled: !one,
+					hint: !one ? pickOne : t('web.instanceWorld.pinHint'),
+					action: () => void setPinned(one!, !one!.pinned)
+				},
+				{
+					label: t('web.instanceWorld.rename'),
+					icon: 'pen',
+					disabled: !one,
+					hint: pickOne,
+					action: () => renameBackup(one!)
+				}
+			],
+			[
+				{
+					id: 'copy-download',
+					label: t('web.instanceWorld.download'),
+					icon: 'download',
+					disabled: !one,
+					hint: one ? t('web.instanceWorld.downloadHint', { size: fmtBytes(one.sizeBytes) }) : pickOne,
+					action: () => downloadBackup(one!)
+				}
+			],
+			[
+				{
+					label: t('web.instanceWorld.delete'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: rows.length === 0,
+					action: () => removeBackups(rows)
+				}
+			]
+		);
 	}
 
 	/** Take a backup now. Allowed while the server runs; the daemon freezes saves. */
@@ -2243,35 +2255,40 @@
 
 	/** A data pack row's verbs on this instance. */
 	function datapackActions(row: any): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.instanceDetail.manageInThePool'),
-				icon: 'box',
-				disabled: !row.managed,
-				hint: !row.managed ? 'not a pooled pack yet; adopt it first' : undefined,
-				action: () => goto(`/datapacks?q=${encodeURIComponent(row.name ?? '')}`)
-			},
-			{
-				label: t('web.instanceDetail.adoptIntoThePool'),
-				icon: 'inboxIn',
-				disabled: row.managed,
-				hint: row.managed ? 'already pooled' : undefined,
-				action: () => adoptDatapack(row.file)
-			},
-			{ separator: true },
-			{
-				label: t('web.instanceDetail.removeFromThisInstance'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: !row.managed || !row.targeted,
-				hint: !row.managed
-					? 'unmanaged file; delete it from the world by hand, or adopt it first'
-					: !row.targeted
-						? 'not targeted here; a deploy already removes it'
-						: undefined,
-				action: () => removeDatapackHere(row.name)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.instanceDetail.manageInThePool'),
+					icon: 'box',
+					disabled: !row.managed,
+					hint: !row.managed ? 'not a pooled pack yet; adopt it first' : undefined,
+					action: () => goto(`/datapacks?q=${encodeURIComponent(row.name ?? '')}`)
+				}
+			],
+			[
+				{
+					label: t('web.instanceDetail.adoptIntoThePool'),
+					icon: 'inboxIn',
+					disabled: row.managed,
+					hint: row.managed ? 'already pooled' : undefined,
+					action: () => adoptDatapack(row.file)
+				}
+			],
+			[
+				{
+					label: t('web.instanceDetail.removeFromThisInstance'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: !row.managed || !row.targeted,
+					hint: !row.managed
+						? 'unmanaged file; delete it from the world by hand, or adopt it first'
+						: !row.targeted
+							? 'not targeted here; a deploy already removes it'
+							: undefined,
+					action: () => removeDatapackHere(row.name)
+				}
+			]
+		);
 	}
 
 	const respackCols: Column[] = $derived([
@@ -2293,39 +2310,44 @@
 		const here = respackHere(row);
 		const granted = row.granted.includes(name ?? '');
 
-		return [
-			{
-				label: here ? `Stop serving on ${name}` : `Serve on ${name}`,
-				icon: here ? 'toggleOff' : 'toggleOn',
-				disabled: !!respackBusy || (granted && here),
-				hint:
-					granted && here
-						? `granted by addon group ${row.groups.join(', ')}; edit the group instead`
-						: undefined,
-				action: () => setRespackHere(row.key, !here)
-			},
-			{ separator: true },
-			{
-				label: t('web.instanceDetail.packDetails'),
-				icon: 'circleInfo',
-				action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
-			},
-			{
-				label: t('web.instanceDetail.configurePack'),
-				icon: 'pen',
-				action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
-			},
-			{
-				label: row.enabled ? 'Disable everywhere' : 'Enable everywhere',
-				icon: row.enabled ? 'ban' : 'circleCheck',
-				action: () => setRespackEnabled(row.key, !row.enabled)
-			},
-			{
-				label: t('web.instanceDetail.manageInResourcePacks'),
-				icon: 'image',
-				action: () => goto(`/packs?q=${encodeURIComponent(row.key)}`)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.instanceDetail.packDetails'),
+					icon: 'circleInfo',
+					action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
+				},
+				{
+					label: t('web.instanceDetail.manageInResourcePacks'),
+					icon: 'image',
+					action: () => goto(`/packs?q=${encodeURIComponent(row.key)}`)
+				}
+			],
+			[
+				{
+					label: here ? `Stop serving on ${name}` : `Serve on ${name}`,
+					icon: here ? 'toggleOff' : 'toggleOn',
+					disabled: !!respackBusy || (granted && here),
+					hint:
+						granted && here
+							? `granted by addon group ${row.groups.join(', ')}; edit the group instead`
+							: undefined,
+					action: () => setRespackHere(row.key, !here)
+				},
+				{
+					label: row.enabled ? 'Disable everywhere' : 'Enable everywhere',
+					icon: row.enabled ? 'ban' : 'circleCheck',
+					action: () => setRespackEnabled(row.key, !row.enabled)
+				}
+			],
+			[
+				{
+					label: t('web.instanceDetail.configurePack'),
+					icon: 'pen',
+					action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
+				}
+			]
+		);
 	}
 
 	// -- environment ---------------------------------------------------------------
@@ -2379,35 +2401,42 @@
 	function envActions(row: EnvVar): ContextMenuItem[] {
 		const builtin = row.scope === 'builtin';
 
-		return [
-			{
-				label: t('web.instanceDetail.openVariableDetails'),
-				icon: 'circleInfo',
-				disabled: builtin,
-				action: () => goto(`/environment/${encodeURIComponent(row.name)}`)
-			},
-			{
-				label: row.scope === 'instance' ? 'Edit this value' : 'Override for this instance',
-				icon: row.scope === 'instance' ? 'pen' : 'layerGroup',
-				disabled: builtin,
-				action: () =>
-					goto(`/environment/new?name=${encodeURIComponent(row.name)}&instance=${name}`)
-			},
-			{
-				label: envRevealed[row.name] !== undefined ? 'Hide value' : 'Reveal value',
-				icon: envRevealed[row.name] !== undefined ? 'eyeSlash' : 'eye',
-				// a builtin's value is computed, so there is no stored secret to reveal
-				disabled: !row.secret || builtin,
-				action: () =>
-					envRevealed[row.name] !== undefined ? hideEnv(row.name) : revealEnv(row)
-			},
-			{
-				label: t('web.instanceDetail.copyValue'),
-				icon: 'copy',
-				disabled: row.secret && envRevealed[row.name] === undefined,
-				action: () => navigator.clipboard?.writeText(envRevealed[row.name] ?? row.value)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.instanceDetail.openVariableDetails'),
+					icon: 'circleInfo',
+					disabled: builtin,
+					action: () => goto(`/environment/${encodeURIComponent(row.name)}`)
+				},
+				{
+					label: envRevealed[row.name] !== undefined ? 'Hide value' : 'Reveal value',
+					icon: envRevealed[row.name] !== undefined ? 'eyeSlash' : 'eye',
+					// a builtin's value is computed, so there is no stored secret to reveal
+					disabled: !row.secret || builtin,
+					action: () =>
+						envRevealed[row.name] !== undefined ? hideEnv(row.name) : revealEnv(row)
+				}
+			],
+			[
+				{
+					label: row.scope === 'instance' ? 'Edit this value' : 'Override for this instance',
+					icon: row.scope === 'instance' ? 'pen' : 'layerGroup',
+					disabled: builtin,
+					action: () =>
+						goto(`/environment/new?name=${encodeURIComponent(row.name)}&instance=${name}`)
+				}
+			],
+			[
+				{
+					id: 'copy-value',
+					label: t('web.instanceDetail.copyValue'),
+					icon: 'copy',
+					disabled: row.secret && envRevealed[row.name] === undefined,
+					action: () => navigator.clipboard?.writeText(envRevealed[row.name] ?? row.value)
+				}
+			]
+		);
 	}
 
 	const eventCols: Column[] = $derived([
@@ -2467,6 +2496,7 @@
 						label: t('web.instanceDetail.configFiles'), icon: 'folder',
 						action: () => goto(`/instances/${name}/files`)
 					},
+					{ divider: true, label: '' },
 					{ label: t('web.instanceDetail.deployPluginsHere'), icon: 'upload', action: () => deployPlugins() },
 					{ divider: true, label: '' },
 					{

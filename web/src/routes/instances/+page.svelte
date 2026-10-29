@@ -29,7 +29,7 @@
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import DistributionBar from '$lib/components/DistributionBar.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
@@ -375,113 +375,121 @@
 				? t('web.instances.proxyUndeletable')
 				: t('web.instances.stopFirst');
 
-		return [
-			{
-				label: t('web.instances.connectConsole'),
-				icon: 'code',
-				disabled: singleBlocked,
-				hint: singleHint,
-				action: () => single && goto(`/instances/${single.name}/console`)
-			},
-			{
-				label: t('web.instances.viewDetails'),
-				icon: 'circleInfo',
-				disabled: singleBlocked,
-				hint: singleHint,
-				action: () => single && goto(`/instances/${single.name}`)
-			},
-			{
-				label: t('web.instances.openFiles'),
-				icon: 'folder',
-				disabled: singleBlocked,
-				hint: singleHint,
-				action: () => single && goto(`/instances/${single.name}/files`)
-			},
-			{ separator: true },
-			{
-				label: counted(t('web.instances.startInstance'), startable),
-				icon: 'play',
-				disabled: startable.length === 0,
-				hint: startable.length === 0
-					? (single ? t('web.instances.alreadyState', { name: single.name, state: single.state ?? '' }) : t('web.instances.noneStopped'))
-					: undefined,
-				action: () => void stateAction('start', startable)
-			},
-			{
-				label: counted(t('web.instances.stopInstance'), running),
-				icon: 'stop',
-				disabled: running.length === 0,
-				hint: running.length === 0
-					? (single ? `${single.name} is not running` : t('web.instances.noneRunning'))
-					: undefined,
-				action: () => void stateAction('stop', running)
-			},
-			{
-				label: counted(t('web.instances.restartInstance'), running),
-				icon: 'rotate',
-				disabled: running.length === 0,
-				hint: running.length === 0
-					? (single ? `${single.name} is not running` : t('web.instances.noneRunning'))
-					: undefined,
-				action: () => void stateAction('restart', running)
-			},
-			{
-				label: counted(t('web.instances.scheduleAction'), schedulable),
-				icon: 'clock',
-				disabled: schedulable.length === 0,
-				hint: schedulable.length === 0 ? singleHint : undefined,
-				action: () => openScheduler(schedulable.map((row) => row.name))
-			},
-			{ separator: true },
-			{
-				label: t('web.instances.manage'),
-				icon: 'sliders',
-				disabled: singleBlocked,
-				hint: singleHint,
-				submenu: single
-					? [
-							{
-								label: t('web.nav.plugins'),
-								icon: 'plug',
-								action: () => goto(instanceTabPath(single.name, 'plugins'))
-							},
-							{
-								label: t('web.instances.configuration'),
-								icon: 'sliders',
-								action: () => goto(instanceTabPath(single.name, 'config'))
-							},
-							{
-								label: t('web.instances.networking'),
-								icon: 'sitemap',
-								action: () => goto(instanceTabPath(single.name, 'network'))
-							},
-							{
-								label: t('web.instances.logs'),
-								icon: 'scroll',
-								action: () => goto(instanceTabPath(single.name, 'logs'))
-							}
-						]
-					: undefined
-			},
-			{
-				label: t('web.instances.copyAddress'),
-				icon: 'copy',
-				// the daemon resolves this to the owning machine's host; an external
-				// server advertises its own, and a mid-provision row has none yet
-				disabled: !single || !(single.address ?? single.external),
-				hint: pickOne ?? (single && (single.address ?? single.external) ? undefined : t('web.instances.noAddressYet')),
-				action: () => single && navigator.clipboard?.writeText(single.address ?? single.external ?? '')
-			},
-			{ separator: true },
-			{
-				label: counted(t('web.instances.deleteInstance'), deletable),
-				icon: 'trash',
-				color: 'danger',
-				disabled: deletable.length === 0,
-				hint: deleteHint,
-				action: () => askDelete(deletable.map((row) => row.name))
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.instances.connectConsole'),
+					icon: 'code',
+					disabled: singleBlocked,
+					hint: singleHint,
+					action: () => single && goto(`/instances/${single.name}/console`)
+				},
+				{
+					label: t('web.instances.viewDetails'),
+					icon: 'circleInfo',
+					disabled: singleBlocked,
+					hint: singleHint,
+					action: () => single && goto(`/instances/${single.name}`)
+				},
+				{
+					label: t('web.instances.openFiles'),
+					icon: 'folder',
+					disabled: singleBlocked,
+					hint: singleHint,
+					action: () => single && goto(`/instances/${single.name}/files`)
+				}
+			],
+			[
+				{
+					label: counted(t('web.instances.startInstance'), startable),
+					icon: 'play',
+					disabled: startable.length === 0,
+					hint: startable.length === 0
+						? (single ? t('web.instances.alreadyState', { name: single.name, state: single.state ?? '' }) : t('web.instances.noneStopped'))
+						: undefined,
+					action: () => void stateAction('start', startable)
+				},
+				{
+					label: counted(t('web.instances.stopInstance'), running),
+					icon: 'stop',
+					disabled: running.length === 0,
+					hint: running.length === 0
+						? (single ? `${single.name} is not running` : t('web.instances.noneRunning'))
+						: undefined,
+					action: () => void stateAction('stop', running)
+				},
+				{
+					label: counted(t('web.instances.restartInstance'), running),
+					icon: 'rotate',
+					disabled: running.length === 0,
+					hint: running.length === 0
+						? (single ? `${single.name} is not running` : t('web.instances.noneRunning'))
+						: undefined,
+					action: () => void stateAction('restart', running)
+				}
+			],
+			[
+				{
+					label: counted(t('web.instances.scheduleAction'), schedulable),
+					icon: 'clock',
+					disabled: schedulable.length === 0,
+					hint: schedulable.length === 0 ? singleHint : undefined,
+					action: () => openScheduler(schedulable.map((row) => row.name))
+				},
+				{
+					label: t('web.instances.manage'),
+					icon: 'sliders',
+					disabled: singleBlocked,
+					hint: singleHint,
+					submenu: single
+						? [
+								{
+									label: t('web.nav.plugins'),
+									icon: 'plug',
+									action: () => goto(instanceTabPath(single.name, 'plugins'))
+								},
+								{
+									label: t('web.instances.configuration'),
+									icon: 'sliders',
+									action: () => goto(instanceTabPath(single.name, 'config'))
+								},
+								{
+									label: t('web.instances.networking'),
+									icon: 'sitemap',
+									action: () => goto(instanceTabPath(single.name, 'network'))
+								},
+								{
+									label: t('web.instances.logs'),
+									icon: 'scroll',
+									action: () => goto(instanceTabPath(single.name, 'logs'))
+								}
+							]
+						: undefined
+				}
+			],
+			[
+				{
+					id: 'copy-address',
+					label: t('web.instances.copyAddress'),
+					icon: 'copy',
+					// the daemon resolves this to the owning machine's host; an external
+					// server advertises its own, and a mid-provision row has none yet
+					disabled: !single || !(single.address ?? single.external),
+					hint: pickOne ?? (single && (single.address ?? single.external) ? undefined : t('web.instances.noAddressYet')),
+					action: () => single && navigator.clipboard?.writeText(single.address ?? single.external ?? '')
+				}
+			],
+			[
+				{
+					label: counted(t('web.instances.deleteInstance'), deletable),
+					icon: 'trash',
+					color: 'danger',
+					disabled: deletable.length === 0,
+					hint: deleteHint,
+					action: () => askDelete(deletable.map((row) => row.name))
+				}
+			]
+		);
 	}
 
 	/**

@@ -19,7 +19,7 @@
 	import PlayerName from './PlayerName.svelte';
 	import StatusBadge from './StatusBadge.svelte';
 	import type { Column, TableFilterGroup } from './table';
-	import type { ContextMenuItem } from './contextmenu';
+	import { menuGroups, type ContextMenuItem } from './contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 
@@ -358,8 +358,7 @@
 				label: t('web.instancePlayers.viewNetworkProfile'),
 				icon: 'user',
 				action: () => goto(`/players/${encodeURIComponent(entry.uuid || entry.name)}`)
-			},
-			{ separator: true }
+			}
 		];
 	}
 
@@ -378,42 +377,48 @@
 	}
 
 	function opActions(entry: OpEntry): ContextMenuItem[] {
-		return [
-			...playerLinks(entry),
-			{
-				label: t('web.access.editOperator'),
-				icon: 'pen',
-				action: () => openOpEdit(entry),
-				// a live server grants op through /op and rewrites ops.json on
-				// its own saves, so there is nothing a level edit could stick to
-				disabled: instState === 'running',
-				hint: instState === 'running' ? t('web.access.opEditNeedsStop') : undefined
-			},
-			removeAction('ops', entry.name, entry.uuid, t('web.access.revokeOperator'))
-		];
+		return menuGroups(
+			playerLinks(entry),
+			[
+				{
+					label: t('web.access.editOperator'),
+					icon: 'pen',
+					action: () => openOpEdit(entry),
+					// a live server grants op through /op and rewrites ops.json on
+					// its own saves, so there is nothing a level edit could stick to
+					disabled: instState === 'running',
+					hint: instState === 'running' ? t('web.access.opEditNeedsStop') : undefined
+				}
+			],
+			[removeAction('ops', entry.name, entry.uuid, t('web.access.revokeOperator'))]
+		);
 	}
 
 	function banActions(entry: BanEntry): ContextMenuItem[] {
-		return [
-			...playerLinks(entry),
-			{
-				label: t('web.access.editReason'),
-				icon: 'pen',
-				action: () => openReasonEdit('bans', entry.name, entry.uuid, entry.reason)
-			},
-			removeAction('bans', entry.name, entry.uuid, t('web.access.pardonPlayer'))
-		];
+		return menuGroups(
+			playerLinks(entry),
+			[
+				{
+					label: t('web.access.editReason'),
+					icon: 'pen',
+					action: () => openReasonEdit('bans', entry.name, entry.uuid, entry.reason)
+				}
+			],
+			[removeAction('bans', entry.name, entry.uuid, t('web.access.pardonPlayer'))]
+		);
 	}
 
 	function ipBanActions(entry: IpBanEntry): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.access.editReason'),
-				icon: 'pen',
-				action: () => openReasonEdit('ban-ips', entry.ip, undefined, entry.reason)
-			},
-			removeAction('ban-ips', entry.ip, undefined, t('web.access.pardonAddress'))
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.access.editReason'),
+					icon: 'pen',
+					action: () => openReasonEdit('ban-ips', entry.ip, undefined, entry.reason)
+				}
+			],
+			[removeAction('ban-ips', entry.ip, undefined, t('web.access.pardonAddress'))]
+		);
 	}
 </script>
 
@@ -466,10 +471,10 @@
 			searchWidth="20rem"
 			noun={t('web.access.nounPlayer')}
 			pageSize={15}
-			rowActions={(entry) => [
-				...playerLinks(entry),
-				removeAction('whitelist', entry.name, entry.uuid, t('web.access.removeFromWhitelist'))
-			]}
+			rowActions={(entry) => menuGroups(
+				playerLinks(entry),
+				[removeAction('whitelist', entry.name, entry.uuid, t('web.access.removeFromWhitelist'))]
+			)}
 			rowLabel={(entry) => entry.name}
 			emptyTitle={t('web.access.whitelistEmpty')}
 			emptyText={whitelistEnabled

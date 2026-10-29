@@ -28,6 +28,7 @@
 	import type { NodeSpec } from '$lib/components/nodes';
 	import Modal from '$lib/components/Modal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
@@ -148,40 +149,46 @@
 	// ------------------------------------------------------------- admin verbs
 
 	function headerActions(): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.permGroup.addAMember'),
-				icon: 'userPlus',
-				action: () => {
-					addMemberName = '';
-					addMemberOpen = true;
+		return menuGroups(
+			[
+				{
+					label: t('web.permGroup.addAMember'),
+					icon: 'userPlus',
+					action: () => {
+						addMemberName = '';
+						addMemberOpen = true;
+					}
+				},
+				{
+					label: t('web.permGroup.cloneGroup'),
+					icon: 'copy',
+					action: () => {
+						cloneName = '';
+						cloneOpen = true;
+					}
 				}
-			},
-			{
-				label: t('web.permGroup.cloneGroup'),
-				icon: 'copy',
-				action: () => {
-					cloneName = '';
-					cloneOpen = true;
+			],
+			[
+				{
+					id: 'copy-name',
+					label: t('web.permGroup.copyName'),
+					icon: 'clipboard',
+					action: () => void copy(name)
 				}
-			},
-			{
-				label: t('web.permGroup.copyName'),
-				icon: 'clipboard',
-				action: () => void copy(name)
-			},
-			{ separator: true },
-			{
-				label: t('web.permGroup.deleteGroup'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: name === 'default',
-				hint: name === 'default' ? 'LuckPerms requires it' : undefined,
-				action: () => {
-					deleteOpen = true;
+			],
+			[
+				{
+					label: t('web.permGroup.deleteGroup'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: name === 'default',
+					hint: name === 'default' ? 'LuckPerms requires it' : undefined,
+					action: () => {
+						deleteOpen = true;
+					}
 				}
-			}
-		];
+			]
+		);
 	}
 
 	async function doAddMember(): Promise<void> {
@@ -441,39 +448,47 @@
 	}
 
 	function nodeActions(node: PermNode): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.permGroup.editNode'),
-				icon: 'pen',
-				action: () => openNodeEditor(node)
-			},
-			{
-				label: node.value ? 'Negate node' : 'Grant node',
-				icon: 'rotate',
-				action: () => void flipNode(node)
-			},
-			{
-				label: t('web.permGroup.copyKey'),
-				icon: 'copy',
-				action: () => void copy(node.key)
-			},
-			...(node.type === 'inheritance'
+		const parent = node.key.replace(/^group\./, '');
+
+		return menuGroups(
+			node.type === 'inheritance'
 				? [
 						{
-							label: `Open ${node.key.replace(/^group\./, '')}`,
+							label: `Open ${parent}`,
 							icon: 'key',
-							action: () => goto(`/permissions/${encodeURIComponent(node.key.replace(/^group\./, ''))}`)
+							action: () => goto(`/permissions/${encodeURIComponent(parent)}`)
 						}
 					]
-				: []),
-			{ separator: true },
-			{
-				label: t('web.permGroup.removeNode'),
-				icon: 'trash',
-				color: 'danger',
-				action: () => void removeNode(node)
-			}
-		];
+				: [],
+			[
+				{
+					label: t('web.permGroup.editNode'),
+					icon: 'pen',
+					action: () => openNodeEditor(node)
+				},
+				{
+					label: node.value ? 'Negate node' : 'Grant node',
+					icon: 'rotate',
+					action: () => void flipNode(node)
+				}
+			],
+			[
+				{
+					id: 'copy-key',
+					label: t('web.permGroup.copyKey'),
+					icon: 'copy',
+					action: () => void copy(node.key)
+				}
+			],
+			[
+				{
+					label: t('web.permGroup.removeNode'),
+					icon: 'trash',
+					color: 'danger',
+					action: () => void removeNode(node)
+				}
+			]
+		);
 	}
 
 	/** Flip granted ↔ negated in place: remove the node, re-add inverted. */
@@ -513,25 +528,31 @@
 	]);
 
 	function memberActions(member: Member): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.permGroup.viewProfile'),
-				icon: 'user',
-				action: () => goto(`/players/${member.uuid}`)
-			},
-			{
-				label: t('web.permGroup.copyUuid'),
-				icon: 'copy',
-				action: () => void copy(member.uuid)
-			},
-			{ separator: true },
-			{
-				label: `Remove from ${name}`,
-				icon: 'userMinus',
-				color: 'danger',
-				action: () => void removeMember(member)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.permGroup.viewProfile'),
+					icon: 'user',
+					action: () => goto(`/players/${member.uuid}`)
+				}
+			],
+			[
+				{
+					id: 'copy-uuid',
+					label: t('web.permGroup.copyUuid'),
+					icon: 'copy',
+					action: () => void copy(member.uuid)
+				}
+			],
+			[
+				{
+					label: `Remove from ${name}`,
+					icon: 'userMinus',
+					color: 'danger',
+					action: () => void removeMember(member)
+				}
+			]
+		);
 	}
 
 	function nodeId(node: PermNode): string {

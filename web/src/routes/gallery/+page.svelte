@@ -32,6 +32,7 @@
 	import type { ProgressSnapshot } from '$core/progress';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { InfoCell } from '$lib/components/grid';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { tooltip } from '$lib/tooltip.svelte';
@@ -60,26 +61,31 @@
 	let menu: ContextMenu | undefined = $state();
 	let menuButton: HTMLSpanElement | undefined = $state();
 
-	const MENU_ITEMS: ContextMenuItem[] = [
-		{ label: t('web.gallery.manage'), header: true },
-		{ label: t('web.gallery.start'), icon: 'play', color: 'success', action: () => {} },
-		{ label: t('web.gallery.stop'), icon: 'stop', disabled: true },
-		{
-			label: t('web.gallery.open'),
-			icon: 'arrowUpRightFromSquare',
-			submenu: [
-				{ label: t('web.gallery.details'), icon: 'circleInfo', action: () => {} },
-				{ label: t('web.gallery.logs'), icon: 'scroll', action: () => {} }
-			]
-		},
-		{ separator: true },
-		{
-			label: t('web.gallery.slowAction2s'),
-			icon: 'hourglassClock',
-			action: () => new Promise((resolve) => setTimeout(resolve, 2000))
-		},
-		{ label: t('web.gallery.delete'), icon: 'trash', color: 'danger', action: () => {} }
-	];
+	const MENU_ITEMS: ContextMenuItem[] = menuGroups(
+		[
+			{ label: t('web.gallery.manage'), header: true },
+			{
+				label: t('web.gallery.open'),
+				icon: 'arrowUpRightFromSquare',
+				submenu: [
+					{ label: t('web.gallery.details'), icon: 'circleInfo', action: () => {} },
+					{ label: t('web.gallery.logs'), icon: 'scroll', action: () => {} }
+				]
+			}
+		],
+		[
+			{ label: t('web.gallery.start'), icon: 'play', color: 'success', action: () => {} },
+			{ label: t('web.gallery.stop'), icon: 'stop', disabled: true },
+			{
+				label: t('web.gallery.slowAction2s'),
+				icon: 'hourglassClock',
+				action: () => new Promise((resolve) => setTimeout(resolve, 2000))
+			}
+		],
+		[
+			{ label: t('web.gallery.delete'), icon: 'trash', color: 'danger', action: () => {} }
+		]
+	);
 
 	// ----- sample data -----
 	const BADGE_STATES = [

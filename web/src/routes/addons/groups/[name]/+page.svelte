@@ -17,6 +17,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -287,72 +288,83 @@
 
 	/** A member row's verbs: leave the group, and go look at the thing itself. */
 	function pluginActions(row: any): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.groupDetail.removeFromThisGroup'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: row.locked || !!busy,
-				hint: row.locked ? 'baseline members of the default group are locked' : undefined,
-				action: () =>
-					changeMembers({
-						plugins: pluginMembers.filter((plugin: string) => plugin !== row.plugin)
-					})
-			},
-			{ separator: true },
-			{
-				label: t('web.groupDetail.pluginDetails'),
-				icon: 'circleInfo',
-				action: () => goto(`/plugins/${encodeURIComponent(row.plugin)}`)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.groupDetail.pluginDetails'),
+					icon: 'circleInfo',
+					action: () => goto(`/plugins/${encodeURIComponent(row.plugin)}`)
+				}
+			],
+			[
+				{
+					label: t('web.groupDetail.removeFromThisGroup'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: row.locked || !!busy,
+					hint: row.locked ? 'baseline members of the default group are locked' : undefined,
+					action: () =>
+						changeMembers({
+							plugins: pluginMembers.filter((plugin: string) => plugin !== row.plugin)
+						})
+				}
+			]
+		);
 	}
 
 	function respackActions(row: any): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.groupDetail.removeFromThisGroup'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: !!busy,
-				action: () =>
-					changeMembers({
-						respacks: respackMembers.filter((key: string) => key !== row.key)
-					})
-			},
-			{ separator: true },
-			{
-				label: t('web.groupDetail.packDetails'),
-				icon: 'circleInfo',
-				action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
-			},
-			{
-				label: t('web.groupDetail.configurePack'),
-				icon: 'pen',
-				action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.groupDetail.packDetails'),
+					icon: 'circleInfo',
+					action: () => goto(`/packs/${encodeURIComponent(row.key)}`)
+				}
+			],
+			[
+				{
+					label: t('web.groupDetail.configurePack'),
+					icon: 'pen',
+					action: () => goto(`/packs/${encodeURIComponent(row.key)}/configure`)
+				}
+			],
+			[
+				{
+					label: t('web.groupDetail.removeFromThisGroup'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: !!busy,
+					action: () =>
+						changeMembers({
+							respacks: respackMembers.filter((key: string) => key !== row.key)
+						})
+				}
+			]
+		);
 	}
 
 	function datapackActions(row: any): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.groupDetail.removeFromThisGroup'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: !!busy,
-				action: () =>
-					changeMembers({
-						datapacks: datapackMembers.filter((pack: string) => pack !== row.name)
-					})
-			},
-			{ separator: true },
-			{
-				label: t('web.groupDetail.manageInDataPacks'),
-				icon: 'box',
-				action: () => goto(`/datapacks?q=${encodeURIComponent(row.name)}`)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.groupDetail.manageInDataPacks'),
+					icon: 'box',
+					action: () => goto(`/datapacks?q=${encodeURIComponent(row.name)}`)
+				}
+			],
+			[
+				{
+					label: t('web.groupDetail.removeFromThisGroup'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: !!busy,
+					action: () =>
+						changeMembers({
+							datapacks: datapackMembers.filter((pack: string) => pack !== row.name)
+						})
+				}
+			]
+		);
 	}
 
 	const instCols: Column[] = $derived([

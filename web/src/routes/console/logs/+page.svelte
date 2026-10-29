@@ -178,6 +178,7 @@
 
 	const logVerbs: ContextMenuItem[] = $derived([
 		{
+			id: 'copy-selected',
 			label: t('web.consoleLogs.copySelected', { count: selected.size }),
 			icon: 'copy',
 			disabled: selected.size === 0,
@@ -189,6 +190,7 @@
 	function rowActions(row: LogRow): ContextMenuItem[] {
 		return [
 			{
+				id: 'copy-entry',
 				label: t('web.consoleLogs.copyEntry'),
 				icon: 'copy',
 				action: async () => {
@@ -198,6 +200,7 @@
 				}
 			},
 			{
+				id: 'copy-message',
 				label: t('web.consoleLogs.copyMessage'),
 				icon: 'copy',
 				action: async () => {

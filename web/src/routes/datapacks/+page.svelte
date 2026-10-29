@@ -14,6 +14,7 @@
 	import Panel from '$lib/components/Panel.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
+	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
@@ -381,55 +382,62 @@
 	}
 
 	function rowActions(row: DataPackRow): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.datapacks.deployToTargets'),
-				icon: 'upload',
-				action: () => deployAll(row.name)
-			},
-			{
-				label: t('web.datapacks.editTargets'),
-				icon: 'sliders',
-				action: () => openTargets(row)
-			},
-			{
-				label: t('web.datapacks.checkForUpdate'),
-				icon: 'download',
-				disabled: !row.entry.remote,
-				hint: !row.entry.remote ? 'not identified with a provider' : undefined,
-				action: () => checkUpdates([row.name])
-			},
-			{
-				label: row.entry.remote ? 'Change provider mapping…' : 'Map to a provider…',
-				icon: 'link',
-				hint: t('web.datapacks.recordWhichProjectThisZip'),
-				action: () => openIdentify(row)
-			},
-			{
-				label: t('web.datapacks.manageAddonGroups'),
-				icon: 'layerGroup',
-				action: () => goto('/addons/groups')
-			},
-			{
-				label: row.entry.remote ? t('web.catalog.openOn', { provider: row.entry.remote.provider }) : t('web.packs.openOnProvider'),
-				icon: 'externalLink',
-				disabled: !row.url,
-				hint: !row.url ? 'not identified with a provider' : undefined,
-				action: () => {
-					window.open(row.url!, '_blank', 'noreferrer');
+		return menuGroups(
+			[
+				{
+					label: row.entry.remote ? t('web.catalog.openOn', { provider: row.entry.remote.provider }) : t('web.packs.openOnProvider'),
+					icon: 'externalLink',
+					disabled: !row.url,
+					hint: !row.url ? 'not identified with a provider' : undefined,
+					action: () => {
+						window.open(row.url!, '_blank', 'noreferrer');
+					}
+				},
+				{
+					label: t('web.datapacks.manageAddonGroups'),
+					icon: 'layerGroup',
+					action: () => goto('/addons/groups')
 				}
-			},
-			{ separator: true },
-			{
-				label: t('web.datapacks.removePack'),
-				icon: 'trash',
-				color: 'danger',
-				action: () => {
-					removeTarget = row;
-					removeOpen = true;
+			],
+			[
+				{
+					label: t('web.datapacks.deployToTargets'),
+					icon: 'upload',
+					action: () => deployAll(row.name)
+				},
+				{
+					label: t('web.datapacks.checkForUpdate'),
+					icon: 'download',
+					disabled: !row.entry.remote,
+					hint: !row.entry.remote ? 'not identified with a provider' : undefined,
+					action: () => checkUpdates([row.name])
 				}
-			}
-		];
+			],
+			[
+				{
+					label: t('web.datapacks.editTargets'),
+					icon: 'sliders',
+					action: () => openTargets(row)
+				},
+				{
+					label: row.entry.remote ? 'Change provider mapping…' : 'Map to a provider…',
+					icon: 'link',
+					hint: t('web.datapacks.recordWhichProjectThisZip'),
+					action: () => openIdentify(row)
+				}
+			],
+			[
+				{
+					label: t('web.datapacks.removePack'),
+					icon: 'trash',
+					color: 'danger',
+					action: () => {
+						removeTarget = row;
+						removeOpen = true;
+					}
+				}
+			]
+		);
 	}
 </script>
 

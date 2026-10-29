@@ -45,7 +45,7 @@
 	import type { PortPool } from '$core/types';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { resourceId } from '$shared/iam/resources';
 	import type {
 		DaemonDetail,
@@ -624,38 +624,43 @@
 	function envActions(entry: MachineVar): ContextMenuItem[] {
 		const own = entry.source === 'machine';
 
-		return [
-			{
-				label: t('web.machineDetail.openVariableDetails'),
-				icon: 'circleInfo',
-				action: () => goto(`/environment/${encodeURIComponent(entry.name)}`)
-			},
-			{
-				label: own ? 'Edit this override' : 'Override for this machine',
-				icon: own ? 'pen' : 'layerGroup',
-				action: () =>
-					goto(
-						`/environment/new?name=${encodeURIComponent(entry.name)}&machine=${encodeURIComponent(name!)}`
-					)
-			},
-			{
-				label: revealedVars[entry.name] !== undefined ? 'Hide value' : 'Reveal value',
-				icon: revealedVars[entry.name] !== undefined ? 'eyeSlash' : 'eye',
-				disabled: !entry.secret,
-				action: () =>
-					revealedVars[entry.name] !== undefined ? hideVar(entry.name) : revealVar(entry)
-			},
-			{ separator: true },
-			{
-				label: t('web.machineDetail.removeOverride'),
-				icon: 'trash',
-				color: 'danger',
-				// an inherited value has nothing to remove here; it lives at the cluster
-				// level, and deleting it from this screen would surprise every machine
-				disabled: !own,
-				action: () => removeVar(entry)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.machineDetail.openVariableDetails'),
+					icon: 'circleInfo',
+					action: () => goto(`/environment/${encodeURIComponent(entry.name)}`)
+				}
+			],
+			[
+				{
+					label: own ? 'Edit this override' : 'Override for this machine',
+					icon: own ? 'pen' : 'layerGroup',
+					action: () =>
+						goto(
+							`/environment/new?name=${encodeURIComponent(entry.name)}&machine=${encodeURIComponent(name!)}`
+						)
+				},
+				{
+					label: revealedVars[entry.name] !== undefined ? 'Hide value' : 'Reveal value',
+					icon: revealedVars[entry.name] !== undefined ? 'eyeSlash' : 'eye',
+					disabled: !entry.secret,
+					action: () =>
+						revealedVars[entry.name] !== undefined ? hideVar(entry.name) : revealVar(entry)
+				}
+			],
+			[
+				{
+					label: t('web.machineDetail.removeOverride'),
+					icon: 'trash',
+					color: 'danger',
+					// an inherited value has nothing to remove here; it lives at the cluster
+					// level, and deleting it from this screen would surprise every machine
+					disabled: !own,
+					action: () => removeVar(entry)
+				}
+			]
+		);
 	}
 </script>
 

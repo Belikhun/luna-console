@@ -11,7 +11,7 @@
 import { t } from '$lib/i18n.svelte';
 import { copyText } from '$lib/clipboard';
 import { Notify } from '$lib/notifications.svelte';
-import type { ContextMenuItem } from '$lib/components/contextmenu';
+import { menuGroups, splitMenuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 
 /**
  * The resource id (or ids) a table row stands for. A row may stand for several
@@ -73,15 +73,34 @@ export function copyResourceIdItem(ids: string[]): ContextMenuItem {
 }
 
 /**
- * A menu with the copy entry appended after a separator; what a row's context
- * menu and a screen's Actions dropdown end with.
+ * A menu with the copy entry added to its copy group (DESIGN.md §5.4): last
+ * among the menu's own `copy-*` items when the group before the removals holds
+ * only those, else a group of its own there. Removals stay the menu's last
+ * rows, so the entry never sits under a delete.
  */
 export function withCopyResourceId(items: ContextMenuItem[], ids: string[]): ContextMenuItem[] {
-	const tail: ContextMenuItem[] = items.length > 0
-		? [{ separator: true }, copyResourceIdItem(ids)]
-		: [copyResourceIdItem(ids)];
+	const groups = splitMenuGroups(items);
+	const entry = copyResourceIdItem(ids);
 
-	return [...items, ...tail];
+	const isRemoval = (group: ContextMenuItem[]): boolean =>
+		group.every((item) => item.color === 'danger');
+
+	const isCopy = (group: ContextMenuItem[]): boolean =>
+		group.every((item) => item.id?.startsWith('copy-'));
+
+	const removalAt = groups.length > 0 && isRemoval(groups[groups.length - 1]!)
+		? groups.length - 1
+		: groups.length;
+
+	const before = groups[removalAt - 1];
+
+	if (before && isCopy(before)) {
+		before.push(entry);
+	} else {
+		groups.splice(removalAt, 0, [entry]);
+	}
+
+	return menuGroups(...groups);
 }
 
 /** The ids of the selected rows of a table, in row order, each once. */

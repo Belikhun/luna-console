@@ -15,7 +15,7 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -54,19 +54,24 @@
 	]);
 
 	function junkActions(item: any): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.cleanup.copyPath'),
-				icon: 'copy',
-				action: () => navigator.clipboard?.writeText(item.path)
-			},
-			{
-				label: t('web.cleanup.openInstance', { name: item.instance }),
-				icon: 'server',
-				disabled: !item.instance || item.instance === '—',
-				action: () => goto(`/instances/${item.instance}`)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.cleanup.openInstance', { name: item.instance }),
+					icon: 'server',
+					disabled: !item.instance || item.instance === '—',
+					action: () => goto(`/instances/${item.instance}`)
+				}
+			],
+			[
+				{
+					id: 'copy-path',
+					label: t('web.cleanup.copyPath'),
+					icon: 'copy',
+					action: () => navigator.clipboard?.writeText(item.path)
+				}
+			]
+		);
 	}
 
 	async function refresh(): Promise<void> {

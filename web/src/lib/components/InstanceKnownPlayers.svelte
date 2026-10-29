@@ -24,7 +24,7 @@
 	import PlayerVitals from './PlayerVitals.svelte';
 	import ResourceTable from './ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from './table';
-	import type { ContextMenuItem } from './contextmenu';
+	import { menuGroups, type ContextMenuItem } from './contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 
@@ -258,12 +258,12 @@
 		banReason = '';
 	}
 
-	/** Verbs over a selection; the panel's Actions dropdown and each row's menu share these. */
-	function selectionActions(targets: Row[]): ContextMenuItem[] {
+	/** The selection's verbs by group, so a row's menu can put its own links and copies between them. */
+	function selectionGroups(targets: Row[]): { change: ContextMenuItem[]; remove: ContextMenuItem[] } {
 		const none = targets.length === 0;
 		const noneHint = none ? t('web.instancePlayers.selectFirst') : undefined;
 
-		return [
+		const change: ContextMenuItem[] = [
 			{
 				label: t('web.instancePlayers.addToWhitelist'),
 				icon: 'userTick',
@@ -291,8 +291,10 @@
 				disabled: none,
 				hint: noneHint,
 				action: () => void moderate('deop', targets)
-			},
-			{ separator: true },
+			}
+		];
+
+		const remove: ContextMenuItem[] = [
 			{
 				label: t('web.instancePlayers.banHere'),
 				icon: 'gavel',
@@ -305,42 +307,58 @@
 				}
 			}
 		];
+
+		return { change, remove };
 	}
 
-	/** A row's menu: the row's own links first, then the verbs over the selection it is in. */
+	/** Verbs over a selection; the panel's Actions dropdown and each row's menu share these. */
+	function selectionActions(targets: Row[]): ContextMenuItem[] {
+		const groups = selectionGroups(targets);
+
+		return menuGroups(groups.change, groups.remove);
+	}
+
+	/** A row's menu: the row's own links and copies around the verbs over the selection it is in. */
 	function rowActions(row: Row): ContextMenuItem[] {
 		const targets = selected.has(row.uuid) && selection.length > 1 ? selection : [row];
+		const groups = selectionGroups(targets);
 
-		return [
-			{
-				label: t('web.instancePlayers.viewOnThisServer'),
-				icon: 'userPortrait',
-				action: () => goto(detailPath(row))
-			},
-			{
-				label: t('web.instancePlayers.viewNetworkProfile'),
-				icon: 'user',
-				action: () => goto(`/players/${row.uuid}`)
-			},
-			{
-				label: t('web.instancePlayers.chatHistoryHere'),
-				icon: 'comment',
-				action: () => goto(`${detailPath(row)}?tab=chat`)
-			},
-			{
-				label: t('web.instancePlayers.copyUuid'),
-				icon: 'copy',
-				action: () => void copyText(row.uuid)
-			},
-			{
-				label: t('web.instancePlayers.copyName'),
-				icon: 'copy',
-				disabled: !row.name,
-				action: () => void copyText(displayName(row))
-			},
-			{ separator: true },
-			...selectionActions(targets)
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.instancePlayers.viewOnThisServer'),
+					icon: 'userPortrait',
+					action: () => goto(detailPath(row))
+				},
+				{
+					label: t('web.instancePlayers.viewNetworkProfile'),
+					icon: 'user',
+					action: () => goto(`/players/${row.uuid}`)
+				},
+				{
+					label: t('web.instancePlayers.chatHistoryHere'),
+					icon: 'comment',
+					action: () => goto(`${detailPath(row)}?tab=chat`)
+				}
+			],
+			groups.change,
+			[
+				{
+					id: 'copy-uuid',
+					label: t('web.instancePlayers.copyUuid'),
+					icon: 'copy',
+					action: () => void copyText(row.uuid)
+				},
+				{
+					id: 'copy-name',
+					label: t('web.instancePlayers.copyName'),
+					icon: 'copy',
+					disabled: !row.name,
+					action: () => void copyText(displayName(row))
+				}
+			],
+			groups.remove
+		);
 	}
 </script>
 

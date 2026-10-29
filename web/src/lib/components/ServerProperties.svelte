@@ -15,7 +15,7 @@
 	import StatusBadge from './StatusBadge.svelte';
 	import ResourceTable from './ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from './table';
-	import type { ContextMenuItem } from './contextmenu';
+	import { menuGroups, type ContextMenuItem } from './contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
@@ -213,44 +213,50 @@
 		const one = targets.length === 1 ? targets[0] : undefined;
 		const removable = targets.filter((row) => !row.managed);
 
-		return [
-			{
-				label: t('web.props.editValue'),
-				icon: 'pen',
-				disabled: !one || one.managed || busy,
-				hint: !one
-					? t('web.props.pickOne')
-					: one.managed
-						? t(one.managedReason ?? 'web.props.managedHint')
-						: undefined,
-				action: () => one && openEdit(one)
-			},
-			{ separator: true },
-			{
-				label: t('web.props.copyKey'),
-				icon: 'copy',
-				disabled: !one,
-				action: () => one && navigator.clipboard?.writeText(one.key)
-			},
-			{
-				label: t('web.props.copyValue'),
-				icon: 'copy',
-				disabled: !one || !one.value,
-				action: () => one && navigator.clipboard?.writeText(one.value)
-			},
-			{ separator: true },
-			{
-				label:
-					removable.length > 1
-						? t('web.props.removeMany', { count: removable.length })
-						: t('web.props.remove'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: !removable.length || busy,
-				hint: removable.length ? undefined : t('web.props.managedHint'),
-				action: () => askRemove(removable)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.props.editValue'),
+					icon: 'pen',
+					disabled: !one || one.managed || busy,
+					hint: !one
+						? t('web.props.pickOne')
+						: one.managed
+							? t(one.managedReason ?? 'web.props.managedHint')
+							: undefined,
+					action: () => one && openEdit(one)
+				}
+			],
+			[
+				{
+					id: 'copy-key',
+					label: t('web.props.copyKey'),
+					icon: 'copy',
+					disabled: !one,
+					action: () => one && navigator.clipboard?.writeText(one.key)
+				},
+				{
+					id: 'copy-value',
+					label: t('web.props.copyValue'),
+					icon: 'copy',
+					disabled: !one || !one.value,
+					action: () => one && navigator.clipboard?.writeText(one.value)
+				}
+			],
+			[
+				{
+					label:
+						removable.length > 1
+							? t('web.props.removeMany', { count: removable.length })
+							: t('web.props.remove'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: !removable.length || busy,
+					hint: removable.length ? undefined : t('web.props.managedHint'),
+					action: () => askRemove(removable)
+				}
+			]
+		);
 	}
 
 	/** A right-clicked row inside the selection acts on the whole selection. */

@@ -30,7 +30,7 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 
@@ -251,29 +251,35 @@
 	]);
 
 	function scopeActions(row: ScopeRow): ContextMenuItem[] {
-		return [
-			{ label: t('web.envDetail.editThisValue'), icon: 'pen', action: () => goto(editHref(row)) },
-			{
-				label: revealed[scopeKey(row)] ? 'Hide value' : 'Reveal value',
-				icon: revealed[scopeKey(row)] ? 'eyeSlash' : 'eye',
-				disabled: !detail?.secret,
-				action: () => (revealed[scopeKey(row)] ? hide(row) : reveal(row))
-			},
-			{
-				label: t('web.envDetail.copyValue'),
-				icon: 'copy',
-				disabled: detail?.secret && !revealed[scopeKey(row)],
-				action: () =>
-					navigator.clipboard?.writeText(revealed[scopeKey(row)] ?? row.value)
-			},
-			{ separator: true },
-			{
-				label: t('web.envDetail.removeThisValue'),
-				icon: 'trash',
-				color: 'danger',
-				action: () => removeScope(row)
-			}
-		];
+		return menuGroups(
+			[
+				{ label: t('web.envDetail.editThisValue'), icon: 'pen', action: () => goto(editHref(row)) },
+				{
+					label: revealed[scopeKey(row)] ? 'Hide value' : 'Reveal value',
+					icon: revealed[scopeKey(row)] ? 'eyeSlash' : 'eye',
+					disabled: !detail?.secret,
+					action: () => (revealed[scopeKey(row)] ? hide(row) : reveal(row))
+				}
+			],
+			[
+				{
+					id: 'copy-value',
+					label: t('web.envDetail.copyValue'),
+					icon: 'copy',
+					disabled: detail?.secret && !revealed[scopeKey(row)],
+					action: () =>
+						navigator.clipboard?.writeText(revealed[scopeKey(row)] ?? row.value)
+				}
+			],
+			[
+				{
+					label: t('web.envDetail.removeThisValue'),
+					icon: 'trash',
+					color: 'danger',
+					action: () => removeScope(row)
+				}
+			]
+		);
 	}
 
 	function referenceActions(row: ReferenceRow): ContextMenuItem[] {
@@ -578,18 +584,23 @@
 						getId={(row) => row.instance}
 						rowLabel={(row) => row.instance}
 						resourceId={(row) => resourceId('instance', row.instance)}
-						rowActions={(row) => [
-							{
-								label: `Open ${row.instance}`,
-								icon: 'server',
-								action: () => goto(`/instances/${row.instance}`)
-							},
-							{
-								label: t('web.envDetail.overrideForThisInstance'), icon: 'layerGroup',
-								action: () =>
-									goto(`/environment/new?name=${encodeURIComponent(name)}&instance=${row.instance}`)
-							}
-						]}
+						rowActions={(row) => menuGroups(
+							[
+								{
+									label: `Open ${row.instance}`,
+									icon: 'server',
+									action: () => goto(`/instances/${row.instance}`)
+								}
+							],
+							[
+								{
+									label: t('web.envDetail.overrideForThisInstance'),
+									icon: 'layerGroup',
+									action: () =>
+										goto(`/environment/new?name=${encodeURIComponent(name)}&instance=${row.instance}`)
+								}
+							]
+						)}
 					>
 						{#snippet cell(row, col)}
 							{#if col === 'instance'}

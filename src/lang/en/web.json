@@ -4088,6 +4088,7 @@
 	},
 	"instancePlayers": {
 		"title": "Online players",
+		"accessLists": "Access lists",
 		"liveNote": "Who the proxy has on this backend right now. Vitals, position and game mode come from the backend's last save of each player.",
 		"savedNote": "Ping, client and session are live. Vitals, position, game mode and advancements are from the backend's last save; newest save {when}.",
 		"lunacoreUnreachable": "LunaCore is unreachable",

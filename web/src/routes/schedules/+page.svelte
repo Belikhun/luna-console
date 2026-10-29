@@ -17,7 +17,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
@@ -177,28 +177,33 @@
 
 	/** A schedule's verbs; the row menu and the toolbar's Actions button. */
 	function rowActions(schedule: Schedule): ContextMenuItem[] {
-		return [
-			{ label: t('web.schedules.runNow'), icon: 'play', action: () => runNow(schedule) },
-			{
-				label: historyFor === schedule.id ? t('web.schedules.showAll') : t('web.schedules.showIts'),
-				icon: 'clockRotateLeft',
-				action: () => {
-					historyFor = historyFor === schedule.id ? null : schedule.id;
+		return menuGroups(
+			[
+				{
+					label: historyFor === schedule.id ? t('web.schedules.showAll') : t('web.schedules.showIts'),
+					icon: 'clockRotateLeft',
+					action: () => {
+						historyFor = historyFor === schedule.id ? null : schedule.id;
+					}
 				}
-			},
-			{
-				label: schedule.enabled ? t('web.schedules.disable') : t('web.schedules.enable'),
-				icon: schedule.enabled ? 'pause' : 'play',
-				action: () => toggleEnabled(schedule, !schedule.enabled)
-			},
-			{ separator: true },
-			{
-				label: t('web.schedules.delete'),
-				icon: 'trash',
-				color: 'danger',
-				action: () => remove(schedule)
-			}
-		];
+			],
+			[
+				{ label: t('web.schedules.runNow'), icon: 'play', action: () => runNow(schedule) },
+				{
+					label: schedule.enabled ? t('web.schedules.disable') : t('web.schedules.enable'),
+					icon: schedule.enabled ? 'pause' : 'play',
+					action: () => toggleEnabled(schedule, !schedule.enabled)
+				}
+			],
+			[
+				{
+					label: t('web.schedules.delete'),
+					icon: 'trash',
+					color: 'danger',
+					action: () => remove(schedule)
+				}
+			]
+		);
 	}
 
 	const scheduleText = (schedule: Schedule): string =>

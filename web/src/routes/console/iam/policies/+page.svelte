@@ -19,7 +19,7 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import PolicyYamlPreview from '$lib/components/PolicyYamlPreview.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Authz } from '$lib/authz.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
@@ -111,38 +111,43 @@
 			? pickOne
 			: policyDeleteReason(row) || denied('iam:DeletePolicy');
 
-		return [
-			{
-				label: t('web.iamList.viewDetails'),
-				icon: 'circleInfo',
-				disabled: !row,
-				hint: row ? undefined : pickOne,
-				action: () => goto(policyHref(row!.name))
-			},
-			{
-				label: t('web.iamList.attach'),
-				icon: 'link',
-				disabled: !row || !!denied('iam:Attach'),
-				hint: row ? denied('iam:Attach') || undefined : pickOne,
-				action: () => goto(`${policyHref(row!.name)}?tab=entities&attach=1`)
-			},
-			{
-				label: t('web.common.edit'),
-				icon: 'pen',
-				disabled: !!editReason,
-				hint: editReason || undefined,
-				action: () => goto(`${policyHref(row!.name)}/edit`)
-			},
-			{ separator: true },
-			{
-				label: t('web.common.delete'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: !!deleteReason,
-				hint: deleteReason || undefined,
-				action: () => askDelete(row!)
-			}
-		];
+		return menuGroups(
+			[
+				{
+					label: t('web.iamList.viewDetails'),
+					icon: 'circleInfo',
+					disabled: !row,
+					hint: row ? undefined : pickOne,
+					action: () => goto(policyHref(row!.name))
+				}
+			],
+			[
+				{
+					label: t('web.common.edit'),
+					icon: 'pen',
+					disabled: !!editReason,
+					hint: editReason || undefined,
+					action: () => goto(`${policyHref(row!.name)}/edit`)
+				},
+				{
+					label: t('web.iamList.attach'),
+					icon: 'link',
+					disabled: !row || !!denied('iam:Attach'),
+					hint: row ? denied('iam:Attach') || undefined : pickOne,
+					action: () => goto(`${policyHref(row!.name)}?tab=entities&attach=1`)
+				}
+			],
+			[
+				{
+					label: t('web.common.delete'),
+					icon: 'trash',
+					color: 'danger',
+					disabled: !!deleteReason,
+					hint: deleteReason || undefined,
+					action: () => askDelete(row!)
+				}
+			]
+		);
 	}
 
 	const headerMenu = $derived(
