@@ -405,7 +405,7 @@
 				hint: startable.length === 0
 					? (single ? t('web.instances.alreadyState', { name: single.name, state: single.state ?? '' }) : t('web.instances.noneStopped'))
 					: undefined,
-				action: () => stateAction('start', startable)
+				action: () => void stateAction('start', startable)
 			},
 			{
 				label: counted(t('web.instances.stopInstance'), running),
@@ -414,7 +414,7 @@
 				hint: running.length === 0
 					? (single ? `${single.name} is not running` : t('web.instances.noneRunning'))
 					: undefined,
-				action: () => stateAction('stop', running)
+				action: () => void stateAction('stop', running)
 			},
 			{
 				label: counted(t('web.instances.restartInstance'), running),
@@ -423,7 +423,7 @@
 				hint: running.length === 0
 					? (single ? `${single.name} is not running` : t('web.instances.noneRunning'))
 					: undefined,
-				action: () => stateAction('restart', running)
+				action: () => void stateAction('restart', running)
 			},
 			{
 				label: counted(t('web.instances.scheduleAction'), schedulable),
@@ -641,15 +641,15 @@
 					items={[
 						{
 							label: t('web.instances.startInstance'), icon: 'play', disabled: !anyStopped,
-							action: () => stateAction('start')
+							action: () => void stateAction('start')
 						},
 						{
 							label: t('web.instances.stopInstance'), icon: 'stop', disabled: !anyUp,
-							action: () => stateAction('stop')
+							action: () => void stateAction('stop')
 						},
 						{
 							label: t('web.instances.restartInstance'), icon: 'rotate', disabled: !anyUp,
-							action: () => stateAction('restart')
+							action: () => void stateAction('restart')
 						},
 						{ divider: true, label: '' },
 						{

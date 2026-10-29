@@ -42,6 +42,7 @@
 	let anchor: MenuAnchor = $state('topLeft');
 	let view: HTMLDivElement | undefined = $state();
 	let busy: string | null = $state(null);
+	let opening = 0;
 	let openSub: string | null = $state(null);
 	let subShown = $state(false);
 	let subTop = $state(0);
@@ -132,6 +133,11 @@
 		subShown = false;
 		mounted = true;
 
+		// an action still settling from an earlier opening belongs to that one;
+		// carrying its spinner over would lock every row of this menu until it ends
+		opening += 1;
+		busy = null;
+
 		// measure once mounted, so clamping knows the menu's real size
 		await tick();
 
@@ -181,6 +187,7 @@
 		}
 
 		const result = item.action?.();
+		const openedAs = opening;
 
 		// an async action keeps its row spinning until it settles
 		if (result instanceof Promise) {
@@ -189,8 +196,15 @@
 			try {
 				await result;
 			} finally {
-				busy = null;
+				if (openedAs === opening) {
+					busy = null;
+				}
 			}
+		}
+
+		// the menu was reopened meanwhile, maybe on another row; that one is not ours to close
+		if (openedAs !== opening) {
+			return;
 		}
 
 		close();
