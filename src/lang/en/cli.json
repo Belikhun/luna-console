@@ -1067,6 +1067,30 @@
 			"enderChest": "ender chest",
 			"stacks": "{count} stacks",
 			"advancements": "advancements"
+		},
+		"authMode": {
+			"loginMode": "Login mode",
+			"current": "This connection",
+			"next": "Next login",
+			"pinned": "Pinned mode",
+			"premium": "Premium name",
+			"notConnected": "not connected",
+			"online": "online (Mojang)",
+			"offline": "offline (password)",
+			"ask": "player chooses",
+			"onlineIfPremium": "online, once Mojang confirms",
+			"forever": "{mode}, until changed",
+			"until": "{mode} until {date}",
+			"premiumYes": "yes",
+			"premiumNo": "no",
+			"premiumUnknown": "unknown",
+			"unavailable": "not reported by this luna-auth build",
+			"modeDesc": "Pin a player's login mode (online Mojang or offline password)",
+			"optForever": "Keep the pin until changed",
+			"optNoReconnect": "Do not disconnect a connected player whose live mode differs",
+			"optCheck": "Only ask Mojang about the name again and show the result",
+			"badMode": "Mode must be online, offline or unset.",
+			"disconnected": "{player} was disconnected so the new mode applies when they rejoin."
 		}
 	},
 	"setup": {

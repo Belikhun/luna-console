@@ -11,6 +11,7 @@ import * as playerstate from "../../client/core/playerstate";
 import { dimensionLabel } from "../../client/core/playerdata";
 import type { AccessListKind } from "../../client/core/playerlists";
 import * as luna from "../../client/core/services/luna";
+import type { AuthLoginMode } from "../../client/core/services/luna";
 import { t } from "../../shared/i18n";
 
 /** The list names the access commands accept. */
@@ -479,6 +480,7 @@ command({
 					? t("cli.players.auth.until", { date: fmtEpoch(account.session.expiresAtEpochMillis) })
 					: pc.dim(t("cli.common.none")),
 			],
+			...loginModeRows(account.loginMode),
 		]);
 		console.log();
 	},
@@ -553,6 +555,118 @@ command({
 			`  ${pc.dim(t("cli.players.vault.showing", { count: history.data.entries.length, total: history.data.totalCount }))}`,
 		);
 		console.log();
+	},
+});
+
+/** The login-mode label a CLI row shows for a mode luna-auth reports. */
+function modeText(mode: string): string {
+	if (mode === "online") {
+		return t("cli.players.authMode.online");
+	}
+
+	if (mode === "offline") {
+		return t("cli.players.authMode.offline");
+	}
+
+	if (mode === "ask") {
+		return t("cli.players.authMode.ask");
+	}
+
+	if (mode === "online-if-premium") {
+		return t("cli.players.authMode.onlineIfPremium");
+	}
+
+	return mode;
+}
+
+/** `net auth` rows for the player's login mode; one dim row when the plugin does not report it. */
+function loginModeRows(loginMode: AuthLoginMode | undefined): string[][] {
+	if (!loginMode) {
+		return [[t("cli.players.authMode.loginMode"), pc.dim(t("cli.players.authMode.unavailable"))]];
+	}
+
+	const preference = loginMode.preference;
+	const pinned = !preference
+		? pc.dim(t("cli.common.none"))
+		: preference.rememberForever
+			? t("cli.players.authMode.forever", { mode: modeText(preference.mode) })
+			: t("cli.players.authMode.until", {
+					mode: modeText(preference.mode),
+					date: fmtEpoch(preference.expiresAtEpochMillis),
+				});
+	const premium = loginMode.premium;
+	const verdict = premium.status === "premium"
+		? `${Sym.ok} ${t("cli.players.authMode.premiumYes")}`
+		: premium.status === "not_premium"
+			? t("cli.players.authMode.premiumNo")
+			: pc.yellow(t("cli.players.authMode.premiumUnknown"));
+	const detail = premium.error
+		? `${premium.source} · ${premium.error}`
+		: premium.source;
+
+	return [
+		[
+			t("cli.players.authMode.current"),
+			loginMode.current ? modeText(loginMode.current) : pc.dim(t("cli.players.authMode.notConnected")),
+		],
+		[t("cli.players.authMode.next"), modeText(loginMode.next)],
+		[t("cli.players.authMode.pinned"), pinned],
+		[t("cli.players.authMode.premium"), `${verdict} ${pc.dim(detail)}`],
+	];
+}
+
+command({
+	path: ["net", "authmode"],
+	desc: t("cli.players.authMode.modeDesc"),
+	args: [
+		{ name: "player", required: true },
+		{ name: "mode", required: false, complete: async () => ["online", "offline", "unset"] },
+	],
+	opts: [
+		{ flag: "--forever", desc: t("cli.players.authMode.optForever") },
+		{ flag: "--no-reconnect", desc: t("cli.players.authMode.optNoReconnect") },
+		{ flag: "--check", desc: t("cli.players.authMode.optCheck") },
+	],
+
+	handler: async (args, opts) => {
+		const player = args[0]!;
+		const mode = args[1];
+
+		if (opts.check || !mode) {
+			const checked = await luna.setAuth(player, { action: "premium-check", actor: "cli" });
+
+			if (!checked.ok || !checked.data) {
+				bailUnavailable(checked.error);
+			}
+
+			console.log();
+			console.log(`  ${pc.bold(checked.data.username)} ${pc.dim(checked.data.uuid)}`);
+			printTable(loginModeRows(checked.data.loginMode));
+			console.log();
+			return;
+		}
+
+		if (mode !== "online" && mode !== "offline" && mode !== "unset") {
+			throw new UsageError(t("cli.players.authMode.badMode"));
+		}
+
+		const result = await luna.setAuth(player, {
+			action: "mode",
+			mode,
+			forever: Boolean(opts.forever),
+			reconnect: !opts["no-reconnect"],
+			actor: "cli",
+		});
+
+		if (!result.ok || !result.data) {
+			bailUnavailable(result.error);
+		}
+
+		ok(result.data.message);
+
+		if (result.data.disconnected) {
+			console.log(`  ${pc.dim(t("cli.players.authMode.disconnected", { player }))}`);
+		}
 	},
 });
 

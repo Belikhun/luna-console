@@ -18,7 +18,11 @@ export async function GET({ params }) {
 }
 
 /**
- * POST { action, … } → administer the player's password.
+ * POST { action, … } → administer the player's password or login mode.
+ *
+ * `mode` takes `mode` (online, offline or unset), `forever` and `reconnect`;
+ * `premium-check` asks Mojang about the name again and returns the fresh
+ * login-mode state.
  *
  * `temporary` accepts an optional password (the proxy generates one when it is
  * omitted) and `expiresInMinutes`; `password` requires one. The plaintext of a
@@ -34,9 +38,18 @@ export async function POST({ params, request }) {
 		action !== 'temporary' &&
 		action !== 'password' &&
 		action !== 'unlock' &&
-		action !== 'logout'
+		action !== 'logout' &&
+		action !== 'forcelogin' &&
+		action !== 'mode' &&
+		action !== 'premium-check'
 	) {
 		throw error(400, `unknown action: ${action}`);
+	}
+
+	const mode = String(body.mode ?? '');
+
+	if (action === 'mode' && mode !== 'online' && mode !== 'offline' && mode !== 'unset') {
+		throw error(400, `unknown mode: ${mode}`);
 	}
 
 	const result = await luna.setAuth(params.player, {
@@ -44,11 +57,18 @@ export async function POST({ params, request }) {
 		...(body.password ? { password: String(body.password) } : {}),
 		...(body.expiresInMinutes ? { expiresInMinutes: Number(body.expiresInMinutes) } : {}),
 		...(body.username ? { username: String(body.username) } : {}),
+		...(action === 'mode' ? { mode: mode as 'online' | 'offline' | 'unset' } : {}),
+		...(body.forever !== undefined ? { forever: Boolean(body.forever) } : {}),
+		...(body.reconnect !== undefined ? { reconnect: Boolean(body.reconnect) } : {}),
 		actor: 'console'
 	});
 
-	if (result.ok) {
-		pushEvent('proxy', 'action', `auth ${action} on ${params.player}`);
+	if (result.ok && action !== 'premium-check') {
+		const what = action === 'mode'
+			? `auth mode ${mode}${body.forever ? ' (forever)' : ''}`
+			: `auth ${action}`;
+
+		pushEvent('proxy', 'action', `${what} on ${params.player}`);
 	}
 
 	return json(result);

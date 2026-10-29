@@ -1067,6 +1067,30 @@
 			"enderChest": "rương ender",
 			"stacks": "{count} chồng",
 			"advancements": "thành tựu"
+		},
+		"authMode": {
+			"loginMode": "Chế độ đăng nhập",
+			"current": "Kết nối hiện tại",
+			"next": "Lần đăng nhập tới",
+			"pinned": "Chế độ đã ghim",
+			"premium": "Tên premium",
+			"notConnected": "không kết nối",
+			"online": "online (Mojang)",
+			"offline": "offline (mật khẩu)",
+			"ask": "người chơi tự chọn",
+			"onlineIfPremium": "online, khi Mojang xác nhận",
+			"forever": "{mode}, đến khi đổi",
+			"until": "{mode} đến {date}",
+			"premiumYes": "có",
+			"premiumNo": "không",
+			"premiumUnknown": "chưa rõ",
+			"unavailable": "bản luna-auth này chưa báo",
+			"modeDesc": "Ghim chế độ đăng nhập của người chơi (online Mojang hoặc offline mật khẩu)",
+			"optForever": "Giữ ghim đến khi đổi",
+			"optNoReconnect": "Không ngắt kết nối người chơi đang vào bằng chế độ khác",
+			"optCheck": "Chỉ hỏi lại Mojang về tên và hiện kết quả",
+			"badMode": "Chế độ phải là online, offline hoặc unset.",
+			"disconnected": "{player} đã bị ngắt kết nối để chế độ mới áp dụng khi vào lại."
 		}
 	},
 	"setup": {

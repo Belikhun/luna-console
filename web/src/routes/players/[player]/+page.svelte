@@ -138,6 +138,25 @@
 			expiresAtEpochMillis: number;
 			ip: string;
 		};
+		/** Absent on luna-auth builds that predate login-mode reporting */
+		loginMode?: LoginModeInfo;
+	}
+
+	/** Which login mode (Mojang or luna-auth password) the player is on and will get next. */
+	interface LoginModeInfo {
+		proxyOnlineMode: boolean;
+		mixedMode: boolean;
+		current: '' | 'online' | 'offline';
+		preference: { mode: 'online' | 'offline'; rememberForever: boolean; expiresAtEpochMillis: number } | null;
+		premium: {
+			status: 'premium' | 'not_premium' | 'unknown';
+			onlineUuid: string;
+			source: string;
+			checkedAtEpochMillis: number;
+			error: string;
+		};
+		next: 'online' | 'offline' | 'ask' | 'online-if-premium';
+		preferenceHours: number;
 	}
 
 	interface VaultInfo {
@@ -258,6 +277,11 @@
 	/** The plaintext of a freshly issued password; shown once, then forgotten. */
 	let issuedPassword = $state('');
 	let issuedOpen = $state(false);
+	let modeOpen = $state(false);
+	let modeChoice = $state('online');
+	let modeForever = $state(false);
+	let modeBusy = $state(false);
+	let premiumBusy = $state(false);
 
 	// economy; balance and transactions, held by LunaVault on the proxy
 	let vaultInfo: VaultInfo | undefined = $state();
@@ -709,8 +733,44 @@
 				disabled: gone || !(authInfo?.authenticated || authInfo?.session.hasSession),
 				hint: reason ?? (authInfo?.authenticated || authInfo?.session.hasSession ? undefined : 'no session to end'),
 				action: () => void doAuth('logout', 'Ending session…', 'Session ended; the player must log in again')
+			},
+			{
+				label: t('web.playerDetail.forceLogin'),
+				icon: 'rightToBracket',
+				disabled: gone || !authInfo?.online || !authInfo?.registered || authInfo?.authenticated,
+				hint: reason ?? forceLoginBlocker(),
+				action: () =>
+					void doAuth(
+						'forcelogin',
+						t('web.playerDetail.forcingLogin', { name: detail?.username ?? '' }),
+						t('web.playerDetail.forcedLogin', { name: detail?.username ?? '' })
+					)
+			},
+			{
+				label: t('web.playerDetail.changeLoginMode'),
+				icon: 'userShield',
+				disabled: gone || !authInfo?.loginMode,
+				hint: reason ?? (authInfo?.loginMode ? undefined : t('web.playerDetail.loginModeUnavailable')),
+				action: openLoginMode
 			}
 		];
+	}
+
+	/** Why force-login cannot run right now, or undefined when it can. */
+	function forceLoginBlocker(): string | undefined {
+		if (!authInfo?.online) {
+			return t('web.playerDetail.forceLoginNotConnected');
+		}
+
+		if (!authInfo.registered) {
+			return t('web.playerDetail.forceLoginNoPassword');
+		}
+
+		if (authInfo.authenticated) {
+			return t('web.playerDetail.forceLoginAlreadyIn');
+		}
+
+		return undefined;
 	}
 
 	const ACTION_LABELS: Record<string, string> = {
@@ -1038,6 +1098,186 @@
 				]
 			: []
 	);
+
+	// --------------------------------------------------------------- login mode
+
+	function modeLabel(mode: string): string {
+		if (mode === 'online') {
+			return t('web.playerDetail.loginModeOnline');
+		}
+
+		if (mode === 'offline') {
+			return t('web.playerDetail.loginModeOffline');
+		}
+
+		if (mode === 'ask') {
+			return t('web.playerDetail.loginModeAsk');
+		}
+
+		if (mode === 'online-if-premium') {
+			return t('web.playerDetail.loginModeOnlineIfPremium');
+		}
+
+		return '–';
+	}
+
+	/** Keys for where a premium verdict came from, as luna-auth names the sources. */
+	const PREMIUM_SOURCES: Record<string, string> = {
+		mojang: 'web.playerDetail.premiumSourceMojang',
+		cache: 'web.playerDetail.premiumSourceCache',
+		verified: 'web.playerDetail.premiumSourceVerified',
+		known: 'web.playerDetail.premiumSourceKnown',
+		failed: 'web.playerDetail.premiumSourceFailed',
+		unchecked: 'web.playerDetail.premiumSourceUnchecked'
+	};
+
+	/** The premium verdict plus where it came from, in one line. */
+	function premiumLabel(info: LoginModeInfo): string {
+		const premium = info.premium;
+		const verdict = premium.status === 'premium'
+			? t('web.playerDetail.premiumYes')
+			: premium.status === 'not_premium'
+				? t('web.playerDetail.premiumNo')
+				: t('web.playerDetail.premiumUnknown');
+		const date = premium.checkedAtEpochMillis
+			? fmtDateTime(premium.checkedAtEpochMillis)
+			: '';
+		const sourceKey = PREMIUM_SOURCES[premium.source];
+
+		if (!sourceKey) {
+			return verdict;
+		}
+
+		return `${verdict} · ${t(sourceKey, { date, error: premium.error })}`;
+	}
+
+	const loginModeCells: InfoCell[] = $derived(
+		authInfo?.loginMode
+			? [
+					{
+						label: t('web.playerDetail.loginModeCurrent'),
+						value: authInfo.loginMode.current
+							? modeLabel(authInfo.loginMode.current)
+							: t('web.playerDetail.loginModeNotConnected')
+					},
+					{
+						label: t('web.playerDetail.loginModeNext'),
+						value: modeLabel(authInfo.loginMode.next)
+					},
+					{
+						label: t('web.playerDetail.loginModePreference'),
+						value: !authInfo.loginMode.preference
+							? t('web.playerDetail.loginModeNone')
+							: authInfo.loginMode.preference.rememberForever
+								? t('web.playerDetail.loginModeForever', { mode: modeLabel(authInfo.loginMode.preference.mode) })
+								: t('web.playerDetail.loginModeUntil', {
+										mode: modeLabel(authInfo.loginMode.preference.mode),
+										date: fmtDateTime(authInfo.loginMode.preference.expiresAtEpochMillis)
+									})
+					},
+					{
+						label: t('web.playerDetail.loginModePremium'),
+						value: premiumLabel(authInfo.loginMode),
+						copyable: false,
+						colSpan: 'all'
+					}
+				]
+			: []
+	);
+
+	function openLoginMode(): void {
+		const preference = authInfo?.loginMode?.preference;
+
+		modeChoice = preference?.mode ?? 'online';
+		modeForever = preference?.rememberForever ?? false;
+		modeOpen = true;
+	}
+
+	/** True when applying the chosen mode disconnects the player, because their live mode differs. */
+	const modeReconnects = $derived(
+		!!authInfo?.loginMode?.current &&
+			modeChoice !== 'unset' &&
+			authInfo.loginMode.current !== modeChoice
+	);
+
+	async function doLoginMode(): Promise<void> {
+		modeBusy = true;
+
+		const name = detail?.username ?? '';
+		const note = Notify.loading(t('web.playerDetail.settingLoginMode', { name }));
+
+		try {
+			const result = await post(`/players/${encodeURIComponent(ref)}/auth`, {
+				action: 'mode',
+				mode: modeChoice,
+				forever: modeChoice !== 'unset' && modeForever
+			});
+
+			if (result.ok === false) {
+				throw new Error(result.error ?? 'the proxy refused the change');
+			}
+
+			modeOpen = false;
+
+			const message = result.data?.disconnected
+				? t('web.playerDetail.loginModeSetDisconnected', { name })
+				: t('web.playerDetail.loginModeSet', { name });
+
+			note.set({ level: 'success', message, closeable: true });
+
+			await loadAuth();
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: t('web.playerDetail.couldNotSetLoginMode'),
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+
+		modeBusy = false;
+	}
+
+	/** Have luna-auth forget its cached verdict on the name and ask Mojang now. */
+	async function doPremiumCheck(): Promise<void> {
+		premiumBusy = true;
+
+		const name = detail?.username ?? '';
+		const note = Notify.loading(t('web.playerDetail.checkingWithMojang', { name }));
+
+		try {
+			const result = await post(`/players/${encodeURIComponent(ref)}/auth`, { action: 'premium-check' });
+
+			if (result.ok === false) {
+				throw new Error(result.error ?? 'the proxy refused the request');
+			}
+
+			if (authInfo && result.data?.loginMode) {
+				authInfo = { ...authInfo, loginMode: result.data.loginMode };
+			}
+
+			note.set({
+				level: 'success',
+				message: t('web.playerDetail.checkedWithMojang', { name }),
+				closeable: true
+			});
+		} catch (err) {
+			note.set({
+				level: 'error',
+				message: t('web.playerDetail.couldNotCheckWithMojang'),
+				detail: (err as Error).message,
+				closeable: true
+			});
+		}
+
+		premiumBusy = false;
+	}
+
+	const modeChoices = $derived([
+		{ value: 'online', label: t('web.playerDetail.loginModeOnline') },
+		{ value: 'offline', label: t('web.playerDetail.loginModeOffline') },
+		{ value: 'unset', label: t('web.playerDetail.loginModeUnset') }
+	]);
 
 	// ------------------------------------------------------------------ economy
 
@@ -1422,6 +1662,37 @@
 				>
 					<InfoGrid cells={authCells} columns={[4, 2, 1]} />
 				</Panel>
+
+				{#if authInfo.loginMode}
+					{#if authInfo.loginMode.proxyOnlineMode}
+						<Flash kind="info">{t('web.playerDetail.loginModeProxyOnline')}</Flash>
+					{:else if !authInfo.loginMode.mixedMode}
+						<Flash kind="info">{t('web.playerDetail.loginModeMixedOff')}</Flash>
+					{/if}
+
+					<Panel
+						title={t('web.playerDetail.loginMode')}
+						description={t('web.playerDetail.loginModeDesc')}
+					>
+						{#snippet actions()}
+							<Btn icon="rotate" loading={premiumBusy} disabled={premiumBusy} onclick={doPremiumCheck}>
+								{t('web.playerDetail.checkWithMojang')}
+							</Btn>
+							<Btn
+								variant="primary"
+								icon="userShield"
+								disabled={authInfo?.loginMode?.proxyOnlineMode || !authInfo?.loginMode?.mixedMode}
+								onclick={openLoginMode}
+							>
+								{t('web.playerDetail.changeLoginMode')}
+							</Btn>
+						{/snippet}
+
+						<InfoGrid cells={loginModeCells} columns={[4, 2, 1]} />
+					</Panel>
+				{:else}
+					<Flash kind="info">{t('web.playerDetail.loginModeUnavailable')}</Flash>
+				{/if}
 			{/if}
 		{:else if tab === 'economy'}
 			{#if !vaultAvailable}
@@ -1967,6 +2238,43 @@
 			onclick={doTemporary}
 		>
 			{t('web.playerDetail.issuePassword')}
+		</Btn>
+	{/snippet}
+</Modal>
+
+<Modal title={t('web.playerDetail.loginModeDialogTitle', { name: detail?.username ?? '' })} bind:open={modeOpen}>
+	<div class="field">
+		<span class="lbl">{t('web.playerDetail.loginModeField')}</span>
+		<span class="hint">{t('web.playerDetail.loginModeFieldHint')}</span>
+		<Select bind:value={modeChoice} width="100%" options={modeChoices} />
+	</div>
+
+	{#if modeChoice !== 'unset'}
+		<div class="field">
+			<Checkbox
+				checked={modeForever}
+				label={t('web.playerDetail.loginModeKeep')}
+				onchange={(value: boolean) => (modeForever = value)}
+			/>
+			<span class="hint">
+				{t('web.playerDetail.loginModeKeepHint', { hours: String(authInfo?.loginMode?.preferenceHours ?? 24) })}
+			</span>
+		</div>
+	{/if}
+
+	{#if modeReconnects}
+		<p class="dim">
+			{t('web.playerDetail.loginModeReconnectNote', {
+				name: detail?.username ?? '',
+				current: modeLabel(authInfo?.loginMode?.current ?? '')
+			})}
+		</p>
+	{/if}
+
+	{#snippet footer()}
+		<Btn onclick={() => (modeOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
+		<Btn variant="primary" disabled={modeBusy} loading={modeBusy} onclick={doLoginMode}>
+			{t('web.playerDetail.loginModeApply')}
 		</Btn>
 	{/snippet}
 </Modal>
