@@ -6,19 +6,23 @@
 	import AgentQuestion from './AgentQuestion.svelte';
 	import { readAnswers, readQuestions } from './agentquestion';
 	import type { AgentQuestionState } from './agentquestion';
-	import { AGENT_ASK_TOOL } from '$shared/agent';
+	import { AGENT_ASK_TOOL, AGENT_SUBAGENT_TOOL, AGENT_TODO_TOOL } from '$shared/agent';
 	import { t } from '$lib/i18n.svelte';
 	import { Authz } from '$lib/authz.svelte';
 	import { tick } from 'svelte';
+	import { page } from '$app/state';
 	import { Agent, type ChatItem, type ChatSession } from '$lib/agent.svelte';
 	import { renderMarkdown } from '$lib/markdown';
 	import { copyText } from '$lib/clipboard';
-	import { fmtTime, fmtTokens } from '$lib/format';
+	import { fmtDuration, fmtTime, fmtTokens } from '$lib/format';
+	import { Notify } from '$lib/notifications.svelte';
 	import Icon from './Icon.svelte';
 	import Btn from './Btn.svelte';
-	import Spinner from './Spinner.svelte';
 	import AgentComposer from './AgentComposer.svelte';
+	import AgentToolCard from './AgentToolCard.svelte';
+	import AgentTodos from './AgentTodos.svelte';
 	import AccountAvatar from './AccountAvatar.svelte';
+	import ConfirmModal from './ConfirmModal.svelte';
 	import type { AvatarSubject } from './accountavatar';
 
 	/**
@@ -29,24 +33,53 @@
 	 *
 	 * The chat follows the shape of Belikhun's smart-home assistant: an author row
 	 * per turn, the agent's words in its own colour, and each tool call as a card
-	 * that spins, then settles into a check, a ban or a warning. A call that
-	 * changes something stops in its card until the operator approves or denies it.
+	 * that spins, then settles. Settled calls in a row fold into one "used N
+	 * tools" line, as VS Code folds them; a helper's calls nest inside its card.
+	 * Hovering a message offers its verbs: copy, edit and resend, retry, branch.
+	 *
+	 * A shared conversation shows who has it open, and a viewer reads it with
+	 * the composer replaced by a note saying so.
 	 */
-	let { session, account }: { session: ChatSession; account: AvatarSubject | null } = $props();
+	let {
+		session,
+		account,
+		onbranch
+	}: {
+		session: ChatSession;
+		account: AvatarSubject | null;
+		/** Open a branch this chat just made; without it the chat switches to it itself */
+		onbranch?: (id: string) => void;
+	} = $props();
 
-	/** the signed-in account's name; every conversation here is theirs */
-	const user = $derived(account?.username ?? 'root');
+	/** the signed-in account's name */
+	const me = $derived(Agent.state?.me ?? account?.username ?? 'root');
 
 	type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
+	type UserItem = Extract<ChatItem, { kind: 'user' }>;
+	type StatsItem = Extract<ChatItem, { kind: 'stats' }>;
+	type BotItem = Exclude<ChatItem, { kind: 'user' } | { kind: 'event' } | { kind: 'compact' } | { kind: 'stats' }>;
+
+	/** What a bot turn shows, in order: its items, with runs of settled calls folded into one */
+	type Segment = BotItem | { kind: 'calls'; key: string; items: ToolItem[] };
+
+	type Group =
+		| { kind: 'user'; item: UserItem }
+		| { kind: 'event'; item: Extract<ChatItem, { kind: 'event' }> }
+		| { kind: 'compact'; item: Extract<ChatItem, { kind: 'compact' }> }
+		| {
+			kind: 'bot';
+			items: BotItem[];
+			segments: Segment[];
+			stats: StatsItem | null;
+			/** The message after this turn, which a branch from here keeps everything before */
+			before?: string;
+		};
 
 	/** Mèo Béo's picture, served from the console's own static files */
 	const AVATAR = '/agent/meo-beo.webp';
 
-	type Group =
-		| { kind: 'user'; item: Extract<ChatItem, { kind: 'user' }> }
-		| { kind: 'event'; item: Extract<ChatItem, { kind: 'event' }> }
-		| { kind: 'compact'; item: Extract<ChatItem, { kind: 'compact' }> }
-		| { kind: 'bot'; items: Exclude<ChatItem, { kind: 'user' } | { kind: 'event' } | { kind: 'compact' }>[] };
+	/** How many settled calls in a row fold into one line */
+	const FOLD_AT = 2;
 
 	let composer: AgentComposer | undefined = $state();
 	let scroller: HTMLDivElement | undefined = $state();
@@ -54,7 +87,7 @@
 	let deciding: Record<string, boolean> = $state({});
 
 	/** whether the reader is at the bottom; new text only scrolls a reader who is */
-	let pinned = true;
+	let pinned = $state(true);
 
 	/** px from the bottom that still counts as "at the bottom" */
 	const PIN_SLACK = 48;
@@ -112,34 +145,89 @@
 			}))
 	);
 
+	/** A call folds into a "used N tools" line once it settled fine and has nothing of its own to show. */
+	function foldable(item: BotItem): item is ToolItem {
+		return item.kind === 'tool'
+			&& item.status === 'ok'
+			&& item.name !== AGENT_ASK_TOOL
+			&& item.name !== AGENT_SUBAGENT_TOOL
+			&& item.name !== AGENT_TODO_TOOL;
+	}
+
+	function segmentsOf(items: BotItem[]): Segment[] {
+		const out: Segment[] = [];
+		let run: ToolItem[] = [];
+
+		const flush = (): void => {
+			if (run.length >= FOLD_AT) {
+				out.push({ kind: 'calls', key: run[0]!.id, items: run });
+			} else {
+				out.push(...run);
+			}
+
+			run = [];
+		};
+
+		for (const item of items) {
+			if (foldable(item)) {
+				run.push(item);
+
+				continue;
+			}
+
+			flush();
+			out.push(item);
+		}
+
+		flush();
+
+		return out;
+	}
+
 	const groups = $derived.by(() => {
 		const out: Group[] = [];
 
 		for (const item of session.items) {
-			if (item.kind === 'user') {
-				out.push({ kind: 'user', item });
-
+			// a helper's own calls are drawn inside its card
+			if (item.kind === 'tool' && item.parent) {
 				continue;
 			}
 
-			if (item.kind === 'event') {
-				out.push({ kind: 'event', item });
+			if (item.kind === 'user' || item.kind === 'event' || item.kind === 'compact') {
+				const previous = out[out.length - 1];
 
-				continue;
-			}
+				if (previous?.kind === 'bot' && item.kind !== 'compact') {
+					previous.before = item.uuid;
+				}
 
-			if (item.kind === 'compact') {
-				out.push({ kind: 'compact', item });
+				out.push({ kind: item.kind, item } as Group);
 
 				continue;
 			}
 
 			const last = out[out.length - 1];
+			const bot = last?.kind === 'bot'
+				? last
+				: null;
 
-			if (last && last.kind === 'bot') {
-				last.items.push(item);
+			if (item.kind === 'stats') {
+				if (bot) {
+					bot.stats = item;
+				}
+
+				continue;
+			}
+
+			if (bot) {
+				bot.items.push(item);
 			} else {
-				out.push({ kind: 'bot', items: [item] });
+				out.push({ kind: 'bot', items: [item], segments: [], stats: null });
+			}
+		}
+
+		for (const group of out) {
+			if (group.kind === 'bot') {
+				group.segments = segmentsOf(group.items);
 			}
 		}
 
@@ -158,7 +246,7 @@
 			return true;
 		}
 
-		if (last.kind === 'assistant' && last.streaming) {
+		if ((last.kind === 'assistant' || last.kind === 'thinking') && last.streaming) {
 			return false;
 		}
 
@@ -193,6 +281,28 @@
 	});
 
 	const ready = $derived(Agent.state?.ready ?? false);
+
+	/** The page this window shows, which goes along with a resent message like with a typed one */
+	const pagePath = $derived(page.url.pathname.startsWith('/agent') ? undefined : page.url.pathname);
+
+	/** Whether the conversation is anybody's but this account's alone: shared, or shared with it */
+	const shared = $derived(session.role !== 'owner' || (session.row?.shares?.length ?? 0) > 0);
+	const others = $derived(session.viewers.filter((name) => name !== me));
+
+	/** The last turn, the one retry asks again */
+	const lastBot = $derived.by(() => {
+		for (let index = groups.length - 1; index >= 0; index--) {
+			if (groups[index]!.kind === 'bot') {
+				return index;
+			}
+
+			if (groups[index]!.kind === 'user') {
+				return -1;
+			}
+		}
+
+		return -1;
+	});
 
 	// follow the conversation as it grows, unless the reader has scrolled up
 	$effect(() => {
@@ -234,22 +344,38 @@
 		pinned = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < PIN_SLACK;
 	}
 
-	async function decide(item: ToolItem, allow: boolean, answers?: Record<string, string>): Promise<void> {
+	function toBottom(): void {
+		pinned = true;
+		scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
+	}
+
+	async function answer(item: ToolItem, allow: boolean, answers?: Record<string, string>): Promise<void> {
 		deciding[item.id] = true;
 
 		try {
-			await session.decide(item.id, allow, item.name, answers);
+			await session.decide(item.id, allow, item.name, answers ? { answers } : {});
 		} finally {
 			deciding[item.id] = false;
 		}
 	}
 
-	/** The question waiting for the operator, answered in the dock above the composer */
+	/** The question waiting for an answer, answered in the dock above the composer */
 	const asking = $derived(
 		session.items.find(
 			(item): item is ToolItem => item.kind === 'tool' && item.name === AGENT_ASK_TOOL && item.status === 'awaiting'
 		)
 	);
+
+	/** Calls waiting on this account, which the dock offers to settle in one go */
+	const waitingMine = $derived(
+		session.items.filter(
+			(item): item is ToolItem =>
+				item.kind === 'tool' && item.status === 'awaiting' && item.name !== AGENT_ASK_TOOL && session.decides(item)
+		)
+	);
+
+	const todos = $derived(session.todos);
+	const showTodos = $derived(!!todos && (session.running || todos.some((todo) => todo.status !== 'completed')));
 
 	function questionState(item: ToolItem): AgentQuestionState {
 		if (item.status === 'awaiting') {
@@ -265,74 +391,6 @@
 		return 'answered';
 	}
 
-	function toolTitle(item: ToolItem): string {
-		switch (item.status) {
-			case 'awaiting':
-				return t('web.agent.toolAwaiting');
-
-			case 'running':
-				return t('web.agent.toolRunning');
-
-			case 'ok':
-				return t('web.agent.toolOk');
-
-			case 'denied':
-				return item.decidedBy === 'timeout'
-					? t('web.agent.toolTimedOut')
-					: item.decidedBy === 'plan'
-						? t('web.agent.toolPlan')
-						: t('web.agent.toolDenied');
-
-			default:
-				return t('web.agent.toolFailed');
-		}
-	}
-
-	function toolIcon(status: ToolItem['status']): string {
-		switch (status) {
-			case 'ok':
-				return 'check';
-
-			case 'denied':
-				return 'ban';
-
-			case 'awaiting':
-				return 'shieldCheck';
-
-			default:
-				return 'triangleExclamation';
-		}
-	}
-
-	/** The call's arguments on one line, `key: value`, for the collapsed row. */
-	function argsPreview(input: unknown): string {
-		if (!input || typeof input !== 'object') {
-			return '';
-		}
-
-		return Object.entries(input as Record<string, unknown>)
-			.map(([key, value]) => {
-				const text = typeof value === 'string'
-					? value
-					: JSON.stringify(value);
-
-				return `${key}: ${text}`;
-			})
-			.join(' · ');
-	}
-
-	function pretty(value: unknown): string {
-		if (value === undefined) {
-			return '';
-		}
-
-		try {
-			return JSON.stringify(value, null, 2);
-		} catch {
-			return String(value);
-		}
-	}
-
 	function errorText(item: Extract<ChatItem, { kind: 'error' }>): string {
 		if (item.code) {
 			const key = `web.agent.err.${item.code}`;
@@ -345,9 +403,135 @@
 
 		return item.text;
 	}
+
+	/** An answer's wall time: tenths under ten seconds, where whole seconds would read "0s" */
+	function answerTime(ms: number): string {
+		return ms < 10_000
+			? `${(ms / 1000).toFixed(1)}s`
+			: fmtDuration(ms);
+	}
+
+	function initial(name: string): string {
+		return (name || '?').slice(0, 1).toUpperCase();
+	}
+
+	/** The names of the calls a folded line covers, each once, for its summary */
+	function callNames(items: ToolItem[]): string {
+		return [...new Set(items.map((item) => item.name))].join(', ');
+	}
+
+	// -- message verbs -------------------------------------------------------
+
+	let copied: string | null = $state(null);
+
+	async function copy(key: string, text: string): Promise<void> {
+		if (await copyText(text)) {
+			copied = key;
+			setTimeout(() => {
+				if (copied === key) {
+					copied = null;
+				}
+			}, 1500);
+		}
+	}
+
+	function botText(group: Extract<Group, { kind: 'bot' }>): string {
+		return group.items
+			.filter((item): item is Extract<ChatItem, { kind: 'assistant' }> => item.kind === 'assistant')
+			.map((item) => item.text)
+			.join('\n\n');
+	}
+
+	/** The message being edited in place, by uuid, and its new words */
+	let editing: string | null = $state(null);
+	let editText = $state('');
+
+	/** Rewinding is confirmed once per page load, like bypass: after that it is a known verb */
+	let rewindConfirmed = false;
+	let confirmRewind = $state(false);
+	let pendingRewind: (() => Promise<void>) | null = null;
+
+	const canRewind = $derived(session.writable && !session.running && !session.sending && !!session.conversationId);
+
+	function guarded(action: () => Promise<void>): void {
+		if (rewindConfirmed) {
+			void action();
+
+			return;
+		}
+
+		pendingRewind = action;
+		confirmRewind = true;
+	}
+
+	function startEdit(item: UserItem): void {
+		editing = item.uuid ?? null;
+		editText = item.text;
+	}
+
+	function submitEdit(): void {
+		const target = editing;
+		const text = editText;
+
+		if (!target || !text.trim()) {
+			return;
+		}
+
+		guarded(async () => {
+			editing = null;
+			pinned = true;
+			await session.rewind(target, text, pagePath);
+		});
+	}
+
+	function retry(): void {
+		guarded(async () => {
+			pinned = true;
+			await session.retry(pagePath);
+		});
+	}
+
+	async function branch(before?: string): Promise<void> {
+		try {
+			const id = await session.fork(before);
+
+			if (!id) {
+				return;
+			}
+
+			if (onbranch) {
+				onbranch(id);
+			} else {
+				await session.select(id);
+			}
+		} catch (err) {
+			Notify.error(t('web.agent.branchFailed'), { detail: (err as Error).message });
+		}
+	}
 </script>
 
 <div class="chat">
+	{#if shared && session.conversationId}
+		<div class="presence" role="status">
+			<Icon name="userGroup" size="0.75rem" style="solid" />
+			<span class="what">
+				{session.role === 'owner'
+					? t('web.agent.sharedByYou', { count: session.row?.shares?.length ?? 0 })
+					: t('web.agent.sharedWithYou', { owner: session.row?.owner ?? '', role: t(`web.agentShare.role_${session.role}`) })}
+			</span>
+			{#if others.length}
+				<span class="faces" title={t('web.agent.viewingNow', { names: others.join(', ') })}>
+					{#each others.slice(0, 4) as name (name)}
+						<span class="face">{initial(name)}</span>
+					{/each}
+					{#if others.length > 4}
+						<span class="face more">+{others.length - 4}</span>
+					{/if}
+				</span>
+			{/if}
+		</div>
+	{/if}
+
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="msgs" bind:this={scroller} onscroll={onScroll} onclick={onMessagesClick}>
 		<div class="col">
@@ -365,14 +549,14 @@
 						{t('web.agent.setupAction')}
 					</Btn>
 				</div>
-			{:else if session.items.length === 0}
+			{:else if session.items.length === 0 && !session.loading}
 				<div class="welcome">
 					<img class="big" src={AVATAR} alt="" />
 					<div class="title">{@html t('web.agent.welcomeTitle')}</div>
-					<p>{t('web.agent.welcomeBody')}</p>
+					<p>{session.row?.forkedFrom ? t('web.agent.branchWelcome', { title: session.row.forkedFrom.title || t('web.agent.untitled') }) : t('web.agent.welcomeBody')}</p>
 					<div class="caps">
 						{#each capabilities as capability (capability.id)}
-							<button class="cap" disabled={!ready} onclick={() => composer?.send(capability.prompt)}>
+							<button class="cap" disabled={!ready || !session.writable} onclick={() => composer?.send(capability.prompt)}>
 								<span class="cap-head">
 									<Icon name={capability.icon} size="0.875rem" />
 									{capability.title}
@@ -419,19 +603,49 @@
 						{/if}
 					</div>
 				{:else if group.kind === 'user'}
-					<div class="msg user">
+					{@const author = group.item.author || me}
+					<div class="msg user" class:queued={group.item.queued}>
 						<div class="author">
-							{#if account}
+							{#if account && author === me}
 								<AccountAvatar {account} size="1.75rem" />
 							{:else}
-								<span class="avatar">{(group.item.author || user).slice(0, 1).toUpperCase()}</span>
+								<span class="avatar">{initial(author)}</span>
 							{/if}
-							<span class="who">{group.item.author || user}</span>
+							<span class="who">{author}</span>
 							{#if group.item.mode && group.item.mode !== 'auto'}
 								<span class="modetag {group.item.mode}">{t(`web.agentComposer.mode_${group.item.mode}`)}</span>
 							{/if}
+							{#if group.item.queued}
+								<span class="modetag queued">{t('web.agent.queued', { name: session.actor ?? '' })}</span>
+							{/if}
 						</div>
-						{#if group.item.text}
+						{#if editing && editing === group.item.uuid}
+							<div class="editor">
+								<!-- svelte-ignore a11y_autofocus -->
+								<textarea
+									class="input"
+									rows="3"
+									autofocus
+									bind:value={editText}
+									onkeydown={(event) => {
+										if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+											event.preventDefault();
+											submitEdit();
+										}
+
+										if (event.key === 'Escape') {
+											editing = null;
+										}
+									}}
+								></textarea>
+								<div class="btns">
+									<Btn onclick={() => (editing = null)}>{t('web.common.cancel')}</Btn>
+									<Btn variant="primary" icon="paperPlaneTop" disabled={!editText.trim()} onclick={submitEdit}>
+										{t('web.agent.resend')}
+									</Btn>
+								</div>
+							</div>
+						{:else if group.item.text}
 							<div class="bubble text">{group.item.text}</div>
 						{/if}
 						{#each group.item.attachments ?? [] as file}
@@ -440,6 +654,23 @@
 								<span class="fname">{file.name}</span>
 							</div>
 						{/each}
+						{#if editing !== group.item.uuid}
+							<div class="acts">
+								<button class="act" title={t('web.agent.copyMessage')} onclick={() => copy(`u${gi}`, group.item.text)}>
+									<Icon name={copied === `u${gi}` ? 'check' : 'copy'} size="0.75rem" />
+								</button>
+								{#if group.item.uuid && session.writable}
+									<button
+										class="act"
+										title={canRewind ? t('web.agent.editMessage') : t('web.agent.editBusy')}
+										disabled={!canRewind}
+										onclick={() => startEdit(group.item)}
+									>
+										<Icon name="pen" size="0.75rem" />
+									</button>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				{:else}
 					<div class="msg bot">
@@ -448,72 +679,55 @@
 							<span class="who">Mèo Béo</span>
 						</div>
 
-						{#each group.items as item, ii (item.kind === 'tool' ? item.id : `${gi}:${ii}`)}
-							{#if item.kind === 'assistant'}
-								<div class="bubble text md" class:streaming={item.streaming}>{@html renderMarkdown(item.text, { copyLabel: t('web.agent.copyCode') })}</div>
-							{:else if item.kind === 'tool' && item.name === AGENT_ASK_TOOL}
-								<AgentQuestion
-									questions={readQuestions(item.input)}
-									answers={readAnswers(item.input)}
-									phase={questionState(item)}
-								/>
-							{:else if item.kind === 'tool'}
-								<div class="bubble call" data-status={item.status} class:processing={item.status === 'running'}>
+						{#each group.segments as segment, si (segment.kind === 'tool' ? segment.id : segment.kind === 'calls' ? `c${segment.key}` : `${gi}:${si}`)}
+							{#if segment.kind === 'assistant'}
+								<div class="bubble text md" class:streaming={segment.streaming}>{@html renderMarkdown(segment.text, { copyLabel: t('web.agent.copyCode') })}</div>
+							{:else if segment.kind === 'thinking'}
+								{@const key = `th${gi}:${si}`}
+								<div class="thought" class:streaming={segment.streaming}>
+									<button class="row" aria-expanded={!!expanded[key]} onclick={() => (expanded[key] = !expanded[key])}>
+										<Icon name="lightbulb" size="0.75rem" style={segment.streaming ? 'solid' : 'regular'} />
+										<span class="lbl" data-text={t('web.agent.thinkingNow')}>
+											{segment.streaming ? t('web.agent.thinkingNow') : t('web.agent.thought')}
+										</span>
+										<Icon name={expanded[key] ? 'arrowUp' : 'arrowDown'} size="0.625rem" />
+									</button>
+									{#if expanded[key]}
+										<div class="body">{segment.text}</div>
+									{/if}
+								</div>
+							{:else if segment.kind === 'calls'}
+								<div class="calls">
 									<button
 										class="row"
-										title={t('web.agent.details')}
-										aria-expanded={!!expanded[item.id]}
-										onclick={() => (expanded[item.id] = !expanded[item.id])}
+										aria-expanded={!!expanded[`c${segment.key}`]}
+										onclick={() => (expanded[`c${segment.key}`] = !expanded[`c${segment.key}`])}
 									>
-										<span class="icon" title={toolTitle(item)} aria-label={toolTitle(item)}>
-											{#if item.status === 'running'}
-												<Spinner size="0.75rem" color="#fff" />
-											{:else}
-												<Icon name={toolIcon(item.status)} style="solid" size="0.625rem" />
-											{/if}
-										</span>
-										<code class="name">{item.name}</code>
-										<span class="args">{argsPreview(item.input)}</span>
-										<span class="caret">
-											<Icon name={expanded[item.id] ? 'arrowUp' : 'arrowDown'} size="0.625rem" />
-										</span>
+										<span class="icon"><Icon name="check" style="solid" size="0.625rem" /></span>
+										<span class="sum">{t('web.agent.usedTools', { count: segment.items.length })}</span>
+										<span class="names">{callNames(segment.items)}</span>
+										<Icon name={expanded[`c${segment.key}`] ? 'arrowUp' : 'arrowDown'} size="0.625rem" />
 									</button>
-
-									{#if item.status === 'awaiting'}
-										<div class="ask">
-											<p>{t('web.agent.approveLead')}</p>
-											{#if item.input !== undefined && pretty(item.input) !== '{}'}
-												<pre>{pretty(item.input)}</pre>
-											{/if}
-											<div class="btns">
-												<Btn variant="primary" icon="check" loading={deciding[item.id]} onclick={() => decide(item, true)}>
-													{t('web.agent.approve')}
-												</Btn>
-												<Btn icon="ban" disabled={deciding[item.id]} onclick={() => decide(item, false)}>
-													{t('web.agent.deny')}
-												</Btn>
-											</div>
-										</div>
-									{:else if expanded[item.id]}
-										<div class="detail">
-											{#if item.input !== undefined}
-												<span class="lbl">{t('web.agent.input')}</span>
-												<pre>{pretty(item.input)}</pre>
-											{/if}
-											{#if item.output}
-												<span class="lbl">{t('web.agent.output')}</span>
-												<pre>{item.output}</pre>
-											{/if}
-											{#if item.decidedBy && !['timeout', 'stopped', 'plan'].includes(item.decidedBy)}
-												<span class="lbl">{t('web.agent.decidedBy', { name: item.decidedBy })}</span>
-											{/if}
+									{#if expanded[`c${segment.key}`]}
+										<div class="list">
+											{#each segment.items as call (call.id)}
+												<AgentToolCard item={call} {session} items={session.items} nested />
+											{/each}
 										</div>
 									{/if}
 								</div>
-							{:else}
+							{:else if segment.kind === 'tool' && segment.name === AGENT_ASK_TOOL}
+								<AgentQuestion
+									questions={readQuestions(segment.input)}
+									answers={readAnswers(segment.input)}
+									phase={questionState(segment)}
+								/>
+							{:else if segment.kind === 'tool'}
+								<AgentToolCard item={segment} {session} items={session.items} />
+							{:else if segment.kind === 'error'}
 								<div class="bubble err">
 									<Icon name="triangleExclamation" size="0.875rem" />
-									<span>{errorText(item)}</span>
+									<span>{errorText(segment)}</span>
 								</div>
 							{/if}
 						{/each}
@@ -525,11 +739,47 @@
 								<span class="elapsed">({elapsed}s)</span>
 							</div>
 						{/if}
+
+						{#if !(session.running && gi === groups.length - 1)}
+							<div class="foot">
+								{#if group.stats}
+									<span class="stats" title={t('web.agent.statsTitle')}>
+										{t('web.agent.stats', {
+											time: answerTime(group.stats.ms),
+											tools: group.stats.tools,
+											cost: group.stats.costUsd.toFixed(3)
+										})}
+									</span>
+								{/if}
+								<span class="acts">
+									{#if botText(group)}
+										<button class="act" title={t('web.agent.copyMessage')} onclick={() => copy(`b${gi}`, botText(group))}>
+											<Icon name={copied === `b${gi}` ? 'check' : 'copy'} size="0.75rem" />
+										</button>
+									{/if}
+									{#if gi === lastBot && session.writable}
+										<button
+											class="act"
+											title={canRewind ? t('web.agent.retry') : t('web.agent.editBusy')}
+											disabled={!canRewind}
+											onclick={retry}
+										>
+											<Icon name="arrowRotateRight" size="0.75rem" />
+										</button>
+									{/if}
+									{#if session.role === 'owner' && session.conversationId}
+										<button class="act" title={t('web.agent.branchHere')} disabled={session.running} onclick={() => branch(group.before)}>
+											<Icon name="codeBranch" size="0.75rem" />
+										</button>
+									{/if}
+								</span>
+							</div>
+						{/if}
 					</div>
 				{/if}
 			{/each}
 
-			{#if thinking && groups[groups.length - 1]?.kind === 'user'}
+			{#if thinking && groups[groups.length - 1]?.kind !== 'bot'}
 				<div class="msg bot">
 					<div class="author">
 						<img class="avatar cat" src={AVATAR} alt="" />
@@ -545,28 +795,85 @@
 		</div>
 	</div>
 
+	{#if !pinned}
+		<button class="jump" title={t('web.agent.jumpLatest')} onclick={toBottom}>
+			<Icon name="arrowDownToLine" size="0.875rem" />
+		</button>
+	{/if}
+
 	<div class="dock">
 		{#if asking}
 			<div class="asking">
-				{#key asking.id}
-					<AgentQuestion
-						docked
-						questions={readQuestions(asking.input)}
-						phase="waiting"
-						busy={deciding[asking.id]}
-						onanswer={(answers) => asking && decide(asking, true, answers)}
-						ondismiss={() => asking && decide(asking, false)}
-					/>
-				{/key}
+				{#if session.decides(asking)}
+					{#key asking.id}
+						<AgentQuestion
+							docked
+							questions={readQuestions(asking.input)}
+							phase="waiting"
+							busy={deciding[asking.id]}
+							onanswer={(answers) => asking && answer(asking, true, answers)}
+							ondismiss={() => asking && answer(asking, false)}
+						/>
+					{/key}
+				{:else}
+					<p class="note">{t('web.agent.questionFor', { name: asking.actor ?? session.actor ?? '' })}</p>
+				{/if}
 			</div>
 		{/if}
 
-		<AgentComposer bind:this={composer} {session} onsent={() => (pinned = true)} />
+		{#if waitingMine.length > 1}
+			<div class="bulk">
+				<Icon name="shieldCheck" size="0.875rem" />
+				<span>{t('web.agent.waitingCount', { count: waitingMine.length })}</span>
+				<Btn icon="check" variant="primary" onclick={() => session.decideAll(true)}>{t('web.agent.approveAll')}</Btn>
+				<Btn icon="ban" onclick={() => session.decideAll(false)}>{t('web.agent.denyAll')}</Btn>
+			</div>
+		{/if}
+
+		{#if session.suggestion && !session.running && session.writable}
+			<div class="suggest">
+				<button class="chip" title={t('web.agent.suggestionHint')} onclick={() => composer?.send(session.suggestion ?? '')}>
+					<Icon name="sparkles" size="0.75rem" />
+					<span>{session.suggestion}</span>
+				</button>
+			</div>
+		{/if}
+
+		{#if session.writable}
+			{#if showTodos && todos}
+				<AgentTodos {todos} running={session.running} />
+			{/if}
+			<AgentComposer bind:this={composer} {session} onsent={() => (pinned = true)} />
+		{:else}
+			<div class="readonly">
+				<Icon name="eye" size="0.875rem" />
+				<span>{t('web.agent.readOnly', { owner: session.row?.owner ?? '' })}</span>
+			</div>
+		{/if}
 	</div>
 </div>
 
+<ConfirmModal
+	bind:open={confirmRewind}
+	title={t('web.agent.rewindTitle')}
+	lead={t('web.agent.rewindLead')}
+	notes={[t('web.agent.rewindNote')]}
+	confirmLabel={t('web.agent.rewindConfirm')}
+	danger={false}
+	onconfirm={() => {
+		rewindConfirmed = true;
+		confirmRewind = false;
+
+		const action = pendingRewind;
+
+		pendingRewind = null;
+		void action?.();
+	}}
+/>
+
 <style lang="scss">
 	.chat {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		flex: 1;
@@ -769,6 +1076,7 @@
 	}
 
 	.msg {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
@@ -778,7 +1086,31 @@
 		&.user {
 			align-items: flex-end;
 
-			.file {
+			.author {
+				flex-direction: row-reverse;
+			}
+
+			.text {
+				background: var(--bg-hover);
+				color: var(--text-heading);
+				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+			}
+
+			&.queued .text {
+				opacity: 0.6;
+				border: 0.1rem dashed var(--border-input);
+			}
+		}
+
+		// the verbs of a message appear under it on hover, as in VS Code's chat
+		&:hover .acts,
+		&:focus-within .acts {
+			opacity: 1;
+		}
+	}
+
+	.file {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -811,18 +1143,10 @@
 		&.manual {
 			color: var(--text);
 		}
-	}
 
-	.author {
-				flex-direction: row-reverse;
-			}
-
-			.text {
-				background: var(--bg-hover);
-				color: var(--text-heading);
-				white-space: pre-wrap;
-				overflow-wrap: anywhere;
-			}
+		&.queued {
+			color: var(--text-secondary);
+			border-style: dashed;
 		}
 	}
 
@@ -1125,20 +1449,182 @@
 		padding: 0 0.75rem 0.5rem;
 	}
 
-	.call {
-		position: relative;
+	.err {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		max-width: 90%;
+		padding: 0.5rem 0.75rem;
+		border: 0.1rem solid var(--error);
+		color: var(--error);
+		font-size: 0.8125rem;
+	}
+
+	@keyframes blink {
+		50% {
+			opacity: 0;
+		}
+	}
+
+	// who else is in a shared conversation, above its messages
+	.presence {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex: none;
+		padding: 0.375rem 1rem;
+		border-bottom: 0.1rem solid var(--border-divider);
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+
+		.what {
+			@include ellipsis;
+
+			flex: 1;
+			min-width: 0;
+		}
+	}
+
+	.faces {
+		display: inline-flex;
+		flex: none;
+	}
+
+	.face {
+		display: inline-grid;
+		place-items: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		margin-left: -0.25rem;
+		border: 0.1rem solid var(--bg-panel);
+		border-radius: 50%;
+		background: var(--bg-selected);
+		color: var(--text-heading);
+		font-size: 0.625rem;
+		font-weight: 700;
+
+		&.more {
+			background: var(--bg-hover);
+		}
+	}
+
+	// a message's verbs: quiet until the message is hovered or focused
+	.acts {
+		display: inline-flex;
+		gap: 0.125rem;
+		opacity: 0;
+		transition: opacity 0.12s ease;
+	}
+
+	.act {
+		@include bare-button;
+
+		display: inline-grid;
+		place-items: center;
+		width: 1.5rem;
+		height: 1.5rem;
+		border-radius: 0.375rem;
+		color: var(--text-secondary);
+
+		&:hover:not(:disabled) {
+			background: var(--bg-hover);
+			color: var(--link);
+		}
+
+		&:disabled {
+			opacity: 0.4;
+			cursor: default;
+		}
+	}
+
+	// under a turn: what it took, then its verbs
+	.foot {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 1.5rem;
+
+		.stats {
+			font-size: 0.6875rem;
+			color: var(--text-disabled);
+			font-variant-numeric: tabular-nums;
+		}
+	}
+
+	.editor {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		width: 90%;
+
+		textarea {
+			width: 100%;
+			resize: vertical;
+			font-family: inherit;
+		}
+
+		.btns {
+			display: flex;
+			justify-content: flex-end;
+			gap: 0.5rem;
+		}
+	}
+
+	// what the model thought: one quiet line that opens to the summary
+	.thought {
+		max-width: 90%;
+
+		.row {
+			@include bare-button;
+
+			display: inline-flex;
+			align-items: center;
+			gap: 0.5rem;
+			padding: 0.125rem 0.25rem;
+			font-size: 0.75rem;
+			color: var(--text-secondary);
+
+			&:hover {
+				color: var(--text-heading);
+			}
+		}
+
+		.lbl {
+			position: relative;
+		}
+
+		&.streaming .lbl::after {
+			content: attr(data-text);
+			position: absolute;
+			inset: 0;
+			color: var(--text-heading);
+			clip-path: inset(0 100% 0 0);
+			animation: shimmer 2s ease-in-out infinite;
+		}
+
+		.body {
+			margin: 0.25rem 0 0.25rem 0.375rem;
+			padding: 0.25rem 0 0.25rem 0.75rem;
+			border-left: 0.125rem solid var(--border-input);
+			max-height: 16rem;
+			overflow-y: auto;
+			font-size: 0.8125rem;
+			line-height: 1.5;
+			color: var(--text-secondary);
+			white-space: pre-wrap;
+			overflow-wrap: anywhere;
+		}
+	}
+
+	// settled calls in a row, folded into one line
+	.calls {
 		display: flex;
 		flex-direction: column;
 		width: 90%;
 		border: 0.1rem solid var(--border-divider);
-		border-left: 0.25rem solid var(--luna-primary);
+		border-left: 0.25rem solid var(--success);
+		border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
 		background: var(--bg-panel-raised);
-		overflow: hidden;
-
-		// consecutive calls stack as one list rather than separate cards
-		& + & {
-			margin-top: -0.125rem;
-		}
 
 		.row {
 			@include bare-button;
@@ -1159,23 +1645,22 @@
 		.icon {
 			display: grid;
 			place-items: center;
+			flex: none;
 			width: 1.25rem;
 			height: 1.25rem;
 			border-radius: 0.25rem;
-			background: var(--luna-primary);
+			background: var(--success);
 			color: #fff;
-			flex: none;
 		}
 
-		.name {
+		.sum {
 			flex: none;
-			font-family: var(--font-mono);
 			font-size: 0.75rem;
 			font-weight: 600;
 			color: var(--text-heading);
 		}
 
-		.args {
+		.names {
 			@include ellipsis;
 
 			flex: 1;
@@ -1185,115 +1670,93 @@
 			color: var(--text-label);
 		}
 
-		.caret {
-			display: grid;
-			place-items: center;
-			flex: none;
-			width: 1rem;
-		}
-
-		.ask,
-		.detail {
-			padding: 0.25rem 0.5rem 0.5rem;
-			font-size: 0.8125rem;
-
-			pre {
-				margin: 0 0 0.5rem;
-				padding: 0.5rem 0.625rem;
-				max-height: 14rem;
-				overflow: auto;
-				background: var(--bg-terminal);
-				border: 0.1rem solid var(--border-divider);
-				border-radius: 0.375rem;
-				font-family: var(--font-mono);
-				font-size: 0.75rem;
-				white-space: pre-wrap;
-				overflow-wrap: anywhere;
-			}
-
-		}
-
-		.ask p {
-			margin: 0 0 0.5rem;
-			color: var(--text);
-		}
-
-		.detail .lbl {
-			display: block;
-			margin-bottom: 0.25rem;
-			color: var(--text-label);
-			font-size: 0.75rem;
-		}
-
-		.btns {
+		.list {
 			display: flex;
-			gap: 0.5rem;
-		}
-
-		&.processing::before {
-			content: '';
-			position: absolute;
-			top: 0;
-			left: -10rem;
-			width: 0;
-			height: 100%;
-			box-shadow: 0 0 6rem 3rem rgba(105, 44, 230, 0.25);
-			animation: sweep 1.5s linear infinite;
-			pointer-events: none;
-		}
-
-		&[data-status='ok'] {
-			border-left-color: var(--success);
-
-			.icon {
-				background: var(--success);
-			}
-		}
-
-		&[data-status='awaiting'] {
-			border-left-color: var(--warning);
-
-			.icon {
-				background: var(--warning);
-				color: var(--primary-text);
-			}
-		}
-
-		&[data-status='denied'],
-		&[data-status='error'] {
-			border-left-color: var(--error);
-
-			.icon {
-				background: var(--error);
-				color: var(--primary-text);
-			}
+			flex-direction: column;
+			gap: 0.125rem;
+			padding: 0 0.5rem 0.375rem;
 		}
 	}
 
-	.err {
+	.jump {
+		@include bare-button;
+
+		position: absolute;
+		right: 1.5rem;
+		bottom: 9rem;
+		z-index: 2;
+		display: grid;
+		place-items: center;
+		width: 2rem;
+		height: 2rem;
+		border: 0.1rem solid var(--border-input);
+		border-radius: 50%;
+		background: var(--bg-dropdown);
+		box-shadow: var(--shadow-dropdown);
+		color: var(--text-heading);
+
+		&:hover {
+			color: var(--link);
+		}
+	}
+
+	.bulk,
+	.readonly {
 		display: flex;
-		align-items: flex-start;
+		align-items: center;
 		gap: 0.5rem;
-		max-width: 90%;
+		margin: 0 1rem 0.5rem;
 		padding: 0.5rem 0.75rem;
-		border: 0.1rem solid var(--error);
-		color: var(--error);
+		border: 0.1rem solid var(--warning);
+		border-radius: 0.75rem;
+		background: var(--bg-panel-raised);
 		font-size: 0.8125rem;
-	}
 
-	@keyframes sweep {
-		from {
-			transform: translateX(0);
-		}
-
-		to {
-			transform: translateX(48rem);
+		span {
+			flex: 1;
+			min-width: 0;
 		}
 	}
 
-	@keyframes blink {
-		50% {
-			opacity: 0;
+	.readonly {
+		margin: 0.75rem 1rem 1rem;
+		border-color: var(--border-input);
+		color: var(--text-secondary);
+	}
+
+	.asking .note {
+		margin: 0;
+		padding: 0.5rem 0.25rem;
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+	}
+
+	.suggest {
+		display: flex;
+		padding: 0 1rem 0.5rem;
+
+		.chip {
+			@include bare-button;
+
+			display: inline-flex;
+			align-items: center;
+			gap: 0.5rem;
+			max-width: 100%;
+			padding: 0.375rem 0.75rem;
+			border: 0.1rem dashed var(--border-input);
+			border-radius: 1rem;
+			font-size: 0.8125rem;
+			color: var(--text);
+			text-align: left;
+
+			span {
+				@include ellipsis;
+			}
+
+			&:hover {
+				border-color: var(--link);
+				color: var(--link);
+			}
 		}
 	}
 </style>

@@ -68,7 +68,6 @@ export const AGENT_TASK_TOOLS: readonly string[] = [
 	"trigger_cancel",
 ];
 
-/** The console's own tools, which never reach the cluster themselves. */
 /**
  * Claude Code's own file tools, kept for the agent's scratch folder: the runner's
  * hook refuses any path outside it, so they reach nothing on the cluster and,
@@ -76,7 +75,53 @@ export const AGENT_TASK_TOOLS: readonly string[] = [
  */
 export const AGENT_SCRATCH_TOOLS: readonly string[] = ["Read", "Write", "Edit", "Glob", "Grep"];
 
-export const AGENT_LOCAL_TOOLS: readonly string[] = [...AGENT_SCREEN_TOOLS, ...AGENT_TASK_TOOLS, ...AGENT_SCRATCH_TOOLS];
+/**
+ * The SDK's subagent tool: the agent hands a self-contained job to a helper
+ * that works in a context of its own and answers once. The helper's own tool
+ * calls go through the same approval as the agent's, so launching one asks
+ * nobody; only what it then does may.
+ */
+export const AGENT_SUBAGENT_TOOL = "Agent";
+
+/**
+ * The SDK's checklist tool: the agent keeps a short list of the steps of a
+ * longer job, which the chat shows above the composer as it ticks them off.
+ */
+export const AGENT_TODO_TOOL = "TodoWrite";
+
+/** Claude Code's tools for organising the agent's own work; neither reaches the cluster. */
+export const AGENT_WORK_TOOLS: readonly string[] = [AGENT_SUBAGENT_TOOL, AGENT_TODO_TOOL];
+
+/** The console's own tools, which never reach the cluster themselves. */
+export const AGENT_LOCAL_TOOLS: readonly string[] = [...AGENT_SCREEN_TOOLS, ...AGENT_TASK_TOOLS, ...AGENT_SCRATCH_TOOLS, ...AGENT_WORK_TOOLS];
+
+/** One step of the agent's checklist, as `TodoWrite` carries it. */
+export interface AgentTodo {
+	content: string;
+	status: "pending" | "in_progress" | "completed";
+	activeForm: string;
+}
+
+/** The checklist a `TodoWrite` call set, or null when its input is not one. */
+export function readTodos(input: unknown): AgentTodo[] | null {
+	const list = (input as { todos?: unknown } | null)?.todos;
+
+	if (!Array.isArray(list)) {
+		return null;
+	}
+
+	return list
+		.filter((item): item is AgentTodo => typeof item === "object" && item !== null && typeof item.content === "string")
+		.map((item) => ({
+			content: item.content,
+			status: item.status === "completed" || item.status === "in_progress"
+				? item.status
+				: "pending",
+			activeForm: typeof item.activeForm === "string"
+				? item.activeForm
+				: item.content,
+		}));
+}
 
 /**
  * Whether a path is a console page the agent may open: same-origin, absolute,

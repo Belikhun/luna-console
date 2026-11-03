@@ -14,16 +14,22 @@
  * replaying the run's events so far. What the agent can touch is decided by two
  * settings below and nothing else:
  *
- * - `tools: []` removes every built-in Claude Code tool (shell, file edits, web
- *   fetches), so the only tools are luna's, reached over `/api/mcp` with a
- *   per-run bearer (`bearer.ts`). The agent token's scope is therefore the whole
- *   of its reach, checked on every call by the endpoint.
+ * - `tools` keeps no built-in Claude Code tool that reaches anything (no shell,
+ *   no web): the scratch-folder file tools, the checklist, the helper launcher
+ *   and the question. Everything on the cluster is luna's, reached over
+ *   `/api/mcp` with a per-run bearer (`bearer.ts`). The agent token's scope is
+ *   therefore the whole of its reach, checked on every call by the endpoint.
  * - In Auto, every tool not marked destructive (and the agent's own memory) runs unasked;
  *   every other call waits in `canUseTool` until the operator who owns the
  *   conversation approves or denies it in the panel.
  *
  * The subprocess runs with its own HOME and CLAUDE_CONFIG_DIR under the cluster
  * root, so it never reads or writes the ~/.claude of whoever runs the console.
+ *
+ * A shared conversation has several writers, but a run has one: the account
+ * that started it (`actor`), whose authority its bearer carries and who alone
+ * approves its calls. Another writer's message therefore never joins that run;
+ * it waits in the conversation's queue and starts the next run, as its sender.
  */
 
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
@@ -37,15 +43,18 @@ import {
 	agentScratch,
 	appendAgentTurn,
 	getAgentConversation,
-	recordAgentModels
+	recordAgentModels,
+	setAgentAllowedTools
 } from '$core/agent';
-import type { AgentContextUsage, AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
+import type { AgentContextUsage, AgentConversationView, AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
 import {
 	AGENT_ASK_TOOL,
 	AGENT_NAVIGATE_TOOL,
 	AGENT_SCRATCH_TOOLS,
 	AGENT_SCREENSHOT_TOOL,
+	AGENT_SUBAGENT_TOOL,
 	AGENT_TASK_TOOLS,
+	AGENT_WORK_TOOLS,
 	agentCanAsk,
 	isConsolePath
 } from '$shared/agent';
@@ -70,6 +79,7 @@ import { issueRunBearer } from './bearer';
 import { findClaudeExecutable } from './executable';
 import { personaPrompt } from './persona';
 import { attachmentPath, SCRATCH_TOOL_MATCHER, scratchGate } from './scratch';
+import { subagentDefinitions } from './subagents';
 import { copyUpload } from './uploads';
 import { INSTANCE_TABS } from '$lib/components/instancetabs';
 
@@ -123,9 +133,16 @@ export type AgentEvent =
 		at: number;
 		mode: AgentMode;
 		attachments?: Array<{ name: string; size: number }>;
+		uuid: string;
+		/** What the sender's window called it, so it can match the echo to what it already shows */
+		nonce?: string;
+		/** It waits for another account's run to end before it starts its own */
+		queued?: boolean;
 	}
 	| { type: 'text'; delta: string }
 	| { type: 'assistant'; text: string }
+	| { type: 'thinking'; delta: string }
+	| { type: 'thought'; text: string }
 	| {
 		type: 'tool';
 		id: string;
@@ -134,15 +151,26 @@ export type AgentEvent =
 		status: 'running' | 'awaiting' | 'ok' | 'error' | 'denied';
 		output?: string;
 		decidedBy?: string;
+		/** The helper call this one was made inside */
+		parent?: string;
+		/** The account whose run made the call: who decides it while it waits, and whose permissions its result reflects */
+		actor?: string;
 	}
-	| { type: 'screenshot'; id: string }
-	| { type: 'navigate'; id: string; path: string }
+	/** A helper's progress: tool calls so far, the last one, time spent */
+	| { type: 'progress'; id: string; tools: number; last?: string; ms: number }
+	| { type: 'suggestion'; text: string }
+	| { type: 'stats'; at: number; ms: number; tools: number; costUsd: number }
+	/** `for` is the account whose browser answers: the run's actor, never a viewer */
+	| { type: 'screenshot'; id: string; for: string }
+	| { type: 'navigate'; id: string; path: string; for: string }
 	| { type: 'error'; text: string; code?: AgentErrorCode }
 	| { type: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number }
 	| { type: 'context'; context: AgentContextUsage }
 	| { type: 'compacting'; active: boolean }
 	| { type: 'compact'; trigger: 'manual' | 'auto'; by?: string; preTokens: number; postTokens?: number; at: number }
-	| { type: 'done'; costUsd: number };
+	| { type: 'done'; costUsd: number }
+	/** The run started; who it runs as */
+	| { type: 'actor'; actor: string };
 
 /** Failures the panel words itself, in the operator's language; anything else shows its text. */
 export type AgentErrorCode =
@@ -154,6 +182,7 @@ export type AgentErrorCode =
 	| 'bypassOff'
 	| 'badModel'
 	| 'nothingToCompact'
+	| 'readOnly'
 	| 'compactFailed';
 
 /** A refusal to start, carrying a code the panel can translate. */
@@ -171,8 +200,17 @@ type Listener = (event: AgentEvent) => void;
 /** The operator's picks for an `AskUserQuestion` call, keyed by question text, as the SDK reads them. */
 export type AgentAnswers = Record<string, string>;
 
+/** What came with a decision besides yes or no. */
+export interface DecisionExtras {
+	answers?: AgentAnswers;
+	/** Stop asking about this tool in this conversation, for the account deciding */
+	always?: boolean;
+	/** Why it was denied, handed to the model */
+	reason?: string;
+}
+
 interface Pending {
-	resolve: (allow: boolean, by: string, answers?: AgentAnswers) => void;
+	resolve: (allow: boolean, by: string, extras: DecisionExtras) => void;
 }
 
 /**
@@ -294,6 +332,29 @@ function resultText(content: unknown): string {
 		.join('\n');
 }
 
+/**
+ * A helper's report out of the structured result the SDK hands back with the
+ * call: its own words, without the frame the model is given around them (a
+ * hand-back notice, the agent id, usage), and its totals. Null when the result
+ * is not one, so the call's text stands.
+ */
+function helperReport(result: unknown): { text: string; tools: number; ms: number } | null {
+	const shaped = result as { content?: unknown; totalToolUseCount?: unknown; totalDurationMs?: unknown } | null | undefined;
+
+	if (!shaped || !Array.isArray(shaped.content)) {
+		return null;
+	}
+
+	const text = shaped.content
+		.map((part) => (typeof part === 'object' && part !== null && 'text' in part ? String(part.text) : ''))
+		.join('\n')
+		.trim();
+
+	return text
+		? { text, tools: Number(shaped.totalToolUseCount) || 0, ms: Number(shaped.totalDurationMs) || 0 }
+		: null;
+}
+
 /** Variables the console passes through when it has them: a gateway or proxy in front of the API. */
 const PASSTHROUGH = ['ANTHROPIC_BASE_URL', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY'];
 
@@ -308,7 +369,13 @@ function subprocessEnv(launch: AgentLaunch): Record<string, string> {
 		CLAUDE_CONFIG_DIR: launch.home,
 		LANG: process.env.LANG ?? 'C.UTF-8',
 		CLAUDE_AGENT_SDK_CLIENT_APP: 'luna-console',
-		DISABLE_AUTOUPDATER: '1'
+		DISABLE_AUTOUPDATER: '1',
+		// the checklist the chat docks above the composer is TodoWrite's; recent builds put a
+		// persisted task list in its place, which has no place in a console conversation
+		CLAUDE_CODE_ENABLE_TASKS: 'false',
+		// a helper's report belongs to the turn that asked for it; work meant to outlive a
+		// turn goes through the console's own background tasks, which report into the chat
+		CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
 	};
 
 	for (const name of PASSTHROUGH) {
@@ -334,7 +401,20 @@ class Run {
 	readonly entries: AgentEntry[] = [];
 
 	/** Tool calls by id, so a result can be filed against its call */
-	readonly calls = new Map<string, { name: string; input: unknown; decidedBy?: string; denied?: boolean }>();
+	readonly calls = new Map<string, { name: string; input: unknown; decidedBy?: string; denied?: boolean; parent?: string }>();
+
+	/** Tools the actor allowed for this conversation; they run unasked here whatever the mode, Plan aside */
+	readonly allowed = new Set<string>();
+
+	/** When the session took the message it is answering, and the calls made since: one answer's stats */
+	turnStartedAt = Date.now();
+	turnTools = 0;
+
+	/** The session's running cost when the current answer began, so an answer's own cost is the difference */
+	costMark = 0;
+
+	/** Operators' messages filed before the session said its id, to be marked with it when the run saves */
+	readonly unstamped: string[] = [];
 
 	running = true;
 
@@ -409,7 +489,10 @@ class Run {
 
 	constructor(
 		readonly conversationId: string,
+		/** The conversation's owner */
 		readonly owner: string,
+		/** Who the run acts as and answers to: the account that started it */
+		readonly actor: string,
 		settings: { mode: AgentMode; model: string; effort: string }
 	) {
 		this.mode = settings.mode;
@@ -421,6 +504,8 @@ class Run {
 		});
 		this.input.onRead = () => {
 			this.turns = 0;
+			this.turnStartedAt = Date.now();
+			this.turnTools = 0;
 		};
 	}
 
@@ -441,7 +526,7 @@ class Run {
 		}
 	}
 
-	decide(toolUseId: string, allow: boolean, by: string, answers?: AgentAnswers): boolean {
+	decide(toolUseId: string, allow: boolean, by: string, extras: DecisionExtras = {}): boolean {
 		const pending = this.pending.get(toolUseId);
 
 		if (!pending) {
@@ -449,7 +534,7 @@ class Run {
 		}
 
 		this.pending.delete(toolUseId);
-		pending.resolve(allow, by, answers);
+		pending.resolve(allow, by, extras);
 
 		return true;
 	}
@@ -511,7 +596,8 @@ const runs = new Map<string, Run>();
 
 export interface StartRunInput {
 	conversationId: string;
-	owner: string;
+	/** Who sends it, and so who the run it starts acts as */
+	actor: string;
 	text: string;
 	/** The console's UI language */
 	locale: string;
@@ -530,7 +616,17 @@ export interface StartRunInput {
 	event?: { source: 'task' | 'trigger'; label: string };
 	/** Set to summarise the session's history instead of saying anything; `text` is then the focus */
 	compact?: true;
+	/** What the sender's window called the message, echoed back so it can match it */
+	nonce?: string;
+	/** The SDK uuid the message goes in under; given once, kept while it waits in the queue */
+	uuid?: string;
 }
+
+/** What became of a message: it started a run, joined the one going, or waits for another account's to end. */
+export type StartOutcome = 'started' | 'joined' | 'queued';
+
+/** Messages waiting for another account's run to end, per conversation, oldest first. */
+const waiting = new Map<string, StartRunInput[]>();
 
 /** Refuse settings the run could not honour, before anything is saved or sent. */
 function checkSettings(launch: AgentLaunch, change: RunSettings): void {
@@ -547,34 +643,79 @@ function checkSettings(launch: AgentLaunch, change: RunSettings): void {
 	}
 }
 
+/** The attachments as a transcript names them. */
+function fileList(input: StartRunInput): Array<{ name: string; size: number }> | undefined {
+	return input.attachments?.length
+		? input.attachments.map(({ name, size }) => ({ name, size }))
+		: undefined;
+}
+
+/** The `user` event every window following the run shows a message by. */
+function userFrame(input: StartRunInput, mode: AgentMode, at: number, queued = false): AgentEvent {
+	const attachments = fileList(input);
+
+	return {
+		type: 'user',
+		text: input.text,
+		author: input.actor,
+		at,
+		mode,
+		uuid: input.uuid!,
+		...(input.nonce ? { nonce: input.nonce } : {}),
+		...(attachments ? { attachments } : {}),
+		...(queued ? { queued: true } : {})
+	};
+}
+
 /**
  * Send a message to Mèo Béo. With no run going it starts one, resolving once
  * the run is under way (the message saved, the subprocess launching). With one
- * going, the message joins it: the session takes it at its next step, as Claude
- * Code does with a message typed mid-answer. The answer arrives on the stream.
- * Resolves true when the message joined a run already going, which the stream
- * echoes; a run's first message is not echoed, since the sender shows it.
+ * going as the same account, the message joins it: the session takes it at its
+ * next step, as Claude Code does with a message typed mid-answer. With one
+ * going as another account, it waits for that run to end and then starts its
+ * own, so nobody's words ride on anybody else's authority. The answer arrives
+ * on the stream, which echoes every message, so each window following the
+ * conversation shows it the same way.
  */
-export async function startRun(input: StartRunInput): Promise<boolean> {
-	const conversation = await getAgentConversation(input.conversationId, input.owner);
+export async function startRun(input: StartRunInput): Promise<StartOutcome> {
+	const conversation = await getAgentConversation(input.conversationId, input.actor);
 
 	if (!conversation) {
 		throw new Error(`No conversation ${input.conversationId}`);
 	}
 
-	const launch = await agentLaunch(input.owner);
+	if (conversation.role === 'viewer') {
+		throw new AgentRunError('readOnly', 'You can read this conversation but not write in it');
+	}
+
+	input.uuid ??= crypto.randomUUID();
+
+	const launch = await agentLaunch(input.actor);
 
 	checkSettings(launch, input);
 
 	const live = runs.get(input.conversationId);
 
-	if (live?.running && live.owner !== input.owner) {
-		throw new AgentRunError('busy', 'Mèo Béo is still answering the last message');
+	if (live?.running && live.actor !== input.actor) {
+		if (input.compact) {
+			throw new AgentRunError('busy', `${live.actor}'s answer is still running`);
+		}
+
+		const queue = waiting.get(input.conversationId) ?? [];
+
+		queue.push(input);
+		waiting.set(input.conversationId, queue);
+
+		if (!input.event) {
+			live.emit(userFrame(input, input.mode, Date.now(), true));
+		}
+
+		return 'queued';
 	}
 
 	if (live?.running && !live.closing) {
 		if (await joinRun(live, input)) {
-			return true;
+			return 'joined';
 		}
 	}
 
@@ -585,7 +726,7 @@ export async function startRun(input: StartRunInput): Promise<boolean> {
 		return await startRun(input);
 	}
 
-	if (input.compact && !conversation.sessionId) {
+	if (input.compact && !conversation.sessionId && !conversation.pendingFork) {
 		throw new AgentRunError('nothingToCompact', 'This conversation has no history to compact yet');
 	}
 
@@ -595,81 +736,98 @@ export async function startRun(input: StartRunInput): Promise<boolean> {
 		throw new AgentRunError('noExecutable', 'No Claude Code executable found on this machine; set its path in the agent settings');
 	}
 
-	const run = new Run(input.conversationId, input.owner, {
+	const run = new Run(input.conversationId, conversation.owner, input.actor, {
 		mode: input.mode,
 		model: input.model || launch.settings.model,
 		effort: input.effort || launch.settings.effort
 	});
 
+	for (const tool of conversation.allowedTools) {
+		run.allowed.add(tool);
+	}
+
+	// the session's running total carries across a resume and into a branch, so an
+	// answer's own cost is measured from what the session had counted before it
+	run.costMark = conversation.pendingFork
+		? conversation.pendingFork.costBase ?? 0
+		: conversation.sessionId
+			? Math.max(0, conversation.costUsd - (conversation.costBeforeUsd ?? 0)) + (conversation.costBaseUsd ?? 0)
+			: 0;
+
 	runs.set(input.conversationId, run);
-	run.scratch = await agentScratch(input.conversationId, input.owner);
+	run.scratch = await agentScratch(input.conversationId, input.actor);
 	run.context = {
 		conversationId: input.conversationId,
-		owner: input.owner,
+		owner: input.actor,
 		origin: input.origin,
 		machine: input.machine,
 		locale: input.locale
 	};
+	run.emit({ type: 'actor', actor: input.actor });
+
+	const at = Date.now();
 
 	// a compaction says nothing and files itself once the session reports it;
 	// a notice is nobody's words: it is filed as an event, and never names the chat
 	if (input.compact) {
-		run.compactBy = input.owner;
+		run.compactBy = input.actor;
 	} else {
-		await appendAgentTurn(input.conversationId, input.owner, input.event
+		const attachments = fileList(input);
+
+		await appendAgentTurn(input.conversationId, input.actor, input.event
 			? { entries: [eventEntry(input)] }
 			: {
 				entries: [{
 					kind: 'user',
-					at: Date.now(),
-					author: input.owner,
+					at,
+					author: input.actor,
 					text: input.text,
 					mode: input.mode,
 					model: run.model,
-					...(input.attachments?.length
-						? { attachments: input.attachments.map(({ name, size }) => ({ name, size })) }
-						: {})
+					uuid: input.uuid,
+					...(attachments ? { attachments } : {})
 				}],
 				title: input.text
 			});
+		run.unstamped.push(input.uuid);
 	}
 
 	if (input.event) {
 		run.emit(eventFrame(input));
+	} else if (!input.compact) {
+		run.emit(userFrame(input, input.mode, at));
 	}
 
 	await copyAttachments(run, input);
-	run.input.push(userMessage(promptFor(input, run)));
+	run.input.push(userMessage(promptFor(input, run), input.uuid));
 	run.emit({ type: 'state', running: true });
-	announceRunStart(input.conversationId, input.owner);
+	announceRunStart(input.conversationId);
 
-	void drive(run, input, launch, executable.path, conversation.sessionId);
+	void drive(run, input, launch, executable.path, conversation);
 
-	return false;
+	return 'started';
 }
 
 /**
- * Hand a message to a run already going. The settings it was sent with apply
- * from here on, it is filed in the transcript between what came before and
- * after it, and every window following the run shows it. False when the run
- * closed its queue in the meantime, so the caller starts a new one.
+ * Hand a message to a run already going as the same account. The settings it
+ * was sent with apply from here on, it is filed in the transcript between what
+ * came before and after it, and every window following the run shows it. False
+ * when the run closed its queue in the meantime, so the caller starts a new one.
  */
 async function joinRun(run: Run, input: StartRunInput): Promise<boolean> {
 	await applyRunSettings(run, input);
 
 	const at = Date.now();
-	const attachments = input.attachments?.length
-		? input.attachments.map(({ name, size }) => ({ name, size }))
-		: undefined;
+	const attachments = fileList(input);
 
 	await copyAttachments(run, input);
 
-	if (!run.input.push(userMessage(promptFor(input, run)))) {
+	if (!run.input.push(userMessage(promptFor(input, run), input.uuid))) {
 		return false;
 	}
 
 	if (input.compact) {
-		run.compactBy = input.owner;
+		run.compactBy = input.actor;
 
 		return true;
 	}
@@ -684,22 +842,39 @@ async function joinRun(run: Run, input: StartRunInput): Promise<boolean> {
 	run.entries.push({
 		kind: 'user',
 		at,
-		author: input.owner,
+		author: input.actor,
 		text: input.text,
 		mode: run.mode,
 		model: run.model,
+		uuid: input.uuid,
 		...(attachments ? { attachments } : {})
 	});
-	run.emit({
-		type: 'user',
-		text: input.text,
-		author: input.owner,
-		at,
-		mode: run.mode,
-		...(attachments ? { attachments } : {})
-	});
+	run.emit(userFrame(input, run.mode, at));
 
 	return true;
+}
+
+/** Start the next message that waited for a run to end, as its own sender. */
+async function startWaiting(conversationId: string): Promise<void> {
+	const queue = waiting.get(conversationId);
+	const next = queue?.shift();
+
+	if (!queue?.length) {
+		waiting.delete(conversationId);
+	}
+
+	if (!next) {
+		return;
+	}
+
+	try {
+		await startRun(next);
+	} catch (err) {
+		console.error('[agent] a queued message could not start its run:', err);
+
+		// the next in line still deserves its turn
+		await startWaiting(conversationId);
+	}
 }
 
 /** Bring a live run in line with what the operator picked; the query is told about model and effort. */
@@ -724,14 +899,14 @@ async function applyRunSettings(run: Run, change: RunSettings): Promise<void> {
  * from the next tool call, the model and effort from the next response. False
  * when the conversation has no run to change.
  */
-export async function updateRun(conversationId: string, owner: string, change: RunSettings): Promise<boolean> {
+export async function updateRun(conversationId: string, account: string, change: RunSettings): Promise<boolean> {
 	const run = runs.get(conversationId);
 
-	if (!run || run.owner !== owner || !run.running || run.closing) {
+	if (!run || run.actor !== account || !run.running || run.closing) {
 		return false;
 	}
 
-	checkSettings(await agentLaunch(owner), change);
+	checkSettings(await agentLaunch(account), change);
 	await applyRunSettings(run, change);
 
 	return true;
@@ -739,7 +914,7 @@ export async function updateRun(conversationId: string, owner: string, change: R
 
 /** A notice as the transcript files it. */
 function eventEntry(input: StartRunInput): AgentEntry {
-	return { kind: 'event', at: Date.now(), source: input.event!.source, label: input.event!.label, text: input.text };
+	return { kind: 'event', at: Date.now(), source: input.event!.source, label: input.event!.label, text: input.text, uuid: input.uuid };
 }
 
 function eventFrame(input: StartRunInput): AgentEvent {
@@ -755,7 +930,7 @@ function eventFrame(input: StartRunInput): AgentEvent {
 async function deliverNotice(notice: AgentNotice): Promise<void> {
 	await startRun({
 		conversationId: notice.ctx.conversationId,
-		owner: notice.ctx.owner,
+		actor: notice.ctx.owner,
 		text: notice.text,
 		locale: notice.ctx.locale,
 		origin: notice.ctx.origin,
@@ -821,7 +996,7 @@ async function copyAttachments(run: Run, input: StartRunInput): Promise<void> {
 		const dest = attachmentPath(run.scratch, file.id, file.name);
 
 		try {
-			if (await copyUpload(file.id, input.owner, dest)) {
+			if (await copyUpload(file.id, input.actor, dest)) {
 				run.attachmentPaths.set(file.id, dest);
 			}
 		} catch (err) {
@@ -830,11 +1005,13 @@ async function copyAttachments(run: Run, input: StartRunInput): Promise<void> {
 	}
 }
 
-function userMessage(text: string): SDKUserMessage {
+/** A message as the session reads it; the uuid is what a later fork or rewind cuts at. */
+function userMessage(text: string, uuid?: string): SDKUserMessage {
 	return {
 		type: 'user',
 		message: { role: 'user', content: text },
-		parent_tool_use_id: null
+		parent_tool_use_id: null,
+		...(uuid ? { uuid: uuid as SDKUserMessage['uuid'] } : {})
 	};
 }
 
@@ -854,7 +1031,7 @@ function consoleServer(run: Run): ReturnType<typeof createSdkMcpServer> {
 				{},
 				async () => {
 					try {
-						const shot = await run.askPanel<Screenshot>((id) => ({ type: 'screenshot', id }), 'capture');
+						const shot = await run.askPanel<Screenshot>((id) => ({ type: 'screenshot', id, for: run.actor }), 'capture');
 
 						return {
 							content: [
@@ -878,7 +1055,7 @@ function consoleServer(run: Run): ReturnType<typeof createSdkMcpServer> {
 					}
 
 					try {
-						const landed = await run.askPanel<Navigated>((id) => ({ type: 'navigate', id, path }), 'navigate');
+						const landed = await run.askPanel<Navigated>((id) => ({ type: 'navigate', id, path, for: run.actor }), 'navigate');
 
 						if (!landed.ok) {
 							return { content: [{ type: 'text', text: `the console could not open ${path}: ${landed.error ?? 'unknown error'}` }], isError: true };
@@ -1084,6 +1261,31 @@ function triggerSpec(input: {
 }
 
 /**
+ * Wait for the run's actor to decide a call: allow, deny (with a reason the
+ * model hears) or answer a question. Another participant cannot: the call runs
+ * on the actor's authority, so the yes is theirs to give. Stopping the run or
+ * ten minutes of silence deny it.
+ */
+function awaitDecision(run: Run, toolUseId: string, signal: AbortSignal): Promise<{ allow: boolean; by: string } & DecisionExtras> {
+	return new Promise((resolve) => {
+		const timer = setTimeout(() => {
+			run.decide(toolUseId, false, 'timeout');
+		}, APPROVAL_TIMEOUT_MS);
+
+		run.pending.set(toolUseId, {
+			resolve: (allow, by, extras) => {
+				clearTimeout(timer);
+				resolve({ allow, by, ...extras });
+			}
+		});
+
+		signal.addEventListener('abort', () => {
+			run.decide(toolUseId, false, 'stopped');
+		});
+	});
+}
+
+/**
  * Put an `AskUserQuestion` call in front of the operator and wait for the
  * answer. The answers ride back in the tool's input, which is how the SDK's
  * tool reads them, and are kept on the call so the transcript shows what was
@@ -1095,26 +1297,12 @@ async function askOperator(
 	toolUseId: string,
 	signal: AbortSignal
 ): Promise<PermissionResult> {
-	run.calls.set(toolUseId, { name: AGENT_ASK_TOOL, input: toolInput });
-	run.emit({ type: 'tool', id: toolUseId, name: AGENT_ASK_TOOL, input: toolInput, status: 'awaiting' });
+	const parent = run.calls.get(toolUseId)?.parent;
 
-	const reply = await new Promise<{ allow: boolean; by: string; answers?: AgentAnswers }>((resolve) => {
-		const timer = setTimeout(() => {
-			run.decide(toolUseId, false, 'timeout');
-		}, APPROVAL_TIMEOUT_MS);
+	run.calls.set(toolUseId, { name: AGENT_ASK_TOOL, input: toolInput, parent });
+	run.emit({ type: 'tool', id: toolUseId, name: AGENT_ASK_TOOL, input: toolInput, status: 'awaiting', actor: run.actor, ...(parent ? { parent } : {}) });
 
-		run.pending.set(toolUseId, {
-			resolve: (allow, by, answers) => {
-				clearTimeout(timer);
-				resolve({ allow, by, answers });
-			}
-		});
-
-		signal.addEventListener('abort', () => {
-			run.decide(toolUseId, false, 'stopped');
-		});
-	});
-
+	const reply = await awaitDecision(run, toolUseId, signal);
 	const call = run.calls.get(toolUseId);
 
 	if (!reply.allow || !reply.answers) {
@@ -1145,16 +1333,34 @@ async function askOperator(
 	return { behavior: 'allow', updatedInput: answered };
 }
 
+/**
+ * A helper launch as the console runs it: in the foreground, so its report
+ * arrives within the turn that asked for it (the console has its own
+ * background tasks for work that should outlive a turn), and never in an
+ * isolated copy of anything, which means nothing here.
+ */
+function foreground(input: Record<string, unknown>): Record<string, unknown> {
+	const { run_in_background: _background, isolation: _isolation, ...rest } = input;
+
+	return { ...rest, run_in_background: false };
+}
+
+/** Models that think adaptively, whose thinking can be shown as a summary. */
+function thinksAdaptively(model: string): boolean {
+	return /^(opus|sonnet|fable)$/.test(model) || /^claude-(opus|sonnet|fable)-(5|4-[6-9])/.test(model);
+}
+
 async function drive(
 	run: Run,
 	input: StartRunInput,
 	launch: AgentLaunch,
 	executable: string | undefined,
-	resume: string | undefined
+	conversation: AgentConversationView
 ): Promise<void> {
+	const fork = conversation.pendingFork;
 	const grant = issueRunBearer(launch.token.id, {
-		label: input.owner,
-		account: input.owner,
+		label: input.actor,
+		account: input.actor,
 		conversation: input.conversationId,
 		via: 'meo-beo'
 	});
@@ -1162,8 +1368,11 @@ async function drive(
 	// Every call comes through here, none is pre-allowed: the operator can switch
 	// mode mid-run, so whether a call runs unasked is decided at the call, by the
 	// mode in force then, rather than by a list fixed when the run started.
-	const canUseTool: CanUseTool = async (toolName, toolInput, options) => {
+	const canUseTool: CanUseTool = async (toolName, rawInput, options) => {
 		const name = stripPrefix(toolName);
+		const toolInput = toolName === AGENT_SUBAGENT_TOOL
+			? foreground(rawInput)
+			: rawInput;
 
 		if (toolName === AGENT_ASK_TOOL) {
 			if (agentCanAsk(run.mode)) {
@@ -1176,19 +1385,23 @@ async function drive(
 			};
 		}
 
-		// only luna's tools, the console's own and the scratch file tools exist; anything else is refused outright
-		if (!toolName.startsWith(TOOL_PREFIX) && !SCREEN_SDK_NAMES[toolName] && !AGENT_SCRATCH_TOOLS.includes(toolName)) {
+		// only luna's tools, the console's own and Claude Code's local ones exist; anything else is refused outright
+		if (!toolName.startsWith(TOOL_PREFIX) && !SCREEN_SDK_NAMES[toolName] && !AGENT_SCRATCH_TOOLS.includes(toolName) && !AGENT_WORK_TOOLS.includes(toolName)) {
 			return { behavior: 'deny', message: 'Only the luna tools are available.' };
 		}
 
-		if (runsUnasked(SCREEN_SDK_NAMES[toolName] ?? name, run.mode)) {
+		const tool = SCREEN_SDK_NAMES[toolName] ?? name;
+		const known = run.calls.get(options.toolUseID);
+		const parent = known?.parent;
+
+		if (runsUnasked(tool, run.mode) || (run.allowed.has(tool) && run.mode !== 'plan')) {
 			return { behavior: 'allow', updatedInput: toolInput };
 		}
 
 		// plan mode never changes anything; the refusal tells the model what to do instead
 		if (run.mode === 'plan') {
-			run.calls.set(options.toolUseID, { name, input: toolInput, decidedBy: 'plan', denied: true });
-			run.emit({ type: 'tool', id: options.toolUseID, name, input: toolInput, status: 'denied', decidedBy: 'plan' });
+			run.calls.set(options.toolUseID, { name, input: toolInput, decidedBy: 'plan', denied: true, parent });
+			run.emit({ type: 'tool', id: options.toolUseID, name, input: toolInput, status: 'denied', decidedBy: 'plan', ...(parent ? { parent } : {}) });
 
 			return {
 				behavior: 'deny',
@@ -1196,26 +1409,10 @@ async function drive(
 			};
 		}
 
-		run.calls.set(options.toolUseID, { name, input: toolInput });
-		run.emit({ type: 'tool', id: options.toolUseID, name, input: toolInput, status: 'awaiting' });
+		run.calls.set(options.toolUseID, { name, input: toolInput, parent });
+		run.emit({ type: 'tool', id: options.toolUseID, name, input: toolInput, status: 'awaiting', actor: run.actor, ...(parent ? { parent } : {}) });
 
-		const decision = await new Promise<{ allow: boolean; by: string }>((resolve) => {
-			const timer = setTimeout(() => {
-				run.decide(options.toolUseID, false, 'timeout');
-			}, APPROVAL_TIMEOUT_MS);
-
-			run.pending.set(options.toolUseID, {
-				resolve: (allow, by) => {
-					clearTimeout(timer);
-					resolve({ allow, by });
-				}
-			});
-
-			options.signal.addEventListener('abort', () => {
-				run.decide(options.toolUseID, false, 'stopped');
-			});
-		});
-
+		const decision = await awaitDecision(run, options.toolUseID, options.signal);
 		const call = run.calls.get(options.toolUseID);
 
 		if (call) {
@@ -1223,9 +1420,19 @@ async function drive(
 			call.denied = !decision.allow;
 		}
 
+		if (decision.allow && decision.always && !run.allowed.has(tool)) {
+			run.allowed.add(tool);
+			void setAgentAllowedTools(run.conversationId, run.actor, [...run.allowed]).catch((err) => {
+				console.error('[agent] could not remember an allowed tool:', err);
+			});
+		}
+
+		const reason = decision.reason
+			? ` They said: "${decision.reason.replace(/"/g, "'")}".`
+			: '';
 		const result: PermissionResult = decision.allow
 			? { behavior: 'allow', updatedInput: toolInput }
-			: { behavior: 'deny', message: `The operator (${decision.by}) denied this call. Do not retry it another way.` };
+			: { behavior: 'deny', message: `The operator (${decision.by}) denied this call.${reason} Do not retry it another way.` };
 
 		run.emit({
 			type: 'tool',
@@ -1247,7 +1454,8 @@ async function drive(
 			prompt: run.input,
 			options: {
 				systemPrompt: personaPrompt({
-					operator: input.owner,
+					operator: input.actor,
+					owner: conversation.owner,
 					machine: input.machine,
 					extra: launch.settings.instructions,
 					locale: input.locale,
@@ -1257,11 +1465,14 @@ async function drive(
 				}),
 				model: run.model,
 				effort: run.effort as AgentEffort,
+				...(thinksAdaptively(run.model) ? { thinking: { type: 'adaptive', display: 'summarized' } as const } : {}),
 				// the only built-ins: the file tools, confined to the scratch folder by the hook
-				// below, and the question one, only where someone is watching
+				// below, the checklist and the helper launcher, and the question one, only where
+				// someone is watching
 				tools: agentCanAsk(input.mode)
-					? [...AGENT_SCRATCH_TOOLS, AGENT_ASK_TOOL]
-					: [...AGENT_SCRATCH_TOOLS],
+					? [...AGENT_SCRATCH_TOOLS, ...AGENT_WORK_TOOLS, AGENT_ASK_TOOL]
+					: [...AGENT_SCRATCH_TOOLS, ...AGENT_WORK_TOOLS],
+				agents: subagentDefinitions(launch.settings.subagents, launch.token.tools),
 				additionalDirectories: [run.scratch],
 				hooks: {
 					PreToolUse: [{
@@ -1269,7 +1480,7 @@ async function drive(
 						hooks: [scratchGate({
 							scratch: run.scratch,
 							home: launch.home,
-							sessionId: () => run.sessionId ?? resume ?? null,
+							sessionId: () => run.sessionId ?? fork?.session ?? conversation.sessionId ?? null,
 							unasked: (tool) => runsUnasked(tool, run.mode)
 						})]
 					}]
@@ -1288,7 +1499,11 @@ async function drive(
 				canUseTool,
 				settingSources: [],
 				includePartialMessages: true,
-				resume,
+				promptSuggestions: launch.settings.suggestions,
+				// a fork or a rewind branches the session at the cut; otherwise it carries on
+				...(fork
+					? { resume: fork.session, forkSession: true, ...(fork.at ? { resumeSessionAt: fork.at } : {}) }
+					: { resume: conversation.sessionId }),
 				cwd: launch.home,
 				env: subprocessEnv(launch),
 				abortController: run.abort,
@@ -1350,12 +1565,21 @@ async function drive(
 		run.input.close();
 		run.running = false;
 
+		// what was filed before the session said its id belongs to it all the same
+		const session = sessionId ?? run.sessionId ?? undefined;
+		const entries = session
+			? run.entries.map((entry) => ('uuid' in entry && entry.uuid && !entry.session ? { ...entry, session } : entry))
+			: run.entries;
+
 		try {
-			await appendAgentTurn(input.conversationId, input.owner, {
-				entries: run.entries,
+			await appendAgentTurn(input.conversationId, input.actor, {
+				entries,
 				sessionId,
 				costUsd,
 				completed: !failed,
+				forked: !!fork && !!sessionId,
+				...(fork?.costBase ? { costBase: fork.costBase } : {}),
+				...(session && run.unstamped.length ? { stamp: { session, uuids: run.unstamped } } : {}),
 				...(run.usage ? { context: run.usage } : {}),
 				...(run.compactions ? { compactions: run.compactions } : {})
 			});
@@ -1372,6 +1596,8 @@ async function drive(
 				runs.delete(input.conversationId);
 			}
 		}, LINGER_MS);
+
+		void startWaiting(input.conversationId);
 	}
 }
 
@@ -1398,6 +1624,21 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 
 			if (message.subtype === 'status') {
 				noteStatus(run, message.status, message.compact_result, message.compact_error);
+
+				return {};
+			}
+
+			// a helper's running tally, shown on its card while it works
+			if (message.subtype === 'task_progress') {
+				if (message.tool_use_id) {
+					run.emit({
+						type: 'progress',
+						id: message.tool_use_id,
+						tools: message.usage.tool_uses,
+						ms: message.usage.duration_ms,
+						...(message.last_tool_name ? { last: stripPrefix(message.last_tool_name) } : {})
+					});
+				}
 
 				return {};
 			}
@@ -1432,6 +1673,10 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 				run.emit({ type: 'text', delta: event.delta.text });
 			}
 
+			if (event.type === 'content_block_delta' && event.delta.type === 'thinking_delta') {
+				run.emit({ type: 'thinking', delta: event.delta.thinking });
+			}
+
 			return {};
 		}
 
@@ -1456,20 +1701,32 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 				};
 			}
 
+			// a helper's own words are its business; its report arrives as the tool's result
+			const parent = message.parent_tool_use_id ?? undefined;
+
 			for (const block of message.message.content) {
-				if (block.type === 'text' && block.text.trim()) {
-					run.entries.push({ kind: 'assistant', at: Date.now(), text: block.text });
+				if (block.type === 'text' && block.text.trim() && !parent) {
+					run.entries.push({ kind: 'assistant', at: Date.now(), text: block.text, uuid: message.uuid, session: message.session_id });
 					run.emit({ type: 'assistant', text: block.text });
+				}
+
+				if (block.type === 'thinking' && block.thinking.trim() && !parent) {
+					run.entries.push({ kind: 'thinking', at: Date.now(), text: block.thinking });
+					run.emit({ type: 'thought', text: block.thinking });
 				}
 
 				if (block.type === 'tool_use') {
 					const name = stripPrefix(block.name);
 					const known = run.calls.get(block.id);
 
+					run.turnTools += 1;
+
 					// a call that needs approval is about to reach canUseTool; showing it as
 					// running first would flash a spinner over a call nobody has allowed
 					if (!known) {
-						run.calls.set(block.id, { name, input: block.input });
+						const unasked = runsUnasked(name, mode) || (run.allowed.has(name) && mode !== 'plan');
+
+						run.calls.set(block.id, { name, input: block.input, parent });
 						run.emit({
 							type: 'tool',
 							id: block.id,
@@ -1477,11 +1734,13 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 							input: block.input,
 							status: name === AGENT_ASK_TOOL
 								? 'awaiting'
-								: runsUnasked(name, mode)
+								: unasked
 									? 'running'
 									: mode === 'plan'
 										? 'denied'
-										: 'awaiting'
+										: 'awaiting',
+							actor: run.actor,
+							...(parent ? { parent } : {})
 						});
 					}
 				}
@@ -1503,7 +1762,14 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 				}
 
 				const call = run.calls.get(block.tool_use_id);
-				const output = resultText(block.content);
+				const report = call?.name === AGENT_SUBAGENT_TOOL
+					? helperReport(message.tool_use_result)
+					: null;
+				const output = report?.text ?? resultText(block.content);
+
+				if (report) {
+					run.emit({ type: 'progress', id: block.tool_use_id, tools: report.tools, ms: report.ms });
+				}
 				const status = call?.denied
 					? 'denied'
 					: block.is_error
@@ -1518,7 +1784,11 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					input: call?.input,
 					status,
 					output,
-					decidedBy: call?.decidedBy
+					decidedBy: call?.decidedBy,
+					actor: run.actor,
+					...(call?.parent
+						? { parent: call.parent }
+						: { uuid: message.uuid, session: message.session_id ?? run.sessionId ?? undefined })
 				});
 
 				run.emit({
@@ -1527,8 +1797,18 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					name: call?.name ?? 'unknown',
 					status,
 					output: output.slice(0, 4096),
-					decidedBy: call?.decidedBy
+					decidedBy: call?.decidedBy,
+					actor: run.actor,
+					...(call?.parent ? { parent: call.parent } : {})
 				});
+			}
+
+			return {};
+		}
+
+		case 'prompt_suggestion': {
+			if (message.suggestion.trim()) {
+				run.emit({ type: 'suggestion', text: message.suggestion.trim().slice(0, 500) });
 			}
 
 			return {};
@@ -1536,6 +1816,8 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 
 		case 'result': {
 			const turn = { turnDone: true, queued: message.queued_turn_count ?? 0 };
+
+			noteStats(run, message.total_cost_usd);
 
 			for (const [model, usage] of Object.entries(message.modelUsage ?? {})) {
 				if (usage.contextWindow) {
@@ -1579,6 +1861,24 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 		default:
 			return {};
 	}
+}
+
+/**
+ * File what the answer just finished took: its wall time from when the session
+ * took the message, the tool calls made, and its share of the session's cost.
+ */
+function noteStats(run: Run, total: number | undefined): void {
+	const costUsd = total !== undefined
+		? Math.max(0, total - run.costMark)
+		: 0;
+	const stats = { at: Date.now(), ms: Date.now() - run.turnStartedAt, tools: run.turnTools, costUsd };
+
+	if (total !== undefined) {
+		run.costMark = total;
+	}
+
+	run.entries.push({ kind: 'stats', ...stats });
+	run.emit({ type: 'stats', ...stats });
 }
 
 /**
@@ -1719,11 +2019,15 @@ function estimateContext(run: Run): AgentContextUsage | null {
 	return { tokens: last.tokens, window, model: last.model, at: Date.now() };
 }
 
-/** Attach to a conversation's live run: replays what happened so far, then follows. Null when nothing runs. */
-export function followRun(conversationId: string, owner: string, listener: Listener): (() => void) | null {
+/**
+ * Attach to a conversation's live run: replays what happened so far, then
+ * follows. Null when nothing runs. The caller has already checked that the
+ * reader may open the conversation; every participant follows the same run.
+ */
+export function followRun(conversationId: string, listener: Listener): (() => void) | null {
 	const run = runs.get(conversationId);
 
-	if (!run || run.owner !== owner) {
+	if (!run) {
 		return null;
 	}
 
@@ -1739,37 +2043,32 @@ export function followRun(conversationId: string, owner: string, listener: Liste
 }
 
 /** Chats open on an idle conversation, waiting to hear that a run started there. */
-const startWatchers = new Map<string, Set<{ owner: string; notify: () => void }>>();
+const startWatchers = new Map<string, Set<() => void>>();
 
-function announceRunStart(conversationId: string, owner: string): void {
-	for (const watcher of startWatchers.get(conversationId) ?? []) {
-		if (watcher.owner === owner) {
-			watcher.notify();
-		}
+function announceRunStart(conversationId: string): void {
+	for (const notify of startWatchers.get(conversationId) ?? []) {
+		notify();
 	}
 }
 
 /**
- * Be told when a run starts in a conversation: a background task or a trigger
- * can start one while nobody is typing, and a chat sitting on that conversation
- * has to attach to it. Fires at once when one is already going. Returns the
- * unsubscriber.
+ * Be told when a run starts in a conversation: a background task, a trigger or
+ * another participant can start one while this reader is not typing, and a
+ * chat sitting on that conversation has to attach to it. Fires at once when
+ * one is already going. Returns the unsubscriber.
  */
-export function watchRunStarts(conversationId: string, owner: string, notify: () => void): () => void {
-	const watcher = { owner, notify };
+export function watchRunStarts(conversationId: string, notify: () => void): () => void {
 	const set = startWatchers.get(conversationId) ?? new Set();
 
-	set.add(watcher);
+	set.add(notify);
 	startWatchers.set(conversationId, set);
 
-	const live = runs.get(conversationId);
-
-	if (live?.running && live.owner === owner) {
+	if (runs.get(conversationId)?.running) {
 		queueMicrotask(notify);
 	}
 
 	return () => {
-		set.delete(watcher);
+		set.delete(notify);
 
 		if (set.size === 0) {
 			startWatchers.delete(conversationId);
@@ -1782,15 +2081,24 @@ export function isRunning(conversationId: string): boolean {
 	return runs.get(conversationId)?.running ?? false;
 }
 
-/**
- * Hand the panel's answer (a `Screenshot`, a `Navigated`) to the run that asked
- * for it. Only the conversation's owner may, and only for a request still
- * waiting.
- */
-export function deliverPanelAnswer(conversationId: string, owner: string, requestId: string, answer: Screenshot | Navigated): boolean {
+/** Who a conversation's live run acts as, or null when none goes. */
+export function runActor(conversationId: string): string | null {
 	const run = runs.get(conversationId);
 
-	if (!run || run.owner !== owner) {
+	return run?.running
+		? run.actor
+		: null;
+}
+
+/**
+ * Hand the panel's answer (a `Screenshot`, a `Navigated`) to the run that asked
+ * for it. Only the run's actor may: it is their screen the agent asked about,
+ * and nobody else's browser should answer for it.
+ */
+export function deliverPanelAnswer(conversationId: string, account: string, requestId: string, answer: Screenshot | Navigated): boolean {
+	const run = runs.get(conversationId);
+
+	if (!run || run.actor !== account) {
 		return false;
 	}
 
@@ -1807,36 +2115,45 @@ export function deliverPanelAnswer(conversationId: string, owner: string, reques
 
 /**
  * Approve or deny a waiting tool call, or answer a waiting question (`answers`,
- * keyed by question text; denying a question dismisses it). Only the
- * conversation's owner may.
+ * keyed by question text; denying a question dismisses it). Only the run's
+ * actor may, since the call runs on their authority.
  */
 export function decideCall(
 	conversationId: string,
-	owner: string,
+	account: string,
 	toolUseId: string,
 	allow: boolean,
-	answers?: AgentAnswers
+	extras: DecisionExtras = {}
 ): boolean {
 	const run = runs.get(conversationId);
 
-	if (!run || run.owner !== owner) {
+	if (!run || run.actor !== account) {
 		return false;
 	}
 
-	return run.decide(toolUseId, allow, owner, answers);
+	return run.decide(toolUseId, allow, account, extras);
 }
 
-/** Stop a conversation's run, denying anything still waiting. */
-export function stopRun(conversationId: string, owner: string): boolean {
+/**
+ * Stop a conversation's run, denying anything still waiting. Its actor may, and
+ * so may the conversation's owner, whose conversation it is. Messages queued
+ * behind it still start afterwards.
+ */
+export function stopRun(conversationId: string, account: string): boolean {
 	const run = runs.get(conversationId);
 
-	if (!run || run.owner !== owner || !run.running) {
+	if (!run || !run.running || (run.actor !== account && run.owner !== account)) {
 		return false;
 	}
 
-	run.stop(owner);
+	run.stop(account);
 
 	return true;
+}
+
+/** Drop the messages waiting in a conversation's queue; a deleted conversation has nowhere to send them. */
+export function dropWaiting(conversationId: string): void {
+	waiting.delete(conversationId);
 }
 
 /** The models a live query says its credential can use; undefined when it will not say. */

@@ -33,6 +33,7 @@ import { join } from "node:path";
 import { t } from "../shared/i18n";
 import { MCP_DEFAULT_GROUPS, type McpScope } from "../shared/mcptools";
 import { dataDir, statePath } from "./config";
+import { getAccount } from "./accounts";
 import { appendJournal } from "./journal";
 import { createMcpToken, getMcpToken, type McpTokenSummary } from "./mcp";
 import { newId } from "./secrets";
@@ -85,6 +86,23 @@ interface StoredCredential {
 	setBy?: string;
 }
 
+/**
+ * A helper the agent may hand a self-contained job to, as Claude Code's
+ * subagents: its own instructions and a narrower set of luna tools, working in
+ * a context of its own and reporting back one answer. Tools are catalog names
+ * or `group:<name>`; whatever the agent's token cannot reach is dropped.
+ */
+export interface AgentSubagent {
+	name: string;
+	/** When the agent should reach for it; the model reads this to decide */
+	description: string;
+	prompt: string;
+	tools: string[];
+	/** A model id or alias; empty runs it on the conversation's model */
+	model: string;
+	enabled: boolean;
+}
+
 export interface AgentSettings {
 	enabled: boolean;
 	model: string;
@@ -97,7 +115,40 @@ export interface AgentSettings {
 	executable: string;
 	/** Whether anyone may pick bypass mode, where tool calls run without approval */
 	bypassAllowed: boolean;
+	/** Whether the agent offers a likely next message after each answer (a small extra request) */
+	suggestions: boolean;
+	/** Helpers defined on this console, beside the built-in ones */
+	subagents: AgentSubagent[];
 }
+
+/**
+ * Who else may open a conversation. A viewer reads it and follows its runs; a
+ * collaborator may also write in it. Nobody acts on another account's
+ * authority: a message runs as whoever sent it, so a collaborator's message
+ * waits for the run going to end rather than joining it.
+ */
+export const AGENT_SHARE_ROLES = ["viewer", "collaborator"] as const;
+
+export type AgentShareRole = typeof AGENT_SHARE_ROLES[number];
+
+/** What an account is to one conversation. */
+export type AgentRole = "owner" | AgentShareRole;
+
+export interface AgentShare {
+	account: string;
+	role: AgentShareRole;
+	at: number;
+	by: string;
+}
+
+/** Accounts one conversation may be shared with. */
+export const MAX_AGENT_SHARES = 20;
+
+/** Custom helpers one console may define. */
+export const MAX_AGENT_SUBAGENTS = 20;
+
+/** A helper's name: what the agent passes to pick it, so kept to one word. */
+export const AGENT_SUBAGENT_NAME = /^[a-z][a-z0-9-]{1,39}$/;
 
 export interface AgentConversation {
 	id: string;
@@ -105,6 +156,22 @@ export interface AgentConversation {
 	title: string;
 	createdAt: number;
 	updatedAt: number;
+	shares?: AgentShare[];
+	/** Accounts that pinned it to the top of their list */
+	pinnedBy?: string[];
+	/** Accounts that put it out of their list */
+	archivedBy?: string[];
+	/** Tools each account allowed "for this chat", so they stop asking there */
+	allowedTools?: Record<string, string[]>;
+	/** The conversation this one was branched from */
+	forkedFrom?: { id: string; title: string };
+	/**
+	 * The session the next run branches from, set by a fork or a rewind: it
+	 * resumes `session` cut at `at` (a message uuid; absent means the whole of
+	 * it) under a new session id, so the old branch stays as it was. `costBase`
+	 * is the running total the branched session inherits from `session`.
+	 */
+	pendingFork?: { session: string; at?: string; costBase?: number };
 	/** The SDK session to resume, once the first turn has run */
 	sessionId?: string;
 	/** Estimated spend across every turn, in USD, as the SDK reports it */
@@ -115,6 +182,14 @@ export interface AgentConversation {
 	 * spend is this plus the latest total, never a sum of every run's.
 	 */
 	costBeforeUsd?: number;
+	/**
+	 * What the current session's running total had already counted when it
+	 * began: a branched session carries its source's total, which belongs to
+	 * the conversation it was branched from, not to this one.
+	 */
+	costBaseUsd?: number;
+	/** Each session's running total as last reported, which a branch cut from it inherits */
+	sessionCosts?: Record<string, number>;
 	turns: number;
 	/** How full the session's context was after its last response */
 	context?: AgentContextUsage;
@@ -148,6 +223,12 @@ interface AgentStore {
 	conversations: AgentConversation[];
 }
 
+/**
+ * One line of a transcript. `uuid` is the SDK message it was filed from (for
+ * the operator's own messages, the one the console gave it) and `session` the
+ * session that message is in: together, where a fork or a rewind cuts. Entries
+ * filed before forking existed have neither.
+ */
 export type AgentEntry =
 	| {
 		kind: "user";
@@ -158,8 +239,12 @@ export type AgentEntry =
 		model?: string;
 		/** Files attached to the message, by name; the bytes were staged, not kept */
 		attachments?: Array<{ name: string; size: number }>;
+		uuid?: string;
+		session?: string;
 	}
-	| { kind: "assistant"; at: number; text: string }
+	| { kind: "assistant"; at: number; text: string; uuid?: string; session?: string }
+	/** What the model thought before answering, as the API summarised it */
+	| { kind: "thinking"; at: number; text: string }
 	| {
 		kind: "tool";
 		at: number;
@@ -170,6 +255,12 @@ export type AgentEntry =
 		output?: string;
 		/** Who approved or denied it, when it needed approval */
 		decidedBy?: string;
+		/** The helper call this one was made inside, when a subagent made it */
+		parent?: string;
+		/** Whose run made it, and so whose permissions its result reflects; absent means the owner's */
+		actor?: string;
+		uuid?: string;
+		session?: string;
 	}
 	| { kind: "error"; at: number; text: string }
 	/**
@@ -177,7 +268,9 @@ export type AgentEntry =
 	 * a trigger firing or expiring. It reached the model as a message, but it
 	 * is nobody's words, so the transcript keeps it apart from the operator's.
 	 */
-	| { kind: "event"; at: number; source: "task" | "trigger"; label: string; text: string }
+	| { kind: "event"; at: number; source: "task" | "trigger"; label: string; text: string; uuid?: string; session?: string }
+	/** What one answer took: wall time, tool calls and what it cost */
+	| { kind: "stats"; at: number; ms: number; tools: number; costUsd: number }
 	/** The session's history was summarised; `by` is who asked, absent when it happened on its own */
 	| {
 		kind: "compact";
@@ -188,7 +281,18 @@ export type AgentEntry =
 		postTokens?: number;
 	};
 
-export interface AgentTranscript extends AgentConversation {
+/**
+ * A conversation as one account sees it: its own role, pins and allowed tools,
+ * with the other accounts' bookkeeping left out.
+ */
+export interface AgentConversationView extends Omit<AgentConversation, "pinnedBy" | "archivedBy" | "allowedTools" | "sessionCosts"> {
+	role: AgentRole;
+	pinned: boolean;
+	archived: boolean;
+	allowedTools: string[];
+}
+
+export interface AgentTranscript extends AgentConversationView {
 	entries: AgentEntry[];
 }
 
@@ -221,6 +325,8 @@ export interface AgentSettingsPatch {
 	maxTurns?: number;
 	executable?: string;
 	bypassAllowed?: boolean;
+	suggestions?: boolean;
+	subagents?: AgentSubagent[];
 }
 
 /** The token a fresh agent gets: it reads, operates instances, manages addons and remembers. Files, shells and config stay off. */
@@ -235,6 +341,57 @@ const MAX_TURNS_CEILING = 100;
 
 const MAX_INSTRUCTIONS = 8 * 1024;
 
+/** Names the console's own helpers take; a custom one may not shadow them. */
+export const AGENT_BUILTIN_SUBAGENTS = ["investigator", "researcher", "general-purpose", "fork"] as const;
+
+/** Validate a console's helper definitions, returning them cleaned; throws on the first fault. */
+function checkSubagents(list: unknown): AgentSubagent[] {
+	if (!Array.isArray(list)) {
+		throw new Error(t("core.agent.badSubagents"));
+	}
+
+	if (list.length > MAX_AGENT_SUBAGENTS) {
+		throw new Error(t("core.agent.tooManySubagents", { max: MAX_AGENT_SUBAGENTS }));
+	}
+
+	const seen = new Set<string>();
+
+	return list.map((raw: Partial<AgentSubagent>) => {
+		const name = String(raw?.name ?? "").trim();
+
+		if (!AGENT_SUBAGENT_NAME.test(name) || (AGENT_BUILTIN_SUBAGENTS as readonly string[]).includes(name)) {
+			throw new Error(t("core.agent.badSubagentName", { name }));
+		}
+
+		if (seen.has(name)) {
+			throw new Error(t("core.agent.duplicateSubagent", { name }));
+		}
+
+		seen.add(name);
+
+		const description = String(raw.description ?? "").trim();
+		const prompt = String(raw.prompt ?? "").trim();
+		const model = String(raw.model ?? "").trim();
+		const tools = Array.isArray(raw.tools)
+			? [...new Set(raw.tools.map((tool) => String(tool).trim()).filter(Boolean))]
+			: [];
+
+		if (!description || description.length > 300 || !prompt || prompt.length > MAX_INSTRUCTIONS) {
+			throw new Error(t("core.agent.badSubagentText", { name }));
+		}
+
+		if (model && !AGENT_MODEL_PATTERN.test(model) && !["sonnet", "opus", "haiku", "fable", "inherit"].includes(model)) {
+			throw new Error(t("core.agent.badModel", { model }));
+		}
+
+		if (tools.length > 200 || tools.some((tool) => !/^(group:)?[a-z0-9_-]{1,64}$/.test(tool))) {
+			throw new Error(t("core.agent.badSubagentTools", { name }));
+		}
+
+		return { name, description, prompt, tools, model, enabled: raw.enabled !== false };
+	});
+}
+
 function defaultSettings(): AgentSettings {
 	return {
 		enabled: true,
@@ -244,6 +401,8 @@ function defaultSettings(): AgentSettings {
 		maxTurns: 30,
 		executable: "",
 		bypassAllowed: true,
+		suggestions: true,
+		subagents: [],
 	};
 }
 
@@ -464,6 +623,14 @@ export async function updateAgentSettings(patch: AgentSettingsPatch, actor?: str
 			next.bypassAllowed = !!patch.bypassAllowed;
 		}
 
+		if (patch.suggestions !== undefined) {
+			next.suggestions = !!patch.suggestions;
+		}
+
+		if (patch.subagents !== undefined) {
+			next.subagents = checkSubagents(patch.subagents);
+		}
+
 		store.settings = next;
 		await saveStore(store);
 	});
@@ -535,31 +702,74 @@ export async function agentLaunch(actor?: string): Promise<AgentLaunch> {
 
 // -- conversations ---------------------------------------------------------------
 
+/** What an account is to a conversation, or null when it may not open it. */
+function roleOf(conversation: AgentConversation, account: string): AgentRole | null {
+	if (conversation.owner === account) {
+		return "owner";
+	}
+
+	return conversation.shares?.find((share) => share.account === account)?.role ?? null;
+}
+
+/** Whether a role may write in a conversation: send, approve its own calls, rename, rewind. */
+function writes(role: AgentRole | null): boolean {
+	return role === "owner" || role === "collaborator";
+}
+
+function viewOf(conversation: AgentConversation, account: string, role: AgentRole): AgentConversationView {
+	const { pinnedBy, archivedBy, allowedTools, sessionCosts: _costs, ...rest } = conversation;
+
+	return {
+		...rest,
+		role,
+		pinned: pinnedBy?.includes(account) ?? false,
+		archived: archivedBy?.includes(account) ?? false,
+		allowedTools: allowedTools?.[account] ?? [],
+	};
+}
+
 /**
- * The scratch folder of one of the owner's conversations, created on first use:
- * the one place on disk the agent's own file tools may read and write. Nobody
- * gets another account's folder, for the same reason nobody lists their chats.
+ * A conversation the account may open, in the role it has there; `roles`
+ * narrows who may (an owner-only verb passes `["owner"]`). Anyone else gets the
+ * same "no such conversation", so a shared id says nothing to a stranger.
  */
-export async function agentScratch(id: string, owner: string): Promise<string> {
+function requireConversation(
+	store: AgentStore,
+	id: string,
+	account: string,
+	roles: readonly AgentRole[] = ["owner", "collaborator", "viewer"],
+): { conversation: AgentConversation; role: AgentRole } {
+	const conversation = store.conversations.find((entry) => entry.id === id);
+	const role = conversation
+		? roleOf(conversation, account)
+		: null;
+
+	if (!conversation || !role) {
+		throw new Error(t("core.agent.unknownConversation", { id }));
+	}
+
+	if (!roles.includes(role)) {
+		throw new Error(t("core.agent.notAllowedHere", { role }));
+	}
+
+	return { conversation, role };
+}
+
+/**
+ * The scratch folder of a conversation, created on first use: the one place on
+ * disk the agent's own file tools may read and write. Whoever may write in the
+ * conversation runs there; nobody else gets its folder.
+ */
+export async function agentScratch(id: string, account: string): Promise<string> {
 	const store = await loadStore();
 
-	requireConversation(store, id, owner);
+	requireConversation(store, id, account, ["owner", "collaborator"]);
 
 	const dir = scratchPath(id);
 
 	await mkdir(dir, { recursive: true });
 
 	return dir;
-}
-
-function requireConversation(store: AgentStore, id: string, owner: string): AgentConversation {
-	const conversation = store.conversations.find((entry) => entry.id === id && entry.owner === owner);
-
-	if (!conversation) {
-		throw new Error(t("core.agent.unknownConversation", { id }));
-	}
-
-	return conversation;
 }
 
 async function readEntries(id: string): Promise<AgentEntry[]> {
@@ -578,29 +788,58 @@ async function readEntries(id: string): Promise<AgentEntry[]> {
 	}
 }
 
-/** One account's conversations, newest first. Nobody reads anybody else's. */
-export async function listAgentConversations(owner: string): Promise<AgentConversation[]> {
-	const store = await loadStore();
-
-	return store.conversations
-		.filter((entry) => entry.owner === owner)
-		.sort((left, right) => right.updatedAt - left.updatedAt);
+async function writeEntries(id: string, entries: AgentEntry[]): Promise<void> {
+	await mkdir(transcriptsDir(), { recursive: true });
+	await Bun.write(transcriptPath(id), JSON.stringify({ id, entries }) + "\n");
 }
 
-/** One conversation with its transcript, or undefined when the owner has none by that id. */
-export async function getAgentConversation(id: string, owner: string): Promise<AgentTranscript | undefined> {
+/** Every conversation an account may open, its own and those shared with it, newest first. */
+export async function listAgentConversations(account: string): Promise<AgentConversationView[]> {
 	const store = await loadStore();
-	const conversation = store.conversations.find((entry) => entry.id === id && entry.owner === owner);
+	const views: AgentConversationView[] = [];
 
-	if (!conversation) {
+	for (const conversation of store.conversations) {
+		const role = roleOf(conversation, account);
+
+		if (role) {
+			views.push(viewOf(conversation, account, role));
+		}
+	}
+
+	return views.sort((left, right) => right.updatedAt - left.updatedAt);
+}
+
+/** One conversation with its transcript, or undefined when the account may not open it. */
+export async function getAgentConversation(id: string, account: string): Promise<AgentTranscript | undefined> {
+	const store = await loadStore();
+	const conversation = store.conversations.find((entry) => entry.id === id);
+	const role = conversation
+		? roleOf(conversation, account)
+		: null;
+
+	if (!conversation || !role) {
 		return undefined;
 	}
 
-	return { ...conversation, entries: await readEntries(id) };
+	return { ...viewOf(conversation, account, role), entries: await readEntries(id) };
+}
+
+/** Drop an owner's oldest conversations past the cap; shared ones count only for their owner. */
+async function trimOwned(store: AgentStore, owner: string): Promise<void> {
+	const mine = store.conversations
+		.filter((entry) => entry.owner === owner)
+		.sort((left, right) => left.updatedAt - right.updatedAt);
+	const excess = mine.slice(0, Math.max(0, mine.length - MAX_AGENT_CONVERSATIONS));
+
+	for (const old of excess) {
+		store.conversations = store.conversations.filter((entry) => entry !== old);
+		await rm(transcriptPath(old.id), { force: true });
+		await rm(scratchPath(old.id), { recursive: true, force: true });
+	}
 }
 
 /** Start an empty conversation, dropping the owner's oldest past the cap. */
-export async function createAgentConversation(owner: string, title = ""): Promise<AgentConversation> {
+export async function createAgentConversation(owner: string, title = ""): Promise<AgentConversationView> {
 	return await serialized(async () => {
 		const store = await loadStore();
 		const now = Date.now();
@@ -616,21 +855,10 @@ export async function createAgentConversation(owner: string, title = ""): Promis
 		};
 
 		store.conversations.push(conversation);
-
-		const mine = store.conversations
-			.filter((entry) => entry.owner === owner)
-			.sort((left, right) => left.updatedAt - right.updatedAt);
-		const excess = mine.slice(0, Math.max(0, mine.length - MAX_AGENT_CONVERSATIONS));
-
-		for (const old of excess) {
-			store.conversations = store.conversations.filter((entry) => entry !== old);
-			await rm(transcriptPath(old.id), { force: true });
-			await rm(scratchPath(old.id), { recursive: true, force: true });
-		}
-
+		await trimOwned(store, owner);
 		await saveStore(store);
 
-		return conversation;
+		return viewOf(conversation, owner, "owner");
 	});
 }
 
@@ -654,31 +882,80 @@ export interface AgentTurnUpdate {
 	title?: string;
 	/** Whether this update closes a turn (counted) or only saves progress */
 	completed?: boolean;
+	/** The run branched the session a fork or rewind asked for; the next one resumes plainly */
+	forked?: boolean;
+	/** Entries filed before the session said its id (a run's first message), to be marked as its own */
+	stamp?: { session: string; uuids: string[] };
+	/** What a new session's running total started from (a branch's inherited cost) */
+	costBase?: number;
 }
 
-/** Append a turn's entries to a transcript and update the index. */
-export async function appendAgentTurn(id: string, owner: string, update: AgentTurnUpdate): Promise<AgentConversation> {
+/** A conversation's current session's running total, as the SDK counts it. */
+function sessionTotal(conversation: AgentConversation): number {
+	return Math.max(0, conversation.costUsd - (conversation.costBeforeUsd ?? 0)) + (conversation.costBaseUsd ?? 0);
+}
+
+/** Sessions whose running totals a conversation remembers; older ones fall off. */
+const MAX_SESSION_COSTS = 20;
+
+/** The running total a session cut from `session` inherits, as best this conversation knows it. */
+function inheritedCost(conversation: AgentConversation, session: string): number {
+	if (conversation.pendingFork?.session === session) {
+		return conversation.pendingFork.costBase ?? 0;
+	}
+
+	if (conversation.sessionId === session) {
+		return sessionTotal(conversation);
+	}
+
+	return conversation.sessionCosts?.[session] ?? 0;
+}
+
+/** Append a turn's entries to a transcript and update the index; `account` is whoever ran it. */
+export async function appendAgentTurn(id: string, account: string, update: AgentTurnUpdate): Promise<AgentConversationView> {
 	return await serialized(async () => {
 		const store = await loadStore();
-		const conversation = requireConversation(store, id, owner);
-		const entries = [...(await readEntries(id)), ...update.entries.map(clipEntry)].slice(-MAX_AGENT_ENTRIES);
+		const { conversation, role } = requireConversation(store, id, account, ["owner", "collaborator"]);
+		const stamped = new Set(update.stamp?.uuids ?? []);
+		const earlier = (await readEntries(id)).map((entry) =>
+			update.stamp && "uuid" in entry && entry.uuid && stamped.has(entry.uuid)
+				? { ...entry, session: update.stamp.session }
+				: entry
+		);
+		const entries = [...earlier, ...update.entries.map(clipEntry)].slice(-MAX_AGENT_ENTRIES);
 
-		await mkdir(transcriptsDir(), { recursive: true });
-		await Bun.write(transcriptPath(id), JSON.stringify({ id, entries }) + "\n");
+		await writeEntries(id, entries);
 
 		conversation.updatedAt = Date.now();
 
-		// a new session's total starts from zero, so what the old one cost is banked first
-		if (update.sessionId && conversation.sessionId && update.sessionId !== conversation.sessionId) {
-			conversation.costBeforeUsd = conversation.costUsd;
+		// a new session's total starts from what it inherited (zero, unless it is a
+		// branch), so what the old one cost is banked first
+		if (update.sessionId && update.sessionId !== conversation.sessionId) {
+			if (conversation.sessionId) {
+				conversation.costBeforeUsd = conversation.costUsd;
+			}
+
+			conversation.costBaseUsd = update.costBase || undefined;
 		}
 
 		if (update.sessionId) {
 			conversation.sessionId = update.sessionId;
 		}
 
+		if (update.forked) {
+			delete conversation.pendingFork;
+		}
+
 		if (update.costUsd) {
-			conversation.costUsd = (conversation.costBeforeUsd ?? 0) + update.costUsd;
+			conversation.costUsd = (conversation.costBeforeUsd ?? 0) + Math.max(0, update.costUsd - (conversation.costBaseUsd ?? 0));
+
+			if (conversation.sessionId) {
+				const costs = { ...(conversation.sessionCosts ?? {}) };
+
+				delete costs[conversation.sessionId];
+				costs[conversation.sessionId] = update.costUsd;
+				conversation.sessionCosts = Object.fromEntries(Object.entries(costs).slice(-MAX_SESSION_COSTS));
+			}
 		}
 
 		if (update.context) {
@@ -699,34 +976,310 @@ export async function appendAgentTurn(id: string, owner: string, update: AgentTu
 
 		await saveStore(store);
 
-		return conversation;
+		return viewOf(conversation, account, role);
 	});
 }
 
-/** Rename a conversation. */
-export async function renameAgentConversation(id: string, owner: string, title: string): Promise<AgentConversation> {
+/** Rename a conversation; anyone who may write in it may. */
+export async function renameAgentConversation(id: string, account: string, title: string): Promise<AgentConversationView> {
 	return await serialized(async () => {
 		const store = await loadStore();
-		const conversation = requireConversation(store, id, owner);
+		const { conversation, role } = requireConversation(store, id, account, ["owner", "collaborator"]);
 
 		conversation.title = title.trim().slice(0, 120);
 		await saveStore(store);
 
-		return conversation;
+		return viewOf(conversation, account, role);
 	});
 }
 
-/** Delete a conversation and its transcript; returns what was removed. */
-export async function removeAgentConversation(id: string, owner: string): Promise<AgentConversation> {
+export interface AgentConversationFlags {
+	pinned?: boolean;
+	archived?: boolean;
+}
+
+/** Pin or archive a conversation in one account's own list; nobody else's list moves. */
+export async function flagAgentConversation(id: string, account: string, flags: AgentConversationFlags): Promise<AgentConversationView> {
 	return await serialized(async () => {
 		const store = await loadStore();
-		const conversation = requireConversation(store, id, owner);
+		const { conversation, role } = requireConversation(store, id, account);
+
+		const toggle = (list: string[] | undefined, on: boolean | undefined): string[] | undefined => {
+			if (on === undefined) {
+				return list;
+			}
+
+			const rest = (list ?? []).filter((name) => name !== account);
+			const next = on
+				? [...rest, account]
+				: rest;
+
+			return next.length
+				? next
+				: undefined;
+		};
+
+		conversation.pinnedBy = toggle(conversation.pinnedBy, flags.pinned);
+		conversation.archivedBy = toggle(conversation.archivedBy, flags.archived);
+		await saveStore(store);
+
+		return viewOf(conversation, account, role);
+	});
+}
+
+/**
+ * The tools an account allowed "for this chat": in that conversation, and only
+ * in runs that account starts, they no longer stop to ask. What a tool may
+ * reach is unchanged; this only decides whether someone is asked first.
+ */
+export async function setAgentAllowedTools(id: string, account: string, tools: string[]): Promise<AgentConversationView> {
+	return await serialized(async () => {
+		const store = await loadStore();
+		const { conversation, role } = requireConversation(store, id, account, ["owner", "collaborator"]);
+		const clean = [...new Set(tools.map((tool) => String(tool).trim()).filter((tool) => /^[A-Za-z0-9_:-]{1,80}$/.test(tool)))].slice(0, 100);
+		const all = { ...(conversation.allowedTools ?? {}) };
+
+		if (clean.length) {
+			all[account] = clean;
+		} else {
+			delete all[account];
+		}
+
+		conversation.allowedTools = Object.keys(all).length
+			? all
+			: undefined;
+		await saveStore(store);
+
+		return viewOf(conversation, account, role);
+	});
+}
+
+/**
+ * Share a conversation with another console account, change its role, or
+ * (`role` null) take it back. Only the owner may. The account has to exist and
+ * be enabled; the answer for one that does not is the same either way.
+ */
+export async function shareAgentConversation(
+	id: string,
+	owner: string,
+	account: string,
+	role: AgentShareRole | null,
+): Promise<AgentConversationView> {
+	const target = account.trim();
+
+	if (role !== null) {
+		const known = target && target !== owner
+			? await getAccount(target).catch(() => undefined)
+			: undefined;
+
+		if (!known || !known.enabled || !(AGENT_SHARE_ROLES as readonly string[]).includes(role)) {
+			throw new Error(t("core.agent.cannotShare", { account: target }));
+		}
+	}
+
+	const view = await serialized(async () => {
+		const store = await loadStore();
+		const { conversation } = requireConversation(store, id, owner, ["owner"]);
+		const shares = (conversation.shares ?? []).filter((share) => share.account !== target);
+
+		if (role !== null) {
+			if (shares.length >= MAX_AGENT_SHARES) {
+				throw new Error(t("core.agent.tooManyShares", { max: MAX_AGENT_SHARES }));
+			}
+
+			shares.push({ account: target, role, at: Date.now(), by: owner });
+		}
+
+		conversation.shares = shares.length
+			? shares
+			: undefined;
+
+		// what the account had pinned or allowed there is its own, and goes with it
+		if (role === null) {
+			conversation.pinnedBy = conversation.pinnedBy?.filter((name) => name !== target);
+			conversation.archivedBy = conversation.archivedBy?.filter((name) => name !== target);
+
+			if (conversation.allowedTools) {
+				delete conversation.allowedTools[target];
+			}
+		}
+
+		await saveStore(store);
+
+		return viewOf(conversation, owner, "owner");
+	});
+
+	await appendJournal({
+		source: "agent",
+		level: "info",
+		message: role
+			? `conversation ${id} shared with ${target} (${role})`
+			: `conversation ${id} no longer shared with ${target}`,
+		actor: owner,
+	});
+
+	return view;
+}
+
+/** Stop seeing a conversation someone shared; the owner's copy is untouched. */
+export async function leaveAgentConversation(id: string, account: string): Promise<void> {
+	await serialized(async () => {
+		const store = await loadStore();
+		const { conversation } = requireConversation(store, id, account, ["viewer", "collaborator"]);
+
+		conversation.shares = conversation.shares?.filter((share) => share.account !== account);
+		conversation.pinnedBy = conversation.pinnedBy?.filter((name) => name !== account);
+		conversation.archivedBy = conversation.archivedBy?.filter((name) => name !== account);
+
+		if (conversation.allowedTools) {
+			delete conversation.allowedTools[account];
+		}
+
+		await saveStore(store);
+	});
+}
+
+/**
+ * Where a cut after `keep` entries lands: the session and message uuid of the
+ * last kept entry that has them, `null` when nothing kept reached a session, or
+ * undefined when a kept entry predates uuids and the cut cannot be placed. A
+ * uuid is only meaningful in the session it was filed in, since a branched
+ * session renumbers its messages, so the pair travels together.
+ */
+function cutPoint(entries: AgentEntry[], keep: number): { session: string; at: string } | null | undefined {
+	for (let index = keep - 1; index >= 0; index--) {
+		const entry = entries[index]!;
+
+		if ("uuid" in entry && entry.uuid && entry.session) {
+			return { session: entry.session, at: entry.uuid };
+		}
+
+		// an operator's message or a report without one was filed before forking existed
+		if (entry.kind === "user" || entry.kind === "assistant" || entry.kind === "event") {
+			return undefined;
+		}
+	}
+
+	return null;
+}
+
+/** How many entries come before the message `before` names, or all of them when it is omitted. */
+function keepBefore(entries: AgentEntry[], before: string | undefined): number {
+	if (before === undefined) {
+		return entries.length;
+	}
+
+	const index = entries.findIndex((entry) => "uuid" in entry && entry.uuid === before && (entry.kind === "user" || entry.kind === "event"));
+
+	if (index < 0) {
+		throw new Error(t("core.agent.unknownMessage"));
+	}
+
+	return index;
+}
+
+/**
+ * Branch a conversation into a new one the account owns, keeping what came
+ * before the message `before` names (everything when it is omitted). The new conversation's first run
+ * resumes the session cut at that point, so the agent remembers exactly what
+ * the copy shows. Only the owner may: a fork hands the model the whole history,
+ * tool results a viewer was not shown included.
+ */
+export async function forkAgentConversation(id: string, account: string, before?: string): Promise<AgentConversationView> {
+	return await serialized(async () => {
+		const store = await loadStore();
+		const { conversation: source } = requireConversation(store, id, account, ["owner"]);
+		const all = await readEntries(id);
+		const count = keepBefore(all, before);
+		const kept = all.slice(0, count);
+		const at = cutPoint(all, count);
+
+		if (at === undefined) {
+			throw new Error(t("core.agent.cannotFork"));
+		}
+
+		const now = Date.now();
+		const title = t("core.agent.forkTitle", { title: source.title || id }).slice(0, 120);
+
+		const conversation: AgentConversation = {
+			id: newId("chat"),
+			owner: account,
+			title,
+			createdAt: now,
+			updatedAt: now,
+			costUsd: 0,
+			turns: 0,
+			forkedFrom: { id: source.id, title: source.title },
+			...(at
+				? {
+					pendingFork: count < all.length
+						? { session: at.session, at: at.at, costBase: inheritedCost(source, at.session) }
+						: source.pendingFork ?? { session: source.sessionId ?? at.session, costBase: inheritedCost(source, source.sessionId ?? at.session) },
+				}
+				: {}),
+		};
+
+		store.conversations.push(conversation);
+		await writeEntries(conversation.id, kept);
+		await trimOwned(store, account);
+		await saveStore(store);
+
+		return viewOf(conversation, account, "owner");
+	});
+}
+
+/**
+ * Take a conversation back to before the message `before` names, dropping it
+ * and everything after: what "edit and resend" and "retry" do. The next run branches the
+ * session at that point, so the agent forgets what was dropped. Anything the
+ * agent already did on the cluster stays done; only the conversation rewinds.
+ */
+export async function rewindAgentConversation(id: string, account: string, before: string): Promise<AgentConversationView> {
+	return await serialized(async () => {
+		const store = await loadStore();
+		const { conversation, role } = requireConversation(store, id, account, ["owner", "collaborator"]);
+		const all = await readEntries(id);
+		const keep = keepBefore(all, before);
+		const at = cutPoint(all, keep);
+
+		if (at === undefined) {
+			throw new Error(t("core.agent.cannotFork"));
+		}
+
+		await writeEntries(id, all.slice(0, keep));
+
+		// nothing kept reached the session: the next run starts a fresh one
+		if (at === null) {
+			delete conversation.sessionId;
+			delete conversation.pendingFork;
+			delete conversation.context;
+			delete conversation.costBaseUsd;
+			conversation.costBeforeUsd = conversation.costUsd;
+		} else {
+			conversation.pendingFork = { session: at.session, at: at.at, costBase: inheritedCost(conversation, at.session) };
+		}
+
+		conversation.updatedAt = Date.now();
+		await saveStore(store);
+
+		return viewOf(conversation, account, role);
+	});
+}
+
+/**
+ * Delete a conversation and its transcript; returns what was removed. Only the
+ * owner may; everyone it was shared with loses it too.
+ */
+export async function removeAgentConversation(id: string, owner: string): Promise<AgentConversationView> {
+	return await serialized(async () => {
+		const store = await loadStore();
+		const { conversation } = requireConversation(store, id, owner, ["owner"]);
 
 		store.conversations = store.conversations.filter((entry) => entry !== conversation);
 		await rm(transcriptPath(id), { force: true });
 		await rm(scratchPath(id), { recursive: true, force: true });
 		await saveStore(store);
 
-		return conversation;
+		return viewOf(conversation, owner, "owner");
 	});
 }

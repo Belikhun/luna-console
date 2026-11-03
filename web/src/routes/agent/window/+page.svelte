@@ -8,11 +8,11 @@
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import { Agent, ChatSession } from '$lib/agent.svelte';
-	import { fmtDateTime } from '$lib/format';
 	import Icon from '$lib/components/Icon.svelte';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import AgentChat from '$lib/components/AgentChat.svelte';
-	import AgentDeleteConfirm from '$lib/components/AgentDeleteConfirm.svelte';
+	import AgentDialogs from '$lib/components/AgentDialogs.svelte';
+	import { conversationVerbs, historyItems } from '$lib/components/agentmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 
 	/**
@@ -36,7 +36,6 @@
 
 	let historyMenu: ContextMenu | undefined = $state();
 	let historyButton: HTMLButtonElement | undefined = $state();
-	let deleting: { id: string; title: string } | null = $state(null);
 
 	onMount(() => {
 		setTimeout(() => {
@@ -74,25 +73,29 @@
 		}
 	});
 
-	const historyItems: ContextMenuItem[] = $derived.by(() => {
-		const rows: ContextMenuItem[] = [{ label: t('web.agent.history'), header: true }];
+	const history: ContextMenuItem[] = $derived(
+		historyItems(session.conversationId, (id) => session.select(id), () => backToConsole())
+	);
 
-		if (Agent.conversations.length === 0) {
-			rows.push({ label: t('web.agent.noHistory'), disabled: true });
+	let chatMenu: ContextMenu | undefined = $state();
+	let chatButton: HTMLButtonElement | undefined = $state();
+	let dialogHost: AgentDialogs | undefined = $state();
+
+	const chatItems: ContextMenuItem[] = $derived(session.row && dialogHost ? conversationVerbs(session.row, dialogHost.dialogs) : []);
+
+	async function openChatMenu(event: MouseEvent): Promise<void> {
+		event.stopPropagation();
+
+		if (chatMenu?.isOpen()) {
+			chatMenu.close();
+
+			return;
 		}
 
-		for (const row of Agent.conversations.slice(0, 30)) {
-			rows.push({
-				id: row.id,
-				label: row.title || t('web.agent.untitled'),
-				icon: row.id === session.conversationId ? 'check' : row.running ? 'paw' : undefined,
-				hint: fmtDateTime(row.updatedAt),
-				action: () => session.select(row.id)
-			});
+		if (chatButton) {
+			await chatMenu?.openAtElement(chatButton, 'bottom');
 		}
-
-		return rows;
-	});
+	}
 
 	async function openHistory(event: MouseEvent): Promise<void> {
 		event.stopPropagation();
@@ -157,23 +160,26 @@
 			</button>
 			<button
 				class="tool"
-				title={session.row ? t('web.agent.deleteChat') : t('web.agent.deleteNothing')}
+				title={session.row ? t('web.agentMenu.chatActions') : t('web.agent.deleteNothing')}
 				disabled={!session.row}
-				onclick={() => session.row && (deleting = { id: session.row.id, title: session.row.title })}
+				bind:this={chatButton}
+				onpointerdown={(event) => event.stopPropagation()}
+				onclick={openChatMenu}
 			>
-				<Icon name="trash" size="1rem" />
+				<Icon name="ellipsis" size="1rem" />
 			</button>
 			<button class="tool" title={t('web.agentScreen.backToConsole')} onclick={backToConsole}>
 				<Icon name="expand" size="1rem" />
 			</button>
 		</div>
 	</header>
-	<ContextMenu bind:this={historyMenu} items={historyItems} minWidth="18rem" />
+	<ContextMenu bind:this={historyMenu} items={history} minWidth="18rem" />
+	<ContextMenu bind:this={chatMenu} items={chatItems} minWidth="15rem" />
 
 	<AgentChat {session} {account} />
 </div>
 
-<AgentDeleteConfirm bind:target={deleting} />
+<AgentDialogs bind:this={dialogHost} branched={(id) => session.select(id)} />
 
 <style lang="scss">
 	.window {

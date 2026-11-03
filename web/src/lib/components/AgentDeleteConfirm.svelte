@@ -9,12 +9,13 @@
 	import ConfirmModal from './ConfirmModal.svelte';
 
 	/**
-	 * The question before a Mèo Béo conversation is deleted, shared by every
+	 * The question before a Mèo Béo conversation is deleted (or, for one shared
+	 * with this account, taken off its list), shared by every
 	 * place that offers it (the panel's header and history, the full-page screen,
 	 * a popped-out window). Setting `target` opens it; it clears itself once the
 	 * operator answers either way.
 	 */
-	let { target = $bindable() }: { target: { id: string; title: string } | null } = $props();
+	let { target = $bindable() }: { target: { id: string; title: string; leave?: boolean } | null } = $props();
 
 	let open = $state(false);
 
@@ -47,9 +48,9 @@
 
 <ConfirmModal
 	bind:open
-	title={t('web.agent.deleteTitle')}
-	lead={t('web.agent.deleteLead', { title: target?.title || t('web.agent.untitled') })}
-	notes={[t('web.agent.deleteNote')]}
-	confirmLabel={t('web.agent.deleteConfirm')}
+	title={target?.leave ? t('web.agentMenu.leaveTitle') : t('web.agent.deleteTitle')}
+	lead={t(target?.leave ? 'web.agentMenu.leaveLead' : 'web.agent.deleteLead', { title: target?.title || t('web.agent.untitled') })}
+	notes={[target?.leave ? t('web.agentMenu.leaveNote') : t('web.agent.deleteNote')]}
+	confirmLabel={target?.leave ? t('web.agentMenu.leave') : t('web.agent.deleteConfirm')}
 	onconfirm={confirm}
 />

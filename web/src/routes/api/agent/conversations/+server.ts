@@ -6,15 +6,17 @@ import { json, error } from '@sveltejs/kit';
 
 import { createAgentConversation, listAgentConversations } from '$core/agent';
 import { errorMessage, jsonBody } from '$lib/server/http';
-import { isRunning } from '$lib/server/agent/runner';
+import { runActor } from '$lib/server/agent/runner';
+import { conversationViewers } from '$lib/server/agent/presence';
 
 /**
- * The signed-in account's own conversations with Mèo Béo. Nobody lists anybody
- * else's: a conversation can hold what its owner asked about, and the MCP call
- * log already records every action taken on anyone's behalf.
+ * The conversations the signed-in account may open: its own, and those other
+ * accounts shared with it. Nobody lists anybody else's otherwise: a
+ * conversation can hold what its owner asked about, and the MCP call log
+ * already records every action taken on anyone's behalf.
  */
 
-function owner(locals: App.Locals): string {
+function account(locals: App.Locals): string {
 	if (!locals.account) {
 		throw error(401, 'sign in first');
 	}
@@ -22,15 +24,21 @@ function owner(locals: App.Locals): string {
 	return locals.account.username;
 }
 
-/** GET → conversations, newest first, each marked when a run is in progress. */
+/** GET → conversations, newest first, each with whether a run goes, as whom, and who has it open. */
 export async function GET({ locals }) {
-	const conversations = await listAgentConversations(owner(locals));
+	const conversations = await listAgentConversations(account(locals));
 
 	return json({
-		conversations: conversations.map((conversation) => ({
-			...conversation,
-			running: isRunning(conversation.id)
-		}))
+		conversations: conversations.map((conversation) => {
+			const actor = runActor(conversation.id);
+
+			return {
+				...conversation,
+				running: actor !== null,
+				actor,
+				viewers: conversationViewers(conversation.id)
+			};
+		})
 	});
 }
 
@@ -39,7 +47,7 @@ export async function POST({ request, locals }) {
 	const body = await jsonBody(request);
 
 	try {
-		return json({ conversation: await createAgentConversation(owner(locals), String(body.title ?? '')) });
+		return json({ conversation: await createAgentConversation(account(locals), String(body.title ?? '')) });
 	} catch (err) {
 		throw error(400, errorMessage(err));
 	}

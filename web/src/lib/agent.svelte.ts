@@ -23,7 +23,17 @@
 import { browser } from '$app/environment';
 import { api, del, patch, post } from '$lib/api';
 import { currentLanguage } from '$lib/i18n.svelte';
-import { AGENT_MODES, DEFAULT_AGENT_MODE, isAgentMode, isConsolePath, type AgentMode } from '$shared/agent';
+import {
+	AGENT_ASK_TOOL,
+	AGENT_MODES,
+	AGENT_TODO_TOOL,
+	DEFAULT_AGENT_MODE,
+	isAgentMode,
+	isConsolePath,
+	readTodos,
+	type AgentMode,
+	type AgentTodo
+} from '$shared/agent';
 import { goto } from '$app/navigation';
 
 export type ToolStatus = 'running' | 'awaiting' | 'ok' | 'error' | 'denied';
@@ -36,8 +46,16 @@ export type ChatItem =
 		at: number;
 		mode?: string;
 		attachments?: Array<{ name: string; size: number }>;
+		/** Where a rewind or a fork cuts; absent until the server has echoed the message */
+		uuid?: string;
+		/** What this window called the message before the echo gave it a uuid */
+		nonce?: string;
+		/** Waiting for another participant's answer to end */
+		queued?: boolean;
 	}
 	| { kind: 'assistant'; text: string; streaming: boolean }
+	/** What the model thought before answering, as the API summarised it */
+	| { kind: 'thinking'; text: string; streaming: boolean }
 	| {
 		kind: 'tool';
 		id: string;
@@ -46,10 +64,18 @@ export type ChatItem =
 		status: ToolStatus;
 		output?: string;
 		decidedBy?: string;
+		/** The helper call this one was made inside */
+		parent?: string;
+		/** A helper's tally while it works */
+		progress?: { tools: number; last?: string; ms: number };
+		/** Who decides it while it waits */
+		actor?: string;
 	}
 	| { kind: 'error'; text: string; code?: string }
 	/** A background task or a trigger reporting back; nobody's message */
-	| { kind: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number }
+	| { kind: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number; uuid?: string }
+	/** What one answer took */
+	| { kind: 'stats'; ms: number; tools: number; costUsd: number; at: number }
 	/** The session's history was summarised; `by` is absent when it did so on its own */
 	| { kind: 'compact'; trigger: 'manual' | 'auto'; by?: string; preTokens: number; postTokens?: number; at: number };
 
@@ -62,16 +88,57 @@ export interface ContextUsage {
 	at: number;
 }
 
+export type AgentRole = 'owner' | 'viewer' | 'collaborator';
+
+export interface AgentShare {
+	account: string;
+	role: 'viewer' | 'collaborator';
+	at: number;
+	by: string;
+}
+
 export interface ConversationRow {
 	id: string;
+	owner: string;
 	title: string;
 	createdAt: number;
 	updatedAt: number;
 	costUsd: number;
 	turns: number;
+	role: AgentRole;
+	pinned: boolean;
+	archived: boolean;
+	shares?: AgentShare[];
+	allowedTools: string[];
+	forkedFrom?: { id: string; title: string };
+	pendingFork?: { session: string; at?: string };
 	running?: boolean;
+	/** Who the running answer acts as */
+	actor?: string | null;
+	/** Who has it open right now */
+	viewers?: string[];
 	context?: ContextUsage;
 	compactions?: number;
+}
+
+/** A helper defined on this console, as the settings store it. */
+export interface HelperDefinition {
+	name: string;
+	description: string;
+	prompt: string;
+	/** Catalog tool names, or `group:<name>` for a whole group */
+	tools: string[];
+	/** Empty runs it on the conversation's model */
+	model: string;
+	enabled: boolean;
+}
+
+/** A helper the agent can hand work to, as the server lists it. */
+export interface HelperSummary {
+	name: string;
+	description: string;
+	builtin: boolean;
+	tools: number;
 }
 
 export interface AgentModelChoice {
@@ -90,6 +157,8 @@ export interface AgentState {
 		maxTurns: number;
 		executable: string;
 		bypassAllowed: boolean;
+		suggestions: boolean;
+		subagents: HelperDefinition[];
 	};
 	token: { id: string; name: string; enabled: boolean; tools: string[] } | null;
 	ready: boolean;
@@ -99,10 +168,18 @@ export interface AgentState {
 	modelsReported: boolean;
 	efforts: string[];
 	skills: Array<{ name: string; description: string }>;
+	/** The signed-in account, which decides whose browser answers a run's screen requests */
+	me: string | null;
+	helpers: HelperSummary[];
 }
 
 interface StoredEntry {
-	kind: 'user' | 'assistant' | 'tool' | 'error' | 'event' | 'compact';
+	kind: 'user' | 'assistant' | 'thinking' | 'tool' | 'error' | 'event' | 'compact' | 'stats';
+	uuid?: string;
+	parent?: string;
+	ms?: number;
+	tools?: number;
+	costUsd?: number;
 	source?: 'task' | 'trigger';
 	trigger?: 'manual' | 'auto';
 	by?: string;
@@ -124,12 +201,39 @@ interface StoredEntry {
 
 type StreamEvent =
 	| { type: 'state'; running: boolean }
-	| { type: 'user'; text: string; author: string; at: number; mode: string; attachments?: Array<{ name: string; size: number }> }
+	| {
+		type: 'user';
+		text: string;
+		author: string;
+		at: number;
+		mode: string;
+		attachments?: Array<{ name: string; size: number }>;
+		uuid: string;
+		nonce?: string;
+		queued?: boolean;
+	}
 	| { type: 'text'; delta: string }
 	| { type: 'assistant'; text: string }
-	| { type: 'tool'; id: string; name: string; input?: unknown; status: ToolStatus; output?: string; decidedBy?: string }
-	| { type: 'screenshot'; id: string }
-	| { type: 'navigate'; id: string; path: string }
+	| { type: 'thinking'; delta: string }
+	| { type: 'thought'; text: string }
+	| {
+		type: 'tool';
+		id: string;
+		name: string;
+		input?: unknown;
+		status: ToolStatus;
+		output?: string;
+		decidedBy?: string;
+		parent?: string;
+		actor?: string;
+	}
+	| { type: 'progress'; id: string; tools: number; last?: string; ms: number }
+	| { type: 'suggestion'; text: string }
+	| { type: 'stats'; at: number; ms: number; tools: number; costUsd: number }
+	| { type: 'actor'; actor: string }
+	| { type: 'presence'; viewers: string[] }
+	| { type: 'screenshot'; id: string; for?: string }
+	| { type: 'navigate'; id: string; path: string; for?: string }
 	| { type: 'error'; text: string; code?: string }
 	| { type: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number }
 	| { type: 'context'; context: ContextUsage }
@@ -191,12 +295,17 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 				author: entry.author ?? '',
 				at: entry.at,
 				mode: entry.mode,
-				attachments: entry.attachments
+				attachments: entry.attachments,
+				uuid: entry.uuid
 			});
 		} else if (entry.kind === 'assistant') {
 			items.push({ kind: 'assistant', text: entry.text ?? '', streaming: false });
+		} else if (entry.kind === 'thinking') {
+			items.push({ kind: 'thinking', text: entry.text ?? '', streaming: false });
+		} else if (entry.kind === 'stats') {
+			items.push({ kind: 'stats', ms: entry.ms ?? 0, tools: entry.tools ?? 0, costUsd: entry.costUsd ?? 0, at: entry.at });
 		} else if (entry.kind === 'event') {
-			items.push({ kind: 'event', source: entry.source ?? 'task', label: entry.label ?? '', text: entry.text ?? '', at: entry.at });
+			items.push({ kind: 'event', source: entry.source ?? 'task', label: entry.label ?? '', text: entry.text ?? '', at: entry.at, uuid: entry.uuid });
 		} else if (entry.kind === 'compact') {
 			items.push({
 				kind: 'compact',
@@ -214,7 +323,8 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 				input: entry.input,
 				status: entry.status ?? 'ok',
 				output: entry.output,
-				decidedBy: entry.decidedBy
+				decidedBy: entry.decidedBy,
+				parent: entry.parent
 			});
 		} else {
 			const text = entry.text ?? '';
@@ -350,7 +460,25 @@ export interface ChatSessionOptions {
 	relay?: boolean;
 }
 
-export type SendResult = { ok: boolean; joined?: boolean; error?: string; code?: string };
+export type SendResult = {
+	ok: boolean;
+	joined?: boolean;
+	outcome?: 'started' | 'joined' | 'queued';
+	error?: string;
+	code?: string;
+};
+
+/** What came with a decision on a waiting call besides yes or no. */
+export interface DecisionExtras {
+	answers?: Record<string, string>;
+	/** Stop asking about this tool in this conversation */
+	always?: boolean;
+	/** Why it was denied; the agent hears it */
+	reason?: string;
+}
+
+/** Numbers this window's messages until the server gives them a uuid; see `ChatItem.nonce`. */
+let nonceSeq = 0;
 
 /** One open chat; see the module comment. */
 export class ChatSession {
@@ -376,6 +504,18 @@ export class ChatSession {
 	/** How full the session's context is, once a response has measured it */
 	context: ContextUsage | null = $state(null);
 
+	/** What this account is to the conversation; a new chat is its own */
+	role: AgentRole = $state('owner');
+
+	/** Who the running answer acts as, and so who decides its calls */
+	actor: string | null = $state(null);
+
+	/** Who has the conversation open right now, this account included */
+	viewers: string[] = $state([]);
+
+	/** A likely next message the agent offered after its last answer */
+	suggestion: string | null = $state(null);
+
 	/** Whether a compaction was asked for or is running, until the session reports it */
 	compacting = $state(false);
 
@@ -399,6 +539,47 @@ export class ChatSession {
 	/** The conversation's row in the list, once it has one. */
 	get row(): ConversationRow | null {
 		return Agent.conversations.find((row) => row.id === this.conversationId) ?? null;
+	}
+
+	/** Whether this account may write here: send, approve its own calls, rewind */
+	get writable(): boolean {
+		return this.role !== 'viewer';
+	}
+
+	/** Whether a call waiting now is this account's to decide */
+	decides(item: Extract<ChatItem, { kind: 'tool' }>): boolean {
+		const who = item.actor ?? this.actor;
+
+		return !who || who === Agent.state?.me;
+	}
+
+	/**
+	 * The agent's checklist as its last `TodoWrite` call left it; null when it
+	 * kept none in this conversation, or when that list was finished before the
+	 * latest message, so a new question does not bring back the last job's list.
+	 */
+	get todos(): AgentTodo[] | null {
+		let since = false;
+
+		for (let index = this.items.length - 1; index >= 0; index--) {
+			const item = this.items[index]!;
+
+			if (item.kind === 'user') {
+				since = true;
+			}
+
+			if (item.kind === 'tool' && item.name === AGENT_TODO_TOOL && !item.parent) {
+				const list = readTodos(item.input);
+
+				if (!list?.length || (since && list.every((todo) => todo.status === 'completed'))) {
+					return null;
+				}
+
+				return list;
+			}
+		}
+
+		return null;
 	}
 
 	/** Stop following the run and leave the shell's registry; the chat's window is closing. */
@@ -501,6 +682,10 @@ export class ChatSession {
 		this.running = false;
 		this.context = null;
 		this.compacting = false;
+		this.role = 'owner';
+		this.actor = null;
+		this.viewers = [];
+		this.suggestion = null;
 
 		if (this.#persist) {
 			writeStored(CONVERSATION_KEY, id);
@@ -513,9 +698,12 @@ export class ChatSession {
 		this.loading = true;
 
 		try {
-			const data = await api<{ conversation: { entries: StoredEntry[]; context?: ContextUsage }; running: boolean }>(
-				`/agent/conversations/${id}`
-			);
+			const data = await api<{
+				conversation: { entries: StoredEntry[]; context?: ContextUsage; role: AgentRole };
+				running: boolean;
+				actor: string | null;
+				viewers: string[];
+			}>(`/agent/conversations/${id}`);
 
 			if (this.conversationId !== id) {
 				return;
@@ -523,6 +711,9 @@ export class ChatSession {
 
 			this.items = itemsFromEntries(data.conversation.entries);
 			this.context = data.conversation.context ?? null;
+			this.role = data.conversation.role;
+			this.actor = data.actor;
+			this.viewers = data.viewers;
 
 			// an idle chat still has to hear of a run a background task or trigger starts
 			if (data.running) {
@@ -542,15 +733,17 @@ export class ChatSession {
 	}
 
 	/**
-	 * Send a message. With nothing running it starts a run and shows the message
-	 * at once; mid-run it joins the run, and the message appears when the run
-	 * echoes it, which is also how every other window following it sees it.
+	 * Send a message. It shows at once; the stream echoes it (to every window
+	 * following the conversation), and the echo is matched to this copy by its
+	 * nonce, which is when it gets the uuid a rewind or fork cuts at. With
+	 * nothing running it starts a run; mid-run it joins this account's run, or
+	 * waits behind another participant's.
 	 */
 	async send(text: string, page?: string): Promise<SendResult> {
 		const message = text.trim();
 		const files = this.attachments.filter((file) => file.id && !file.error);
 
-		if ((!message && files.length === 0) || this.sending) {
+		if ((!message && files.length === 0) || this.sending || !this.writable) {
 			return { ok: false };
 		}
 
@@ -566,8 +759,10 @@ export class ChatSession {
 		}
 
 		const joining = this.running;
+		const nonce = `n${Date.now().toString(36)}${++nonceSeq}`;
 
 		this.sending = true;
+		this.suggestion = null;
 
 		try {
 			let id = this.conversationId;
@@ -583,19 +778,18 @@ export class ChatSession {
 				}
 			}
 
-			if (!joining) {
-				this.items = [
-					...this.items,
-					{
-						kind: 'user',
-						text: message,
-						author: '',
-						at: Date.now(),
-						mode: this.mode,
-						attachments: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined
-					}
-				];
-			}
+			this.items = [
+				...this.items,
+				{
+					kind: 'user',
+					text: message,
+					author: Agent.state?.me ?? '',
+					at: Date.now(),
+					mode: this.mode,
+					attachments: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined,
+					nonce
+				}
+			];
 
 			this.attachments = [];
 
@@ -609,33 +803,21 @@ export class ChatSession {
 					model: this.model || (joining ? settings?.model : undefined),
 					effort: this.effort || (joining ? settings?.effort : undefined),
 					page: this.sharePage ? page : undefined,
-					attachments: files
+					attachments: files,
+					nonce
 				}
 			).catch((err: Error): SendResult => ({ ok: false, error: err.message }));
 
 			if (!result.ok) {
-				this.items = [...this.items, { kind: 'error', text: result.error ?? '', code: result.code }];
+				this.items = [
+					...this.items.filter((item) => !(item.kind === 'user' && item.nonce === nonce && !item.uuid)),
+					{ kind: 'error', text: result.error ?? '', code: result.code }
+				];
 
 				return result;
 			}
 
-			// the run ended just before the message reached it, so it started a new
-			// one, whose first message is not echoed: show it here after all
-			if (joining && !result.joined) {
-				this.items = [
-					...this.items,
-					{
-						kind: 'user',
-						text: message,
-						author: '',
-						at: Date.now(),
-						mode: this.mode,
-						attachments: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined
-					}
-				];
-			}
-
-			if (!joining || !result.joined || !this.#source) {
+			if (!this.#source) {
 				this.running = true;
 				this.#attach(id);
 			}
@@ -648,13 +830,102 @@ export class ChatSession {
 		}
 	}
 
-	/** Allow or deny a waiting call; `answers` answers a question the agent asked. */
-	async decide(toolUseId: string, allow: boolean, tool: string, answers?: Record<string, string>): Promise<void> {
+	/**
+	 * Take the conversation back to before one of its messages, dropping that
+	 * message and everything after it; with `text`, send that in its place
+	 * ("edit and resend"). The agent forgets the dropped part; what it did on
+	 * the cluster stays done.
+	 */
+	async rewind(before: string, text?: string, page?: string): Promise<SendResult> {
+		const id = this.conversationId;
+
+		if (!id || this.running || !this.writable) {
+			return { ok: false };
+		}
+
+		const result = await post<SendResult>(`/agent/conversations/${id}/rewind`, { before })
+			.catch((err: Error): SendResult => ({ ok: false, error: err.message }));
+
+		if (!result.ok) {
+			this.items = [...this.items, { kind: 'error', text: result.error ?? '', code: result.code }];
+
+			return result;
+		}
+
+		await this.select(id);
+
+		return text?.trim()
+			? await this.send(text, page)
+			: result;
+	}
+
+	/** Ask the last question again: rewind to before it and send the same words. */
+	async retry(page?: string): Promise<SendResult> {
+		const last = [...this.items].reverse().find(
+			(item): item is Extract<ChatItem, { kind: 'user' }> => item.kind === 'user' && !!item.uuid
+		);
+
+		if (!last?.uuid) {
+			return { ok: false };
+		}
+
+		return await this.rewind(last.uuid, last.text, page);
+	}
+
+	/**
+	 * Branch the conversation into a new one this account owns, keeping what
+	 * came before the message `before` names (all of it when omitted). Resolves
+	 * to the new conversation's id.
+	 */
+	async fork(before?: string): Promise<string | null> {
+		const id = this.conversationId;
+
+		if (!id) {
+			return null;
+		}
+
+		const result = await post<{ conversation: ConversationRow }>(`/agent/conversations/${id}/fork`, before ? { before } : {});
+
+		await Agent.loadConversations().catch(() => {});
+
+		return result.conversation.id;
+	}
+
+	/** Allow or deny a waiting call; `extras` answers a question, allows it for the chat, or says why not. */
+	async decide(toolUseId: string, allow: boolean, tool: string, extras: DecisionExtras = {}): Promise<void> {
 		if (!this.conversationId) {
 			return;
 		}
 
-		await post(`/agent/conversations/${this.conversationId}/approve`, { toolUseId, allow, tool, ...(answers ? { answers } : {}) });
+		await post(`/agent/conversations/${this.conversationId}/approve`, { toolUseId, allow, tool, ...extras });
+
+		if (extras.always) {
+			void Agent.loadConversations().catch(() => {});
+		}
+	}
+
+	/** Approve every call waiting on this account at once. */
+	async decideAll(allow: boolean): Promise<void> {
+		const waiting = this.items.filter(
+			(item): item is Extract<ChatItem, { kind: 'tool' }> =>
+				item.kind === 'tool' && item.status === 'awaiting' && item.name !== AGENT_ASK_TOOL && this.decides(item)
+		);
+
+		await Promise.all(waiting.map((item) => this.decide(item.id, allow, item.name).catch(() => {})));
+	}
+
+	/** Stop allowing a tool for the chat, so it asks again. */
+	async forbid(tool: string): Promise<void> {
+		const row = this.row;
+
+		if (!this.conversationId || !row) {
+			return;
+		}
+
+		await patch(`/agent/conversations/${this.conversationId}`, {
+			allowedTools: row.allowedTools.filter((name) => name !== tool)
+		});
+		await Agent.loadConversations();
 	}
 
 	/**
@@ -735,7 +1006,13 @@ export class ChatSession {
 		this.#watch = watch;
 
 		watch.onmessage = (event) => {
-			const data = JSON.parse(event.data) as { type: string };
+			const data = JSON.parse(event.data) as { type: string; viewers?: string[] };
+
+			if (data.type === 'presence' && this.conversationId === id) {
+				this.viewers = data.viewers ?? [];
+
+				return;
+			}
 
 			if (data.type !== 'run') {
 				return;
@@ -804,39 +1081,57 @@ export class ChatSession {
 		};
 	}
 
-	#lastStreaming(): number {
-		for (let index = this.items.length - 1; index >= 0; index--) {
-			const item = this.items[index]!;
+	#lastStreaming(kind: 'assistant' | 'thinking'): number {
+		const last = this.items.length - 1;
+		const item = this.items[last];
 
-			if (item.kind === 'assistant' && item.streaming) {
-				return index;
-			}
+		return item && item.kind === kind && item.streaming
+			? last
+			: -1;
+	}
 
-			if (item.kind !== 'assistant') {
-				return -1;
-			}
-		}
-
-		return -1;
+	#tool(id: string): Extract<ChatItem, { kind: 'tool' }> | undefined {
+		return this.items.find(
+			(item): item is Extract<ChatItem, { kind: 'tool' }> => item.kind === 'tool' && item.id === id
+		);
 	}
 
 	#apply(event: StreamEvent, conversation: string): void {
 		switch (event.type) {
 			case 'user': {
-				this.items.push({
-					kind: 'user',
-					text: event.text,
-					author: event.author,
-					at: event.at,
-					mode: event.mode,
-					attachments: event.attachments
-				});
+				// the echo of a message this window shows already: by its nonce while it was
+				// sent from here, by its uuid when the run replays it after a reconnect
+				const shown = this.items.find(
+					(item): item is Extract<ChatItem, { kind: 'user' }> =>
+						item.kind === 'user' && ((!!event.nonce && item.nonce === event.nonce) || item.uuid === event.uuid)
+				);
+
+				if (shown) {
+					shown.uuid = event.uuid;
+					shown.queued = event.queued;
+					shown.author = event.author;
+				} else {
+					this.items.push({
+						kind: 'user',
+						text: event.text,
+						author: event.author,
+						at: event.at,
+						mode: event.mode,
+						attachments: event.attachments,
+						uuid: event.uuid,
+						queued: event.queued
+					});
+				}
+
+				if (!event.queued) {
+					this.suggestion = null;
+				}
 
 				break;
 			}
 
 			case 'text': {
-				const index = this.#lastStreaming();
+				const index = this.#lastStreaming('assistant');
 
 				if (index === -1) {
 					this.items.push({ kind: 'assistant', text: event.delta, streaming: true });
@@ -849,8 +1144,34 @@ export class ChatSession {
 				break;
 			}
 
+			case 'thinking': {
+				const index = this.#lastStreaming('thinking');
+
+				if (index === -1) {
+					this.items.push({ kind: 'thinking', text: event.delta, streaming: true });
+				} else {
+					const item = this.items[index] as Extract<ChatItem, { kind: 'thinking' }>;
+
+					item.text += event.delta;
+				}
+
+				break;
+			}
+
+			case 'thought': {
+				const index = this.#lastStreaming('thinking');
+
+				if (index === -1) {
+					this.items.push({ kind: 'thinking', text: event.text, streaming: false });
+				} else {
+					this.items[index] = { kind: 'thinking', text: event.text, streaming: false };
+				}
+
+				break;
+			}
+
 			case 'assistant': {
-				const index = this.#lastStreaming();
+				const index = this.#lastStreaming('assistant');
 
 				if (index === -1) {
 					this.items.push({ kind: 'assistant', text: event.text, streaming: false });
@@ -861,7 +1182,13 @@ export class ChatSession {
 				break;
 			}
 
+			// only the browser of the account the run acts for answers; a viewer's
+			// window following the same run must not show the agent its screen
 			case 'screenshot': {
+				if (event.for && event.for !== Agent.state?.me) {
+					break;
+				}
+
 				if (this.#relay) {
 					relayToConsole({ type: 'screenshot', conversation, request: event.id });
 				} else {
@@ -872,6 +1199,10 @@ export class ChatSession {
 			}
 
 			case 'navigate': {
+				if (event.for && event.for !== Agent.state?.me) {
+					break;
+				}
+
 				if (this.#relay) {
 					relayToConsole({ type: 'navigate', conversation, request: event.id, path: event.path });
 				} else {
@@ -882,9 +1213,7 @@ export class ChatSession {
 			}
 
 			case 'tool': {
-				const existing = this.items.find(
-					(item): item is Extract<ChatItem, { kind: 'tool' }> => item.kind === 'tool' && item.id === event.id
-				);
+				const existing = this.#tool(event.id);
 
 				if (existing) {
 					existing.status = event.status;
@@ -900,6 +1229,10 @@ export class ChatSession {
 					if (event.decidedBy !== undefined) {
 						existing.decidedBy = event.decidedBy;
 					}
+
+					if (event.actor !== undefined) {
+						existing.actor = event.actor;
+					}
 				} else {
 					this.items.push({
 						kind: 'tool',
@@ -908,12 +1241,40 @@ export class ChatSession {
 						input: event.input,
 						status: event.status,
 						output: event.output,
-						decidedBy: event.decidedBy
+						decidedBy: event.decidedBy,
+						parent: event.parent,
+						actor: event.actor
 					});
 				}
 
 				break;
 			}
+
+			case 'progress': {
+				const call = this.#tool(event.id);
+
+				if (call) {
+					call.progress = { tools: event.tools, last: event.last, ms: event.ms };
+				}
+
+				break;
+			}
+
+			case 'suggestion':
+				this.suggestion = event.text;
+				break;
+
+			case 'stats':
+				this.items.push({ kind: 'stats', ms: event.ms, tools: event.tools, costUsd: event.costUsd, at: event.at });
+				break;
+
+			case 'actor':
+				this.actor = event.actor;
+				break;
+
+			case 'presence':
+				this.viewers = event.viewers;
+				break;
 
 			case 'error':
 				this.items.push({ kind: 'error', text: event.text, code: event.code });
@@ -952,8 +1313,10 @@ export class ChatSession {
 				this.running = false;
 				this.compacting = false;
 
+				this.actor = null;
+
 				for (const item of this.items) {
-					if (item.kind === 'assistant') {
+					if (item.kind === 'assistant' || item.kind === 'thinking') {
 						item.streaming = false;
 					}
 				}
@@ -1128,7 +1491,31 @@ class AgentShell {
 		await this.loadConversations();
 	}
 
-	/** Delete a conversation; every chat in this window showing it starts over. */
+	/** Pin or archive a conversation in this account's own list. */
+	async flag(id: string, flags: { pinned?: boolean; archived?: boolean }): Promise<void> {
+		await patch(`/agent/conversations/${id}`, flags);
+		await this.loadConversations();
+	}
+
+	/** Branch a whole conversation into a new one this account owns; resolves to its id. */
+	async branch(id: string): Promise<string> {
+		const result = await post<{ conversation: ConversationRow }>(`/agent/conversations/${id}/fork`, {});
+
+		await this.loadConversations();
+
+		return result.conversation.id;
+	}
+
+	/** Share a conversation with an account, change its role, or (`null`) stop sharing with it. */
+	async share(id: string, account: string, role: 'viewer' | 'collaborator' | null): Promise<void> {
+		await post(`/agent/conversations/${id}/share`, { account, role });
+		await this.loadConversations();
+	}
+
+	/**
+	 * Delete a conversation (its owner) or take it off this account's list
+	 * (anyone it was shared with); every chat in this window showing it starts over.
+	 */
 	async remove(id: string): Promise<void> {
 		await del(`/agent/conversations/${id}`);
 

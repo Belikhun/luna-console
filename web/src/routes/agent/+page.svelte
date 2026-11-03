@@ -16,8 +16,13 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import AgentChat from '$lib/components/AgentChat.svelte';
-	import AgentDeleteConfirm from '$lib/components/AgentDeleteConfirm.svelte';
+	import AgentDialogs from '$lib/components/AgentDialogs.svelte';
+	import SearchInput from '$lib/components/SearchInput.svelte';
+	import { bucketOf, conversationVerbs, CONVERSATION_BUCKETS } from '$lib/components/agentmenu';
+	import type { ConversationBucket } from '$lib/components/agentmenu';
+	import type { ConversationRow } from '$lib/agent.svelte';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { score } from '$lib/search/match';
 
 	/**
 	 * Mèo Béo on a screen of its own: the conversations down the left, and up to
@@ -26,6 +31,10 @@
 	 * link brings the same ones back. A chat opened here follows its run like the
 	 * docked panel does; nothing stops the same conversation from being open in
 	 * the panel or a window too, since every view replays the same stream.
+	 *
+	 * The list is searchable and sorted the way VS Code sorts chat sessions:
+	 * pinned first, then by when each last changed. A filter switches between
+	 * this account's own, those shared with it, and the archived ones.
 	 */
 
 	/** More than three and each chat is narrower than the docked panel */
@@ -44,7 +53,72 @@
 
 	let listMenu: ContextMenu | undefined = $state();
 	let menuFor: string | null = $state(null);
-	let deleting: { id: string; title: string } | null = $state(null);
+	let dialogHost: AgentDialogs | undefined = $state();
+
+	/** Which conversations the list shows */
+	type ListFilter = 'all' | 'mine' | 'shared' | 'archived';
+
+	let query = $state('');
+	let filter: ListFilter = $state('all');
+
+	const FILTERS: ListFilter[] = ['all', 'mine', 'shared', 'archived'];
+
+	function passes(row: ConversationRow): boolean {
+		switch (filter) {
+			case 'archived':
+				return row.archived;
+
+			case 'mine':
+				return !row.archived && row.role === 'owner';
+
+			case 'shared':
+				return !row.archived && (row.role !== 'owner' || (row.shares?.length ?? 0) > 0);
+
+			default:
+				return !row.archived;
+		}
+	}
+
+	/** The list as it shows: filtered, searched (best match first), else bucketed by date */
+	const listed = $derived.by(() => {
+		const rows = Agent.conversations.filter(passes);
+		const term = query.trim();
+
+		if (term) {
+			return [{
+				bucket: null,
+				rows: rows
+					.map((row) => ({ row, rank: score(`${row.title} ${row.owner}`, term) }))
+					.filter((entry) => entry.rank > 0)
+					.sort((left, right) => right.rank - left.rank)
+					.map((entry) => entry.row)
+			}];
+		}
+
+		const now = new Date();
+		const buckets = new Map<ConversationBucket, ConversationRow[]>();
+
+		for (const row of rows) {
+			const bucket = bucketOf(row, now);
+
+			buckets.set(bucket, [...(buckets.get(bucket) ?? []), row]);
+		}
+
+		return CONVERSATION_BUCKETS
+			.filter((bucket) => buckets.has(bucket))
+			.map((bucket) => ({ bucket, rows: buckets.get(bucket)! }));
+	});
+
+	const listedCount = $derived(listed.reduce((sum, section) => sum + section.rows.length, 0));
+
+	/** Open a branch: beside the focused chat when there is room, else in its place. */
+	function openBranch(id: string): void {
+		if (panes.length < MAX_PANES) {
+			addPane(id);
+		} else {
+			void panes[active]?.session.select(id);
+		}
+	}
 
 	function addPane(conversation: string | null): Pane {
 		const session = new ChatSession();
@@ -169,14 +243,7 @@
 			},
 			{ label: t('web.agent.popOut'), icon: 'arrowUpRightFromSquare', action: () => Agent.popOut(row.id) },
 			{ separator: true },
-			{
-				label: t('web.agent.deleteChat'),
-				icon: 'trash',
-				color: 'danger',
-				action: () => {
-					deleting = { id: row.id, title: row.title };
-				}
-			}
+			...(dialogHost ? conversationVerbs(row, dialogHost.dialogs) : [])
 		];
 
 		return items;
@@ -205,19 +272,7 @@
 				disabled: panes.length === 1,
 				action: () => closePane(index)
 			},
-			{ separator: true },
-			{
-				label: t('web.agent.deleteChat'),
-				icon: 'trash',
-				color: 'danger',
-				disabled: !row,
-				hint: row ? undefined : t('web.agent.deleteNothing'),
-				action: () => {
-					if (row) {
-						deleting = { id: row.id, title: row.title };
-					}
-				}
-			}
+			...(row && dialogHost ? [{ separator: true }, ...conversationVerbs(row, dialogHost.dialogs)] : [])
 		];
 	}
 
@@ -266,29 +321,54 @@
 	{/snippet}
 </PageHeader>
 
-<div class="screen" style:--panes={panes.length}>
-	<Panel title={t('web.agent.history')} count={Agent.conversations.length} fill flush>
+<div class="screen agent-screen" style:--panes={panes.length}>
+	<Panel title={t('web.agent.history')} count={listedCount} fill flush>
+		<div class="tools">
+			<SearchInput bind:value={query} width="100%" placeholder={t('web.agentScreen.search')} />
+			<div class="filters" role="tablist">
+				{#each FILTERS as key (key)}
+					<button role="tab" class="filter" class:on={filter === key} aria-selected={filter === key} onclick={() => (filter = key)}>
+						{t(`web.agentScreen.filter_${key}`)}
+					</button>
+				{/each}
+			</div>
+		</div>
 		<div class="list">
-			{#if Agent.conversations.length === 0}
-				<p class="dim empty">{t('web.agent.noHistory')}</p>
+			{#if listedCount === 0}
+				<p class="dim empty">{query.trim() ? t('web.agentScreen.noMatch') : t('web.agent.noHistory')}</p>
 			{/if}
-			{#each Agent.conversations as row (row.id)}
-				{@const shown = panes.findIndex((pane) => pane.session.conversationId === row.id)}
-				<button
-					class="conv"
-					class:shown={shown >= 0}
-					class:focused={shown >= 0 && shown === active}
-					onclick={() => openHere(row.id)}
-					oncontextmenu={(event) => openListMenu(event, row.id)}
-				>
-					<span class="conv-title">
-						{#if row.running}
-							<Icon name="paw" size="0.75rem" style="solid" />
-						{/if}
-						{row.title || t('web.agent.untitled')}
-					</span>
-					<span class="conv-when">{fmtDateTime(row.updatedAt)}</span>
-				</button>
+			{#each listed as section (section.bucket ?? 'search')}
+				{#if section.bucket}
+					<div class="bucket">{t(`web.agentScreen.bucket_${section.bucket}`)}</div>
+				{/if}
+				{#each section.rows as row (row.id)}
+					{@const shown = panes.findIndex((pane) => pane.session.conversationId === row.id)}
+					<button
+						class="conv"
+						class:shown={shown >= 0}
+						class:focused={shown >= 0 && shown === active}
+						onclick={() => openHere(row.id)}
+						oncontextmenu={(event) => openListMenu(event, row.id)}
+					>
+						<span class="conv-title">
+							{#if row.running}
+								<Icon name="paw" size="0.75rem" style="solid" />
+							{:else if row.pinned}
+								<Icon name="thumbtack" size="0.75rem" style="solid" />
+							{/if}
+							<span class="conv-name">{row.title || t('web.agent.untitled')}</span>
+						</span>
+						<span class="conv-when">
+							{#if row.role !== 'owner'}
+								<Icon name="userGroup" size="0.625rem" />
+								{t('web.agentScreen.sharedBy', { owner: row.owner })} ·
+							{:else if row.shares?.length}
+								<Icon name="userGroup" size="0.625rem" />
+							{/if}
+							{fmtDateTime(row.updatedAt)}
+						</span>
+					</button>
+				{/each}
 			{/each}
 		</div>
 	</Panel>
@@ -311,7 +391,7 @@
 							</button>
 						{/if}
 					{/snippet}
-					<AgentChat session={pane.session} {account} />
+					<AgentChat session={pane.session} {account} onbranch={openBranch} />
 				</Panel>
 			</div>
 		{/each}
@@ -320,18 +400,28 @@
 
 <ContextMenu bind:this={listMenu} items={listItems} minWidth="15rem" />
 <ContextMenu bind:this={paneMenu} items={paneMenuItems} minWidth="15rem" />
-<AgentDeleteConfirm bind:target={deleting} />
+<AgentDialogs bind:this={dialogHost} branched={openBranch} />
 
 <style lang="scss">
+	// the content area's bottom padding is room to scroll past the last row of a
+	// list; a screen that fits the viewport has nothing to scroll, so it keeps
+	// only a gap the size of the panels' own
+	:global(main.content:has(> .agent-screen)) {
+		padding-bottom: 1rem;
+	}
+
 	.screen {
 		display: grid;
 		grid-template-columns: 17rem minmax(0, 1fr);
 		gap: 0.75rem;
 
-		// fills the viewport below the page chrome (top nav, breadcrumbs, page
-		// header) like the files screen; --split-bottom is the terminal drawer's
-		// height, so opening it shortens the chats instead of covering them
-		height: calc(100vh - 13.75rem - var(--split-bottom));
+		// fills the viewport below the page chrome like the files screen. Measured
+		// 2026-11-03 at 222px: top bar and breadcrumbs 90, the content area's
+		// padding 20 + 16 (cut from 40 below), the page header 52 and its gap 16,
+		// the status bar 28; 14rem is the next step on the scale. --split-bottom
+		// is the terminal drawer's height, so opening it shortens the chats
+		// instead of covering them
+		height: calc(100vh - 14rem - var(--split-bottom));
 		min-height: 30rem;
 
 		@include below($bp-medium) {
@@ -339,6 +429,48 @@
 			grid-template-rows: 12rem minmax(0, 1fr);
 			height: auto;
 		}
+	}
+
+	.tools {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		border-bottom: 0.1rem solid var(--border-divider);
+	}
+
+	.filters {
+		display: flex;
+		gap: 0.25rem;
+	}
+
+	.filter {
+		@include bare-button;
+
+		flex: 1;
+		padding: 0.25rem 0;
+		border-radius: 0.375rem;
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+
+		&:hover {
+			background: var(--bg-hover);
+			color: var(--text-heading);
+		}
+
+		&.on {
+			background: var(--bg-selected);
+			color: var(--link);
+		}
+	}
+
+	.bucket {
+		padding: 0.75rem 1rem 0.25rem;
+		font-size: 0.6875rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.0625em;
+		color: var(--text-disabled);
 	}
 
 	.list {
@@ -378,9 +510,13 @@
 		}
 	}
 
-	.conv-title {
+	.conv-name {
 		@include ellipsis;
 
+		min-width: 0;
+	}
+
+	.conv-title {
 		display: flex;
 		align-items: center;
 		gap: 0.375rem;
@@ -390,6 +526,11 @@
 	}
 
 	.conv-when {
+		@include ellipsis;
+
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
 		color: var(--text-secondary);
 		font-size: 0.75rem;
 	}

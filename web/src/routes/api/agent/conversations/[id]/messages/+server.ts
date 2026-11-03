@@ -10,14 +10,17 @@ import { errorMessage, jsonBody } from '$lib/server/http';
 import { journal } from '$lib/server/session';
 import { loopbackOrigin } from '$lib/server/agent/origin';
 import { AgentRunError, startRun } from '$lib/server/agent/runner';
+import type { StartOutcome } from '$lib/server/agent/runner';
 import { DEFAULT_AGENT_MODE, isAgentMode } from '$shared/agent';
 
 /**
- * POST { text, locale?, mode?, model?, effort?, page? } → { ok, joined } once the
- * run is under way, or once the message joined the run already going (`joined`,
- * in which case the stream echoes it); the answer arrives on the stream. `model` and `effort` override the
- * settings for this message, and `page` is the console path the operator chose
- * to share.
+ * POST { text, locale?, mode?, model?, effort?, page?, nonce? } → { ok, outcome }
+ * once the run is under way (`started`), once the message joined the run the
+ * sender already has going (`joined`), or once it is queued behind another
+ * participant's run (`queued`). The stream echoes the message either way,
+ * carrying `nonce` back so the sender's window can match it to what it shows.
+ * `model` and `effort` override the settings for this message, and `page` is
+ * the console path the operator chose to share.
  */
 export async function POST({ params, request, url, locals }) {
 	if (!locals.account) {
@@ -57,12 +60,13 @@ export async function POST({ params, request, url, locals }) {
 			}))
 		: [];
 
-	let joined = false;
+	let outcome: StartOutcome;
 
 	try {
-		joined = await startRun({
+		outcome = await startRun({
 			conversationId: params.id,
-			owner: actor,
+			actor,
+			nonce: typeof body.nonce === 'string' ? body.nonce.slice(0, 64) : undefined,
 			text,
 			locale: body.locale === 'vi' ? 'Vietnamese' : 'English',
 			origin: loopbackOrigin(url),
@@ -87,5 +91,5 @@ export async function POST({ params, request, url, locals }) {
 		journal(`Mèo Béo running in bypass mode in ${params.id}`, { actor, level: 'warn', detail: text.slice(0, 300) });
 	}
 
-	return json({ ok: true, joined });
+	return json({ ok: true, outcome, joined: outcome === 'joined' });
 }

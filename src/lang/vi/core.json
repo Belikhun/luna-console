@@ -807,7 +807,19 @@
 		"instructionsTooLong": "Chỉ dẫn bổ sung tối đa {max} ký tự",
 		"badMaxTurns": "Số lượt mỗi tin nhắn phải từ 1 đến {max}",
 		"unknownConversation": "Không có cuộc trò chuyện {id}",
-		"badEffort": "Mức effort không xác định: {effort}"
+		"badEffort": "Mức effort không xác định: {effort}",
+		"badSubagents": "Danh sách trợ thủ không hợp lệ",
+		"tooManySubagents": "Chỉ định nghĩa được tối đa {max} trợ thủ",
+		"badSubagentName": "\"{name}\" không dùng được làm tên trợ thủ: chỉ chữ thường, số và gạch ngang, và không trùng tên có sẵn",
+		"duplicateSubagent": "Có hai trợ thủ cùng tên \"{name}\"",
+		"badSubagentText": "Trợ thủ \"{name}\" cần mô tả (tối đa 300 ký tự) và hướng dẫn",
+		"badSubagentTools": "Trợ thủ \"{name}\" có tên công cụ không hợp lệ",
+		"notAllowedHere": "Với vai trò {role} trong cuộc trò chuyện này, bạn không làm được việc đó",
+		"cannotShare": "Không chia sẻ được với \"{account}\"",
+		"tooManyShares": "Một cuộc trò chuyện chỉ chia sẻ được với tối đa {max} tài khoản",
+		"cannotFork": "Phần này của cuộc trò chuyện được lưu trước khi có tính năng rẽ nhánh nên không rẽ nhánh từ đây được",
+		"forkTitle": "{title} (nhánh)",
+		"unknownMessage": "Tin nhắn đó không còn trong cuộc trò chuyện"
 	},
 	"jarinstall": {
 		"badScheme": "Chỉ cài được từ URL http hoặc https",
@@ -1132,7 +1144,8 @@
 			"agent": {
 				"Describe": "Xem cài đặt của Mèo Béo",
 				"Chat": "Trò chuyện với Mèo Béo",
-				"Configure": "Đổi cài đặt và thông tin đăng nhập của Mèo Béo"
+				"Configure": "Đổi cài đặt và thông tin đăng nhập của Mèo Béo",
+				"Share": "Chia sẻ cuộc trò chuyện của mình với tài khoản khác"
 			},
 			"chat": {
 				"Read": "Đọc chat của một máy chủ, cùng log và console của nó (chứa cùng các dòng đó)",

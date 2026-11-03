@@ -2,35 +2,48 @@
 // Proprietary software: use, copying, modification and distribution are
 // prohibited without written permission. See LICENSE at the repository root.
 
-import { error } from '@sveltejs/kit';
-
 import { SSE_HEADERS, closeQuietly } from '$lib/server/http';
 import { followRun } from '$lib/server/agent/runner';
 import type { AgentEvent } from '$lib/server/agent/runner';
+import { enterConversation } from '$lib/server/agent/presence';
+import { conversationFor, REDACTED, toolVisibility } from '$lib/server/agent/sharing';
 
 /** Heartbeat interval; nginx drops an SSE connection that says nothing for a minute. */
 const PING_MS = 20_000;
+
+type Frame = AgentEvent | { type: 'idle' } | { type: 'ping' } | { type: 'presence'; viewers: string[] };
 
 /**
  * GET → SSE of the conversation's live run: every event so far, then each new
  * one, closing after `done`. A conversation with nothing running answers one
  * `idle` state and closes, so the panel knows the saved transcript is complete.
+ *
+ * Every participant follows the same run, and each hears who else has the
+ * conversation open (`presence`). A luna tool's output reaches only the
+ * account whose run made the call, and its input anyone whose own policies
+ * would allow it (`sharing.ts`); the check is asynchronous, so events go
+ * through one chain to keep their order.
  */
 export async function GET({ params, locals }) {
-	if (!locals.account) {
-		throw error(401, 'sign in first');
-	}
-
-	const owner = locals.account.username;
+	const { account, conversation } = await conversationFor(locals, params.id);
+	const sight = toolVisibility(account, conversation);
 	let stop: (() => void) | undefined;
+	let leave: (() => void) | undefined;
 
 	const stream = new ReadableStream({
 		start(controller) {
 			const encoder = new TextEncoder();
+			let chain: Promise<unknown> = Promise.resolve();
+			let ping: ReturnType<typeof setInterval> | undefined;
+			let closed = false;
 
-			const send = (event: AgentEvent | { type: 'idle' } | { type: 'ping' }): boolean => {
+			const write = (frame: Frame): boolean => {
+				if (closed) {
+					return false;
+				}
+
 				try {
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
 
 					return true;
 				} catch {
@@ -38,37 +51,60 @@ export async function GET({ params, locals }) {
 				}
 			};
 
-			let ping: ReturnType<typeof setInterval> | undefined;
-
 			const finish = (): void => {
-				clearInterval(ping);
-				stop?.();
-				closeQuietly(controller);
-			};
-
-			const unfollow = followRun(params.id, owner, (event) => {
-				if (!send(event)) {
-					finish();
-
+				if (closed) {
 					return;
 				}
 
-				if (event.type === 'done') {
-					// queueMicrotask: followRun replays synchronously, before `stop` is assigned
-					queueMicrotask(finish);
+				closed = true;
+				clearInterval(ping);
+				stop?.();
+				leave?.();
+				closeQuietly(controller);
+			};
+
+			const shape = async (event: AgentEvent): Promise<AgentEvent> => {
+				if (event.type !== 'tool' || (event.input === undefined && event.output === undefined)) {
+					return event;
 				}
+
+				const seen = await sight(event.id, event.name, event.input, event.actor);
+				const { input, output, ...rest } = event;
+
+				return {
+					...rest,
+					...(input !== undefined && seen.input ? { input } : {}),
+					...(output !== undefined ? { output: seen.output ? output : REDACTED } : {})
+				};
+			};
+
+			const unfollow = followRun(params.id, (event) => {
+				chain = chain.then(async () => {
+					if (!write(await shape(event))) {
+						finish();
+
+						return;
+					}
+
+					if (event.type === 'done') {
+						finish();
+					}
+				});
 			});
 
 			if (!unfollow) {
-				send({ type: 'idle' });
+				write({ type: 'idle' });
 				closeQuietly(controller);
 
 				return;
 			}
 
 			stop = unfollow;
+			leave = enterConversation(params.id, account, (viewers) => {
+				chain = chain.then(() => write({ type: 'presence', viewers }));
+			});
 			ping = setInterval(() => {
-				if (!send({ type: 'ping' })) {
+				if (!write({ type: 'ping' })) {
 					finish();
 				}
 			}, PING_MS);
@@ -76,6 +112,7 @@ export async function GET({ params, locals }) {
 
 		cancel() {
 			stop?.();
+			leave?.();
 		}
 	});
 

@@ -11,6 +11,7 @@ import { findClaudeExecutable } from '$lib/server/agent/executable';
 import { knowledgeFor } from '$core/mcp';
 import { can } from '$lib/server/authz';
 import { knowledgeVisible } from '$lib/server/mcp/iam';
+import { subagentSummaries } from '$lib/server/agent/subagents';
 
 /**
  * Mèo Béo's state for the panel and its settings: whether it can answer, the
@@ -52,7 +53,7 @@ export async function GET({ locals }) {
 				...status,
 				credential: null,
 				token: null,
-				settings: { ...status.settings, instructions: '', executable: '' },
+				settings: { ...status.settings, instructions: '', executable: '', subagents: [] },
 				executable: { source: '' }
 			};
 
@@ -61,18 +62,20 @@ export async function GET({ locals }) {
 		models: reported ?? AGENT_MODELS.map((value) => ({ value, label: modelName(value), description: '' })),
 		modelsReported: reported !== null,
 		efforts: AGENT_EFFORTS,
+		me: locals.account?.username ?? null,
+		helpers: subagentSummaries(status.settings.subagents, status.token?.tools ?? []),
 		skills: skills
 			.filter((skill) => skill.enabled)
 			.map((skill) => ({ name: skill.title, description: skill.description }))
 	});
 }
 
-/** PATCH { enabled?, model?, effort?, instructions?, maxTurns?, executable?, bypassAllowed? } → status. */
+/** PATCH { enabled?, model?, effort?, instructions?, maxTurns?, executable?, bypassAllowed?, suggestions?, subagents? } → status. */
 export async function PATCH({ request, locals }) {
 	const body = await jsonBody(request);
 	const patch: AgentSettingsPatch = {};
 
-	for (const key of ['enabled', 'model', 'effort', 'instructions', 'maxTurns', 'executable', 'bypassAllowed'] as const) {
+	for (const key of ['enabled', 'model', 'effort', 'instructions', 'maxTurns', 'executable', 'bypassAllowed', 'suggestions', 'subagents'] as const) {
 		if (body[key] !== undefined) {
 			(patch as Record<string, unknown>)[key] = body[key];
 		}

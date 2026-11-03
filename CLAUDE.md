@@ -643,9 +643,10 @@ export interface InstanceConfig {}
 - **A mode decides when a person is asked; the token decides what is possible.** The modes are
   `shared/agent.ts`, chosen per message in the composer (Shift+Tab cycles them). **Auto**, the
   default: the agent works on its own, and only tools the catalog marks `destructiveHint` (stop,
-  restart, console commands, removals, shells) stop in `canUseTool` until the account that owns the
-  conversation allows or denies it (denied after ten minutes); so a new tool's annotation decides
-  whether Auto asks for it. **Manual** asks for every call. **Plan** runs only `readOnlyHint` tools
+  restart, console commands, removals, shells) stop in `canUseTool` until the account whose run it
+  is allows or denies it (denied after ten minutes); so a new tool's annotation decides whether Auto
+  asks for it. "Allow in this chat" (`allowedTools`, per account) stops a tool asking in that
+  conversation in every mode but Plan, and a denial can carry a reason the model is told. **Manual** asks for every call. **Plan** runs only `readOnlyHint` tools
   and the agent's own memory, refuses the rest and has the model answer with a plan. **Bypass** runs everything in scope
   without asking; it confirms in the browser, journals a warning per message, and the
   `bypassAllowed` setting turns it off for the whole console. No mode widens the token's scope.
@@ -698,6 +699,32 @@ export interface InstanceConfig {}
   on its own near the limit names nobody. The SDK's `total_cost_usd` is the **session's** running
   total, carried across resumes, so a conversation's spend is set from it (plus what earlier
   sessions cost), never summed per run.
+- **A conversation can be shared, but a run has one authority.** `shares` on the conversation make an
+  account a `viewer` (reads, follows live) or a `collaborator` (also writes, renames, rewinds);
+  `agent:Share` gates it and only the owner shares, deletes or branches. A run acts as its `actor`,
+  the account whose message started it: its bearer, its approvals (nobody else can decide its calls)
+  and its screen requests (`for` on screenshot/navigate events) are that account's. A message from
+  another participant never joins it; it waits in the runner's queue and starts the next run as its
+  sender. A tool entry records its `actor`, and `agent/sharing.ts` shows its output only to that
+  account (a result reflects whose permissions produced it: the same `cluster_status` answers
+  differently per account) and its input to others only when their own policies allow the call.
+  Every message is echoed on the stream with a uuid and the sender's `nonce`, so every window shows
+  it once; `agent/presence.ts` tells each participant who has the conversation open.
+- **Branching and rewinding cut the SDK session; they never rewrite one.** Every transcript entry
+  filed from an SDK message carries that message's `uuid` and `session` (a branched session
+  renumbers its messages, so a uuid means nothing without its session). `forkAgentConversation`
+  (a new conversation) and `rewindAgentConversation` ("edit and resend", "retry") set `pendingFork`,
+  and the next run resumes it with `forkSession` + `resumeSessionAt`. A branched session inherits
+  its source's running cost, so `pendingFork.costBase` / `costBaseUsd` (from `sessionCosts`, each
+  session's last total) keep a conversation's spend counted once. What the agent did on the
+  cluster is never undone; only the conversation goes back.
+- **Helpers are SDK subagents, in the foreground.** `agent/subagents.ts` builds the `agents` option
+  from two built-ins (`investigator`, `researcher`) and the console's `settings.subagents`, each cut
+  to the luna tools the agent's token reaches. Their calls go through `canUseTool` like the
+  agent's, and nest under the `Agent` card in the chat by `parent_tool_use_id`. The subprocess runs
+  with `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` so a report lands in the turn that asked for it (the
+  console's own `task_start` is for work that outlives a turn), and `CLAUDE_CODE_ENABLE_TASKS=false`
+  so the checklist is `TodoWrite`, which the chat docks above the composer.
 - **Its memory is the knowledge store.** Memories it saves are knowledge items in its token's scope,
   managed on `/console/knowledge` like any other; pinned context reaches it as the MCP
   `instructions`. Nothing is remembered in the subprocess's own state. A run reads the store through

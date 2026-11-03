@@ -142,6 +142,23 @@
 			});
 		}
 
+		const helpers = (Agent.state?.helpers ?? []).filter((helper) => helper.tools > 0);
+
+		if (helpers.length) {
+			rows.push({ separator: true });
+			rows.push({ label: t('web.agentComposer.helpers'), header: true });
+
+			for (const helper of helpers) {
+				rows.push({
+					id: `helper:${helper.name}`,
+					label: helper.name,
+					icon: 'wandMagicSparkles',
+					hint: helper.description,
+					action: () => insertHelper(helper.name)
+				});
+			}
+		}
+
 		rows.push({ separator: true });
 		rows.push({
 			label: t('web.agentComposer.manageSkills'),
@@ -174,6 +191,26 @@
 		popover = null;
 		compactFocus = '';
 		await session.compact(focus);
+	}
+
+	async function insertHelper(name: string): Promise<void> {
+		draft = `${t('web.agentComposer.useHelper', { name })} ${draft}`.trimEnd() + ' ';
+		await tick();
+		grow();
+		textbox?.focus();
+	}
+
+	/** The last message this account wrote here, which ↑ in an empty box brings back */
+	function lastOwn(): string {
+		for (let index = session.items.length - 1; index >= 0; index--) {
+			const item = session.items[index]!;
+
+			if (item.kind === 'user' && (!item.author || item.author === Agent.state?.me)) {
+				return item.text;
+			}
+		}
+
+		return '';
 	}
 
 	async function insertSkill(name: string): Promise<void> {
@@ -294,6 +331,26 @@
 		if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
 			event.preventDefault();
 			void send();
+
+			return;
+		}
+
+		// as in a terminal and VS Code's chat: the arrow brings the last message back to edit
+		if (event.key === 'ArrowUp' && !draft) {
+			const previous = lastOwn();
+
+			if (previous) {
+				event.preventDefault();
+				draft = previous;
+				void tick().then(grow);
+			}
+
+			return;
+		}
+
+		if (event.key === 'Escape' && session.running && !draft) {
+			event.preventDefault();
+			void session.stop();
 		}
 	}
 
@@ -643,6 +700,8 @@
 <style lang="scss">
 	.composer {
 		position: relative;
+		// above the checklist blade, whose bottom edge it covers
+		z-index: 1;
 		margin: 0.75rem 1rem 1rem;
 		border: 0.1rem solid var(--border-input);
 		border-radius: 0.75rem;

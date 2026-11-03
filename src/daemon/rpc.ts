@@ -1716,6 +1716,12 @@ export const OPS: Record<string, OpSpec> = {
 	"agent.appendTurn": { fn: agentCore.appendAgentTurn },
 	"agent.renameConversation": { fn: agentCore.renameAgentConversation },
 	"agent.removeConversation": { fn: agentCore.removeAgentConversation },
+	"agent.flagConversation": { fn: agentCore.flagAgentConversation },
+	"agent.setAllowedTools": { fn: agentCore.setAgentAllowedTools },
+	"agent.shareConversation": { fn: agentCore.shareAgentConversation },
+	"agent.leaveConversation": { fn: agentCore.leaveAgentConversation },
+	"agent.forkConversation": { fn: agentCore.forkAgentConversation },
+	"agent.rewindConversation": { fn: agentCore.rewindAgentConversation },
 
 	// -- plugins ---------------------------------------------------------------
 	"plugins.scan": { fn: pluginsCore.scan, cfg: 0, lock: 1 },

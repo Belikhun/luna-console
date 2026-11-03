@@ -807,7 +807,19 @@
 		"instructionsTooLong": "Extra instructions are limited to {max} characters",
 		"badMaxTurns": "Turns per message must be between 1 and {max}",
 		"unknownConversation": "No conversation {id}",
-		"badEffort": "Unknown effort level: {effort}"
+		"badEffort": "Unknown effort level: {effort}",
+		"badSubagents": "Helpers must be a list",
+		"tooManySubagents": "At most {max} helpers can be defined",
+		"badSubagentName": "\"{name}\" is not a usable helper name: lowercase letters, digits and dashes, and not a built-in name",
+		"duplicateSubagent": "Two helpers are named \"{name}\"",
+		"badSubagentText": "Helper \"{name}\" needs a description (up to 300 characters) and instructions",
+		"badSubagentTools": "Helper \"{name}\" lists a tool name that is not valid",
+		"notAllowedHere": "As a {role} of this conversation you cannot do that",
+		"cannotShare": "Cannot share with \"{account}\"",
+		"tooManyShares": "A conversation can be shared with at most {max} accounts",
+		"cannotFork": "This part of the conversation was saved before branching existed and cannot be branched from",
+		"forkTitle": "{title} (branch)",
+		"unknownMessage": "That message is no longer in the conversation"
 	},
 	"jarinstall": {
 		"badScheme": "Only http and https URLs can be installed from",
@@ -1132,7 +1144,8 @@
 			"agent": {
 				"Describe": "Read Mèo Béo's settings",
 				"Chat": "Chat with Mèo Béo",
-				"Configure": "Change Mèo Béo's settings and credential"
+				"Configure": "Change Mèo Béo's settings and credential",
+				"Share": "Share one's own conversations with other accounts"
 			},
 			"chat": {
 				"Read": "Read one server's chat, and its logs and console, which carry the same lines",

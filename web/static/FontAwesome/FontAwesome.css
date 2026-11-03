@@ -1446,3 +1446,47 @@ icon[data-icon="rotateLeft"]::after {
 icon[data-icon="shieldCheck"]::after {
 	content: "\f2f7";
 }
+
+icon[data-icon="codeBranch"]::after {
+	content: "\f126";
+}
+
+icon[data-icon="shareNodes"]::after {
+	content: "\f1e0";
+}
+
+icon[data-icon="boxArchive"]::after {
+	content: "\f187";
+}
+
+icon[data-icon="robot"]::after {
+	content: "\f544";
+}
+
+icon[data-icon="arrowRotateRight"]::after {
+	content: "\f01e";
+}
+
+icon[data-icon="userGroup"]::after {
+	content: "\f500";
+}
+
+icon[data-icon="checkDouble"]::after {
+	content: "\f560";
+}
+
+icon[data-icon="thumbtackSlash"]::after {
+	content: "\e68f";
+}
+
+icon[data-icon="arrowDownToLine"]::after {
+	content: "\f33d";
+}
+
+icon[data-icon="messagePen"]::after {
+	content: "\f4a4";
+}
+
+icon[data-icon="brainCircuit"]::after {
+	content: "\e0c6";
+}

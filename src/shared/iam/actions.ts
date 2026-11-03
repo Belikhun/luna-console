@@ -307,6 +307,8 @@ export const IAM_ACTIONS: IamActionSpec[] = [
 	...service("agent", "conversation", [
 		["Describe", "read"],
 		["Chat", "write"],
+		// letting other accounts read or write in one's own conversations
+		["Share", "write"],
 		["Configure", "write"],
 	]),
 ];

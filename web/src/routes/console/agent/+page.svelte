@@ -6,7 +6,7 @@
 	import { t } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { api, del, patch, post, put } from '$lib/api';
-	import { Agent, type AgentState } from '$lib/agent.svelte';
+	import { Agent, type AgentState, type HelperDefinition, type HelperSummary } from '$lib/agent.svelte';
 	import { fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
@@ -22,11 +22,16 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import CodeEditor from '$lib/components/CodeEditor.svelte';
+	import DataTable from '$lib/components/DataTable.svelte';
+	import type { Column } from '$lib/components/table';
+	import type { ContextMenuItem } from '$lib/components/contextmenu';
+	import { MCP_TOOL_GROUPS } from '$shared/mcptools';
 	import { Notify } from '$lib/notifications.svelte';
 
 	/**
 	 * Mèo Béo's settings: the Claude credential it runs on, how it behaves, and
-	 * the MCP token whose scope is everything it may touch.
+	 * the MCP token whose scope is everything it may touch, and the helpers it
+	 * may hand a self-contained job to.
 	 *
 	 * The credential is pasted, never shown back. A Claude subscription connects
 	 * through `claude setup-token`, Claude Code's own command for minting a
@@ -48,6 +53,7 @@
 	let executable = $state('');
 	let instructions = $state('');
 	let bypassAllowed = $state(true);
+	let suggestions = $state(true);
 
 	let connectOpen = $state(false);
 	let connectKind = $state('oauth');
@@ -67,6 +73,7 @@
 			executable = agent.settings.executable;
 			instructions = agent.settings.instructions;
 			bypassAllowed = agent.settings.bypassAllowed;
+			suggestions = agent.settings.suggestions;
 			lastUpdated = Date.now();
 		} catch (err) {
 			Notify.error(t('web.agentSettings.loadFailed'), { detail: (err as Error).message });
@@ -85,7 +92,8 @@
 				maxTurns !== String(agent.settings.maxTurns) ||
 				executable !== agent.settings.executable ||
 				instructions !== agent.settings.instructions ||
-				bypassAllowed !== agent.settings.bypassAllowed)
+				bypassAllowed !== agent.settings.bypassAllowed ||
+				suggestions !== agent.settings.suggestions)
 	);
 
 	const modelOptions = $derived.by(() => {
@@ -178,7 +186,8 @@
 				maxTurns: Number(maxTurns),
 				executable,
 				instructions,
-				bypassAllowed
+				bypassAllowed,
+				suggestions
 			});
 			Notify.success(t('web.agentSettings.saved'));
 			await load();
@@ -188,6 +197,137 @@
 		} finally {
 			saving = false;
 		}
+	}
+
+	// -- helpers -------------------------------------------------------------
+
+	/** One row of the helpers table: a built-in, or one defined here */
+	interface HelperRow extends HelperSummary {
+		definition: HelperDefinition | null;
+	}
+
+	const helperRows: HelperRow[] = $derived.by(() => {
+		const summaries = agent?.helpers ?? [];
+		const custom = agent?.settings.subagents ?? [];
+
+		return [
+			...summaries
+				.filter((helper) => helper.builtin)
+				.map((helper) => ({ ...helper, definition: null })),
+			...custom.map((definition) => ({
+				name: definition.name,
+				description: definition.description,
+				builtin: false,
+				tools: summaries.find((helper) => helper.name === definition.name)?.tools ?? 0,
+				definition
+			}))
+		];
+	});
+
+	const helperColumns: Column[] = $derived([
+		{ id: 'name', label: t('web.agentHelpers.name'), width: 200 },
+		{ id: 'kind', label: t('web.agentHelpers.kind'), width: 140 },
+		{ id: 'tools', label: t('web.agentHelpers.tools'), width: 110, align: 'right' },
+		{ id: 'description', label: t('web.agentHelpers.description'), width: 420 }
+	]);
+
+	const MODEL_CHOICES = ['', 'haiku', 'sonnet', 'opus', 'fable'];
+
+	const helperModelOptions = $derived(
+		MODEL_CHOICES.map((value) => ({ value, label: value ? value : t('web.agentHelpers.modelInherit') }))
+	);
+
+	let helperOpen = $state(false);
+	let helperOriginal: string | null = $state(null);
+	let helperDraft: HelperDefinition = $state({ name: '', description: '', prompt: '', tools: [], model: '', enabled: true });
+	let helperTools = $state('');
+	let helperSaving = $state(false);
+	let helperDeleting: string | null = $state(null);
+	let helperDeleteOpen = $state(false);
+
+	function editHelper(definition: HelperDefinition | null): void {
+		helperOriginal = definition?.name ?? null;
+		helperDraft = definition
+			? { ...definition, tools: [...definition.tools] }
+			: { name: '', description: '', prompt: '', tools: ['group:observe'], model: '', enabled: true };
+		helperTools = helperDraft.tools.join('\n');
+		helperOpen = true;
+	}
+
+	async function saveHelpers(list: HelperDefinition[]): Promise<boolean> {
+		helperSaving = true;
+
+		try {
+			await patch('/agent', { subagents: list });
+			await load();
+			void Agent.reloadState().catch(() => {});
+
+			return true;
+		} catch (err) {
+			Notify.error(t('web.agentSettings.saveFailed'), { detail: (err as Error).message });
+
+			return false;
+		} finally {
+			helperSaving = false;
+		}
+	}
+
+	async function submitHelper(): Promise<void> {
+		const current = agent?.settings.subagents ?? [];
+		const draft: HelperDefinition = {
+			...helperDraft,
+			name: helperDraft.name.trim(),
+			tools: helperTools.split(/[\s,]+/).map((tool) => tool.trim()).filter(Boolean)
+		};
+		const list = helperOriginal === null
+			? [...current, draft]
+			: current.map((entry) => (entry.name === helperOriginal ? draft : entry));
+
+		if (await saveHelpers(list)) {
+			helperOpen = false;
+		}
+	}
+
+	function helperActions(row: HelperRow): ContextMenuItem[] {
+		const definition = row.definition;
+		const builtinHint = t('web.agentHelpers.builtinHint');
+
+		return [
+			{
+				label: t('web.agentHelpers.edit'),
+				icon: 'pen',
+				disabled: !definition,
+				hint: definition ? undefined : builtinHint,
+				action: () => editHelper(definition)
+			},
+			{
+				label: definition?.enabled === false ? t('web.agentHelpers.enable') : t('web.agentHelpers.disable'),
+				icon: definition?.enabled === false ? 'play' : 'pause',
+				disabled: !definition,
+				hint: definition ? undefined : builtinHint,
+				action: async () => {
+					if (!definition) {
+						return;
+					}
+
+					await saveHelpers((agent?.settings.subagents ?? []).map((entry) =>
+						entry.name === definition.name ? { ...entry, enabled: !entry.enabled } : entry
+					));
+				}
+			},
+			{ separator: true },
+			{
+				label: t('web.agentHelpers.remove'),
+				icon: 'trash',
+				color: 'danger',
+				disabled: !definition,
+				hint: definition ? undefined : builtinHint,
+				action: () => {
+					helperDeleting = row.name;
+					helperDeleteOpen = true;
+				}
+			}
+		];
 	}
 
 	async function connect(): Promise<void> {
@@ -309,6 +449,12 @@
 		</label>
 
 		<div class="field">
+			<span class="lbl">{t('web.agentSettings.suggestions')}</span>
+			<span class="hint">{t('web.agentSettings.suggestionsHint')}</span>
+			<Toggle checked={suggestions} label={t('web.agentSettings.suggestions')} onchange={(value) => (suggestions = value)} />
+		</div>
+
+		<div class="field">
 			<span class="lbl">{t('web.agentSettings.bypassAllowed')}</span>
 			<span class="hint">{t('web.agentSettings.bypassAllowedHint')}</span>
 			<Toggle
@@ -338,6 +484,88 @@
 	<InfoGrid cells={tokenCells} columns={[4, 2, 1]} />
 	<p class="note dim">{t('web.agentSettings.approvalNote')}</p>
 </Panel>
+
+<div class="gap"></div>
+
+<Panel title={t('web.agentHelpers.panel')} description={t('web.agentHelpers.hint')} count={helperRows.length}>
+	{#snippet actions()}
+		<Btn variant="primary" icon="plus" disabled={!agent} onclick={() => editHelper(null)}>{t('web.agentHelpers.add')}</Btn>
+	{/snippet}
+	<DataTable
+		tableId="agent-helpers"
+		columns={helperColumns}
+		rows={helperRows}
+		getId={(row) => row.name}
+		rowActions={helperActions}
+		rowLabel={(row) => row.name}
+		rowDim={(row) => row.definition?.enabled === false || row.tools === 0}
+		emptyTitle={t('web.agentHelpers.empty')}
+	>
+		{#snippet cell(row, column)}
+			{#if column === 'name'}
+				<span class="mono">{row.name}</span>
+			{:else if column === 'kind'}
+				{row.builtin
+					? t('web.agentHelpers.builtin')
+					: row.definition?.enabled === false
+						? t('web.agentHelpers.disabled')
+						: t('web.agentHelpers.custom')}
+			{:else if column === 'tools'}
+				{row.tools}
+			{:else if column === 'description'}
+				<span class="dim">{row.description}</span>
+			{/if}
+		{/snippet}
+	</DataTable>
+</Panel>
+
+<Modal title={helperOriginal ? t('web.agentHelpers.editTitle', { name: helperOriginal }) : t('web.agentHelpers.addTitle')} bind:open={helperOpen} wide>
+	<div class="helper-form">
+		<label class="field">
+			<span class="lbl">{t('web.agentHelpers.name')}</span>
+			<span class="hint">{t('web.agentHelpers.nameHint')}</span>
+			<input class="input mono" type="text" maxlength="40" spellcheck="false" bind:value={helperDraft.name} />
+		</label>
+		<label class="field">
+			<span class="lbl">{t('web.agentHelpers.description')}</span>
+			<span class="hint">{t('web.agentHelpers.descriptionHint')}</span>
+			<input class="input" type="text" maxlength="300" bind:value={helperDraft.description} />
+		</label>
+		<div class="field">
+			<span class="lbl">{t('web.agentHelpers.model')}</span>
+			<Select options={helperModelOptions} bind:value={helperDraft.model} width="100%" />
+		</div>
+		<label class="field">
+			<span class="lbl">{t('web.agentHelpers.tools')}</span>
+			<span class="hint">{t('web.agentHelpers.toolsHint', { groups: MCP_TOOL_GROUPS.map((group) => `group:${group}`).join(', ') })}</span>
+			<textarea class="input mono" rows="4" spellcheck="false" bind:value={helperTools}></textarea>
+		</label>
+		<div class="field prompt">
+			<span class="lbl">{t('web.agentHelpers.prompt')}</span>
+			<span class="hint">{t('web.agentHelpers.promptHint')}</span>
+			<CodeEditor bind:value={helperDraft.prompt} path="agent/helper.md" height="12rem" />
+		</div>
+	</div>
+	{#snippet footer()}
+		<Btn onclick={() => (helperOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn
+			variant="primary"
+			loading={helperSaving}
+			disabled={!helperDraft.name.trim() || !helperDraft.description.trim() || !helperDraft.prompt.trim()}
+			onclick={submitHelper}
+		>
+			{t('web.common.save')}
+		</Btn>
+	{/snippet}
+</Modal>
+
+<ConfirmModal
+	bind:open={helperDeleteOpen}
+	title={t('web.agentHelpers.removeTitle')}
+	lead={t('web.agentHelpers.removeLead', { name: helperDeleting ?? '' })}
+	confirmLabel={t('web.agentHelpers.remove')}
+	onconfirm={() => saveHelpers((agent?.settings.subagents ?? []).filter((entry) => entry.name !== helperDeleting))}
+/>
 
 <Modal title={t('web.agentSettings.connectTitle')} bind:open={connectOpen}>
 	<Tabs tabs={connectTabs} bind:active={connectKind} />
@@ -441,5 +669,26 @@
 	.small {
 		margin: 0.5rem 0 0;
 		font-size: 0.75rem;
+	}
+
+	.helper-form {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+
+		.field {
+			display: flex;
+			flex-direction: column;
+			gap: 0.25rem;
+		}
+
+		// a grid, for the same reason as the instructions editor above
+		.prompt {
+			display: grid;
+		}
+
+		textarea {
+			resize: vertical;
+		}
 	}
 </style>

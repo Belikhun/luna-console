@@ -33,9 +33,15 @@ function readAnswers(value: unknown): AgentAnswers | undefined {
 		: undefined;
 }
 
+/** The longest reason an operator can give for a denial. */
+const MAX_REASON = 500;
+
 /**
- * POST { toolUseId, allow, answers? } → { ok }. Only the conversation's owner
- * can decide its calls; `answers` answers a question the agent asked.
+ * POST { toolUseId, allow, answers?, always?, reason? } → { ok }. Only the
+ * account whose run made the call can decide it, since it runs on their
+ * authority. `answers` answers a question the agent asked, `always` stops this
+ * tool asking again in this conversation for them, and `reason` tells the
+ * agent why a call was denied.
  */
 export async function POST({ params, request, locals }) {
 	if (!locals.account) {
@@ -48,17 +54,22 @@ export async function POST({ params, request, locals }) {
 	const actor = locals.account.username;
 	const answers = readAnswers(body.answers);
 
-	if (!decideCall(params.id, actor, toolUseId, allow, answers)) {
+	const reason = typeof body.reason === 'string' && body.reason.trim()
+		? body.reason.trim().slice(0, MAX_REASON)
+		: undefined;
+	const always = allow && body.always === true;
+
+	if (!decideCall(params.id, actor, toolUseId, allow, { answers, always, reason })) {
 		throw error(404, 'nothing is waiting for that decision');
 	}
 
 	const verb = answers
 		? 'answered a Mèo Béo question'
-		: `${allow ? 'approved' : 'denied'} a Mèo Béo tool call`;
+		: `${allow ? (always ? 'allowed for the conversation' : 'approved') : 'denied'} a Mèo Béo tool call`;
 
 	journal(verb, {
 		actor,
-		detail: `${params.id} · ${String(body.tool ?? toolUseId)}`
+		detail: `${params.id} · ${String(body.tool ?? toolUseId)}${reason ? ` · ${reason}` : ''}`
 	});
 
 	return json({ ok: true });

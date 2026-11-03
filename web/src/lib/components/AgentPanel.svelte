@@ -6,11 +6,11 @@
 	import { t } from '$lib/i18n.svelte';
 	import { goto } from '$app/navigation';
 	import { Agent } from '$lib/agent.svelte';
-	import { fmtDateTime } from '$lib/format';
 	import Icon from './Icon.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import AgentChat from './AgentChat.svelte';
-	import AgentDeleteConfirm from './AgentDeleteConfirm.svelte';
+	import AgentDialogs from './AgentDialogs.svelte';
+	import { conversationVerbs, historyItems } from './agentmenu';
 	import type { AvatarSubject } from './accountavatar';
 	import type { ContextMenuItem } from './contextmenu';
 
@@ -32,46 +32,31 @@
 	let historyButton: HTMLButtonElement | undefined = $state();
 	let dragging = $state(false);
 
-	/** The conversation waiting on the delete confirmation */
-	let deleting: { id: string; title: string } | null = $state(null);
-
 	const current = $derived(session.row);
 
-	function askDelete(id: string, title: string): void {
-		deleting = { id, title };
+	const history: ContextMenuItem[] = $derived(
+		historyItems(session.conversationId, (id) => session.select(id), () => expand())
+	);
+
+	let chatMenu: ContextMenu | undefined = $state();
+	let chatButton: HTMLButtonElement | undefined = $state();
+	let dialogHost: AgentDialogs | undefined = $state();
+
+	const chatItems: ContextMenuItem[] = $derived(current && dialogHost ? conversationVerbs(current, dialogHost.dialogs) : []);
+
+	async function openChatMenu(event: MouseEvent): Promise<void> {
+		event.stopPropagation();
+
+		if (chatMenu?.isOpen()) {
+			chatMenu.close();
+
+			return;
+		}
+
+		if (chatButton) {
+			await chatMenu?.openAtElement(chatButton, 'bottom');
+		}
 	}
-
-	const historyItems: ContextMenuItem[] = $derived.by(() => {
-		const rows: ContextMenuItem[] = [{ label: t('web.agent.history'), header: true }];
-
-		if (Agent.conversations.length === 0) {
-			rows.push({ label: t('web.agent.noHistory'), disabled: true });
-		}
-
-		for (const row of Agent.conversations.slice(0, 30)) {
-			rows.push({
-				id: row.id,
-				label: row.title || t('web.agent.untitled'),
-				icon: row.id === session.conversationId ? 'check' : row.running ? 'paw' : undefined,
-				hint: fmtDateTime(row.updatedAt),
-				action: () => session.select(row.id)
-			});
-		}
-
-		if (current) {
-			const shown = current;
-
-			rows.push({ separator: true });
-			rows.push({
-				label: t('web.agent.deleteChat'),
-				icon: 'trash',
-				color: 'danger',
-				action: () => askDelete(shown.id, shown.title)
-			});
-		}
-
-		return rows;
-	});
 
 	async function openHistory(event: MouseEvent): Promise<void> {
 		event.stopPropagation();
@@ -143,11 +128,13 @@
 			</button>
 			<button
 				class="tool"
-				title={current ? t('web.agent.deleteChat') : t('web.agent.deleteNothing')}
+				title={current ? t('web.agentMenu.chatActions') : t('web.agent.deleteNothing')}
 				disabled={!current}
-				onclick={() => current && askDelete(current.id, current.title)}
+				bind:this={chatButton}
+				onpointerdown={(event) => event.stopPropagation()}
+				onclick={openChatMenu}
 			>
-				<Icon name="trash" size="1rem" />
+				<Icon name="ellipsis" size="1rem" />
 			</button>
 			<span class="sep"></span>
 			<button class="tool" title={t('web.agent.popOut')} onclick={popOut}>
@@ -161,12 +148,13 @@
 			</button>
 		</div>
 	</header>
-	<ContextMenu bind:this={historyMenu} items={historyItems} minWidth="18rem" />
+	<ContextMenu bind:this={historyMenu} items={history} minWidth="18rem" />
+	<ContextMenu bind:this={chatMenu} items={chatItems} minWidth="15rem" />
 
 	<AgentChat {session} {account} />
 </aside>
 
-<AgentDeleteConfirm bind:target={deleting} />
+<AgentDialogs bind:this={dialogHost} branched={(id) => session.select(id)} />
 
 <style lang="scss">
 	.agent {

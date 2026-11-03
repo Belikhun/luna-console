@@ -35,9 +35,9 @@ export async function POST({ params, request, url, locals }) {
 		: DEFAULT_AGENT_MODE;
 
 	try {
-		const joined = await startRun({
+		const outcome = await startRun({
 			conversationId: params.id,
-			owner: locals.account.username,
+			actor: locals.account.username,
 			text: focus,
 			locale: body.locale === 'vi' ? 'Vietnamese' : 'English',
 			origin: loopbackOrigin(url),
@@ -48,7 +48,7 @@ export async function POST({ params, request, url, locals }) {
 			compact: true
 		});
 
-		return json({ ok: true, joined });
+		return json({ ok: true, outcome, joined: outcome === 'joined' });
 	} catch (err) {
 		const code = err instanceof AgentRunError
 			? err.code

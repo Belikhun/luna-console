@@ -184,7 +184,7 @@ export const BUILTIN_POLICIES: BuiltinPolicy[] = [
 				{
 					Sid: "MyOwnChats",
 					Effect: "Allow",
-					Action: ["agent:Describe", "agent:Chat"],
+					Action: ["agent:Describe", "agent:Chat", "agent:Share"],
 					Resource: ["*"],
 				},
 				// what decides an account's access is the account's own business: the
@@ -223,6 +223,7 @@ export const BUILTIN_POLICIES: BuiltinPolicy[] = [
 			"    Action:",
 			"      - agent:Describe",
 			"      - agent:Chat",
+			"      - agent:Share",
 			"    Resource: \"*\"",
 			"  - Sid: MyOwnPolicies",
 			"    Effect: Allow",
