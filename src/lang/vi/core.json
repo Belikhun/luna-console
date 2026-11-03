@@ -819,7 +819,8 @@
 		"tooManyShares": "Một cuộc trò chuyện chỉ chia sẻ được với tối đa {max} tài khoản",
 		"cannotFork": "Phần này của cuộc trò chuyện được lưu trước khi có tính năng rẽ nhánh nên không rẽ nhánh từ đây được",
 		"forkTitle": "{title} (nhánh)",
-		"unknownMessage": "Tin nhắn đó không còn trong cuộc trò chuyện"
+		"unknownMessage": "Tin nhắn đó không còn trong cuộc trò chuyện",
+		"unknownImage": "Không có hình ảnh đó trong cuộc trò chuyện"
 	},
 	"jarinstall": {
 		"badScheme": "Chỉ cài được từ URL http hoặc https",

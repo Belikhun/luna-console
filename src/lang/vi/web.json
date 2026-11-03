@@ -4750,6 +4750,9 @@
 		"writtenByMcp": "Được client lưu qua MCP ({actor}). Hãy kiểm tra trước khi dựa vào."
 	},
 	"agent": {
+		"revokeQueued": "Rút lại trước khi gửi",
+		"openImage": "Mở ảnh đầy đủ",
+		"toolImage": "Hình ảnh {tool} trả về",
 		"newChat": "Cuộc trò chuyện mới",
 		"history": "Các cuộc trò chuyện",
 		"noHistory": "Chưa có cuộc trò chuyện nào",
@@ -4885,7 +4888,7 @@
 		"helperStarting": "Đang khởi động…",
 		"jumpLatest": "Xuống tin mới nhất",
 		"questionFor": "Mèo Béo đang hỏi {name}; người đó sẽ trả lời.",
-		"queued": "đợi {name}",
+		"queued": "đang chờ; gửi khi Mèo Béo trả lời xong",
 		"readOnly": "Bạn xem được cuộc trò chuyện của {owner} và theo dõi trực tiếp, nhưng không viết vào được.",
 		"redacted": "Đã ẩn kết quả: nó được tạo với quyền của tài khoản khác nên chỉ người đó xem được.",
 		"redactedShort": "đã ẩn nội dung",
@@ -5011,6 +5014,11 @@
 		"suggestionsHint": "Sau mỗi câu trả lời, gợi ý câu hỏi tiếp theo. Tốn thêm một yêu cầu nhỏ mỗi lần."
 	},
 	"agentComposer": {
+		"sendOptions": "Tuỳ chọn gửi",
+		"sendNowItem": "Gửi ngay",
+		"sendNowHint": "Mèo Béo sẽ đọc ở bước tiếp theo (Enter)",
+		"queueItem": "Xếp hàng",
+		"queueHint": "Gửi khi Mèo Béo trả lời xong (Alt+Enter)",
 		"add": "Thêm",
 		"sharePage": "Gửi kèm trang bạn đang mở",
 		"sharedPage": "Gửi kèm mỗi tin nhắn: {page}",
@@ -5893,6 +5901,15 @@
 		"renameFailed": "Không đổi tên được cuộc trò chuyện",
 		"share": "Chia sẻ",
 		"viewerHint": "Bạn chỉ xem được cuộc trò chuyện này"
+	},
+	"imageViewer": {
+		"download": "Tải xuống",
+		"zoomIn": "Phóng to (+)",
+		"zoomOut": "Thu nhỏ (−)",
+		"reset": "Vừa khung hình (0)",
+		"original": "Mở ảnh gốc",
+		"previous": "Ảnh trước",
+		"next": "Ảnh sau"
 	},
 	"dateTime": {
 		"pick": "Chọn ngày và giờ",

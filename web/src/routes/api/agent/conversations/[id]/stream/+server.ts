@@ -64,17 +64,18 @@ export async function GET({ params, locals }) {
 			};
 
 			const shape = async (event: AgentEvent): Promise<AgentEvent> => {
-				if (event.type !== 'tool' || (event.input === undefined && event.output === undefined)) {
+				if (event.type !== 'tool' || (event.input === undefined && event.output === undefined && event.images === undefined)) {
 					return event;
 				}
 
 				const seen = await sight(event.id, event.name, event.input, event.actor);
-				const { input, output, ...rest } = event;
+				const { input, output, images, ...rest } = event;
 
 				return {
 					...rest,
 					...(input !== undefined && seen.input ? { input } : {}),
-					...(output !== undefined ? { output: seen.output ? output : REDACTED } : {})
+					...(output !== undefined ? { output: seen.output ? output : REDACTED } : {}),
+					...(images !== undefined && seen.images ? { images } : {})
 				};
 			};
 

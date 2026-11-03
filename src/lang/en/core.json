@@ -819,7 +819,8 @@
 		"tooManyShares": "A conversation can be shared with at most {max} accounts",
 		"cannotFork": "This part of the conversation was saved before branching existed and cannot be branched from",
 		"forkTitle": "{title} (branch)",
-		"unknownMessage": "That message is no longer in the conversation"
+		"unknownMessage": "That message is no longer in the conversation",
+		"unknownImage": "No such image in this conversation"
 	},
 	"jarinstall": {
 		"badScheme": "Only http and https URLs can be installed from",

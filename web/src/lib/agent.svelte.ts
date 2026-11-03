@@ -51,7 +51,7 @@ export type ChatItem =
 		uuid?: string;
 		/** What this window called the message before the echo gave it a uuid */
 		nonce?: string;
-		/** Waiting for another participant's answer to end */
+		/** Held until the answer being given ends; its sender may still take it back */
 		queued?: boolean;
 	}
 	| { kind: 'assistant'; text: string; streaming: boolean }
@@ -71,6 +71,8 @@ export type ChatItem =
 		progress?: { tools: number; last?: string; ms: number };
 		/** Who decides it while it waits */
 		actor?: string;
+		/** Pictures its result carried, by name under the conversation's `images` route */
+		images?: string[];
 	}
 	| { kind: 'error'; text: string; code?: string }
 	/** A background task or a trigger reporting back; nobody's message */
@@ -198,6 +200,7 @@ interface StoredEntry {
 	status?: 'ok' | 'error' | 'denied';
 	output?: string;
 	decidedBy?: string;
+	images?: string[];
 }
 
 type StreamEvent =
@@ -213,6 +216,7 @@ type StreamEvent =
 		nonce?: string;
 		queued?: boolean;
 	}
+	| { type: 'unqueue'; uuid: string; restore?: boolean; author?: string; text?: string }
 	| { type: 'text'; delta: string }
 	| { type: 'assistant'; text: string }
 	| { type: 'thinking'; delta: string }
@@ -227,6 +231,7 @@ type StreamEvent =
 		decidedBy?: string;
 		parent?: string;
 		actor?: string;
+		images?: string[];
 	}
 	| { type: 'progress'; id: string; tools: number; last?: string; ms: number }
 	| { type: 'suggestion'; text: string }
@@ -325,7 +330,8 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 				status: entry.status ?? 'ok',
 				output: entry.output,
 				decidedBy: entry.decidedBy,
-				parent: entry.parent
+				parent: entry.parent,
+				images: entry.images
 			});
 		} else {
 			const text = entry.text ?? '';
@@ -521,6 +527,9 @@ export class ChatSession {
 	#unknownPeople = new Set<string>();
 
 	#peopleLookup: Promise<void> | null = null;
+
+	/** A held message the stop handed back, for the composer to put in its box */
+	restored: string | null = $state(null);
 
 	/** A likely next message the agent offered after its last answer */
 	suggestion: string | null = $state(null);
@@ -782,10 +791,11 @@ export class ChatSession {
 	 * Send a message. It shows at once; the stream echoes it (to every window
 	 * following the conversation), and the echo is matched to this copy by its
 	 * nonce, which is when it gets the uuid a rewind or fork cuts at. With
-	 * nothing running it starts a run; mid-run it joins this account's run, or
-	 * waits behind another participant's.
+	 * nothing running it starts a run; mid-run it joins the answer being given
+	 * (taking the run over when somebody else started it), or with `hold` waits
+	 * for that answer to end and goes in as the next turn.
 	 */
-	async send(text: string, page?: string): Promise<SendResult> {
+	async send(text: string, page?: string, hold = false): Promise<SendResult> {
 		const message = text.trim();
 		const files = this.attachments.filter((file) => file.id && !file.error);
 
@@ -805,6 +815,7 @@ export class ChatSession {
 		}
 
 		const joining = this.running;
+		const holding = hold && this.running;
 		const nonce = `n${Date.now().toString(36)}${++nonceSeq}`;
 
 		this.sending = true;
@@ -833,7 +844,8 @@ export class ChatSession {
 					at: Date.now(),
 					mode: this.mode,
 					attachments: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined,
-					nonce
+					nonce,
+					...(holding ? { queued: true } : {})
 				}
 			];
 
@@ -850,7 +862,8 @@ export class ChatSession {
 					effort: this.effort || (joining ? settings?.effort : undefined),
 					page: this.sharePage ? page : undefined,
 					attachments: files,
-					nonce
+					nonce,
+					...(holding ? { hold: true } : {})
 				}
 			).catch((err: Error): SendResult => ({ ok: false, error: err.message }));
 
@@ -1020,6 +1033,16 @@ export class ChatSession {
 		return result;
 	}
 
+	/** Take back a message held for the end of the answer, before it is sent. */
+	async revoke(uuid: string): Promise<void> {
+		if (!this.conversationId) {
+			return;
+		}
+
+		this.items = this.items.filter((item) => !(item.kind === 'user' && item.uuid === uuid));
+		await del(`/agent/conversations/${this.conversationId}/queue/${uuid}`).catch(() => {});
+	}
+
 	async stop(): Promise<void> {
 		if (!this.conversationId) {
 			return;
@@ -1154,9 +1177,17 @@ export class ChatSession {
 				);
 
 				if (shown) {
+					// a held message going out now belongs where the agent picks it up: the bottom
+					const delivered = shown.queued && !event.queued;
+
 					shown.uuid = event.uuid;
 					shown.queued = event.queued;
 					shown.author = event.author;
+
+					if (delivered) {
+						shown.at = event.at;
+						this.items = [...this.items.filter((item) => item !== shown), shown];
+					}
 				} else {
 					this.#meet([event.author]);
 
@@ -1174,6 +1205,16 @@ export class ChatSession {
 
 				if (!event.queued) {
 					this.suggestion = null;
+				}
+
+				break;
+			}
+
+			case 'unqueue': {
+				this.items = this.items.filter((item) => !(item.kind === 'user' && item.uuid === event.uuid));
+
+				if (event.restore && event.author === Agent.state?.me && event.text) {
+					this.restored = event.text;
 				}
 
 				break;
@@ -1275,6 +1316,10 @@ export class ChatSession {
 						existing.output = event.output;
 					}
 
+					if (event.images !== undefined) {
+						existing.images = event.images;
+					}
+
 					if (event.decidedBy !== undefined) {
 						existing.decidedBy = event.decidedBy;
 					}
@@ -1292,7 +1337,8 @@ export class ChatSession {
 						output: event.output,
 						decidedBy: event.decidedBy,
 						parent: event.parent,
-						actor: event.actor
+						actor: event.actor,
+						images: event.images
 					});
 				}
 

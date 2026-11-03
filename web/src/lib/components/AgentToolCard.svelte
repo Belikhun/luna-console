@@ -12,6 +12,7 @@
 	import Btn from './Btn.svelte';
 	import Spinner from './Spinner.svelte';
 	import AgentToolCard from './AgentToolCard.svelte';
+	import ImageViewer from './ImageViewer.svelte';
 
 	type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
@@ -47,6 +48,20 @@
 	const helper = $derived(item.name === AGENT_SUBAGENT_TOOL);
 	const todos = $derived(item.name === AGENT_TODO_TOOL ? readTodos(item.input) : null);
 	const mine = $derived(session.decides(item));
+
+	/** The pictures the call returned, as the image message under it shows them */
+	const shots = $derived(
+		item.images?.length && session.conversationId
+			? item.images.map((image) => ({
+				src: `/api/agent/conversations/${session.conversationId}/images/${encodeURIComponent(image)}`,
+				alt: t('web.agent.toolImage', { tool: item.name }),
+				name: image
+			}))
+			: []
+	);
+
+	/** Which picture the full-screen viewer shows; null while it is closed */
+	let viewing: number | null = $state(null);
 	const redacted = $derived(item.output === '#redacted');
 
 	const children = $derived(
@@ -274,9 +289,68 @@
 			</div>
 		{/if}
 	</div>
+
+	{#if shots.length}
+		<div class="shots" class:nested>
+			{#each shots as shot, index (shot.src)}
+				<button class="shot" type="button" title={t('web.agent.openImage')} onclick={() => (viewing = index)}>
+					<img src={shot.src} alt={shot.alt} loading="lazy" />
+				</button>
+			{/each}
+		</div>
+		<ImageViewer images={shots} bind:index={viewing} />
+	{/if}
 {/if}
 
 <style lang="scss">
+	// what the model was shown, as an image message of its own: thumbnails in the
+	// chat, the picture itself in the full-screen viewer
+	.shots {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+		margin-top: 0.25rem;
+
+		&.nested {
+			padding: 0 0.75rem 0.5rem;
+		}
+	}
+
+	.shot {
+		@include bare-button;
+
+		display: block;
+		width: 7.5rem;
+		height: 7.5rem;
+		border: 0.1rem solid var(--border-input);
+
+		// a bubble's shape: the tight corners on the agent's side, rounded out at
+		// the bottom when the pictures end the message, as AgentChat's .bubble does
+		border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
+		overflow: hidden;
+
+		:global(.msg.bot) > .shots:last-child & {
+			border-bottom-left-radius: 0.75rem;
+		}
+		background: var(--bg-track);
+		cursor: zoom-in;
+
+		&:hover {
+			border-color: var(--link);
+		}
+
+		&:focus-visible {
+			@include focus-ring;
+		}
+
+		img {
+			display: block;
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+		}
+	}
+
 	.todo-line {
 		display: inline-flex;
 		align-items: center;

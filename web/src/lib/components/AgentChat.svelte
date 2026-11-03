@@ -149,6 +149,7 @@
 	function foldable(item: BotItem): item is ToolItem {
 		return item.kind === 'tool'
 			&& item.status === 'ok'
+			&& !item.images?.length
 			&& item.name !== AGENT_ASK_TOOL
 			&& item.name !== AGENT_SUBAGENT_TOOL
 			&& item.name !== AGENT_TODO_TOOL;
@@ -184,12 +185,20 @@
 		return out;
 	}
 
+	/** Messages held for the end of the answer, pinned under it in the order sent */
+	const held = $derived(session.items.filter((item): item is UserItem => item.kind === 'user' && !!item.queued));
+
 	const groups = $derived.by(() => {
 		const out: Group[] = [];
 
 		for (const item of session.items) {
 			// a helper's own calls are drawn inside its card
 			if (item.kind === 'tool' && item.parent) {
+				continue;
+			}
+
+			// held messages wait under the live answer until they go out
+			if (item.kind === 'user' && item.queued) {
 				continue;
 			}
 
@@ -510,6 +519,85 @@
 	}
 </script>
 
+{#snippet userMessage(item: UserItem, key: string)}
+	{@const author = item.author || me}
+	{@const person = author === me && account ? account : session.people[author]}
+	<div class="msg user" class:queued={item.queued}>
+		<div class="author">
+			{#if person}
+				<AccountAvatar account={person} size="1.75rem" />
+			{:else}
+				<span class="avatar">{initial(author)}</span>
+			{/if}
+			<span class="who">{author}</span>
+			{#if item.mode && item.mode !== 'auto'}
+				<span class="modetag {item.mode}">{t(`web.agentComposer.mode_${item.mode}`)}</span>
+			{/if}
+			{#if item.queued}
+				<span class="modetag queued">{t('web.agent.queued')}</span>
+				{#if author === me && item.uuid}
+					{@const uuid = item.uuid}
+					<button class="act revoke" title={t('web.agent.revokeQueued')} onclick={() => session.revoke(uuid)}>
+						<Icon name="close" size="0.75rem" />
+					</button>
+				{/if}
+			{/if}
+		</div>
+		{#if editing && editing === item.uuid}
+			<div class="editor">
+				<!-- svelte-ignore a11y_autofocus -->
+				<textarea
+					class="input"
+					rows="3"
+					autofocus
+					bind:value={editText}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+							event.preventDefault();
+							submitEdit();
+						}
+
+						if (event.key === 'Escape') {
+							editing = null;
+						}
+					}}
+				></textarea>
+				<div class="btns">
+					<Btn onclick={() => (editing = null)}>{t('web.common.cancel')}</Btn>
+					<Btn variant="primary" icon="paperPlaneTop" disabled={!editText.trim()} onclick={submitEdit}>
+						{t('web.agent.resend')}
+					</Btn>
+				</div>
+			</div>
+		{:else if item.text}
+			<div class="bubble text">{item.text}</div>
+		{/if}
+		{#each item.attachments ?? [] as file}
+			<div class="bubble file">
+				<Icon name="paperclip" size="0.75rem" />
+				<span class="fname">{file.name}</span>
+			</div>
+		{/each}
+		{#if editing !== item.uuid}
+			<div class="acts">
+				<button class="act" title={t('web.agent.copyMessage')} onclick={() => copy(key, item.text)}>
+					<Icon name={copied === key ? 'check' : 'copy'} size="0.75rem" />
+				</button>
+				{#if item.uuid && session.writable && !item.queued}
+					<button
+						class="act"
+						title={canRewind ? t('web.agent.editMessage') : t('web.agent.editBusy')}
+						disabled={!canRewind}
+						onclick={() => startEdit(item)}
+					>
+						<Icon name="pen" size="0.75rem" />
+					</button>
+				{/if}
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
 <div class="chat">
 	{#if shared && session.conversationId}
 		<div class="presence" role="status">
@@ -608,76 +696,7 @@
 						{/if}
 					</div>
 				{:else if group.kind === 'user'}
-					{@const author = group.item.author || me}
-					{@const person = author === me && account ? account : session.people[author]}
-					<div class="msg user" class:queued={group.item.queued}>
-						<div class="author">
-							{#if person}
-								<AccountAvatar account={person} size="1.75rem" />
-							{:else}
-								<span class="avatar">{initial(author)}</span>
-							{/if}
-							<span class="who">{author}</span>
-							{#if group.item.mode && group.item.mode !== 'auto'}
-								<span class="modetag {group.item.mode}">{t(`web.agentComposer.mode_${group.item.mode}`)}</span>
-							{/if}
-							{#if group.item.queued}
-								<span class="modetag queued">{t('web.agent.queued', { name: session.actor ?? '' })}</span>
-							{/if}
-						</div>
-						{#if editing && editing === group.item.uuid}
-							<div class="editor">
-								<!-- svelte-ignore a11y_autofocus -->
-								<textarea
-									class="input"
-									rows="3"
-									autofocus
-									bind:value={editText}
-									onkeydown={(event) => {
-										if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-											event.preventDefault();
-											submitEdit();
-										}
-
-										if (event.key === 'Escape') {
-											editing = null;
-										}
-									}}
-								></textarea>
-								<div class="btns">
-									<Btn onclick={() => (editing = null)}>{t('web.common.cancel')}</Btn>
-									<Btn variant="primary" icon="paperPlaneTop" disabled={!editText.trim()} onclick={submitEdit}>
-										{t('web.agent.resend')}
-									</Btn>
-								</div>
-							</div>
-						{:else if group.item.text}
-							<div class="bubble text">{group.item.text}</div>
-						{/if}
-						{#each group.item.attachments ?? [] as file}
-							<div class="bubble file">
-								<Icon name="paperclip" size="0.75rem" />
-								<span class="fname">{file.name}</span>
-							</div>
-						{/each}
-						{#if editing !== group.item.uuid}
-							<div class="acts">
-								<button class="act" title={t('web.agent.copyMessage')} onclick={() => copy(`u${gi}`, group.item.text)}>
-									<Icon name={copied === `u${gi}` ? 'check' : 'copy'} size="0.75rem" />
-								</button>
-								{#if group.item.uuid && session.writable}
-									<button
-										class="act"
-										title={canRewind ? t('web.agent.editMessage') : t('web.agent.editBusy')}
-										disabled={!canRewind}
-										onclick={() => startEdit(group.item)}
-									>
-										<Icon name="pen" size="0.75rem" />
-									</button>
-								{/if}
-							</div>
-						{/if}
-					</div>
+					{@render userMessage(group.item, `u${gi}`)}
 				{:else}
 					<div class="msg bot">
 						<div class="author">
@@ -798,6 +817,10 @@
 					</div>
 				</div>
 			{/if}
+
+			{#each held as item, hi (item.uuid ?? item.nonce ?? hi)}
+				{@render userMessage(item, `h${hi}`)}
+			{/each}
 		</div>
 	</div>
 
@@ -1103,9 +1126,16 @@
 				overflow-wrap: anywhere;
 			}
 
-			&.queued .text {
-				opacity: 0.6;
-				border: 0.1rem dashed var(--border-input);
+			// held for the end of the answer: a ghost of the message until it goes out
+			&.queued {
+				.bubble {
+					opacity: 0.55;
+					border: 0.1rem dashed var(--border-input);
+				}
+
+				.author :global(.avatar) {
+					opacity: 0.55;
+				}
 			}
 		}
 

@@ -26,11 +26,19 @@
  * The subprocess runs with its own HOME and CLAUDE_CONFIG_DIR under the cluster
  * root, so it never reads or writes the ~/.claude of whoever runs the console.
  *
- * A shared conversation has several writers, but a run has one: the account
- * that started it (`actor`), whose authority its bearer carries and who alone
- * approves its calls. Another writer's message therefore never joins that run;
- * it waits in the conversation's queue and starts the next run, as its sender.
+ * A message sent while the agent works is folded into the answer it is giving
+ * (`priority: 'next'`, the way Claude Code takes one mid-turn): the session
+ * hands it to the model with its next tool result rather than after the turn.
+ *
+ * A shared conversation has several writers, but a run has one authority: its
+ * `actor`, whose bearer it carries and who alone approves its calls. Another
+ * writer's message mid-answer hands the run over (`handOver`): from then on the
+ * bearer, the approvals and the screen are the new sender's, so nobody's words
+ * act on anybody else's permissions.
  */
+
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
@@ -155,9 +163,16 @@ export type AgentEvent =
 		parent?: string;
 		/** The account whose run made the call: who decides it while it waits, and whose permissions its result reflects */
 		actor?: string;
+		/** Images its result carried, saved for the chat to show; see `saveResultImages` */
+		images?: string[];
 	}
 	/** A helper's progress: tool calls so far, the last one, time spent */
 	| { type: 'progress'; id: string; tools: number; last?: string; ms: number }
+	/**
+	 * A held message that will not be sent after all: its sender took it back, or
+	 * the run was stopped (`restore`, so the sender's message box gets it back)
+	 */
+	| { type: 'unqueue'; uuid: string; restore?: boolean; author?: string; text?: string }
 	| { type: 'suggestion'; text: string }
 	| { type: 'stats'; at: number; ms: number; tools: number; costUsd: number }
 	/** `for` is the account whose browser answers: the run's actor, never a viewer */
@@ -318,6 +333,61 @@ export interface Screenshot {
 	height: number;
 }
 
+const IMAGE_EXTENSIONS: Record<string, string> = {
+	'image/png': 'png',
+	'image/jpeg': 'jpg',
+	'image/gif': 'gif',
+	'image/webp': 'webp'
+};
+
+/**
+ * Keep the pictures a tool result carried (a screenshot, an image file the
+ * agent read) beside the conversation's scratch files, so the chat can show
+ * what the model was shown. A result block is the API's `image` with a base64
+ * source; an MCP result's own `{ data, mimeType }` shape is taken too.
+ * Returns the saved file names, in order.
+ */
+function saveResultImages(run: Run, toolUseId: string, content: unknown): string[] {
+	if (!run.scratch || !Array.isArray(content)) {
+		return [];
+	}
+
+	const names: string[] = [];
+	const dir = join(run.scratch, '.images');
+	const stem = toolUseId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100);
+
+	for (const part of content as Array<Record<string, unknown>>) {
+		if (part?.type !== 'image') {
+			continue;
+		}
+
+		const source = part.source as { type?: string; media_type?: string; data?: string } | undefined;
+		const mime = source?.media_type ?? (typeof part.mimeType === 'string' ? part.mimeType : '');
+		const data = source?.type === 'base64'
+			? source.data
+			: typeof part.data === 'string'
+				? part.data
+				: undefined;
+		const extension = IMAGE_EXTENSIONS[mime];
+
+		if (!data || !extension) {
+			continue;
+		}
+
+		const name = `${stem}-${names.length}.${extension}`;
+
+		try {
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(join(dir, name), Buffer.from(data, 'base64'));
+			names.push(name);
+		} catch (err) {
+			console.error('[agent] could not keep an image a tool returned:', err);
+		}
+	}
+
+	return names;
+}
+
 function resultText(content: unknown): string {
 	if (typeof content === 'string') {
 		return content;
@@ -424,6 +494,15 @@ class Run {
 	/** The prompt queue the query reads from */
 	readonly input = new InputQueue();
 
+	/** Messages held until the answer being given ends, oldest first; each starts the next turn */
+	readonly held: StartRunInput[] = [];
+
+	/** Whether others can write in the conversation, so each message names its sender */
+	shared = false;
+
+	/** Moves the run's MCP bearer to another account; set once the query starts */
+	retarget: ((account: string) => void) | null = null;
+
 	/** The live query, once started; model and effort changes go through it */
 	query: Query | null = null;
 
@@ -491,8 +570,11 @@ class Run {
 		readonly conversationId: string,
 		/** The conversation's owner */
 		readonly owner: string,
-		/** Who the run acts as and answers to: the account that started it */
-		readonly actor: string,
+		/**
+		 * Who the run acts as and answers to: the account that started it, until
+		 * another participant's message joins it and the run is handed to them
+		 */
+		public actor: string,
 		settings: { mode: AgentMode; model: string; effort: string }
 	) {
 		this.mode = settings.mode;
@@ -586,6 +668,11 @@ class Run {
 			this.decide(id, false, by);
 		}
 
+		// as Claude Code does on an interrupt: what was held goes back to its sender's message box
+		for (const held of this.held.splice(0)) {
+			this.emit({ type: 'unqueue', uuid: held.uuid ?? '', restore: true, author: held.actor, text: held.text });
+		}
+
 		this.closing = true;
 		this.input.close();
 		this.abort.abort();
@@ -618,6 +705,8 @@ export interface StartRunInput {
 	compact?: true;
 	/** What the sender's window called the message, echoed back so it can match it */
 	nonce?: string;
+	/** Hold it until the answer being given ends, rather than fold it into that answer */
+	hold?: boolean;
 	/** The SDK uuid the message goes in under; given once, kept while it waits in the queue */
 	uuid?: string;
 }
@@ -625,7 +714,7 @@ export interface StartRunInput {
 /** What became of a message: it started a run, joined the one going, or waits for another account's to end. */
 export type StartOutcome = 'started' | 'joined' | 'queued';
 
-/** Messages waiting for another account's run to end, per conversation, oldest first. */
+/** Background reports waiting for another account's run to end, per conversation, oldest first. */
 const waiting = new Map<string, StartRunInput[]>();
 
 /** Refuse settings the run could not honour, before anything is saved or sent. */
@@ -670,10 +759,11 @@ function userFrame(input: StartRunInput, mode: AgentMode, at: number, queued = f
 /**
  * Send a message to Mèo Béo. With no run going it starts one, resolving once
  * the run is under way (the message saved, the subprocess launching). With one
- * going as the same account, the message joins it: the session takes it at its
- * next step, as Claude Code does with a message typed mid-answer. With one
- * going as another account, it waits for that run to end and then starts its
- * own, so nobody's words ride on anybody else's authority. The answer arrives
+ * going, the message joins it: the session takes it with its next tool result,
+ * as Claude Code does with a message typed mid-answer. A run going as another
+ * account is handed over to the sender first, so nobody's words ride on
+ * anybody else's authority; a background report for another account still
+ * waits for that run to end. The answer arrives
  * on the stream, which echoes every message, so each window following the
  * conversation shows it the same way.
  */
@@ -695,25 +785,45 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
 	checkSettings(launch, input);
 
 	const live = runs.get(input.conversationId);
+	const shared = conversation.owner !== input.actor || (conversation.shares?.length ?? 0) > 0;
 
-	if (live?.running && live.actor !== input.actor) {
-		if (input.compact) {
-			throw new AgentRunError('busy', `${live.actor}'s answer is still running`);
+	if (live) {
+		live.shared = shared;
+	}
+
+	if (input.hold && live?.running && !live.closing && !input.compact && !input.event) {
+		live.held.push(input);
+		live.emit(userFrame(input, input.mode, Date.now(), true));
+
+		return 'queued';
+	}
+
+	if (live?.running && live.actor !== input.actor && input.compact) {
+		throw new AgentRunError('busy', `${live.actor}'s answer is still running`);
+	}
+
+	// another participant speaking mid-answer takes the run over, as Claude Code
+	// folds a message into the turn it is in; from there on the run is theirs, so
+	// their words never act on anybody else's permissions
+	if (live?.running && !live.closing && live.actor !== input.actor && !input.event) {
+		const allowed = conversation.allowedTools;
+
+		if (await joinRun(live, input, () => handOver(live, input.actor, allowed))) {
+			return 'joined';
 		}
+	}
 
+	// a background report acts for whoever armed it, and waits for a run that is somebody else's
+	if (live?.running && live.actor !== input.actor && input.event) {
 		const queue = waiting.get(input.conversationId) ?? [];
 
 		queue.push(input);
 		waiting.set(input.conversationId, queue);
 
-		if (!input.event) {
-			live.emit(userFrame(input, input.mode, Date.now(), true));
-		}
-
 		return 'queued';
 	}
 
-	if (live?.running && !live.closing) {
+	if (live?.running && !live.closing && live.actor === input.actor) {
 		if (await joinRun(live, input)) {
 			return 'joined';
 		}
@@ -754,6 +864,7 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
 			? Math.max(0, conversation.costUsd - (conversation.costBeforeUsd ?? 0)) + (conversation.costBaseUsd ?? 0)
 			: 0;
 
+	run.shared = shared;
 	runs.set(input.conversationId, run);
 	run.scratch = await agentScratch(input.conversationId, input.actor);
 	run.context = {
@@ -814,15 +925,19 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
  * came before and after it, and every window following the run shows it. False
  * when the run closed its queue in the meantime, so the caller starts a new one.
  */
-async function joinRun(run: Run, input: StartRunInput): Promise<boolean> {
+async function joinRun(run: Run, input: StartRunInput, before?: () => void, midTurn = true): Promise<boolean> {
+	before?.();
 	await applyRunSettings(run, input);
 
 	const at = Date.now();
 	const attachments = fileList(input);
+	const priority = midTurn && !input.compact
+		? 'next'
+		: undefined;
 
 	await copyAttachments(run, input);
 
-	if (!run.input.push(userMessage(promptFor(input, run), input.uuid))) {
+	if (!run.input.push(userMessage(promptFor(input, run), input.uuid, priority))) {
 		return false;
 	}
 
@@ -847,11 +962,95 @@ async function joinRun(run: Run, input: StartRunInput): Promise<boolean> {
 		mode: run.mode,
 		model: run.model,
 		uuid: input.uuid,
+		...(midTurn ? { midTurn: true } : {}),
 		...(attachments ? { attachments } : {})
 	});
 	run.emit(userFrame(input, run.mode, at));
 
 	return true;
+}
+
+/**
+ * Give a live run to another participant: their bearer, their tools allowed in
+ * this chat, their screen, and the calls still waiting for a decision, which
+ * are announced again as theirs to make.
+ */
+function handOver(run: Run, actor: string, allowed: string[]): void {
+	run.actor = actor;
+	run.retarget?.(actor);
+	run.allowed.clear();
+
+	for (const tool of allowed) {
+		run.allowed.add(tool);
+	}
+
+	if (run.context) {
+		run.context = { ...run.context, owner: actor };
+	}
+
+	run.emit({ type: 'actor', actor });
+
+	for (const id of run.pending.keys()) {
+		const call = run.calls.get(id);
+
+		if (call) {
+			run.emit({ type: 'tool', id, name: call.name, input: call.input, status: 'awaiting', actor, ...(call.parent ? { parent: call.parent } : {}) });
+		}
+	}
+}
+
+/**
+ * Send the oldest held message as the next turn, handing the run to its sender
+ * when that is somebody else. A sender who can no longer write here (a share
+ * taken back meanwhile) has theirs dropped. False when nothing was sent.
+ */
+async function deliverHeld(run: Run): Promise<boolean> {
+	while (run.held.length && !run.abort.signal.aborted) {
+		const next = run.held.shift()!;
+		const view = await getAgentConversation(run.conversationId, next.actor).catch(() => undefined);
+
+		if (!view || view.role === 'viewer') {
+			run.emit({ type: 'unqueue', uuid: next.uuid ?? '' });
+
+			continue;
+		}
+
+		const before = next.actor !== run.actor
+			? () => handOver(run, next.actor, view.allowedTools)
+			: undefined;
+
+		if (await joinRun(run, next, before, false)) {
+			return true;
+		}
+
+		run.held.unshift(next);
+
+		return false;
+	}
+
+	return false;
+}
+
+/**
+ * Take back a held message before it is sent. Only its sender may; the
+ * windows following the conversation drop it.
+ */
+export function revokeHeld(conversationId: string, account: string, uuid: string): boolean {
+	const run = runs.get(conversationId);
+	const queues = [run?.held ?? [], waiting.get(conversationId) ?? []];
+
+	for (const queue of queues) {
+		const index = queue.findIndex((entry) => entry.uuid === uuid && entry.actor === account && !entry.event);
+
+		if (index >= 0) {
+			queue.splice(index, 1);
+			run?.emit({ type: 'unqueue', uuid });
+
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /** Start the next message that waited for a run to end, as its own sender. */
@@ -964,6 +1163,7 @@ function promptFor(input: StartRunInput, run: Run): string {
 	}
 
 	const notes = [
+		...(run.shared ? [`<sender>${input.actor}</sender>`] : []),
 		...(input.attachments ?? []).map((file) => {
 			const copy = run.attachmentPaths.get(file.id);
 			const path = copy
@@ -1006,11 +1206,12 @@ async function copyAttachments(run: Run, input: StartRunInput): Promise<void> {
 }
 
 /** A message as the session reads it; the uuid is what a later fork or rewind cuts at. */
-function userMessage(text: string, uuid?: string): SDKUserMessage {
+function userMessage(text: string, uuid?: string, priority?: SDKUserMessage['priority']): SDKUserMessage {
 	return {
 		type: 'user',
 		message: { role: 'user', content: text },
 		parent_tool_use_id: null,
+		...(priority ? { priority } : {}),
 		...(uuid ? { uuid: uuid as SDKUserMessage['uuid'] } : {})
 	};
 }
@@ -1365,6 +1566,8 @@ async function drive(
 		via: 'meo-beo'
 	});
 
+	run.retarget = grant.retarget;
+
 	// Every call comes through here, none is pre-allowed: the operator can switch
 	// mode mid-run, so whether a call runs unasked is decided at the call, by the
 	// mode in force then, rather than by a list fixed when the run started.
@@ -1534,9 +1737,14 @@ async function drive(
 				await refreshContext(run);
 			}
 
-			// a turn is over; with nothing queued in the session or still waiting
-			// to be read from ours, the queue closes and the query ends after it
+			// a turn is over; a held message starts the next one, and with nothing
+			// queued in the session or still waiting to be read from ours, the queue
+			// closes and the query ends after it
 			if (outcome.turnDone && outcome.queued === 0 && run.input.buffered === 0) {
+				if (await deliverHeld(run)) {
+					continue;
+				}
+
 				run.closing = true;
 				run.input.close();
 			}
@@ -1572,7 +1780,7 @@ async function drive(
 			: run.entries;
 
 		try {
-			await appendAgentTurn(input.conversationId, input.actor, {
+			await appendAgentTurn(input.conversationId, run.actor, {
 				entries,
 				sessionId,
 				costUsd,
@@ -1596,6 +1804,11 @@ async function drive(
 				runs.delete(input.conversationId);
 			}
 		}, LINGER_MS);
+
+		// a run that ended on its own (an error, the turn limit) still owes its held messages a turn
+		if (run.held.length) {
+			waiting.set(input.conversationId, [...run.held.splice(0), ...(waiting.get(input.conversationId) ?? [])]);
+		}
 
 		void startWaiting(input.conversationId);
 	}
@@ -1766,6 +1979,7 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					? helperReport(message.tool_use_result)
 					: null;
 				const output = report?.text ?? resultText(block.content);
+				const images = saveResultImages(run, block.tool_use_id, block.content);
 
 				if (report) {
 					run.emit({ type: 'progress', id: block.tool_use_id, tools: report.tools, ms: report.ms });
@@ -1786,6 +2000,7 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					output,
 					decidedBy: call?.decidedBy,
 					actor: run.actor,
+					...(images.length ? { images } : {}),
 					...(call?.parent
 						? { parent: call.parent }
 						: { uuid: message.uuid, session: message.session_id ?? run.sessionId ?? undefined })
@@ -1799,6 +2014,7 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					output: output.slice(0, 4096),
 					decidedBy: call?.decidedBy,
 					actor: run.actor,
+					...(images.length ? { images } : {}),
 					...(call?.parent ? { parent: call.parent } : {})
 				});
 			}
@@ -2079,6 +2295,15 @@ export function watchRunStarts(conversationId: string, notify: () => void): () =
 /** Whether a conversation has a run in progress. */
 export function isRunning(conversationId: string): boolean {
 	return runs.get(conversationId)?.running ?? false;
+}
+
+/** The tool call a live run filed an image under, before the run has saved its transcript. */
+export function liveImageEntry(conversationId: string, image: string): Extract<AgentEntry, { kind: 'tool' }> | null {
+	const run = runs.get(conversationId);
+
+	return run?.entries.find(
+		(entry): entry is Extract<AgentEntry, { kind: 'tool' }> => entry.kind === 'tool' && !!entry.images?.includes(image)
+	) ?? null;
 }
 
 /** Who a conversation's live run acts as, or null when none goes. */

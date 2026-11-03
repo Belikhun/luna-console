@@ -597,7 +597,14 @@ export interface InstanceConfig {}
   leaves it going, and the stream route replays its events so a reload picks up mid-answer.
 - **A run's prompt is a queue, so the operator can talk mid-answer**, as in Claude Code. A message
   sent while a run goes joins it (the route answers `joined`, the stream echoes it as a `user` event)
-  and the CLI folds it in at its next step; mode, model and effort change on the live run
+  with `priority: 'next'`, so the session hands it to the model with the next tool result, inside
+  the answer it is giving rather than after it. The session files it as an attachment under a uuid
+  of its own, so its entry is marked `midTurn` and is never a rewind's cut point. The send button's
+  other choice (Alt+Enter) **holds** a message instead (`hold`): it waits ghosted under the live answer,
+  its sender can take it back (`DELETE …/queue/<uuid>`), it goes in as the next turn of the same run
+  when the answer ends (handing the run over if someone else sent it), and a stop gives it back to
+  its sender's message box (`unqueue` with `restore`), as Claude Code does. Mode, model and
+  effort change on the live run
   (`PATCH …/run`: `setModel`, `applyFlagSettings`, and the mode `canUseTool` reads per call, which is
   why no tool is pre-allowed). The run ends when a turn's result reports `queued_turn_count` 0 with
   nothing left in the queue; a message arriving as it closes waits for it and starts the next run.
@@ -704,12 +711,22 @@ export interface InstanceConfig {}
   `agent:Share` gates it and only the owner shares, deletes or branches. A run acts as its `actor`,
   the account whose message started it: its bearer, its approvals (nobody else can decide its calls)
   and its screen requests (`for` on screenshot/navigate events) are that account's. A message from
-  another participant never joins it; it waits in the runner's queue and starts the next run as its
-  sender. A tool entry records its `actor`, and `agent/sharing.ts` shows its output only to that
+  another participant mid-answer joins it too, and **hands the run over** (`handOver`): the bearer is
+  retargeted, the calls still waiting are re-announced as the sender's to decide, and from there on
+  the run acts with the sender's permissions, so nobody's words act on anybody else's. In a shared
+  conversation every message carries a `<sender>` tag for the model. Only a background report for
+  another account still waits in the runner's queue for the run to end. A tool entry records its
+  `actor`, and `agent/sharing.ts` shows its output only to that
   account (a result reflects whose permissions produced it: the same `cluster_status` answers
   differently per account) and its input to others only when their own policies allow the call.
   Every message is echoed on the stream with a uuid and the sender's `nonce`, so every window shows
   it once; `agent/presence.ts` tells each participant who has the conversation open.
+- **What the model was shown, the chat shows.** An image in a tool result (a screenshot, a picture
+  the agent read) is saved under the conversation's scratch folder as `.images/<call>-<n>.<ext>`,
+  named on the tool entry (`images`) and served by `…/images/<name>`, which applies the call's
+  output visibility; a screenshot is its actor's screen, so it is theirs alone. The chat shows them
+  as an image message of thumbnails under the call, opening `ImageViewer` full screen, and a call
+  that returned one never folds into a "used N tools" line.
 - **Branching and rewinding cut the SDK session; they never rewrite one.** Every transcript entry
   filed from an SDK message carries that message's `uuid` and `session` (a branched session
   renumbers its messages, so a uuid means nothing without its session). `forkAgentConversation`

@@ -4750,6 +4750,9 @@
 		"writtenByMcp": "Saved by a client over MCP ({actor}). Check it before relying on it."
 	},
 	"agent": {
+		"revokeQueued": "Take it back before it is sent",
+		"openImage": "Open the full picture",
+		"toolImage": "Picture returned by {tool}",
 		"newChat": "New chat",
 		"history": "Conversations",
 		"noHistory": "No conversations yet",
@@ -4885,7 +4888,7 @@
 		"helperStarting": "Starting…",
 		"jumpLatest": "Jump to the latest",
 		"questionFor": "Mèo Béo asked {name} a question; the answer is theirs to give.",
-		"queued": "waits for {name}",
+		"queued": "queued; sends when Mèo Béo finishes",
 		"readOnly": "You can read {owner}'s conversation and follow it live, but not write in it.",
 		"redacted": "Result hidden: it was produced with another account's permissions, so only they see it.",
 		"redactedShort": "contents hidden",
@@ -5011,6 +5014,11 @@
 		"suggestionsHint": "After each answer, offer what the operator might ask next. Costs a small extra request per answer."
 	},
 	"agentComposer": {
+		"sendOptions": "Send options",
+		"sendNowItem": "Send now",
+		"sendNowHint": "Mèo Béo reads it at its next step (Enter)",
+		"queueItem": "Queue",
+		"queueHint": "Sends when Mèo Béo finishes this answer (Alt+Enter)",
 		"add": "Add",
 		"sharePage": "Share the page I have open",
 		"sharedPage": "Sent with each message: {page}",
@@ -5893,6 +5901,15 @@
 		"renameFailed": "Could not rename the conversation",
 		"share": "Share",
 		"viewerHint": "You can only read this conversation"
+	},
+	"imageViewer": {
+		"download": "Download",
+		"zoomIn": "Zoom in (+)",
+		"zoomOut": "Zoom out (−)",
+		"reset": "Fit to the window (0)",
+		"original": "Open the original",
+		"previous": "Previous picture",
+		"next": "Next picture"
 	},
 	"dateTime": {
 		"pick": "Pick a date and time",

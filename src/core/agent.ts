@@ -241,6 +241,11 @@ export type AgentEntry =
 		attachments?: Array<{ name: string; size: number }>;
 		uuid?: string;
 		session?: string;
+		/**
+		 * Sent while an answer was going and folded into it: the session files it
+		 * as an attachment under a uuid of its own, so this one is no cut point
+		 */
+		midTurn?: boolean;
 	}
 	| { kind: "assistant"; at: number; text: string; uuid?: string; session?: string }
 	/** What the model thought before answering, as the API summarised it */
@@ -259,6 +264,8 @@ export type AgentEntry =
 		parent?: string;
 		/** Whose run made it, and so whose permissions its result reflects; absent means the owner's */
 		actor?: string;
+		/** Images the result carried (a screenshot, a picture it read), by file name; see `agentImagePath` */
+		images?: string[];
 		uuid?: string;
 		session?: string;
 	}
@@ -772,6 +779,27 @@ export async function agentScratch(id: string, account: string): Promise<string>
 	return dir;
 }
 
+/** What an image saved from a tool result may be called: the call id, its index, a picture's extension. */
+export const AGENT_IMAGE_NAME = /^[A-Za-z0-9_-]{1,128}\.(png|jpg|gif|webp)$/;
+
+/**
+ * Where an image a tool result carried is kept: the conversation's scratch
+ * folder, under `.images`, so it goes with the conversation. Anyone who can
+ * open the conversation may ask; whether they may see that call's result is
+ * the caller's to decide. Throws for a name that is not one.
+ */
+export async function agentImagePath(id: string, account: string, name: string): Promise<string> {
+	const store = await loadStore();
+
+	requireConversation(store, id, account, ["owner", "collaborator", "viewer"]);
+
+	if (!AGENT_IMAGE_NAME.test(name)) {
+		throw new Error(t("core.agent.unknownImage"));
+	}
+
+	return join(scratchPath(id), ".images", name);
+}
+
 async function readEntries(id: string): Promise<AgentEntry[]> {
 	if (!existsSync(transcriptPath(id))) {
 		return [];
@@ -1149,6 +1177,10 @@ export async function leaveAgentConversation(id: string, account: string): Promi
 function cutPoint(entries: AgentEntry[], keep: number): { session: string; at: string } | null | undefined {
 	for (let index = keep - 1; index >= 0; index--) {
 		const entry = entries[index]!;
+
+		if (entry.kind === "user" && entry.midTurn) {
+			continue;
+		}
 
 		if ("uuid" in entry && entry.uuid && entry.session) {
 			return { session: entry.session, at: entry.uuid };

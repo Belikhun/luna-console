@@ -14,10 +14,10 @@ import type { StartOutcome } from '$lib/server/agent/runner';
 import { DEFAULT_AGENT_MODE, isAgentMode } from '$shared/agent';
 
 /**
- * POST { text, locale?, mode?, model?, effort?, page?, nonce? } → { ok, outcome }
- * once the run is under way (`started`), once the message joined the run the
- * sender already has going (`joined`), or once it is queued behind another
- * participant's run (`queued`). The stream echoes the message either way,
+ * POST { text, locale?, mode?, model?, effort?, page?, nonce?, hold? } → { ok, outcome }
+ * once the run is under way (`started`), once the message joined the answer
+ * being given (`joined`), or once it is held until that answer ends (`queued`,
+ * asked for with `hold`). The stream echoes the message either way,
  * carrying `nonce` back so the sender's window can match it to what it shows.
  * `model` and `effort` override the settings for this message, and `page` is
  * the console path the operator chose to share.
@@ -75,7 +75,8 @@ export async function POST({ params, request, url, locals }) {
 			model: typeof body.model === 'string' ? body.model.trim() : undefined,
 			effort: typeof body.effort === 'string' ? body.effort : undefined,
 			page,
-			attachments
+			attachments,
+			hold: body.hold === true
 		});
 	} catch (err) {
 		const code = err instanceof AgentRunError

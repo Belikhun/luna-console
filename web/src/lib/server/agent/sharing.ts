@@ -28,7 +28,7 @@ import { listAgentConversations } from '$core/agent';
 import type { AgentConversationView, AgentEntry, AgentRole } from '$core/agent';
 import { getAccount } from '$core/accounts';
 import type { AvatarSubject } from '$lib/components/accountavatar';
-import { AGENT_ASK_TOOL, AGENT_LOCAL_TOOLS } from '$shared/agent';
+import { AGENT_ASK_TOOL, AGENT_LOCAL_TOOLS, AGENT_SCREENSHOT_TOOL } from '$shared/agent';
 import { refuseFor, toolChecks } from '$lib/server/mcp/iam';
 
 /** What a withheld tool result is replaced with; the panel words it in the reader's language. */
@@ -74,6 +74,8 @@ function local(name: string): boolean {
 export interface ToolSight {
 	input: boolean;
 	output: boolean;
+	/** The pictures it returned; a screenshot is of its actor's screen, so it is theirs alone */
+	images: boolean;
 }
 
 /**
@@ -98,12 +100,12 @@ export function toolVisibility(
 		let sight: ToolSight;
 
 		if (mine || local(name)) {
-			sight = { input: true, output: true };
+			sight = { input: true, output: true, images: mine || name !== AGENT_SCREENSHOT_TOOL };
 		} else {
 			const checks = toolChecks(name, (input ?? {}) as Record<string, unknown>);
 			const allowed = checks !== null && (await refuseFor(account, checks).catch(() => ({}))) === null;
 
-			sight = { input: allowed, output: false };
+			sight = { input: allowed, output: false, images: false };
 		}
 
 		decided.set(id, sight);
@@ -133,7 +135,8 @@ export async function redactEntries(
 		out.push({
 			...entry,
 			...(seen.input ? {} : { input: undefined }),
-			...(seen.output ? {} : { output: REDACTED })
+			...(seen.output ? {} : { output: REDACTED }),
+			...(seen.images ? {} : { images: undefined })
 		});
 	}
 

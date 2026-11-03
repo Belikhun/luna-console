@@ -1712,6 +1712,7 @@ export const OPS: Record<string, OpSpec> = {
 	"agent.listConversations": { fn: agentCore.listAgentConversations },
 	"agent.getConversation": { fn: agentCore.getAgentConversation },
 	"agent.scratch": { fn: agentCore.agentScratch },
+	"agent.imagePath": { fn: agentCore.agentImagePath },
 	"agent.createConversation": { fn: agentCore.createAgentConversation },
 	"agent.appendTurn": { fn: agentCore.appendAgentTurn },
 	"agent.renameConversation": { fn: agentCore.renameAgentConversation },

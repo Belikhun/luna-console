@@ -36,6 +36,8 @@
 	let addMenu: ContextMenu | undefined = $state();
 	let addButton: HTMLButtonElement | undefined = $state();
 	let skillMenu: ContextMenu | undefined = $state();
+	let sendMenu: ContextMenu | undefined = $state();
+	let sendAnchor: HTMLButtonElement | undefined = $state();
 	let skillButton: HTMLButtonElement | undefined = $state();
 	let popover: 'model' | 'mode' | 'context' | null = $state(null);
 	let compactFocus = $state('');
@@ -290,7 +292,7 @@
 	}
 
 	/** Send what is typed, or a suggestion handed in from the panel. */
-	export async function send(text: string = draft): Promise<void> {
+	export async function send(text: string = draft, hold = false): Promise<void> {
 		const hasFiles = session.attachments.some((file) => file.id && !file.error);
 
 		if ((!text.trim() && !hasFiles) || session.sending || !ready || uploading) {
@@ -304,9 +306,41 @@
 		await tick();
 		grow();
 		onsent?.();
-		await session.send(text, pagePath || undefined);
+		await session.send(text, pagePath || undefined, hold);
 		textbox?.focus();
 	}
+
+	// what a stop handed back goes into the box, ahead of anything typed since
+	$effect(() => {
+		const restored = session.restored;
+
+		if (restored === null) {
+			return;
+		}
+
+		session.restored = null;
+		draft = draft.trim()
+			? `${restored}\n${draft}`
+			: restored;
+		void tick().then(grow);
+	});
+
+	const sendItems: ContextMenuItem[] = $derived([
+		{
+			id: 'now',
+			label: t('web.agentComposer.sendNowItem'),
+			hint: t('web.agentComposer.sendNowHint'),
+			icon: 'paperPlaneTop',
+			action: () => send()
+		},
+		{
+			id: 'queue',
+			label: t('web.agentComposer.queueItem'),
+			hint: t('web.agentComposer.queueHint'),
+			icon: 'hourglassClock',
+			action: () => send(draft, true)
+		}
+	]);
 
 	function pickMode(mode: AgentMode): void {
 		popover = null;
@@ -330,7 +364,7 @@
 
 		if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
 			event.preventDefault();
-			void send();
+			void send(draft, event.altKey);
 
 			return;
 		}
@@ -665,24 +699,41 @@
 			</button>
 		{/if}
 		{#if !session.running || canSend || session.sending}
-			<button
-				class="send"
-				type="submit"
-				title={session.running ? t('web.agentComposer.sendMidRun') : t('web.agent.send')}
-				disabled={!canSend}
-			>
-				{#if session.sending}
-					<Spinner size="0.75rem" />
-				{:else}
-					<Icon name="paperPlaneTop" size="0.75rem" />
+			<span class="sendgroup" class:split={session.running}>
+				<button
+					class="send"
+					type="submit"
+					title={session.running ? t('web.agentComposer.sendMidRun') : t('web.agent.send')}
+					disabled={!canSend}
+				>
+					{#if session.sending}
+						<Spinner size="0.75rem" />
+					{:else}
+						<Icon name="paperPlaneTop" size="0.75rem" />
+					{/if}
+				</button>
+				{#if session.running}
+					<button
+						class="send more"
+						type="button"
+						title={t('web.agentComposer.sendOptions')}
+						aria-haspopup="menu"
+						disabled={!canSend}
+						bind:this={sendAnchor}
+						onpointerdown={(event) => event.stopPropagation()}
+						onclick={(event) => openMenu(sendMenu, sendAnchor, event)}
+					>
+						<Icon name="caretDown" size="0.625rem" style="solid" />
+					</button>
 				{/if}
-			</button>
+			</span>
 		{/if}
 	</div>
 </form>
 
 <ContextMenu bind:this={addMenu} items={addItems} minWidth="15rem" />
 <ContextMenu bind:this={skillMenu} items={skillItems} minWidth="15rem" />
+<ContextMenu bind:this={sendMenu} items={sendItems} minWidth="16rem" />
 
 <ConfirmModal
 	bind:open={confirmBypass}
@@ -968,6 +1019,22 @@
 		&.stop {
 			background: var(--error);
 			color: var(--primary-text);
+		}
+	}
+
+	// while an answer goes, the send button splits: send now, or a caret for queueing
+	.sendgroup {
+		display: inline-flex;
+		flex: none;
+
+		&.split .send {
+			border-radius: 0.375rem 0 0 0.375rem;
+		}
+
+		&.split .more {
+			width: 1.25rem;
+			margin-left: 0.1rem;
+			border-radius: 0 0.375rem 0.375rem 0;
 		}
 	}
 

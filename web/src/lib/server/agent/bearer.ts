@@ -29,8 +29,15 @@ interface RunGrant {
 
 const grants = new Map<string, RunGrant>();
 
-/** Issue a bearer for one run; revoke it when the run ends. */
-export function issueRunBearer(tokenId: string, onBehalfOf: McpOnBehalfOf): { bearer: string; revoke: () => void } {
+/**
+ * Issue a bearer for one run; revoke it when the run ends. `retarget` moves it
+ * to another account mid-run (a shared conversation's run handed to whoever
+ * spoke last), so the next call is checked against that account's policies.
+ */
+export function issueRunBearer(
+	tokenId: string,
+	onBehalfOf: McpOnBehalfOf
+): { bearer: string; revoke: () => void; retarget: (account: string) => void } {
 	const id = randomBytes(8).toString('hex');
 	const secret = randomBytes(32);
 
@@ -40,6 +47,13 @@ export function issueRunBearer(tokenId: string, onBehalfOf: McpOnBehalfOf): { be
 		bearer: `${PREFIX}${id}.${secret.toString('hex')}`,
 		revoke: () => {
 			grants.delete(id);
+		},
+		retarget: (account: string) => {
+			const grant = grants.get(id);
+
+			if (grant) {
+				grant.onBehalfOf = { ...grant.onBehalfOf, label: account, account };
+			}
 		}
 	};
 }

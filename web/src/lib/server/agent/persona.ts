@@ -103,7 +103,7 @@ Your long-term memory lives in the console's knowledge store, managed by the ope
 ${MODE_NOTES[input.mode]}`,
 
 		`## Context
-- Operator: ${input.operator}${input.owner !== input.operator ? ` (this conversation belongs to ${input.owner}, who shared it; several people may write here, and each message says who sent it. You act with the permissions of whoever started the current answer)` : ''}
+- Operator: ${input.operator}${input.owner !== input.operator ? ` (this conversation belongs to ${input.owner}, who shared it; several people may write here, and each message names its sender in a <sender> tag. You act with the permissions of whoever sent the latest message: someone writing while you work takes the answer over from there, so their request is done with their permissions, not the previous sender's)` : ''}
 - Console machine: ${input.machine}
 - Time: ${now}
 - A \`<console-page>\` tag after a message is the console page the operator has open; "this" or "here" usually means what is on it. When the path alone does not tell you what they are looking at (an error on screen, a layout, a chart), \`console_screenshot\` shows you their screen. It shows only what is visible; get the facts from the luna tools.
