@@ -1663,6 +1663,8 @@
 					<InfoGrid cells={authCells} columns={[4, 2, 1]} />
 				</Panel>
 
+				<div class="gap"></div>
+
 				{#if authInfo.loginMode}
 					{#if authInfo.loginMode.proxyOnlineMode}
 						<Flash kind="info">{t('web.playerDetail.loginModeProxyOnline')}</Flash>
@@ -2250,16 +2252,19 @@
 	</div>
 
 	{#if modeChoice !== 'unset'}
-		<div class="field">
+		<label class="force">
 			<Checkbox
 				checked={modeForever}
 				label={t('web.playerDetail.loginModeKeep')}
 				onchange={(value: boolean) => (modeForever = value)}
 			/>
-			<span class="hint">
-				{t('web.playerDetail.loginModeKeepHint', { hours: String(authInfo?.loginMode?.preferenceHours ?? 24) })}
+			<span>
+				{t('web.playerDetail.loginModeKeep')}
+				<span class="dim">
+					{t('web.playerDetail.loginModeKeepHint', { hours: String(authInfo?.loginMode?.preferenceHours ?? 24) })}
+				</span>
 			</span>
-		</div>
+		</label>
 	{/if}
 
 	{#if modeReconnects}
