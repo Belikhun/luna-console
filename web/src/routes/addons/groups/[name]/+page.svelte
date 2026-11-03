@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import DateTimeInput from '$lib/components/DateTimeInput.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -652,7 +653,7 @@
 			]}
 		/>
 		{#if restartMode === 'schedule'}
-			<input class="input at" type="datetime-local" bind:value={restartAt} />
+			<div class="at"><DateTimeInput bind:value={restartAt} /></div>
 		{/if}
 	</div>
 	{#snippet footer()}

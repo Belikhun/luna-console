@@ -12,9 +12,9 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import LunaBanner from '$lib/components/LunaBanner.svelte';
+	import LanguagePicker from '$lib/components/LanguagePicker.svelte';
 	import LunaMark from '$lib/components/LunaMark.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
-	import { LANGUAGES, currentLanguage, switchLanguage } from '$lib/i18n.svelte';
 
 	/**
 	 * The console's sign-in screen: the only page reachable without a session.
@@ -252,17 +252,7 @@
 			<Icon name="globe" size="0.75rem" style="solid" />
 			<span>{t('web.login.publicPage')}</span>
 		</a>
-		<label class="langpick">
-			<Icon name="globe" size="0.75rem" style="solid" />
-			<select
-				value={currentLanguage()}
-				onchange={(event) => switchLanguage(event.currentTarget.value as 'en' | 'vi')}
-			>
-				{#each LANGUAGES as lang}
-					<option value={lang.code}>{lang.label}</option>
-				{/each}
-			</select>
-		</label>
+		<LanguagePicker placement="bottom" />
 	</header>
 
 	<div class="brand">
@@ -473,31 +463,6 @@
 
 	// same treatment as the status bar's picker, so the control is recognisably
 	// the console's and not something this page invented
-	.langpick {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		color: var(--text);
-		font-size: 0.6875rem;
-
-		select {
-			background: transparent;
-			border: none;
-			color: var(--text);
-			font-size: 0.6875rem;
-			cursor: pointer;
-
-			&:hover {
-				color: var(--link);
-			}
-
-			option {
-				background: var(--bg-panel);
-				color: var(--text);
-			}
-		}
-	}
-
 	.brand {
 		position: relative;
 		display: flex;

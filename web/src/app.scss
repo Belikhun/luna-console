@@ -343,6 +343,18 @@ input[type='radio'] {
 	}
 }
 
+// the browser's spin arrows are its own chrome, drawn differently on every
+// platform; a number field is typed into, and ↑/↓ still step it
+input[type='number'] {
+	appearance: textfield;
+
+	&::-webkit-inner-spin-button,
+	&::-webkit-outer-spin-button {
+		margin: 0;
+		appearance: none;
+	}
+}
+
 // ---------- text utilities ----------
 
 .counter {

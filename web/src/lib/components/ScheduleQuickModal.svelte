@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import DateTimeInput from './DateTimeInput.svelte';
 	import { post } from '$lib/api';
 	import Modal from './Modal.svelte';
 	import Btn from './Btn.svelte';
@@ -93,7 +94,7 @@
 		</div>
 		<label class="field">
 			<span class="lbl">{t('web.scheduleModal.runAt')}</span>
-			<input class="input" type="datetime-local" bind:value={at} />
+			<DateTimeInput bind:value={at} />
 		</label>
 	</div>
 	{#snippet footer()}

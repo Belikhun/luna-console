@@ -391,7 +391,12 @@
 
 			{#if needsAck && !blocked}
 				<label class="ack">
-					<input type="checkbox" bind:checked={acknowledged} disabled={busy} />
+					<Checkbox
+						checked={acknowledged}
+						disabled={busy}
+						label={t('web.worldWizard.acknowledge')}
+						onchange={(value) => (acknowledged = value)}
+					/>
 					<span>{t('web.worldWizard.acknowledge')}</span>
 				</label>
 			{/if}

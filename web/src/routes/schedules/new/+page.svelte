@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import DateTimeInput from '$lib/components/DateTimeInput.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
@@ -160,7 +161,7 @@
 		{#if kind === 'at'}
 			<label class="field">
 				<span class="lbl">{t('web.scheduleNew.runAt')}</span>
-				<input class="input" type="datetime-local" bind:value={at} disabled={creating} />
+				<DateTimeInput bind:value={at} disabled={creating} />
 			</label>
 		{:else if kind === 'cron'}
 			<label class="field">
