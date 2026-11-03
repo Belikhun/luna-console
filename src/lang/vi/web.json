@@ -5894,10 +5894,20 @@
 		"share": "Chia sẻ",
 		"viewerHint": "Bạn chỉ xem được cuộc trò chuyện này"
 	},
+	"dateTime": {
+		"pick": "Chọn ngày và giờ",
+		"previousMonth": "Tháng trước",
+		"nextMonth": "Tháng sau",
+		"hour": "Giờ",
+		"minute": "Phút",
+		"now": "Bây giờ",
+		"clear": "Xoá"
+	},
 	"agentShare": {
 		"title": "Chia sẻ cuộc trò chuyện",
 		"lead": "Những ai khác được mở \"{title}\".",
 		"account": "Tài khoản console",
+		"nobodyLeft": "Mọi người đều đã được chia sẻ",
 		"add": "Chia sẻ",
 		"failed": "Không thay đổi được danh sách chia sẻ",
 		"none": "Chỉ bạn mở được cuộc trò chuyện này.",

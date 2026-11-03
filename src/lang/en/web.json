@@ -5894,10 +5894,20 @@
 		"share": "Share",
 		"viewerHint": "You can only read this conversation"
 	},
+	"dateTime": {
+		"pick": "Pick a date and time",
+		"previousMonth": "Previous month",
+		"nextMonth": "Next month",
+		"hour": "Hour",
+		"minute": "Minute",
+		"now": "Now",
+		"clear": "Clear"
+	},
 	"agentShare": {
 		"title": "Share conversation",
 		"lead": "Who else may open \"{title}\".",
 		"account": "Console account",
+		"nobodyLeft": "Everyone already has it",
 		"add": "Share",
 		"failed": "Could not change who the conversation is shared with",
 		"none": "Only you can open this conversation.",

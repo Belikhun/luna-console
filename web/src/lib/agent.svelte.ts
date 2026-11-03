@@ -35,6 +35,7 @@ import {
 	type AgentTodo
 } from '$shared/agent';
 import { goto } from '$app/navigation';
+import type { AvatarSubject } from '$lib/components/accountavatar';
 
 export type ToolStatus = 'running' | 'awaiting' | 'ok' | 'error' | 'denied';
 
@@ -513,6 +514,14 @@ export class ChatSession {
 	/** Who has the conversation open right now, this account included */
 	viewers: string[] = $state([]);
 
+	/** The accounts taking part, by username, so their messages and faces show their pictures */
+	people: Record<string, AvatarSubject> = $state({});
+
+	/** Names already looked up and not found, so a deleted account is asked about once */
+	#unknownPeople = new Set<string>();
+
+	#peopleLookup: Promise<void> | null = null;
+
 	/** A likely next message the agent offered after its last answer */
 	suggestion: string | null = $state(null);
 
@@ -685,11 +694,46 @@ export class ChatSession {
 		this.role = 'owner';
 		this.actor = null;
 		this.viewers = [];
+		this.people = {};
+		this.#unknownPeople.clear();
 		this.suggestion = null;
 
 		if (this.#persist) {
 			writeStored(CONVERSATION_KEY, id);
 		}
+	}
+
+	/**
+	 * Look up whoever joined since the conversation was loaded (a new share
+	 * opening it, a collaborator's first message), once per name, by reading
+	 * the conversation's people again.
+	 */
+	#meet(names: string[]): void {
+		const id = this.conversationId;
+		const missing = names.filter((name) => name && !this.people[name] && !this.#unknownPeople.has(name));
+
+		if (!id || !missing.length || this.#peopleLookup) {
+			return;
+		}
+
+		this.#peopleLookup = api<{ people?: Record<string, AvatarSubject> }>(`/agent/conversations/${id}`)
+			.then((data) => {
+				if (this.conversationId !== id) {
+					return;
+				}
+
+				this.people = data.people ?? {};
+
+				for (const name of missing) {
+					if (!this.people[name]) {
+						this.#unknownPeople.add(name);
+					}
+				}
+			})
+			.catch(() => {})
+			.finally(() => {
+				this.#peopleLookup = null;
+			});
 	}
 
 	/** Show a conversation: its saved transcript, then its live run if one is going. */
@@ -703,6 +747,7 @@ export class ChatSession {
 				running: boolean;
 				actor: string | null;
 				viewers: string[];
+				people?: Record<string, AvatarSubject>;
 			}>(`/agent/conversations/${id}`);
 
 			if (this.conversationId !== id) {
@@ -714,6 +759,7 @@ export class ChatSession {
 			this.role = data.conversation.role;
 			this.actor = data.actor;
 			this.viewers = data.viewers;
+			this.people = data.people ?? {};
 
 			// an idle chat still has to hear of a run a background task or trigger starts
 			if (data.running) {
@@ -1010,6 +1056,7 @@ export class ChatSession {
 
 			if (data.type === 'presence' && this.conversationId === id) {
 				this.viewers = data.viewers ?? [];
+				this.#meet(this.viewers);
 
 				return;
 			}
@@ -1111,6 +1158,8 @@ export class ChatSession {
 					shown.queued = event.queued;
 					shown.author = event.author;
 				} else {
+					this.#meet([event.author]);
+
 					this.items.push({
 						kind: 'user',
 						text: event.text,
@@ -1274,6 +1323,7 @@ export class ChatSession {
 
 			case 'presence':
 				this.viewers = event.viewers;
+				this.#meet(this.viewers);
 				break;
 
 			case 'error':

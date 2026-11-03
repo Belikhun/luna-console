@@ -522,7 +522,12 @@
 			{#if others.length}
 				<span class="faces" title={t('web.agent.viewingNow', { names: others.join(', ') })}>
 					{#each others.slice(0, 4) as name (name)}
-						<span class="face">{initial(name)}</span>
+						{@const person = session.people[name]}
+						{#if person}
+							<span class="face pic"><AccountAvatar account={person} size="1.25rem" /></span>
+						{:else}
+							<span class="face">{initial(name)}</span>
+						{/if}
 					{/each}
 					{#if others.length > 4}
 						<span class="face more">+{others.length - 4}</span>
@@ -604,10 +609,11 @@
 					</div>
 				{:else if group.kind === 'user'}
 					{@const author = group.item.author || me}
+					{@const person = author === me && account ? account : session.people[author]}
 					<div class="msg user" class:queued={group.item.queued}>
 						<div class="author">
-							{#if account && author === me}
-								<AccountAvatar {account} size="1.75rem" />
+							{#if person}
+								<AccountAvatar account={person} size="1.75rem" />
 							{:else}
 								<span class="avatar">{initial(author)}</span>
 							{/if}
@@ -1502,6 +1508,12 @@
 		color: var(--text-heading);
 		font-size: 0.625rem;
 		font-weight: 700;
+
+		// the picture draws its own disc; the ring stays, so overlapping faces stay apart
+		&.pic {
+			overflow: hidden;
+			background: none;
+		}
 
 		&.more {
 			background: var(--bg-hover);

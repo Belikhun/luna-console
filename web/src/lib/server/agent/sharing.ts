@@ -26,6 +26,8 @@ import { error } from '@sveltejs/kit';
 
 import { listAgentConversations } from '$core/agent';
 import type { AgentConversationView, AgentEntry, AgentRole } from '$core/agent';
+import { getAccount } from '$core/accounts';
+import type { AvatarSubject } from '$lib/components/accountavatar';
 import { AGENT_ASK_TOOL, AGENT_LOCAL_TOOLS } from '$shared/agent';
 import { refuseFor, toolChecks } from '$lib/server/mcp/iam';
 
@@ -136,4 +138,48 @@ export async function redactEntries(
 	}
 
 	return out;
+}
+
+/**
+ * The accounts a conversation's readers see, keyed by username: its owner, the
+ * accounts it is shared with and anybody whose message is in the transcript
+ * (a share taken back still leaves their words). Only what a picture needs is
+ * passed on; an account since deleted is left out and drawn from its initials.
+ */
+export async function conversationPeople(
+	conversation: AgentConversationView,
+	entries: AgentEntry[]
+): Promise<Record<string, AvatarSubject>> {
+	const names = new Set<string>([conversation.owner]);
+
+	for (const share of conversation.shares ?? []) {
+		names.add(share.account);
+	}
+
+	for (const entry of entries) {
+		if (entry.kind === 'user' && entry.author) {
+			names.add(entry.author);
+		}
+	}
+
+	const people: Record<string, AvatarSubject> = {};
+
+	await Promise.all(
+		[...names].map(async (name) => {
+			const account = await getAccount(name).catch(() => undefined);
+
+			if (!account) {
+				return;
+			}
+
+			people[account.username] = {
+				id: account.id,
+				username: account.username,
+				displayName: account.displayName,
+				avatar: account.avatar
+			};
+		})
+	);
+
+	return people;
 }

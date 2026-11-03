@@ -17,7 +17,7 @@ import { errorMessage, jsonBody } from '$lib/server/http';
 import { dropWaiting, runActor, stopRun } from '$lib/server/agent/runner';
 import { forgetConversation } from '$lib/server/agent/background';
 import { conversationViewers } from '$lib/server/agent/presence';
-import { conversationFor, redactEntries } from '$lib/server/agent/sharing';
+import { conversationFor, conversationPeople, redactEntries } from '$lib/server/agent/sharing';
 
 /** GET → the conversation and its saved transcript, as the caller's role may see it. */
 export async function GET({ params, locals }) {
@@ -35,7 +35,8 @@ export async function GET({ params, locals }) {
 		conversation: { ...conversation, entries },
 		running: actor !== null,
 		actor,
-		viewers: conversationViewers(params.id)
+		viewers: conversationViewers(params.id),
+		people: await conversationPeople(conversation, conversation.entries)
 	});
 }
 
