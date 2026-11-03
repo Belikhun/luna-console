@@ -1636,7 +1636,7 @@
 <input class="hidden" type="file" multiple bind:this={fileInput} onchange={onPicked} />
 <input class="hidden" type="file" multiple webkitdirectory bind:this={folderInput} onchange={onPicked} />
 
-<div class="stack">
+<div class="stack files-screen">
 	{#if current}
 		<Panel flush fill>
 			<div class="ebar">
@@ -2215,16 +2215,24 @@
 		display: none;
 	}
 
-	// fills the viewport below the page chrome (top nav, breadcrumbs, page header)
-	// and above the layout's bottom padding; measured, not guessed.
-	// --split-bottom is the terminal drawer's own height, so opening the drawer
-	// shortens this rather than covering the listing.
+	// the content area's bottom padding is room to scroll past the last row of a
+	// list; a screen that fits the viewport has nothing to scroll, so it keeps
+	// only a gap the size of the panels' own
+	:global(main.content:has(> .files-screen)) {
+		padding-bottom: 1rem;
+	}
+
+	// fills the viewport below the page chrome. Measured 2026-11-03 at 222px: top
+	// bar and breadcrumbs 90, the content area's padding 20 + 16 (cut from 40
+	// above), the page header 52 and its gap 16, the status bar 28; 14rem is the
+	// next step on the scale. --split-bottom is the terminal drawer's own height,
+	// so opening the drawer shortens this rather than covering the listing.
 	.stack {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
 
-		height: calc(100vh - 13.75rem - var(--split-bottom));
+		height: calc(100vh - 14rem - var(--split-bottom));
 		min-height: 24rem;
 
 		> :global(.panel.fill) {
