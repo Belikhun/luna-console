@@ -36,6 +36,7 @@ import {
 } from '$shared/agent';
 import { goto } from '$app/navigation';
 import type { AvatarSubject } from '$lib/components/accountavatar';
+import type { AgentSharedFile } from '$core/agent';
 
 export type ToolStatus = 'running' | 'awaiting' | 'ok' | 'error' | 'denied';
 
@@ -46,7 +47,10 @@ export type ChatItem =
 		author: string;
 		at: number;
 		mode?: string;
-		attachments?: Array<{ name: string; size: number }>;
+		/** The model and effort it was answered with */
+		model?: string;
+		effort?: string;
+		attachments?: Array<{ name: string; size: number; image?: string }>;
 		/** Where a rewind or a fork cuts; absent until the server has echoed the message */
 		uuid?: string;
 		/** What this window called the message before the echo gave it a uuid */
@@ -54,9 +58,9 @@ export type ChatItem =
 		/** Held until the answer being given ends; its sender may still take it back */
 		queued?: boolean;
 	}
-	| { kind: 'assistant'; text: string; streaming: boolean }
+	| { kind: 'assistant'; text: string; streaming: boolean; at?: number }
 	/** What the model thought before answering, as the API summarised it */
-	| { kind: 'thinking'; text: string; streaming: boolean }
+	| { kind: 'thinking'; text: string; streaming: boolean; at?: number }
 	| {
 		kind: 'tool';
 		id: string;
@@ -73,6 +77,9 @@ export type ChatItem =
 		actor?: string;
 		/** Pictures its result carried, by name under the conversation's `images` route */
 		images?: string[];
+		/** Files it handed over for download */
+		files?: AgentSharedFile[];
+		at?: number;
 	}
 	| { kind: 'error'; text: string; code?: string }
 	/** A background task or a trigger reporting back; nobody's message */
@@ -193,7 +200,9 @@ interface StoredEntry {
 	author?: string;
 	text?: string;
 	mode?: string;
-	attachments?: Array<{ name: string; size: number }>;
+	model?: string;
+	effort?: string;
+	attachments?: Array<{ name: string; size: number; image?: string }>;
 	id?: string;
 	name?: string;
 	input?: unknown;
@@ -201,6 +210,7 @@ interface StoredEntry {
 	output?: string;
 	decidedBy?: string;
 	images?: string[];
+	files?: AgentSharedFile[];
 }
 
 type StreamEvent =
@@ -211,7 +221,9 @@ type StreamEvent =
 		author: string;
 		at: number;
 		mode: string;
-		attachments?: Array<{ name: string; size: number }>;
+		model?: string;
+		effort?: string;
+		attachments?: Array<{ name: string; size: number; image?: string }>;
 		uuid: string;
 		nonce?: string;
 		queued?: boolean;
@@ -232,6 +244,7 @@ type StreamEvent =
 		parent?: string;
 		actor?: string;
 		images?: string[];
+		files?: AgentSharedFile[];
 	}
 	| { type: 'progress'; id: string; tools: number; last?: string; ms: number }
 	| { type: 'suggestion'; text: string }
@@ -301,13 +314,15 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 				author: entry.author ?? '',
 				at: entry.at,
 				mode: entry.mode,
+				model: entry.model,
+				effort: entry.effort,
 				attachments: entry.attachments,
 				uuid: entry.uuid
 			});
 		} else if (entry.kind === 'assistant') {
-			items.push({ kind: 'assistant', text: entry.text ?? '', streaming: false });
+			items.push({ kind: 'assistant', text: entry.text ?? '', streaming: false, at: entry.at });
 		} else if (entry.kind === 'thinking') {
-			items.push({ kind: 'thinking', text: entry.text ?? '', streaming: false });
+			items.push({ kind: 'thinking', text: entry.text ?? '', streaming: false, at: entry.at });
 		} else if (entry.kind === 'stats') {
 			items.push({ kind: 'stats', ms: entry.ms ?? 0, tools: entry.tools ?? 0, costUsd: entry.costUsd ?? 0, at: entry.at });
 		} else if (entry.kind === 'event') {
@@ -331,7 +346,9 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 				output: entry.output,
 				decidedBy: entry.decidedBy,
 				parent: entry.parent,
-				images: entry.images
+				images: entry.images,
+				files: entry.files,
+				at: entry.at
 			});
 		} else {
 			const text = entry.text ?? '';
@@ -1183,6 +1200,9 @@ export class ChatSession {
 					shown.uuid = event.uuid;
 					shown.queued = event.queued;
 					shown.author = event.author;
+					shown.model = event.model;
+					shown.effort = event.effort;
+					shown.attachments = event.attachments ?? shown.attachments;
 
 					if (delivered) {
 						shown.at = event.at;
@@ -1197,6 +1217,8 @@ export class ChatSession {
 						author: event.author,
 						at: event.at,
 						mode: event.mode,
+						model: event.model,
+						effort: event.effort,
 						attachments: event.attachments,
 						uuid: event.uuid,
 						queued: event.queued
@@ -1224,7 +1246,7 @@ export class ChatSession {
 				const index = this.#lastStreaming('assistant');
 
 				if (index === -1) {
-					this.items.push({ kind: 'assistant', text: event.delta, streaming: true });
+					this.items.push({ kind: 'assistant', text: event.delta, streaming: true, at: Date.now() });
 				} else {
 					const item = this.items[index] as Extract<ChatItem, { kind: 'assistant' }>;
 
@@ -1238,7 +1260,7 @@ export class ChatSession {
 				const index = this.#lastStreaming('thinking');
 
 				if (index === -1) {
-					this.items.push({ kind: 'thinking', text: event.delta, streaming: true });
+					this.items.push({ kind: 'thinking', text: event.delta, streaming: true, at: Date.now() });
 				} else {
 					const item = this.items[index] as Extract<ChatItem, { kind: 'thinking' }>;
 
@@ -1252,9 +1274,9 @@ export class ChatSession {
 				const index = this.#lastStreaming('thinking');
 
 				if (index === -1) {
-					this.items.push({ kind: 'thinking', text: event.text, streaming: false });
+					this.items.push({ kind: 'thinking', text: event.text, streaming: false, at: Date.now() });
 				} else {
-					this.items[index] = { kind: 'thinking', text: event.text, streaming: false };
+					this.items[index] = { kind: 'thinking', text: event.text, streaming: false, at: (this.items[index] as { at?: number }).at ?? Date.now() };
 				}
 
 				break;
@@ -1264,9 +1286,9 @@ export class ChatSession {
 				const index = this.#lastStreaming('assistant');
 
 				if (index === -1) {
-					this.items.push({ kind: 'assistant', text: event.text, streaming: false });
+					this.items.push({ kind: 'assistant', text: event.text, streaming: false, at: Date.now() });
 				} else {
-					this.items[index] = { kind: 'assistant', text: event.text, streaming: false };
+					this.items[index] = { kind: 'assistant', text: event.text, streaming: false, at: (this.items[index] as { at?: number }).at ?? Date.now() };
 				}
 
 				break;
@@ -1320,6 +1342,10 @@ export class ChatSession {
 						existing.images = event.images;
 					}
 
+					if (event.files !== undefined) {
+						existing.files = event.files;
+					}
+
 					if (event.decidedBy !== undefined) {
 						existing.decidedBy = event.decidedBy;
 					}
@@ -1338,7 +1364,9 @@ export class ChatSession {
 						decidedBy: event.decidedBy,
 						parent: event.parent,
 						actor: event.actor,
-						images: event.images
+						images: event.images,
+						files: event.files,
+						at: Date.now()
 					});
 				}
 

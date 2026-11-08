@@ -49,6 +49,15 @@ export const AGENT_SCREENSHOT_TOOL = "console_screenshot";
  */
 export const AGENT_NAVIGATE_TOOL = "console_navigate";
 
+/**
+ * The agent handing the operator a file to download from the chat: one it wrote
+ * in its scratch folder (copied, so the download stays what was shared), or a
+ * file on an instance (linked, so it downloads with the reader's own
+ * permissions). It changes nothing anywhere, so it runs unasked everywhere but
+ * Manual.
+ */
+export const AGENT_SHARE_TOOL = "console_share_file";
+
 /** The console tools that act on the operator's browser rather than the cluster. */
 export const AGENT_SCREEN_TOOLS: readonly string[] = [AGENT_SCREENSHOT_TOOL, AGENT_NAVIGATE_TOOL];
 
@@ -93,7 +102,13 @@ export const AGENT_TODO_TOOL = "TodoWrite";
 export const AGENT_WORK_TOOLS: readonly string[] = [AGENT_SUBAGENT_TOOL, AGENT_TODO_TOOL];
 
 /** The console's own tools, which never reach the cluster themselves. */
-export const AGENT_LOCAL_TOOLS: readonly string[] = [...AGENT_SCREEN_TOOLS, ...AGENT_TASK_TOOLS, ...AGENT_SCRATCH_TOOLS, ...AGENT_WORK_TOOLS];
+export const AGENT_LOCAL_TOOLS: readonly string[] = [
+	...AGENT_SCREEN_TOOLS,
+	AGENT_SHARE_TOOL,
+	...AGENT_TASK_TOOLS,
+	...AGENT_SCRATCH_TOOLS,
+	...AGENT_WORK_TOOLS
+];
 
 /** One step of the agent's checklist, as `TodoWrite` carries it. */
 export interface AgentTodo {

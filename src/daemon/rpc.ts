@@ -1713,6 +1713,7 @@ export const OPS: Record<string, OpSpec> = {
 	"agent.getConversation": { fn: agentCore.getAgentConversation },
 	"agent.scratch": { fn: agentCore.agentScratch },
 	"agent.imagePath": { fn: agentCore.agentImagePath },
+	"agent.sharedFilePath": { fn: agentCore.agentSharedFilePath },
 	"agent.createConversation": { fn: agentCore.createAgentConversation },
 	"agent.appendTurn": { fn: agentCore.appendAgentTurn },
 	"agent.renameConversation": { fn: agentCore.renameAgentConversation },

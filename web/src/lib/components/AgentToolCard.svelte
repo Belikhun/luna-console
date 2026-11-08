@@ -5,7 +5,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
 	import { renderMarkdown } from '$lib/markdown';
-	import { fmtDuration } from '$lib/format';
+	import { fmtBytes, fmtDuration } from '$lib/format';
 	import { AGENT_SUBAGENT_TOOL, AGENT_TODO_TOOL, readTodos } from '$shared/agent';
 	import type { ChatItem, ChatSession } from '$lib/agent.svelte';
 	import Icon from './Icon.svelte';
@@ -49,16 +49,52 @@
 	const todos = $derived(item.name === AGENT_TODO_TOOL ? readTodos(item.input) : null);
 	const mine = $derived(session.decides(item));
 
-	/** The pictures the call returned, as the image message under it shows them */
-	const shots = $derived(
-		item.images?.length && session.conversationId
+	/** A picture the browser can draw, by its name */
+	const PICTURE = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
+
+	/** The files the call handed over, each with where it downloads from and where it shows in place */
+	const shared = $derived(
+		(item.files ?? []).map((file) => {
+			const href = file.instance
+				? `/api/instances/${encodeURIComponent(file.instance)}/files/download?path=${encodeURIComponent(file.path ?? '')}`
+				: `/api/agent/conversations/${session.conversationId}/files/${file.id}`;
+
+			return { ...file, href, inline: `${href}${href.includes('?') ? '&' : '?'}inline=1` };
+		})
+	);
+
+	/** Shared files that are not pictures: download cards */
+	const downloads = $derived(shared.filter((file) => !PICTURE.test(file.name)));
+
+	/**
+	 * The pictures the call returned or shared, as the image message under it
+	 * shows them: a shared picture is an image bubble like one the agent was
+	 * shown, and the viewer's download keeps its name
+	 */
+	const shots = $derived([
+		...(item.images?.length && session.conversationId
 			? item.images.map((image) => ({
 				src: `/api/agent/conversations/${session.conversationId}/images/${encodeURIComponent(image)}`,
 				alt: t('web.agent.toolImage', { tool: item.name }),
 				name: image
 			}))
-			: []
-	);
+			: []),
+		...shared
+			.filter((file) => PICTURE.test(file.name))
+			.map((file) => ({ src: file.inline, alt: file.name, name: file.name }))
+	]);
+
+	const FILE_ICONS: Array<[RegExp, string]> = [
+		[/\.(json|ya?ml|toml|properties|conf|cfg|ini|xml|sql|js|ts|sh|py|mcfunction)$/i, 'fileCode'],
+		[/\.(txt|log|md)$/i, 'fileLines'],
+		[/\.(csv|tsv)$/i, 'fileChart'],
+		[/\.pdf$/i, 'filePdf'],
+		[/\.(zip|jar|gz|tgz|tar|mrpack|7z)$/i, 'fileBinary']
+	];
+
+	function fileIcon(name: string): string {
+		return FILE_ICONS.find(([pattern]) => pattern.test(name))?.[1] ?? 'file';
+	}
 
 	/** Which picture the full-screen viewer shows; null while it is closed */
 	let viewing: number | null = $state(null);
@@ -300,9 +336,118 @@
 		</div>
 		<ImageViewer images={shots} bind:index={viewing} />
 	{/if}
+
+	{#if downloads.length}
+		<div class="files" class:nested>
+			{#each downloads as file (file.id)}
+				<a class="filecard" href={file.href} download={file.name} title={t('web.agent.downloadFile', { name: file.name })}>
+					<span class="ficon"><Icon name={fileIcon(file.name)} size="1.25rem" /></span>
+					<span class="fmeta">
+						<span class="fname">{file.name}</span>
+						<span class="fsize">
+							{fmtBytes(file.size)}
+							{#if file.instance}
+								· {t('web.agent.fileOnInstance', { instance: file.instance })}
+							{/if}
+						</span>
+					</span>
+					<span class="fget"><Icon name="arrowDownToLine" size="0.875rem" style="solid" /></span>
+				</a>
+			{/each}
+		</div>
+	{/if}
 {/if}
 
 <style lang="scss">
+	// a file the agent handed over: a card of its own in the chat, shaped like a
+	// bubble, the whole card being the download
+	.files {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.25rem;
+		margin-top: 0.25rem;
+
+		&.nested {
+			padding: 0 0.75rem 0.5rem;
+		}
+	}
+
+	.filecard {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		min-width: 15rem;
+		max-width: min(100%, 24rem);
+		padding: 0.5rem 0.75rem 0.5rem 0.5rem;
+		border: 0.1rem solid color-mix(in srgb, var(--luna-primary) 45%, var(--bg-panel));
+		border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
+		background: color-mix(in srgb, var(--luna-primary) 18%, var(--bg-panel));
+		color: var(--text-heading);
+		text-decoration: none;
+
+		:global(.msg.bot) > .files:not(:has(~ :not(:global(.foot), :global(.thinking)))) &:last-child {
+			border-bottom-left-radius: 0.75rem;
+		}
+
+		&:hover {
+			border-color: var(--link);
+
+			.fget {
+				background: var(--link);
+				color: var(--bg-panel);
+			}
+		}
+
+		&:focus-visible {
+			@include focus-ring;
+		}
+	}
+
+	.ficon {
+		display: inline-grid;
+		place-items: center;
+		flex: none;
+		width: 2.25rem;
+		height: 2.25rem;
+		border-radius: 0.5rem;
+		background: color-mix(in srgb, var(--luna-primary) 35%, var(--bg-panel));
+		color: #fff;
+	}
+
+	.fmeta {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.fname {
+		@include ellipsis;
+
+		font-weight: 700;
+		font-size: 0.875rem;
+	}
+
+	.fsize {
+		@include ellipsis;
+
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+
+	.fget {
+		display: inline-grid;
+		place-items: center;
+		flex: none;
+		width: 1.75rem;
+		height: 1.75rem;
+		border-radius: 50%;
+		background: var(--bg-hover);
+		color: var(--link);
+		transition: background 0.12s, color 0.12s;
+	}
+
 	// what the model was shown, as an image message of its own: thumbnails in the
 	// chat, the picture itself in the full-screen viewer
 	.shots {
@@ -329,7 +474,7 @@
 		border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
 		overflow: hidden;
 
-		:global(.msg.bot) > .shots:last-child & {
+		:global(.msg.bot) > .shots:not(:has(~ :not(:global(.foot), :global(.thinking)))) & {
 			border-bottom-left-radius: 0.75rem;
 		}
 		background: var(--bg-track);

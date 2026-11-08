@@ -820,7 +820,8 @@
 		"cannotFork": "This part of the conversation was saved before branching existed and cannot be branched from",
 		"forkTitle": "{title} (branch)",
 		"unknownMessage": "That message is no longer in the conversation",
-		"unknownImage": "No such image in this conversation"
+		"unknownImage": "No such image in this conversation",
+		"unknownFile": "No such file in this conversation"
 	},
 	"jarinstall": {
 		"badScheme": "Only http and https URLs can be installed from",

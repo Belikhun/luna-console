@@ -237,8 +237,10 @@ export type AgentEntry =
 		text: string;
 		mode?: string;
 		model?: string;
-		/** Files attached to the message, by name; the bytes were staged, not kept */
-		attachments?: Array<{ name: string; size: number }>;
+		/** The reasoning effort the answer to it was asked for */
+		effort?: string;
+		/** Files attached to the message, by name; `image` names the copy the chat shows of a picture */
+		attachments?: Array<{ name: string; size: number; image?: string }>;
 		uuid?: string;
 		session?: string;
 		/**
@@ -266,6 +268,8 @@ export type AgentEntry =
 		actor?: string;
 		/** Images the result carried (a screenshot, a picture it read), by file name; see `agentImagePath` */
 		images?: string[];
+		/** Files the agent handed over for download; see `AgentSharedFile` */
+		files?: AgentSharedFile[];
 		uuid?: string;
 		session?: string;
 	}
@@ -777,6 +781,42 @@ export async function agentScratch(id: string, account: string): Promise<string>
 	await mkdir(dir, { recursive: true });
 
 	return dir;
+}
+
+/**
+ * A file the agent shared in the chat. One from its scratch folder is copied
+ * under `.files/<id>/<name>` and served by the conversation; one on an instance
+ * (`instance` set) is only named, and downloads through the instance's own
+ * file route with the reader's permissions.
+ */
+export interface AgentSharedFile {
+	id: string;
+	name: string;
+	size: number;
+	instance?: string;
+	/** The file's path inside the instance, for an instance file */
+	path?: string;
+}
+
+/** What a shared file's id looks like. */
+export const AGENT_FILE_ID = /^file_[0-9a-f]{12}$/;
+
+/**
+ * Where a file the agent shared from its scratch folder is kept: the
+ * conversation's scratch folder, under `.files/<id>`. Anyone who can open the
+ * conversation may ask; the caller checks the transcript names it. Throws for
+ * an id or a name that is not one.
+ */
+export async function agentSharedFilePath(id: string, account: string, fileId: string, name: string): Promise<string> {
+	const store = await loadStore();
+
+	requireConversation(store, id, account, ["owner", "collaborator", "viewer"]);
+
+	if (!AGENT_FILE_ID.test(fileId) || !name || name.includes("/") || name.includes("\\") || name === "." || name === "..") {
+		throw new Error(t("core.agent.unknownFile"));
+	}
+
+	return join(scratchPath(id), ".files", fileId, name);
 }
 
 /** What an image saved from a tool result may be called: the call id, its index, a picture's extension. */

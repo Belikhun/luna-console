@@ -4750,6 +4750,9 @@
 		"writtenByMcp": "Được client lưu qua MCP ({actor}). Hãy kiểm tra trước khi dựa vào."
 	},
 	"agent": {
+		"downloadFile": "Tải xuống {name}",
+		"fileOnInstance": "trên {instance}",
+		"sentWith": "Model và mức suy nghĩ dùng để trả lời tin nhắn này",
 		"revokeQueued": "Rút lại trước khi gửi",
 		"openImage": "Mở ảnh đầy đủ",
 		"toolImage": "Hình ảnh {tool} trả về",

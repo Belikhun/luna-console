@@ -726,7 +726,19 @@ export interface InstanceConfig {}
   named on the tool entry (`images`) and served by `…/images/<name>`, which applies the call's
   output visibility; a screenshot is its actor's screen, so it is theirs alone. The chat shows them
   as an image message of thumbnails under the call, opening `ImageViewer` full screen, and a call
-  that returned one never folds into a "used N tools" line.
+  that returned one never folds into a "used N tools" line. A picture an operator attaches gets the
+  same treatment: its copy lands in `.images/<upload id>.<ext>` (named on the message's attachment
+  as `image`), and since a message is everyone's to read, so is that picture.
+- **Files reach the operator through the chat, never through a server's folder.** `console_share_file`
+  (on the run's in-process console server, `AGENT_SHARE_TOOL`) takes a file from the scratch folder,
+  copies it under `.files/<id>/<name>` so the download stays what was shared, and serves it from
+  `…/files/<id>` to anyone who can open the conversation, as the agent's replies are; or it names a
+  file on an instance, after checking the run's account could read it and the token reaches it, and
+  the chat links it through `/api/instances/<name>/files/download`, which checks each reader again.
+  The call's result names the file id, which is how the runner files it on the tool entry (`files`),
+  and the chat draws a download card under the call, or an image bubble for a picture (served
+  `?inline=1`, so the viewer shows it in place). Each message also shows its time, and an
+  operator's message the model and effort it was answered with (`model`/`effort` on the entry).
 - **Branching and rewinding cut the SDK session; they never rewrite one.** Every transcript entry
   filed from an SDK message carries that message's `uuid` and `session` (a branched session
   renumbers its messages, so a uuid means nothing without its session). `forkAgentConversation`

@@ -1321,6 +1321,7 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/agent/conversations/[id]/messages': { POST: { action: 'agent:Chat' } },
 	'/api/agent/conversations/[id]/navigated': { POST: { action: 'agent:Chat' } },
 	'/api/agent/conversations/[id]/run': { PATCH: { action: 'agent:Chat' } },
+	'/api/agent/conversations/[id]/files/[file]': { GET: { action: 'agent:Chat' } },
 	'/api/agent/conversations/[id]/images/[name]': { GET: { action: 'agent:Chat' } },
 	'/api/agent/conversations/[id]/queue/[uuid]': { DELETE: { action: 'agent:Chat' } },
 	'/api/agent/conversations/[id]/screenshot': { POST: { action: 'agent:Chat' } },

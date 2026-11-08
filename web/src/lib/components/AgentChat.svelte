@@ -7,14 +7,14 @@
 	import { readAnswers, readQuestions } from './agentquestion';
 	import type { AgentQuestionState } from './agentquestion';
 	import { AGENT_ASK_TOOL, AGENT_SUBAGENT_TOOL, AGENT_TODO_TOOL } from '$shared/agent';
-	import { t } from '$lib/i18n.svelte';
+	import { currentLanguage, t } from '$lib/i18n.svelte';
 	import { Authz } from '$lib/authz.svelte';
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { Agent, type ChatItem, type ChatSession } from '$lib/agent.svelte';
 	import { renderMarkdown } from '$lib/markdown';
 	import { copyText } from '$lib/clipboard';
-	import { fmtDuration, fmtTime, fmtTokens } from '$lib/format';
+	import { fmtDateTime, fmtDuration, fmtTime, fmtTokens } from '$lib/format';
 	import { Notify } from '$lib/notifications.svelte';
 	import Icon from './Icon.svelte';
 	import Btn from './Btn.svelte';
@@ -22,6 +22,7 @@
 	import AgentToolCard from './AgentToolCard.svelte';
 	import AgentTodos from './AgentTodos.svelte';
 	import AccountAvatar from './AccountAvatar.svelte';
+	import ImageViewer from './ImageViewer.svelte';
 	import ConfirmModal from './ConfirmModal.svelte';
 	import type { AvatarSubject } from './accountavatar';
 
@@ -150,6 +151,7 @@
 		return item.kind === 'tool'
 			&& item.status === 'ok'
 			&& !item.images?.length
+			&& !item.files?.length
 			&& item.name !== AGENT_ASK_TOOL
 			&& item.name !== AGENT_SUBAGENT_TOOL
 			&& item.name !== AGENT_TODO_TOOL;
@@ -420,6 +422,59 @@
 			: fmtDuration(ms);
 	}
 
+	/** The pictures attached to a message, as the chat's image bubbles show them */
+	function attachedPictures(item: UserItem): Array<{ src: string; alt: string; name: string }> {
+		if (!session.conversationId) {
+			return [];
+		}
+
+		return (item.attachments ?? [])
+			.filter((file): file is { name: string; size: number; image: string } => !!file.image)
+			.map((file) => ({
+				src: `/api/agent/conversations/${session.conversationId}/images/${encodeURIComponent(file.image)}`,
+				alt: file.name,
+				name: file.name
+			}));
+	}
+
+	/** The set the full-screen viewer steps through, and which of it is shown; null while closed */
+	let viewerPictures: Array<{ src: string; alt: string; name: string }> = $state([]);
+	let viewerIndex: number | null = $state(null);
+
+	function openPictures(pictures: Array<{ src: string; alt: string; name: string }>, index: number): void {
+		viewerPictures = pictures;
+		viewerIndex = index;
+	}
+
+	/** A message's time as the chat shows it: the clock today, the day as well before that */
+	function clock(at: number): string {
+		const when = new Date(at);
+		const locale = currentLanguage() === 'vi'
+			? 'vi-VN'
+			: 'en-GB';
+		const today = when.toDateString() === new Date().toDateString();
+
+		return today
+			? when.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+			: when.toLocaleString(locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+	}
+
+	/** A model's name as the picker words it, or its id when the list does not know it */
+	function modelName(value: string): string {
+		return Agent.state?.models?.find((model) => model.value === value)?.label ?? value;
+	}
+
+	/** When a turn of the agent's began: its first item that knows */
+	function turnStart(items: BotItem[]): number | null {
+		for (const item of items) {
+			if ('at' in item && item.at) {
+				return item.at;
+			}
+		}
+
+		return null;
+	}
+
 	function initial(name: string): string {
 		return (name || '?').slice(0, 1).toUpperCase();
 	}
@@ -522,6 +577,7 @@
 {#snippet userMessage(item: UserItem, key: string)}
 	{@const author = item.author || me}
 	{@const person = author === me && account ? account : session.people[author]}
+	{@const pictures = attachedPictures(item)}
 	<div class="msg user" class:queued={item.queued}>
 		<div class="author">
 			{#if person}
@@ -572,31 +628,51 @@
 		{:else if item.text}
 			<div class="bubble text">{item.text}</div>
 		{/if}
-		{#each item.attachments ?? [] as file}
+		{#if pictures.length}
+			<div class="pics">
+				{#each pictures as picture, pi (picture.src)}
+					<button class="pic" type="button" title={t('web.agent.openImage')} onclick={() => openPictures(pictures, pi)}>
+						<img src={picture.src} alt={picture.alt} loading="lazy" />
+					</button>
+				{/each}
+			</div>
+		{/if}
+		{#each (item.attachments ?? []).filter((file) => !file.image || !session.conversationId) as file}
 			<div class="bubble file">
 				<Icon name="paperclip" size="0.75rem" />
 				<span class="fname">{file.name}</span>
 			</div>
 		{/each}
-		{#if editing !== item.uuid}
-			<div class="acts">
-				<button class="act" title={t('web.agent.copyMessage')} onclick={() => copy(key, item.text)}>
-					<Icon name={copied === key ? 'check' : 'copy'} size="0.75rem" />
-				</button>
-				{#if item.uuid && session.writable && !item.queued}
-					<button
-						class="act"
-						title={canRewind ? t('web.agent.editMessage') : t('web.agent.editBusy')}
-						disabled={!canRewind}
-						onclick={() => startEdit(item)}
-					>
-						<Icon name="pen" size="0.75rem" />
+		<!-- under the bubble: the verbs on hover, then when it was sent and what answered it -->
+		<div class="foot">
+			{#if editing !== item.uuid}
+				<div class="acts">
+					<button class="act" title={t('web.agent.copyMessage')} onclick={() => copy(key, item.text)}>
+						<Icon name={copied === key ? 'check' : 'copy'} size="0.75rem" />
 					</button>
-				{/if}
-			</div>
-		{/if}
+					{#if item.uuid && session.writable && !item.queued}
+						<button
+							class="act"
+							title={canRewind ? t('web.agent.editMessage') : t('web.agent.editBusy')}
+							disabled={!canRewind}
+							onclick={() => startEdit(item)}
+						>
+							<Icon name="pen" size="0.75rem" />
+						</button>
+					{/if}
+				</div>
+			{/if}
+			<time class="at" datetime={new Date(item.at).toISOString()} title={fmtDateTime(item.at)}>{clock(item.at)}</time>
+			{#if item.model}
+				<span class="sent" title={t('web.agent.sentWith')}>
+					{modelName(item.model)}{#if item.effort}<span class="dim">{` · ${t(`web.agentSettings.effort_${item.effort}`)}`}</span>{/if}
+				</span>
+			{/if}
+		</div>
 	</div>
 {/snippet}
+
+<ImageViewer images={viewerPictures} bind:index={viewerIndex} />
 
 <div class="chat">
 	{#if shared && session.conversationId}
@@ -698,10 +774,14 @@
 				{:else if group.kind === 'user'}
 					{@render userMessage(group.item, `u${gi}`)}
 				{:else}
+					{@const started = turnStart(group.items)}
 					<div class="msg bot">
 						<div class="author">
 							<img class="avatar cat" src={AVATAR} alt="" />
 							<span class="who">Mèo Béo</span>
+							{#if started}
+								<time class="at" datetime={new Date(started).toISOString()} title={fmtDateTime(started)}>{clock(started)}</time>
+							{/if}
 						</div>
 
 						{#each group.segments as segment, si (segment.kind === 'tool' ? segment.id : segment.kind === 'calls' ? `c${segment.key}` : `${gi}:${si}`)}
@@ -1146,6 +1226,44 @@
 		}
 	}
 
+	// pictures an operator attached: image bubbles of their own, shaped like the
+	// message's bubbles, opening the full-screen viewer
+	.pics {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 0.375rem;
+		max-width: 90%;
+	}
+
+	.pic {
+		@include bare-button;
+
+		display: block;
+		width: 7.5rem;
+		height: 7.5rem;
+		border: 0.1rem solid var(--border-input);
+		border-radius: 0.75rem 0.25rem 0.75rem 0.75rem;
+		overflow: hidden;
+		background: var(--bg-track);
+		cursor: zoom-in;
+
+		&:hover {
+			border-color: var(--link);
+		}
+
+		&:focus-visible {
+			@include focus-ring;
+		}
+
+		img {
+			display: block;
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+		}
+	}
+
 	.file {
 		display: inline-flex;
 		align-items: center;
@@ -1159,6 +1277,30 @@
 
 		.fname {
 			@include ellipsis;
+		}
+	}
+
+	// when a message was sent, and what it was sent to: quiet beside the name
+	.at,
+	.sent {
+		font-size: 0.6875rem;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	// the time reads like the stats line under the agent's bubbles
+	.at {
+		color: var(--text-disabled);
+	}
+
+	.sent {
+		padding: 0 0.375rem;
+		border-radius: 0.25rem;
+		background: var(--bg-hover);
+		color: var(--text);
+
+		.dim {
+			color: var(--text-secondary);
 		}
 	}
 
@@ -1226,7 +1368,9 @@
 	.bubble {
 		border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
 
-		.msg.bot > &:last-child {
+		// the bubble that ends the agent's turn rounds out its corner; only the
+		// stats row (or the live "thinking" line) may come after it
+		.msg.bot > &:not(:has(~ :not(.foot, .thinking))) {
 			border-bottom-left-radius: 0.75rem;
 		}
 

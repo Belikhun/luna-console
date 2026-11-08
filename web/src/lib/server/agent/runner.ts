@@ -37,8 +37,10 @@
  * act on anybody else's permissions.
  */
 
+import { randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { copyFile, mkdir, realpath, stat } from 'node:fs/promises';
+import { basename, isAbsolute, join, relative, sep } from 'node:path';
 
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
@@ -54,12 +56,16 @@ import {
 	recordAgentModels,
 	setAgentAllowedTools
 } from '$core/agent';
-import type { AgentContextUsage, AgentConversationView, AgentEffort, AgentEntry, AgentLaunch } from '$core/agent';
+import type { AgentContextUsage, AgentConversationView, AgentEffort, AgentEntry, AgentLaunch, AgentSharedFile } from '$core/agent';
+import { loadCluster } from '$core/config';
+import { statInstancePath } from '$core/instancefiles';
+import { refuseFor, toolChecks } from '$lib/server/mcp/iam';
 import {
 	AGENT_ASK_TOOL,
 	AGENT_NAVIGATE_TOOL,
 	AGENT_SCRATCH_TOOLS,
 	AGENT_SCREENSHOT_TOOL,
+	AGENT_SHARE_TOOL,
 	AGENT_SUBAGENT_TOOL,
 	AGENT_TASK_TOOLS,
 	AGENT_WORK_TOOLS,
@@ -98,14 +104,19 @@ const TOOL_PREFIX = `mcp__${SERVER}__`;
 /** The in-process server carrying the tools only the operator's browser can answer. */
 const CONSOLE_SERVER = 'console';
 const SCREENSHOT_SDK_NAME = `mcp__${CONSOLE_SERVER}__screenshot`;
+const SHARE_SDK_NAME = `mcp__${CONSOLE_SERVER}__share_file`;
 const NAVIGATE_SDK_NAME = `mcp__${CONSOLE_SERVER}__navigate`;
 
 /** The SDK names of the console's own tools, by the name the panel and the transcript use. */
 const SCREEN_SDK_NAMES: Record<string, string> = {
 	[SCREENSHOT_SDK_NAME]: AGENT_SCREENSHOT_TOOL,
 	[NAVIGATE_SDK_NAME]: AGENT_NAVIGATE_TOOL,
+	[SHARE_SDK_NAME]: AGENT_SHARE_TOOL,
 	...Object.fromEntries(AGENT_TASK_TOOLS.map((name) => [`mcp__${CONSOLE_SERVER}__${name}`, name]))
 };
+
+/** The largest scratch file the agent may hand over; it is copied, so the copy is capped too. */
+const SHARE_FILE_BYTES = 512 * 1024 * 1024;
 
 /** How long a request to the panel waits for it to answer. */
 const PANEL_TIMEOUT_MS = 30_000;
@@ -140,7 +151,10 @@ export type AgentEvent =
 		author: string;
 		at: number;
 		mode: AgentMode;
-		attachments?: Array<{ name: string; size: number }>;
+		/** The model and effort it is answered with */
+		model?: string;
+		effort?: string;
+		attachments?: Array<{ name: string; size: number; image?: string }>;
 		uuid: string;
 		/** What the sender's window called it, so it can match the echo to what it already shows */
 		nonce?: string;
@@ -165,6 +179,8 @@ export type AgentEvent =
 		actor?: string;
 		/** Images its result carried, saved for the chat to show; see `saveResultImages` */
 		images?: string[];
+		/** Files it handed over for download */
+		files?: AgentSharedFile[];
 	}
 	/** A helper's progress: tool calls so far, the last one, time spent */
 	| { type: 'progress'; id: string; tools: number; last?: string; ms: number }
@@ -388,6 +404,22 @@ function saveResultImages(run: Run, toolUseId: string, content: unknown): string
 	return names;
 }
 
+/** The files a share call's result names, taken off the run as they are filed. */
+function sharedFiles(run: Run, output: string): AgentSharedFile[] {
+	const out: AgentSharedFile[] = [];
+
+	for (const match of output.matchAll(/\bfile_[0-9a-f]{12}\b/g)) {
+		const file = run.files.get(match[0]);
+
+		if (file) {
+			run.files.delete(match[0]);
+			out.push(file);
+		}
+	}
+
+	return out;
+}
+
 function resultText(content: unknown): string {
 	if (typeof content === 'string') {
 		return content;
@@ -499,6 +531,12 @@ class Run {
 
 	/** Whether others can write in the conversation, so each message names its sender */
 	shared = false;
+
+	/** Files the agent shared during this run, by id, until the call's result files them */
+	readonly files = new Map<string, AgentSharedFile>();
+
+	/** What the agent token reaches of instance files: whether it reads them, and on which instances */
+	fileScope: { read: boolean; instances: string[] | null } = { read: false, instances: null };
 
 	/** Moves the run's MCP bearer to another account; set once the query starts */
 	retarget: ((account: string) => void) | null = null;
@@ -733,14 +771,43 @@ function checkSettings(launch: AgentLaunch, change: RunSettings): void {
 }
 
 /** The attachments as a transcript names them. */
-function fileList(input: StartRunInput): Array<{ name: string; size: number }> | undefined {
+function fileList(input: StartRunInput): Array<{ name: string; size: number; image?: string }> | undefined {
 	return input.attachments?.length
-		? input.attachments.map(({ name, size }) => ({ name, size }))
+		? input.attachments.map((file) => {
+			const image = attachmentImage(file);
+
+			return image
+				? { name: file.name, size: file.size, image }
+				: { name: file.name, size: file.size };
+		})
 		: undefined;
 }
 
+/** The largest attached picture the chat keeps a copy of to show. */
+const ATTACHMENT_IMAGE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * The name the chat's copy of an attached picture goes by under `.images`, or
+ * null when the attachment is not one. Derived from the upload id, so the
+ * message can name it before the copy is made.
+ */
+function attachmentImage(file: { id: string; name: string; size: number }): string | null {
+	const extension = /\.(png|jpe?g|gif|webp)$/i.exec(file.name)?.[1]?.toLowerCase();
+
+	if (!extension || file.size > ATTACHMENT_IMAGE_BYTES || !/^att_[0-9a-f]{16}$/.test(file.id)) {
+		return null;
+	}
+
+	return `${file.id}.${extension === 'jpeg' ? 'jpg' : extension}`;
+}
+
 /** The `user` event every window following the run shows a message by. */
-function userFrame(input: StartRunInput, mode: AgentMode, at: number, queued = false): AgentEvent {
+function userFrame(
+	input: StartRunInput,
+	settings: { mode: AgentMode; model: string; effort: string },
+	at: number,
+	queued = false
+): AgentEvent {
 	const attachments = fileList(input);
 
 	return {
@@ -748,7 +815,9 @@ function userFrame(input: StartRunInput, mode: AgentMode, at: number, queued = f
 		text: input.text,
 		author: input.actor,
 		at,
-		mode,
+		mode: settings.mode,
+		model: settings.model,
+		effort: settings.effort,
 		uuid: input.uuid!,
 		...(input.nonce ? { nonce: input.nonce } : {}),
 		...(attachments ? { attachments } : {}),
@@ -793,7 +862,8 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
 
 	if (input.hold && live?.running && !live.closing && !input.compact && !input.event) {
 		live.held.push(input);
-		live.emit(userFrame(input, input.mode, Date.now(), true));
+		await copyAttachments(live, input);
+		live.emit(userFrame(input, { mode: input.mode, model: input.model || live.model, effort: input.effort || live.effort }, Date.now(), true));
 
 		return 'queued';
 	}
@@ -895,6 +965,7 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
 					text: input.text,
 					mode: input.mode,
 					model: run.model,
+					effort: run.effort,
 					uuid: input.uuid,
 					...(attachments ? { attachments } : {})
 				}],
@@ -906,7 +977,7 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
 	if (input.event) {
 		run.emit(eventFrame(input));
 	} else if (!input.compact) {
-		run.emit(userFrame(input, input.mode, at));
+		run.emit(userFrame(input, { mode: input.mode, model: run.model, effort: run.effort }, at));
 	}
 
 	await copyAttachments(run, input);
@@ -961,11 +1032,12 @@ async function joinRun(run: Run, input: StartRunInput, before?: () => void, midT
 		text: input.text,
 		mode: run.mode,
 		model: run.model,
+		effort: run.effort,
 		uuid: input.uuid,
 		...(midTurn ? { midTurn: true } : {}),
 		...(attachments ? { attachments } : {})
 	});
-	run.emit(userFrame(input, run.mode, at));
+	run.emit(userFrame(input, { mode: run.mode, model: run.model, effort: run.effort }, at));
 
 	return true;
 }
@@ -1198,6 +1270,14 @@ async function copyAttachments(run: Run, input: StartRunInput): Promise<void> {
 		try {
 			if (await copyUpload(file.id, input.actor, dest)) {
 				run.attachmentPaths.set(file.id, dest);
+
+				const image = attachmentImage(file);
+
+				// the chat shows the picture from its own copy, which the agent's edits never touch
+				if (image) {
+					await mkdir(join(run.scratch, '.images'), { recursive: true });
+					await copyFile(dest, join(run.scratch, '.images', image));
+				}
 			}
 		} catch (err) {
 			console.error('[agent] could not copy an attachment into the scratch folder:', err);
@@ -1269,9 +1349,111 @@ function consoleServer(run: Run): ReturnType<typeof createSdkMcpServer> {
 				},
 				{ annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }
 			),
+			tool(
+				'share_file',
+				'Hand the operator a file to download straight from this chat: an export, a report, a generated config, a log you gathered. Give `path` to a file in your scratch folder (write it there first with Write), or `instance` with `path` for a file on that server (relative to its folder), which they download with their own permissions. The chat shows it as a download card under this call, so do not paste its content too; say in a line what it is. Never copy files into a server folder just to hand them over.',
+				{
+					path: z.string().describe('A file in your scratch folder (absolute, or relative to it); with `instance`, a path inside that server'),
+					instance: z.string().optional().describe('The instance the file is on, for a server file'),
+					name: z.string().optional().describe('The name it downloads as; defaults to the file name')
+				},
+				async ({ path, instance, name }) => {
+					try {
+						const file = instance
+							? await shareInstanceFile(run, instance, path, name)
+							: await shareScratchFile(run, path, name);
+
+						run.files.set(file.id, file);
+
+						return answer(`Shared ${file.name} (${file.size} bytes) as a download in the chat [${file.id}].`);
+					} catch (err) {
+						return answer((err as Error).message, true);
+					}
+				},
+				{ annotations: { readOnlyHint: true, openWorldHint: false } }
+			),
 			...taskTools(run)
 		]
 	});
+}
+
+/** A name a download may carry: the last path part, without what a file system would read as a folder. */
+function downloadName(given: string | undefined, fallback: string): string {
+	const name = basename((given ?? '').trim()).replace(/[\\/\u0000]/g, '').slice(0, 200);
+
+	return name && name !== '.' && name !== '..'
+		? name
+		: fallback;
+}
+
+/** Copy a scratch file under `.files/<id>`, so the download stays what was shared whatever the agent writes next. */
+async function shareScratchFile(run: Run, given: string, name: string | undefined): Promise<AgentSharedFile> {
+	if (!run.scratch) {
+		throw new Error('this conversation has no scratch folder to share from');
+	}
+
+	const scratch = await realpath(run.scratch);
+	const target = await realpath(isAbsolute(given) ? given : join(scratch, given)).catch(() => null);
+
+	if (!target) {
+		throw new Error(`${given} does not exist`);
+	}
+
+	const inside = relative(scratch, target);
+
+	if (inside.startsWith('..') || isAbsolute(inside) || inside.split(sep)[0]?.startsWith('.')) {
+		throw new Error(`${given} is not a file in your scratch folder`);
+	}
+
+	const info = await stat(target);
+
+	if (!info.isFile()) {
+		throw new Error(`${given} is not a file`);
+	}
+
+	if (info.size > SHARE_FILE_BYTES) {
+		throw new Error(`${given} is ${info.size} bytes; the most a chat download takes is ${SHARE_FILE_BYTES}`);
+	}
+
+	const id = `file_${randomBytes(6).toString('hex')}`;
+	const file = downloadName(name, basename(target));
+	const dir = join(scratch, '.files', id);
+
+	await mkdir(dir, { recursive: true });
+	await copyFile(target, join(dir, file));
+
+	return { id, name: file, size: info.size };
+}
+
+/**
+ * Name a file on an instance, after checking the run's account could download
+ * it and the agent's token reaches it; the chat links it through the instance
+ * file route, which checks each reader again.
+ */
+async function shareInstanceFile(run: Run, instance: string, path: string, name: string | undefined): Promise<AgentSharedFile> {
+	if (!run.fileScope.read || (run.fileScope.instances !== null && !run.fileScope.instances.includes(instance))) {
+		throw new Error(`instance files on ${instance} are outside your tools`);
+	}
+
+	const refusal = await refuseFor(run.actor, toolChecks('file_read', { instance, path }) ?? []);
+
+	if (refusal) {
+		throw new Error(`${run.actor} may not download files from ${instance} (${refusal.reason})`);
+	}
+
+	const info = await statInstancePath(await loadCluster(), instance, path);
+
+	if (!info || info.kind !== 'file') {
+		throw new Error(`${path} is not a file on ${instance}`);
+	}
+
+	return {
+		id: `file_${randomBytes(6).toString('hex')}`,
+		name: downloadName(name, basename(info.path)),
+		size: info.size,
+		instance,
+		path: info.path
+	};
 }
 
 /** What `createSdkMcpServer` takes as its tool list. */
@@ -1567,6 +1749,7 @@ async function drive(
 	});
 
 	run.retarget = grant.retarget;
+	run.fileScope = { read: launch.token.tools.includes('file_read'), instances: launch.token.scope.instances };
 
 	// Every call comes through here, none is pre-allowed: the operator can switch
 	// mode mid-run, so whether a call runs unasked is decided at the call, by the
@@ -1980,6 +2163,9 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					: null;
 				const output = report?.text ?? resultText(block.content);
 				const images = saveResultImages(run, block.tool_use_id, block.content);
+				const files = call?.name === AGENT_SHARE_TOOL
+					? sharedFiles(run, output)
+					: [];
 
 				if (report) {
 					run.emit({ type: 'progress', id: block.tool_use_id, tools: report.tools, ms: report.ms });
@@ -2001,6 +2187,7 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					decidedBy: call?.decidedBy,
 					actor: run.actor,
 					...(images.length ? { images } : {}),
+					...(files.length ? { files } : {}),
 					...(call?.parent
 						? { parent: call.parent }
 						: { uuid: message.uuid, session: message.session_id ?? run.sessionId ?? undefined })
@@ -2015,6 +2202,7 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					decidedBy: call?.decidedBy,
 					actor: run.actor,
 					...(images.length ? { images } : {}),
+					...(files.length ? { files } : {}),
 					...(call?.parent ? { parent: call.parent } : {})
 				});
 			}
@@ -2295,6 +2483,32 @@ export function watchRunStarts(conversationId: string, notify: () => void): () =
 /** Whether a conversation has a run in progress. */
 export function isRunning(conversationId: string): boolean {
 	return runs.get(conversationId)?.running ?? false;
+}
+
+/** A scratch file a live run shared, before the run has saved its transcript. */
+export function liveSharedFile(conversationId: string, fileId: string): AgentSharedFile | null {
+	const run = runs.get(conversationId);
+
+	for (const entry of run?.entries ?? []) {
+		const found = entry.kind === 'tool'
+			? entry.files?.find((item) => item.id === fileId && !item.instance)
+			: undefined;
+
+		if (found) {
+			return found;
+		}
+	}
+
+	return null;
+}
+
+/** Whether a live run's unsaved messages name an attached picture by this name. */
+export function liveAttachmentImage(conversationId: string, image: string): boolean {
+	const run = runs.get(conversationId);
+	const inEntries = run?.entries.some((entry) => entry.kind === 'user' && !!entry.attachments?.some((file) => file.image === image)) ?? false;
+	const held = run?.held.some((input) => input.attachments?.some((file) => attachmentImage(file) === image)) ?? false;
+
+	return inEntries || held;
 }
 
 /** The tool call a live run filed an image under, before the run has saved its transcript. */

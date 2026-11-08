@@ -43,6 +43,7 @@ export type {
 	AgentSettingsPatch,
 	AgentShare,
 	AgentShareRole,
+	AgentSharedFile,
 	AgentStatus,
 	AgentSubagent,
 	AgentTranscript,
@@ -60,6 +61,7 @@ export const listAgentConversations = call("agent.listConversations") as typeof 
 export const getAgentConversation = call("agent.getConversation") as typeof core.getAgentConversation;
 export const agentScratch = call("agent.scratch") as typeof core.agentScratch;
 export const agentImagePath = call("agent.imagePath") as typeof core.agentImagePath;
+export const agentSharedFilePath = call("agent.sharedFilePath") as typeof core.agentSharedFilePath;
 export const createAgentConversation = call("agent.createConversation") as typeof core.createAgentConversation;
 export const appendAgentTurn = call("agent.appendTurn") as typeof core.appendAgentTurn;
 export const renameAgentConversation = call("agent.renameConversation") as typeof core.renameAgentConversation;

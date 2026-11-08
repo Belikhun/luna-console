@@ -6,7 +6,7 @@ import { error } from '@sveltejs/kit';
 
 import { agentImagePath, getAgentConversation } from '$core/agent';
 import type { AgentEntry } from '$core/agent';
-import { liveImageEntry } from '$lib/server/agent/runner';
+import { liveAttachmentImage, liveImageEntry } from '$lib/server/agent/runner';
 import { conversationFor, toolVisibility } from '$lib/server/agent/sharing';
 
 const TYPES: Record<string, string> = {
@@ -17,26 +17,34 @@ const TYPES: Record<string, string> = {
 };
 
 /**
- * GET → an image a tool result carried (a screenshot, a picture the agent
- * read), for the chat to show beside the call. Whoever may see that call's
- * result may see its pictures, except a screenshot, which is its actor's own
- * screen; anyone else gets the same 404 as for a name that is not there.
+ * GET → an image the chat shows: one a tool result carried (a screenshot, a
+ * picture the agent read), or one an operator attached to a message. Whoever
+ * may see that call's result may see its pictures, except a screenshot, which
+ * is its actor's own screen; an attached picture is part of the message, which
+ * everyone in the conversation reads. Anyone else gets the same 404 as for a
+ * name that is not there.
  */
 export async function GET({ params, locals }) {
 	const { account, conversation } = await conversationFor(locals, params.id);
 	const saved = await getAgentConversation(params.id, account);
-	const entry = saved?.entries.find(
-		(item): item is Extract<AgentEntry, { kind: 'tool' }> => item.kind === 'tool' && !!item.images?.includes(params.name)
-	) ?? liveImageEntry(params.id, params.name);
+	const attached = saved?.entries.some(
+		(item) => item.kind === 'user' && !!item.attachments?.some((file) => file.image === params.name)
+	) || liveAttachmentImage(params.id, params.name);
 
-	if (!entry) {
-		throw error(404, 'no such image');
-	}
+	if (!attached) {
+		const entry = saved?.entries.find(
+			(item): item is Extract<AgentEntry, { kind: 'tool' }> => item.kind === 'tool' && !!item.images?.includes(params.name)
+		) ?? liveImageEntry(params.id, params.name);
 
-	const seen = await toolVisibility(account, conversation)(entry.id, entry.name, entry.input, entry.actor);
+		if (!entry) {
+			throw error(404, 'no such image');
+		}
 
-	if (!seen.images) {
-		throw error(404, 'no such image');
+		const seen = await toolVisibility(account, conversation)(entry.id, entry.name, entry.input, entry.actor);
+
+		if (!seen.images) {
+			throw error(404, 'no such image');
+		}
 	}
 
 	const path = await agentImagePath(params.id, account, params.name).catch(() => null);

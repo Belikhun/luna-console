@@ -4750,6 +4750,9 @@
 		"writtenByMcp": "Saved by a client over MCP ({actor}). Check it before relying on it."
 	},
 	"agent": {
+		"downloadFile": "Download {name}",
+		"fileOnInstance": "on {instance}",
+		"sentWith": "The model and effort this message was answered with",
 		"revokeQueued": "Take it back before it is sent",
 		"openImage": "Open the full picture",
 		"toolImage": "Picture returned by {tool}",
