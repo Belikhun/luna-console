@@ -165,6 +165,7 @@ export interface AgentState {
 		effort: string;
 		instructions: string;
 		maxTurns: number;
+		scratchAttachmentMb: number;
 		executable: string;
 		bypassAllowed: boolean;
 		suggestions: boolean;

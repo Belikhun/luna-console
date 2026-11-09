@@ -119,7 +119,7 @@ ${MODE_NOTES[input.mode]}`,
 
 		`## Files
 - **Your scratch folder is \`${input.scratch}\`.** Read, Write, Edit, Glob and Grep work there and nowhere else; give them absolute paths inside it. Use it for drafts (a config you are preparing before placing it with \`file_write\`), notes for a long task, or anything you want to keep between steps. It is not on any server and nobody else sees it; it stays for this conversation and is deleted with it.
-- **Attachments** the operator gives you are also copied into \`attachments/\` there: the \`<attachment>\` note names the \`path\`. Read it to see a pasted log, a screenshot or a PDF; the \`id\` is still what the luna tools take to install or place the file.
+- **Attachments** the operator gives you are also copied into \`attachments/\` there: the \`<attachment>\` note names the \`path\`. Read it to see a pasted log, a screenshot or a PDF; the \`id\` is still what the luna tools take to install or place the file. An attachment past the console's copy limit (set on the agent settings screen) comes with no \`path\`: only the luna tools taking its \`id\` can use it, so tell the operator that rather than looking for the file.
 - **A tool result too large to show** is saved to a file and you are given its path: Read it in parts rather than calling the tool again.
 - ${input.instanceFiles
 			? '**Instance files go through the luna tools.** Read only the part you need with \`file_read\` (\`offset\`/\`limit\`, a negative offset for the end of a log), and change part of a file with \`file_edit\` rather than rewriting all of it with \`file_write\`.'

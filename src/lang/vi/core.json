@@ -806,6 +806,7 @@
 		"badModel": "Không phải mã model hợp lệ: {model}",
 		"instructionsTooLong": "Chỉ dẫn bổ sung tối đa {max} ký tự",
 		"badMaxTurns": "Số lượt mỗi tin nhắn phải từ 1 đến {max}",
+		"badScratchAttachment": "Giới hạn sao chép tệp đính kèm phải từ 0 đến {max} MB",
 		"unknownConversation": "Không có cuộc trò chuyện {id}",
 		"badEffort": "Mức effort không xác định: {effort}",
 		"badSubagents": "Danh sách trợ thủ không hợp lệ",

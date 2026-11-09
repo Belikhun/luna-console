@@ -20,8 +20,11 @@ import { copyFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
-/** Largest file the panel accepts. */
-export const MAX_UPLOAD_BYTES = 128 * 1024 * 1024;
+/** The panel accepts at least this much, whatever the attachment copy limit says: jars and modpacks never need the copy. */
+export const MIN_UPLOAD_BYTES = 128 * 1024 * 1024;
+
+/** The body ran past the cap it was given; nothing was kept. */
+export class UploadTooLarge extends Error {}
 
 /** How long an attachment waits to be used. */
 const TTL_MS = 60 * 60 * 1000;
@@ -53,20 +56,53 @@ async function sweep(): Promise<void> {
 	}
 }
 
-/** Keep an attached file; returns the handle the message refers to it by. */
-export async function stageUpload(owner: string, name: string, bytes: Uint8Array): Promise<StagedUpload> {
+/**
+ * Keep an attached file, written to disk as it arrives so a gigabyte upload
+ * never sits in the console's memory. Throws `UploadTooLarge` once the body
+ * passes `maxBytes`; returns null for an empty body.
+ */
+export async function stageUpload(owner: string, name: string, body: ReadableStream<Uint8Array>, maxBytes: number): Promise<StagedUpload | null> {
 	await sweep();
 	await mkdir(DIR, { recursive: true });
 
+	const id = `att_${randomBytes(8).toString('hex')}`;
+	const writer = Bun.file(pathOf(id)).writer();
+	let size = 0;
+
+	try {
+		for await (const chunk of body) {
+			size += chunk.byteLength;
+
+			if (size > maxBytes) {
+				throw new UploadTooLarge();
+			}
+
+			writer.write(chunk);
+			await writer.flush();
+		}
+
+		await writer.end();
+	} catch (err) {
+		await Promise.resolve(writer.end()).catch(() => {});
+		await rm(pathOf(id), { force: true });
+
+		throw err;
+	}
+
+	if (size === 0) {
+		await rm(pathOf(id), { force: true });
+
+		return null;
+	}
+
 	const upload: StagedUpload = {
-		id: `att_${randomBytes(8).toString('hex')}`,
+		id,
 		name: basename(name).slice(0, 200) || 'file',
-		size: bytes.byteLength,
+		size,
 		owner,
 		at: Date.now()
 	};
 
-	await Bun.write(pathOf(upload.id), bytes);
 	staged.set(upload.id, upload);
 
 	return upload;

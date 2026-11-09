@@ -806,6 +806,7 @@
 		"badModel": "Not a model id: {model}",
 		"instructionsTooLong": "Extra instructions are limited to {max} characters",
 		"badMaxTurns": "Turns per message must be between 1 and {max}",
+		"badScratchAttachment": "The attachment copy limit must be between 0 and {max} MB",
 		"unknownConversation": "No conversation {id}",
 		"badEffort": "Unknown effort level: {effort}",
 		"badSubagents": "Helpers must be a list",

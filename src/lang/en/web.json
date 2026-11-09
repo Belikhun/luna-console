@@ -4982,6 +4982,8 @@
 		"effort_max": "Max",
 		"maxTurns": "Turns per message",
 		"maxTurnsHint": "Model steps one message may take (each tool round is one) before it is stopped.",
+		"scratchAttachment": "Attachment copy limit (MB)",
+		"scratchAttachmentHint": "Files attached in the chat up to this size are copied where Mèo Béo can open, move and read them. Larger ones can still be installed as addons, packs or modpacks. 0 copies none.",
 		"executablePath": "Executable path",
 		"executablePathHint": "Leave empty to find one automatically.",
 		"instructions": "Extra instructions",

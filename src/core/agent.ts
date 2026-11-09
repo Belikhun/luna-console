@@ -111,6 +111,8 @@ export interface AgentSettings {
 	instructions: string;
 	/** Model turns one message may take before the run is stopped */
 	maxTurns: number;
+	/** Attachments up to this many megabytes are also copied into the conversation's scratch folder, where the file tools reach them; the panel never accepts less than this */
+	scratchAttachmentMb: number;
 	/** Path to a Claude Code executable; empty means find one */
 	executable: string;
 	/** Whether anyone may pick bypass mode, where tool calls run without approval */
@@ -334,6 +336,7 @@ export interface AgentSettingsPatch {
 	effort?: AgentEffort;
 	instructions?: string;
 	maxTurns?: number;
+	scratchAttachmentMb?: number;
 	executable?: string;
 	bypassAllowed?: boolean;
 	suggestions?: boolean;
@@ -349,6 +352,9 @@ const AGENT_SCOPE: McpScope = {
 };
 
 const MAX_TURNS_CEILING = 100;
+
+/** Largest attachment an operator may allow, in megabytes; `luna web` sets the console's request body limit to match. */
+export const SCRATCH_ATTACHMENT_CEILING_MB = 4096;
 
 const MAX_INSTRUCTIONS = 8 * 1024;
 
@@ -410,6 +416,7 @@ function defaultSettings(): AgentSettings {
 		effort: "medium",
 		instructions: "",
 		maxTurns: 30,
+		scratchAttachmentMb: 1024,
 		executable: "",
 		bypassAllowed: true,
 		suggestions: true,
@@ -624,6 +631,16 @@ export async function updateAgentSettings(patch: AgentSettingsPatch, actor?: str
 			}
 
 			next.maxTurns = turns;
+		}
+
+		if (patch.scratchAttachmentMb !== undefined) {
+			const megabytes = Math.round(Number(patch.scratchAttachmentMb));
+
+			if (!Number.isFinite(megabytes) || megabytes < 0 || megabytes > SCRATCH_ATTACHMENT_CEILING_MB) {
+				throw new Error(t("core.agent.badScratchAttachment", { max: SCRATCH_ATTACHMENT_CEILING_MB }));
+			}
+
+			next.scratchAttachmentMb = megabytes;
 		}
 
 		if (patch.executable !== undefined) {

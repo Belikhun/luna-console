@@ -50,6 +50,7 @@
 	let model = $state('');
 	let effort = $state('medium');
 	let maxTurns = $state('30');
+	let scratchAttachmentMb = $state('1024');
 	let executable = $state('');
 	let instructions = $state('');
 	let bypassAllowed = $state(true);
@@ -70,6 +71,7 @@
 			model = agent.settings.model;
 			effort = agent.settings.effort;
 			maxTurns = String(agent.settings.maxTurns);
+			scratchAttachmentMb = String(agent.settings.scratchAttachmentMb);
 			executable = agent.settings.executable;
 			instructions = agent.settings.instructions;
 			bypassAllowed = agent.settings.bypassAllowed;
@@ -90,6 +92,7 @@
 				model !== agent.settings.model ||
 				effort !== agent.settings.effort ||
 				maxTurns !== String(agent.settings.maxTurns) ||
+				scratchAttachmentMb !== String(agent.settings.scratchAttachmentMb) ||
 				executable !== agent.settings.executable ||
 				instructions !== agent.settings.instructions ||
 				bypassAllowed !== agent.settings.bypassAllowed ||
@@ -184,6 +187,7 @@
 				model,
 				effort,
 				maxTurns: Number(maxTurns),
+				scratchAttachmentMb: Number(scratchAttachmentMb),
 				executable,
 				instructions,
 				bypassAllowed,
@@ -446,6 +450,12 @@
 			<span class="lbl">{t('web.agentSettings.maxTurns')}</span>
 			<span class="hint">{t('web.agentSettings.maxTurnsHint')}</span>
 			<input class="input" type="number" min="1" max="100" bind:value={maxTurns} />
+		</label>
+
+		<label class="field">
+			<span class="lbl">{t('web.agentSettings.scratchAttachment')}</span>
+			<span class="hint">{t('web.agentSettings.scratchAttachmentHint')}</span>
+			<input class="input" type="number" min="0" max="4096" step="1" bind:value={scratchAttachmentMb} />
 		</label>
 
 		<div class="field">

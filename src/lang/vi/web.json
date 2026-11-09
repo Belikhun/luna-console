@@ -4982,6 +4982,8 @@
 		"effort_max": "Tối đa",
 		"maxTurns": "Số lượt mỗi tin nhắn",
 		"maxTurnsHint": "Số bước model được đi cho một tin nhắn (mỗi vòng gọi công cụ là một bước) trước khi bị dừng.",
+		"scratchAttachment": "Giới hạn sao chép tệp đính kèm (MB)",
+		"scratchAttachmentHint": "Tệp đính kèm trong khung chat có kích thước tới mức này được sao chép tới nơi Mèo Béo mở, di chuyển và đọc được. Tệp lớn hơn vẫn cài được làm addon, gói tài nguyên hoặc modpack. 0 là không sao chép.",
 		"executablePath": "Đường dẫn tệp chạy",
 		"executablePathHint": "Để trống để tự tìm.",
 		"instructions": "Chỉ dẫn bổ sung",

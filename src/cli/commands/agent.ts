@@ -54,6 +54,7 @@ function printStatus(status: AgentStatus): void {
 			[t("cli.agent.field.model"), status.settings.model],
 			[t("cli.agent.field.effort"), status.settings.effort],
 			[t("cli.agent.field.maxTurns"), String(status.settings.maxTurns)],
+			[t("cli.agent.field.scratchAttachment"), `${status.settings.scratchAttachmentMb} MB`],
 			[t("cli.agent.field.executable"), status.settings.executable || pc.dim(t("cli.agent.auto"))],
 			[t("cli.agent.field.token"), status.token ? `${status.token.name} ${pc.dim(`· ${t("cli.agent.tools", { count: status.token.tools.length })}`)}` : pc.dim("—")],
 		],
@@ -140,6 +141,7 @@ command({
 		{ flag: "--model", desc: t("cli.agent.set.optModel"), value: true },
 		{ flag: "--effort", desc: t("cli.agent.set.optEffort"), value: true },
 		{ flag: "--max-turns", desc: t("cli.agent.set.optMaxTurns"), value: true },
+		{ flag: "--scratch-attachment-mb", desc: t("cli.agent.set.optScratchAttachment"), value: true },
 		{ flag: "--executable", desc: t("cli.agent.set.optExecutable"), value: true },
 		{ flag: "--enable", desc: t("cli.agent.set.optEnable") },
 		{ flag: "--disable", desc: t("cli.agent.set.optDisable") },
@@ -166,6 +168,10 @@ command({
 
 		if (typeof opts["max-turns"] === "string") {
 			patch.maxTurns = Number(opts["max-turns"]);
+		}
+
+		if (typeof opts["scratch-attachment-mb"] === "string") {
+			patch.scratchAttachmentMb = Number(opts["scratch-attachment-mb"]);
 		}
 
 		if (typeof opts.executable === "string") {

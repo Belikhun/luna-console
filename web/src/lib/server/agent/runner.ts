@@ -133,8 +133,8 @@ const LINGER_MS = 15_000;
 /** Longest single tool call; lifecycle tools wait up to three minutes for a server to settle. */
 const TOOL_TIMEOUT_MS = 4 * 60 * 1000;
 
-/** Attachments up to this size are also copied into the scratch folder, where the file tools can read them. */
-const SCRATCH_ATTACHMENT_BYTES = 32 * 1024 * 1024;
+/** A megabyte, as the attachment copy limit in the agent settings counts it. */
+const MB = 1024 * 1024;
 
 /** How long the session gets to measure its context after a turn before the estimate is used. */
 const CONTEXT_TIMEOUT_MS = 5_000;
@@ -584,6 +584,9 @@ class Run {
 
 	maxTurns = 0;
 
+	/** Attachments up to this size are also copied into the scratch folder, where the file tools can read them; refreshed from the settings by every message */
+	scratchAttachmentBytes = 0;
+
 	/** Set when the turn limit interrupted the session, so the result that follows says so */
 	turnCapped = false;
 
@@ -858,6 +861,7 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
 
 	if (live) {
 		live.shared = shared;
+		live.scratchAttachmentBytes = launch.settings.scratchAttachmentMb * MB;
 	}
 
 	if (input.hold && live?.running && !live.closing && !input.compact && !input.event) {
@@ -921,6 +925,8 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
 		model: input.model || launch.settings.model,
 		effort: input.effort || launch.settings.effort
 	});
+
+	run.scratchAttachmentBytes = launch.settings.scratchAttachmentMb * MB;
 
 	for (const tool of conversation.allowedTools) {
 		run.allowed.add(tool);
@@ -1256,12 +1262,12 @@ function promptFor(input: StartRunInput, run: Run): string {
 /**
  * Put a message's attachments in the scratch folder too, so the agent can read
  * a pasted log, a screenshot or a PDF with its own file tools; the upload id
- * still names the file for the luna tools that install or place it. Big files
- * (jars, modpacks) stay staged only.
+ * still names the file for the luna tools that install or place it. Files past
+ * the settings' copy limit stay staged only.
  */
 async function copyAttachments(run: Run, input: StartRunInput): Promise<void> {
 	for (const file of input.attachments ?? []) {
-		if (run.attachmentPaths.has(file.id) || file.size > SCRATCH_ATTACHMENT_BYTES || !run.scratch) {
+		if (run.attachmentPaths.has(file.id) || file.size > run.scratchAttachmentBytes || !run.scratch) {
 			continue;
 		}
 

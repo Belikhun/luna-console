@@ -2156,6 +2156,7 @@
 			"model": "Model",
 			"effort": "Mức suy nghĩ",
 			"maxTurns": "Số lượt mỗi tin nhắn",
+			"scratchAttachment": "Giới hạn sao chép tệp đính kèm",
 			"executable": "Claude Code",
 			"token": "Token MCP"
 		},
@@ -2177,6 +2178,7 @@
 			"optModel": "Mã hoặc bí danh model (sonnet, opus, claude-sonnet-5-5, …)",
 			"optEffort": "low, medium, high, xhigh hoặc max",
 			"optMaxTurns": "Số bước model được đi cho một tin nhắn",
+			"optScratchAttachment": "Tệp đính kèm lớn nhất, tính bằng MB, được sao chép tới nơi công cụ tệp của Mèo Béo đọc được (0 là không sao chép)",
 			"optExecutable": "Đường dẫn tới Claude Code (để trống để tự tìm)",
 			"optEnable": "Cho phép trò chuyện với Mèo Béo",
 			"optDisable": "Chặn tin nhắn mới",

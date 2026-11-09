@@ -165,13 +165,15 @@ command({
 				cwd: webDir,
 				// BODY_SIZE_LIMIT: adapter-node caps request bodies at 512K by
 				// default, which rejects pack uploads; a resource pack zip is
-				// easily tens of MB
+				// easily tens of MB. It matches the largest attachment Mèo Béo's
+				// settings allow (SCRATCH_ATTACHMENT_CEILING_MB), and the routes
+				// taking big bodies apply their own, smaller caps
 				env: {
 					...process.env,
 					LUNA_ROOT: root(),
 					PORT: port,
 					HOST: host,
-					BODY_SIZE_LIMIT: process.env.BODY_SIZE_LIMIT ?? "256M",
+					BODY_SIZE_LIMIT: process.env.BODY_SIZE_LIMIT ?? "4G",
 					...siteEnv,
 					...proxyEnv,
 				},
