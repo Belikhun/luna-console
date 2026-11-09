@@ -30,6 +30,7 @@ export {
 	familyForDir,
 	hasLoaderVersions,
 	hasProvider,
+	hasServerProperties,
 	isReleaseVersion,
 	mcVersionParts,
 	newestRelease,

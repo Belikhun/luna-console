@@ -774,6 +774,15 @@ export function hasProvider(software: Software): boolean {
 	return Boolean(traitsOf(software).provider);
 }
 
+/**
+ * Whether this software keeps a `server.properties`. Velocity configures itself
+ * in `velocity.toml` and Pumpkin in its own TOML, so neither has the file the
+ * settings form and the raw properties table edit.
+ */
+export function hasServerProperties(software: Software): boolean {
+	return traitsOf(software).portConfig === "properties";
+}
+
 /** Whether a version pick for this software needs a loader build as well. */
 export function hasLoaderVersions(software: Software): boolean {
 	return Boolean(traitsOf(software).pinsLoaderVersion);

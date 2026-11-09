@@ -30,6 +30,7 @@ export {
 	listStatuses,
 	instanceStatus,
 	getHistory,
+	getRuntime,
 	readHostMemMb,
 	instanceThreads,
 	lunaProblem,

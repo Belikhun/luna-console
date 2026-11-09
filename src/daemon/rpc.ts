@@ -2134,6 +2134,7 @@ export const OPS: Record<string, OpSpec> = {
 	// process state is still read where the process actually is.
 	"daemon.instanceStatus": { fn: sampler.instanceStatus },
 	"daemon.getHistory": { fn: sampler.getHistory, instance: 0 },
+	"daemon.getRuntime": { fn: sampler.getRuntime, instance: 0 },
 	// instance-routed, unlike instanceStatus above: this one walks /proc, and the
 	// process only has a /proc entry on the machine that owns it
 	"daemon.instanceThreads": { fn: threads.instanceThreads, instance: 0 },

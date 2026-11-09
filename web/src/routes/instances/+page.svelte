@@ -776,7 +776,7 @@
 						{/if}
 					{:else if col === 'name'}
 						<!-- the row itself is clickable, so the link must not double-fire -->
-						<a href="/instances/{row.name}" onclick={(event) => event.stopPropagation()}>
+						<a href="/instances/{row.name}">
 							{row.name}
 						</a>
 					{:else if col === 'state'}
@@ -800,7 +800,7 @@
 					{:else if col === 'machine'}
 						{@const machine = row.daemon ?? hostName}
 						{#if machine}
-							<a href="/machines/{machine}" onclick={(event) => event.stopPropagation()}>
+							<a href="/machines/{machine}">
 								{machine}
 							</a>
 						{:else}

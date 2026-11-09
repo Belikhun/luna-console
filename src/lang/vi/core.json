@@ -254,6 +254,7 @@
 		"mustBeAtLeast": "{key} phải ít nhất {min}",
 		"mustBeAtMost": "{key} phải nhiều nhất {max}",
 		"mustBeOneOf": "{key} phải là một trong: {allowed}",
+		"noProperties": "{name} không có server.properties; phần mềm của nó lưu cấu hình ở chỗ khác",
 		"mustBeSingleLine": "{key} phải nằm trên một dòng",
 		"notEditable": "{key} không phải thiết lập máy chủ sửa được",
 		"badKey": "\"{key}\" không dùng được làm khóa properties; chỉ dùng chữ, số, dấu chấm, gạch ngang và gạch dưới",

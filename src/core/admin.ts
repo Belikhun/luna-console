@@ -13,7 +13,7 @@ import { getProject } from "./services/providers";
 import { installBuild } from "./services/software/install";
 import { resolveBuild } from "./services/software/registry";
 import type { SoftwareBuild } from "./services/software/types";
-import { SOFTWARE_IDS, familyForDir, hasProvider, traitsOf } from "./software";
+import { SOFTWARE_IDS, familyForDir, hasProvider, hasServerProperties, traitsOf } from "./software";
 import { readForwardingSecret } from "./proxy";
 import {
 	GAME_POOL,
@@ -1652,6 +1652,10 @@ export async function setServerProperty(
 
 	if (!inst) {
 		throw new Error(t("core.instances.unknown", { name }));
+	}
+
+	if (!hasServerProperties(inst.software)) {
+		throw new Error(t("core.settings.noProperties", { name }));
 	}
 
 	return await setConfValue(

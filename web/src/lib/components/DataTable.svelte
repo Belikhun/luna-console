@@ -411,7 +411,18 @@
 		selected = next;
 	}
 
-	function rowClick(row: T): void {
+	/**
+	 * A click on a link inside the row is that link's, not the row's.
+	 *
+	 * Checked here rather than by having the link stop the event: SvelteKit's
+	 * router hears link clicks on the app's root as they bubble, so a link that
+	 * stops propagation is never routed, and the browser loads the whole page.
+	 */
+	function rowClick(row: T, event: MouseEvent): void {
+		if ((event.target as Element | null)?.closest('a[href]')) {
+			return;
+		}
+
 		if (rowLocked?.(row)) {
 			return;
 		}
@@ -1031,7 +1042,7 @@
 						class:locked
 						class:drop-target={dropRow === getId(row)}
 						draggable={rowDraggable?.(row) ? 'true' : undefined}
-						onclick={() => rowClick(row)}
+						onclick={(event) => rowClick(row, event)}
 						ondblclick={onRowDblClick ? () => onRowDblClick(row) : undefined}
 						oncontextmenu={(event) => rowContext(row, event)}
 						ondragstart={rowDraggable ? (event) => dragStart(row, event) : undefined}

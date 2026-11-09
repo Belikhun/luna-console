@@ -17,7 +17,7 @@ import { instanceDir, loadCluster, managedInstances } from "../core/config";
 import { instanceAddress } from "../core/ports";
 import * as instances from "../core/instances";
 import * as luna from "../core/services/luna";
-import type { BackendCard } from "../core/services/luna";
+import type { BackendCard, ProxyRuntimeSnapshot } from "../core/services/luna";
 import { traitsOf } from "../core/software";
 import type { ClusterConfig, InstanceConfig } from "../core/types";
 
@@ -65,6 +65,16 @@ export interface MetricSample {
 	apdex?: number;
 	/** 0-1 share of player-time spent on ticks slow enough to feel */
 	misery?: number;
+	/** Live threads of the process, from /proc; the JVM's own count plus its native helpers */
+	threads?: number;
+	/** Heap the JVM has reserved from the OS, which is what RSS follows */
+	heapCommittedMb?: number;
+	/** Metaspace, code cache and the rest of what lives outside the heap */
+	nonHeapMb?: number;
+	/** Milliseconds spent collecting garbage since the previous sample */
+	gcMs?: number;
+	/** Collections run since the previous sample */
+	gcCount?: number;
 }
 
 /**
@@ -86,6 +96,10 @@ interface InstanceRuntime {
 	history: MetricSample[];
 	lastState?: string;
 	prevCpu?: { total: number; at: number };
+	/** Collector totals at the previous sample; GC is cumulative, so a sample is the difference */
+	prevGc?: { count: number; ms: number; uptimeMs: number };
+	/** The JVM's latest view of itself, for software that can report one */
+	jvm?: ProxyRuntimeSnapshot;
 }
 
 const MAX_SAMPLES = 720; // 1h at 5s
@@ -153,7 +167,7 @@ function rt(name: string): InstanceRuntime {
  * Cumulative CPU ticks and resident size of a process, from /proc. CPU is only
  * meaningful as a delta between two samples, so the raw total is what we keep.
  */
-async function readCpuMem(pid: number): Promise<{ total: number; rssMb: number } | undefined> {
+async function readCpuMem(pid: number): Promise<{ total: number; rssMb: number; threads?: number } | undefined> {
 	try {
 		// the comm field can contain spaces and parens; everything after the last
 		// ')' is the fixed-layout part, where utime/stime are fields 12 and 13
@@ -164,8 +178,13 @@ async function readCpuMem(pid: number): Promise<{ total: number; rssMb: number }
 
 		const status = await readFile(`/proc/${pid}/status`, "utf8");
 		const rss = parseInt(status.match(/VmRSS:\s+(\d+)/)?.[1] ?? "0");
+		const threads = status.match(/Threads:\s+(\d+)/)?.[1];
 
-		return { total: utime + stime, rssMb: Math.round(rss / 1024) };
+		return {
+			total: utime + stime,
+			rssMb: Math.round(rss / 1024),
+			threads: threads === undefined ? undefined : parseInt(threads),
+		};
 	} catch {
 		return undefined;
 	}
@@ -215,6 +234,54 @@ async function fetchLunaBackends(): Promise<Map<string, BackendCard>> {
 	lunaIssue = undefined;
 
 	return new Map(result.data.backends.map((backend) => [backend.id, backend]));
+}
+
+/**
+ * The proxy JVM's view of itself, or undefined when LunaCore is unreachable or
+ * predates the route. Only asked when this daemon owns a proxy, since LunaCore
+ * runs inside it and answers on the primary's loopback.
+ */
+async function fetchProxyRuntime(): Promise<ProxyRuntimeSnapshot | undefined> {
+	const result = await luna.proxyRuntime();
+
+	if (!result.ok || !result.data?.jvm) {
+		return undefined;
+	}
+
+	return result.data;
+}
+
+/**
+ * Fold a JVM snapshot into a sample: heap, non-heap, and garbage collection as
+ * the difference from the previous snapshot. A JVM that restarted in between
+ * has totals that went backwards, so that pass only sets the new baseline.
+ */
+function applyJvm(rec: InstanceRuntime, sample: MetricSample, snapshot: ProxyRuntimeSnapshot): void {
+	const jvm = snapshot.jvm;
+	const toMb = (bytes: number): number => Math.round(bytes / 1024 / 1024);
+
+	sample.heapUsedMb = toMb(jvm.heapUsedBytes);
+	sample.heapCommittedMb = toMb(jvm.heapCommittedBytes);
+	sample.nonHeapMb = toMb(jvm.nonHeapUsedBytes);
+
+	if (jvm.heapMaxBytes !== null) {
+		sample.heapMaxMb = toMb(jvm.heapMaxBytes);
+	}
+
+	const gc = {
+		count: jvm.gc.reduce((sum, collector) => sum + collector.collectionCount, 0),
+		ms: jvm.gc.reduce((sum, collector) => sum + collector.collectionTimeMillis, 0),
+		uptimeMs: jvm.uptimeMillis,
+	};
+	const previous = rec.prevGc;
+
+	if (previous && gc.uptimeMs >= previous.uptimeMs && gc.count >= previous.count) {
+		sample.gcCount = gc.count - previous.count;
+		sample.gcMs = gc.ms - previous.ms;
+	}
+
+	rec.prevGc = gc;
+	rec.jvm = snapshot;
 }
 
 /** Adopt a freshly fetched set of cards as the current telemetry. */
@@ -267,8 +334,11 @@ async function sampleOnce(): Promise<void> {
 		const insts = managedInstances(cfg);
 		const ownedNames = Object.keys(insts).filter((name) => ownsInstance(insts[name]!));
 
-		const [statuses] = await Promise.all([
+		const proxyName = ownedNames.find((name) => traitsOf(insts[name]!.software).isProxy);
+
+		const [statuses, proxyRuntime] = await Promise.all([
 			Promise.all(ownedNames.map((name) => instances.getStatus(cfg, name))),
+			proxyName ? fetchProxyRuntime() : Promise.resolve(undefined),
 			// a follower has no proxy to ask; its cards arrive on the ping instead,
 			// and must be read *after* this await rather than snapshotted before
 			// it; a ping landing mid-sample would otherwise have its telemetry
@@ -315,9 +385,16 @@ async function sampleOnce(): Promise<void> {
 
 					rec.prevCpu = { total: usage.total, at: sample.t };
 					sample.rssMb = usage.rssMb;
+					sample.threads = usage.threads;
 				}
 			} else {
 				rec.prevCpu = undefined;
+				rec.prevGc = undefined;
+				rec.jvm = undefined;
+			}
+
+			if (status.name === proxyName && status.javaPid && proxyRuntime) {
+				applyJvm(rec, sample, proxyRuntime);
 			}
 
 			if (status.players) {
@@ -428,6 +505,15 @@ export function effectiveState(name: string, coreState: CoreStatus["state"]): Ui
 /** Metrics history for one instance, oldest first. */
 export function getHistory(name: string): MetricSample[] {
 	return rt(name).history;
+}
+
+/**
+ * The latest snapshot an instance's JVM gave of itself (heap pools, collectors,
+ * threads), or null when it reports none: today only the proxy does, through
+ * LunaCore, and only while it runs.
+ */
+export function getRuntime(name: string): ProxyRuntimeSnapshot | null {
+	return runtime.get(name)?.jvm ?? null;
 }
 
 /**
@@ -735,8 +821,13 @@ export function statusJson(cfg: ClusterConfig, st: CoreStatus): Record<string, u
 
 	return {
 		tps: backend?.online ? backend.metrics.tps : null,
-		heapUsedMb: backend?.online ? Math.round(backend.metrics.ramUsedBytes / 1024 / 1024) : null,
-		heapMaxMb: backend?.online ? Math.round(backend.metrics.ramMaxBytes / 1024 / 1024) : null,
+		// a proxy sends no heartbeat; its heap is in its own samples, from the JVM
+		heapUsedMb: backend?.online
+			? Math.round(backend.metrics.ramUsedBytes / 1024 / 1024)
+			: (latest?.heapUsedMb ?? null),
+		heapMaxMb: backend?.online
+			? Math.round(backend.metrics.ramMaxBytes / 1024 / 1024)
+			: (latest?.heapMaxMb ?? null),
 		// current rather than historical: the chart reads the sample history, these
 		// are what the readouts and the world table show right now
 		chunks: reported(backend, (metrics) => metrics.loadedChunks),

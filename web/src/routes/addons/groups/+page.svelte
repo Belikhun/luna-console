@@ -141,7 +141,7 @@
 	>
 		{#snippet cell(group, col)}
 			{#if col === 'name'}
-				<a href="/addons/groups/{group.name}" onclick={(event) => event.stopPropagation()}>
+				<a href="/addons/groups/{group.name}">
 					<b>{group.name}</b>
 				</a>
 				{#if group.builtin}<StatusBadge state="ok" label={t('web.addonGroups.builtin')} />{/if}

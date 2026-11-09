@@ -25,10 +25,24 @@ import { instanceDir, managedInstances } from "./config";
 import { deleteProperty, readProperties, upsertProperty } from "./confedit";
 import type { ProgressReporter } from "./progress";
 import { settingSpec, validateSetting } from "./settings";
+import { hasServerProperties } from "./software";
 
 /** Absolute path of an instance's server.properties. */
 function propertiesPath(inst: InstanceConfig): string {
 	return join(instanceDir(inst), "server.properties");
+}
+
+/**
+ * The server.properties a write may touch. A proxy has no such file, and writing
+ * one would leave a stray file the software never reads while the form reports
+ * the change as saved.
+ */
+function writablePropertiesPath(name: string, inst: InstanceConfig): string {
+	if (!hasServerProperties(inst.software)) {
+		throw new Error(t("core.settings.noProperties", { name }));
+	}
+
+	return propertiesPath(inst);
 }
 
 /** Every key/value pair in an instance's server.properties. */
@@ -98,7 +112,7 @@ export async function setRawProperty(
 		}
 	}
 
-	const path = propertiesPath(inst);
+	const path = writablePropertiesPath(name, inst);
 	const current = await readProperties(path);
 
 	if (current[key] === value) {
@@ -143,7 +157,7 @@ export async function deleteRawProperty(
 		throw new Error(t("core.settings.managedError", { key, reason: t(spec.managed) }));
 	}
 
-	const removed = await deleteProperty(propertiesPath(inst), key);
+	const removed = await deleteProperty(writablePropertiesPath(name, inst), key);
 
 	return { key, existed: removed !== undefined, removed };
 }
@@ -182,11 +196,17 @@ export async function applySettings(
 		throw new Error(t("core.instances.unknown", { name }));
 	}
 
-	const path = propertiesPath(inst);
-	const current = await readProperties(path);
-
 	const result: ApplySettingsResult = { changed: [], rejected: [], unchanged: [] };
 	const entries = Object.entries(values);
+
+	// the configuration tab sends its (empty) settings batch with every save, and
+	// a proxy's memory or JVM flags must still save without a properties file
+	if (entries.length === 0) {
+		return result;
+	}
+
+	const path = writablePropertiesPath(name, inst);
+	const current = await readProperties(path);
 	let done = 0;
 
 	for (const [key, raw] of entries) {

@@ -441,7 +441,7 @@
 				{@const badge = linkBadge(row)}
 				<StatusBadge state={badge.state} label={badge.label} />
 			{:else if col === 'name'}
-				<a href="/machines/{row.name}" onclick={(event) => event.stopPropagation()}>
+				<a href="/machines/{row.name}">
 					<b>{row.name}</b>
 				</a>
 			{:else if col === 'checks'}
@@ -471,7 +471,7 @@
 				{#if row.instances.length}
 					{#each row.instances as name, i}
 						{#if i > 0}<span class="dim">, </span>{/if}
-						<a href="/instances/{name}" onclick={(event) => event.stopPropagation()}>{name}</a>
+						<a href="/instances/{name}">{name}</a>
 					{/each}
 				{:else}
 					<span class="dim">{t('web.machines.none')}</span>

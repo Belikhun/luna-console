@@ -19,6 +19,7 @@ import type {
 	UpgradeResult,
 } from "../daemon/upgrade";
 import type { MetricSample, StatusCheck, UiState } from "../daemon/sampler";
+import type { ProxyRuntimeSnapshot } from "../core/services/luna";
 import type { ThreadReport, ThreadSample } from "../daemon/threads";
 import type { ProgressReporter } from "../core/progress";
 import { UPGRADE_JOB_KIND } from "../shared/jobs";
@@ -57,6 +58,9 @@ export const instanceStatus = call("daemon.instanceStatus") as (
 ) => Promise<Record<string, unknown>>;
 
 export const getHistory = call("daemon.getHistory") as (name: string) => Promise<MetricSample[]>;
+
+/** The JVM's own latest snapshot of an instance (heap pools, collectors, threads), or null. */
+export const getRuntime = call("daemon.getRuntime") as (name: string) => Promise<ProxyRuntimeSnapshot | null>;
 
 export const markTransition = call("daemon.markTransition") as (
 	name: string,

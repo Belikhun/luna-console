@@ -601,7 +601,7 @@
 			{/snippet}
 			{#snippet cell(row, col)}
 				{#if col === 'name'}
-					<a href="/gallery" onclick={(event) => event.stopPropagation()}>{row.name}</a>
+					<a href="/gallery">{row.name}</a>
 				{:else if col === 'state'}
 					<StatusBadge state={row.state} />
 				{:else if col === 'cpu'}

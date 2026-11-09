@@ -52,7 +52,7 @@
 	import ProxyRegistrationModal from '$lib/components/ProxyRegistrationModal.svelte';
 	import ServerProperties from '$lib/components/ServerProperties.svelte';
 	import { Notify } from '$lib/notifications.svelte';
-	import { familyForDir, hasProvider, traitsOf } from '$core/software';
+	import { familyForDir, hasProvider, hasServerProperties, traitsOf } from '$core/software';
 	import InstanceAddonAdd from '$lib/components/InstanceAddonAdd.svelte';
 	import SplitBtn from '$lib/components/SplitBtn.svelte';
 	import type { AddonSource, InstanceAddonKind } from '$lib/components/instanceaddon';
@@ -293,6 +293,9 @@
 	/** Whether java profiles, runtimes and JVM flags mean anything for this one. */
 	const usesJava = $derived(!inst || traitsOf(inst.software as Software).usesJava);
 
+	/** Whether there is a server.properties to edit; a proxy configures itself in its own TOML. */
+	const keepsProperties = $derived(!inst || hasServerProperties(inst.software as Software));
+
 	/** Whether this instance's version can be changed from here at all. */
 	const versionChangeable = $derived.by(() => {
 		if (!inst) {
@@ -506,7 +509,7 @@
 
 	/** Pack key whose per-instance rule edit is in flight, for the row's button. */
 	let respackBusy = $state('');
-	let metrics: { history: any[]; events: any[]; uptime?: UptimeSeries } = $state({
+	let metrics: { history: any[]; events: any[]; uptime?: UptimeSeries; runtime?: any } = $state({
 		history: [],
 		events: []
 	});
@@ -1473,6 +1476,92 @@
 		tpsPoints.some((point: any) => point.v != null) ||
 			heapPoints.some((point: any) => point.v != null)
 	);
+
+	// apart from each other because a proxy has a heap and no tick loop
+	const hasTpsSeries = $derived(tpsPoints.some((point: any) => point.v != null));
+	const hasHeapSeries = $derived(heapPoints.some((point: any) => point.v != null));
+
+	/** The heap ceiling, so the chart reads as how full it is rather than as a line that only moves. */
+	const heapMax = $derived.by(() => {
+		const ceiling = metrics.history.findLast((sample: any) => sample.heapMaxMb != null)?.heapMaxMb;
+
+		return ceiling ?? undefined;
+	});
+
+	const threadPoints = $derived(metrics.history.map((sample: any) => ({ t: sample.t, v: sample.threads })));
+	const gcPoints = $derived(metrics.history.map((sample: any) => ({ t: sample.t, v: sample.gcMs })));
+	const nonHeapPoints = $derived(metrics.history.map((sample: any) => ({ t: sample.t, v: sample.nonHeapMb })));
+	const hasThreadSeries = $derived(threadPoints.some((point: any) => point.v != null));
+	const hasGcSeries = $derived(gcPoints.some((point: any) => point.v != null));
+	const hasNonHeapSeries = $derived(nonHeapPoints.some((point: any) => point.v != null));
+
+	/** What the JVM says about itself; only the proxy reports one, through LunaCore. */
+	const jvm = $derived(metrics.runtime?.jvm ?? null);
+
+	const jvmCells: InfoCell[] = $derived.by(() => {
+		if (!jvm) {
+			return [];
+		}
+
+		const proxy = metrics.runtime?.proxy;
+		const heapMaxText = jvm.heapMaxBytes == null
+			? t('web.instanceDetail.jvmNoCeiling')
+			: fmtBytes(jvm.heapMaxBytes);
+
+		return [
+			{
+				label: t('web.instanceDetail.jvmJava'),
+				value: `${jvm.javaVersion} · ${jvm.vmName}`
+			},
+			...(proxy
+				? [{ label: t('web.instanceDetail.jvmProxyVersion'), value: `${proxy.name} ${proxy.version}` }]
+				: []),
+			{ label: t('web.instanceDetail.jvmUptime'), value: fmtDuration(jvm.uptimeMillis) },
+			{
+				label: t('web.instanceDetail.jvmHeapLine'),
+				value: t('web.instanceDetail.jvmUsedCommittedMax', {
+					used: fmtBytes(jvm.heapUsedBytes),
+					committed: fmtBytes(jvm.heapCommittedBytes),
+					max: heapMaxText
+				})
+			},
+			{
+				label: t('web.instanceDetail.jvmNonHeap'),
+				value: t('web.instanceDetail.jvmUsedCommitted', {
+					used: fmtBytes(jvm.nonHeapUsedBytes),
+					committed: fmtBytes(jvm.nonHeapCommittedBytes)
+				})
+			},
+			{
+				label: t('web.instanceDetail.jvmThreads'),
+				value: t('web.instanceDetail.jvmThreadCounts', {
+					live: String(jvm.threadCount),
+					daemon: String(jvm.daemonThreadCount),
+					peak: String(jvm.peakThreadCount)
+				})
+			},
+			{
+				label: t('web.instanceDetail.jvmClasses'),
+				value: t('web.instanceDetail.jvmClassCounts', {
+					loaded: jvm.loadedClassCount.toLocaleString(),
+					unloaded: jvm.unloadedClassCount.toLocaleString()
+				})
+			},
+			...(proxy
+				? [{
+					label: t('web.instanceDetail.jvmRegisteredServers'),
+					value: proxy.registeredServers
+				}]
+				: []),
+			...jvm.gc.map((collector: any) => ({
+				label: collector.name,
+				value: t('web.instanceDetail.jvmCollectorLine', {
+					count: collector.collectionCount.toLocaleString(),
+					time: fmtDuration(collector.collectionTimeMillis)
+				})
+			}))
+		];
+	});
 
 	const msptPoints = $derived(metrics.history.map((sample: any) => ({ t: sample.t, v: sample.msptMean })));
 	const chunkPoints = $derived(metrics.history.map((sample: any) => ({ t: sample.t, v: sample.chunks })));
@@ -2721,9 +2810,28 @@
 					color="#2bb534"
 					maxY={playerMax}
 				/>
-				{#if hasHeartbeatSeries}
+				{#if hasTpsSeries}
 					<Sparkline points={tpsPoints} label={t('web.instanceDetail.tickRate')} unit=" TPS" color="#e0ca57" maxY={20} />
-					<Sparkline points={heapPoints} label={t('web.instanceDetail.jvmHeap')} unit=" MB" color="#ff9d5c" />
+				{/if}
+				{#if hasHeapSeries}
+					<Sparkline
+						points={heapPoints}
+						label={t('web.instanceDetail.jvmHeap')}
+						unit=" MB"
+						color="#ff9d5c"
+						maxY={heapMax}
+					/>
+				{/if}
+				{#if hasNonHeapSeries}
+					<Sparkline points={nonHeapPoints} label={t('web.instanceDetail.jvmNonHeap')} unit=" MB" color="#d98cb3" />
+				{/if}
+				{#if hasGcSeries}
+					<!-- per sample, not cumulative: a pause storm shows as a spike where it
+					     happened rather than as a slope that is always rising -->
+					<Sparkline points={gcPoints} label={t('web.instanceDetail.gcTime')} unit=" ms" color="#9fd36b" />
+				{/if}
+				{#if hasThreadSeries}
+					<Sparkline points={threadPoints} label={t('web.instanceDetail.threadCount')} color="#8fa8ff" />
 				{/if}
 				{#if hasTickSeries}
 					<Sparkline points={msptPoints} label={t('web.instanceDetail.tickDuration')} unit=" ms" color="#ff7a7a" />
@@ -2733,6 +2841,33 @@
 					<Sparkline points={entityPoints} label={t('web.instanceDetail.entities')} color="#c9a227" />
 				{/if}
 			</div>
+
+			{#if jvm}
+				<div class="gap"></div>
+				<Panel title={t('web.instanceDetail.jvmRuntime')} description={t('web.instanceDetail.jvmRuntimeDesc')}>
+					<InfoGrid cells={jvmCells} />
+					{#if jvm.memoryPools?.length}
+						<div class="pools">
+							{#each jvm.memoryPools as pool (pool.name)}
+								<!-- against the ceiling where there is one, else against what is
+								     reserved: metaspace and the code heap often have no max -->
+								{@const ceiling = pool.maxBytes ?? pool.committedBytes}
+								<div class="poolrow">
+									<span class="tname">{pool.name}</span>
+									<span class="dim">{pool.type === 'HEAP' ? t('web.instanceDetail.jvmHeapPool') : t('web.instanceDetail.jvmNonHeapPool')}</span>
+									<ProgressBar
+										compact
+										value={pool.usedBytes}
+										max={Math.max(1, ceiling)}
+										color={pool.maxBytes == null ? 'accent' : 'auto'}
+										right="{fmtBytes(pool.usedBytes)} / {pool.maxBytes == null ? fmtBytes(pool.committedBytes) : fmtBytes(pool.maxBytes)}"
+									/>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</Panel>
+			{/if}
 
 			<!-- the whole-process CPU above says how much; this says what is spending it,
 			     which is the difference between a busy server and a broken one -->
@@ -2872,7 +3007,9 @@
 			{/if}
 			<p class="dim note">
 				{t('web.instanceDetail.sampledEvery5sBy')}
-				{#if hasHeartbeatSeries}
+				{#if jvm}
+					{t('web.instanceDetail.proxyJvmSource')}
+				{:else if hasHeartbeatSeries}
 					{t('web.instanceDetail.tickRateAndHeap')}
 				{/if}
 			</p>
@@ -2926,7 +3063,6 @@
 						{#if col === 'name'}
 							<a
 								href="/instances/{name}/plugins/{plugin.plugin}"
-								onclick={(event) => event.stopPropagation()}
 							>
 								{plugin.plugin}
 							</a>
@@ -3634,22 +3770,24 @@
 						bind:selected={cfgAddonGroups}
 					/>
 				</Panel>
-				<div class="gap"></div>
-				<Panel
-					title={t('web.instanceDetail.serverSettings')}
-					count={settingEditCount ? `${settingEditCount} unsaved` : undefined}
-					description={t('web.instanceDetail.serverPropertiesAppliedOnThe')}
-				>
-					<SettingsForm
-						schema={cfgData.schema}
-						groups={cfgData.groups}
-						bind:values={cfgSettings}
-					/>
-				</Panel>
-				<div class="gap"></div>
-				<!-- the raw table owns its own reads and writes; the reload keeps the
-				     settings form above it honest when a key they share is edited -->
-				<ServerProperties instance={name ?? ''} onchanged={() => void loadTab('config')} />
+				{#if keepsProperties}
+					<div class="gap"></div>
+					<Panel
+						title={t('web.instanceDetail.serverSettings')}
+						count={settingEditCount ? `${settingEditCount} unsaved` : undefined}
+						description={t('web.instanceDetail.serverPropertiesAppliedOnThe')}
+					>
+						<SettingsForm
+							schema={cfgData.schema}
+							groups={cfgData.groups}
+							bind:values={cfgSettings}
+						/>
+					</Panel>
+					<div class="gap"></div>
+					<!-- the raw table owns its own reads and writes; the reload keeps the
+					     settings form above it honest when a key they share is edited -->
+					<ServerProperties instance={name ?? ''} onchanged={() => void loadTab('config')} />
+				{/if}
 			{/if}
 		{/if}
 	</div>
@@ -4027,6 +4165,30 @@
 
 		.tid {
 			font-size: 0.75rem;
+		}
+	}
+
+	// one row per JVM memory pool, laid out like the busiest threads so the two
+	// panels read the same way
+	.pools {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+		margin-top: 1rem;
+	}
+
+	.poolrow {
+		display: grid;
+		grid-template-columns: minmax(6rem, 14rem) 5rem 1fr;
+		align-items: center;
+		gap: 0.75rem;
+		font-size: 0.75rem;
+
+		.tname {
+			font-size: 0.875rem;
+			color: var(--text);
+
+			@include ellipsis;
 		}
 	}
 

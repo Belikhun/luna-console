@@ -254,6 +254,7 @@
 		"mustBeAtLeast": "{key} must be at least {min}",
 		"mustBeAtMost": "{key} must be at most {max}",
 		"mustBeOneOf": "{key} must be one of: {allowed}",
+		"noProperties": "{name} has no server.properties; its software keeps its settings elsewhere",
 		"mustBeSingleLine": "{key} must be a single line",
 		"notEditable": "{key} is not an editable server setting",
 		"badKey": "\"{key}\" is not a usable properties key; use letters, digits, dots, dashes and underscores",

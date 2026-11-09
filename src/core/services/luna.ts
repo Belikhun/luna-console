@@ -316,6 +316,66 @@ export async function dashboard(): Promise<LunaResult<DashboardSnapshot>> {
 	return await call<DashboardSnapshot>("/dashboard/backends");
 }
 
+/** One garbage collector's running totals since the JVM started. */
+export interface JvmCollector {
+	name: string;
+	collectionCount: number;
+	collectionTimeMillis: number;
+}
+
+/** One memory pool (Eden, Old Gen, Metaspace, ...) as the JVM reports it. */
+export interface JvmMemoryPool {
+	name: string;
+	/** HEAP or NON_HEAP */
+	type: string;
+	usedBytes: number;
+	committedBytes: number;
+	/** null when the pool has no ceiling */
+	maxBytes: number | null;
+}
+
+/** What the proxy's own JVM says about itself. */
+export interface JvmRuntime {
+	vmName: string;
+	vmVersion: string;
+	javaVersion: string;
+	uptimeMillis: number;
+	availableProcessors: number;
+	heapUsedBytes: number;
+	heapCommittedBytes: number;
+	/** null when the heap has no ceiling */
+	heapMaxBytes: number | null;
+	nonHeapUsedBytes: number;
+	nonHeapCommittedBytes: number;
+	threadCount: number;
+	daemonThreadCount: number;
+	peakThreadCount: number;
+	totalStartedThreadCount: number;
+	loadedClassCount: number;
+	unloadedClassCount: number;
+	gc: JvmCollector[];
+	memoryPools: JvmMemoryPool[];
+}
+
+export interface ProxyRuntimeSnapshot {
+	generatedAtEpochMillis: number;
+	proxy: {
+		name: string;
+		version: string;
+		onlinePlayers: number;
+		registeredServers: number;
+	};
+	jvm: JvmRuntime;
+}
+
+/**
+ * The proxy JVM's heap, memory pools, collectors and threads. A LunaCore build
+ * older than this route answers 404, which the caller treats as "not measured".
+ */
+export async function proxyRuntime(): Promise<LunaResult<ProxyRuntimeSnapshot>> {
+	return await call<ProxyRuntimeSnapshot>("/dashboard/proxy");
+}
+
 export interface BackendDetail extends BackendCard {
 	stats: {
 		software: string;

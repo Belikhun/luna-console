@@ -707,7 +707,7 @@
 		{#snippet cell(row, col)}
 			{@const pending = updatesFor(row)}
 			{#if col === 'name'}
-				<a href="/plugins/{row.plugin}" onclick={(event) => event.stopPropagation()}>
+				<a href="/plugins/{row.plugin}">
 					<b>{row.plugin}</b>
 				</a>
 				{#if row.displayName && row.displayName !== row.plugin}

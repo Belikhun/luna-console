@@ -378,7 +378,6 @@
 				<a
 					class="gname"
 					href="/addons/groups/{group.name}"
-					onclick={(event) => event.stopPropagation()}
 				>
 					{group.name}
 				</a>
