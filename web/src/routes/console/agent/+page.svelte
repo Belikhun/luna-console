@@ -637,7 +637,7 @@
 
 <div class="gap"></div>
 
-<Panel title={t('web.agentHelpers.panel')} description={t('web.agentHelpers.hint')} count={helperRows.length}>
+<Panel title={t('web.agentHelpers.panel')} description={t('web.agentHelpers.hint')} count={helperRows.length} flush>
 	{#snippet actions()}
 		<Btn variant="primary" icon="plus" disabled={!agent} onclick={() => editHelper(null)}>{t('web.agentHelpers.add')}</Btn>
 	{/snippet}
