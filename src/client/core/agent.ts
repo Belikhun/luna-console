@@ -55,6 +55,7 @@ export const setAgentCredential = call("agent.setCredential") as typeof core.set
 export const clearAgentCredential = call("agent.clearCredential") as typeof core.clearAgentCredential;
 export const updateAgentSettings = call("agent.updateSettings") as typeof core.updateAgentSettings;
 export const recordAgentModels = call("agent.recordModels") as typeof core.recordAgentModels;
+export const refreshAgentModels = call("agent.refreshModels") as typeof core.refreshAgentModels;
 export const ensureAgentToken = call("agent.ensureToken") as typeof core.ensureAgentToken;
 export const agentLaunch = call("agent.launch") as typeof core.agentLaunch;
 export const listAgentConversations = call("agent.listConversations") as typeof core.listAgentConversations;

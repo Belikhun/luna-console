@@ -56,18 +56,22 @@ export const MAX_AGENT_TOOL_OUTPUT = 4 * 1024;
 export const MAX_AGENT_MESSAGE = 16 * 1024;
 
 /**
- * The models offered before a connection test has asked the SDK which ones the
- * credential can use; the first is the default. Any well-formed id is accepted
- * (`AGENT_MODEL_PATTERN`), so a model released after this build still works.
+ * The models offered until an operator has refreshed the list from Anthropic
+ * (`refreshAgentModels`) or run a connection test; the first is the default. Any
+ * well-formed id is accepted (`AGENT_MODEL_PATTERN`), so a model released
+ * after this build still works, and the fetched list replaces this one.
  */
 export const AGENT_MODELS = [
 	"claude-sonnet-5-5",
 	"claude-opus-5-5",
 	"claude-fable-5-1",
-	"claude-haiku-4-5-20251001",
+	"claude-haiku-5-5",
 	"claude-sonnet-5",
 	"claude-opus-5",
 ] as const;
+
+/** The Models API pages at most this many per request. */
+const MODELS_PAGE_LIMIT = 1000;
 
 /** A model id or alias the SDK may resolve (`sonnet`, `claude-opus-5-5[1m]`). */
 export const AGENT_MODEL_PATTERN = /^[a-z0-9][a-z0-9.\-]{0,79}(\[[a-z0-9]+\])?$/;
@@ -221,6 +225,10 @@ interface AgentStore {
 	settings: AgentSettings;
 	/** What the last successful connection test said the credential can use */
 	models?: AgentModelChoice[];
+	/** What Anthropic's Models API listed for the credential, newest first; wins over `models` */
+	apiModels?: AgentModelChoice[];
+	/** When `apiModels` was fetched */
+	apiModelsAt?: number;
 	tokenId?: string;
 	conversations: AgentConversation[];
 }
@@ -314,8 +322,13 @@ export interface AgentStatus {
 	credential: { kind: AgentCredentialKind; hint: string; setAt: number; setBy: string | null } | null;
 	settings: AgentSettings;
 	token: McpTokenSummary | null;
-	/** The models the credential offered on the last connection test; null until one ran */
+	/**
+	 * The models the credential can use: Anthropic's list when it has been
+	 * fetched, else what the last connection test reported; null until either ran.
+	 */
 	models: AgentModelChoice[] | null;
+	/** When the list was last fetched from Anthropic; null when it never was */
+	modelsCheckedAt: number | null;
 	/** Whether a message can be sent right now, and if not, why */
 	ready: boolean;
 	reason: string | null;
@@ -524,7 +537,8 @@ export async function agentStatus(): Promise<AgentStatus> {
 			: null,
 		settings: store.settings,
 		token,
-		models: store.models ?? null,
+		models: store.apiModels ?? store.models ?? null,
+		modelsCheckedAt: store.apiModelsAt ?? null,
 		ready: reason === null,
 		reason,
 	};
@@ -548,6 +562,8 @@ export async function setAgentCredential(value: string, actor?: string): Promise
 
 		store.credential = { kind, value: trimmed, setAt: Date.now(), setBy: actor };
 		delete store.models;
+		delete store.apiModels;
+		delete store.apiModelsAt;
 		await saveStore(store);
 	});
 
@@ -573,12 +589,148 @@ export async function recordAgentModels(models: AgentModelChoice[]): Promise<voi
 	});
 }
 
+let modelsRefresh: Promise<AgentModelChoice[]> | null = null;
+
+interface ApiModelPage {
+	data?: Array<{ id?: unknown; display_name?: unknown; created_at?: unknown }>;
+	has_more?: boolean;
+	last_id?: string | null;
+}
+
+/**
+ * Headers for Anthropic's API. A subscription token rides `Authorization` with
+ * the OAuth beta, as Claude Code sends it; an API key rides `x-api-key`.
+ */
+function anthropicHeaders(credential: StoredCredential): Record<string, string> {
+	const headers: Record<string, string> = { "anthropic-version": "2023-06-01" };
+
+	if (credential.kind === "oauth") {
+		headers.authorization = `Bearer ${credential.value}`;
+		headers["anthropic-beta"] = "oauth-2025-04-20";
+	} else {
+		headers["x-api-key"] = credential.value;
+	}
+
+	return headers;
+}
+
+async function fetchApiModels(credential: StoredCredential): Promise<AgentModelChoice[]> {
+	// a gateway in front of the API is honoured here as it is for the subprocess
+	const base = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
+	const headers = anthropicHeaders(credential);
+	const found: Array<{ id: string; label: string; created: number }> = [];
+	let after: string | null = null;
+
+	for (let page = 0; page < 10; page++) {
+		const url = new URL(`${base}/v1/models`);
+
+		url.searchParams.set("limit", String(MODELS_PAGE_LIMIT));
+
+		if (after) {
+			url.searchParams.set("after_id", after);
+		}
+
+		const response = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+
+		if (!response.ok) {
+			throw new Error(`models list: HTTP ${response.status}`);
+		}
+
+		const body = (await response.json()) as ApiModelPage;
+
+		for (const model of body.data ?? []) {
+			const id = typeof model.id === "string"
+				? model.id
+				: "";
+
+			if (!AGENT_MODEL_PATTERN.test(id)) {
+				continue;
+			}
+
+			const label = typeof model.display_name === "string" && model.display_name
+				? model.display_name
+				: id;
+			const created = typeof model.created_at === "string"
+				? Date.parse(model.created_at) || 0
+				: 0;
+
+			found.push({ id, label, created });
+		}
+
+		if (!body.has_more || !body.last_id) {
+			break;
+		}
+
+		after = body.last_id;
+	}
+
+	found.sort((a, b) => b.created - a.created);
+
+	return found.slice(0, 50).map((model) => ({
+		value: model.id.slice(0, 80),
+		label: model.label.replace(/^Claude\s+/, "").slice(0, 80),
+		description: "",
+	}));
+}
+
+/**
+ * Ask Anthropic's Models API which models the stored credential can use and
+ * keep the answer, newest first, so a model released after this build is
+ * offered without anybody updating `AGENT_MODELS`. An operator asks for it
+ * (the settings screen's refresh); concurrent callers share one request, and a
+ * failure throws and keeps the previous list.
+ *
+ * @returns The fetched list; an empty list when there is no credential.
+ */
+export async function refreshAgentModels(): Promise<AgentModelChoice[]> {
+	if (modelsRefresh) {
+		return await modelsRefresh;
+	}
+
+	modelsRefresh = (async (): Promise<AgentModelChoice[]> => {
+		const credential = (await loadStore()).credential;
+
+		if (!credential) {
+			return [];
+		}
+
+		const models = await fetchApiModels(credential);
+
+		if (models.length === 0) {
+			return [];
+		}
+
+		await serialized(async () => {
+			const store = await loadStore();
+
+			// the credential changed while the list was in flight; it belongs to the old one
+			if (store.credential?.value !== credential.value) {
+				return;
+			}
+
+			store.apiModels = models;
+			store.apiModelsAt = Date.now();
+			await saveStore(store);
+		});
+
+		return models;
+	})();
+
+	try {
+		return await modelsRefresh;
+	} finally {
+		modelsRefresh = null;
+	}
+}
+
 /** Forget the credential; the agent stops answering until a new one is pasted. */
 export async function clearAgentCredential(actor?: string): Promise<AgentStatus> {
 	await serialized(async () => {
 		const store = await loadStore();
 
 		delete store.credential;
+		delete store.apiModels;
+		delete store.apiModelsAt;
 		await saveStore(store);
 	});
 

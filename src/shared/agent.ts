@@ -157,3 +157,33 @@ export function agentCanAsk(mode: AgentMode): boolean {
 export function isAgentMode(value: unknown): value is AgentMode {
 	return typeof value === "string" && (AGENT_MODES as readonly string[]).includes(value);
 }
+
+/** One plan rate-limit window: how much of it is used and when it starts over. */
+export interface AgentUsageWindow {
+	/** `five_hour`, `seven_day`, `seven_day_opus`, … or `model` for a per-model weekly window */
+	id: string;
+	/** The server's own name for a per-model window; null for the fixed ones */
+	label: string | null;
+	/** Percent used, 0-100 */
+	utilization: number | null;
+	resetsAt: string | null;
+	/** How the last answer stood against it, when the window was seen on a turn */
+	status?: 'allowed' | 'allowed_warning' | 'rejected';
+	/** When it was seen on a turn; absent when read from the plan */
+	at?: number;
+}
+
+/** What the credential's account has left, as Claude Code's `/usage` reads it. */
+export interface AgentUsage {
+	/** False for an API key, which has no plan limits to read, and before anything was seen */
+	available: boolean;
+	/** `plan`: read as Claude Code's /usage does; `observed`: reported on the agent's own turns */
+	source: 'plan' | 'observed';
+	subscription: string | null;
+	email: string | null;
+	organization: string | null;
+	windows: AgentUsageWindow[];
+	extra: { enabled: boolean; limit: number | null; used: number | null; utilization: number | null; currency: string | null } | null;
+	at: number;
+	error?: string;
+}

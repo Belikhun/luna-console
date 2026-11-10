@@ -7,6 +7,7 @@
 	import { onMount } from 'svelte';
 	import { api, del, patch, post, put } from '$lib/api';
 	import { Agent, type AgentState, type HelperDefinition, type HelperSummary } from '$lib/agent.svelte';
+	import type { AgentUsage, AgentUsageWindow } from '$shared/agent';
 	import { fmtDateTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
@@ -23,6 +24,7 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import CodeEditor from '$lib/components/CodeEditor.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { MCP_TOOL_GROUPS } from '$shared/mcptools';
@@ -62,6 +64,11 @@
 	let connecting = $state(false);
 	let disconnectOpen = $state(false);
 
+	let refreshingModels = $state(false);
+	let usage = $state<AgentUsage | null>(null);
+	let usageLoading = $state(false);
+	let usageError = $state<string | null>(null);
+
 	async function load(): Promise<void> {
 		loading = true;
 
@@ -84,7 +91,71 @@
 		}
 	}
 
-	onMount(load);
+	onMount(async () => {
+		await load();
+
+		if (agent?.credential) {
+			await loadUsage(false);
+		}
+	});
+
+	/** The account's plan usage; each read starts a Claude Code subprocess, so the server keeps it a minute. */
+	async function loadUsage(fresh: boolean): Promise<void> {
+		usageLoading = true;
+		usageError = null;
+
+		try {
+			usage = await api<AgentUsage>(fresh ? '/agent/usage?fresh=1' : '/agent/usage');
+		} catch (err) {
+			usageError = (err as Error).message;
+		} finally {
+			usageLoading = false;
+		}
+	}
+
+	async function refreshModelList(): Promise<void> {
+		refreshingModels = true;
+
+		try {
+			const result = await post<{ source: 'api' | 'sdk'; count: number; apiError?: string }>('/agent/models');
+
+			Notify.success(t('web.agentSettings.modelsRefreshed', { count: result.count }), {
+				detail: result.source === 'sdk'
+					? t('web.agentSettings.modelsFromCli', { error: result.apiError ?? '' })
+					: undefined
+			});
+
+			const picked = model;
+
+			await load();
+
+			// a pick not yet saved survives the reload
+			model = picked;
+			void Agent.reloadState().catch(() => {});
+		} catch (err) {
+			Notify.error(t('web.agentSettings.modelsRefreshFailed'), { detail: (err as Error).message });
+		} finally {
+			refreshingModels = false;
+		}
+	}
+
+	function windowLabel(window: AgentUsageWindow): string {
+		return window.label
+			? t('web.agentSettings.usage_model', { name: window.label })
+			: t(`web.agentSettings.usage_${window.id}`);
+	}
+
+	function windowCaption(window: AgentUsageWindow): string {
+		const used = window.utilization === null
+			? '–'
+			: `${Math.round(window.utilization)}%`;
+
+		if (!window.resetsAt) {
+			return used;
+		}
+
+		return t('web.agentSettings.usageResets', { used, at: fmtDateTime(Date.parse(window.resetsAt)) });
+	}
 
 	const dirty = $derived(
 		!!agent &&
@@ -344,6 +415,7 @@
 			Notify.success(t('web.agentSettings.connected'));
 			await load();
 			await runTest();
+			await loadUsage(true);
 		} catch (err) {
 			Notify.error(t('web.agentSettings.connectFailed'), { detail: (err as Error).message });
 		} finally {
@@ -355,6 +427,8 @@
 		try {
 			await del('/agent/credential');
 			test = null;
+			usage = null;
+			usageError = null;
 			Notify.success(t('web.agentSettings.disconnected'));
 			await load();
 			void Agent.reloadState().catch(() => {});
@@ -421,6 +495,62 @@
 
 <div class="gap"></div>
 
+<Panel title={t('web.agentSettings.usagePanel')} description={t('web.agentSettings.usageHint')}>
+	{#snippet actions()}
+		<Btn icon="rotate" loading={usageLoading} disabled={!agent?.credential} onclick={() => loadUsage(true)}>
+			{t('web.agentSettings.usageRefresh')}
+		</Btn>
+	{/snippet}
+	{#if !agent?.credential}
+		<p class="dim usage-note">{t('web.agentSettings.usageNoCredential')}</p>
+	{:else if usageError}
+		<Flash kind="error">{t('web.agentSettings.usageFailed', { error: usageError })}</Flash>
+	{:else if !usage}
+		<p class="dim usage-note">{t('web.agentSettings.usageLoading')}</p>
+	{:else if !usage.available}
+		<p class="dim usage-note">
+			{agent.credential.kind === 'oauth'
+				? t('web.agentSettings.usageNotSeen')
+				: t('web.agentSettings.usageUnavailable')}
+		</p>
+	{:else}
+		<div class="usage">
+			{#if usage.subscription || usage.email}
+				<p class="dim usage-note">
+					{[usage.subscription ? t('web.agentSettings.usagePlan', { plan: usage.subscription }) : null, usage.email, usage.organization]
+						.filter(Boolean)
+						.join(' · ')}
+				</p>
+			{/if}
+			{#each usage.windows as window (window.id + (window.label ?? ''))}
+				<ProgressBar
+					value={window.utilization ?? 0}
+					color="auto"
+					left={windowLabel(window)}
+					right={windowCaption(window)}
+				/>
+			{/each}
+			{#if usage.extra?.enabled}
+				<ProgressBar
+					value={usage.extra.utilization ?? 0}
+					color="auto"
+					left={t('web.agentSettings.usage_extra')}
+					right={usage.extra.used !== null && usage.extra.limit !== null
+						? `${usage.extra.used} / ${usage.extra.limit} ${usage.extra.currency ?? ''}`.trim()
+						: null}
+				/>
+			{/if}
+			<p class="dim small">
+				{usage.source === 'observed'
+					? t('web.agentSettings.usageObservedAt', { at: fmtDateTime(usage.at) })
+					: t('web.agentSettings.usageAt', { at: fmtDateTime(usage.at) })}
+			</p>
+		</div>
+	{/if}
+</Panel>
+
+<div class="gap"></div>
+
 <Panel title={t('web.agentSettings.behaviourPanel')} description={t('web.agentSettings.behaviourHint')}>
 	{#snippet actions()}
 		<Btn variant="primary" loading={saving} disabled={!dirty} onclick={save}>{t('web.common.save')}</Btn>
@@ -437,7 +567,17 @@
 			<span class="hint">
 				{agent?.modelsReported ? t('web.agentSettings.modelHintReported') : t('web.agentSettings.modelHint')}
 			</span>
-			<Select options={modelOptions} bind:value={model} width="100%" searchable />
+			<div class="model-row">
+				<Select options={modelOptions} bind:value={model} width="100%" searchable />
+				<Btn
+					variant="tool"
+					icon="rotate"
+					loading={refreshingModels}
+					disabled={!agent?.credential}
+					title={t('web.agentSettings.modelsRefresh')}
+					onclick={refreshModelList}
+				/>
+			</div>
 		</div>
 
 		<div class="field">
@@ -679,6 +819,23 @@
 	.small {
 		margin: 0.5rem 0 0;
 		font-size: 0.75rem;
+	}
+
+	.model-row {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+
+	.usage {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.usage-note {
+		margin: 0;
+		font-size: 0.8125rem;
 	}
 
 	.helper-form {

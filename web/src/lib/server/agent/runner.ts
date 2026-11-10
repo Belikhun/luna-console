@@ -44,7 +44,7 @@ import { basename, isAbsolute, join, relative, sep } from 'node:path';
 
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import type { CanUseTool, PermissionResult, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, PermissionResult, Query, SDKMessage, SDKRateLimitInfo, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 
 import {
 	AGENT_EFFORTS,
@@ -54,6 +54,7 @@ import {
 	appendAgentTurn,
 	getAgentConversation,
 	recordAgentModels,
+	refreshAgentModels,
 	setAgentAllowedTools
 } from '$core/agent';
 import type { AgentContextUsage, AgentConversationView, AgentEffort, AgentEntry, AgentLaunch, AgentSharedFile } from '$core/agent';
@@ -72,7 +73,7 @@ import {
 	agentCanAsk,
 	isConsolePath
 } from '$shared/agent';
-import type { AgentMode } from '$shared/agent';
+import type { AgentMode, AgentUsage, AgentUsageWindow } from '$shared/agent';
 import { runsUnasked } from './approval';
 import {
 	cancelTask,
@@ -1907,6 +1908,10 @@ async function drive(
 		run.maxTurns = launch.settings.maxTurns;
 
 		for await (const message of stream) {
+			if (message.type === 'rate_limit_event') {
+				noteRateLimit(message.rate_limit_info);
+			}
+
 			const outcome = handleMessage(run, message);
 
 			if (outcome.sessionId) {
@@ -2664,6 +2669,10 @@ export async function testConnection(actor: string): Promise<ConnectionTest> {
 
 		try {
 			for await (const message of stream) {
+				if (message.type === 'rate_limit_event') {
+					noteRateLimit(message.rate_limit_info);
+				}
+
 				if (message.type === 'system' && message.subtype === 'init' && !models) {
 					models = await reportModels(stream);
 				}
@@ -2695,4 +2704,261 @@ export async function testConnection(actor: string): Promise<ConnectionTest> {
 	} finally {
 		clearTimeout(timer);
 	}
+}
+
+/**
+ * The plan windows the API reported on the agent's own turns, newest per
+ * window. A `claude setup-token` token may only call the model, so the
+ * `/usage` read refuses it; these are what its answers still say. Held in
+ * memory, so a console restart forgets them until the next turn.
+ */
+const observedLimits = new Map<string, AgentUsageWindow>();
+
+function noteRateLimit(info: SDKRateLimitInfo): void {
+	const id = info.rateLimitType;
+
+	if (!id || id === 'overage') {
+		return;
+	}
+
+	// the headers carry a fraction and epoch seconds; the window view is percent and ISO
+	const utilization = info.utilization === undefined
+		? null
+		: info.utilization <= 1
+			? info.utilization * 100
+			: info.utilization;
+	const resetsAt = info.resetsAt === undefined
+		? null
+		: new Date(info.resetsAt < 1e12 ? info.resetsAt * 1000 : info.resetsAt).toISOString();
+
+	observedLimits.set(id, { id, label: null, utilization, resetsAt, status: info.status, at: Date.now() });
+}
+
+function observedUsage(): AgentUsage {
+	const windows = [...observedLimits.values()].filter((window) => {
+		return !window.resetsAt || Date.parse(window.resetsAt) > Date.now();
+	});
+
+	return {
+		available: windows.length > 0,
+		source: 'observed',
+		subscription: null,
+		email: null,
+		organization: null,
+		windows,
+		extra: null,
+		at: Math.max(0, ...windows.map((window) => window.at ?? 0)) || Date.now()
+	};
+}
+
+interface AccountProbe {
+	models?: Array<{ value: string; label: string; description: string }>;
+	usage?: AgentUsage;
+}
+
+/** A prompt that never sends anything: the session starts, answers control requests and spends no turn. */
+async function* idlePrompt(signal: AbortSignal): AsyncGenerator<SDKUserMessage> {
+	await new Promise<void>((resolve) => {
+		signal.addEventListener('abort', () => resolve(), { once: true });
+	});
+}
+
+type UsageAnswer = Awaited<ReturnType<Query['usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET']>>;
+
+function usageWindows(limits: NonNullable<UsageAnswer['rate_limits']>): AgentUsageWindow[] {
+	const windows: AgentUsageWindow[] = [];
+
+	for (const id of ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet', 'seven_day_oauth_apps'] as const) {
+		const window = limits[id];
+
+		if (window) {
+			windows.push({ id, label: null, utilization: window.utilization, resetsAt: window.resets_at });
+		}
+	}
+
+	for (const window of limits.model_scoped ?? []) {
+		windows.push({ id: 'model', label: window.display_name, utilization: window.utilization, resetsAt: window.resets_at });
+	}
+
+	return windows;
+}
+
+/**
+ * Open a session without sending it anything and ask it what Claude Code's own
+ * screens would show: the models it offers and the account's plan usage. No
+ * turn is spent; the session is closed as soon as it has answered.
+ */
+async function probeAccount(actor: string, want: { models?: boolean; usage?: boolean }): Promise<AccountProbe> {
+	const launch = await agentLaunch(actor);
+	const executable = findClaudeExecutable(launch.settings.executable);
+
+	if (executable.source === 'none') {
+		throw new Error('No Claude Code executable found on this machine');
+	}
+
+	const abort = new AbortController();
+	const timer = setTimeout(() => abort.abort(), 30_000);
+	const stream = query({
+		prompt: idlePrompt(abort.signal),
+		options: {
+			model: launch.settings.model,
+			tools: [],
+			settingSources: [],
+			persistSession: false,
+			cwd: launch.home,
+			env: subprocessEnv(launch),
+			abortController: abort,
+			...(executable.path ? { pathToClaudeCodeExecutable: executable.path } : {})
+		}
+	});
+
+	// nothing is expected on the stream, but it is read so the session never stalls on a full pipe
+	const drain = (async (): Promise<void> => {
+		for await (const message of stream) {
+			void message;
+		}
+	})().catch(() => undefined);
+
+	try {
+		const [models, account, usage] = await Promise.all([
+			want.models
+				? stream.supportedModels().catch(() => undefined)
+				: undefined,
+			want.usage
+				? stream.accountInfo().catch(() => undefined)
+				: undefined,
+			want.usage
+				? stream.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })
+				: undefined
+		]);
+
+		const probe: AccountProbe = {};
+
+		if (models) {
+			probe.models = models.map((model) => ({
+				value: model.value,
+				label: model.displayName,
+				description: model.description
+			}));
+		}
+
+		if (usage) {
+			const limits = usage.rate_limits;
+			const extra = limits?.extra_usage;
+
+			probe.usage = {
+				available: usage.rate_limits_available && limits !== null,
+				source: 'plan',
+				subscription: usage.subscription_type ?? account?.subscriptionType ?? null,
+				email: account?.email ?? null,
+				organization: account?.organization ?? null,
+				windows: limits
+					? usageWindows(limits)
+					: [],
+				extra: extra
+					? {
+							enabled: extra.is_enabled,
+							limit: extra.monthly_limit,
+							used: extra.used_credits,
+							utilization: extra.utilization,
+							currency: extra.currency ?? null
+						}
+					: null,
+				at: Date.now()
+			};
+		}
+
+		return probe;
+	} finally {
+		clearTimeout(timer);
+		abort.abort();
+		stream.close();
+		await drain;
+	}
+}
+
+/** Usage reads within this long of the last one are answered from it; each read starts a subprocess. */
+const USAGE_CACHE_MS = 60_000;
+
+let usageCache: AgentUsage | null = null;
+
+let usageInFlight: Promise<AgentUsage> | null = null;
+
+/**
+ * The account's plan usage (the 5-hour and weekly windows, extra usage),
+ * read through the Claude Code subprocess as its `/usage` does. A subscription
+ * token has these; an API key answers `available: false`. `fresh` skips the
+ * minute-long cache, for the screen's refresh button.
+ */
+export async function agentUsage(actor: string, fresh = false): Promise<AgentUsage> {
+	if (!fresh && usageCache && Date.now() - usageCache.at < USAGE_CACHE_MS) {
+		return usageCache;
+	}
+
+	if (usageInFlight) {
+		return await usageInFlight;
+	}
+
+	usageInFlight = (async (): Promise<AgentUsage> => {
+		const probe = await probeAccount(actor, { usage: true });
+
+		if (!probe.usage) {
+			throw new Error('Claude Code did not report usage');
+		}
+
+		// an inference-only token cannot read the plan; what its own turns reported is the next best answer
+		const answer = probe.usage.available
+			? probe.usage
+			: { ...observedUsage(), subscription: probe.usage.subscription, email: probe.usage.email, organization: probe.usage.organization };
+
+		usageCache = answer;
+
+		return answer;
+	})();
+
+	try {
+		return await usageInFlight;
+	} finally {
+		usageInFlight = null;
+	}
+}
+
+/** Where a model list refresh got its answer. */
+export interface ModelsRefresh {
+	source: 'api' | 'sdk';
+	count: number;
+	/** Why the Models API was not used, when the list came from the subprocess instead */
+	apiError?: string;
+}
+
+/**
+ * Refresh the models offered on the settings screen and the composer. The
+ * Models API names every model the credential can call, so it is asked first;
+ * when it refuses (a subscription token may not reach it), the Claude Code
+ * subprocess's own list is the answer.
+ */
+export async function refreshModels(actor: string): Promise<ModelsRefresh> {
+	let apiError: string | undefined;
+
+	try {
+		const fetched = await refreshAgentModels();
+
+		if (fetched.length > 0) {
+			return { source: 'api', count: fetched.length };
+		}
+
+		apiError = 'the Models API listed nothing';
+	} catch (err) {
+		apiError = err instanceof Error ? err.message : String(err);
+	}
+
+	const probe = await probeAccount(actor, { models: true });
+
+	if (!probe.models || probe.models.length === 0) {
+		throw new Error(`No model list: ${apiError}`);
+	}
+
+	await recordAgentModels(probe.models);
+
+	return { source: 'sdk', count: probe.models.length, apiError };
 }

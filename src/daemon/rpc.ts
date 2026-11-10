@@ -1707,6 +1707,7 @@ export const OPS: Record<string, OpSpec> = {
 	"agent.clearCredential": { fn: agentCore.clearAgentCredential },
 	"agent.updateSettings": { fn: agentCore.updateAgentSettings },
 	"agent.recordModels": { fn: agentCore.recordAgentModels },
+	"agent.refreshModels": { fn: agentCore.refreshAgentModels },
 	"agent.ensureToken": { fn: agentCore.ensureAgentToken },
 	"agent.launch": { fn: agentCore.agentLaunch },
 	"agent.listConversations": { fn: agentCore.listAgentConversations },
