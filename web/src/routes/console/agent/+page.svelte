@@ -825,6 +825,11 @@
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
+
+		// the select asks for the whole row; without this the button is what gives
+		> :global(.btn) {
+			flex: none;
+		}
 	}
 
 	.usage {
