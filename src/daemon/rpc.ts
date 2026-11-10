@@ -52,6 +52,7 @@ import * as lunaCore from "../core/luna";
 import * as mcpCore from "../core/mcp";
 import * as modpackCore from "../core/modpack";
 import * as agentCore from "../core/agent";
+import * as claudeCodeCore from "../core/claudecode";
 import * as jarinstallCore from "../core/jarinstall";
 import * as mcassetsCore from "../core/mcassets";
 import * as packslockCore from "../core/packslock";
@@ -1708,6 +1709,8 @@ export const OPS: Record<string, OpSpec> = {
 	"agent.updateSettings": { fn: agentCore.updateAgentSettings },
 	"agent.recordModels": { fn: agentCore.recordAgentModels },
 	"agent.refreshModels": { fn: agentCore.refreshAgentModels },
+	"agent.checkClaudeCode": { fn: claudeCodeCore.checkClaudeCode },
+	"agent.upgradeClaudeCode": { fn: claudeCodeCore.upgradeClaudeCode, reporter: { arg: 0, prop: "reporter" } },
 	"agent.ensureToken": { fn: agentCore.ensureAgentToken },
 	"agent.launch": { fn: agentCore.agentLaunch },
 	"agent.listConversations": { fn: agentCore.listAgentConversations },

@@ -25,6 +25,9 @@
 	import CodeEditor from '$lib/components/CodeEditor.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import ProgressTree from '$lib/components/ProgressTree.svelte';
+	import { followJob, type JobView } from '$lib/jobs';
+	import type { ClaudeCodeCheck } from '$core/claudecode';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { MCP_TOOL_GROUPS } from '$shared/mcptools';
@@ -69,6 +72,21 @@
 	let usageLoading = $state(false);
 	let usageError = $state<string | null>(null);
 
+	interface ClaudeState {
+		sdk: { version: string; claude: string };
+		check: ClaudeCodeCheck;
+		executable: { path?: string; source: string };
+	}
+
+	let claude = $state<ClaudeState | null>(null);
+	let claudeLoading = $state(false);
+	let claudeError = $state<string | null>(null);
+	let installOpen = $state(false);
+	let installTarget = $state('paired');
+	let installCustom = $state('');
+	let installJob = $state<JobView | null>(null);
+	let installing = $state(false);
+
 	async function load(): Promise<void> {
 		loading = true;
 
@@ -94,9 +112,108 @@
 	onMount(async () => {
 		await load();
 
+		void loadClaude();
+
 		if (agent?.credential) {
 			await loadUsage(false);
 		}
+	});
+
+	/** Ask the daemon what Claude Code build is installed and what Anthropic and npm offer. */
+	async function loadClaude(): Promise<void> {
+		claudeLoading = true;
+		claudeError = null;
+
+		try {
+			claude = await api<ClaudeState>('/agent/claude');
+		} catch (err) {
+			claudeError = (err as Error).message;
+		} finally {
+			claudeLoading = false;
+		}
+	}
+
+	const installOptions = $derived.by(() => {
+		const check = claude?.check;
+		const paired = claude?.sdk.claude;
+
+		return [
+			{ value: 'paired', label: t('web.agentClaude.targetPaired', { version: paired || '?' }) },
+			{ value: 'latest', label: t('web.agentClaude.targetLatest', { version: check?.latest ?? '?' }) },
+			{ value: 'stable', label: t('web.agentClaude.targetStable', { version: check?.stable ?? '?' }) },
+			{ value: 'custom', label: t('web.agentClaude.targetCustom') }
+		];
+	});
+
+	const installVersion = $derived(
+		installTarget === 'paired'
+			? (claude?.sdk.claude ?? '')
+			: installTarget === 'custom'
+				? installCustom.trim()
+				: installTarget
+	);
+
+	function openInstall(): void {
+		installTarget = 'paired';
+		installCustom = '';
+		installJob = null;
+		installOpen = true;
+	}
+
+	async function install(): Promise<void> {
+		installing = true;
+
+		try {
+			const { job } = await post<{ job: JobView }>('/agent/claude', { version: installVersion });
+
+			installJob = job;
+
+			const done = await followJob(job.id, (view) => (installJob = view));
+			const result = done.result as { from: string | null; to: string };
+
+			Notify.success(t('web.agentClaude.installed', { from: result.from ?? '–', to: result.to }));
+			await loadClaude();
+		} catch (err) {
+			Notify.error(t('web.agentClaude.installFailed'), { detail: (err as Error).message });
+		} finally {
+			installing = false;
+		}
+	}
+
+	const claudeCells: InfoCell[] = $derived.by(() => {
+		if (!claude) {
+			return [];
+		}
+
+		const { sdk, check, executable } = claude;
+		const sdkNewer = check.sdkLatest && check.sdkLatest !== sdk.version
+			? t('web.agentClaude.sdkNewer', { version: check.sdkLatest })
+			: t('web.agentClaude.sdkCurrent');
+		const installed = check.installed ?? t('web.agentClaude.notInstalled');
+		const pairing = !check.installed
+			? t('web.agentClaude.pairMissing', { version: sdk.claude })
+			: check.installed === sdk.claude
+				? t('web.agentClaude.pairOk')
+				: t('web.agentClaude.pairOff', { version: sdk.claude });
+		const managed = executable.source === 'cluster';
+
+		return [
+			{ label: t('web.agentClaude.sdk'), value: sdk.version || '–', style: 'mono', help: sdkNewer },
+			{ label: t('web.agentClaude.sdkLatest'), value: check.sdkLatest ?? '–', style: 'mono', help: sdkNewer },
+			{ label: t('web.agentClaude.installedVersion'), value: installed, style: 'mono', help: pairing },
+			{ label: t('web.agentClaude.paired'), value: sdk.claude || '–', style: 'mono', help: pairing },
+			{ label: t('web.agentClaude.latest'), value: check.latest ?? '–', style: 'mono' },
+			{ label: t('web.agentClaude.stable'), value: check.stable ?? '–', style: 'mono' },
+			{
+				label: t('web.agentClaude.inUse'),
+				value: executable.path ?? t(`web.agentSettings.exeSource_${executable.source}`),
+				style: 'mono',
+				colSpan: 2,
+				help: managed
+					? t('web.agentClaude.inUseManaged')
+					: t('web.agentClaude.inUseOther', { path: check.path })
+			}
+		];
 	});
 
 	/** The account's plan usage; each read starts a Claude Code subprocess, so the server keeps it a minute. */
@@ -551,6 +668,35 @@
 
 <div class="gap"></div>
 
+<Panel title={t('web.agentClaude.panel')} description={t('web.agentClaude.hint')}>
+	{#snippet actions()}
+		<Btn icon="rotate" loading={claudeLoading} onclick={loadClaude}>{t('web.agentClaude.check')}</Btn>
+		<Btn
+			icon="download"
+			disabled={!claude || !claude.check.writable}
+			title={claude && !claude.check.writable ? t('web.agentClaude.notWritable', { path: claude.check.path }) : undefined}
+			onclick={openInstall}
+		>
+			{t('web.agentClaude.install')}
+		</Btn>
+	{/snippet}
+	{#if claudeError}
+		<Flash kind="error">{t('web.agentClaude.checkFailed', { error: claudeError })}</Flash>
+	{:else if !claude}
+		<p class="dim usage-note">{t('web.agentClaude.checking')}</p>
+	{:else}
+		{#if claude.check.problems.length > 0}
+			<div class="gap-b">
+				<Flash kind="warning">{claude.check.problems.join(' · ')}</Flash>
+			</div>
+		{/if}
+		<InfoGrid cells={claudeCells} columns={[4, 2, 1]} />
+		<p class="dim small">{t('web.agentClaude.sdkNote')}</p>
+	{/if}
+</Panel>
+
+<div class="gap"></div>
+
 <Panel title={t('web.agentSettings.behaviourPanel')} description={t('web.agentSettings.behaviourHint')}>
 	{#snippet actions()}
 		<Btn variant="primary" loading={saving} disabled={!dirty} onclick={save}>{t('web.common.save')}</Btn>
@@ -716,6 +862,37 @@
 	confirmLabel={t('web.agentHelpers.remove')}
 	onconfirm={() => saveHelpers((agent?.settings.subagents ?? []).filter((entry) => entry.name !== helperDeleting))}
 />
+
+<Modal title={t('web.agentClaude.installTitle')} bind:open={installOpen}>
+	<div class="helper-form">
+		<div class="field">
+			<span class="lbl">{t('web.agentClaude.target')}</span>
+			<Select options={installOptions} bind:value={installTarget} width="100%" />
+		</div>
+		{#if installTarget === 'custom'}
+			<label class="field">
+				<span class="lbl">{t('web.agentClaude.customVersion')}</span>
+				<input class="input mono" placeholder="2.1.322" spellcheck="false" bind:value={installCustom} />
+			</label>
+		{/if}
+		<p class="dim small">{t('web.agentClaude.installNote', { path: claude?.check.path ?? '' })}</p>
+		{#if installJob}
+			<ProgressTree root={installJob.progress} state={installJob.state} />
+		{/if}
+	</div>
+
+	{#snippet footer()}
+		<Btn onclick={() => (installOpen = false)}>{t('web.common.closeModal')}</Btn>
+		<Btn
+			variant="primary"
+			loading={installing}
+			disabled={!/^(\d+\.\d+\.\d+|stable|latest)$/.test(installVersion) || installJob?.state === 'done'}
+			onclick={install}
+		>
+			{t('web.agentClaude.installAction', { version: installVersion || '?' })}
+		</Btn>
+	{/snippet}
+</Modal>
 
 <Modal title={t('web.agentSettings.connectTitle')} bind:open={connectOpen}>
 	<Tabs tabs={connectTabs} bind:active={connectKind} />

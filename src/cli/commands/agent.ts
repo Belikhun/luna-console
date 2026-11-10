@@ -13,7 +13,7 @@
  */
 
 import { command, Bail, UsageError } from "../framework";
-import { pc, ok, info, printTable } from "../ui";
+import { pc, ok, info, warn, printTable, ProgressView } from "../ui";
 import { activeUser } from "../actor";
 import {
 	agentStatus,
@@ -23,7 +23,9 @@ import {
 	type AgentSettingsPatch,
 	type AgentStatus,
 } from "../../client/core/agent";
+import { checkClaudeCode, upgradeClaudeCode } from "../../client/core/claudecode";
 import { appendJournal } from "../../client/core/journal";
+import { ProgressReporter } from "../../core/progress";
 import { t } from "../../shared/i18n";
 
 function stamp(at: number | null | undefined): string {
@@ -184,5 +186,85 @@ command({
 
 		printStatus(await updateAgentSettings(patch, activeUser()));
 		ok(t("cli.agent.set.done"));
+	},
+});
+
+command({
+	path: ["agent", "claude"],
+	desc: t("cli.agent.claude.desc"),
+
+	handler: async () => {
+		const check = await checkClaudeCode();
+
+		console.log();
+		printTable(
+			[
+				[t("cli.agent.claude.field.path"), check.path],
+				[t("cli.agent.claude.field.installed"), check.installed ?? pc.dim(t("cli.agent.claude.none"))],
+				[t("cli.agent.claude.field.platform"), check.platform],
+				[t("cli.agent.claude.field.latest"), check.latest ?? pc.dim("—")],
+				[t("cli.agent.claude.field.stable"), check.stable ?? pc.dim("—")],
+				[t("cli.agent.claude.field.sdkLatest"), check.sdkLatest ?? pc.dim("—")],
+			],
+			{ head: [t("cli.head.field"), t("cli.head.value")] },
+		);
+		console.log();
+
+		for (const problem of check.problems) {
+			warn(problem);
+		}
+
+		if (!check.writable) {
+			warn(t("cli.agent.claude.notWritable", { path: check.path }));
+		}
+
+		info(t("cli.agent.claude.pairHint"));
+	},
+});
+
+command({
+	path: ["agent", "claude", "install"],
+	desc: t("cli.agent.claude.install.desc"),
+	args: [{
+		name: "version",
+		required: true,
+		complete: async () => ["stable", "latest"],
+		desc: t("cli.agent.claude.install.argVersion"),
+	}],
+	opts: [{ flag: "--yes", desc: t("cli.agent.optYes") }],
+
+	handler: async (args, opts) => {
+		const version = String(args[0] ?? "").trim();
+
+		if (!/^(\d+\.\d+\.\d+|stable|latest)$/.test(version)) {
+			throw new UsageError(t("cli.agent.claude.install.badVersion", { version }));
+		}
+
+		if (!opts.yes) {
+			const { confirm, isCancel } = await import("@clack/prompts");
+			const answer = await confirm({ message: t("cli.agent.claude.install.confirm", { version }), initialValue: true });
+
+			if (isCancel(answer) || !answer) {
+				throw new Bail(t("cli.agent.cancelled"));
+			}
+		}
+
+		const progress = new ProgressReporter(t("cli.agent.claude.install.progressName"));
+		const view = new ProgressView(progress).start();
+
+		try {
+			const result = await upgradeClaudeCode({ version, actor: activeUser(), reporter: progress });
+
+			view.stop();
+			ok(t("cli.agent.claude.install.done", { from: result.from ?? "—", to: result.to }));
+
+			if (result.previous) {
+				info(t("cli.agent.claude.install.kept", { path: result.previous }));
+			}
+		} catch (err) {
+			view.stop();
+
+			throw err;
+		}
 	},
 });

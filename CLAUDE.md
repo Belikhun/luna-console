@@ -23,7 +23,8 @@ the terminal drawer · **Monaco** for config editing, reached only through the d
 streaming (never WebSockets to a browser; daemons talk to each other over WebSocket + HTTP file
 streaming) · HTTP over a unix socket between clients and the local daemon · the addon providers
 (Modrinth, CurseForge, Hangar, Smithed, behind `core/services/providers.ts`) + PaperMC Fill v3 as
-the only external APIs.
+the only external APIs for the cluster; Mèo Béo adds Anthropic's (the Models API, the Claude Code
+release bucket) and npm's registry, each only on an operator's request.
 
 ## Layout
 
@@ -774,6 +775,16 @@ export interface InstanceConfig {}
   console bundle ships no `node_modules`, so `agent/executable.ts` looks for one: the settings path,
   `LUNA_CLAUDE_BIN`, `<root>/.bin/claude`, `claude` on PATH, `~/.local/bin/claude`, then the SDK's
   own package (a source checkout).
+- **luna keeps `<root>/.bin/claude`, and only an operator replaces it.** `core/claudecode.ts` reads
+  the installed build, Anthropic's release bucket (`stable`, `latest`, `<version>/manifest.json`)
+  and npm's newest SDK, and installs a build as a job: streamed to `claude.new`, size and SHA-256
+  checked against the manifest, run once to confirm its version, then renamed in, the previous one
+  hard-linked to `claude.old`. The subprocess runs with its updater off, so nothing else moves it.
+  The SDK is part of the console bundle (its version and the build its `manifest.json` pairs with
+  are baked in by `vite.config.ts`), so the SDK moves with a luna release and the binary should be
+  moved to the build it pairs with: the console offers that build by default; the CLI, which has no
+  SDK, takes the version as an argument. The model list is refreshed by hand too (`agent.refreshModels`,
+  the Models API, else the subprocess's own list).
 
 ### Daemon health
 - **Every daemon samples its own machine** (`daemon/health.ts`, 5 s, one hour kept): CPU, memory,
@@ -1033,6 +1044,8 @@ luna mcp knowledge show|add|edit|remove …
 luna agent                        # Mèo Béo: credential, model, token, state
 luna agent connect|disconnect     # paste the Claude token or API key (prompt or stdin) · forget it
 luna agent set [--model m] [--effort e] [--max-turns n] [--executable p] [--enable|--disable]
+luna agent claude                 # the Claude Code build Mèo Béo runs, and what Anthropic offers
+luna agent claude install <stable|latest|x.y.z> [--yes]   # verified download, swapped into .bin/claude
 luna modpack search <query> [--loader l]        # Modrinth modpacks luna can host
 luna modpack versions <slug>                      # a pack's versions, newest first
 luna modpack install <name> <slug> [--version v] [--memory m] [--daemon d] [--file x.mrpack] [--test]

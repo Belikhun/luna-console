@@ -2142,6 +2142,29 @@
 		}
 	},
 	"agent": {
+		"claude": {
+			"desc": "Bản dựng Claude Code mà Mèo Béo chạy: phiên bản đã cài và những gì Anthropic cung cấp",
+			"field": {
+				"path": "Tệp nhị phân",
+				"installed": "Đã cài",
+				"platform": "Nền tảng",
+				"latest": "Mới nhất",
+				"stable": "Ổn định",
+				"sdkLatest": "SDK mới nhất trên npm"
+			},
+			"none": "chưa cài",
+			"notWritable": "daemon không ghi được cạnh {path}; không thể cài",
+			"pairHint": "Màn hình Mèo Béo trên console ghi bản dựng đi kèm SDK của nó; hãy cài bản đó.",
+			"install": {
+				"desc": "Tải một bản dựng Claude Code, đối chiếu với manifest phát hành rồi thay vào",
+				"argVersion": "stable, latest hoặc một phiên bản cụ thể (x.y.z)",
+				"badVersion": "\"{version}\" không phải stable, latest hay một phiên bản dạng 2.1.322",
+				"confirm": "Cài Claude Code {version} cho Mèo Béo?",
+				"progressName": "Cài Claude Code",
+				"done": "Claude Code {from} → {to}",
+				"kept": "bản bị thay được giữ ở {path}"
+			}
+		},
 		"desc": "Mèo Béo, trợ lý trò chuyện của console: thông tin xác thực, model và trạng thái",
 		"ready": "sẵn sàng",
 		"auto": "tự tìm",

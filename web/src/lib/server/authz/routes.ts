@@ -1307,6 +1307,7 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/agent/test': { POST: { action: 'agent:Configure' } },
 	'/api/agent/models': { POST: { action: 'agent:Configure' } },
 	'/api/agent/usage': { GET: { action: 'agent:Configure' } },
+	'/api/agent/claude': { GET: { action: 'agent:Configure' }, POST: { action: 'agent:Configure' } },
 	'/api/agent/uploads': { POST: { action: 'agent:Chat' } },
 	'/api/agent/uploads/[id]': { DELETE: { action: 'agent:Chat' } },
 	'/api/agent/conversations': { GET: { action: 'agent:Chat' }, POST: { action: 'agent:Chat' } },

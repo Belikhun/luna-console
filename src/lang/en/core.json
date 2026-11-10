@@ -799,6 +799,28 @@
 		"empty": "the command is empty",
 		"tooLong": "the command is longer than {max} characters"
 	},
+	"claudeCode": {
+		"httpFailed": "{url} answered HTTP {status}",
+		"badChannel": "the release bucket's {channel} pointer does not hold a version",
+		"badRegistry": "npm did not name a version for the agent SDK",
+		"badVersion": "\"{version}\" is not a Claude Code version (x.y.z, stable or latest)",
+		"noPlatform": "Claude Code {version} has no {platform} build",
+		"notWritable": "the daemon cannot write {dir}, so a new build could not be swapped in",
+		"sizeMismatch": "the download is {got} bytes, the manifest says {expected}",
+		"checksumMismatch": "the download's SHA-256 is {got}…, the manifest says {expected}…",
+		"wontRun": "the downloaded build did not report {version} when run (it said {got})",
+		"downloading": "{done} / {total} MB",
+		"steps": {
+			"resolve": "Find the build",
+			"resolving": "Reading the release manifest",
+			"resolved": "Claude Code {version} for {platform}",
+			"download": "Download",
+			"verified": "Size and SHA-256 match the manifest",
+			"install": "Install",
+			"installing": "Checking it runs, then swapping it in",
+			"installed": "Claude Code {from} → {to}"
+		}
+	},
 	"agent": {
 		"disabled": "Mèo Béo is switched off in its settings",
 		"noCredential": "Mèo Béo has no Claude credential yet; connect one in its settings",

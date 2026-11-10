@@ -799,6 +799,28 @@
 		"empty": "lệnh trống",
 		"tooLong": "lệnh dài quá {max} ký tự"
 	},
+	"claudeCode": {
+		"httpFailed": "{url} trả về HTTP {status}",
+		"badChannel": "con trỏ {channel} của kho phát hành không chứa phiên bản nào",
+		"badRegistry": "npm không cho biết phiên bản nào của agent SDK",
+		"badVersion": "\"{version}\" không phải phiên bản Claude Code (x.y.z, stable hoặc latest)",
+		"noPlatform": "Claude Code {version} không có bản dựng cho {platform}",
+		"notWritable": "daemon không ghi được vào {dir}, nên không thể thay bản dựng mới",
+		"sizeMismatch": "tệp tải về có {got} byte, manifest ghi {expected}",
+		"checksumMismatch": "SHA-256 của tệp tải về là {got}…, manifest ghi {expected}…",
+		"wontRun": "bản dựng vừa tải không báo phiên bản {version} khi chạy (nó báo {got})",
+		"downloading": "{done} / {total} MB",
+		"steps": {
+			"resolve": "Tìm bản dựng",
+			"resolving": "Đang đọc manifest phát hành",
+			"resolved": "Claude Code {version} cho {platform}",
+			"download": "Tải về",
+			"verified": "Kích thước và SHA-256 khớp manifest",
+			"install": "Cài đặt",
+			"installing": "Kiểm tra chạy được rồi thay vào",
+			"installed": "Claude Code {from} → {to}"
+		}
+	},
 	"agent": {
 		"disabled": "Mèo Béo đang bị tắt trong phần cài đặt",
 		"noCredential": "Mèo Béo chưa có thông tin xác thực Claude; hãy kết nối trong phần cài đặt",

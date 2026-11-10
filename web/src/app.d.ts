@@ -8,6 +8,11 @@
 import type { AccountSummary } from '$core/accounts';
 
 declare global {
+	/** The agent SDK version this console was built with (vite `define`) */
+	const __AGENT_SDK_VERSION__: string;
+	/** The Claude Code build that SDK's manifest pairs with */
+	const __AGENT_SDK_CLAUDE__: string;
+
 	namespace App {
 		// interface Error {}
 		interface Locals {

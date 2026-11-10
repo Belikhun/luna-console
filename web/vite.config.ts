@@ -6,6 +6,7 @@ import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /** every `<style lang="scss">` block gets the shared partial for free */
@@ -18,7 +19,33 @@ const STYLE_ROOT = resolve(import.meta.dirname, 'src/lib/styles');
  * pointing at the wrong `+page.svelte` — pages then load as unrelated routes
  * until it is restarted. Separate directories make the two safe to run at once.
  */
+/**
+ * The agent SDK this console is built with, and the Claude Code build its
+ * manifest pairs with. Neither file is in the package's exports, so they are
+ * read here and baked in, which is what lets the settings screen say which
+ * binary an upgrade should install.
+ */
+function agentSdkFacts(): { version: string; claude: string } {
+	const dir = resolve(import.meta.dirname, 'node_modules/@anthropic-ai/claude-agent-sdk');
+
+	try {
+		const pkg = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8')) as { version?: string };
+		const manifest = JSON.parse(readFileSync(resolve(dir, 'manifest.json'), 'utf8')) as { version?: string };
+
+		return { version: pkg.version ?? '', claude: manifest.version ?? '' };
+	} catch {
+		return { version: '', claude: '' };
+	}
+}
+
+const AGENT_SDK = agentSdkFacts();
+
 export default defineConfig(({ command }) => ({
+	define: {
+		__AGENT_SDK_VERSION__: JSON.stringify(AGENT_SDK.version),
+		__AGENT_SDK_CLAUDE__: JSON.stringify(AGENT_SDK.claude)
+	},
+
 	plugins: [
 		sveltekit({
 			outDir: command === 'serve' ? '.svelte-kit-dev' : '.svelte-kit',

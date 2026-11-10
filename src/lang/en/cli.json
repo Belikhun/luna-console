@@ -2142,6 +2142,29 @@
 		}
 	},
 	"agent": {
+		"claude": {
+			"desc": "The Claude Code build Mèo Béo runs: installed version and what Anthropic offers",
+			"field": {
+				"path": "Binary",
+				"installed": "Installed",
+				"platform": "Platform",
+				"latest": "Latest",
+				"stable": "Stable",
+				"sdkLatest": "Newest SDK on npm"
+			},
+			"none": "not installed",
+			"notWritable": "the daemon cannot write beside {path}; an install could not land",
+			"pairHint": "The console's Mèo Béo screen names the build its SDK pairs with; install that one.",
+			"install": {
+				"desc": "Download a Claude Code build, check it against the release manifest and swap it in",
+				"argVersion": "stable, latest or an exact version (x.y.z)",
+				"badVersion": "\"{version}\" is not stable, latest or a version like 2.1.322",
+				"confirm": "Install Claude Code {version} for Mèo Béo?",
+				"progressName": "Install Claude Code",
+				"done": "Claude Code {from} → {to}",
+				"kept": "the replaced build is kept at {path}"
+			}
+		},
 		"desc": "Mèo Béo, the console's chat agent: credential, model and state",
 		"ready": "ready",
 		"auto": "found automatically",
