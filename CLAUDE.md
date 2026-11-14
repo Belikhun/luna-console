@@ -660,10 +660,16 @@ export interface InstanceConfig {}
   goes on to anything queued behind it.
 - **A mode decides when a person is asked; the token decides what is possible.** The modes are
   `shared/agent.ts`, chosen per message in the composer (Shift+Tab cycles them). **Auto**, the
-  default: the agent works on its own, and only tools the catalog marks `destructiveHint` (stop,
-  restart, console commands, removals, shells) stop in `canUseTool` until the account whose run it
-  is allows or denies it (denied after ten minutes); so a new tool's annotation decides whether Auto
-  asks for it. "Allow in this chat" (`allowedTools`, per account) stops a tool asking in that
+  default: the agent works on its own, and tools the catalog marks `destructiveHint` (stop,
+  restart, console commands, removals, shells) are approved or rejected by a reviewer
+  (`agent/reviewer.ts`): a one-turn Claude Code query (no tools, `maxTurns: 1`, no saved session)
+  started like the agent's own (same executable, scrubbed environment, HOME), so a setup-token works, with
+  `reviewModel` from the settings (`claude-haiku-5-5` by default), a fixed policy, the call's catalog
+  entry, its arguments with secrets masked and the people's newest messages as the only statement of
+  intent (arguments travel as JSON with every `<` escaped, so a file or tool result cannot pose as a
+  person). Nobody is waited on; a rejection goes back to the model with its reason, and an error, 20 s
+  without an answer (the deadline kills the subprocess) or no verdict is a rejection too. Every verdict is an `agent` journal line and a
+  line on the call's card; so a new tool's annotation decides whether Auto reviews it. "Allow in this chat" (`allowedTools`, per account) stops a tool asking in that
   conversation in every mode but Plan, and a denial can carry a reason the model is told. **Manual** asks for every call. **Plan** runs only `readOnlyHint` tools
   and the agent's own memory, refuses the rest and has the model answer with a plan. **Bypass** runs everything in scope
   without asking; it confirms in the browser, journals a warning per message, and the

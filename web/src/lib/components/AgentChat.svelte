@@ -895,11 +895,12 @@
 						{#if !(session.running && gi === groups.length - 1)}
 							<div class="foot">
 								{#if group.stats}
-									<span class="stats" title={t('web.agent.statsTitle')}>
-										{t('web.agent.stats', {
+									<span class="stats" use:tooltip={{ content: t('web.agent.statsTitle') }}>
+										{t(group.stats.reviewUsd ? 'web.agent.statsReview' : 'web.agent.stats', {
 											time: answerTime(group.stats.ms),
 											tools: group.stats.tools,
-											cost: group.stats.costUsd.toFixed(3)
+											cost: group.stats.costUsd.toFixed(3),
+											review: (group.stats.reviewUsd ?? 0).toFixed(4)
 										})}
 									</span>
 								{/if}

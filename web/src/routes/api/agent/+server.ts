@@ -70,12 +70,12 @@ export async function GET({ locals }) {
 	});
 }
 
-/** PATCH { enabled?, model?, effort?, instructions?, maxTurns?, scratchAttachmentMb?, executable?, bypassAllowed?, suggestions?, subagents? } → status. */
+/** PATCH { enabled?, model?, effort?, instructions?, maxTurns?, scratchAttachmentMb?, executable?, bypassAllowed?, suggestions?, reviewModel?, subagents? } → status. */
 export async function PATCH({ request, locals }) {
 	const body = await jsonBody(request);
 	const patch: AgentSettingsPatch = {};
 
-	for (const key of ['enabled', 'model', 'effort', 'instructions', 'maxTurns', 'scratchAttachmentMb', 'executable', 'bypassAllowed', 'suggestions', 'subagents'] as const) {
+	for (const key of ['enabled', 'model', 'effort', 'instructions', 'maxTurns', 'scratchAttachmentMb', 'executable', 'bypassAllowed', 'suggestions', 'reviewModel', 'subagents'] as const) {
 		if (body[key] !== undefined) {
 			(patch as Record<string, unknown>)[key] = body[key];
 		}

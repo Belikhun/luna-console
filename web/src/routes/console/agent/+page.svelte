@@ -60,6 +60,7 @@
 	let instructions = $state('');
 	let bypassAllowed = $state(true);
 	let suggestions = $state(true);
+	let reviewModel = $state('');
 
 	let connectOpen = $state(false);
 	let connectKind = $state('oauth');
@@ -101,6 +102,7 @@
 			instructions = agent.settings.instructions;
 			bypassAllowed = agent.settings.bypassAllowed;
 			suggestions = agent.settings.suggestions;
+			reviewModel = agent.settings.reviewModel;
 			lastUpdated = Date.now();
 		} catch (err) {
 			Notify.error(t('web.agentSettings.loadFailed'), { detail: (err as Error).message });
@@ -243,11 +245,13 @@
 			});
 
 			const picked = model;
+			const pickedReview = reviewModel;
 
 			await load();
 
 			// a pick not yet saved survives the reload
 			model = picked;
+			reviewModel = pickedReview;
 			void Agent.reloadState().catch(() => {});
 		} catch (err) {
 			Notify.error(t('web.agentSettings.modelsRefreshFailed'), { detail: (err as Error).message });
@@ -284,22 +288,27 @@
 				executable !== agent.settings.executable ||
 				instructions !== agent.settings.instructions ||
 				bypassAllowed !== agent.settings.bypassAllowed ||
-				suggestions !== agent.settings.suggestions)
+				suggestions !== agent.settings.suggestions ||
+				reviewModel !== agent.settings.reviewModel)
 	);
 
-	const modelOptions = $derived.by(() => {
+	/** The models the account can use, with `current` kept pickable when the list does not know it. */
+	function modelChoices(current: string): Array<{ value: string; label: string }> {
 		const options = (agent?.models ?? []).map((choice) => ({
 			value: choice.value,
 			label: choice.description ? `${choice.label} · ${choice.description}` : choice.label
 		}));
 
 		// a model typed in before the list knew it must stay pickable
-		if (model && !options.some((option) => option.value === model)) {
-			options.unshift({ value: model, label: model });
+		if (current && !options.some((option) => option.value === current)) {
+			options.unshift({ value: current, label: current });
 		}
 
 		return options;
-	});
+	}
+
+	const modelOptions = $derived(modelChoices(model));
+	const reviewModelOptions = $derived(modelChoices(reviewModel));
 
 	const effortOptions = $derived(
 		(agent?.efforts ?? []).map((value) => ({ value, label: t(`web.agentSettings.effort_${value}`) }))
@@ -379,7 +388,8 @@
 				executable,
 				instructions,
 				bypassAllowed,
-				suggestions
+				suggestions,
+				reviewModel
 			});
 			Notify.success(t('web.agentSettings.saved'));
 			await load();
@@ -730,6 +740,12 @@
 			<span class="lbl">{t('web.agentSettings.effort')}</span>
 			<span class="hint">{t('web.agentSettings.effortHint')}</span>
 			<Select options={effortOptions} bind:value={effort} width="100%" />
+		</div>
+
+		<div class="field">
+			<span class="lbl">{t('web.agentSettings.reviewModel')}</span>
+			<span class="hint">{t('web.agentSettings.reviewModelHint')}</span>
+			<Select options={reviewModelOptions} bind:value={reviewModel} width="100%" searchable />
 		</div>
 
 		<label class="field">

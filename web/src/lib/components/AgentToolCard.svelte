@@ -133,7 +133,9 @@
 					? t('web.agent.toolTimedOut')
 					: item.decidedBy === 'plan'
 						? t('web.agent.toolPlan')
-						: t('web.agent.toolDenied');
+						: item.decidedBy === 'reviewer'
+							? t('web.agent.toolRejectedAuto')
+							: t('web.agent.toolDenied');
 
 			default:
 				return t('web.agent.toolFailed');
@@ -154,6 +156,23 @@
 			default:
 				return 'triangleExclamation';
 		}
+	}
+
+	/** What Auto's reviewer made of the call, in a line under its row. */
+	function reviewText(): string {
+		const review = item.review;
+
+		if (!review || review.decision === 'pending') {
+			return t('web.agent.reviewPending');
+		}
+
+		if (review.failed) {
+			return t('web.agent.reviewFailed', { reason: review.reason ?? '' });
+		}
+
+		return review.decision === 'approve'
+			? t('web.agent.reviewApproved', { reason: review.reason ?? '' })
+			: t('web.agent.reviewRejected', { reason: review.reason ?? '' });
 	}
 
 	/** The call's arguments on one line, `key: value`, for the collapsed row. */
@@ -258,6 +277,19 @@
 			</div>
 		{/if}
 
+		{#if item.review}
+			<div class="review" data-decision={item.review.decision}>
+				<span class="mark">
+					{#if item.review.decision === 'pending'}
+						<Spinner size="0.625rem" />
+					{:else}
+						<Icon name={item.review.decision === 'approve' ? 'shieldCheck' : 'ban'} size="0.625rem" />
+					{/if}
+				</span>
+				<span>{reviewText()}</span>
+			</div>
+		{/if}
+
 		{#if helper && children.length && (expanded || item.status === 'running' || children.some((child) => child.status === 'awaiting'))}
 			<div class="children">
 				{#each children as child (child.id)}
@@ -320,7 +352,7 @@
 					<span class="lbl">{t('web.agent.output')}</span>
 					<pre>{item.output}</pre>
 				{/if}
-				{#if item.decidedBy && !['timeout', 'stopped', 'plan'].includes(item.decidedBy)}
+				{#if item.decidedBy && !['timeout', 'stopped', 'plan', 'reviewer'].includes(item.decidedBy)}
 					<span class="lbl">{t('web.agent.decidedBy', { name: item.decidedBy })}</span>
 				{/if}
 			</div>
@@ -602,6 +634,31 @@
 
 				font-family: var(--font-mono);
 				color: var(--text-label);
+			}
+		}
+
+		.review {
+			display: flex;
+			align-items: flex-start;
+			gap: 0.5rem;
+			padding: 0 0.5rem 0.375rem 2.25rem;
+			font-size: 0.75rem;
+			line-height: 1.5;
+			color: var(--text-secondary);
+
+			.mark {
+				display: flex;
+				flex: none;
+				align-items: center;
+				height: 1.5em;
+			}
+
+			&[data-decision='approve'] .mark {
+				color: var(--success);
+			}
+
+			&[data-decision='reject'] .mark {
+				color: var(--error);
 			}
 		}
 

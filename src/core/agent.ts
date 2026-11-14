@@ -30,6 +30,7 @@ import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { AgentReview } from "../shared/agent";
 import { t } from "../shared/i18n";
 import { MCP_DEFAULT_GROUPS, type McpScope } from "../shared/mcptools";
 import { dataDir, statePath } from "./config";
@@ -69,6 +70,9 @@ export const AGENT_MODELS = [
 	"claude-sonnet-5",
 	"claude-opus-5",
 ] as const;
+
+/** The model Auto's reviewer runs on until an operator picks another: fast, and cheap per call. */
+export const AGENT_REVIEW_MODEL = "claude-haiku-5-5";
 
 /** The Models API pages at most this many per request. */
 const MODELS_PAGE_LIMIT = 1000;
@@ -123,6 +127,8 @@ export interface AgentSettings {
 	bypassAllowed: boolean;
 	/** Whether the agent offers a likely next message after each answer (a small extra request) */
 	suggestions: boolean;
+	/** The model that approves or rejects Auto's changing calls, one short request each */
+	reviewModel: string;
 	/** Helpers defined on this console, beside the built-in ones */
 	subagents: AgentSubagent[];
 }
@@ -272,6 +278,8 @@ export type AgentEntry =
 		output?: string;
 		/** Who approved or denied it, when it needed approval */
 		decidedBy?: string;
+		/** Auto's reviewer's verdict, when the reviewer decided it */
+		review?: AgentReview;
 		/** The helper call this one was made inside, when a subagent made it */
 		parent?: string;
 		/** Whose run made it, and so whose permissions its result reflects; absent means the owner's */
@@ -291,7 +299,8 @@ export type AgentEntry =
 	 */
 	| { kind: "event"; at: number; source: "task" | "trigger"; label: string; text: string; uuid?: string; session?: string }
 	/** What one answer took: wall time, tool calls and what it cost */
-	| { kind: "stats"; at: number; ms: number; tools: number; costUsd: number }
+	/** `reviewUsd` is the part of `costUsd` Auto's reviewer spent */
+	| { kind: "stats"; at: number; ms: number; tools: number; costUsd: number; reviewUsd?: number }
 	/** The session's history was summarised; `by` is who asked, absent when it happened on its own */
 	| {
 		kind: "compact";
@@ -353,6 +362,7 @@ export interface AgentSettingsPatch {
 	executable?: string;
 	bypassAllowed?: boolean;
 	suggestions?: boolean;
+	reviewModel?: string;
 	subagents?: AgentSubagent[];
 }
 
@@ -433,6 +443,7 @@ function defaultSettings(): AgentSettings {
 		executable: "",
 		bypassAllowed: true,
 		suggestions: true,
+		reviewModel: AGENT_REVIEW_MODEL,
 		subagents: [],
 	};
 }
@@ -833,6 +844,16 @@ export async function updateAgentSettings(patch: AgentSettingsPatch, actor?: str
 
 		if (patch.suggestions !== undefined) {
 			next.suggestions = !!patch.suggestions;
+		}
+
+		if (patch.reviewModel !== undefined) {
+			const model = patch.reviewModel.trim();
+
+			if (!AGENT_MODEL_PATTERN.test(model)) {
+				throw new Error(t("core.agent.badModel", { model }));
+			}
+
+			next.reviewModel = model;
 		}
 
 		if (patch.subagents !== undefined) {

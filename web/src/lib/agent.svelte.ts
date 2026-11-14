@@ -32,6 +32,7 @@ import {
 	isConsolePath,
 	readTodos,
 	type AgentMode,
+	type AgentReview,
 	type AgentTodo
 } from '$shared/agent';
 import { goto } from '$app/navigation';
@@ -69,6 +70,8 @@ export type ChatItem =
 		status: ToolStatus;
 		output?: string;
 		decidedBy?: string;
+		/** Auto's reviewer on this call: deciding, or its verdict */
+		review?: AgentReview;
 		/** The helper call this one was made inside */
 		parent?: string;
 		/** A helper's tally while it works */
@@ -85,7 +88,7 @@ export type ChatItem =
 	/** A background task or a trigger reporting back; nobody's message */
 	| { kind: 'event'; source: 'task' | 'trigger'; label: string; text: string; at: number; uuid?: string }
 	/** What one answer took */
-	| { kind: 'stats'; ms: number; tools: number; costUsd: number; at: number }
+	| { kind: 'stats'; ms: number; tools: number; costUsd: number; reviewUsd?: number; at: number }
 	/** The session's history was summarised; `by` is absent when it did so on its own */
 	| { kind: 'compact'; trigger: 'manual' | 'auto'; by?: string; preTokens: number; postTokens?: number; at: number };
 
@@ -169,6 +172,7 @@ export interface AgentState {
 		executable: string;
 		bypassAllowed: boolean;
 		suggestions: boolean;
+		reviewModel: string;
 		subagents: HelperDefinition[];
 	};
 	token: { id: string; name: string; enabled: boolean; tools: string[] } | null;
@@ -210,8 +214,10 @@ interface StoredEntry {
 	status?: 'ok' | 'error' | 'denied';
 	output?: string;
 	decidedBy?: string;
+	review?: AgentReview;
 	images?: string[];
 	files?: AgentSharedFile[];
+	reviewUsd?: number;
 }
 
 type StreamEvent =
@@ -242,6 +248,7 @@ type StreamEvent =
 		status: ToolStatus;
 		output?: string;
 		decidedBy?: string;
+		review?: AgentReview;
 		parent?: string;
 		actor?: string;
 		images?: string[];
@@ -249,7 +256,7 @@ type StreamEvent =
 	}
 	| { type: 'progress'; id: string; tools: number; last?: string; ms: number }
 	| { type: 'suggestion'; text: string }
-	| { type: 'stats'; at: number; ms: number; tools: number; costUsd: number }
+	| { type: 'stats'; at: number; ms: number; tools: number; costUsd: number; reviewUsd?: number }
 	| { type: 'actor'; actor: string }
 	| { type: 'presence'; viewers: string[] }
 	| { type: 'screenshot'; id: string; for?: string }
@@ -325,7 +332,7 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 		} else if (entry.kind === 'thinking') {
 			items.push({ kind: 'thinking', text: entry.text ?? '', streaming: false, at: entry.at });
 		} else if (entry.kind === 'stats') {
-			items.push({ kind: 'stats', ms: entry.ms ?? 0, tools: entry.tools ?? 0, costUsd: entry.costUsd ?? 0, at: entry.at });
+			items.push({ kind: 'stats', ms: entry.ms ?? 0, tools: entry.tools ?? 0, costUsd: entry.costUsd ?? 0, reviewUsd: entry.reviewUsd, at: entry.at });
 		} else if (entry.kind === 'event') {
 			items.push({ kind: 'event', source: entry.source ?? 'task', label: entry.label ?? '', text: entry.text ?? '', at: entry.at, uuid: entry.uuid });
 		} else if (entry.kind === 'compact') {
@@ -346,6 +353,7 @@ function itemsFromEntries(entries: StoredEntry[]): ChatItem[] {
 				status: entry.status ?? 'ok',
 				output: entry.output,
 				decidedBy: entry.decidedBy,
+				review: entry.review,
 				parent: entry.parent,
 				images: entry.images,
 				files: entry.files,
@@ -1351,6 +1359,10 @@ export class ChatSession {
 						existing.decidedBy = event.decidedBy;
 					}
 
+					if (event.review !== undefined) {
+						existing.review = event.review;
+					}
+
 					if (event.actor !== undefined) {
 						existing.actor = event.actor;
 					}
@@ -1363,6 +1375,7 @@ export class ChatSession {
 						status: event.status,
 						output: event.output,
 						decidedBy: event.decidedBy,
+						review: event.review,
 						parent: event.parent,
 						actor: event.actor,
 						images: event.images,
@@ -1389,7 +1402,7 @@ export class ChatSession {
 				break;
 
 			case 'stats':
-				this.items.push({ kind: 'stats', ms: event.ms, tools: event.tools, costUsd: event.costUsd, at: event.at });
+				this.items.push({ kind: 'stats', ms: event.ms, tools: event.tools, costUsd: event.costUsd, reviewUsd: event.reviewUsd, at: event.at });
 				break;
 
 			case 'actor':

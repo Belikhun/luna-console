@@ -20,8 +20,10 @@
  *   `/api/mcp` with a per-run bearer (`bearer.ts`). The agent token's scope is
  *   therefore the whole of its reach, checked on every call by the endpoint.
  * - In Auto, every tool not marked destructive (and the agent's own memory) runs unasked;
- *   every other call waits in `canUseTool` until the operator who owns the
- *   conversation approves or denies it in the panel.
+ *   a destructive call is approved or rejected by a reviewer model
+ *   (`reviewer.ts`), and nobody is waited on. In Manual every call waits in
+ *   `canUseTool` until the operator who owns the conversation approves or
+ *   denies it in the panel.
  *
  * The subprocess runs with its own HOME and CLAUDE_CONFIG_DIR under the cluster
  * root, so it never reads or writes the ~/.claude of whoever runs the console.
@@ -49,6 +51,7 @@ import type { CanUseTool, PermissionResult, Query, SDKMessage, SDKRateLimitInfo,
 import {
 	AGENT_EFFORTS,
 	AGENT_MODEL_PATTERN,
+	AGENT_REVIEW_MODEL,
 	agentLaunch,
 	agentScratch,
 	appendAgentTurn,
@@ -59,6 +62,7 @@ import {
 } from '$core/agent';
 import type { AgentContextUsage, AgentConversationView, AgentEffort, AgentEntry, AgentLaunch, AgentSharedFile } from '$core/agent';
 import { loadCluster } from '$core/config';
+import { appendJournal } from '$core/journal';
 import { statInstancePath } from '$core/instancefiles';
 import { refuseFor, toolChecks } from '$lib/server/mcp/iam';
 import {
@@ -73,7 +77,8 @@ import {
 	agentCanAsk,
 	isConsolePath
 } from '$shared/agent';
-import type { AgentMode, AgentUsage, AgentUsageWindow } from '$shared/agent';
+import type { AgentMode, AgentReview, AgentUsage, AgentUsageWindow } from '$shared/agent';
+import { mcpTool } from '$shared/mcptools';
 import { runsUnasked } from './approval';
 import {
 	cancelTask,
@@ -93,6 +98,8 @@ import type { AgentNotice, DeliveryContext, TriggerSpec } from './background';
 import { issueRunBearer } from './bearer';
 import { findClaudeExecutable } from './executable';
 import { personaPrompt } from './persona';
+import { REVIEW_INTENT_MESSAGES, reviewCall } from './reviewer';
+import type { ReviewIntent } from './reviewer';
 import { attachmentPath, SCRATCH_TOOL_MATCHER, scratchGate } from './scratch';
 import { subagentDefinitions } from './subagents';
 import { copyUpload } from './uploads';
@@ -178,6 +185,8 @@ export type AgentEvent =
 		parent?: string;
 		/** The account whose run made the call: who decides it while it waits, and whose permissions its result reflects */
 		actor?: string;
+		/** Auto's reviewer on this call: deciding, or its verdict */
+		review?: AgentReview;
 		/** Images its result carried, saved for the chat to show; see `saveResultImages` */
 		images?: string[];
 		/** Files it handed over for download */
@@ -191,7 +200,7 @@ export type AgentEvent =
 	 */
 	| { type: 'unqueue'; uuid: string; restore?: boolean; author?: string; text?: string }
 	| { type: 'suggestion'; text: string }
-	| { type: 'stats'; at: number; ms: number; tools: number; costUsd: number }
+	| { type: 'stats'; at: number; ms: number; tools: number; costUsd: number; reviewUsd?: number }
 	/** `for` is the account whose browser answers: the run's actor, never a viewer */
 	| { type: 'screenshot'; id: string; for: string }
 	| { type: 'navigate'; id: string; path: string; for: string }
@@ -504,7 +513,10 @@ class Run {
 	readonly entries: AgentEntry[] = [];
 
 	/** Tool calls by id, so a result can be filed against its call */
-	readonly calls = new Map<string, { name: string; input: unknown; decidedBy?: string; denied?: boolean; parent?: string }>();
+	readonly calls = new Map<string, { name: string; input: unknown; decidedBy?: string; denied?: boolean; parent?: string; review?: AgentReview }>();
+
+	/** The people's newest messages in the conversation, oldest first: what Auto's reviewer reads as their intent */
+	readonly intent: ReviewIntent[] = [];
 
 	/** Tools the actor allowed for this conversation; they run unasked here whatever the mode, Plan aside */
 	readonly allowed = new Set<string>();
@@ -515,6 +527,9 @@ class Run {
 
 	/** The session's running cost when the current answer began, so an answer's own cost is the difference */
 	costMark = 0;
+
+	/** What Auto's reviewer has spent on the current answer, outside the session's own total */
+	turnReviewUsd = 0;
 
 	/** Operators' messages filed before the session said its id, to be marked with it when the run saves */
 	readonly unstamped: string[] = [];
@@ -630,7 +645,14 @@ class Run {
 			this.turns = 0;
 			this.turnStartedAt = Date.now();
 			this.turnTools = 0;
+			this.turnReviewUsd = 0;
 		};
+	}
+
+	/** Note a person's message as intent for the reviewer, keeping only the newest few. */
+	noteIntent(author: string, text: string): void {
+		this.intent.push({ author, text });
+		this.intent.splice(0, Math.max(0, this.intent.length - REVIEW_INTENT_MESSAGES));
 	}
 
 	/** Mark the run over; whoever waits on `finished` may start the next one. */
@@ -933,6 +955,12 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
 		run.allowed.add(tool);
 	}
 
+	for (const entry of conversation.entries) {
+		if (entry.kind === 'user') {
+			run.noteIntent(entry.author, entry.text);
+		}
+	}
+
 	// the session's running total carries across a resume and into a branch, so an
 	// answer's own cost is measured from what the session had counted before it
 	run.costMark = conversation.pendingFork
@@ -979,6 +1007,7 @@ export async function startRun(input: StartRunInput): Promise<StartOutcome> {
 				title: input.text
 			});
 		run.unstamped.push(input.uuid);
+		run.noteIntent(input.actor, input.text);
 	}
 
 	if (input.event) {
@@ -1032,6 +1061,7 @@ async function joinRun(run: Run, input: StartRunInput, before?: () => void, midT
 		return true;
 	}
 
+	run.noteIntent(input.actor, input.text);
 	run.entries.push({
 		kind: 'user',
 		at,
@@ -1724,6 +1754,105 @@ async function askOperator(
 }
 
 /**
+ * Auto's answer to a call it does not run unasked: the reviewer decides, the
+ * card shows the verdict and its reason, and the journal keeps a line of it.
+ * A rejection goes back to the model as a denial carrying the reason, so it can
+ * change course or explain; a reviewer that could not decide is a rejection too.
+ */
+async function reviewInAuto(
+	run: Run,
+	launch: AgentLaunch,
+	executable: string | undefined,
+	instance: string | undefined,
+	language: string,
+	call: { id: string; name: string; input: Record<string, unknown>; parent?: string; signal: AbortSignal }
+): Promise<PermissionResult> {
+	const spec = mcpTool(call.name);
+	const pending: AgentReview = { decision: 'pending' };
+
+	run.calls.set(call.id, { name: call.name, input: call.input, parent: call.parent, review: pending });
+	run.emit({
+		type: 'tool',
+		id: call.id,
+		name: call.name,
+		input: call.input,
+		status: 'running',
+		actor: run.actor,
+		review: pending,
+		...(call.parent ? { parent: call.parent } : {})
+	});
+
+	const verdict = await reviewCall({
+		tool: {
+			name: call.name,
+			description: spec?.description ?? '',
+			annotations: spec?.annotations ?? {}
+		},
+		input: call.input,
+		intent: run.intent,
+		...(instance ? { instance } : {}),
+		language,
+		// a store written before the setting existed has none until the daemon fills the default in
+		model: launch.settings.reviewModel || AGENT_REVIEW_MODEL,
+		env: subprocessEnv(launch),
+		cwd: launch.home,
+		executable,
+		signal: call.signal
+	});
+
+	const review: AgentReview = {
+		decision: verdict.decision,
+		reason: verdict.reason,
+		model: verdict.model,
+		...(verdict.failed ? { failed: true } : {})
+	};
+	const allowed = verdict.decision === 'approve';
+	const known = run.calls.get(call.id);
+
+	run.turnReviewUsd += verdict.costUsd;
+
+	if (known) {
+		known.decidedBy = 'reviewer';
+		known.denied = !allowed;
+		known.review = review;
+	}
+
+	run.emit({
+		type: 'tool',
+		id: call.id,
+		name: call.name,
+		status: allowed ? 'running' : 'denied',
+		decidedBy: 'reviewer',
+		review
+	});
+
+	void appendJournal({
+		source: 'agent',
+		level: allowed ? 'info' : 'warn',
+		message: allowed
+			? `Mèo Béo's ${call.name} call approved automatically in ${run.conversationId}`
+			: `Mèo Béo's ${call.name} call rejected automatically in ${run.conversationId}`,
+		// luna's journal keeps no structured fields, so the model rides in the detail
+		detail: `${verdict.model} · ${verdict.failed ? 'could not decide: ' : ''}${verdict.reason}`,
+		actor: run.actor
+	}).catch(() => {});
+
+	if (allowed) {
+		return { behavior: 'allow', updatedInput: call.input };
+	}
+
+	const ask = verdict.failed
+		? ' If the call is needed, tell the person what you want to do and ask them to confirm in their next message, or to switch to Manual mode.'
+		: ' Do not retry it another way; change course, or explain to the person what you wanted to do and why.';
+
+	const why = verdict.failed
+		? `Auto mode's reviewer could not decide (${verdict.reason}), so the call was not run.`
+		: `Auto mode's reviewer rejected this call: ${verdict.reason}`;
+
+	return { behavior: 'deny', message: `${why}${ask}` };
+}
+
+/**
  * A helper launch as the console runs it: in the foreground, so its report
  * arrives within the turn that asked for it (the console has its own
  * background tasks for work that should outlive a turn), and never in an
@@ -1800,6 +1929,11 @@ async function drive(
 				behavior: 'deny',
 				message: 'Plan mode: nothing may be changed. Finish investigating with read-only tools, then present the steps you would take.'
 			};
+		}
+
+		// Auto waits for nobody: the reviewer approves or rejects the call
+		if (run.mode === 'auto') {
+			return await reviewInAuto(run, launch, executable, undefined, input.locale, { id: options.toolUseID, name, input: toolInput, parent, signal: options.signal });
 		}
 
 		run.calls.set(options.toolUseID, { name, input: toolInput, parent });
@@ -2141,12 +2275,13 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 							input: block.input,
 							status: name === AGENT_ASK_TOOL
 								? 'awaiting'
-								: unasked
+								: unasked || mode === 'auto'
 									? 'running'
 									: mode === 'plan'
 										? 'denied'
 										: 'awaiting',
 							actor: run.actor,
+							...(!unasked && mode === 'auto' && name !== AGENT_ASK_TOOL ? { review: { decision: 'pending' as const } } : {}),
 							...(parent ? { parent } : {})
 						});
 					}
@@ -2197,6 +2332,7 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					output,
 					decidedBy: call?.decidedBy,
 					actor: run.actor,
+					...(call?.review ? { review: call.review } : {}),
 					...(images.length ? { images } : {}),
 					...(files.length ? { files } : {}),
 					...(call?.parent
@@ -2212,6 +2348,7 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
 					output: output.slice(0, 4096),
 					decidedBy: call?.decidedBy,
 					actor: run.actor,
+					...(call?.review ? { review: call.review } : {}),
 					...(images.length ? { images } : {}),
 					...(files.length ? { files } : {}),
 					...(call?.parent ? { parent: call.parent } : {})
@@ -2283,10 +2420,19 @@ function handleMessage(run: Run, message: SDKMessage): MessageOutcome {
  * took the message, the tool calls made, and its share of the session's cost.
  */
 function noteStats(run: Run, total: number | undefined): void {
-	const costUsd = total !== undefined
+	const sessionUsd = total !== undefined
 		? Math.max(0, total - run.costMark)
 		: 0;
-	const stats = { at: Date.now(), ms: Date.now() - run.turnStartedAt, tools: run.turnTools, costUsd };
+	const reviewUsd = run.turnReviewUsd;
+	const stats = {
+		at: Date.now(),
+		ms: Date.now() - run.turnStartedAt,
+		tools: run.turnTools,
+		costUsd: sessionUsd + reviewUsd,
+		...(reviewUsd > 0 ? { reviewUsd } : {})
+	};
+
+	run.turnReviewUsd = 0;
 
 	if (total !== undefined) {
 		run.costMark = total;

@@ -9,9 +9,10 @@
  * at all is its MCP token's scope, in every mode, bypass included.
  *
  * - `manual`: every tool call waits for the operator, even a read.
- * - `auto`: every call runs on its own except the ones the catalog marks
- *   destructive (stop, restart, console commands, removals, shells), which
- *   wait. The default.
+ * - `auto`: every call runs on its own. The ones the catalog marks destructive
+ *   (stop, restart, console commands, removals, shells) are first put to a
+ *   reviewer model, which approves or rejects each against what the person
+ *   asked for; nobody is waited on. The default.
  * - `plan`: reads run, changes are refused outright, and the agent answers with
  *   a plan instead of acting.
  * - `bypass`: every tool in scope runs without asking. It can be switched off
@@ -146,6 +147,18 @@ export function isConsolePath(path: string): boolean {
 	return /^\/(?![\/\\])[^\s]*$/.test(path)
 		&& !/^\/api(\/|$|\?)/.test(path)
 		&& path.length <= 500;
+}
+
+/**
+ * What Auto's reviewer made of one call: `pending` while it decides, then its
+ * verdict and the reason it gave. `failed` marks a refusal the reviewer could
+ * not decide (an error, a timeout, an answer it could not read).
+ */
+export interface AgentReview {
+	decision: "pending" | "approve" | "reject";
+	reason?: string;
+	model?: string;
+	failed?: boolean;
 }
 
 /** Whether the agent may stop and ask the operator a question in a mode. */
