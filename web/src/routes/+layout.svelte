@@ -12,6 +12,7 @@
 	import AgentPanel from '$lib/components/AgentPanel.svelte';
 	import AccountAvatar from '$lib/components/AccountAvatar.svelte';
 	import { Agent, startConsoleBridge } from '$lib/agent.svelte';
+	import { keepSessionAlive } from '$lib/sessionkeepalive';
 	import Flashbar from '$lib/components/Flashbar.svelte';
 	import ShellGlyph from '$lib/components/ShellGlyph.svelte';
 	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
@@ -136,6 +137,16 @@
 		if (!bare) {
 			Agent.boot();
 		}
+	});
+
+	// every signed-in tab, bare ones included (a popped-out chat), keeps the
+	// session from lapsing while it is open
+	$effect(() => {
+		if (!account) {
+			return;
+		}
+
+		return keepSessionAlive();
 	});
 
 	// a popped-out Mèo Béo window asks the console in front of the operator to

@@ -66,8 +66,19 @@ export const ROOT_ACTOR = "root";
 /** Usernames the store refuses, because they mean something else in the trail. */
 const RESERVED_USERNAMES = new Set([ROOT_ACTOR, "system", "daemon"]);
 
-/** How long a session stays valid without being renewed. */
+/**
+ * How long a session stays valid after it was last used. Every use the store
+ * records (see `SESSION_TOUCH_MS`) moves the deadline this far ahead, so a
+ * console left open, or a long job being watched, never signs its operator out.
+ */
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * The longest a session lives however often it is used. Renewal never moves
+ * the deadline past `createdAt` plus this, so a stolen cookie kept warm by its
+ * thief still dies.
+ */
+export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * How stale a session's `lastSeenAt` may get before a read persists it. Every
@@ -1148,6 +1159,8 @@ export async function signIn(
 export interface ResolvedSession {
 	account: AccountSummary;
 	session: SessionSummary;
+	/** The new deadline when this read renewed the session, for the cookie; null otherwise */
+	renewedUntil: number | null;
 }
 
 /**
@@ -1155,6 +1168,9 @@ export interface ResolvedSession {
  *
  * `lastSeenAt` is only persisted once it is `SESSION_TOUCH_MS` stale, so the
  * store is not rewritten (and the follower sync not woken) on every page load.
+ * That same write renews the session: its deadline moves to `SESSION_TTL_MS`
+ * from now, capped at `SESSION_MAX_AGE_MS` from sign-in, and `renewedUntil`
+ * tells the console to re-issue the cookie with it.
  */
 export async function resolveSession(token: string): Promise<ResolvedSession | null> {
 	if (!token) {
@@ -1177,9 +1193,17 @@ export async function resolveSession(token: string): Promise<ResolvedSession | n
 	}
 
 	const now = Date.now();
+	let renewedUntil: number | null = null;
 
 	if (now - session.lastSeenAt > SESSION_TOUCH_MS) {
+		const deadline = Math.min(now + SESSION_TTL_MS, session.createdAt + SESSION_MAX_AGE_MS);
+
 		session.lastSeenAt = now;
+
+		if (deadline > session.expiresAt) {
+			session.expiresAt = deadline;
+			renewedUntil = deadline;
+		}
 
 		await saveSessions(sessions);
 	}
@@ -1187,6 +1211,7 @@ export async function resolveSession(token: string): Promise<ResolvedSession | n
 	return {
 		account: summarize(account, sessions.sessions),
 		session: sessionSummary(session, account.username, true),
+		renewedUntil,
 	};
 }
 

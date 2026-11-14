@@ -22,7 +22,7 @@ import { resolveSession } from '$core/accounts';
 import { withActor } from '$client/actor';
 import { gate, refusalBody } from '$lib/server/authz';
 import { hiddenInstances, INSTANCE_REF_ROUTES, scrubInstanceRefs } from '$lib/server/fleetscope';
-import { SESSION_COOKIE } from '$lib/server/session';
+import { isSecureRequest, SESSION_COOKIE, setSessionCookie } from '$lib/server/session';
 
 /**
  * The vendored stylesheets in `app.html` are served from `static/` with no cache
@@ -91,6 +91,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 			if (resolved) {
 				event.locals.account = resolved.account;
 				event.locals.sessionId = resolved.session.id;
+			}
+
+			// the session's deadline moved, and the cookie's must follow or the browser
+			// drops it at the old one while the store would still take it
+			if (resolved?.renewedUntil) {
+				setSessionCookie(event.cookies, token, resolved.renewedUntil, isSecureRequest(event.request));
 			}
 		} catch (err) {
 			// the daemon is unreachable: treat the request as unauthenticated rather
