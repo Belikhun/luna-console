@@ -2321,7 +2321,7 @@
 		},
 		"set": {
 			"desc": "Change the base domain, the address records point at, or the record TTL",
-			"optBase": "base domain every hostname sits under (e.g. mc.belikhun.dev)",
+			"optBase": "base domain every hostname sits under (e.g. mc.belikhun.dev); a comma list sets every base, the first being the default",
 			"optAddress": "IPv4 address records point at, or auto for the client IP",
 			"optTtl": "record TTL in seconds (60-86400)",
 			"nothing": "pass --base, --address or --ttl",
@@ -2336,14 +2336,16 @@
 		},
 		"records": {
 			"desc": "Live DNS records at a hostname, or under the whole base domain",
-			"none": "No records there."
+			"none": "No records there.",
+			"optBase": "base domain to list when no hostname is given (the default base when omitted)"
 		},
 		"add": {
 			"desc": "Create a hostname under the base domain, optionally routed to an instance",
 			"optInstance": "instance to route it to",
 			"optAddress": "IPv4 address for this hostname",
 			"optAdopt": "replace A/CNAME records already at that name",
-			"done": "{fqdn} → {address}"
+			"done": "{fqdn} → {address}",
+			"optBase": "base domain a bare label goes under (the default base when omitted)"
 		},
 		"point": {
 			"desc": "Point a managed hostname at another address",

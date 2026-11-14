@@ -45,6 +45,8 @@
 	let instances: string[] = $state([]);
 	let records: RecordRow[] = $state([]);
 	let recordsZone = $state('');
+	/** The base the records tab lists; the default base until another is picked */
+	let recordsBase = $state('');
 	let recordsLoading = $state(false);
 	let recordsLoaded = $state(false);
 	let recordsError: string | null = $state(null);
@@ -58,6 +60,7 @@
 
 	let createOpen = $state(false);
 	let createLabel = $state('');
+	let createBase = $state('');
 	let createInstance = $state('');
 	let createAddress = $state('');
 	let createAdopt = $state(false);
@@ -88,7 +91,13 @@
 	let formAddress = $state('');
 	let formTtl = $state('300');
 	let formDrop = $state(false);
-	let checkResult: { ok: boolean; error?: string; zone: string | null; domains: { name: string }[] } | null = $state(null);
+	let checkResult: { ok: boolean; error?: string; zone: string | null; zones: { base: string; zone: string | null }[]; domains: { name: string }[] } | null = $state(null);
+
+	const bases: string[] = $derived((settings as SettingsView | null)?.baseDomains ?? []);
+	const manyBases = $derived(bases.length > 1);
+	const baseOptions = $derived(bases.map((base) => ({ value: base, label: base })));
+	const pickedBase = $derived(bases.includes(recordsBase) ? recordsBase : bases[0] ?? '');
+	const createBaseName = $derived(bases.includes(createBase) ? createBase : bases[0] ?? '');
 
 	async function refresh(): Promise<void> {
 		loading = true;
@@ -120,9 +129,11 @@
 		recordsError = null;
 
 		try {
-			const data = await api('/domains/records');
+			const base = pickedBase;
+			const data = await api(`/domains/records?base=${encodeURIComponent(base)}`);
 
 			recordsZone = data.zone;
+			recordsBase = data.baseDomain;
 			records = data.records.map((record: Omit<RecordRow, 'key'>, index: number) => ({ ...record, key: `${record.name}-${record.type}-${index}` }));
 		} catch (err) {
 			recordsError = (err as Error).message;
@@ -182,6 +193,7 @@
 
 	function openCreate(): void {
 		createLabel = '';
+		createBase = bases[0] ?? '';
 		createInstance = '';
 		createAddress = '';
 		createAdopt = false;
@@ -194,6 +206,7 @@
 		try {
 			const result = await post('/domains', {
 				name: createLabel.trim(),
+				base: createBaseName || undefined,
 				instance: createInstance || undefined,
 				address: createAddress.trim() || undefined,
 				adopt: createAdopt
@@ -269,7 +282,7 @@
 		formClientIp = settings?.provider?.clientIp ?? '';
 		formApiKey = '';
 		formSandbox = settings?.provider?.sandbox ?? false;
-		formBase = settings?.baseDomain ?? '';
+		formBase = bases.join(', ');
 		formAddress = settings?.publicAddress ?? '';
 		formTtl = String(settings?.ttl ?? 300);
 		formDrop = settings?.dropUnsupported ?? false;
@@ -295,7 +308,7 @@
 						}
 					}
 					: {}),
-				baseDomain: formBase.trim(),
+				baseDomains: formBase.split(',').map((base) => base.trim()).filter(Boolean),
 				publicAddress: formAddress.trim() || null,
 				ttl: Number(formTtl),
 				dropUnsupported: formDrop
@@ -395,6 +408,7 @@
 
 	const hostnameColumns: Column[] = $derived([
 		{ id: 'fqdn', label: t('web.domains.colHostname'), sortable: true, width: 280 },
+		{ id: 'base', label: t('web.domains.colBase'), sortable: true, width: 180 },
 		{ id: 'instance', label: t('web.domains.colInstance'), sortable: true, width: 180 },
 		{ id: 'address', label: t('web.domains.colAddress'), sortable: true, width: 160 },
 		{ id: 'by', label: t('web.domains.colBy'), sortable: true, width: 160 },
@@ -402,6 +416,16 @@
 	]);
 
 	const hostnameFilters: TableFilterGroup<HostnameRow>[] = $derived([
+		...(manyBases
+			? [{
+				id: 'base',
+				label: t('web.domains.filterBase'),
+				options: [
+					{ value: 'any', label: t('web.domains.anyBase') },
+					...bases.map((base) => ({ value: base, label: base, match: (row: HostnameRow) => row.base === base }))
+				]
+			}]
+			: []),
 		{
 			id: 'link',
 			label: t('web.domains.filterLink'),
@@ -474,7 +498,15 @@
 		{/if}
 	</OverviewCell>
 	<OverviewCell label={t('web.domains.overviewBase')}>
-		<span class="mono">*.{settings?.baseDomain ?? '–'}</span>
+		{#if bases.length === 0}
+			<span class="mono">–</span>
+		{:else}
+			<span class="stack">
+				{#each bases as base (base)}
+					<span class="mono">*.{base}</span>
+				{/each}
+			</span>
+		{/if}
 	</OverviewCell>
 	<OverviewCell label={t('web.domains.overviewAddress')}>
 		<span class="mono">{settings?.effectiveAddress ?? '–'}</span>
@@ -529,6 +561,8 @@
 				{#snippet cell(row, col)}
 					{#if col === 'fqdn'}
 						<b class="mono">{row.fqdn}</b>
+					{:else if col === 'base'}
+						<span class="mono">{row.base}</span>
 					{:else if col === 'instance'}
 						{#if row.instance}
 							<a href="/instances/{row.instance}">{row.instance}</a>
@@ -551,7 +585,7 @@
 		{:else if recordsError}
 			<Flash kind="error">{recordsError}</Flash>
 		{:else}
-			<Flash kind="info">{t('web.domains.recordsNote', { zone: recordsZone || '…', base: settings.baseDomain })}</Flash>
+			<Flash kind="info">{t('web.domains.recordsNote', { zone: recordsZone || '…', base: pickedBase })}</Flash>
 			<Panel flush>
 				<ResourceTable
 					tableId="network-domain-records"
@@ -566,6 +600,22 @@
 					emptyTitle={recordsLoading ? t('web.domains.recordsLoading') : t('web.domains.recordsEmptyTitle')}
 					emptyText={recordsLoading ? '' : t('web.domains.recordsEmptyText')}
 				>
+					{#snippet toolbar()}
+						{#if manyBases}
+							<Select
+								label={t('web.domains.colBase')}
+								options={baseOptions}
+								width="14rem"
+								value={pickedBase}
+								onchange={(base) => {
+									recordsBase = base;
+									records = [];
+									recordsLoaded = false;
+									void loadRecords();
+								}}
+							/>
+						{/if}
+					{/snippet}
 					{#snippet cell(row, col)}
 						{#if col === 'name'}
 							<span class="mono">{row.name}.{recordsZone}</span>
@@ -623,10 +673,16 @@
 	<FormGrid cols={1}>
 		<label class="field">
 			<span class="lbl">{t('web.domains.label')}</span>
-			<span class="hint">{t('web.domains.labelHint', { base: settings?.baseDomain ?? '' })}</span>
+			<span class="hint">{t('web.domains.labelHint', { base: createBaseName })}</span>
 			<span class="suffixed">
 				<input class="input mono" type="text" spellcheck="false" placeholder="create" bind:value={createLabel} />
-				<span class="suffix mono">.{settings?.baseDomain ?? ''}</span>
+				{#if manyBases}
+					<!-- the base is picked beside the label, so the field reads as the whole name -->
+					<span class="suffix mono">.</span>
+					<Select options={baseOptions} width="13rem" bind:value={createBase} />
+				{:else}
+					<span class="suffix mono">.{createBaseName}</span>
+				{/if}
 			</span>
 		</label>
 
@@ -743,7 +799,12 @@
 	{#if checkResult}
 		{#if checkResult.ok}
 			<Flash kind="success">
-				{t('web.domains.checkOk', { count: checkResult.domains.length, zone: checkResult.zone ?? t('web.domains.noZone') })}
+				{t('web.domains.checkOk', {
+					count: checkResult.domains.length,
+					zone: (checkResult.zones?.length ? checkResult.zones : [{ base: '', zone: checkResult.zone }])
+						.map((entry) => entry.zone ?? t('web.domains.noZone'))
+						.join(', ')
+				})}
 			</Flash>
 		{:else}
 			<Flash kind="error">{t('web.domains.checkFailed', { error: checkResult.error ?? '?' })}</Flash>
@@ -776,6 +837,13 @@
 />
 
 <style lang="scss">
+	// one base per line
+	.stack {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
 	.tabbody {
 		margin-top: 1rem;
 

@@ -56,11 +56,13 @@ export const DOMAIN_HANDLERS: Record<string, ToolHandler> = {
 
 		return {
 			baseDomain: settings.baseDomain,
+			baseDomains: settings.baseDomains,
 			address: settings.effectiveAddress,
 			configured: settings.configured,
 			dropsUnsupportedRecords: settings.dropUnsupported,
 			hostnames: hostnames.map((entry) => ({
 				hostname: entry.fqdn,
+				base: entry.base,
 				instance: entry.instance,
 				address: entry.address,
 				createdBy: entry.createdBy,
@@ -76,7 +78,7 @@ export const DOMAIN_HANDLERS: Record<string, ToolHandler> = {
 			return await attempt(() => hostnameRecords(name));
 		}
 
-		return await attempt(() => baseDomainRecords());
+		return await attempt(() => baseDomainRecords(optStr(args, 'base')?.trim() || undefined));
 	},
 
 	async domain_create(args, ctx) {
@@ -87,7 +89,8 @@ export const DOMAIN_HANDLERS: Record<string, ToolHandler> = {
 		const result = await attempt(() => createHostname(cfg, str(args, 'name'), {
 			instance,
 			address: optStr(args, 'address')?.trim() || undefined,
-			adopt: optBool(args, 'adopt') === true
+			adopt: optBool(args, 'adopt') === true,
+			base: optStr(args, 'base')?.trim() || undefined
 		}, ctx.actor));
 
 		pushEvent(instance ?? 'proxy', 'action', `hostname ${result.hostname.fqdn} created${instance ? ` for ${instance}` : ''} by ${ctx.actor}`);

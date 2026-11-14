@@ -5254,7 +5254,7 @@
 		"sandboxLabel": "Environment",
 		"sandbox": "Use Namecheap's sandbox API",
 		"saveAndCheck": "Save and test",
-		"checkOk": "Namecheap answered: {count} domain(s) on the account; the base domain is in {zone}.",
+		"checkOk": "Namecheap answered: {count} domain(s) on the account; the base domains are in {zone}.",
 		"checkFailed": "Namecheap refused: {error}",
 		"noZone": "none of them",
 		"unlinkTitle": "Unlink {count} hostname(s)?",
@@ -5268,7 +5268,10 @@
 		"verbDelete": "Delete",
 		"dropLabel": "Records the API cannot keep",
 		"dropHint": "Namecheap's API cannot write CAA records back, so saving a zone that holds one deletes it. Off: luna refuses to change such a zone. On: they are dropped, kept in the zone backup, and reported. SRV records are not affected: the API neither sees nor removes them.",
-		"drop": "Allow dropping CAA and similar records"
+		"drop": "Allow dropping CAA and similar records",
+		"colBase": "Base domain",
+		"filterBase": "Base domain",
+		"anyBase": "Any base"
 	},
 	"denied": {
 		"title": "Not allowed",

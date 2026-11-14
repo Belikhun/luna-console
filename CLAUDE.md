@@ -384,6 +384,16 @@ export interface InstanceConfig {}
   address, optionally linked to one instance, which adds it to that instance's velocity
   `forcedHosts`, registers the instance and reloads velocity. Modded servers are why: their clients
   cannot pass through the vanilla lobby. Buying domains is deliberately not here.
+- **There may be several bases** (`settings.baseDomains`, the default first; `baseDomain` mirrors
+  it so an older luna still reads the store), in any zone of the Namecheap account
+  (`mc.belikhun.dev`, `mc.nhimew.dev`). A full name finds its base by suffix, a bare label takes the
+  default or the base named (`--base`, the create dialog's picker, `base` on the MCP tools). A label
+  is managed under one base only, because IAM names a hostname by its label
+  (`luna:domain/<label>`); a base holding hostnames cannot be removed. A store written before the
+  list gets `baseDomains: [baseDomain]` and each hostname's `base` on read.
+- **Every zone write holds that zone's lock** (`services/zonelock.ts`,
+  `/run/lock/namecheap-<zone>.lock`), the file harbor's daemon and its certbot hook take for the
+  same zone, so writes to two zones never wait on each other.
 - **Namecheap's DNS API replaces a whole zone per write**, so every change is read-modify-write
   through `editZone`: the zone is backed up to `.data/dns-backups/<zone>/`, only the names asked about
   change, the mail setting is sent back, and the zone is read back afterwards; anything else that

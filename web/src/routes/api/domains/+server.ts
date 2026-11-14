@@ -43,7 +43,7 @@ export async function GET({ locals }) {
 	return json({ settings: view, hostnames, audit, instances });
 }
 
-/** POST { name, instance?, address?, adopt? } → the created hostname. */
+/** POST { name, base?, instance?, address?, adopt? } → the created hostname; `base` places a bare label under a base other than the default. */
 export async function POST({ request, locals }) {
 	const body = await jsonBody(request);
 	const actor = locals.account?.username ?? 'console';
@@ -53,7 +53,8 @@ export async function POST({ request, locals }) {
 		const result = await createHostname(cfg, String(body.name ?? ''), {
 			instance: body.instance ? String(body.instance) : undefined,
 			address: body.address ? String(body.address) : undefined,
-			adopt: body.adopt === true
+			adopt: body.adopt === true,
+			base: body.base ? String(body.base) : undefined
 		}, actor);
 
 		journal(`hostname ${result.hostname.fqdn} created`, { actor, detail: result.hostname.instance ?? undefined });

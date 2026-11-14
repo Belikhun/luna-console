@@ -7,6 +7,8 @@
 export interface SettingsView {
 	provider: { kind: 'namecheap'; apiUser: string; userName: string; clientIp: string; sandbox?: boolean; apiKeyHint: string } | null;
 	baseDomain: string;
+	/** Every base, the default first */
+	baseDomains: string[];
 	publicAddress: string | null;
 	effectiveAddress: string | null;
 	ttl: number;
@@ -17,6 +19,7 @@ export interface SettingsView {
 export interface HostnameRow {
 	fqdn: string;
 	label: string;
+	base: string;
 	address: string;
 	instance: string | null;
 	createdAt: number;

@@ -1082,17 +1082,18 @@ export const MCP_TOOLS: McpToolSpec[] = [
 	{
 		name: "domain_list",
 		group: "domains",
-		description: "The hostnames luna manages under the network's base domain (e.g. create.mc.belikhun.dev), which instance each one routes to, and the DNS settings: the base domain, the address records point at, and whether the DNS provider is configured. A hostname linked to an instance sends a client connecting by that name straight to it (a velocity forced host), which is how modded servers are reached, since modded clients cannot join the vanilla lobby first.",
+		description: "The hostnames luna manages under the network's base domains (e.g. create.mc.belikhun.dev), which instance each one routes to, and the DNS settings: the base domains (the first is the default), the address records point at, and whether the DNS provider is configured. A hostname linked to an instance sends a client connecting by that name straight to it (a velocity forced host), which is how modded servers are reached, since modded clients cannot join the vanilla lobby first.",
 		inputSchema: object({}, []),
 		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "domain_records",
 		group: "domains",
-		description: "The live DNS records at one hostname, or every record under the base domain when no name is given, read from the provider (Namecheap).",
+		description: "The live DNS records at one hostname, or every record under one base domain when no name is given, read from the provider (Namecheap).",
 		inputSchema: object(
 			{
-				name: { type: "string", description: "A label (\"create\") or a full hostname under the base domain." },
+				name: { type: "string", description: "A label (\"create\") or a full hostname under one of the base domains." },
+				base: { type: "string", description: "The base domain to list when no name is given; the default base when omitted." },
 			},
 			[],
 		),
@@ -1101,10 +1102,11 @@ export const MCP_TOOLS: McpToolSpec[] = [
 	{
 		name: "domain_create",
 		group: "domains-write",
-		description: "Create a hostname under the base domain (one label, e.g. \"create\" becomes create.mc.belikhun.dev) pointing at the network's public address, and link it to an instance when one is given, which also registers that instance with velocity and reloads it. Use it when setting up a modded server, so players can connect by its own name. Refuses a name that already has DNS records unless adopt is true. New DNS names can take a few minutes to resolve everywhere.",
+		description: "Create a hostname under one of the base domains (one label, e.g. \"create\" becomes create.mc.belikhun.dev under the default base, or give base or the full name for another) pointing at the network's public address, and link it to an instance when one is given, which also registers that instance with velocity and reloads it. Use it when setting up a modded server, so players can connect by its own name. Refuses a name that already has DNS records unless adopt is true, and a label luna already manages under any base. New DNS names can take a few minutes to resolve everywhere.",
 		inputSchema: object(
 			{
-				name: { type: "string", description: "The label, or the full hostname under the base domain." },
+				name: { type: "string", description: "The label, or the full hostname under one of the base domains." },
+				base: { type: "string", description: "The base domain a bare label goes under (domain_list names them); the default base when omitted." },
 				instance: { type: "string", description: "Instance to route the hostname to." },
 				address: { type: "string", description: "IPv4 address for this hostname; the network's public address when omitted." },
 				adopt: { type: "boolean", description: "Replace A/CNAME records already at that name (default false)." },

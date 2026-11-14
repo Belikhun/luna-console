@@ -10,7 +10,7 @@ import { errorMessage, jsonBody } from '$lib/server/http';
 import { journal } from '$lib/server/session';
 
 /**
- * PATCH { provider?, baseDomain?, publicAddress?, ttl? } → the settings view.
+ * PATCH { provider?, baseDomains? | baseDomain?, publicAddress?, ttl? } → the settings view.
  * A provider patch with an empty apiKey keeps the stored key, so the form never
  * needs the key back to save the other fields.
  */
@@ -31,7 +31,9 @@ export async function PATCH({ request, locals }) {
 		};
 	}
 
-	if (typeof body.baseDomain === 'string') {
+	if (Array.isArray(body.baseDomains)) {
+		patch.baseDomains = body.baseDomains.map((entry: unknown) => String(entry));
+	} else if (typeof body.baseDomain === 'string') {
 		patch.baseDomain = body.baseDomain;
 	}
 

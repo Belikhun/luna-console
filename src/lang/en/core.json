@@ -929,7 +929,12 @@
 		"foreignRecords": "{fqdn} already holds {types} records, which luna does not manage; remove them in Namecheap first",
 		"recordsExist": "{fqdn} already has DNS records; pass adopt to replace them",
 		"unmanaged": "luna does not manage {fqdn}",
-		"unsupportedRecords": "{zone} holds records the Namecheap API cannot write back ({records}); saving the zone would delete them. Re-create them by hand afterwards, or allow luna to drop them in the DNS settings (they stay in the zone backup)."
+		"unsupportedRecords": "{zone} holds records the Namecheap API cannot write back ({records}); saving the zone would delete them. Re-create them by hand afterwards, or allow luna to drop them in the DNS settings (they stay in the zone backup).",
+		"lockTimeout": "Another program held the zone lock ({path}) for too long; nothing was written",
+		"unknownBase": "{base} is not one of the base domains ({bases})",
+		"noBase": "keep at least one base domain",
+		"baseInUse": "a base domain cannot be removed while hostnames sit under it: {hostnames}",
+		"labelTaken": "{fqdn} cannot be created: luna already manages {other}, and a label is used under one base only"
 	},
 	"iam": {
 		"grammar": {

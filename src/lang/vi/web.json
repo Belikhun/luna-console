@@ -5268,7 +5268,10 @@
 		"verbDelete": "Xoá",
 		"dropLabel": "Bản ghi API không giữ được",
 		"dropHint": "API Namecheap không ghi lại được bản ghi CAA, nên lưu vùng có chúng sẽ xoá chúng. Tắt: luna từ chối sửa vùng đó. Bật: chúng bị bỏ, vẫn nằm trong bản sao lưu và được báo lại. Bản ghi SRV không bị ảnh hưởng: API không thấy và cũng không xoá chúng.",
-		"drop": "Cho phép bỏ bản ghi CAA và tương tự"
+		"drop": "Cho phép bỏ bản ghi CAA và tương tự",
+		"colBase": "Tên miền gốc",
+		"filterBase": "Tên miền gốc",
+		"anyBase": "Mọi tên miền gốc"
 	},
 	"denied": {
 		"title": "Không được phép",

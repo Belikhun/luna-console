@@ -2321,7 +2321,7 @@
 		},
 		"set": {
 			"desc": "Đổi tên miền gốc, địa chỉ bản ghi trỏ tới hoặc TTL",
-			"optBase": "tên miền gốc mọi tên miền con nằm dưới (vd mc.belikhun.dev)",
+			"optBase": "tên miền gốc mọi tên miền con nằm dưới (vd mc.belikhun.dev); một danh sách cách nhau bằng dấu phẩy đặt mọi tên miền gốc, tên đầu là mặc định",
 			"optAddress": "địa chỉ IPv4 bản ghi trỏ tới, hoặc auto để dùng IP máy gọi",
 			"optTtl": "TTL bản ghi tính bằng giây (60-86400)",
 			"nothing": "truyền --base, --address hoặc --ttl",
@@ -2336,14 +2336,16 @@
 		},
 		"records": {
 			"desc": "Bản ghi DNS hiện tại của một tên miền, hoặc toàn bộ dưới tên miền gốc",
-			"none": "Không có bản ghi nào."
+			"none": "Không có bản ghi nào.",
+			"optBase": "tên miền gốc cần liệt kê khi không nêu tên miền (mặc định nếu bỏ trống)"
 		},
 		"add": {
 			"desc": "Tạo tên miền con dưới tên miền gốc, có thể dẫn tới một instance",
 			"optInstance": "instance được dẫn tới",
 			"optAddress": "địa chỉ IPv4 cho tên miền này",
 			"optAdopt": "thay thế bản ghi A/CNAME đang có ở tên đó",
-			"done": "{fqdn} → {address}"
+			"done": "{fqdn} → {address}",
+			"optBase": "tên miền gốc mà một nhãn đơn nằm dưới (mặc định nếu bỏ trống)"
 		},
 		"point": {
 			"desc": "Trỏ một tên miền đang quản lý sang địa chỉ khác",

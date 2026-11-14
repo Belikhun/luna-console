@@ -61,7 +61,7 @@ command({
 				[t("cli.domains.field.provider"), settings.provider
 					? `Namecheap ${pc.dim(`· ${settings.provider.apiUser} · ${settings.provider.apiKeyHint}${settings.provider.sandbox ? " · sandbox" : ""}`)}`
 					: pc.dim(t("cli.domains.notConfigured"))],
-				[t("cli.domains.field.base"), settings.baseDomain],
+				[t("cli.domains.field.base"), settings.baseDomains.join(", ")],
 				[t("cli.domains.field.address"), settings.effectiveAddress ?? pc.dim("—")],
 				[t("cli.domains.field.ttl"), `${settings.ttl}s`],
 				[t("cli.domains.field.dropUnsupported"), settings.dropUnsupported ? pc.yellow(t("cli.domains.dropOn")) : t("cli.domains.dropOff")],
@@ -144,7 +144,10 @@ command({
 	handler: async (_args, opts) => {
 		const patch: domains.SettingsPatch = {};
 
-		if (typeof opts.base === "string") {
+		// a comma list replaces every base; one name replaces only the default
+		if (typeof opts.base === "string" && opts.base.includes(",")) {
+			patch.baseDomains = opts.base.split(",").map((entry) => entry.trim()).filter(Boolean);
+		} else if (typeof opts.base === "string") {
 			patch.baseDomain = opts.base;
 		}
 
@@ -199,11 +202,12 @@ command({
 	path: ["domains", "records"],
 	desc: t("cli.domains.records.desc"),
 	args: [{ name: "hostname", desc: t("cli.domains.argHostname"), complete: hostnameNames }],
+	opts: [{ flag: "--base", value: true, desc: t("cli.domains.records.optBase") }],
 
-	handler: async (args) => {
+	handler: async (args, opts) => {
 		const result = args[0]
 			? await domains.hostnameRecords(args[0])
-			: await domains.baseDomainRecords();
+			: await domains.baseDomainRecords(typeof opts.base === "string" ? opts.base : undefined);
 
 		if (!result.records.length) {
 			info(t("cli.domains.records.none"));
@@ -225,6 +229,7 @@ command({
 		{ flag: "--instance", value: true, desc: t("cli.domains.add.optInstance"), complete: instanceNames },
 		{ flag: "--address", value: true, desc: t("cli.domains.add.optAddress") },
 		{ flag: "--adopt", desc: t("cli.domains.add.optAdopt") },
+		{ flag: "--base", value: true, desc: t("cli.domains.add.optBase") },
 	],
 
 	handler: async (args, opts) => {
@@ -233,6 +238,7 @@ command({
 			instance: opts.instance as string | undefined,
 			address: opts.address as string | undefined,
 			adopt: opts.adopt === true,
+			base: opts.base as string | undefined,
 		}, activeUser());
 
 		ok(t("cli.domains.add.done", { fqdn: result.hostname.fqdn, address: result.hostname.address }));

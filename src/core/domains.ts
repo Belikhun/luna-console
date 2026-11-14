@@ -3,8 +3,9 @@
 // prohibited without written permission. See LICENSE at the repository root.
 
 /**
- * Hostnames for instances: a name under the configured base domain
- * (`create.mc.belikhun.dev` under `mc.belikhun.dev`) pointing at the proxy,
+ * Hostnames for instances: a name under one of the configured base domains
+ * (`create.mc.belikhun.dev` under `mc.belikhun.dev`; the bases may sit in
+ * different zones of the account, like `mc.nhimew.dev`) pointing at the proxy,
  * and optionally linked to one instance as a velocity forced host, so a client
  * connecting by that name lands straight on that server instead of the lobby.
  * Modded clients need exactly that: they cannot join a vanilla lobby first.
@@ -17,8 +18,8 @@
  * - writes, reads the zone back, and if anything else moved restores the
  *   backup and fails, so a record luna does not manage is never lost.
  *
- * Nothing outside the base domain is ever created, edited or deleted, and only
- * single labels directly under it are hostnames. Buying domains is not here:
+ * Nothing outside the base domains is ever created, edited or deleted, and only
+ * single labels directly under them are hostnames. Buying domains is not here:
  * it spends money and cannot be undone.
  *
  * `domains.json` holds the provider credential, so like `mcp.json` it is
@@ -44,6 +45,7 @@ import {
 	type NamecheapHost,
 	type NamecheapZone,
 } from "./services/namecheap";
+import { withZoneLock, zoneLockPath } from "./services/zonelock";
 
 const STORE_FILE = "domains.json";
 
@@ -85,8 +87,17 @@ export interface DomainProvider {
 
 export interface DomainSettings {
 	provider: DomainProvider | null;
-	/** Every hostname is one label directly under this */
+	/**
+	 * The default base, always `baseDomains[0]`. Kept beside the list so an
+	 * older luna reading this store still finds the base it knew.
+	 */
 	baseDomain: string;
+	/**
+	 * Every base a hostname may sit under (one label directly under it), the
+	 * default first. The bases may be in different zones of the account
+	 * (`mc.belikhun.dev`, `mc.nhimew.dev`).
+	 */
+	baseDomains: string[];
 	/** Where the records point; the provider's client IP when unset */
 	publicAddress: string | null;
 	ttl: number;
@@ -100,8 +111,14 @@ export interface DomainSettings {
 
 export interface Hostname {
 	fqdn: string;
-	/** The label under the base domain */
+	/**
+	 * The label under its base. A label is managed under one base at a time:
+	 * IAM names a hostname by its label (`luna:domain/<label>`), so two bases
+	 * holding the same label would be one resource.
+	 */
 	label: string;
+	/** The base domain it sits under */
+	base: string;
 	address: string;
 	instance: string | null;
 	createdAt: number;
@@ -136,6 +153,7 @@ interface DomainStore {
 export interface DomainSettingsView {
 	provider: (Omit<DomainProvider, "apiKey"> & { apiKeyHint: string }) | null;
 	baseDomain: string;
+	baseDomains: string[];
 	publicAddress: string | null;
 	effectiveAddress: string | null;
 	ttl: number;
@@ -145,7 +163,10 @@ export interface DomainSettingsView {
 
 export interface SettingsPatch {
 	provider?: Partial<DomainProvider> | null;
+	/** Replace the default base only; the other bases stay */
 	baseDomain?: string;
+	/** Every base, the default first; a base still holding hostnames cannot leave */
+	baseDomains?: string[];
 	publicAddress?: string | null;
 	ttl?: number;
 	dropUnsupported?: boolean;
@@ -161,12 +182,25 @@ function backupDir(zone: string): string {
 
 function defaultStore(): DomainStore {
 	return {
-		settings: { provider: null, baseDomain: DEFAULT_BASE_DOMAIN, publicAddress: null, ttl: DEFAULT_RECORD_TTL, dropUnsupported: false },
+		settings: {
+			provider: null,
+			baseDomain: DEFAULT_BASE_DOMAIN,
+			baseDomains: [DEFAULT_BASE_DOMAIN],
+			publicAddress: null,
+			ttl: DEFAULT_RECORD_TTL,
+			dropUnsupported: false,
+		},
 		hostnames: [],
 		audit: [],
 	};
 }
 
+/**
+ * A store written before bases were a list has `baseDomain` alone, and
+ * hostnames without `base`: every one of them was `<label>.<baseDomain>`, so
+ * the base is the name with its label taken off. Nothing is dropped; the
+ * fields are filled in memory and written with the next change.
+ */
 async function loadStore(): Promise<DomainStore> {
 	if (!existsSync(storePath())) {
 		return defaultStore();
@@ -176,8 +210,19 @@ async function loadStore(): Promise<DomainStore> {
 	const fallback = defaultStore();
 
 	store.settings = { ...fallback.settings, ...(store.settings ?? {}) };
+
+	const stored = (store.settings as Partial<DomainSettings>).baseDomains;
+
+	store.settings.baseDomains = Array.isArray(stored) && stored.length > 0
+		? stored
+		: [store.settings.baseDomain];
+	store.settings.baseDomain = store.settings.baseDomains[0]!;
 	store.hostnames ??= [];
 	store.audit ??= [];
+
+	for (const hostname of store.hostnames) {
+		hostname.base ??= hostname.fqdn.slice(hostname.label.length + 1);
+	}
 
 	return store;
 }
@@ -227,6 +272,7 @@ function view(settings: DomainSettings): DomainSettingsView {
 			}
 			: null,
 		baseDomain: settings.baseDomain,
+		baseDomains: [...settings.baseDomains],
 		publicAddress: settings.publicAddress,
 		effectiveAddress: settings.publicAddress ?? provider?.clientIp ?? null,
 		ttl: settings.ttl,
@@ -257,21 +303,63 @@ const IPV4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 
 /**
  * The hostname a caller means, from a bare label (`create`) or a full name
- * (`create.mc.belikhun.dev`); refused when it is not one label directly under
- * the base domain.
+ * (`create.mc.belikhun.dev`). A full name finds its base by suffix (the
+ * longest that matches); a bare label goes under `base` when one is named,
+ * else under the first (default) base. Refused when it is not one label
+ * directly under one of the bases.
  */
-export function resolveHostname(input: string, baseDomain: string): { fqdn: string; label: string } {
+export function resolveHostname(
+	input: string,
+	baseDomains: string | string[],
+	base?: string,
+): { fqdn: string; label: string; base: string } {
+	const bases = (Array.isArray(baseDomains) ? baseDomains : [baseDomains]).map((entry) => entry.toLowerCase());
 	const clean = input.trim().toLowerCase().replace(/\.$/, "");
-	const base = baseDomain.toLowerCase();
-	const label = clean.endsWith(`.${base}`)
-		? clean.slice(0, -(base.length + 1))
+	const wanted = base?.trim().toLowerCase().replace(/\.$/, "");
+
+	if (wanted && !bases.includes(wanted)) {
+		throw new Error(t("core.domains.unknownBase", { base: wanted, bases: bases.join(", ") }));
+	}
+
+	const chosen = wanted
+		?? bases
+			.filter((entry) => clean.endsWith(`.${entry}`))
+			.sort((left, right) => right.length - left.length)[0]
+		?? bases[0]
+		?? DEFAULT_BASE_DOMAIN;
+	const label = clean.endsWith(`.${chosen}`)
+		? clean.slice(0, -(chosen.length + 1))
 		: clean;
 
 	if (!LABEL.test(label)) {
-		throw new Error(t("core.domains.badLabel", { name: input.trim(), base }));
+		throw new Error(t("core.domains.badLabel", { name: input.trim(), base: bases.join(", ") }));
 	}
 
-	return { fqdn: `${label}.${base}`, label };
+	return { fqdn: `${label}.${chosen}`, label, base: chosen };
+}
+
+/**
+ * A managed hostname by full name or label: labels are unique across bases,
+ * so a label alone always finds the one hostname holding it.
+ */
+function findHostname(store: DomainStore, name: string): Hostname | undefined {
+	const clean = name.trim().toLowerCase().replace(/\.$/, "");
+
+	return store.hostnames.find((entry) => entry.fqdn === clean)
+		?? (clean.includes(".")
+			? undefined
+			: store.hostnames.find((entry) => entry.label === clean));
+}
+
+/** The managed hostname `name` means, or a refusal naming the full name it would be. */
+function managedHostname(store: DomainStore, name: string): Hostname {
+	const hostname = findHostname(store, name);
+
+	if (!hostname) {
+		throw new Error(t("core.domains.unmanaged", { fqdn: resolveHostname(name, store.settings.baseDomains).fqdn }));
+	}
+
+	return hostname;
 }
 
 let domainCache: { at: number; key: string; domains: NamecheapDomain[] } | undefined;
@@ -291,9 +379,13 @@ async function accountDomains(settings: DomainSettings, fresh = false): Promise<
 	return domains;
 }
 
-/** The registered domain (zone) holding the base domain, and the base's name inside it. */
-async function baseZone(settings: DomainSettings): Promise<{ zone: string; prefix: string }> {
-	const base = settings.baseDomain.toLowerCase();
+/**
+ * The registered domain (zone) holding a base domain (the default one when
+ * none is named), and the base's name inside it. Each zone has its own lock
+ * (`zoneLockPath`), so bases in two zones are written independently.
+ */
+async function baseZone(settings: DomainSettings, baseDomain?: string): Promise<{ zone: string; prefix: string }> {
+	const base = (baseDomain ?? settings.baseDomain).toLowerCase();
 	const domains = await accountDomains(settings);
 	const zone = domains
 		.map((domain) => domain.name)
@@ -373,6 +465,17 @@ async function backupZone(zone: NamecheapZone, actor: string): Promise<string> {
  * write, with the backup restored if any of them moved.
  */
 async function editZone(
+	settings: DomainSettings,
+	zoneName: string,
+	names: string[],
+	edit: (current: NamecheapHost[]) => NamecheapHost[],
+	actor: string,
+): Promise<{ before: NamecheapHost[]; after: NamecheapHost[]; backup: string; dropped: NamecheapHost[] }> {
+	// harbor and its certbot hook write the same zone; the lock keeps the three apart
+	return await withZoneLock(zoneLockPath(zoneName), () => editZoneLocked(settings, zoneName, names, edit, actor));
+}
+
+async function editZoneLocked(
 	settings: DomainSettings,
 	zoneName: string,
 	names: string[],
@@ -501,15 +604,37 @@ export async function updateDomainSettings(patch: SettingsPatch, actor: string):
 			changed.push("provider");
 		}
 
-		if (patch.baseDomain !== undefined) {
-			const base = patch.baseDomain.trim().toLowerCase().replace(/\.$/, "");
+		if (patch.baseDomain !== undefined || patch.baseDomains !== undefined) {
+			const wanted = patch.baseDomains
+				?? [patch.baseDomain!, ...settings.baseDomains.slice(1)];
+			const bases: string[] = [];
 
-			if (!DOMAIN.test(base)) {
-				throw new Error(t("core.domains.badBase", { base: patch.baseDomain }));
+			for (const entry of wanted) {
+				const base = entry.trim().toLowerCase().replace(/\.$/, "");
+
+				if (!DOMAIN.test(base)) {
+					throw new Error(t("core.domains.badBase", { base: entry }));
+				}
+
+				if (!bases.includes(base)) {
+					bases.push(base);
+				}
 			}
 
-			settings.baseDomain = base;
-			changed.push("baseDomain");
+			if (bases.length === 0) {
+				throw new Error(t("core.domains.noBase"));
+			}
+
+			// a hostname under a base that leaves would be managed under nothing
+			const orphaned = store.hostnames.filter((entry) => !bases.includes(entry.base));
+
+			if (orphaned.length > 0) {
+				throw new Error(t("core.domains.baseInUse", { hostnames: orphaned.map((entry) => entry.fqdn).join(", ") }));
+			}
+
+			settings.baseDomains = bases;
+			settings.baseDomain = bases[0]!;
+			changed.push("baseDomains");
 		}
 
 		if (patch.publicAddress !== undefined) {
@@ -548,8 +673,10 @@ export interface ProviderCheck {
 	ok: boolean;
 	error?: string;
 	domains: NamecheapDomain[];
-	/** The zone holding the base domain, when the account owns one */
+	/** The zone holding the default base domain, when the account owns one */
 	zone: string | null;
+	/** Each base and the zone holding it, null where the account owns none */
+	zones: { base: string; zone: string | null }[];
 }
 
 /** Call the provider once (the domain list) to prove the credential and the whitelisted IP work. */
@@ -558,11 +685,14 @@ export async function checkDomainProvider(): Promise<ProviderCheck> {
 
 	try {
 		const domains = await accountDomains(settings, true);
-		const zone = await baseZone(settings).then((found) => found.zone, () => null);
+		const zones = await Promise.all(settings.baseDomains.map(async (base) => ({
+			base,
+			zone: await baseZone(settings, base).then((found) => found.zone, () => null),
+		})));
 
-		return { ok: true, domains, zone };
+		return { ok: true, domains, zone: zones[0]?.zone ?? null, zones };
 	} catch (err) {
-		return { ok: false, error: (err as Error).message, domains: [], zone: null };
+		return { ok: false, error: (err as Error).message, domains: [], zone: null, zones: [] };
 	}
 }
 
@@ -573,33 +703,38 @@ export async function listHostnames(): Promise<Hostname[]> {
 
 /** One managed hostname, by label or full name; null when luna does not manage it. */
 export async function getHostname(name: string): Promise<Hostname | null> {
-	const store = await loadStore();
-	const { fqdn } = resolveHostname(name, store.settings.baseDomain);
-
-	return store.hostnames.find((entry) => entry.fqdn === fqdn) ?? null;
+	return findHostname(await loadStore(), name) ?? null;
 }
 
-/** The DNS records currently at a hostname, read live from the provider. */
+/** The DNS records currently at a hostname (managed or not), read live from the provider. */
 export async function hostnameRecords(name: string): Promise<{ fqdn: string; zone: string; records: NamecheapHost[] }> {
-	const settings = (await loadStore()).settings;
-	const { fqdn, label } = resolveHostname(name, settings.baseDomain);
-	const { zone, prefix } = await baseZone(settings);
+	const store = await loadStore();
+	const settings = store.settings;
+	const managed = findHostname(store, name);
+	const { fqdn, label, base } = managed ?? resolveHostname(name, settings.baseDomains);
+	const { zone, prefix } = await baseZone(settings, base);
 	const relative = relativeName(label, prefix).toLowerCase();
 	const live = await getNamecheapZone(credentials(settings), zone);
 
 	return { fqdn, zone, records: live.hosts.filter((host) => host.name.toLowerCase() === relative) };
 }
 
-/** Every record under the base domain, read live, to show what the zone holds there. */
-export async function baseDomainRecords(): Promise<{ zone: string; baseDomain: string; records: NamecheapHost[] }> {
+/** Every record under one base domain (the default one when none is named), read live. */
+export async function baseDomainRecords(baseDomain?: string): Promise<{ zone: string; baseDomain: string; records: NamecheapHost[] }> {
 	const settings = (await loadStore()).settings;
-	const { zone, prefix } = await baseZone(settings);
+	const base = baseDomain?.trim().toLowerCase() || settings.baseDomain;
+
+	if (!settings.baseDomains.includes(base)) {
+		throw new Error(t("core.domains.unknownBase", { base, bases: settings.baseDomains.join(", ") }));
+	}
+
+	const { zone, prefix } = await baseZone(settings, base);
 	const live = await getNamecheapZone(credentials(settings), zone);
 	const suffix = prefix ? `.${prefix}` : "";
 
 	return {
 		zone,
-		baseDomain: settings.baseDomain,
+		baseDomain: base,
 		records: live.hosts.filter((host) => {
 			const name = host.name.toLowerCase();
 
@@ -617,6 +752,8 @@ export interface CreateHostnameOptions {
 	address?: string;
 	/** Take over a name that already has an A record (it is replaced) */
 	adopt?: boolean;
+	/** The base a bare label goes under; the default base when unset. A full name finds its own */
+	base?: string;
 }
 
 export interface HostnameOutcome {
@@ -629,10 +766,11 @@ export interface HostnameOutcome {
 }
 
 /**
- * Create a hostname under the base domain: an A record at the proxy's public
- * address, managed by luna from then on, and linked to an instance when one is
- * named. Refuses a name that already has records unless `adopt` is set, and
- * never touches a name whose records are anything other than A/AAAA/CNAME.
+ * Create a hostname under one of the base domains: an A record at the proxy's
+ * public address, managed by luna from then on, and linked to an instance when
+ * one is named. Refuses a name that already has records unless `adopt` is set,
+ * a label luna already manages under any base, and never touches a name whose
+ * records are anything other than A/AAAA/CNAME.
  */
 export async function createHostname(
 	cfg: ClusterConfig,
@@ -645,7 +783,7 @@ export async function createHostname(
 		const settings = store.settings;
 		credentials(settings);
 
-		const { fqdn, label } = resolveHostname(name, settings.baseDomain);
+		const { fqdn, label, base } = resolveHostname(name, settings.baseDomains, opts.base);
 		const address = (opts.address ?? settings.publicAddress ?? settings.provider?.clientIp ?? "").trim();
 
 		if (!IPV4.test(address)) {
@@ -656,11 +794,17 @@ export async function createHostname(
 			throw new Error(t("core.domains.exists", { fqdn }));
 		}
 
+		const sameLabel = store.hostnames.find((entry) => entry.label === label);
+
+		if (sameLabel) {
+			throw new Error(t("core.domains.labelTaken", { fqdn, other: sameLabel.fqdn }));
+		}
+
 		if (opts.instance && !cfg.instances[opts.instance]) {
 			throw new Error(t("core.proxy.notRegistrable", { name: opts.instance }));
 		}
 
-		const { zone, prefix } = await baseZone(settings);
+		const { zone, prefix } = await baseZone(settings, base);
 		const relative = relativeName(label, prefix);
 
 		const written = await editZone(settings, zone, [relative], (current) => {
@@ -678,7 +822,7 @@ export async function createHostname(
 		}, actor);
 
 		const now = Date.now();
-		const hostname: Hostname = { fqdn, label, address, instance: null, createdAt: now, createdBy: actor, updatedAt: now };
+		const hostname: Hostname = { fqdn, label, base, address, instance: null, createdAt: now, createdBy: actor, updatedAt: now };
 
 		store.hostnames.push(hostname);
 		audit(store, { actor, action: "hostname.create", hostname: fqdn, detail: address });
@@ -702,19 +846,15 @@ export async function updateHostname(name: string, patch: { address: string }, a
 	return await serialized(async () => {
 		const store = await loadStore();
 		const settings = store.settings;
-		const { fqdn, label } = resolveHostname(name, settings.baseDomain);
-		const hostname = store.hostnames.find((entry) => entry.fqdn === fqdn);
+		const hostname = managedHostname(store, name);
+		const { fqdn, label } = hostname;
 		const address = patch.address.trim();
-
-		if (!hostname) {
-			throw new Error(t("core.domains.unmanaged", { fqdn }));
-		}
 
 		if (!IPV4.test(address)) {
 			throw new Error(t("core.domains.badAddress", { address }));
 		}
 
-		const { zone, prefix } = await baseZone(settings);
+		const { zone, prefix } = await baseZone(settings, hostname.base);
 		const relative = relativeName(label, prefix);
 		const written = await editZone(settings, zone, [relative], () => [{ name: relative, type: "A", address, ttl: settings.ttl }], actor);
 
@@ -731,12 +871,8 @@ export async function updateHostname(name: string, patch: { address: string }, a
 export async function linkHostname(cfg: ClusterConfig, name: string, instance: string, actor: string): Promise<HostnameOutcome> {
 	return await serialized(async () => {
 		const store = await loadStore();
-		const { fqdn } = resolveHostname(name, store.settings.baseDomain);
-		const hostname = store.hostnames.find((entry) => entry.fqdn === fqdn);
-
-		if (!hostname) {
-			throw new Error(t("core.domains.unmanaged", { fqdn }));
-		}
+		const hostname = managedHostname(store, name);
+		const fqdn = hostname.fqdn;
 
 		if (!cfg.instances[instance]) {
 			throw new Error(t("core.proxy.notRegistrable", { name: instance }));
@@ -761,12 +897,8 @@ export async function linkHostname(cfg: ClusterConfig, name: string, instance: s
 export async function unlinkHostname(cfg: ClusterConfig, name: string, actor: string): Promise<HostnameOutcome> {
 	return await serialized(async () => {
 		const store = await loadStore();
-		const { fqdn } = resolveHostname(name, store.settings.baseDomain);
-		const hostname = store.hostnames.find((entry) => entry.fqdn === fqdn);
-
-		if (!hostname) {
-			throw new Error(t("core.domains.unmanaged", { fqdn }));
-		}
+		const hostname = managedHostname(store, name);
+		const fqdn = hostname.fqdn;
 
 		let velocityReloaded: boolean | undefined;
 		const previous = hostname.instance;
@@ -789,12 +921,8 @@ export async function deleteHostname(cfg: ClusterConfig, name: string, actor: st
 	return await serialized(async () => {
 		const store = await loadStore();
 		const settings = store.settings;
-		const { fqdn, label } = resolveHostname(name, settings.baseDomain);
-		const hostname = store.hostnames.find((entry) => entry.fqdn === fqdn);
-
-		if (!hostname) {
-			throw new Error(t("core.domains.unmanaged", { fqdn }));
-		}
+		const hostname = managedHostname(store, name);
+		const { fqdn, label } = hostname;
 
 		let velocityReloaded: boolean | undefined;
 
@@ -802,7 +930,7 @@ export async function deleteHostname(cfg: ClusterConfig, name: string, actor: st
 			velocityReloaded = (await setForcedHost(cfg, hostname.instance, fqdn, false)).velocityReloaded;
 		}
 
-		const { zone, prefix } = await baseZone(settings);
+		const { zone, prefix } = await baseZone(settings, hostname.base);
 		const relative = relativeName(label, prefix);
 
 		// only the A record luna wrote goes; anything added there by hand stays
