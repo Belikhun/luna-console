@@ -42,7 +42,7 @@
 			return;
 		}
 
-		if (!(await copyText(String(cellItem.value)))) {
+		if (!(await copyText(cellItem.copyValue ?? String(cellItem.value)))) {
 			return;
 		}
 

@@ -6,6 +6,7 @@
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
 	import Btn from './Btn.svelte';
+	import { t } from '$lib/i18n.svelte';
 
 	/** A single flashbar message. */
 	let {
@@ -30,7 +31,7 @@
 	<span class="fi"><Icon name={icons[kind]} size="1rem" /></span>
 	<div class="msg">{@render children()}</div>
 	{#if dismiss}
-		<Btn variant="icon" icon="close" title="Dismiss" onclick={dismiss} />
+		<Btn variant="icon" icon="close" title={t('web.common.dismiss')} onclick={dismiss} />
 	{/if}
 </div>
 

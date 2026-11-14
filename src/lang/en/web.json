@@ -212,7 +212,9 @@
 		"loadFailedNamed": "Could not load {name}",
 		"state": "State",
 		"clickToSwap": "click to swap",
-		"notAllowed": "Your policies do not allow {action}"
+		"notAllowed": "Your policies do not allow {action}",
+		"dismiss": "Dismiss",
+		"clear": "Clear"
 	},
 	"table": {
 		"emptyTitle": "No resources to display",
@@ -240,7 +242,11 @@
 		"clearFilters": "Clear search and filters",
 		"previousPage": "Previous page",
 		"nextPage": "Next page",
-		"expandRow": "Show details"
+		"expandRow": "Show details",
+		"range": "{from}-{to} of {count}",
+		"noMatch": "No {noun} matches your search",
+		"noMatchText": "Nothing here answers the current search and filters.",
+		"dragToReorder": "Drag to reorder"
 	},
 	"search": {
 		"noMatches": "No matches for “{query}”"
@@ -6020,5 +6026,15 @@
 		"noteRoles": "A viewer reads the conversation and follows Mèo Béo live. A collaborator can also write in it, rename it and rewind it.",
 		"noteAuthority": "Each answer runs with the permissions of whoever sent the message and waits for that person's approvals; a collaborator's message waits for an answer already running as someone else.",
 		"noteRedaction": "A tool's result is shown only to the person whose answer produced it, since it reflects their permissions; others see that the call was made. Mèo Béo's replies are shown as written, so keep that in mind before sharing what it read."
+	},
+	"crumbs": {
+		"new": "New",
+		"edit": "Edit",
+		"configure": "Configure",
+		"console": "Console",
+		"files": "Files",
+		"network": "Network",
+		"pools": "Port pools",
+		"public": "Public page"
 	}
 }

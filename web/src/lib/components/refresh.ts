@@ -2,6 +2,11 @@
 // Proprietary software: use, copying, modification and distribution are
 // prohibited without written permission. See LICENSE at the repository root.
 
+import { currentLanguage } from '$lib/i18n.svelte';
+
+// the month is written out, so it follows the console's language
+const DATE_LOCALES: Record<string, string> = { en: 'en-US', vi: 'vi-VN' };
+
 /** Auto-refresh intervals offered by RefreshControl; labels are i18n keys. */
 export const REFRESH_INTERVALS: Array<{ label: string; ms: number }> = [
 	{ label: 'web.refresh.off', ms: 0 },
@@ -15,7 +20,7 @@ export const REFRESH_INTERVALS: Array<{ label: string; ms: number }> = [
 export const DEFAULT_REFRESH_MS = 10_000;
 
 /**
- * Absolute timestamp in the console's format, e.g.
+ * Absolute timestamp in the console's format and language, e.g.
  * "August 1, 2026, 13:38 (UTC+7:00)".
  */
 export function formatLastUpdated(at: number | null): string {
@@ -24,7 +29,8 @@ export function formatLastUpdated(at: number | null): string {
 	}
 
 	const when = new Date(at);
-	const date = when.toLocaleDateString('en-US', {
+	const locale = DATE_LOCALES[currentLanguage()] ?? 'en-US';
+	const date = when.toLocaleDateString(locale, {
 		month: 'long',
 		day: 'numeric',
 		year: 'numeric'

@@ -19,9 +19,12 @@
 		progressColor = 'var(--success)',
 		segments,
 		segmentsEmpty = 'none',
+		wide = false,
 		children
 	}: {
 		label: string;
+		/** twice the share of the bar's width, for a value read whole (a host name) */
+		wide?: boolean;
 		/** 0..1 */
 		progress?: number;
 		progressColor?: string;
@@ -33,7 +36,7 @@
 	} = $props();
 </script>
 
-<div class="ovc">
+<div class="ovc" class:wide>
 	<div class="l">{label}</div>
 	{#if segments}
 		<DistributionBar {segments} empty={segmentsEmpty} />

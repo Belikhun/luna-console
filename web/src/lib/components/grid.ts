@@ -8,6 +8,8 @@ export interface InfoCell {
 	label: string;
 	value?: string | number | null;
 	copyable?: boolean;
+	/** What the copy button copies, when it is not the shown value (a full commit hash) */
+	copyValue?: string;
 	/** value rendering style */
 	style?: 'default' | 'heading' | 'code' | 'mono';
 	colSpan?: number | 'all';

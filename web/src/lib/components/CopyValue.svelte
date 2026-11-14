@@ -21,6 +21,7 @@
 	 */
 	let {
 		value,
+		text,
 		label,
 		mono = true,
 		/** Render as a pill button rather than inline text */
@@ -28,6 +29,8 @@
 		size = 'default'
 	}: {
 		value: string;
+		/** What is shown, when it is not the copied value itself (a short commit hash) */
+		text?: string;
 		/** Names the value for the button's accessible label */
 		label?: string;
 		mono?: boolean;
@@ -77,7 +80,7 @@
 			size="0.875em"
 			color={copied ? 'var(--link)' : undefined}
 		/>
-		<span>{value}</span>
+		<span>{text ?? value}</span>
 	</button>
 {:else}
 	<span class="inline">
@@ -94,7 +97,7 @@
 				color={copied ? 'var(--link)' : undefined}
 			/>
 		</button>
-		<span class="value" class:mono>{value}</span>
+		<span class="value" class:mono>{text ?? value}</span>
 	</span>
 {/if}
 

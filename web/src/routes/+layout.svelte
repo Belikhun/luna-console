@@ -381,16 +381,62 @@
 	]);
 
 	/**
-	 * Route literals whose title-cased slug would read wrong: `iam` is not a
-	 * word, and AWS calls the groups screen "User groups". Keyed by route id, so
-	 * a dynamic segment that happens to spell one of these is untouched.
+	 * Route literals named in the reader's language rather than by their
+	 * title-cased slug, which is English and, for `iam`, not a word; AWS calls
+	 * the groups screen "User groups". Keyed by route id, so a dynamic segment
+	 * that happens to spell one of these is untouched.
 	 */
 	const ROUTE_LABELS: Record<string, string> = $derived({
+		'/addons': t('web.nav.addons'),
+		'/addons/groups': t('web.nav.addonGroups'),
+		'/agent': t('web.nav.agent'),
+		'/cleanup': t('web.nav.cleanup'),
+		'/console': t('web.nav.console'),
+		'/console/accounts': t('web.nav.accounts'),
+		'/console/agent': t('web.nav.agent'),
 		'/console/iam': t('web.nav.accessManagement'),
 		'/console/iam/groups': t('web.nav.iamGroups'),
 		'/console/iam/policies': t('web.nav.iamPolicies'),
 		'/console/iam/simulator': t('web.nav.iamSimulator'),
-		'/console/iam/activity': t('web.nav.iamActivity')
+		'/console/iam/activity': t('web.nav.iamActivity'),
+		'/console/knowledge': t('web.nav.knowledge'),
+		'/console/logs': t('web.nav.consoleLogs'),
+		'/console/mcp': t('web.nav.mcp'),
+		'/console/resources': t('web.nav.resourcesTags'),
+		'/datapacks': t('web.nav.dataPacks'),
+		'/environment': t('web.nav.environment'),
+		'/gallery': t('web.nav.components'),
+		'/instances': t('web.nav.instances'),
+		'/instances/launch': t('web.nav.launchInstance'),
+		'/instances/selector': t('web.nav.serverSelector'),
+		'/instances/[name]/console': t('web.crumbs.console'),
+		'/instances/[name]/files': t('web.crumbs.files'),
+		'/instances/[name]/players': t('web.nav.players'),
+		'/instances/[name]/plugins': t(INSTANCE_TAB_LABELS.plugins),
+		'/machines': t('web.nav.machines'),
+		'/mods': t('web.nav.mods'),
+		'/network': t('web.crumbs.network'),
+		'/network/domains': t('web.nav.domains'),
+		'/network/pools': t('web.crumbs.pools'),
+		'/packs': t('web.nav.resourcePacks'),
+		'/permissions': t('web.nav.permissionGroups'),
+		'/players': t('web.nav.players'),
+		'/players/moderation': t('web.nav.moderation'),
+		'/players/online': t('web.nav.onlinePlayers'),
+		'/plugins': t('web.nav.plugins'),
+		'/proxy': t('web.nav.proxyRouting'),
+		'/public': t('web.crumbs.public'),
+		'/runtime': t('web.nav.runtime'),
+		'/runtime/java': t('web.nav.javaRuntimes'),
+		'/runtime/profiles': t('web.nav.javaProfiles'),
+		'/schedules': t('web.nav.schedules')
+	});
+
+	// the verbs that recur under several screens, by their literal segment
+	const SEGMENT_LABELS: Record<string, string> = $derived({
+		new: t('web.crumbs.new'),
+		edit: t('web.crumbs.edit'),
+		configure: t('web.crumbs.configure')
 	});
 
 	const crumbs = $derived.by(() => {
@@ -429,7 +475,7 @@
 			const label =
 				crumbLabel(path) ??
 				tabLabel ??
-				(!dynamic ? ROUTE_LABELS[route] : undefined) ??
+				(!dynamic ? ROUTE_LABELS[route] ?? SEGMENT_LABELS[part] : undefined) ??
 				(!dynamic && /^[a-z]+$/.test(part) ? part.charAt(0).toUpperCase() + part.slice(1) : part);
 
 			out.push({ label, href: PAGE_ROUTES.has(route) ? path : '' });
@@ -520,15 +566,17 @@
 					</span>
 					<span class="regdiv"></span>
 				{/if}
-				<span class="where">
+				<span class="where" use:tooltip={{ content: `${host?.name ?? '—'} · ${host?.root ?? '—'}` }}>
 					<Icon name="hardDrive" size="0.875rem" style="solid" />
-					{host?.name ?? '—'} · {host?.root ?? '—'}
+					<span class="host">{host?.name ?? '—'}</span>
+					<span class="root">· {host?.root ?? '—'}</span>
 				</span>
 				<span class="regdiv"></span>
 				<button
 					class="agentbtn"
 					class:on={Agent.open}
-					title={t('web.layout.agentToggle')}
+					aria-label={t('web.layout.agentToggle')}
+					use:tooltip={{ content: t('web.layout.agentToggle') }}
 					onclick={() => Agent.toggle()}
 				>
 					<img class="cat" src="/agent/meo-beo.webp" alt="" />
@@ -567,7 +615,8 @@
 						<button
 							class="collapse"
 							onclick={() => (navCollapsed = !navCollapsed)}
-							title={navCollapsed ? t('web.layout.expand') : t('web.layout.collapse')}
+							aria-label={navCollapsed ? t('web.layout.expand') : t('web.layout.collapse')}
+							use:tooltip={{ content: navCollapsed ? t('web.layout.expand') : t('web.layout.collapse') }}
 						>
 							<Icon name={navCollapsed ? 'rightFromLine' : 'leftFromLine'} size="0.875rem" style="solid" />
 						</button>
@@ -696,20 +745,53 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.75rem;
-		flex: none;
+		// gives way before the account menu and the agent button do
+		flex: 0 1 auto;
+		min-width: 0;
 		color: var(--text-secondary);
 		font-size: 0.75rem;
 	}
+
+	// the cluster root is long; it shortens to an ellipsis, then to the machine's
+	// name alone
 	.region .where {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
+		min-width: 0;
+
+		.host {
+			flex: none;
+
+			@include below($bp-medium) {
+				display: none;
+			}
+		}
+
+		.root {
+			@include ellipsis;
+
+			min-width: 0;
+
+			@include below(90rem) {
+				display: none;
+			}
+		}
 	}
 
 	.disk {
 		display: inline-flex;
 		align-items: center;
 		font-size: 0.6875rem;
+
+		// on a narrow screen the meter and its divider make room for the account menu
+		@include below($bp-medium) {
+			display: none;
+
+			+ .regdiv {
+				display: none;
+			}
+		}
 	}
 
 	.regdiv {

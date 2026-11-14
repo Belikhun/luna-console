@@ -23,6 +23,9 @@
 		width = '15rem',
 		searchable,
 		disabled,
+		id,
+		ariaLabel,
+		mono = false,
 		onchange
 	}: {
 		/** caption notched into the field's top border */
@@ -38,6 +41,13 @@
 		/** the whole control, not one entry: nothing to pick yet, or a list still
 		 *  loading. It cannot open, so it reads as a field rather than a menu */
 		disabled?: boolean;
+		/** for a `<label for>` elsewhere on the page */
+		id?: string;
+		/** the field's name when no notched `label` is shown */
+		ariaLabel?: string;
+		/** the value and the entries in the mono face at a text field's mono
+		 *  size, for a value that reads as part of a name typed beside it */
+		mono?: boolean;
 		onchange?: (value: string) => void;
 	} = $props();
 
@@ -180,12 +190,14 @@
 		class="box"
 		class:open
 		type="button"
+		{id}
+		aria-label={ariaLabel ?? label}
 		aria-haspopup="listbox"
 		aria-expanded={open}
 		{disabled}
 		onclick={toggle}
 	>
-		<span class="val">{selected?.label ?? ''}</span>
+		<span class="val" class:mono>{selected?.label ?? ''}</span>
 		<span class="caret"><Icon name="caretDown" size="0.75rem" style="solid" /></span>
 	</button>
 	{#if open}
@@ -212,6 +224,7 @@
 			{#each shown as option (option.value)}
 				{@const current = option.value === selected?.value}
 				<button
+					type="button"
 					class="opt"
 					class:current
 					role="option"
@@ -219,7 +232,7 @@
 					disabled={option.disabled}
 					onclick={() => pick(option)}
 				>
-					<span class="otext">{option.label}</span>
+					<span class="otext" class:mono>{option.label}</span>
 					{#if current}<Icon name="check" size="0.875rem" style="solid" />{/if}
 				</button>
 			{/each}

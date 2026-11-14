@@ -5,6 +5,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
+	import { tooltip } from '$lib/tooltip.svelte';
 
 	/**
 	 * The console's button. Variants: `normal` (blue outline pill), `primary`
@@ -20,6 +21,7 @@
 		disabled = false,
 		loading = false,
 		href,
+		external = false,
 		title,
 		type = 'button',
 		onclick,
@@ -31,6 +33,8 @@
 		disabled?: boolean;
 		loading?: boolean;
 		href?: string;
+		/** With `href`: open it in a new tab, for a link that leaves the console (an app's own site) */
+		external?: boolean;
 		title?: string;
 		type?: 'button' | 'submit';
 		onclick?: (event: MouseEvent) => void;
@@ -38,21 +42,43 @@
 	} = $props();
 </script>
 
-{#if href && !disabled}
-	<a class="btn {variant}" {href} {title}>
-		{#if loading}<Icon name="rotate" spin />{:else if icon}<Icon name={icon} />{/if}
-		{#if children}<span>{@render children()}</span>{/if}
-		{#if caret}<Icon name="caretDown" size="0.75rem" />{/if}
-	</a>
+{#snippet body()}
+	{#if href && !disabled}
+		<a class="btn {variant}" {href} aria-label={children ? undefined : title} target={external ? '_blank' : undefined} rel={external ? 'noreferrer' : undefined}>
+			{#if loading}<Icon name="rotate" spin />{:else if icon}<Icon name={icon} />{/if}
+			{#if children}<span>{@render children()}</span>{/if}
+			{#if caret}<Icon name="caretDown" size="0.75rem" />{/if}
+		</a>
+	{:else}
+		<button class="btn {variant}" disabled={disabled || loading} aria-label={children ? undefined : title} {type} {onclick}>
+			{#if loading}<Icon name="rotate" spin />{:else if icon}<Icon name={icon} />{/if}
+			{#if children}<span>{@render children()}</span>{/if}
+			{#if caret}<Icon name="caretDown" size="0.75rem" />{/if}
+		</button>
+	{/if}
+{/snippet}
+
+<!-- `title` is shown by the kit tooltip, never the browser's: on a wrapper, since a
+     disabled button receives no pointer events and its reason is what the tooltip
+     is for. Without a title the button renders bare, as before. -->
+{#if title}
+	<span class="tip" use:tooltip={{ content: title }}>
+		{@render body()}
+	</span>
 {:else}
-	<button class="btn {variant}" disabled={disabled || loading} {title} {type} {onclick}>
-		{#if loading}<Icon name="rotate" spin />{:else if icon}<Icon name={icon} />{/if}
-		{#if children}<span>{@render children()}</span>{/if}
-		{#if caret}<Icon name="caretDown" size="0.75rem" />{/if}
-	</button>
+	{@render body()}
 {/if}
 
 <style lang="scss">
+	.tip {
+		display: inline-flex;
+
+		// the wrapper takes the pointer, so a disabled button still explains itself
+		> :global(.btn:disabled) {
+			pointer-events: none;
+		}
+	}
+
 	.btn {
 		display: inline-flex;
 		align-items: center;
@@ -142,9 +168,15 @@
 		padding: 0.125rem 0.375rem;
 		border-radius: 0.5rem;
 
-		&:hover {
+		&:hover:not(:disabled) {
 			color: var(--link);
 			background: transparent;
+		}
+
+		// follows .btn:disabled in source order at equal specificity, so the
+		// disabled colour has to be said again here or the icon reads as live
+		&:disabled {
+			color: var(--text-disabled);
 		}
 	}
 

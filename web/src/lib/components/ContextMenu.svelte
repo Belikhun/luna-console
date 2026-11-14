@@ -5,6 +5,7 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
 	import Icon from './Icon.svelte';
+	import { tooltip } from '$lib/tooltip.svelte';
 	import BrandIcon from './BrandIcon.svelte';
 	import Spinner from './Spinner.svelte';
 	import {
@@ -316,29 +317,32 @@
 	{:else if item.header}
 		<div class="section">{item.label}</div>
 	{:else}
-		<button
-			type="button"
-			class="item"
-			class:has-submenu={!!item.submenu}
-			class:processing={busy === key}
-			data-color={item.color ?? 'default'}
-			disabled={item.disabled || busy !== null}
-			title={item.hint ?? null}
-			onmouseenter={(event) => (inSub ? cancelSubClose() : void enter(item, index, event))}
-			onclick={(event) => run(item, key, index, event)}
-		>
-			{#if busy === key}
-				<span class="ico"><Spinner size="0.875rem" /></span>
-			{:else if item.brand}
-				<span class="ico"><BrandIcon name={item.brand} size="0.875rem" /></span>
-			{:else if item.icon}
-				<span class="ico"><Icon name={item.icon} size="0.875rem" /></span>
-			{/if}
-			<span class="label">{item.label}</span>
-			{#if item.submenu}
-				<span class="arrow"><Icon name="arrowRight" size="0.75rem" /></span>
-			{/if}
-		</button>
+		<!-- a disabled button takes no pointer events, so the reason it gives hangs
+		     on a wrapper and shows through the kit tooltip, never a native title -->
+		<div class="row" use:tooltip={{ content: () => item.hint ?? '', position: 'right' }}>
+			<button
+				type="button"
+				class="item"
+				class:has-submenu={!!item.submenu}
+				class:processing={busy === key}
+				data-color={item.color ?? 'default'}
+				disabled={item.disabled || busy !== null}
+				onmouseenter={(event) => (inSub ? cancelSubClose() : void enter(item, index, event))}
+				onclick={(event) => run(item, key, index, event)}
+			>
+				{#if busy === key}
+					<span class="ico"><Spinner size="0.875rem" /></span>
+				{:else if item.brand}
+					<span class="ico"><BrandIcon name={item.brand} size="0.875rem" /></span>
+				{:else if item.icon}
+					<span class="ico"><Icon name={item.icon} size="0.875rem" /></span>
+				{/if}
+				<span class="label">{item.label}</span>
+				{#if item.submenu}
+					<span class="arrow"><Icon name="arrowRight" size="0.75rem" /></span>
+				{/if}
+			</button>
+		</div>
 	{/if}
 {/snippet}
 
@@ -440,6 +444,10 @@
 		padding: 0.375rem 1rem 0.25rem;
 	}
 
+	.row {
+		display: block;
+	}
+
 	.item {
 		--tint: var(--text);
 
@@ -480,9 +488,11 @@
 			padding-right: 2rem;
 		}
 
+		// the wrapper takes the hover, so the reason's tooltip still shows
 		&:disabled {
 			opacity: 0.4;
 			cursor: default;
+			pointer-events: none;
 		}
 
 		&.processing {

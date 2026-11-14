@@ -81,6 +81,17 @@
 
 		padding: 0.75rem 1.25rem;
 		border-bottom: 0.1rem solid var(--border-divider);
+
+		// on a narrow window a full action bar would squeeze the title into a
+		// column of single words; it drops under the title instead
+		@include below($bp-medium) {
+			flex-wrap: wrap;
+		}
+	}
+
+	.ht {
+		flex: 1 1 12rem;
+		min-width: 0;
 	}
 
 	.desc {
@@ -94,6 +105,12 @@
 		gap: 0.5rem;
 		align-items: center;
 		flex-wrap: wrap;
+
+		// a labelled Select reserves 0.5rem above its box for the notched label;
+		// lifted by that much, its box sits level with the buttons beside it
+		:global(.sel.labelled) {
+			margin-top: -0.5rem;
+		}
 	}
 
 	.bd {

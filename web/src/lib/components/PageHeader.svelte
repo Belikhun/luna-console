@@ -54,7 +54,7 @@
 	// that, the bar wraps under the title instead of leaving a one-word-per-line
 	// description beside it
 	.left {
-		flex: 1 1 20rem;
+		flex: 1 1 16rem;
 		min-width: 0;
 	}
 
@@ -90,9 +90,9 @@
 		margin-left: auto;
 		max-width: 100%;
 
-		// only a genuinely narrow viewport may stack them
-		@include below($bp-medium) {
-			flex-wrap: wrap;
-		}
+		// a bar wider than its row wraps from the right rather than running out
+		// past the left edge under the side nav (an instance's header at 1280,
+		// with its refresh stamp, is wider than the content column)
+		flex-wrap: wrap;
 	}
 </style>

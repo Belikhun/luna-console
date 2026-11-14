@@ -212,7 +212,9 @@
 		"loadFailedNamed": "Không tải được {name}",
 		"state": "Trạng thái",
 		"clickToSwap": "bấm để đổi",
-		"notAllowed": "Chính sách của bạn không cho phép {action}"
+		"notAllowed": "Chính sách của bạn không cho phép {action}",
+		"dismiss": "Ẩn thông báo",
+		"clear": "Xoá"
 	},
 	"table": {
 		"emptyTitle": "Không có tài nguyên nào để hiển thị",
@@ -240,7 +242,11 @@
 		"clearFilters": "Xóa tìm kiếm và bộ lọc",
 		"previousPage": "Trang trước",
 		"nextPage": "Trang sau",
-		"expandRow": "Hiện chi tiết"
+		"expandRow": "Hiện chi tiết",
+		"range": "{from}-{to} trên {count}",
+		"noMatch": "Không có {noun} nào khớp với tìm kiếm",
+		"noMatchText": "Không có gì khớp với tìm kiếm và bộ lọc hiện tại.",
+		"dragToReorder": "Kéo để sắp xếp lại"
 	},
 	"search": {
 		"noMatches": "Không có kết quả cho “{query}”"
@@ -6020,5 +6026,15 @@
 		"noteRoles": "Người xem đọc được cuộc trò chuyện và theo dõi Mèo Béo trực tiếp. Cộng tác viên còn viết, đổi tên và quay lại được.",
 		"noteAuthority": "Mỗi câu trả lời chạy với quyền của người gửi tin nhắn và chờ người đó duyệt; tin nhắn của cộng tác viên sẽ đợi câu trả lời đang chạy dưới tên người khác.",
 		"noteRedaction": "Kết quả công cụ chỉ hiện cho người có câu trả lời tạo ra nó, vì nó phản ánh quyền của người đó; người khác chỉ thấy lệnh gọi đã diễn ra. Câu trả lời của Mèo Béo hiện nguyên văn, nên hãy cân nhắc trước khi chia sẻ những gì nó đã đọc."
+	},
+	"crumbs": {
+		"new": "Tạo mới",
+		"edit": "Sửa",
+		"configure": "Cấu hình",
+		"console": "Console",
+		"files": "Tệp",
+		"network": "Mạng",
+		"pools": "Pool cổng",
+		"public": "Trang công khai"
 	}
 }

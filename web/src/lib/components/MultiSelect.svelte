@@ -176,6 +176,7 @@
 			{#each options as option (option.value)}
 				{@const picked = value.includes(option.value)}
 				<button
+					type="button"
 					class="opt"
 					class:picked
 					role="option"

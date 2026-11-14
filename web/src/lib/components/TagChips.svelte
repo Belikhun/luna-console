@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { tooltip } from '$lib/tooltip.svelte';
 	import { tagEntries, type TagMap } from './tageditor';
 
 	/**
@@ -36,7 +37,7 @@
 {:else}
 	<span class="chips">
 		{#each drawn as entry (entry.key)}
-			<span class="chip mono" title="{entry.key}={entry.value}">
+			<span class="chip mono" use:tooltip={{ content: `${entry.key}=${entry.value}` }}>
 				<span class="k">{entry.key}</span>
 				{#if entry.value !== ''}
 					<span class="v">={entry.value}</span>
@@ -45,7 +46,7 @@
 		{/each}
 
 		{#if rest.length > 0}
-			<span class="chip more" title={restTitle}>{t('web.resourceMeta.moreTags', { count: rest.length })}</span>
+			<span class="chip more" use:tooltip={{ content: restTitle }}>{t('web.resourceMeta.moreTags', { count: rest.length })}</span>
 		{/if}
 	</span>
 {/if}

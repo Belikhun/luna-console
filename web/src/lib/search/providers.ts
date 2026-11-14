@@ -23,6 +23,12 @@ export interface SearchHit {
 	detail: string;
 	href: string;
 	icon: string;
+	/** Breaks a tie between hits that match as well; higher comes first */
+	order?: number;
+	/** Queries that name this hit exactly; such a hit comes first */
+	exact?: string[];
+	/** other words that find this hit, never shown */
+	keywords?: string;
 }
 
 export interface SearchProvider {

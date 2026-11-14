@@ -33,7 +33,9 @@
 		children,
 		steps,
 		step = $bindable(0),
-		cancelHref
+		cancelHref,
+		reason,
+		extra
 	}: {
 		title: string;
 		description?: string;
@@ -53,8 +55,12 @@
 		steps?: WizardStep[];
 		/** index into `steps`; the caller renders the matching body */
 		step?: number;
-		/** where Cancel goes on a stepped page */
+		/** where Cancel goes */
 		cancelHref?: string;
+		/** why submit is disabled, shown in the bar in place of the recap */
+		reason?: string;
+		/** a control that belongs beside the submit button, such as "deploy now" */
+		extra?: Snippet;
 	} = $props();
 
 	const current = $derived(steps ? steps[Math.min(step, steps.length - 1)] : undefined);
@@ -154,10 +160,22 @@
 		{@render children()}
 
 		<div class="bar">
-			<span class="recap dim">{@render summary()}</span>
-			<Btn variant="primary" {disabled} {loading} onclick={onsubmit}>
-				{submitLabel}
-			</Btn>
+			<span class="recap dim">
+				{#if disabled && reason}
+					<span class="reason"><Icon name="circleInfo" /> {reason}</span>
+				{:else}
+					{@render summary()}
+				{/if}
+			</span>
+			<span class="buttons">
+				{@render extra?.()}
+				{#if cancelHref}
+					<Btn variant="link" href={cancelHref}>{t('web.common.cancel')}</Btn>
+				{/if}
+				<Btn variant="primary" {disabled} {loading} onclick={onsubmit}>
+					{submitLabel}
+				</Btn>
+			</span>
 		</div>
 	</div>
 {/if}
@@ -191,6 +209,13 @@
 
 	.recap {
 		min-width: 0;
+	}
+
+	.reason {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		color: var(--text-label);
 	}
 
 	// ---- stepped page ----

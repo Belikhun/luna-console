@@ -101,8 +101,13 @@
 		line-height: 1.25rem;
 
 		// nowrap plus a max-width just spills the text out of the card; long
-		// tooltips have to wrap inside it, as the dashboard's do
-		max-width: 22rem;
+		// tooltips have to wrap inside it, as the dashboard's do. The card sizes to
+		// its text, not to the room left between the anchor and the viewport edge:
+		// near the right edge that room is a sliver, and a shrink-to-fit card wrapped
+		// a short hint into a column a few words wide. `clampTooltip` then moves the
+		// card back inside the viewport.
+		width: max-content;
+		max-width: min(22rem, calc(100vw - 2rem));
 		white-space: normal;
 
 		opacity: 0;

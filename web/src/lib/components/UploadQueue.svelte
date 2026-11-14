@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { tooltip } from '$lib/tooltip.svelte';
 	import { formatBytes, formatRate } from '$lib/upload';
 	import { baseName, parentOf } from '$lib/files';
 	import type { UploadItem, UploadQueue } from '$lib/uploads.svelte';
@@ -130,11 +131,12 @@
 				class="hbtn"
 				onclick={() => (collapsed = !collapsed)}
 				aria-expanded={!collapsed}
-				title={collapsed ? t('web.instanceFiles.trayExpand') : t('web.instanceFiles.trayCollapse')}
+				aria-label={collapsed ? t('web.instanceFiles.trayExpand') : t('web.instanceFiles.trayCollapse')}
+				use:tooltip={{ content: collapsed ? t('web.instanceFiles.trayExpand') : t('web.instanceFiles.trayCollapse') }}
 			>
 				<Icon name={collapsed ? 'arrowUp' : 'arrowDown'} size="0.75rem" style="solid" />
 			</button>
-			<button class="hbtn" onclick={dismiss} title={t('web.common.close')}>
+			<button class="hbtn" onclick={dismiss} use:tooltip={{ content: t('web.common.close') }} aria-label={t('web.common.close')}>
 				<Icon name="close" size="0.75rem" style="solid" />
 			</button>
 		</div>
@@ -149,7 +151,7 @@
 				<div class="row" class:failed={item.state === 'failed'}>
 					<Icon name="file" size="1rem" style="light" />
 					<div class="what">
-						<span class="nm" title={item.path}>{baseName(item.path)}</span>
+						<span class="nm" use:tooltip={{ content: item.path }}>{baseName(item.path)}</span>
 						<span class="line" class:err={item.state === 'failed'}>{rowLine(item)}</span>
 					</div>
 					<div class="end">
@@ -158,7 +160,7 @@
 							<Btn variant="link" onclick={() => queue.resolveConflict(item, 'skip')}>{t('web.instanceFiles.skip')}</Btn>
 						{:else if item.state === 'failed' || item.state === 'cancelled'}
 							<span class="mark bad"><Icon name="circleXMark" size="1.125rem" style="solid" /></span>
-							<button class="rbtn" title={t('web.common.retry')} onclick={() => queue.retry(item)}>
+							<button class="rbtn" use:tooltip={{ content: t('web.common.retry') }} aria-label={t('web.common.retry')} onclick={() => queue.retry(item)}>
 								<Icon name="rotateLeft" size="0.75rem" style="solid" />
 							</button>
 						{:else if item.state === 'done'}
@@ -179,7 +181,7 @@
 									stroke-dashoffset={RING_C * (1 - fraction(item))}
 								/>
 							</svg>
-							<button class="rbtn" title={t('web.common.cancel')} onclick={() => queue.cancel(item)}>
+							<button class="rbtn" use:tooltip={{ content: t('web.common.cancel') }} aria-label={t('web.common.cancel')} onclick={() => queue.cancel(item)}>
 								<Icon name="close" size="0.75rem" style="solid" />
 							</button>
 						{/if}

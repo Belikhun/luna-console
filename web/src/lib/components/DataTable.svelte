@@ -5,6 +5,7 @@
 <script lang="ts" generics="T = any">
 	import { t } from '$lib/i18n.svelte';
 	import { untrack, type Snippet } from 'svelte';
+	import { tooltip } from '$lib/tooltip.svelte';
 	import Icon from './Icon.svelte';
 	import Checkbox from './Checkbox.svelte';
 	import Toggle from './Toggle.svelte';
@@ -50,6 +51,8 @@
 		cell,
 		toolbar,
 		filters,
+		initialFilters,
+		onfilterchange,
 		selectable = 'none',
 		selected = $bindable(new Set<string>()),
 		sortValue: baseSortValue,
@@ -72,6 +75,7 @@
 		emptyExtra,
 		defaultSort,
 		filtersActive = $bindable(false),
+		filteredCount = $bindable(0),
 		loading = false,
 		expanded,
 		expandable,
@@ -87,6 +91,10 @@
 		toolbar?: Snippet;
 		/** canned attribute filters, one inline-labelled select per group */
 		filters?: TableFilterGroup<T>[];
+		/** the option each filter group starts on, by group id; its first option otherwise */
+		initialFilters?: Record<string, string>;
+		/** told the filter values whenever one changes, so a screen can keep them in its address */
+		onfilterchange?: (values: Record<string, string>) => void;
 		selectable?: 'none' | 'single' | 'multi';
 		selected?: Set<string>;
 		sortValue?: (row: T, columnId: string) => string | number | null;
@@ -133,6 +141,9 @@
 		defaultSort?: { col: string; dir?: 'asc' | 'desc' };
 		/** true while any filter group is on something other than "any value" */
 		filtersActive?: boolean;
+		/** how many rows the filter groups leave, so a wrapper can tell "nothing
+		 *  matches" from "nothing exists" whatever narrowed the rows */
+		filteredCount?: number;
 		/** the rows are still on their way. With none yet, the body shows ghost rows
 		 *  in place of the empty state, which would claim there is nothing; with
 		 *  some, a refresh keeps showing them */
@@ -200,6 +211,8 @@
 	/** px; fallbacks for a column that has never been measured or resized */
 	const DEFAULT_COL_W = 120;
 	const MIN_COL_W = 56;
+	/** px added to a measured header so its sort caret and any sub-pixel never cut the label */
+	const MEASURE_SLACK = 2;
 
 	/** px; mirrors the `2.75rem` the selection column is given in CSS */
 	const SEL_COL_W = 44;
@@ -269,10 +282,20 @@
 	const filterValues: Record<string, string> = $state(
 		untrack(() =>
 			Object.fromEntries(
-				(filters ?? []).map((group) => [group.id, group.options[0]?.value ?? ''])
+				(filters ?? []).map((group) => [group.id, initialFilters?.[group.id] ?? group.options[0]?.value ?? ''])
 			)
 		)
 	);
+
+	// a group the screen adds after the table mounted (one that waits on data,
+	// like a zone filter shown only once several zones are known) starts the same way
+	$effect.pre(() => {
+		for (const group of filters ?? []) {
+			if (!(group.id in untrack(() => filterValues))) {
+				filterValues[group.id] = untrack(() => initialFilters?.[group.id]) ?? group.options[0]?.value ?? '';
+			}
+		}
+	});
 
 	const orderedColumns = $derived(applyOrder(columns, order));
 	const hiddenNow = $derived(
@@ -300,7 +323,21 @@
 	// empty result can say "nothing matches" rather than "nothing exists"
 	$effect(() => {
 		filtersActive = matchers.length > 0;
+		filteredCount = filtered.length;
 	});
+
+	// read every value so the effect follows each group; untracked call, so a
+	// screen writing its address from it never loops back here
+	$effect(() => {
+		const values = { ...filterValues };
+
+		untrack(() => onfilterchange?.(values));
+	});
+
+	/** Set one filter group from outside the table, as a link to "these rows" does. */
+	export function setFilter(id: string, value: string): void {
+		filterValues[id] = value;
+	}
 
 	/** Reset every filter group to its "any value" entry. */
 	export function clearFilters(): void {
@@ -584,6 +621,95 @@
 	});
 
 	/**
+	 * The width a header cell needs to show its whole label: the label's own
+	 * width plus the cell's padding and whatever sits beside the label (the sort
+	 * caret). A flexible column never shrinks past it, so giving width back can
+	 * not clip the column's own name.
+	 */
+	function headerNeed(head: HTMLElement | undefined): number {
+		const name = head?.querySelector<HTMLElement>('.name');
+		const box = name?.parentElement;
+
+		if (!head || !name || !box) {
+			return 0;
+		}
+
+		const outer = getComputedStyle(head);
+		const inner = getComputedStyle(box);
+		const siblings = [...box.children].filter((child) => child !== name);
+		const beside = siblings.reduce((sum, child) => sum + child.getBoundingClientRect().width, 0);
+		const gaps = (parseFloat(inner.columnGap) || 0) * siblings.length;
+		const padding = parseFloat(outer.paddingLeft) + parseFloat(outer.paddingRight)
+			+ parseFloat(inner.paddingLeft) + parseFloat(inner.paddingRight);
+
+		// the label's own text, measured as a range: the label element itself is
+		// stretched to fill the header, so its box says nothing about the text
+		const range = document.createRange();
+
+		range.selectNodeContents(name);
+
+		const text = range.getBoundingClientRect().width;
+
+		return Math.ceil(text + beside + gaps + padding) + MEASURE_SLACK;
+	}
+
+	/**
+	 * Whole-pixel widths for the measured columns, never wider in total than the
+	 * container when they can fit it.
+	 *
+	 * A fixed column (a declared width) wants its exact width rounded up plus
+	 * `MEASURE_SLACK`: a floor took the sub-pixel its label needs and ellipsised
+	 * it by one pixel. But the pass runs the table at 100%, so the exact widths
+	 * already fill the container, and padding every column pushed the table past
+	 * it into a scrollbar. So the flexible columns (a minWidth and no declared
+	 * width: a description, a reason) pay for it: they ellipsise anyway, and
+	 * their long text is what inflated the pass. They give back what the fixed
+	 * columns need, down to their own floor. A table that still does not fit
+	 * scrolls whatever happens, and keeps every label whole.
+	 */
+	function fitWidths(exact: number[], table: HTMLTableElement): number[] {
+		// the container, not the table: a pass that overflowed has a table as wide as
+		// its content. The leading columns are the fixed boxes the layout gives them,
+		// not what they measured in the pass
+		// clientWidth, since a vertical scrollbar in the wrapper takes its share too
+		const budget = Math.floor(Math.min(wrapEl?.clientWidth || wrapWidth || Infinity, table.getBoundingClientRect().width)) - selWidth;
+		const flexible = visibleCols.map((col) => col.width === undefined);
+		const widths = exact.map((width, i) => flexible[i]
+			? Math.floor(width)
+			: Math.ceil(width) + MEASURE_SLACK);
+		let over = widths.reduce((sum, width) => sum + width, 0) - budget;
+
+		for (let i = 0; i < widths.length && over > 0; i++) {
+			if (!flexible[i]) {
+				continue;
+			}
+
+			const floor = Math.max(visibleCols[i]?.minWidth ?? 0, MIN_COL_W, headerNeed(headCells[i + lead]));
+			const give = Math.min(over, (widths[i] ?? 0) - floor);
+
+			if (give > 0) {
+				widths[i] = (widths[i] ?? 0) - give;
+				over -= give;
+			}
+		}
+
+		// without a flexible column to pay, the slack comes back off the fixed
+		// ones before any of them goes below its rounded-up width
+		for (let i = 0; i < widths.length && over > 0; i++) {
+			if (flexible[i]) {
+				continue;
+			}
+
+			const give = Math.min(over, MEASURE_SLACK);
+
+			widths[i] = (widths[i] ?? 0) - give;
+			over -= give;
+		}
+
+		return widths;
+	}
+
+	/**
 	 * Measure what the browser would give each column if the table laid itself out
 	 * freely, and restore the applied widths before anything is painted.
 	 *
@@ -627,14 +753,11 @@
 		table.style.width = '100%';
 
 		const next: Record<string, number> = {};
+		const exact = visibleCols.map((_, ci) => headCells[ci + offset]?.getBoundingClientRect().width ?? 0);
+		const fitted = fitWidths(exact, table);
 
 		visibleCols.forEach((col, ci) => {
-			const head = headCells[ci + offset];
-
-			// floored, never rounded: rounding up can push the total a pixel past
-			// the container and raise a scrollbar over nothing, while the few pixels
-			// a floor leaves behind disappear into the filler
-			const natural = Math.floor(head?.getBoundingClientRect().width ?? 0);
+			const natural = fitted[ci] ?? 0;
 
 			// a cell that measures as nothing is not a column worth keeping; a
 			// declared or default width beats collapsing it to a sliver
@@ -858,7 +981,7 @@
 		const from = (page - 1) * effPageSize + 1;
 		const to = Math.min(page * effPageSize, sorted.length);
 
-		return `${from}-${to} of ${sorted.length}`;
+		return t('web.table.range', { from, to, count: sorted.length });
 	});
 
 	/**
@@ -905,7 +1028,7 @@
 						label={group.label}
 						bind:value={filterValues[group.id]}
 						options={group.options}
-						width="14rem"
+						width={group.width ?? '14rem'}
 						onchange={() => (page = 1)}
 					/>
 				{/each}
@@ -915,7 +1038,7 @@
 				{#if paging}<PagingBar bind:page max={maxPage} />{/if}
 				{#if tableId}
 					{#if paging}<span class="tb-div"></span>{/if}
-					<button class="gear" title="Preferences" onclick={openPrefs}>
+					<button class="gear" aria-label={t('web.table.preferences')} use:tooltip={{ content: t('web.table.preferences') }} onclick={openPrefs}>
 						<Icon name="gear" size="1.125rem" style="solid" />
 					</button>
 				{/if}
@@ -1234,7 +1357,7 @@
 						ondragover={(event) => event.preventDefault()}
 						ondrop={() => dropOn(col.id)}
 					>
-						<span class="grip" title="Drag to reorder">
+						<span class="grip" use:tooltip={{ content: t('web.table.dragToReorder') }}>
 							<Icon name="gripLines" size="0.875rem" style="solid" />
 						</span>
 						<span class="cname">{col.label}</span>
@@ -1265,13 +1388,18 @@
 		}
 	}
 
+	// on a narrow panel the paging side drops under the search rather than
+	// squeezing the search box down to a few letters
 	.tb {
 		position: relative;
 		display: flex;
+		flex-wrap: wrap;
 		align-items: flex-end;
 		justify-content: space-between;
 		gap: 1rem;
-		padding: 0.75rem 1rem;
+		// the panel header insets its title 1.25rem; the toolbar and the first
+		// column share that line, so a flush panel reads as one column of edges
+		padding: 0.75rem 1.25rem;
 	}
 
 	.tb-left {
@@ -1279,7 +1407,7 @@
 		align-items: flex-end;
 		flex-wrap: wrap;
 		gap: 0.75rem;
-		flex: 1;
+		flex: 1 1 16rem;
 		min-width: 0;
 	}
 
@@ -1417,6 +1545,16 @@
 	th.sel {
 		padding: 0.125rem 0;
 		border-left: 0.125rem solid transparent;
+	}
+
+	// a first column's text starts on the panel title's line, 1.25rem in: a
+	// body cell reserves a 0.125rem selection border, the header cell does not
+	th:first-child .hcell:not(.chk) {
+		padding-left: 1.25rem;
+	}
+
+	td:first-child .cell:not(.chk) {
+		padding-left: 1.125rem;
 	}
 
 	th .hcell.chk,

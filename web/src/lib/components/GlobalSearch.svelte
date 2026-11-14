@@ -78,14 +78,23 @@
 					continue;
 				}
 
-				const rank = Math.max(score(hit.label, needle), score(`${hit.label} ${hit.detail}`, needle) - 0.5);
+				const matched = Math.max(score(hit.label, needle), score(`${hit.label} ${hit.detail} ${hit.keywords ?? ''}`, needle) - 0.5);
+				// a query that names the hit exactly ("run 30") beats any partial match
+				const exact = hit.exact?.includes(needle.trim().toLowerCase()) ?? false;
+				const rank = exact
+					? matched + 100
+					: matched;
 
 				if (rank > 0) {
 					scored.push({ hit, rank });
 				}
 			}
 
-			scored.sort((a, b) => b.rank - a.rank);
+			// hits that match as well are put in their provider's order (the newest run first)
+			// before the fraction a shorter label earns decides
+			scored.sort((a, b) => Math.floor(b.rank) - Math.floor(a.rank)
+				|| (b.hit.order ?? 0) - (a.hit.order ?? 0)
+				|| b.rank - a.rank);
 			out.push(...scored.slice(0, MAX_PER_GROUP).map((entry) => entry.hit));
 		}
 
@@ -157,7 +166,7 @@
 	}
 
 	function onWindowKeydown(event: KeyboardEvent): void {
-		if (event.altKey && (event.key === 's' || event.key === 'S')) {
+		if (event.altKey && event.code === 'KeyS') {
 			event.preventDefault();
 
 			const from = document.activeElement;

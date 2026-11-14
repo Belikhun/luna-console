@@ -175,17 +175,36 @@ export interface TooltipAction {
 export function tooltip(node: HTMLElement, options: TooltipOptions): TooltipAction {
 	let current = options;
 
-	const enter = () => showTooltip(node, current);
-	const leave = () => hideTooltip(node);
+	// a trigger that opens a menu (`aria-haspopup`) keeps quiet once pressed, so
+	// its hint never covers the menu it opened; it speaks again after the pointer
+	// has left and come back
+	let pressed = false;
+
+	const enter = () => {
+		if (!pressed) {
+			showTooltip(node, current);
+		}
+	};
+	const leave = () => {
+		pressed = false;
+		hideTooltip(node);
+	};
+	const press = () => {
+		if (node.hasAttribute('aria-haspopup')) {
+			pressed = true;
+			hideTooltip(node);
+		}
+	};
 
 	node.addEventListener('mouseenter', enter);
 	node.addEventListener('mouseleave', leave);
+	node.addEventListener('pointerdown', press);
 
 	return {
 		update(next: TooltipOptions) {
 			current = next;
 
-			if (TooltipState.target === node) {
+			if (TooltipState.target === node && !pressed) {
 				showTooltip(node, next);
 			}
 		},
@@ -193,7 +212,9 @@ export function tooltip(node: HTMLElement, options: TooltipOptions): TooltipActi
 		destroy() {
 			node.removeEventListener('mouseenter', enter);
 			node.removeEventListener('mouseleave', leave);
+			node.removeEventListener('pointerdown', press);
 			hideTooltip(node);
 		}
 	};
 }
+

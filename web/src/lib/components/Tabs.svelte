@@ -3,8 +3,6 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
-	import { onMount } from 'svelte';
-
 	/**
 	 * A tab bar. A tab carrying an `href` is rendered as a real link rather than a
 	 * button, which is what lets it be opened in a new tab, copied, or named in a
@@ -13,9 +11,11 @@
 	 * Both shapes are kept because not every tab bar addresses a URL - some sit
 	 * inside a dialog, where there is nowhere to navigate to.
 	 *
-	 * Tabs that do not fit one line wrap into rows the way a Windows property
-	 * sheet does: the row holding the active tab is drawn last, against the
-	 * content it labels, and the other rows keep their cyclic order above it.
+	 * Tabs that do not fit stay on one line and the bar scrolls sideways, with
+	 * the active tab brought into view. They used to wrap into rows with the
+	 * active row moved last, the way a Windows property sheet does; on a narrow
+	 * screen that reordered the tabs under the reader's finger, so they keep
+	 * their order instead.
 	 */
 	let {
 		tabs,
@@ -28,86 +28,25 @@
 	type Tab = (typeof tabs)[number];
 
 	let bar: HTMLDivElement | undefined = $state();
-	let measurer: HTMLDivElement | undefined = $state();
-	let barWidth = $state(0);
 
-	// device pixels, read off the hidden single-line copy; empty until mounted,
-	// which keeps the server render (and a bar inside a closed dialog) on one
-	// plain wrapping row
-	let widths: number[] = $state([]);
-	let gapPx = $state(0);
+	// the active tab is scrolled into view whenever it changes, never the page
+	$effect(() => {
+		void active;
 
-	function measure(): void {
-		if (!measurer || !bar) {
+		const tab = bar?.querySelector<HTMLElement>('.tab.active');
+
+		if (!bar || !tab) {
 			return;
 		}
 
-		const cells = Array.from(measurer.children) as HTMLElement[];
+		// the bar is positioned, so a tab's offset is already measured from it
+		const left = tab.offsetLeft;
+		const right = left + tab.offsetWidth;
 
-		widths = cells.map((cell) => cell.getBoundingClientRect().width);
-		gapPx = parseFloat(getComputedStyle(bar).columnGap) || 0;
-	}
-
-	onMount(() => {
-		// Albula arrives after the first paint, and its glyphs are wider than the fallback's
-		void document.fonts?.ready.then(measure);
-	});
-
-	$effect(() => {
-		// a locale switch relabels every tab, so the widths follow the labels
-		void tabs.map((tab) => tab.label).join('\u0000');
-		measure();
-	});
-
-	/** Greedy rows: each tab goes on the current row while it fits. */
-	const rows: Tab[][] = $derived.by(() => {
-		if (barWidth <= 0 || widths.length !== tabs.length) {
-			return [tabs];
+		if (left < bar.scrollLeft || right > bar.scrollLeft + bar.clientWidth) {
+			bar.scrollTo({ left: Math.max(0, left - 16) });
 		}
-
-		const out: Tab[][] = [];
-		let row: Tab[] = [];
-		let used = 0;
-
-		tabs.forEach((tab, index) => {
-			const width = widths[index] ?? 0;
-			const needed = row.length === 0
-				? width
-				: used + gapPx + width;
-
-			// clientWidth is a rounded integer and the widths are not; half a pixel of
-			// slack keeps a row that fits exactly from wrapping its last tab
-			if (row.length > 0 && needed > barWidth + 0.5) {
-				out.push(row);
-				row = [tab];
-				used = width;
-
-				return;
-			}
-
-			row.push(tab);
-			used = needed;
-		});
-
-		if (row.length > 0) {
-			out.push(row);
-		}
-
-		return out;
 	});
-
-	/** The rows top to bottom: rotated so the active tab's row is the last one. */
-	const ordered: Tab[][] = $derived.by(() => {
-		const at = rows.findIndex((row) => row.some((tab) => tab.id === active));
-
-		if (at < 0 || at === rows.length - 1) {
-			return rows;
-		}
-
-		return [...rows.slice(at + 1), ...rows.slice(0, at + 1)];
-	});
-
-	const wrapped = $derived(rows.length > 1);
 </script>
 
 {#snippet tabCell(tab: Tab)}
@@ -130,19 +69,9 @@
 	{/if}
 {/snippet}
 
-<div class="tabs" class:wrapped role="tablist" bind:this={bar} bind:clientWidth={barWidth}>
-	<div class="measure" aria-hidden="true" bind:this={measurer}>
-		{#each tabs as tab (tab.id)}
-			<span class="tab">{tab.label}</span>
-		{/each}
-	</div>
-
-	{#each ordered as row, index (row[0]?.id ?? index)}
-		<div class="row" role="presentation">
-			{#each row as tab (tab.id)}
-				{@render tabCell(tab)}
-			{/each}
-		</div>
+<div class="tabs" role="tablist" bind:this={bar}>
+	{#each tabs as tab (tab.id)}
+		{@render tabCell(tab)}
 	{/each}
 </div>
 
@@ -152,34 +81,16 @@
 	.tabs {
 		position: relative;
 		display: flex;
-		flex-direction: column;
-		column-gap: 0.5rem;
-		border-bottom: 0.1rem solid var(--border-divider);
-	}
-
-	.row {
-		display: flex;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		gap: 0.5rem;
+		overflow-x: auto;
+		overflow-y: hidden;
+		border-bottom: 0.1rem solid var(--border-divider);
+		scrollbar-width: none;
 
-		// a back row is still a row of tabs, just not the one the content belongs to
-		.wrapped &:not(:last-of-type) {
-			border-bottom: 0.1rem solid var(--border-divider);
+		&::-webkit-scrollbar {
+			display: none;
 		}
-	}
-
-	// the unconstrained single-line copy the rows are packed from; it takes no
-	// space and is never seen, but keeps the tabs' own metrics
-	.measure {
-		position: absolute;
-		top: 0;
-		left: 0;
-		display: flex;
-		width: max-content;
-		height: 0;
-		overflow: hidden;
-		visibility: hidden;
-		pointer-events: none;
 	}
 
 	// `a.tab` opts out of the chrome-link styling on purpose: a tab is chrome, and
@@ -187,6 +98,7 @@
 	.tab {
 		position: relative;
 		display: inline-block;
+		flex: none;
 		background: none;
 		border: none;
 		color: var(--text-heading);

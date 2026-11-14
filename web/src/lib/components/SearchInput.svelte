@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { tooltip } from '$lib/tooltip.svelte';
 	import Icon from './Icon.svelte';
 
 	/** Filter box: magnifier icon inside a rounded input. */
@@ -45,7 +46,12 @@
 		}}
 	/>
 	{#if value}
-		<button class="clear" onclick={() => (value = '')} title="Clear">
+		<button
+			class="clear"
+			onclick={() => (value = '')}
+			use:tooltip={{ content: t('web.common.clear') }}
+			aria-label={t('web.common.clear')}
+		>
 			<Icon name="close" size="0.75rem" />
 		</button>
 	{/if}
@@ -57,6 +63,10 @@
 		display: flex;
 		align-items: center;
 		width: 100%;
+
+		// a crowded toolbar wraps around the box rather than squeezing its
+		// placeholder down to a few letters
+		min-width: min(14rem, 100%);
 	}
 	.mg {
 		position: absolute;

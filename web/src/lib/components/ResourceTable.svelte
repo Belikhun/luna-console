@@ -4,7 +4,7 @@
 
 <script lang="ts" generics="T = any">
 	import { t } from '$lib/i18n.svelte';
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import DataTable from './DataTable.svelte';
 	import SearchInput from './SearchInput.svelte';
 	import Btn from './Btn.svelte';
@@ -38,6 +38,8 @@
 		searchPlaceholder = t('web.common.findResources'),
 		searchWidth = '26rem',
 		filters,
+		initialFilters,
+		onfilterchange,
 		rowActions,
 		rowLabel,
 		toolbar: toolbarExtra,
@@ -45,6 +47,12 @@
 		selected = $bindable(new Set<string>()),
 		sortValue,
 		onRowClick,
+		onRowDblClick,
+		rowDraggable,
+		onRowDragStart,
+		rowDropTarget,
+		onRowDrop,
+		search = $bindable(initialSearch),
 		rowDim,
 		rowLocked,
 		paging = true,
@@ -73,6 +81,10 @@
 		searchPlaceholder?: string;
 		searchWidth?: string;
 		filters?: TableFilterGroup<T>[];
+		/** the option each filter group starts on, by group id */
+		initialFilters?: Record<string, string>;
+		/** told the filter values whenever one changes */
+		onfilterchange?: (values: Record<string, string>) => void;
 		/** the row's verbs; its right-click menu, and the screen's Actions dropdown */
 		rowActions?: (row: T) => ContextMenuItem[];
 		/** heading of the row's context menu (defaults to its id) */
@@ -83,6 +95,15 @@
 		selected?: Set<string>;
 		sortValue?: (row: T, columnId: string) => string | number | null;
 		onRowClick?: (row: T) => void;
+		/** a double-click opens the row (a file manager's folder) */
+		onRowDblClick?: (row: T) => void;
+		/** rows that can be dragged, and onto which rows a drag may drop (see DataTable) */
+		rowDraggable?: (row: T) => boolean;
+		onRowDragStart?: (row: T, event: DragEvent) => void;
+		rowDropTarget?: (row: T, event: DragEvent) => boolean;
+		onRowDrop?: (row: T, event: DragEvent) => void;
+		/** the search box's text, for a screen that also searches beyond the rows it holds */
+		search?: string;
 		/** dimmed rows; de-emphasis only, still selectable */
 		rowDim?: (row: T) => boolean;
 		/** rows no bulk verb can apply to: dimmed *and* kept out of the selection */
@@ -108,13 +129,45 @@
 		resourceId?: ResourceIdOf<T>;
 	} = $props();
 
-	// seeded once from the prop on purpose: after that the box owns the query
-	// svelte-ignore state_referenced_locally
-	let search = $state(initialSearch);
+	// A link to the screen that is already open (a global search hit) changes the
+	// starting search and filters without remounting the table; follow them, but
+	// only when they change, so the reader's own typing is never overwritten.
+	let appliedSearch = untrack(() => initialSearch);
+	let appliedFilters = untrack(() => JSON.stringify(initialFilters ?? {}));
+
+	$effect(() => {
+		const wanted = initialSearch;
+
+		if (wanted === appliedSearch) {
+			return;
+		}
+
+		appliedSearch = wanted;
+		search = wanted;
+	});
+
+	$effect(() => {
+		const wanted = initialFilters ?? {};
+		const key = JSON.stringify(wanted);
+
+		if (key === appliedFilters) {
+			return;
+		}
+
+		appliedFilters = key;
+		untrack(() => {
+			table?.clearFilters();
+
+			for (const [id, value] of Object.entries(wanted)) {
+				table?.setFilter(id, value);
+			}
+		});
+	});
 	let filtersActive = $state(false);
+	let filteredCount = $state(0);
 	// only the reset is called from here, and naming the component type inside
 	// its own generic instantiation is what TS cannot resolve
-	let table: { clearFilters: () => void } | undefined = $state();
+	let table: { clearFilters: () => void; setFilter: (id: string, value: string) => void } | undefined = $state();
 
 	function haystack(row: T): string {
 		const own = searchValue?.(row) ?? rowText(row);
@@ -134,11 +187,18 @@
 
 	// "nothing matches" and "nothing exists" are different situations, and only
 	// one of them is the user's to fix
-	const noMatch = $derived(rows.length > 0 && visible.length === 0);
+	// the search box and the column filters both narrow the rows, so the count
+	// comes from the table, after both
+	const noMatch = $derived(rows.length > 0 && (visible.length === 0 || filteredCount === 0));
 
 	function clearAll(): void {
 		search = '';
 		table?.clearFilters();
+	}
+
+	/** Set one filter group from outside the table. */
+	export function setFilter(id: string, value: string): void {
+		table?.setFilter(id, value);
 	}
 </script>
 
@@ -156,6 +216,7 @@
 <DataTable
 	bind:this={table}
 	bind:filtersActive
+	bind:filteredCount
 	{tableId}
 	{columns}
 	rows={visible}
@@ -165,10 +226,17 @@
 	emptyExtra={clearer}
 	{defaultSort}
 	{filters}
+	{initialFilters}
+	{onfilterchange}
 	{selectable}
 	bind:selected
 	{sortValue}
 	{onRowClick}
+	{onRowDblClick}
+	{rowDraggable}
+	{onRowDragStart}
+	{rowDropTarget}
+	{onRowDrop}
 	{rowDim}
 	{rowLocked}
 	{paging}
@@ -180,6 +248,6 @@
 	{expandable}
 	{resourceId}
 	loading={loading && rows.length === 0}
-	emptyTitle={noMatch ? `No ${noun} matches your search` : emptyTitle}
-	emptyText={noMatch ? 'Nothing here answers the current search and filters.' : emptyText}
+	emptyTitle={noMatch ? t('web.table.noMatch', { noun }) : emptyTitle}
+	emptyText={noMatch ? t('web.table.noMatchText') : emptyText}
 />

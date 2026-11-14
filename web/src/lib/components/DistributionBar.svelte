@@ -3,6 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import { tooltip } from '$lib/tooltip.svelte';
 	import type { DistributionSegment } from './distribution';
 
 	/**
@@ -37,7 +38,7 @@
 				class="slice"
 				style:width="{(segment.count / total) * 100}%"
 				style:background={segment.color}
-				title="{segment.count} {segment.label ?? segment.key}"
+				use:tooltip={{ content: `${segment.count} ${segment.label ?? segment.key}` }}
 			></div>
 		{/each}
 	</div>

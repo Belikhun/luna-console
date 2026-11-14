@@ -3,6 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import { tooltip } from '$lib/tooltip.svelte';
 	import { untrack } from 'svelte';
 
 	import Icon from './Icon.svelte';
@@ -96,7 +97,7 @@
 	<div class="split">
 		<button
 			class="seg now"
-			title={t('web.refresh.refreshNow')}
+			use:tooltip={{ content: t('web.refresh.refreshNow') }}
 			aria-label={t('web.refresh.refreshNow')}
 			disabled={loading}
 			onclick={() => void onrefresh()}
@@ -107,7 +108,7 @@
 			bind:this={caretEl}
 			class="seg caret"
 			class:open={menuOpen}
-			title={t('web.refresh.autoRefresh', { label })}
+			use:tooltip={{ content: t('web.refresh.autoRefresh', { label }) }}
 			aria-label={t('web.refresh.autoRefreshInterval')}
 			onclick={toggleMenu}
 		>
@@ -142,8 +143,11 @@
 		color: var(--text-secondary);
 		white-space: nowrap;
 
+		// fixed-width digits: a stamp that grows by a few pixels as the minute
+		// turns must not wrap the whole header onto a second row
 		.when {
 			color: var(--text);
+			font-variant-numeric: tabular-nums;
 		}
 	}
 

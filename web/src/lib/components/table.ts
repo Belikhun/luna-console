@@ -33,6 +33,8 @@ export interface TableFilterGroup<T = any> {
 	id: string;
 	label: string;
 	options: TableFilterOption<T>[];
+	/** The select's width when its options are short; 14rem when absent */
+	width?: string;
 }
 
 /** How many leading columns stay pinned while scrolling horizontally. */
@@ -121,7 +123,12 @@ export function savePrefs(tableId: string | undefined, prefs: TablePrefs): void 
 	localStorage.setItem(`luna.table.${tableId}`, JSON.stringify(prefs));
 }
 
-/** Apply a stored column order, keeping columns the order doesn't mention. */
+/**
+ * Apply a stored column order, keeping columns the order doesn't mention. A
+ * column the screen gained after the order was saved lands right after the
+ * column it follows in the screen's own order (first when it leads), not at
+ * the far end.
+ */
 export function applyOrder(columns: Column[], order: string[] | undefined): Column[] {
 	if (!order?.length) {
 		return columns;
@@ -139,5 +146,19 @@ export function applyOrder(columns: Column[], order: string[] | undefined): Colu
 		}
 	}
 
-	return [...out, ...known.values()];
+	for (const [index, column] of columns.entries()) {
+		if (!known.has(column.id)) {
+			continue;
+		}
+
+		const before = columns[index - 1];
+		const at = before
+			? out.findIndex((placed) => placed.id === before.id) + 1
+			: 0;
+
+		out.splice(at, 0, column);
+		known.delete(column.id);
+	}
+
+	return out;
 }

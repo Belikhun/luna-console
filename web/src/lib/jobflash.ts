@@ -174,7 +174,7 @@ async function followIntoCard(
 	const patch = config.success?.(done.result) ?? {};
 
 	note.set({
-		level: 'success',
+		level: patch.level ?? 'success',
 		message: patch.message ?? config.title,
 		detail: patch.detail ?? '',
 		progress: null,

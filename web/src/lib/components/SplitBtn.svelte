@@ -3,6 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import { tooltip } from '$lib/tooltip.svelte';
 	import { t } from '$lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 	import ContextMenu from './ContextMenu.svelte';
@@ -57,8 +58,9 @@
 	}
 </script>
 
-<div class="split" class:primary class:disabled>
-	<button class="main" {disabled} {title} onclick={onclick}>
+<!-- the reason a disabled button gives, through the kit tooltip on the wrapper, as Dropdown does -->
+<div class="split" class:primary class:disabled use:tooltip={{ content: title ?? '' }}>
+	<button class="main" {disabled} onclick={onclick}>
 		{#if loading}
 			<Icon name="rotate" spin />
 		{:else if icon}

@@ -8,12 +8,15 @@
 		checked = false,
 		disabled = false,
 		label,
+		id,
 		onchange
 	}: {
 		checked?: boolean;
 		disabled?: boolean;
 		/** accessible name when there is no visible text beside the switch */
 		label?: string;
+		/** for a `<label for>` elsewhere on the page */
+		id?: string;
 		onchange?: (checked: boolean) => void;
 	} = $props();
 </script>
@@ -21,6 +24,7 @@
 <span class="tg" class:on={checked} class:disabled>
 	<input
 		type="checkbox"
+		{id}
 		{checked}
 		{disabled}
 		aria-label={label}

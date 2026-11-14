@@ -21,6 +21,7 @@
 		lead,
 		notes = [],
 		confirmLabel,
+		cancelLabel,
 		danger = true,
 		onconfirm,
 		children
@@ -33,6 +34,8 @@
 		notes?: string[];
 		/** the verb on the confirming button, e.g. "Delete" */
 		confirmLabel: string;
+		/** the verb on the backing-out button, when "Cancel" would read as the action itself */
+		cancelLabel?: string;
 		/** false renders the confirming button as primary, for non-destructive asks */
 		danger?: boolean;
 		onconfirm: () => void;
@@ -55,7 +58,7 @@
 		{@render children()}
 	{/if}
 	{#snippet footer()}
-		<Btn onclick={() => (open = false)}>{t('web.common.cancel')}</Btn>
+		<Btn onclick={() => (open = false)}>{cancelLabel ?? t('web.common.cancel')}</Btn>
 		<Btn variant={danger ? 'danger' : 'primary'} onclick={submit}>{confirmLabel}</Btn>
 	{/snippet}
 </Modal>

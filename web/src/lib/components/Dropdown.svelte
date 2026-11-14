@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import Icon from './Icon.svelte';
+	import { tooltip } from '$lib/tooltip.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import { toMenuItems, type Item } from './menu';
 	import type { ContextMenuItem } from './contextmenu';
@@ -17,6 +18,8 @@
 		menu: menuItems,
 		primary = false,
 		disabled = false,
+		header,
+		title,
 		leading
 	}: {
 		label: string;
@@ -26,6 +29,10 @@
 		menu?: ContextMenuItem[];
 		primary?: boolean;
 		disabled?: boolean;
+		/** names what the menu acts on, as a row's context menu does */
+		header?: string;
+		/** the trigger's tooltip; the reason, when it is disabled */
+		title?: string;
 		/** drawn before the label inside the trigger, e.g. an account's picture */
 		leading?: Snippet;
 	} = $props();
@@ -52,7 +59,8 @@
 	}
 </script>
 
-<div class="dd">
+<!-- the reason a disabled trigger gives, through the kit tooltip on the wrapper -->
+<div class="dd" use:tooltip={{ content: title ?? '' }}>
 	<button
 		bind:this={trigger}
 		class="trigger"
@@ -66,13 +74,18 @@
 		{label}
 		<span class="caret" class:flip={open}><Icon name="caretDown" size="0.75rem" /></span>
 	</button>
-	<ContextMenu bind:this={menu} items={resolved} onclose={() => (open = false)} />
+	<ContextMenu bind:this={menu} items={resolved} {header} onclose={() => (open = false)} />
 </div>
 
 <style lang="scss">
 	.dd {
 		position: relative;
 		display: inline-block;
+	}
+
+	// a disabled trigger lets the wrapper take the pointer, so its reason shows
+	.trigger:disabled {
+		pointer-events: none;
 	}
 
 	.trigger {

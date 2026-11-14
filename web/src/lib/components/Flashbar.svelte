@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
+	import { tooltip } from '$lib/tooltip.svelte';
 	import Icon from './Icon.svelte';
 	import Spinner from './Spinner.svelte';
 	import {
@@ -95,14 +96,16 @@
 							(item.segments.find((seg) => seg.tone !== 'done') ?? item.segments.at(-1))?.label ||
 							''}
 					</span>
-					<span class="count">({current}/{total})</span>
+					{#if total > 1}
+						<span class="count">({current}/{total})</span>
+					{/if}
 					{#if item.progress !== null}
 						<span class="pct">{Math.round(item.progress)}%</span>
 					{/if}
 				</div>
 				<div class="segbar">
 					{#each item.segments as seg}
-						<span class="seg" data-tone={seg.tone} title={seg.label}>
+						<span class="seg" role="img" data-tone={seg.tone} use:tooltip={{ content: seg.label }} aria-label={seg.label}>
 							<span
 								class="fill"
 								style:width="{seg.tone === 'done' ? 100 : Math.round(seg.progress * 100)}%"
@@ -145,7 +148,12 @@
 			{/if}
 		</div>
 		{#if item.closeable}
-			<button class="x" title="Dismiss" onclick={() => Notifications.close(item.id)}>
+			<button
+				class="x"
+				use:tooltip={{ content: t('web.common.dismiss') }}
+				aria-label={t('web.common.dismiss')}
+				onclick={() => Notifications.close(item.id)}
+			>
 				<Icon name="close" size="1rem" />
 			</button>
 		{/if}
