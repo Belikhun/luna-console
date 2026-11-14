@@ -130,7 +130,7 @@
 	let browsing = $state(false);
 	let lastUpdated = $state<number | null>(null);
 
-	let view: ViewMode = $state(untrack(() => readStored(VIEW_KEY, 'list') as ViewMode));
+	let view: ViewMode = $state(untrack(() => readStored(VIEW_KEY, 'grid') as ViewMode));
 	let showHidden = $state(untrack(() => readStored(HIDDEN_KEY, 'yes') === 'yes'));
 
 	let search = $state('');
