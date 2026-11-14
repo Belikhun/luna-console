@@ -1463,6 +1463,9 @@ class AgentShell {
 	state: AgentState | null = $state(null);
 	conversations: ConversationRow[] = $state([]);
 
+	/** The conversation list has arrived at least once; until then an empty list means "loading" */
+	listed = $state(false);
+
 	/** The picks this browser made last; a new chat starts from them */
 	lastMode: AgentMode = DEFAULT_AGENT_MODE;
 	lastModel = '';
@@ -1599,6 +1602,7 @@ class AgentShell {
 
 		this.state = state;
 		this.conversations = list.conversations;
+		this.listed = true;
 	}
 
 	async reloadState(): Promise<void> {
@@ -1609,6 +1613,7 @@ class AgentShell {
 		const list = await api<{ conversations: ConversationRow[] }>('/agent/conversations');
 
 		this.conversations = list.conversations;
+		this.listed = true;
 	}
 
 	async rename(id: string, title: string): Promise<void> {

@@ -13,6 +13,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
+	import Spinner from '$lib/components/Spinner.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import AgentChat from '$lib/components/AgentChat.svelte';
@@ -334,7 +335,9 @@
 			</div>
 		</div>
 		<div class="list">
-			{#if listedCount === 0}
+			{#if !Agent.listed}
+				<div class="loading" role="status"><Spinner size="1rem" /> {t('web.common.loading')}</div>
+			{:else if listedCount === 0}
 				<p class="dim empty">{query.trim() ? t('web.agentScreen.noMatch') : t('web.agent.noHistory')}</p>
 			{/if}
 			{#each listed as section (section.bucket ?? 'search')}
@@ -379,16 +382,17 @@
 			<div class="pane" class:focused={panes.length > 1 && index === active} onclick={() => (active = index)}>
 				<Panel title={paneTitle(pane)} fill flush>
 					{#snippet actions()}
-						<button class="pane-btn" title={t('web.common.actions')} onclick={(event) => openPaneMenu(event, pane, index)}>
-							<Icon name="ellipsis" size="1rem" />
-						</button>
+						<Btn variant="icon" icon="ellipsis" title={t('web.common.actions')} onclick={(event) => openPaneMenu(event, pane, index)} />
 						{#if panes.length > 1}
-							<button class="pane-btn" title={t('web.agentScreen.closePane')} onclick={(event) => {
-								event.stopPropagation();
-								closePane(index);
-							}}>
-								<Icon name="close" size="1rem" />
-							</button>
+							<Btn
+								variant="icon"
+								icon="close"
+								title={t('web.agentScreen.closePane')}
+								onclick={(event) => {
+									event.stopPropagation();
+									closePane(index);
+								}}
+							/>
 						{/if}
 					{/snippet}
 					<AgentChat session={pane.session} {account} onbranch={openBranch} />
@@ -485,6 +489,15 @@
 		margin: 0;
 	}
 
+	.loading {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		color: var(--text-secondary);
+		font-size: 0.875rem;
+	}
+
 	.conv {
 		@include bare-button;
 
@@ -561,22 +574,6 @@
 		:global(.panel) {
 			flex: 1;
 			min-height: 0;
-		}
-	}
-
-	.pane-btn {
-		@include bare-button;
-
-		display: inline-grid;
-		place-items: center;
-		width: 1.75rem;
-		height: 1.75rem;
-		border-radius: 0.375rem;
-		color: var(--text);
-
-		&:hover {
-			color: var(--link);
-			background: var(--bg-hover);
 		}
 	}
 </style>

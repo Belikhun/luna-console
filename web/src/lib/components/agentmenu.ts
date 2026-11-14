@@ -125,6 +125,15 @@ export function bucketOf(row: ConversationRow, now = new Date()): ConversationBu
 
 export const CONVERSATION_BUCKETS: ConversationBucket[] = ['pinned', 'today', 'yesterday', 'week', 'older'];
 
+/** Longest title a history row shows; a chat titled by a whole prompt would stretch the menu across the screen. */
+const HISTORY_TITLE_MAX = 56;
+
+function shortTitle(title: string): string {
+	return title.length > HISTORY_TITLE_MAX
+		? `${title.slice(0, HISTORY_TITLE_MAX - 1).trimEnd()}…`
+		: title;
+}
+
 /** How many conversations a history dropdown lists before the agent screen is the better place. */
 const HISTORY_ROWS = 30;
 
@@ -148,7 +157,7 @@ export function historyItems(current: string | null, select: (id: string) => voi
 
 		rows.push({
 			id: row.id,
-			label: row.title || t('web.agent.untitled'),
+			label: shortTitle(row.title || t('web.agent.untitled')),
 			icon: row.id === current
 				? 'check'
 				: row.running

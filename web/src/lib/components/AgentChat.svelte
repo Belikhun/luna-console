@@ -3,6 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import { tooltip } from '$lib/tooltip.svelte';
 	import AgentQuestion from './AgentQuestion.svelte';
 	import { readAnswers, readQuestions } from './agentquestion';
 	import type { AgentQuestionState } from './agentquestion';
@@ -92,6 +93,21 @@
 
 	/** px from the bottom that still counts as "at the bottom" */
 	const PIN_SLACK = 48;
+
+	// a new chat's welcome reads from the top, however short the pane
+	$effect(() => {
+		// read so the welcome is put back at the top once its cards and setup state arrive
+		void Agent.state;
+		void drawn;
+
+		if (session.items.length === 0 && scroller) {
+			const target = scroller;
+
+			void tick().then(() => {
+				target.scrollTop = 0;
+			});
+		}
+	});
 
 	/** How many capability cards a new chat offers, drawn from the full set */
 	const CAPABILITY_COUNT = 4;
@@ -322,6 +338,11 @@
 
 		void signature;
 
+		// an empty chat is its welcome, read from the top; nothing to follow yet
+		if (session.items.length === 0) {
+			return;
+		}
+
 		if (pinned) {
 			void tick().then(() => {
 				scroller?.scrollTo({ top: scroller.scrollHeight });
@@ -354,6 +375,32 @@
 
 		pinned = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < PIN_SLACK;
 	}
+
+	// a chat that was hidden (a panel or tab with no height) opens on its latest
+	// message when it comes into view, not on the top of the transcript
+	$effect(() => {
+		const box = scroller;
+
+		if (!box || typeof ResizeObserver === 'undefined') {
+			return;
+		}
+
+		let hidden = box.clientHeight === 0;
+		const watch = new ResizeObserver(() => {
+			const now = box.clientHeight === 0;
+
+			if (hidden && !now) {
+				pinned = true;
+				box.scrollTop = box.scrollHeight;
+			}
+
+			hidden = now;
+		});
+
+		watch.observe(box);
+
+		return () => watch.disconnect();
+	});
 
 	function toBottom(): void {
 		pinned = true;
@@ -593,7 +640,7 @@
 				<span class="modetag queued">{t('web.agent.queued')}</span>
 				{#if author === me && item.uuid}
 					{@const uuid = item.uuid}
-					<button class="act revoke" title={t('web.agent.revokeQueued')} onclick={() => session.revoke(uuid)}>
+					<button class="act revoke" use:tooltip={{ content: t('web.agent.revokeQueued') }} aria-label={t('web.agent.revokeQueued')} onclick={() => session.revoke(uuid)}>
 						<Icon name="close" size="0.75rem" />
 					</button>
 				{/if}
@@ -631,7 +678,7 @@
 		{#if pictures.length}
 			<div class="pics">
 				{#each pictures as picture, pi (picture.src)}
-					<button class="pic" type="button" title={t('web.agent.openImage')} onclick={() => openPictures(pictures, pi)}>
+					<button class="pic" type="button" use:tooltip={{ content: t('web.agent.openImage') }} aria-label={t('web.agent.openImage')} onclick={() => openPictures(pictures, pi)}>
 						<img src={picture.src} alt={picture.alt} loading="lazy" />
 					</button>
 				{/each}
@@ -647,13 +694,13 @@
 		<div class="foot">
 			{#if editing !== item.uuid}
 				<div class="acts">
-					<button class="act" title={t('web.agent.copyMessage')} onclick={() => copy(key, item.text)}>
+					<button class="act" use:tooltip={{ content: t('web.agent.copyMessage') }} aria-label={t('web.agent.copyMessage')} onclick={() => copy(key, item.text)}>
 						<Icon name={copied === key ? 'check' : 'copy'} size="0.75rem" />
 					</button>
 					{#if item.uuid && session.writable && !item.queued}
 						<button
 							class="act"
-							title={canRewind ? t('web.agent.editMessage') : t('web.agent.editBusy')}
+							use:tooltip={{ content: (canRewind ? t('web.agent.editMessage') : t('web.agent.editBusy')) ?? '' }} aria-label={canRewind ? t('web.agent.editMessage') : t('web.agent.editBusy')}
 							disabled={!canRewind}
 							onclick={() => startEdit(item)}
 						>
@@ -662,9 +709,9 @@
 					{/if}
 				</div>
 			{/if}
-			<time class="at" datetime={new Date(item.at).toISOString()} title={fmtDateTime(item.at)}>{clock(item.at)}</time>
+			<time class="at" datetime={new Date(item.at).toISOString()} use:tooltip={{ content: fmtDateTime(item.at) }}>{clock(item.at)}</time>
 			{#if item.model}
-				<span class="sent" title={t('web.agent.sentWith')}>
+				<span class="sent" use:tooltip={{ content: t('web.agent.sentWith') }}>
 					{modelName(item.model)}{#if item.effort}<span class="dim">{` · ${t(`web.agentSettings.effort_${item.effort}`)}`}</span>{/if}
 				</span>
 			{/if}
@@ -684,7 +731,7 @@
 					: t('web.agent.sharedWithYou', { owner: session.row?.owner ?? '', role: t(`web.agentShare.role_${session.role}`) })}
 			</span>
 			{#if others.length}
-				<span class="faces" title={t('web.agent.viewingNow', { names: others.join(', ') })}>
+				<span class="faces" use:tooltip={{ content: t('web.agent.viewingNow', { names: others.join(', ') }) }}>
 					{#each others.slice(0, 4) as name (name)}
 						{@const person = session.people[name]}
 						{#if person}
@@ -757,7 +804,7 @@
 					<div class="event" data-source={group.item.source}>
 						<button
 							class="row"
-							title={t('web.agent.details')}
+							use:tooltip={{ content: t('web.agent.details') }} aria-label={t('web.agent.details')}
 							aria-expanded={!!expanded[`ev${gi}`]}
 							onclick={() => (expanded[`ev${gi}`] = !expanded[`ev${gi}`])}
 						>
@@ -780,7 +827,7 @@
 							<img class="avatar cat" src={AVATAR} alt="" />
 							<span class="who">Mèo Béo</span>
 							{#if started}
-								<time class="at" datetime={new Date(started).toISOString()} title={fmtDateTime(started)}>{clock(started)}</time>
+								<time class="at" datetime={new Date(started).toISOString()} use:tooltip={{ content: fmtDateTime(started) }}>{clock(started)}</time>
 							{/if}
 						</div>
 
@@ -858,14 +905,14 @@
 								{/if}
 								<span class="acts">
 									{#if botText(group)}
-										<button class="act" title={t('web.agent.copyMessage')} onclick={() => copy(`b${gi}`, botText(group))}>
+										<button class="act" use:tooltip={{ content: t('web.agent.copyMessage') }} aria-label={t('web.agent.copyMessage')} onclick={() => copy(`b${gi}`, botText(group))}>
 											<Icon name={copied === `b${gi}` ? 'check' : 'copy'} size="0.75rem" />
 										</button>
 									{/if}
 									{#if gi === lastBot && session.writable}
 										<button
 											class="act"
-											title={canRewind ? t('web.agent.retry') : t('web.agent.editBusy')}
+											use:tooltip={{ content: (canRewind ? t('web.agent.retry') : t('web.agent.editBusy')) ?? '' }} aria-label={canRewind ? t('web.agent.retry') : t('web.agent.editBusy')}
 											disabled={!canRewind}
 											onclick={retry}
 										>
@@ -873,7 +920,7 @@
 										</button>
 									{/if}
 									{#if session.role === 'owner' && session.conversationId}
-										<button class="act" title={t('web.agent.branchHere')} disabled={session.running} onclick={() => branch(group.before)}>
+										<button class="act" use:tooltip={{ content: t('web.agent.branchHere') }} aria-label={t('web.agent.branchHere')} disabled={session.running} onclick={() => branch(group.before)}>
 											<Icon name="codeBranch" size="0.75rem" />
 										</button>
 									{/if}
@@ -905,7 +952,7 @@
 	</div>
 
 	{#if !pinned}
-		<button class="jump" title={t('web.agent.jumpLatest')} onclick={toBottom}>
+		<button class="jump" use:tooltip={{ content: t('web.agent.jumpLatest') }} aria-label={t('web.agent.jumpLatest')} onclick={toBottom}>
 			<Icon name="arrowDownToLine" size="0.875rem" />
 		</button>
 	{/if}
@@ -941,7 +988,7 @@
 
 		{#if session.suggestion && !session.running && session.writable}
 			<div class="suggest">
-				<button class="chip" title={t('web.agent.suggestionHint')} onclick={() => composer?.send(session.suggestion ?? '')}>
+				<button class="chip" use:tooltip={{ content: t('web.agent.suggestionHint') }} onclick={() => composer?.send(session.suggestion ?? '')}>
 					<Icon name="sparkles" size="0.75rem" />
 					<span>{session.suggestion}</span>
 				</button>
@@ -1808,9 +1855,14 @@
 		flex-direction: column;
 		width: 90%;
 		border: 0.1rem solid var(--border-divider);
-		border-left: 0.25rem solid var(--success);
+		// shaped like the bubbles around it: tight on the agent's side, rounded
+		// out at the bottom when the folded calls end the turn
 		border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
 		background: var(--bg-panel-raised);
+
+		.msg.bot > &:not(:has(~ :not(.foot, .thinking))) {
+			border-bottom-left-radius: 0.75rem;
+		}
 
 		.row {
 			@include bare-button;

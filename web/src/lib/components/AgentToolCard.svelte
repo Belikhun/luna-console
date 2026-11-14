@@ -3,6 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import { tooltip } from '$lib/tooltip.svelte';
 	import { t } from '$lib/i18n.svelte';
 	import { renderMarkdown } from '$lib/markdown';
 	import { fmtBytes, fmtDuration } from '$lib/format';
@@ -212,11 +213,11 @@
 	<div class="call" class:nested class:helper data-status={item.status} class:processing={item.status === 'running'}>
 		<button
 			class="row"
-			title={t('web.agent.details')}
+			use:tooltip={{ content: t('web.agent.details') }} aria-label={t('web.agent.details')}
 			aria-expanded={expanded}
 			onclick={() => (expanded = !expanded)}
 		>
-			<span class="icon" title={title()} aria-label={title()}>
+			<span class="icon" use:tooltip={{ content: title() }} aria-label={title()}>
 				{#if item.status === 'running'}
 					<Spinner size="0.75rem" color="#fff" />
 				{:else if helper && item.status === 'ok'}
@@ -329,7 +330,7 @@
 	{#if shots.length}
 		<div class="shots" class:nested>
 			{#each shots as shot, index (shot.src)}
-				<button class="shot" type="button" title={t('web.agent.openImage')} onclick={() => (viewing = index)}>
+				<button class="shot" type="button" use:tooltip={{ content: t('web.agent.openImage') }} aria-label={t('web.agent.openImage')} onclick={() => (viewing = index)}>
 					<img src={shot.src} alt={shot.alt} loading="lazy" />
 				</button>
 			{/each}
@@ -340,7 +341,7 @@
 	{#if downloads.length}
 		<div class="files" class:nested>
 			{#each downloads as file (file.id)}
-				<a class="filecard" href={file.href} download={file.name} title={t('web.agent.downloadFile', { name: file.name })}>
+				<a class="filecard" href={file.href} download={file.name} use:tooltip={{ content: t('web.agent.downloadFile', { name: file.name }) }}>
 					<span class="ficon"><Icon name={fileIcon(file.name)} size="1.25rem" /></span>
 					<span class="fmeta">
 						<span class="fname">{file.name}</span>
@@ -510,22 +511,26 @@
 		display: flex;
 		flex-direction: column;
 		width: 90%;
+		// one border all round, shaped like the chat bubbles: tight corners on the
+		// agent's side between items, rounded out at the bottom when the call ends
+		// the turn. The status icon carries the state; a call that needs someone
+		// (awaiting) or went wrong tints the whole border.
 		border: 0.1rem solid var(--border-divider);
-		border-left: 0.25rem solid var(--luna-primary);
 		border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
 		background: var(--bg-panel-raised);
 		overflow: hidden;
 
-		// a helper's own calls sit inside its card, flatter and full width
-		&.nested {
-			width: 100%;
-			border-width: 0 0 0 0.25rem;
-			border-radius: 0;
-			background: none;
+		:global(.msg.bot) > &:not(.nested):not(:has(~ :not(:global(.foot), :global(.thinking)))) {
+			border-bottom-left-radius: 0.75rem;
 		}
 
-		&.helper {
-			border-left-color: var(--src-luna);
+		// a helper's own calls sit inside its card, flatter and full width,
+		// parted by a rule
+		&.nested {
+			width: 100%;
+			border-width: 0.1rem 0 0;
+			border-radius: 0;
+			background: none;
 		}
 
 		.row {
@@ -707,34 +712,35 @@
 		}
 
 		&[data-status='ok'] {
-			border-left-color: var(--success);
-
 			.icon {
 				background: var(--success);
 			}
 		}
 
 		&.helper[data-status='ok'] {
-			border-left-color: var(--src-luna);
-
 			.icon {
 				background: var(--src-luna);
 			}
 		}
 
-		&[data-status='awaiting'] {
-			border-left-color: var(--warning);
+		&[data-status='awaiting']:not(.nested) {
+			border-color: var(--warning);
+		}
 
+		&[data-status='awaiting'] {
 			.icon {
 				background: var(--warning);
 				color: var(--primary-text);
 			}
 		}
 
+		&[data-status='denied']:not(.nested),
+		&[data-status='error']:not(.nested) {
+			border-color: color-mix(in srgb, var(--error) 70%, var(--border-divider));
+		}
+
 		&[data-status='denied'],
 		&[data-status='error'] {
-			border-left-color: var(--error);
-
 			.icon {
 				background: var(--error);
 				color: var(--primary-text);

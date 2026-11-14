@@ -3,6 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import { tooltip } from '$lib/tooltip.svelte';
 	import { t } from '$lib/i18n.svelte';
 	import { goto } from '$app/navigation';
 	import { Agent } from '$lib/agent.svelte';
@@ -116,19 +117,23 @@
 		<div class="acts">
 			<button
 				class="tool"
-				title={t('web.agent.history')}
+				use:tooltip={{ content: t('web.agent.history') }}
+				aria-label={t('web.agent.history')}
+				aria-haspopup="menu"
 				bind:this={historyButton}
 				onpointerdown={(event) => event.stopPropagation()}
 				onclick={openHistory}
 			>
 				<Icon name="clockRotateLeft" size="1rem" />
 			</button>
-			<button class="tool" title={t('web.agent.newChat')} disabled={session.items.length === 0} onclick={() => session.newChat()}>
+			<button class="tool" use:tooltip={{ content: t('web.agent.newChat') }} aria-label={t('web.agent.newChat')} disabled={session.items.length === 0} onclick={() => session.newChat()}>
 				<Icon name="messagePlus" size="1rem" />
 			</button>
 			<button
 				class="tool"
-				title={current ? t('web.agentMenu.chatActions') : t('web.agent.deleteNothing')}
+				use:tooltip={{ content: (current ? t('web.agentMenu.chatActions') : t('web.agent.deleteNothing')) ?? '' }}
+				aria-label={current ? t('web.agentMenu.chatActions') : t('web.agent.deleteNothing')}
+				aria-haspopup="menu"
 				disabled={!current}
 				bind:this={chatButton}
 				onpointerdown={(event) => event.stopPropagation()}
@@ -137,13 +142,13 @@
 				<Icon name="ellipsis" size="1rem" />
 			</button>
 			<span class="sep"></span>
-			<button class="tool" title={t('web.agent.popOut')} onclick={popOut}>
+			<button class="tool" use:tooltip={{ content: t('web.agent.popOut') }} aria-label={t('web.agent.popOut')} onclick={popOut}>
 				<Icon name="arrowUpRightFromSquare" size="1rem" />
 			</button>
-			<button class="tool" title={t('web.agent.fullScreen')} onclick={expand}>
+			<button class="tool" use:tooltip={{ content: t('web.agent.fullScreen') }} aria-label={t('web.agent.fullScreen')} onclick={expand}>
 				<Icon name="expand" size="1rem" />
 			</button>
-			<button class="tool" title={t('web.agent.close')} onclick={() => Agent.setOpen(false)}>
+			<button class="tool" use:tooltip={{ content: t('web.agent.close') }} aria-label={t('web.agent.close')} onclick={() => Agent.setOpen(false)}>
 				<Icon name="close" size="1rem" />
 			</button>
 		</div>

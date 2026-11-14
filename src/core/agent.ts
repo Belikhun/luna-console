@@ -537,11 +537,39 @@ export async function agentStatus(): Promise<AgentStatus> {
 			: null,
 		settings: store.settings,
 		token,
-		models: store.apiModels ?? store.models ?? null,
+		models: describeModels(store.apiModels, store.models),
 		modelsCheckedAt: store.apiModelsAt ?? null,
 		ready: reason === null,
 		reason,
 	};
+}
+
+/**
+ * The model list the screens offer. The Models API names every model but says
+ * nothing about them, while Claude Code's own list (kept from the last connection
+ * test) describes its current models as "Opus 5.5 · Best for …"; each API model
+ * takes the words after its own name from there, and one Claude Code does not
+ * describe (an older release) shows its id instead.
+ */
+function describeModels(api: AgentModelChoice[] | undefined, sdk: AgentModelChoice[] | undefined): AgentModelChoice[] | null {
+	if (!api) {
+		return sdk ?? null;
+	}
+
+	const blurbs = new Map<string, string>();
+
+	for (const model of sdk ?? []) {
+		const [name, ...rest] = String(model.description ?? "").split(" · ");
+
+		if (name && rest.length > 0 && !blurbs.has(name)) {
+			blurbs.set(name, rest.join(" · "));
+		}
+	}
+
+	return api.map((model) => ({
+		...model,
+		description: model.description || blurbs.get(model.label) || model.value,
+	}));
 }
 
 /**

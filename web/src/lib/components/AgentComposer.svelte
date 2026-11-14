@@ -3,6 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import { tooltip } from '$lib/tooltip.svelte';
 	import { t } from '$lib/i18n.svelte';
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
@@ -74,6 +75,9 @@
 			? Math.min(context.tokens / context.window, 1)
 			: 0
 	);
+	const contextHint = $derived(context
+		? t('web.agentComposer.contextTitle', { used: fmtTokens(context.tokens), window: fmtTokens(context.window) })
+		: t('web.agentComposer.context'));
 	// the session compacts on its own at the window; these say it is getting close
 	const contextLevel = $derived(
 		!context
@@ -454,7 +458,8 @@
 					class="opt {mode}"
 					class:on={session.mode === mode}
 					disabled={off}
-					title={off ? t('web.agentComposer.bypassOff') : undefined}
+					use:tooltip={{ content: (off ? t('web.agentComposer.bypassOff') : undefined) ?? '' }}
+					aria-label={off ? t('web.agentComposer.bypassOff') : undefined}
 					onclick={() => pickMode(mode)}
 				>
 					<span class="oi"><Icon name={MODE_ICONS[mode]} size="0.875rem" /></span>
@@ -566,7 +571,7 @@
 	{#if session.attachments.length}
 		<div class="files">
 			{#each session.attachments as file}
-				<span class="filechip" class:bad={!!file.error} title={file.error ?? file.name}>
+				<span class="filechip" class:bad={!!file.error} use:tooltip={{ content: (file.error ?? file.name) ?? '' }}>
 					{#if !file.id && !file.error}
 						<Spinner size="0.75rem" />
 					{:else}
@@ -574,7 +579,7 @@
 					{/if}
 					<span class="lbl">{file.name}</span>
 					<span class="dim">{file.error ? t('web.agentComposer.uploadFailed') : fmtSize(file.size)}</span>
-					<button type="button" class="x" title={t('web.agentComposer.detach')} onclick={() => session.detach(file)}>
+					<button type="button" class="x" use:tooltip={{ content: t('web.agentComposer.detach') }} aria-label={t('web.agentComposer.detach')} onclick={() => session.detach(file)}>
 						<Icon name="close" size="0.625rem" />
 					</button>
 				</span>
@@ -609,125 +614,134 @@
 		onpaste={onPaste}
 	></textarea>
 
-	<div class="bar">
-		<button
-			type="button"
-			class="ico"
-			title={t('web.agentComposer.add')}
-			bind:this={addButton}
-			onpointerdown={(event) => event.stopPropagation()}
-			onclick={(event) => openMenu(addMenu, addButton, event)}
-		>
-			<Icon name="plus" size="0.875rem" />
-		</button>
-		<button
-			type="button"
-			class="ico slash"
-			title={t('web.agentComposer.skills')}
-			bind:this={skillButton}
-			onpointerdown={(event) => event.stopPropagation()}
-			onclick={(event) => openMenu(skillMenu, skillButton, event)}
-		>/</button>
-
-		<button type="button" class="chip" class:active={popover === 'model'} onclick={(event) => togglePopover('model', event)}>
-			<span class="lbl">{modelLabel}</span>
-			<span class="dim">{t(`web.agentSettings.effort_${effortValue}`)}</span>
-		</button>
-
-		{#if sharingPage}
-			<span class="chip file" title={t('web.agentComposer.sharedPage', { page: pagePath })}>
-				<Icon name="fileLines" size="0.75rem" />
-				<span class="lbl">{shortPath(pagePath)}</span>
-				<button type="button" class="x" title={t('web.agentComposer.unsharePage')} onclick={() => session.setSharePage(false)}>
-					<Icon name="close" size="0.625rem" />
-				</button>
-			</span>
-		{/if}
-
-		<span class="spacer"></span>
-
-		{#if session.conversationId}
+	<!-- the box measures the room, so the bar inside can give way to fit -->
+	<div class="barbox">
+		<div class="bar">
 			<button
 				type="button"
-				class="chip meter {contextLevel}"
-				class:active={popover === 'context'}
-				class:busy={session.compacting}
-				title={context
-					? t('web.agentComposer.contextTitle', { used: fmtTokens(context.tokens), window: fmtTokens(context.window) })
-					: t('web.agentComposer.context')}
-				onclick={(event) => togglePopover('context', event)}
+				class="ico"
+				use:tooltip={{ content: t('web.agentComposer.add') }}
+				aria-haspopup="menu"
+				aria-label={t('web.agentComposer.add')}
+				bind:this={addButton}
+				onpointerdown={(event) => event.stopPropagation()}
+				onclick={(event) => openMenu(addMenu, addButton, event)}
 			>
-				{#if session.compacting}
-					<Spinner size="0.875rem" />
-				{:else}
-					<svg viewBox="0 0 18 18" aria-hidden="true">
-						<circle class="track" cx="9" cy="9" r="7" />
-						<circle
-							class="fill"
-							cx="9"
-							cy="9"
-							r="7"
-							stroke-dasharray={RING}
-							stroke-dashoffset={RING * (1 - contextShare)}
-						/>
-					</svg>
-				{/if}
-				<span class="lbl">
-					{session.compacting
-						? t('web.agentComposer.compacting')
-						: context
-							? `${Math.round(contextShare * 100)}%`
-							: '–'}
-				</span>
+				<Icon name="plus" size="0.875rem" />
 			</button>
-		{/if}
+			<button
+				type="button"
+				class="ico slash"
+				use:tooltip={{ content: t('web.agentComposer.skills') }}
+				aria-haspopup="menu"
+				aria-label={t('web.agentComposer.skills')}
+				bind:this={skillButton}
+				onpointerdown={(event) => event.stopPropagation()}
+				onclick={(event) => openMenu(skillMenu, skillButton, event)}
+			>/</button>
 
-		<button
-			type="button"
-			class="chip mode {session.mode}"
-			class:active={popover === 'mode'}
-			title={t('web.agentComposer.modeTitle')}
-			onclick={(event) => togglePopover('mode', event)}
-		>
-			<Icon name={MODE_ICONS[session.mode]} size="0.75rem" />
-			<span class="lbl">{t(`web.agentComposer.mode_${session.mode}`)}</span>
-		</button>
-
-		{#if session.running}
-			<button class="send stop" type="button" title={t('web.agent.stop')} onclick={() => session.stop()}>
-				<Icon name="stop" size="0.75rem" />
+			<button type="button" class="chip model" class:active={popover === 'model'} onclick={(event) => togglePopover('model', event)}>
+				<span class="lbl">{modelLabel}</span>
+				<span class="dim">{t(`web.agentSettings.effort_${effortValue}`)}</span>
 			</button>
-		{/if}
-		{#if !session.running || canSend || session.sending}
-			<span class="sendgroup" class:split={session.running}>
-				<button
-					class="send"
-					type="submit"
-					title={session.running ? t('web.agentComposer.sendMidRun') : t('web.agent.send')}
-					disabled={!canSend}
-				>
-					{#if session.sending}
-						<Spinner size="0.75rem" />
-					{:else}
-						<Icon name="paperPlaneTop" size="0.75rem" />
-					{/if}
-				</button>
-				{#if session.running}
-					<button
-						class="send more"
-						type="button"
-						title={t('web.agentComposer.sendOptions')}
-						aria-haspopup="menu"
-						disabled={!canSend}
-						bind:this={sendAnchor}
-						onpointerdown={(event) => event.stopPropagation()}
-						onclick={(event) => openMenu(sendMenu, sendAnchor, event)}
-					>
-						<Icon name="caretDown" size="0.625rem" style="solid" />
+
+			{#if sharingPage}
+				<span class="chip file" use:tooltip={{ content: t('web.agentComposer.sharedPage', { page: pagePath }) }}>
+					<Icon name="fileLines" size="0.75rem" />
+					<span class="lbl">{shortPath(pagePath)}</span>
+					<button type="button" class="x" use:tooltip={{ content: t('web.agentComposer.unsharePage') }} aria-label={t('web.agentComposer.unsharePage')} onclick={() => session.setSharePage(false)}>
+						<Icon name="close" size="0.625rem" />
 					</button>
-				{/if}
-			</span>
-		{/if}
+				</span>
+			{/if}
+
+			<span class="spacer"></span>
+
+			{#if session.conversationId}
+				<button
+					type="button"
+					class="chip meter {contextLevel}"
+					class:active={popover === 'context'}
+					class:busy={session.compacting}
+					use:tooltip={{ content: contextHint }}
+					aria-label={contextHint}
+					onclick={(event) => togglePopover('context', event)}
+				>
+					{#if session.compacting}
+						<Spinner size="0.875rem" />
+					{:else}
+						<svg viewBox="0 0 18 18" aria-hidden="true">
+							<circle class="track" cx="9" cy="9" r="7" />
+							<circle
+								class="fill"
+								cx="9"
+								cy="9"
+								r="7"
+								stroke-dasharray={RING}
+								stroke-dashoffset={RING * (1 - contextShare)}
+							/>
+						</svg>
+					{/if}
+					<span class="lbl">
+						{session.compacting
+							? t('web.agentComposer.compacting')
+							: context
+								? `${Math.round(contextShare * 100)}%`
+								: '–'}
+					</span>
+				</button>
+			{/if}
+
+			<button
+				type="button"
+				class="chip mode {session.mode}"
+				class:active={popover === 'mode'}
+				use:tooltip={{ content: t('web.agentComposer.modeTitle') }}
+				aria-label={t('web.agentComposer.modeTitle')}
+				onclick={(event) => togglePopover('mode', event)}
+			>
+				<Icon name={MODE_ICONS[session.mode]} size="0.75rem" />
+				<span class="lbl">{t(`web.agentComposer.mode_${session.mode}`)}</span>
+			</button>
+
+			{#if session.running}
+				<button class="send stop" type="button" use:tooltip={{ content: t('web.agent.stop') }} aria-label={t('web.agent.stop')} onclick={() => session.stop()}>
+					<Icon name="stop" size="0.75rem" />
+				</button>
+			{/if}
+			{#if !session.running || canSend || session.sending}
+				<span class="sendgroup" class:split={session.running}>
+					<button
+						class="send"
+						type="submit"
+						use:tooltip={{ content: (session.running ? t('web.agentComposer.sendMidRun') : t('web.agent.send')) ?? '' }}
+						aria-label={session.running ? t('web.agentComposer.sendMidRun') : t('web.agent.send')}
+						disabled={!canSend}
+					>
+						{#if session.sending}
+							<Spinner size="0.75rem" />
+						{:else}
+							<Icon name="paperPlaneTop" size="0.75rem" />
+						{/if}
+					</button>
+					{#if session.running}
+						<button
+							class="send more"
+							type="button"
+							use:tooltip={{ content: t('web.agentComposer.sendOptions') }}
+							aria-label={t('web.agentComposer.sendOptions')}
+							aria-haspopup="menu"
+							disabled={!canSend}
+							bind:this={sendAnchor}
+							onpointerdown={(event) => event.stopPropagation()}
+							onclick={(event) => openMenu(sendMenu, sendAnchor, event)}
+						>
+							<Icon name="caretDown" size="0.625rem" style="solid" />
+						</button>
+					{/if}
+				</span>
+			{/if}
+		</div>
 	</div>
 </form>
 
@@ -837,12 +851,32 @@
 		}
 	}
 
+	.barbox {
+		container-type: inline-size;
+	}
+
 	.bar {
 		display: flex;
 		align-items: center;
 		gap: 0.375rem;
 		padding: 0.25rem 0.5rem 0.5rem;
 		min-width: 0;
+	}
+
+	// a narrow composer (the docked panel pulled thin) gives way in this order:
+	// the effort word, then the context meter and the mode's word (its icon
+	// stays), so the send button never leaves the bar
+	@container (max-width: 36rem) {
+		.chip.model .dim {
+			display: none;
+		}
+	}
+
+	@container (max-width: 30rem) {
+		.chip.meter,
+		.chip.mode .lbl {
+			display: none;
+		}
 	}
 
 	.spacer {
@@ -890,11 +924,19 @@
 		font-size: 0.75rem;
 		min-width: 0;
 
+		// a narrow composer cuts the chip's words short inside it rather than
+		// letting them run into the next chip
+		overflow: hidden;
+		white-space: nowrap;
+
 		.lbl {
 			@include ellipsis;
+
+			min-width: 0;
 		}
 
 		.dim {
+			flex: none;
 			color: var(--text-secondary);
 		}
 
@@ -904,11 +946,20 @@
 			color: var(--link);
 		}
 
+		// the model's name gives way before the shared page's
+		&.model {
+			flex-shrink: 4;
+			min-width: 4.5rem;
+		}
+
 		&.file {
 			background: none;
 			color: var(--text);
 			padding: 0 0.25rem;
-			flex-shrink: 1;
+		}
+
+		&.mode {
+			flex: none;
 		}
 
 		&.meter {
