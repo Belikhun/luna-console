@@ -6,6 +6,7 @@
 	import { t } from '$lib/i18n.svelte';
 	import { fmtDateTime } from '$lib/format';
 	import ResourceTable from './ResourceTable.svelte';
+	import DateTime from './DateTime.svelte';
 	import type { Column } from './table';
 	import { groupHref, type GroupRow } from '$lib/iam';
 	import { resourceId } from '$shared/iam/resources';
@@ -72,7 +73,7 @@
 				{[...row.policies, ...row.inline.map((inline) => inline.name)].join(', ') || '–'}
 			</span>
 		{:else if col === 'created'}
-			<span class="dim">{fmtDateTime(row.createdAt)}</span>
+			<span class="dim"><DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} /></span>
 		{/if}
 	{/snippet}
 </ResourceTable>

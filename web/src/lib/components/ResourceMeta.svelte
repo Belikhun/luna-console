@@ -199,9 +199,9 @@
 
 	const ownerCells: InfoCell[] = $derived([
 		{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
-		{ label: t('web.resourceMeta.createdAt'), value: resource?.createdAt ? fmtDateTime(resource.createdAt) : null },
+		{ label: t('web.resourceMeta.createdAt'), value: resource?.createdAt ? fmtDateTime(resource.createdAt) : null, time: resource?.createdAt ?? undefined },
 		{ id: 'updatedBy', label: t('web.resourceMeta.updatedBy') },
-		{ label: t('web.resourceMeta.updatedAt'), value: resource?.updatedAt ? fmtDateTime(resource.updatedAt) : null },
+		{ label: t('web.resourceMeta.updatedAt'), value: resource?.updatedAt ? fmtDateTime(resource.updatedAt) : null, time: resource?.updatedAt ?? undefined },
 		{ id: 'id', label: t('web.resourceMeta.id'), colSpan: 'all' }
 	]);
 

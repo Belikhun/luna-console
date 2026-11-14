@@ -3,7 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
-	import { t } from '$lib/i18n.svelte';
+	import { t, tSplit } from '$lib/i18n.svelte';
 	import { Authz } from '$lib/authz.svelte';
 	import { resourceId } from '$shared/iam/resources';
 	import { traitsOf } from '$core/software';
@@ -34,6 +34,7 @@
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import PlayerSkin3D from '$lib/components/PlayerSkin3D.svelte';
@@ -536,10 +537,17 @@
 						label: t('web.playerDetail.accountType'),
 						value: detail.onlineMode ? 'Premium (Mojang)' : 'Offline / proxy-authenticated'
 					},
-					{ label: t('web.playerDetail.firstSeen'), value: detail.firstSeenAtEpochMillis ? fmtDateTime(detail.firstSeenAtEpochMillis) : '–' },
+					{
+						label: t('web.playerDetail.firstSeen'),
+						value: detail.firstSeenAtEpochMillis ? fmtDateTime(detail.firstSeenAtEpochMillis) : '–',
+						time: detail.firstSeenAtEpochMillis || null
+					},
 					{
 						label: t('web.playerDetail.lastSeen'),
-						value: detail.online ? 'online now' : detail.lastSeenAtEpochMillis ? fmtDateTime(detail.lastSeenAtEpochMillis) : '–'
+						value: detail.online ? 'online now' : detail.lastSeenAtEpochMillis ? fmtDateTime(detail.lastSeenAtEpochMillis) : '–',
+						time: detail.online
+							? undefined
+							: detail.lastSeenAtEpochMillis || null
 					},
 					{
 						label: detail.online ? 'Current backend' : 'Last backend',
@@ -1065,6 +1073,7 @@
 		authInfo
 			? [
 					{
+						id: 'password',
 						label: t('web.playerDetail.password'),
 						value: !authInfo.registered
 							? 'None; not registered'
@@ -1074,6 +1083,7 @@
 					},
 					{ label: t('web.playerDetail.signedIn'), value: authInfo.authenticated ? 'Yes' : 'No' },
 					{
+						id: 'lock',
 						label: t('web.playerDetail.accountLock'),
 						value: authInfo.locked
 							? `Locked until ${fmtDateTime(authInfo.lockedUntilEpochMillis)}`
@@ -1082,14 +1092,17 @@
 					{ label: t('web.playerDetail.failedAttempts'), value: authInfo.failedAttempts },
 					{
 						label: t('web.playerDetail.lastLogin'),
-						value: authInfo.lastLoginAtEpochMillis ? fmtDateTime(authInfo.lastLoginAtEpochMillis) : '–'
+						value: authInfo.lastLoginAtEpochMillis ? fmtDateTime(authInfo.lastLoginAtEpochMillis) : '–',
+						time: authInfo.lastLoginAtEpochMillis || null
 					},
 					{ label: t('web.playerDetail.lastAddress'), value: authInfo.lastIp || '–', style: 'mono' },
 					{
 						label: t('web.playerDetail.registeredOn'),
-						value: authInfo.createdAtEpochMillis ? fmtDateTime(authInfo.createdAtEpochMillis) : '–'
+						value: authInfo.createdAtEpochMillis ? fmtDateTime(authInfo.createdAtEpochMillis) : '–',
+						time: authInfo.createdAtEpochMillis || null
 					},
 					{
+						id: 'session',
 						label: t('web.playerDetail.resumableSession'),
 						value: authInfo.session.hasSession
 							? `Until ${fmtDateTime(authInfo.session.expiresAtEpochMillis)}`
@@ -1131,14 +1144,22 @@
 		unchecked: 'web.playerDetail.premiumSourceUnchecked'
 	};
 
+	/** The sources whose sentence holds `{date}`, drawn with a clickable date. */
+	const DATED_PREMIUM_SOURCES = new Set(['mojang', 'cache', 'verified']);
+
+	/** Whether the player owns a Mojang account, in a word. */
+	function premiumVerdict(info: LoginModeInfo): string {
+		return info.premium.status === 'premium'
+			? t('web.playerDetail.premiumYes')
+			: info.premium.status === 'not_premium'
+				? t('web.playerDetail.premiumNo')
+				: t('web.playerDetail.premiumUnknown');
+	}
+
 	/** The premium verdict plus where it came from, in one line. */
 	function premiumLabel(info: LoginModeInfo): string {
 		const premium = info.premium;
-		const verdict = premium.status === 'premium'
-			? t('web.playerDetail.premiumYes')
-			: premium.status === 'not_premium'
-				? t('web.playerDetail.premiumNo')
-				: t('web.playerDetail.premiumUnknown');
+		const verdict = premiumVerdict(info);
 		const date = premium.checkedAtEpochMillis
 			? fmtDateTime(premium.checkedAtEpochMillis)
 			: '';
@@ -1165,6 +1186,7 @@
 						value: modeLabel(authInfo.loginMode.next)
 					},
 					{
+						id: 'preference',
 						label: t('web.playerDetail.loginModePreference'),
 						value: !authInfo.loginMode.preference
 							? t('web.playerDetail.loginModeNone')
@@ -1176,6 +1198,7 @@
 									})
 					},
 					{
+						id: 'premium',
 						label: t('web.playerDetail.loginModePremium'),
 						value: premiumLabel(authInfo.loginMode),
 						copyable: false,
@@ -1296,13 +1319,15 @@
 						label: t('web.playerDetail.firstTransaction'),
 						value: vaultInfo.summary.firstAtEpochMillis
 							? fmtDateTime(vaultInfo.summary.firstAtEpochMillis)
-							: '–'
+							: '–',
+						time: vaultInfo.summary.firstAtEpochMillis || null
 					},
 					{
 						label: t('web.playerDetail.lastTransaction'),
 						value: vaultInfo.summary.lastAtEpochMillis
 							? fmtDateTime(vaultInfo.summary.lastAtEpochMillis)
-							: '–'
+							: '–',
+						time: vaultInfo.summary.lastAtEpochMillis || null
 					}
 				]
 			: []
@@ -1660,7 +1685,28 @@
 					title={t('web.playerDetail.authentication')}
 					description={t('web.playerDetail.heldByLunaAuthOn')}
 				>
-					<InfoGrid cells={authCells} columns={[4, 2, 1]} />
+					<InfoGrid cells={authCells} columns={[4, 2, 1]}>
+						{#snippet custom(cell)}
+							{#if cell.id === 'password' && authInfo?.registered && authInfo.temporaryPassword}
+								Temporary, expires <DateTime
+									at={authInfo.temporaryPasswordUntilEpochMillis}
+									text={fmtDateTime(authInfo.temporaryPasswordUntilEpochMillis)}
+								/>
+							{:else if cell.id === 'lock' && authInfo?.locked}
+								Locked until <DateTime
+									at={authInfo.lockedUntilEpochMillis}
+									text={fmtDateTime(authInfo.lockedUntilEpochMillis)}
+								/>
+							{:else if cell.id === 'session' && authInfo?.session.hasSession}
+								Until <DateTime
+									at={authInfo.session.expiresAtEpochMillis}
+									text={fmtDateTime(authInfo.session.expiresAtEpochMillis)}
+								/>
+							{:else}
+								{cell.value}
+							{/if}
+						{/snippet}
+					</InfoGrid>
 				</Panel>
 
 				<div class="gap"></div>
@@ -1690,7 +1736,27 @@
 							</Btn>
 						{/snippet}
 
-						<InfoGrid cells={loginModeCells} columns={[4, 2, 1]} />
+						<InfoGrid cells={loginModeCells} columns={[4, 2, 1]}>
+							{#snippet custom(cell)}
+								{#if cell.id === 'preference' && authInfo?.loginMode?.preference && !authInfo.loginMode.preference.rememberForever}
+									{@const preference = authInfo.loginMode.preference}
+									{@const split = tSplit('web.playerDetail.loginModeUntil', 'date', { mode: modeLabel(preference.mode) })}
+									{split.before}<DateTime
+										at={preference.expiresAtEpochMillis}
+										text={fmtDateTime(preference.expiresAtEpochMillis)}
+									/>{split.after}
+								{:else if cell.id === 'premium' && authInfo?.loginMode && authInfo.loginMode.premium.checkedAtEpochMillis && DATED_PREMIUM_SOURCES.has(authInfo.loginMode.premium.source)}
+									{@const premium = authInfo.loginMode.premium}
+									{@const split = tSplit(PREMIUM_SOURCES[premium.source] ?? '', 'date', { error: premium.error })}
+									{premiumVerdict(authInfo.loginMode)} · {split.before}<DateTime
+										at={premium.checkedAtEpochMillis}
+										text={fmtDateTime(premium.checkedAtEpochMillis)}
+									/>{split.after}
+								{:else}
+									{cell.value}
+								{/if}
+							{/snippet}
+						</InfoGrid>
 					</Panel>
 				{:else}
 					<Flash kind="info">{t('web.playerDetail.loginModeUnavailable')}</Flash>
@@ -1740,7 +1806,7 @@
 					>
 						{#snippet cell(entry, col)}
 							{#if col === 'time'}
-								<span class="mono dim">{fmtDateTime(entry.atEpochMillis)}</span>
+								<span class="mono dim"><DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} /></span>
 							{:else if col === 'direction'}
 								<StatusBadge
 									state={entry.direction === 'in'
@@ -1826,7 +1892,7 @@
 				>
 					{#snippet cell(session, col)}
 						{#if col === 'connected'}
-							{fmtDateTime(session.connectedAtEpochMillis)}
+							<DateTime at={session.connectedAtEpochMillis} text={fmtDateTime(session.connectedAtEpochMillis)} />
 						{:else if col === 'server'}
 							<a href="/instances/{session.server}">{session.server}</a>
 						{:else if col === 'duration'}
@@ -1836,7 +1902,11 @@
 								{fmtDuration(session.durationMillis)}
 							{/if}
 						{:else if col === 'ended'}
-							{session.open ? '–' : fmtDateTime(session.disconnectedAtEpochMillis)}
+							{#if session.open}
+								–
+							{:else}
+								<DateTime at={session.disconnectedAtEpochMillis} text={fmtDateTime(session.disconnectedAtEpochMillis)} />
+							{/if}
 						{/if}
 					{/snippet}
 				</ResourceTable>
@@ -1880,7 +1950,7 @@
 					{/snippet}
 					{#snippet cell(entry, col)}
 						{#if col === 'time'}
-							<span class="mono dim">{fmtDateTime(entry.atEpochMillis)}</span>
+							<span class="mono dim"><DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} /></span>
 						{:else if col === 'type'}
 							<StatusBadge
 								state={entry.type === 'command' ? 'warning' : 'passed'}
@@ -1989,7 +2059,11 @@
 									<span class="dim">{t('web.playerDetail.global')}</span>
 								{/if}
 							{:else if col === 'expiry'}
-								{node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : 'never'}
+								<DateTime
+									at={node.expiryEpochMillis || null}
+									text={node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : undefined}
+									empty="never"
+								/>
 							{/if}
 						{/snippet}
 					</ResourceTable>
@@ -2013,7 +2087,7 @@
 				>
 					{#snippet cell(entry, col)}
 						{#if col === 'time'}
-							<span class="mono dim">{fmtDateTime(entry.atEpochMillis)}</span>
+							<span class="mono dim"><DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} /></span>
 						{:else if col === 'action'}
 							<StatusBadge
 								state={['ban', 'kick', 'ban-ip', 'bans-add'].includes(entry.action) ? 'failed' : 'passed'}

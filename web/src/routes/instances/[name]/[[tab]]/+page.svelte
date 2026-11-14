@@ -3,7 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
-	import { t } from '$lib/i18n.svelte';
+	import { t, tSplit } from '$lib/i18n.svelte';
 	import { Authz } from '$lib/authz.svelte';
 	import { resourceId } from '$shared/iam/resources';
 	import { onMount, tick } from 'svelte';
@@ -69,6 +69,7 @@
 	import type { UptimeSeries } from '$core/uptime';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import type { DistributionSegment } from '$lib/components/distribution';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -1763,7 +1764,8 @@
 			{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
 			{
 				label: t('web.resourceMeta.createdAt'),
-				value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null
+				value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null,
+				time: ownerMeta?.createdAt || null
 			},
 			{ label: t('web.instanceDetail.javaPid'), value: inst.javaPid },
 			{ id: 'cpu', label: t('web.instanceDetail.cpuUtilization') },
@@ -2770,7 +2772,7 @@
 				>
 					{#snippet cell(event, col)}
 						{#if col === 'time'}
-							<span class="mono dim">{fmtDateTime(event.t)}</span>
+							<span class="mono dim"><DateTime at={event.t} text={fmtDateTime(event.t)} /></span>
 						{:else if col === 'kind'}
 							<StatusBadge
 								state={event.kind === 'error'
@@ -3107,10 +3109,14 @@
 				<!-- where the states above come from: the run the daemon has been
 				     accumulating since its boot, not a window into a rotating file -->
 				<p class="dim note">
-					{t('web.instanceDetail.sessionSummary', {
-						time: fmtDateTime(pluginSession.startedAt),
+					{tSplit('web.instanceDetail.sessionSummary', 'time', {
 						lines: pluginSession.lines.toLocaleString()
-					})}
+					}).before}<DateTime
+						at={pluginSession.startedAt}
+						text={fmtDateTime(pluginSession.startedAt)}
+					/>{tSplit('web.instanceDetail.sessionSummary', 'time', {
+						lines: pluginSession.lines.toLocaleString()
+					}).after}
 					{#if pluginSession.dropped > 0}
 						{t('web.instanceDetail.sessionDropped', {
 							dropped: pluginSession.dropped.toLocaleString()
@@ -3225,7 +3231,8 @@
 							},
 							{
 								label: t('web.instanceWorld.lastModified'),
-								value: worldReport.modifiedAt ? fmtDateTime(worldReport.modifiedAt) : '–'
+								value: worldReport.modifiedAt ? fmtDateTime(worldReport.modifiedAt) : '–',
+								time: worldReport.modifiedAt || null
 							}
 						]}
 					/>
@@ -3292,7 +3299,7 @@
 								<span class="manual warn">{t('web.instanceWorld.tornWarning')}</span>
 							{/if}
 						{:else if col === 'createdAt'}
-							{fmtDateTime(row.createdAt)}
+							<DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} />
 						{:else if col === 'sizeBytes'}
 							{fmtBytes(row.sizeBytes)}
 						{:else if col === 'level'}

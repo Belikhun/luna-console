@@ -13,6 +13,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Flash from '$lib/components/Flash.svelte';
@@ -390,7 +391,8 @@
 			{ label: t('web.machineDetail.hostUptime'), value: health ? fmtDuration(health.uptimeSec * 1000) : null },
 			{
 				label: t('web.machineDetail.connectedSince'),
-				value: row.connectedAt ? fmtDateTime(row.connectedAt) : null
+				value: row.connectedAt ? fmtDateTime(row.connectedAt) : null,
+				time: row.connectedAt || null
 			},
 			{ id: 'beat', label: t('web.machineDetail.lastHeartbeat') },
 			{ id: 'latency', label: t('web.machineDetail.linkLatency') },
@@ -772,7 +774,7 @@
 							{#if row!.mode === 'primary'}
 								<span class="dim">{t('web.machineDetail.thisDaemonNothingTo')}</span>
 							{:else if row!.lastBeatMs === null}
-								<span class="dim">{row!.lastSeen ? fmtDateTime(Date.parse(row!.lastSeen)) : '–'}</span>
+								<span class="dim"><DateTime at={row!.lastSeen || null} text={row!.lastSeen ? fmtDateTime(Date.parse(row!.lastSeen)) : undefined} /></span>
 							{:else}
 								{Math.round(row!.lastBeatMs / 1000)}s ago
 							{/if}
@@ -802,7 +804,7 @@
 					<span class="blabel">{t('web.machineDetail.running')}</span>
 					<span class="mono">{row.version ?? '–'}</span>
 					{#if upgradeCheck}
-						<span class="dim">{upgradeCheck.platform} · checked {fmtDateTime(upgradeCheck.checkedAt)}</span>
+						<span class="dim">{upgradeCheck.platform} · checked <DateTime at={upgradeCheck.checkedAt} text={fmtDateTime(upgradeCheck.checkedAt)} /></span>
 					{/if}
 				</div>
 				{#if upgradeCheck}
@@ -1170,7 +1172,7 @@
 				>
 					{#snippet cell(event, col)}
 						{#if col === 'time'}
-							<span class="mono dim">{fmtDateTime(event.t)}</span>
+							<span class="mono dim"><DateTime at={event.t} text={fmtDateTime(event.t)} /></span>
 						{:else if col === 'kind'}
 							<StatusBadge
 								state={event.kind === 'error'

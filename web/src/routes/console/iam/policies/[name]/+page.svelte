@@ -27,6 +27,7 @@
 	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
 	import PolicyEditor from '$lib/components/PolicyEditor.svelte';
 	import PolicySummaryTable from '$lib/components/PolicySummaryTable.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -306,11 +307,13 @@
 					{ id: 'type', label: t('web.iamList.colType') },
 					{
 						label: t('web.iamPolicyDetail.created'),
-						value: policy.createdAt ? fmtDateTime(policy.createdAt) : t('web.iamPolicy.shipsWithLuna')
+						value: policy.createdAt ? fmtDateTime(policy.createdAt) : t('web.iamPolicy.shipsWithLuna'),
+						time: policy.createdAt ?? undefined
 					},
 					{
 						label: t('web.iamPolicyDetail.edited'),
-						value: policy.updatedAt ? fmtDateTime(policy.updatedAt) : '–'
+						value: policy.updatedAt ? fmtDateTime(policy.updatedAt) : '–',
+						time: policy.updatedAt ?? undefined
 					},
 					{ id: 'resourceId', label: t('web.iamPolicyDetail.resourceId') },
 					{ label: t('web.iamPolicyDetail.createdBy'), value: policy.createdBy ?? '–' },
@@ -498,7 +501,7 @@
 				>
 					{#snippet cell(row, col)}
 						{#if col === 'when'}
-							<span class="dim">{fmtDateTime(row.t)}</span>
+							<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 						{:else if col === 'action'}
 							<StatusBadge state={iamAuditTone(row.action)} label={iamAuditLabel(row.action)} />
 						{:else if col === 'actor'}

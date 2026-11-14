@@ -28,6 +28,7 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import McpScopeEditor from '$lib/components/McpScopeEditor.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
@@ -341,24 +342,27 @@
 							: token.scope.instances.join(', ') || '–'
 					},
 					{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
-					{ label: t('web.mcp.colCreated'), value: fmtDateTime(token.createdAt) },
+					{ label: t('web.mcp.colCreated'), value: fmtDateTime(token.createdAt), time: token.createdAt },
 					{
 						label: t('web.mcp.colLastUsed'),
 						value: token.lastUsedAt
 							? fmtDateTime(token.lastUsedAt)
-							: t('web.mcp.never')
+							: t('web.mcp.never'),
+						time: token.lastUsedAt ?? undefined
 					},
 					{
 						label: t('web.mcp.colExpires'),
 						value: token.expiresAt
 							? fmtDateTime(token.expiresAt)
-							: t('web.mcp.noExpiry')
+							: t('web.mcp.noExpiry'),
+						time: token.expiresAt ?? undefined
 					},
 					{
 						label: t('web.mcpDetail.rotated'),
 						value: token.rotatedAt
 							? fmtDateTime(token.rotatedAt)
-							: t('web.mcp.never')
+							: t('web.mcp.never'),
+						time: token.rotatedAt ?? undefined
 					},
 					{
 						label: t('web.mcp.colCalls'),
@@ -539,7 +543,7 @@
 				>
 					{#snippet cell(row, col)}
 						{#if col === 'when'}
-							<span class="dim">{fmtDateTime(row.t)}</span>
+							<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 						{:else if col === 'outcome'}
 							<StatusBadge
 								state={row.ok ? 'ok' : 'failed'}
@@ -588,7 +592,7 @@
 						{:else if col === 'body'}
 							<span class="dim args">{row.description || row.body}</span>
 						{:else if col === 'updated'}
-							<span class="dim">{fmtDateTime(row.updatedAt)}</span>
+							<span class="dim"><DateTime at={row.updatedAt} text={fmtDateTime(row.updatedAt)} /></span>
 						{/if}
 					{/snippet}
 				</ResourceTable>
@@ -609,7 +613,7 @@
 				>
 					{#snippet cell(row, col)}
 						{#if col === 'when'}
-							<span class="dim">{fmtDateTime(row.t)}</span>
+							<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 						{:else if col === 'action'}
 							<StatusBadge state={mcpAuditTone(row.action)} label={row.action} />
 						{:else if col === 'actor'}

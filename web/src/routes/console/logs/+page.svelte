@@ -19,6 +19,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
@@ -267,7 +268,7 @@
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'when'}
-				<span class="dim nowrap">{fmtDateTime(row.t)}</span>
+				<span class="dim nowrap"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 			{:else if col === 'level'}
 				<StatusBadge state={levelState(row.level)} label={row.level} />
 			{:else if col === 'source'}

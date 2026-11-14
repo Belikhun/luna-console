@@ -31,6 +31,7 @@
 	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
 	import PermissionsPolicies from '$lib/components/PermissionsPolicies.svelte';
 	import GroupPickTable from '$lib/components/GroupPickTable.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { AccountPermissions } from '$core/iam';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
@@ -600,16 +601,14 @@
 			? []
 			: [
 					{ id: 'resourceId', label: t('web.accountDetail.resourceId'), colSpan: 2 },
-					{
-						label: t('web.accountDetail.created'),
-						value: `${fmtDateTime(detail.account.createdAt)}${detail.account.createdBy ? ` · ${detail.account.createdBy}` : ''}`
-					},
+					{ id: 'created', label: t('web.accountDetail.created') },
 					{ id: 'access', label: t('web.accountDetail.consoleAccess') },
 					{
 						label: t('web.accountDetail.lastSignIn'),
 						value: detail.account.lastSignInAt
 							? fmtDateTime(detail.account.lastSignInAt)
-							: t('web.accounts.never')
+							: t('web.accounts.never'),
+						time: detail.account.lastSignInAt ?? undefined
 					},
 					{
 						label: t('web.accountDetail.accessKeys'),
@@ -862,6 +861,11 @@
 					/>
 				{:else if cell.id === 'access'}
 					<StatusBadge state={consoleAccess.state} label={consoleAccess.label} />
+				{:else if cell.id === 'created'}
+					<DateTime at={detail!.account.createdAt} text={fmtDateTime(detail!.account.createdAt)} />
+					{#if detail!.account.createdBy}
+						<span>· {detail!.account.createdBy}</span>
+					{/if}
 				{:else if cell.id === 'accountId'}
 					<span class="mono dim">{detail!.account.id}</span>
 				{/if}
@@ -1026,10 +1030,14 @@
 									label={row.disabled ? t('web.accounts.disabled') : t('web.accounts.active')}
 								/>
 							{:else if col === 'created'}
-								{fmtDateTime(row.createdAt)}
+								<DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} />
 							{:else if col === 'lastUsed'}
 								<span class:dim={!row.lastUsedAt}>
-									{row.lastUsedAt ? fmtDateTime(row.lastUsedAt) : t('web.accountDetail.neverUsed')}
+									{#if row.lastUsedAt}
+										<DateTime at={row.lastUsedAt} text={fmtDateTime(row.lastUsedAt)} />
+									{:else}
+										{t('web.accountDetail.neverUsed')}
+									{/if}
 								</span>
 							{:else if col === 'id'}
 								<span class="mono dim">{row.id}</span>
@@ -1073,9 +1081,9 @@
 									<span class="you">{t('web.accounts.thisBrowser')}</span>
 								{/if}
 							{:else if col === 'opened'}
-								{fmtDateTime(row.createdAt)}
+								<DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} />
 							{:else if col === 'lastSeen'}
-								{fmtDateTime(row.lastSeenAt)}
+								<DateTime at={row.lastSeenAt} text={fmtDateTime(row.lastSeenAt)} />
 							{:else if col === 'expires'}
 								{fmtDuration(row.expiresAt - Date.now())}
 							{:else if col === 'agent'}
@@ -1102,7 +1110,7 @@
 					>
 						{#snippet cell(row, col)}
 							{#if col === 'when'}
-								<span class="dim">{fmtDateTime(row.t)}</span>
+								<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 							{:else if col === 'action'}
 								<StatusBadge state={auditTone(row.action)} label={row.action} />
 							{:else if col === 'actor'}

@@ -11,6 +11,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -552,7 +553,7 @@
 							: `beat ${Math.round(row.lastBeatMs / 1000)}s ago`}
 					</span>
 				{:else}
-					{seenLabel(row)}
+					<DateTime at={row.lastSeen} text={seenLabel(row)} empty={seenLabel(row)} />
 				{/if}
 			{/if}
 		{/snippet}

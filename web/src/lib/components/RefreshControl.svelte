@@ -8,6 +8,7 @@
 
 	import Icon from './Icon.svelte';
 	import ContextMenu from './ContextMenu.svelte';
+	import DateTime from './DateTime.svelte';
 	import { REFRESH_INTERVALS, formatLastUpdated, loadInterval, saveInterval } from './refresh';
 	import { t } from '$lib/i18n.svelte';
 
@@ -92,7 +93,7 @@
 <div class="rc">
 	<span class="stamp">
 		<span class="lbl">{t('web.refresh.lastUpdated')}</span>
-		<span class="when">{stamp}</span>
+		<span class="when"><DateTime at={lastUpdated} text={stamp} empty={stamp} /></span>
 	</span>
 	<div class="split">
 		<button

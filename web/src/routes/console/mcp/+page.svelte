@@ -23,6 +23,7 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
@@ -466,14 +467,22 @@
 						{/if}
 					{:else if col === 'lastUsed'}
 						<span class:dim={!row.lastUsedAt}>
-							{row.lastUsedAt ? fmtDateTime(row.lastUsedAt) : t('web.mcp.never')}
+							{#if row.lastUsedAt}
+								<DateTime at={row.lastUsedAt} text={fmtDateTime(row.lastUsedAt)} />
+							{:else}
+								{t('web.mcp.never')}
+							{/if}
 						</span>
 					{:else if col === 'expires'}
 						<span class:dim={!row.expiresAt}>
-							{row.expiresAt ? fmtDateTime(row.expiresAt) : t('web.mcp.noExpiry')}
+							{#if row.expiresAt}
+								<DateTime at={row.expiresAt} text={fmtDateTime(row.expiresAt)} />
+							{:else}
+								{t('web.mcp.noExpiry')}
+							{/if}
 						</span>
 					{:else if col === 'created'}
-						<span class="dim">{fmtDateTime(row.createdAt)}</span>
+						<span class="dim"><DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} /></span>
 					{/if}
 				{/snippet}
 			</ResourceTable>
@@ -509,7 +518,7 @@
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'when'}
-						<span class="dim">{fmtDateTime(row.t)}</span>
+						<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 					{:else if col === 'outcome'}
 						<StatusBadge
 							state={row.ok ? 'ok' : 'failed'}
@@ -552,7 +561,7 @@
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'when'}
-						<span class="dim">{fmtDateTime(row.t)}</span>
+						<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 					{:else if col === 'action'}
 						<StatusBadge state={mcpAuditTone(row.action)} label={row.action} />
 					{:else if col === 'actor'}

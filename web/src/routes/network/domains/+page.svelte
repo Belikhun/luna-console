@@ -23,6 +23,7 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
@@ -574,7 +575,7 @@
 					{:else if col === 'by'}
 						<span class="dim">{row.createdBy}</span>
 					{:else if col === 'created'}
-						<span class="dim">{fmtDateTime(row.createdAt)}</span>
+						<span class="dim"><DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} /></span>
 					{/if}
 				{/snippet}
 			</ResourceTable>
@@ -653,7 +654,7 @@
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'when'}
-						<span class="dim">{fmtDateTime(row.t)}</span>
+						<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 					{:else if col === 'action'}
 						<StatusBadge state={auditTone(row.action)} label={row.action} />
 					{:else if col === 'actor'}

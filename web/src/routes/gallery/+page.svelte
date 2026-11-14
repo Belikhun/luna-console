@@ -23,6 +23,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
@@ -104,13 +105,16 @@
 
 	const ICON_WEIGHTS = ['thin', 'light', 'regular', 'solid'] as const;
 
+	const NOW = Date.now();
+
 	const CELLS: InfoCell[] = [
 		{ label: t('web.gallery.plainValue'), value: 'some value' },
 		{ label: t('web.gallery.copyable'), value: '127.0.0.1:25565', copyable: true, style: 'mono' },
 		{ label: t('web.gallery.withHelp'), value: 'hover the icon', help: 'Explains what this field means.' },
 		{ label: t('web.gallery.empty'), value: null },
 		{ label: t('web.gallery.headingStyle'), value: '42', style: 'heading' },
-		{ label: t('web.gallery.codeStyle'), value: 'java -jar server.jar --nogui', style: 'code', colSpan: 3 }
+		{ label: t('web.gallery.codeStyle'), value: 'java -jar server.jar --nogui', style: 'code', colSpan: 3 },
+		{ label: t('web.gallery.moment'), time: NOW - 3 * 3_600_000 }
 	];
 
 	interface DemoRow {
@@ -561,6 +565,18 @@
 		<InfoGrid cells={CELLS} columns={[4, 3, 2]} />
 	</Panel>
 
+	<Panel title="DateTime">
+		<div class="row">
+			<DateTime at={NOW - 3 * 60_000} />
+			<DateTime at={NOW + 2 * 86_400_000} />
+			<DateTime at={new Date(NOW).toISOString()} mono />
+			<DateTime at={null} />
+			<span class="clip">
+				<DateTime at={NOW - 26 * 3_600_000} />
+			</span>
+		</div>
+	</Panel>
+
 	<Panel title={t('web.gallery.metricChart')}>
 		<div class="cols2">
 			<Sparkline points={SPARK_POINTS} label={t('web.gallery.cpuUtilization')} unit="%" maxY={100} />
@@ -646,6 +662,14 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
+	}
+
+	// a too-narrow box, to show the date trigger ending in an ellipsis
+	.clip {
+		display: block;
+		width: 6rem;
+		overflow: hidden;
+		white-space: nowrap;
 	}
 
 	.row {

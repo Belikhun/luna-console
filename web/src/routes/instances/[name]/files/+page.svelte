@@ -43,6 +43,7 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import CodeEditor from '$lib/components/CodeEditor.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import SearchInput from '$lib/components/SearchInput.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
@@ -989,7 +990,7 @@
 							? `${fmtBytes(details.totalSize)}${details.truncated ? '+' : ''}`
 							: fmtBytes(details.size)
 					},
-					{ id: 'modified', label: t('web.instanceFiles.colModified'), value: fmtDateTime(details.modified) },
+					{ id: 'modified', label: t('web.instanceFiles.colModified'), value: fmtDateTime(details.modified), time: details.modified || null },
 					...(details.kind === 'dir'
 						? [
 								{ id: 'files', label: t('web.instanceFiles.detailFiles'), value: `${details.files}${details.truncated ? '+' : ''}` },
@@ -1880,7 +1881,7 @@
 								{:else if col === 'size'}
 									{#if row.kind === 'dir'}<span class="dim">–</span>{:else}{fmtBytes(row.size)}{/if}
 								{:else if col === 'modified'}
-									<span class="dim">{row.modified ? fmtDateTime(row.modified) : '–'}</span>
+									<span class="dim"><DateTime at={row.modified || null} text={row.modified ? fmtDateTime(row.modified) : undefined} /></span>
 								{:else if col === 'type'}
 									<span class="dim">{typeLabel(row)}</span>
 								{/if}

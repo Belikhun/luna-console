@@ -3208,7 +3208,8 @@
 		"cancel": "Hủy",
 		"confirm": "Xác nhận",
 		"wideVariantAsUsed": "Biến thể rộng, như hộp thoại tùy chỉnh bảng dùng.",
-		"close": "Đóng"
+		"close": "Đóng",
+		"moment": "Lần khởi động gần nhất"
 	},
 	"groupNew": {
 		"createAnAddonGroup": "Tạo một nhóm addon",
@@ -6020,7 +6021,15 @@
 		"hour": "Giờ",
 		"minute": "Phút",
 		"now": "Bây giờ",
-		"clear": "Xoá"
+		"clear": "Xoá",
+		"local": "Giờ địa phương",
+		"zone": "Múi giờ",
+		"relative": "So với bây giờ",
+		"utc": "Giờ UTC (GMT)",
+		"iso": "ISO 8601",
+		"isoLocal": "ISO 8601, giờ địa phương",
+		"unix": "Unix (giây)",
+		"unixMs": "Unix (mili giây)"
 	},
 	"agentShare": {
 		"title": "Chia sẻ cuộc trò chuyện",

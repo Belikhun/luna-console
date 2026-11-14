@@ -1857,7 +1857,8 @@
 		"cancel": "Cancel",
 		"confirm": "Confirm",
 		"wideVariantAsUsed": "Wide variant, as used by the table preferences dialog.",
-		"close": "Close"
+		"close": "Close",
+		"moment": "Last start"
 	},
 	"groupDetail": {
 		"builtin": "builtin",
@@ -6020,7 +6021,15 @@
 		"hour": "Hour",
 		"minute": "Minute",
 		"now": "Now",
-		"clear": "Clear"
+		"clear": "Clear",
+		"local": "Local time",
+		"zone": "Time zone",
+		"relative": "Relative",
+		"utc": "UTC (GMT)",
+		"iso": "ISO 8601",
+		"isoLocal": "ISO 8601, local",
+		"unix": "Unix seconds",
+		"unixMs": "Unix milliseconds"
 	},
 	"agentShare": {
 		"title": "Share conversation",

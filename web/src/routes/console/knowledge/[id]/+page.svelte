@@ -3,7 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
-	import { t } from '$lib/i18n.svelte';
+	import { t, tSplit } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -20,6 +20,7 @@
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import OwnerCell from '$lib/components/OwnerCell.svelte';
 	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import { resourceId } from '$shared/iam/resources';
 	import { clearCrumbLabel, setCrumbLabel } from '$lib/crumbs.svelte';
@@ -44,7 +45,7 @@
 			: [
 					{ id: 'resourceId', label: t('web.resourceId.label'), colSpan: 2 },
 					{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
-					{ label: t('web.resourceMeta.createdAt'), value: fmtDateTime(item.createdAt) }
+					{ label: t('web.resourceMeta.createdAt'), value: fmtDateTime(item.createdAt), time: item.createdAt }
 				]
 	);
 
@@ -126,9 +127,15 @@
 		<a href="/console/knowledge">{t('web.knowledge.back')}</a>
 	</Flash>
 {:else if item && draft}
+	{#snippet editedLine()}
+		{#if item}
+			{@const edited = tSplit('web.knowledge.lastEdited', 'time', { actor: item.updatedBy ?? '–' })}
+			{t(`web.knowledge.kind.${item.kind}`)} · {edited.before}<DateTime at={item.updatedAt} text={fmtDateTime(item.updatedAt)} />{edited.after}
+		{/if}
+	{/snippet}
 	<PageHeader
 		title={item.title}
-		description={`${t(`web.knowledge.kind.${item.kind}`)} · ${t('web.knowledge.lastEdited', { time: fmtDateTime(item.updatedAt), actor: item.updatedBy ?? '–' })}`}
+		description={editedLine}
 	>
 		{#snippet extra()}
 			{#if !item!.enabled}

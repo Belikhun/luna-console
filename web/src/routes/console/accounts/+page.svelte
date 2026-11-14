@@ -22,6 +22,7 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
@@ -508,10 +509,14 @@
 						{/if}
 					{:else if col === 'lastSignIn'}
 						<span class:dim={!row.lastSignInAt}>
-							{row.lastSignInAt ? fmtDateTime(row.lastSignInAt) : t('web.accounts.never')}
+							{#if row.lastSignInAt}
+								<DateTime at={row.lastSignInAt} text={fmtDateTime(row.lastSignInAt)} />
+							{:else}
+								{t('web.accounts.never')}
+							{/if}
 						</span>
 					{:else if col === 'created'}
-						<span class="dim">{fmtDateTime(row.createdAt)}</span>
+						<span class="dim"><DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} /></span>
 					{/if}
 				{/snippet}
 			</ResourceTable>
@@ -543,9 +548,9 @@
 					{:else if col === 'ip'}
 						<span class="mono">{row.ip ?? '–'}</span>
 					{:else if col === 'opened'}
-						{fmtDateTime(row.createdAt)}
+						<DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} />
 					{:else if col === 'lastSeen'}
-						{fmtDateTime(row.lastSeenAt)}
+						<DateTime at={row.lastSeenAt} text={fmtDateTime(row.lastSeenAt)} />
 					{:else if col === 'expires'}
 						<span class:dim={row.expiresAt - Date.now() > 60 * 60 * 1000}>
 							{fmtDuration(row.expiresAt - Date.now())}
@@ -575,7 +580,7 @@
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'when'}
-						<span class="dim">{fmtDateTime(row.t)}</span>
+						<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 					{:else if col === 'action'}
 						<StatusBadge state={auditTone(row.action)} label={row.action} />
 					{:else if col === 'account'}

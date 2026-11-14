@@ -3,7 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
-	import { t } from '$lib/i18n.svelte';
+	import { t, tSplit } from '$lib/i18n.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -13,6 +13,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -284,10 +285,20 @@
 			{:else if col === 'instances'}
 				<span class="mono">{schedule.instances.join(', ')}</span>
 			{:else if col === 'trigger'}
-				<span class="mono">{triggerText(schedule)}</span>
+				<span class="mono">
+					{#if schedule.trigger.kind === 'at'}
+						{@const split = tSplit('web.schedules.onceAt', 'time')}
+						{split.before}<DateTime
+							at={schedule.trigger.at}
+							text={fmtDateTime(new Date(schedule.trigger.at).getTime())}
+						/>{split.after}
+					{:else}
+						{triggerText(schedule)}
+					{/if}
+				</span>
 			{:else if col === 'next'}
 				{#if schedule.nextRun}
-					{fmtDateTime(new Date(schedule.nextRun).getTime())}
+					<DateTime at={schedule.nextRun} text={fmtDateTime(new Date(schedule.nextRun).getTime())} />
 				{:else}
 					<span class="dim">{t('web.schedules.finished')}</span>
 				{/if}
@@ -336,7 +347,7 @@
 	>
 		{#snippet cell(event, col)}
 			{#if col === 'time'}
-				<span class="mono dim">{fmtDateTime(event.t)}</span>
+				<span class="mono dim"><DateTime at={event.t} text={fmtDateTime(event.t)} /></span>
 			{:else if col === 'name'}
 				{event.name}
 			{:else if col === 'outcome'}

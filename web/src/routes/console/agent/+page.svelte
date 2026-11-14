@@ -3,7 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
-	import { t } from '$lib/i18n.svelte';
+	import { t, tSplit } from '$lib/i18n.svelte';
 	import { onMount } from 'svelte';
 	import { api, del, patch, post, put } from '$lib/api';
 	import { Agent, type AgentState, type HelperDefinition, type HelperSummary } from '$lib/agent.svelte';
@@ -13,6 +13,7 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import FormGrid from '$lib/components/FormGrid.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -278,6 +279,12 @@
 		return t('web.agentSettings.usageResets', { used, at: fmtDateTime(Date.parse(window.resetsAt)) });
 	}
 
+	function usageKey(source: string): string {
+		return source === 'observed'
+			? 'web.agentSettings.usageObservedAt'
+			: 'web.agentSettings.usageAt';
+	}
+
 	const dirty = $derived(
 		!!agent &&
 			(enabled !== agent.settings.enabled ||
@@ -339,10 +346,11 @@
 				style: credential ? 'mono' : 'default'
 			},
 			{
+				id: credential
+					? 'connectedBy'
+					: undefined,
 				label: t('web.agentSettings.connectedBy'),
-				value: credential
-					? `${credential.setBy ?? 'root'} · ${fmtDateTime(credential.setAt)}`
-					: null
+				value: null
 			},
 			{
 				label: t('web.agentSettings.executable'),
@@ -617,7 +625,14 @@
 			</Btn>
 		{/if}
 	{/snippet}
-	<InfoGrid cells={statusCells} columns={[4, 2, 1]} />
+	<InfoGrid cells={statusCells} columns={[4, 2, 1]}>
+		{#snippet custom(cell)}
+			{#if cell.id === 'connectedBy' && agent?.credential}
+				<span>{agent.credential.setBy ?? 'root'} ·</span>
+				<DateTime at={agent.credential.setAt} text={fmtDateTime(agent.credential.setAt)} />
+			{/if}
+		{/snippet}
+	</InfoGrid>
 </Panel>
 
 <div class="gap"></div>
@@ -668,9 +683,7 @@
 				/>
 			{/if}
 			<p class="dim small">
-				{usage.source === 'observed'
-					? t('web.agentSettings.usageObservedAt', { at: fmtDateTime(usage.at) })
-					: t('web.agentSettings.usageAt', { at: fmtDateTime(usage.at) })}
+				{tSplit(usageKey(usage.source), 'at').before}<DateTime at={usage.at} text={fmtDateTime(usage.at)} />{tSplit(usageKey(usage.source), 'at').after}
 			</p>
 		</div>
 	{/if}

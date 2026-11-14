@@ -26,6 +26,7 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import type { InfoCell } from '$lib/components/grid';
@@ -321,7 +322,8 @@
 					},
 					{
 						label: t('web.envDetail.lastChanged'),
-						value: detail.updatedAt ? fmtDateTime(Date.parse(detail.updatedAt)) : '–'
+						value: detail.updatedAt ? fmtDateTime(Date.parse(detail.updatedAt)) : '–',
+						time: detail.updatedAt || null
 					},
 					...(detail.builtin
 						? []
@@ -329,7 +331,8 @@
 								{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
 								{
 									label: t('web.resourceMeta.createdAt'),
-									value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null
+									value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null,
+									time: ownerMeta?.createdAt || null
 								}
 							]),
 					{ id: 'scopes', label: t('web.envDetail.definedAt') },
@@ -639,7 +642,7 @@
 					>
 						{#snippet cell(row, col)}
 							{#if col === 'time'}
-								<span class="dim">{fmtDateTime(row.t)}</span>
+								<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 							{:else if col === 'action'}
 								<StatusBadge
 									state={row.action === 'unset'

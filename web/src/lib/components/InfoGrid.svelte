@@ -5,6 +5,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
 	import type { Snippet } from 'svelte';
+	import DateTime from './DateTime.svelte';
 	import Icon from './Icon.svelte';
 	import type { InfoCell } from './grid';
 	import { tooltip, refreshTooltip } from '$lib/tooltip.svelte';
@@ -105,6 +106,8 @@
 				<span class="display">
 					{#if custom && cellItem.id}
 						{@render custom(cellItem)}
+					{:else if cellItem.time !== undefined}
+						<DateTime at={cellItem.time} text={cellItem.value == null || cellItem.value === '' ? undefined : String(cellItem.value)} />
 					{:else if cellItem.value === null || cellItem.value === undefined || cellItem.value === ''}
 						<span class="none">–</span>
 					{:else if cellItem.href}

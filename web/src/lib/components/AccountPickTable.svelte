@@ -7,6 +7,7 @@
 	import { fmtDateTime } from '$lib/format';
 	import ResourceTable from './ResourceTable.svelte';
 	import AccountAvatar from './AccountAvatar.svelte';
+	import DateTime from './DateTime.svelte';
 	import type { Column } from './table';
 	import type { AccountSummary } from '$core/accounts';
 	import { resourceId } from '$shared/iam/resources';
@@ -71,9 +72,15 @@
 		{:else if col === 'displayName'}
 			<span class:dim={!row.displayName}>{row.displayName || '–'}</span>
 		{:else if col === 'lastSignIn'}
-			<span class="dim">{row.lastSignInAt ? fmtDateTime(row.lastSignInAt) : t('web.accounts.never')}</span>
+			<span class="dim">
+				{#if row.lastSignInAt}
+					<DateTime at={row.lastSignInAt} text={fmtDateTime(row.lastSignInAt)} />
+				{:else}
+					{t('web.accounts.never')}
+				{/if}
+			</span>
 		{:else if col === 'created'}
-			<span class="dim">{fmtDateTime(row.createdAt)}</span>
+			<span class="dim"><DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} /></span>
 		{/if}
 	{/snippet}
 </ResourceTable>

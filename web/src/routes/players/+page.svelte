@@ -28,6 +28,7 @@
 	import { withCopyResourceId } from '$lib/resourceid';
 	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
 	import DetailPanel from '$lib/components/DetailPanel.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import type { InfoCell } from '$lib/components/grid';
@@ -174,7 +175,8 @@
 			},
 			{
 				label: t('web.players.firstSeen'),
-				value: one.firstSeenAtEpochMillis ? fmtDateTime(one.firstSeenAtEpochMillis) : null
+				value: one.firstSeenAtEpochMillis ? fmtDateTime(one.firstSeenAtEpochMillis) : null,
+				time: one.firstSeenAtEpochMillis || null
 			},
 			{
 				label: t('web.players.lastSeen'),
@@ -182,7 +184,10 @@
 					? t('web.players.online')
 					: one.lastSeenAtEpochMillis
 						? fmtDateTime(one.lastSeenAtEpochMillis)
-						: null
+						: null,
+				time: one.online
+					? undefined
+					: one.lastSeenAtEpochMillis || null
 			},
 			{
 				label: t('web.playerDetail.backend'),
@@ -605,9 +610,7 @@
 					{#if player.online}
 						<span class="dim">now; on for {fmtDuration(player.sessionMillis)}</span>
 					{:else if player.lastSeenAtEpochMillis}
-						<span title={fmtDateTime(player.lastSeenAtEpochMillis)}>
-							{fmtDateTime(player.lastSeenAtEpochMillis)}
-						</span>
+						<DateTime at={player.lastSeenAtEpochMillis} text={fmtDateTime(player.lastSeenAtEpochMillis)} />
 					{:else}
 						<span class="dim">–</span>
 					{/if}
@@ -616,7 +619,10 @@
 				{:else if col === 'sessions'}
 					{player.sessionCount}
 				{:else if col === 'firstSeen'}
-					{player.firstSeenAtEpochMillis ? fmtDateTime(player.firstSeenAtEpochMillis) : '–'}
+					<DateTime
+						at={player.firstSeenAtEpochMillis || null}
+						text={player.firstSeenAtEpochMillis ? fmtDateTime(player.firstSeenAtEpochMillis) : undefined}
+					/>
 				{:else if col === 'mode'}
 					<StatusBadge
 						state={player.onlineMode ? 'passed' : 'warning'}
@@ -723,7 +729,7 @@
 								<StatusBadge state="stopped" label={t('web.playerDetail.disconnected')} />
 							{/if}
 							<a href="/instances/{session.server}">{session.server}</a>
-							<span class="dim">{fmtDateTime(session.connectedAtEpochMillis)}</span>
+							<span class="dim"><DateTime at={session.connectedAtEpochMillis} text={fmtDateTime(session.connectedAtEpochMillis)} /></span>
 							<span class="dim">{fmtDuration(session.durationMillis)}</span>
 						</div>
 					{/each}

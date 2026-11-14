@@ -15,7 +15,7 @@
 	import { Agent, type ChatItem, type ChatSession } from '$lib/agent.svelte';
 	import { renderMarkdown } from '$lib/markdown';
 	import { copyText } from '$lib/clipboard';
-	import { fmtDateTime, fmtDuration, fmtTime, fmtTokens } from '$lib/format';
+	import { fmtDuration, fmtTime, fmtTokens } from '$lib/format';
 	import { Notify } from '$lib/notifications.svelte';
 	import Icon from './Icon.svelte';
 	import Btn from './Btn.svelte';
@@ -23,6 +23,7 @@
 	import AgentToolCard from './AgentToolCard.svelte';
 	import AgentTodos from './AgentTodos.svelte';
 	import AccountAvatar from './AccountAvatar.svelte';
+	import DateTime from './DateTime.svelte';
 	import ImageViewer from './ImageViewer.svelte';
 	import ConfirmModal from './ConfirmModal.svelte';
 	import type { AvatarSubject } from './accountavatar';
@@ -709,7 +710,7 @@
 					{/if}
 				</div>
 			{/if}
-			<time class="at" datetime={new Date(item.at).toISOString()} use:tooltip={{ content: fmtDateTime(item.at) }}>{clock(item.at)}</time>
+			<time class="at" datetime={new Date(item.at).toISOString()}><DateTime at={item.at} text={clock(item.at)} /></time>
 			{#if item.model}
 				<span class="sent" use:tooltip={{ content: t('web.agent.sentWith') }}>
 					{modelName(item.model)}{#if item.effort}<span class="dim">{` · ${t(`web.agentSettings.effort_${item.effort}`)}`}</span>{/if}
@@ -798,7 +799,7 @@
 								? t('web.agent.compactedBy', { name: group.item.by })
 								: t('web.agent.compactedAuto')}
 						</span>
-						<span class="at">{fmtTime(group.item.at)}</span>
+						<span class="at"><DateTime at={group.item.at} text={fmtTime(group.item.at)} /></span>
 					</div>
 				{:else if group.kind === 'event'}
 					<div class="event" data-source={group.item.source}>
@@ -827,7 +828,7 @@
 							<img class="avatar cat" src={AVATAR} alt="" />
 							<span class="who">Mèo Béo</span>
 							{#if started}
-								<time class="at" datetime={new Date(started).toISOString()} use:tooltip={{ content: fmtDateTime(started) }}>{clock(started)}</time>
+								<time class="at" datetime={new Date(started).toISOString()}><DateTime at={started} text={clock(started)} /></time>
 							{/if}
 						</div>
 

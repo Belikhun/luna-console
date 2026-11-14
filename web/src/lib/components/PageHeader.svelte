@@ -17,7 +17,8 @@
 		title: string;
 		count?: string | number;
 		info?: boolean;
-		description?: string;
+		/** a snippet when the line holds markup (a clickable date) */
+		description?: string | Snippet;
 		extra?: Snippet;
 		actions?: Snippet;
 	} = $props();
@@ -31,7 +32,11 @@
 			{#if info}<a class="info" href="#info" onclick={(event) => event.preventDefault()}>Info</a>{/if}
 			{#if extra}{@render extra()}{/if}
 		</h1>
-		{#if description}<p class="desc">{description}</p>{/if}
+		{#if typeof description === 'function'}
+			<p class="desc">{@render description()}</p>
+		{:else if description}
+			<p class="desc">{description}</p>
+		{/if}
 	</div>
 	{#if actions}
 		<div class="actions">{@render actions()}</div>

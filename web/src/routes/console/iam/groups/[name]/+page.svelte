@@ -27,6 +27,7 @@
 	import AccountAvatar from '$lib/components/AccountAvatar.svelte';
 	import AccountPickTable from '$lib/components/AccountPickTable.svelte';
 	import PermissionsPolicies from '$lib/components/PermissionsPolicies.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { Column } from '$lib/components/table';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -285,10 +286,10 @@
 			? []
 			: [
 					{ label: t('web.iamGroupDetail.groupName'), value: group.name },
-					{ label: t('web.iamList.colCreationTime'), value: fmtDateTime(group.createdAt) },
+					{ label: t('web.iamList.colCreationTime'), value: fmtDateTime(group.createdAt), time: group.createdAt },
 					{ id: 'resourceId', label: t('web.iamPolicyDetail.resourceId'), colSpan: 2 },
 					{ label: t('web.iamPolicyDetail.createdBy'), value: group.createdBy ?? '–' },
-					{ label: t('web.iamPolicyDetail.edited'), value: fmtDateTime(group.updatedAt) },
+					{ label: t('web.iamPolicyDetail.edited'), value: fmtDateTime(group.updatedAt), time: group.updatedAt },
 					{ label: t('web.iam.colDescription'), value: group.description || '–', colSpan: 2 }
 				]
 	);
@@ -421,10 +422,14 @@
 							<span class:dim={!row.account?.displayName}>{row.account?.displayName || '–'}</span>
 						{:else if col === 'lastSignIn'}
 							<span class="dim">
-								{row.account?.lastSignInAt ? fmtDateTime(row.account.lastSignInAt) : t('web.accounts.never')}
+								{#if row.account?.lastSignInAt}
+									<DateTime at={row.account.lastSignInAt} text={fmtDateTime(row.account.lastSignInAt)} />
+								{:else}
+									{t('web.accounts.never')}
+								{/if}
 							</span>
 						{:else if col === 'created'}
-							<span class="dim">{row.account ? fmtDateTime(row.account.createdAt) : '–'}</span>
+							<span class="dim"><DateTime at={row.account?.createdAt} text={row.account ? fmtDateTime(row.account.createdAt) : undefined} /></span>
 						{/if}
 					{/snippet}
 				</DataTable>
@@ -449,7 +454,7 @@
 				>
 					{#snippet cell(row, col)}
 						{#if col === 'when'}
-							<span class="dim">{fmtDateTime(row.t)}</span>
+							<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 						{:else if col === 'action'}
 							<StatusBadge state={iamAuditTone(row.action)} label={iamAuditLabel(row.action)} />
 						{:else if col === 'actor'}

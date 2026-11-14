@@ -94,3 +94,38 @@ export function t(key: string, params?: Record<string, string | number>): string
 
 	return resolve(key, params);
 }
+
+/** A sentence cut at one placeholder: the text before it and the text after. */
+export interface SplitText {
+	before: string;
+	after: string;
+}
+
+// a character no translation holds, put where the placeholder goes and cut at
+const SLOT_MARK = "\u0000";
+
+/**
+ * Resolve a language string with one placeholder left open, so markup can
+ * stand in it: `{split.before}<DateTime at={x} />{split.after}` renders
+ * "Stopped 3 min ago" with a clickable date and the sentence's word order
+ * still the translation's.
+ *
+ * @param key the language key
+ * @param slot the placeholder the markup takes (`time` for `{time}`)
+ * @param params the sentence's other placeholders
+ * @returns the text around the slot; all of it is `before` when the
+ *   translation does not name the slot
+ */
+export function tSplit(key: string, slot: string, params: Record<string, string | number> = {}): SplitText {
+	const text = t(key, { ...params, [slot]: SLOT_MARK });
+	const at = text.indexOf(SLOT_MARK);
+
+	if (at < 0) {
+		return { before: text, after: "" };
+	}
+
+	return {
+		before: text.slice(0, at),
+		after: text.slice(at + SLOT_MARK.length),
+	};
+}

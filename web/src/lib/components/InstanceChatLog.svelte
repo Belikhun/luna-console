@@ -10,6 +10,7 @@
 	import { LOG_PAGE, loadWholeLog } from '$lib/log';
 	import Panel from './Panel.svelte';
 	import Btn from './Btn.svelte';
+	import DateTime from './DateTime.svelte';
 	import Select from './Select.svelte';
 	import Flash from './Flash.svelte';
 	import StatusBadge from './StatusBadge.svelte';
@@ -204,7 +205,7 @@
 		{/snippet}
 		{#snippet cell(entry, col)}
 			{#if col === 'time'}
-				<span class="mono dim">{fmtDateTime(entry.atEpochMillis)}</span>
+				<span class="mono dim"><DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} /></span>
 			{:else if col === 'player'}
 				{#if entry.uuid}
 					<PlayerName player={entry.uuid} name={entry.username} href="/instances/{encodeURIComponent(entry.server || instance)}/players/{entry.uuid}" />

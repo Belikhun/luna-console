@@ -24,6 +24,7 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
 	import PlayerPicker from '$lib/components/PlayerPicker.svelte';
@@ -990,7 +991,7 @@
 			>
 				{#snippet cell(entry, col)}
 					{#if col === 'time'}
-						{fmtDateTime(entry.atEpochMillis)}
+						<DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} />
 					{:else if col === 'action'}
 						<b>{entry.action}</b>
 					{:else if col === 'target'}
@@ -1053,9 +1054,13 @@
 					{:else if col === 'source'}
 						{row.source || '–'}
 					{:else if col === 'created'}
-						<span class="dim">{row.created || '–'}</span>
+						<span class="dim"><DateTime at={row.created} text={row.created} empty={row.created || '–'} /></span>
 					{:else if col === 'expires'}
-						{row.expires === 'forever' ? t('web.access.never') : row.expires || '–'}
+						{#if row.expires === 'forever'}
+							{t('web.access.never')}
+						{:else}
+							<DateTime at={row.expires} text={row.expires} empty={row.expires || '–'} />
+						{/if}
 					{:else if col === 'uuid'}
 						<span class="mono dim">{row.uuid}</span>
 					{/if}
@@ -1182,12 +1187,17 @@
 					{:else if col === 'actor'}
 						{row.actor || '–'}
 					{:else if col === 'created'}
-						<span class="dim">{row.createdAtEpochMillis ? fmtDateTime(row.createdAtEpochMillis) : '–'}</span>
+						<span class="dim">
+							<DateTime
+								at={row.createdAtEpochMillis || null}
+								text={row.createdAtEpochMillis ? fmtDateTime(row.createdAtEpochMillis) : undefined}
+							/>
+						</span>
 					{:else if col === 'hits'}
 						{row.hits || '–'}
 					{:else if col === 'lastHit'}
 						{#if row.lastHitAtEpochMillis}
-							{fmtDateTime(row.lastHitAtEpochMillis)}
+							<DateTime at={row.lastHitAtEpochMillis} text={fmtDateTime(row.lastHitAtEpochMillis)} />
 						{:else}
 							<span class="dim">–</span>
 						{/if}
@@ -1225,7 +1235,7 @@
 					{:else if col === 'source'}
 						{row.source || '–'}
 					{:else if col === 'created'}
-						<span class="dim">{row.created || '–'}</span>
+						<span class="dim"><DateTime at={row.created} text={row.created} empty={row.created || '–'} /></span>
 					{/if}
 				{/snippet}
 			</ResourceTable>

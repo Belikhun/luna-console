@@ -593,7 +593,10 @@
 				value:
 					telemetryAge === null
 						? t('web.instances.notReporting')
-						: t('web.instances.agoOf', { age: fmtDuration(telemetryAge) })
+						: t('web.instances.agoOf', { age: fmtDuration(telemetryAge) }),
+				time: telemetryAge === null
+					? undefined
+					: one.lastHeartbeatMs
 			},
 			{
 				label: t('web.instances.protocol'),

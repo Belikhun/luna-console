@@ -27,6 +27,7 @@
 	import TagChips from '$lib/components/TagChips.svelte';
 	import TagEditor from '$lib/components/TagEditor.svelte';
 	import WizardModal from '$lib/components/WizardModal.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { WizardStep } from '$lib/components/wizardmodal';
 	import {
 		applyBulkRows,
@@ -671,9 +672,9 @@
 			{:else if col === 'createdBy'}
 				<OwnerCell name={row.createdBy} />
 			{:else if col === 'created'}
-				<span class="dim">{row.createdAt ? fmtDateTime(row.createdAt) : '–'}</span>
+				<span class="dim"><DateTime at={row.createdAt} text={row.createdAt ? fmtDateTime(row.createdAt) : undefined} /></span>
 			{:else if col === 'updated'}
-				<span class="dim">{row.updatedAt ? fmtDateTime(row.updatedAt) : '–'}</span>
+				<span class="dim"><DateTime at={row.updatedAt} text={row.updatedAt ? fmtDateTime(row.updatedAt) : undefined} /></span>
 			{:else if col === 'updatedBy'}
 				<OwnerCell name={row.updatedBy} />
 			{/if}

@@ -12,6 +12,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
@@ -688,7 +689,11 @@
 							<span class="dim">{t('web.permGroup.global')}</span>
 						{/if}
 					{:else if col === 'expiry'}
-						{node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : 'never'}
+						<DateTime
+							at={node.expiryEpochMillis || null}
+							text={node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : undefined}
+							empty="never"
+						/>
 					{/if}
 				{/snippet}
 			</ResourceTable>

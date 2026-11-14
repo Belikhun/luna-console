@@ -32,6 +32,7 @@
 	import Modal from './Modal.svelte';
 	import Checkbox from './Checkbox.svelte';
 	import ConfirmModal from './ConfirmModal.svelte';
+	import DateTime from './DateTime.svelte';
 	import Flash from './Flash.svelte';
 	import StatusBadge from './StatusBadge.svelte';
 	import CopyValue from './CopyValue.svelte';
@@ -697,7 +698,7 @@
 				{/if}
 			{:else if col === 'stint'}
 				{#if row.stintMillis !== null}
-					<span title={row.stintSince ? fmtDateTime(row.stintSince) : ''}>{fmtDuration(row.stintMillis)}</span>
+					<DateTime at={row.stintSince} text={fmtDuration(row.stintMillis)} empty={fmtDuration(row.stintMillis)} />
 				{:else}
 					<span class="dim" title={fmtDuration(row.sessionMillis)}>–</span>
 				{/if}
@@ -731,10 +732,10 @@
 			{:else if col === 'uuid'}
 				<CopyValue value={row.uuid} label="UUID" />
 			{:else if col === 'session'}
-				<span title={fmtDateTime(row.connectedAtEpochMillis)}>{fmtDuration(row.sessionMillis)}</span>
+				<DateTime at={row.connectedAtEpochMillis} text={fmtDuration(row.sessionMillis)} />
 			{:else if col === 'saved'}
 				{#if row.vitals}
-					<span class="dim">{fmtDateTime(row.vitals.savedAt)}</span>
+					<span class="dim"><DateTime at={row.vitals.savedAt} text={fmtDateTime(row.vitals.savedAt)} /></span>
 				{:else}
 					<span class="dim">–</span>
 				{/if}

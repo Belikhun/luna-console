@@ -19,6 +19,7 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
@@ -317,7 +318,7 @@
 					{:else if col === 'tags'}
 						<span class:dim={row.tags.length === 0}>{row.tags.join(', ') || '–'}</span>
 					{:else if col === 'updated'}
-						<span class="dim">{fmtDateTime(row.updatedAt)}</span>
+						<span class="dim"><DateTime at={row.updatedAt} text={fmtDateTime(row.updatedAt)} /></span>
 					{:else if col === 'author'}
 						<span class="dim">{row.updatedBy ?? row.createdBy ?? '–'}</span>
 					{/if}

@@ -3,7 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
-	import { t } from '$lib/i18n.svelte';
+	import { t, tSplit } from '$lib/i18n.svelte';
 	import { api } from '$lib/api';
 	import { Authz } from '$lib/authz.svelte';
 	import { Agent } from '$lib/agent.svelte';
@@ -13,6 +13,7 @@
 	import Btn from './Btn.svelte';
 	import Select from './Select.svelte';
 	import AccountAvatar from './AccountAvatar.svelte';
+	import DateTime from './DateTime.svelte';
 	import type { AvatarSubject } from './accountavatar';
 
 	/**
@@ -149,7 +150,7 @@
 					<span class="who">
 						<AccountAvatar account={personOf(share.account)} size="1.5rem" />
 						<b>{share.account}</b>
-						<span class="dim">{t('web.agentShare.since', { when: fmtDateTime(share.at) })}</span>
+						<span class="dim">{tSplit('web.agentShare.since', 'when').before}<DateTime at={share.at} text={fmtDateTime(share.at)} />{tSplit('web.agentShare.since', 'when').after}</span>
 					</span>
 					<Select
 						value={share.role}

@@ -17,6 +17,7 @@
 	import Btn from './Btn.svelte';
 	import Dropdown from './Dropdown.svelte';
 	import ConfirmModal from './ConfirmModal.svelte';
+	import DateTime from './DateTime.svelte';
 	import Flash from './Flash.svelte';
 	import StatusBadge from './StatusBadge.svelte';
 	import CopyValue from './CopyValue.svelte';
@@ -422,11 +423,11 @@
 				{#if row.online}
 					{t('web.instanceKnownPlayers.now')}
 				{:else}
-					<span class="dim">{fmtDateTime(lastSeen(row))}</span>
+					<span class="dim"><DateTime at={lastSeen(row)} text={fmtDateTime(lastSeen(row))} /></span>
 				{/if}
 			{:else if col === 'firstJoined'}
 				{#if row.vitals?.firstPlayed}
-					<span class="dim">{fmtDateTime(row.vitals.firstPlayed)}</span>
+					<span class="dim"><DateTime at={row.vitals.firstPlayed} text={fmtDateTime(row.vitals.firstPlayed)} /></span>
 				{:else}
 					<span class="dim" title={t('web.instanceKnownPlayers.firstJoinedUnknown')}>–</span>
 				{/if}
@@ -481,7 +482,7 @@
 			{:else if col === 'uuid'}
 				<CopyValue value={row.uuid} label="UUID" />
 			{:else if col === 'saved'}
-				<span class="dim">{fmtDateTime(row.savedAt)}</span>
+				<span class="dim"><DateTime at={row.savedAt} text={fmtDateTime(row.savedAt)} /></span>
 			{/if}
 		{/snippet}
 	</ResourceTable>

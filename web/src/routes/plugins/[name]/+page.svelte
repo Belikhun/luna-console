@@ -364,7 +364,7 @@
 				colSpan: 2
 			},
 			{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
-			{ label: t('web.resourceMeta.createdAt'), value: firstCreated ? fmtDateTime(firstCreated) : null }
+			{ label: t('web.resourceMeta.createdAt'), value: firstCreated ? fmtDateTime(firstCreated) : null, time: firstCreated || null }
 		];
 	});
 

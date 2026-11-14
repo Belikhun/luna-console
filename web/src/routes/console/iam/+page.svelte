@@ -16,6 +16,7 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column } from '$lib/components/table';
 	import { Authz } from '$lib/authz.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -342,7 +343,7 @@
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'when'}
-				<span class="dim">{fmtDateTime(row.t)}</span>
+				<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 			{:else if col === 'action'}
 				<StatusBadge state={iamAuditTone(row.action)} label={iamAuditLabel(row.action)} />
 			{:else if col === 'actor'}

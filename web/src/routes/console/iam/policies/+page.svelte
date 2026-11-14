@@ -18,6 +18,7 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import PolicyYamlPreview from '$lib/components/PolicyYamlPreview.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Authz } from '$lib/authz.svelte';
@@ -277,9 +278,9 @@
 			{:else if col === 'description'}
 				<span class="dim text">{row.description || '–'}</span>
 			{:else if col === 'created'}
-				<span class="dim">{row.createdAt ? fmtDateTime(row.createdAt) : '–'}</span>
+				<span class="dim"><DateTime at={row.createdAt} text={row.createdAt ? fmtDateTime(row.createdAt) : undefined} /></span>
 			{:else if col === 'updated'}
-				<span class="dim">{row.updatedAt ? fmtDateTime(row.updatedAt) : '–'}</span>
+				<span class="dim"><DateTime at={row.updatedAt} text={row.updatedAt ? fmtDateTime(row.updatedAt) : undefined} /></span>
 			{/if}
 		{/snippet}
 

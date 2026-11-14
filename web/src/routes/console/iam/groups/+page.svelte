@@ -17,6 +17,7 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Authz } from '$lib/authz.svelte';
@@ -226,7 +227,7 @@
 					<StatusBadge state="stopped" label={t('web.iamList.permissionsNotDefined')} />
 				{/if}
 			{:else if col === 'created'}
-				<span class="dim">{fmtDateTime(row.createdAt)}</span>
+				<span class="dim"><DateTime at={row.createdAt} text={fmtDateTime(row.createdAt)} /></span>
 			{:else if col === 'description'}
 				<span class="dim">{row.description || '–'}</span>
 			{/if}

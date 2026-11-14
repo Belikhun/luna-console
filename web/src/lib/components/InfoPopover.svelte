@@ -15,22 +15,40 @@
 	 * Text that explains itself on click: the dashed underline that means
 	 * "reveals more about this value", opening a card with a close button, as
 	 * the AWS console's info popovers do (and `StatusBadge`'s detail, which uses
-	 * this). Lines are plain text or state rows (icon, bold name, a second line).
-	 * Never a native `title`.
+	 * this). Lines are plain text or state rows (icon, bold name, a second line);
+	 * a `content` snippet replaces them when the card needs its own layout
+	 * (`DateTime`'s readings). Never a native `title`.
 	 */
 	let {
-		detail,
+		detail = [],
+		content,
+		trigger: triggerStyle = 'text',
+		open = $bindable(false),
+		wide = false,
+		truncate = false,
+		inherit = false,
 		children
 	}: {
-		detail: PopoverDetail;
+		detail?: PopoverDetail;
+		/** the card's body, in place of `detail`'s lines */
+		content?: Snippet;
+		/** `text`: the dashed `.info-trigger`; `link`: the page header's blue "Info" */
+		trigger?: 'text' | 'link';
+		open?: boolean;
+		/** a 28rem card instead of 20rem, for rows that pair a label with a value */
+		wide?: boolean;
+		/** the trigger shrinks with its cell and ends in an ellipsis, as the cell's text would */
+		truncate?: boolean;
+		/** the trigger keeps the surrounding colour (a muted line) instead of body text */
+		inherit?: boolean;
 		children: Snippet;
 	} = $props();
 
 	const detailLines = $derived(Array.isArray(detail) ? detail : [detail]);
 
 	// px, not rem: these are viewport measurements, matched against the card's own
-	// 20rem width below
-	const POP_WIDTH = 320;
+	// 20rem (or 28rem) width below
+	const POP_REM = $derived(wide ? 28 : 20);
 	const GAP = 8;
 
 	/** above this much room overhead, the card opens upwards on the first paint */
@@ -39,7 +57,6 @@
 	/** px; a card squeezed below this scrolls instead of shrinking further */
 	const MIN_POP_H = 120;
 
-	let open = $state(false);
 	let root: HTMLSpanElement | undefined = $state();
 	let trigger: HTMLButtonElement | undefined = $state();
 	let card: HTMLSpanElement | undefined = $state();
@@ -67,7 +84,9 @@
 		}
 
 		const box = trigger.getBoundingClientRect();
-		const left = Math.max(GAP, Math.min(box.left, window.innerWidth - POP_WIDTH - GAP));
+		const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+		const popWidth = Math.min(POP_REM * rootPx, window.innerWidth - GAP * 2);
+		const left = Math.max(GAP, Math.min(box.left, window.innerWidth - popWidth - GAP));
 		const roomAbove = box.top - GAP * 2;
 		const roomBelow = window.innerHeight - box.bottom - GAP * 2;
 		const height = card?.offsetHeight ?? 0;
@@ -104,8 +123,10 @@
 		trigger?.focus();
 	}
 
+	// a trigger inside a table row or a link must neither select the row nor follow the link
 	function toggle(event: MouseEvent): void {
 		event.stopPropagation();
+		event.preventDefault();
 		open = !open;
 
 		if (open) {
@@ -125,25 +146,61 @@
 			open = false;
 		}
 	}
+
+	function onResize(): void {
+		open = false;
+	}
+
+	// the window is listened to only while the card is open: a log view can hold
+	// thousands of triggers (one per line's timestamp), and each closed one would
+	// otherwise run three handlers on every key, click and resize
+	$effect(() => {
+		if (!open) {
+			return;
+		}
+
+		window.addEventListener('pointerdown', onPointerDown);
+		window.addEventListener('keydown', onKeyDown);
+		window.addEventListener('resize', onResize);
+
+		return () => {
+			window.removeEventListener('pointerdown', onPointerDown);
+			window.removeEventListener('keydown', onKeyDown);
+			window.removeEventListener('resize', onResize);
+		};
+	});
 </script>
 
-<svelte:window onpointerdown={onPointerDown} onkeydown={onKeyDown} onresize={() => (open = false)} />
 
-<span class="infopop" bind:this={root}>
-	<button class="info-trigger" bind:this={trigger} aria-expanded={open} onclick={toggle}>
+<span class="infopop" class:truncate bind:this={root}>
+	<button
+		type="button"
+		class={triggerStyle === 'link' ? 'link-trigger' : 'info-trigger'}
+		class:inherit
+		bind:this={trigger}
+		aria-expanded={open}
+		onclick={toggle}
+	>
 		{@render children()}
 	</button>
 	{#if open}
+		<!-- a click inside the card stays in it, or the row under a cell would take it -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<span
 			bind:this={card}
 			class="pop"
 			class:below={pos.below}
-			role="tooltip"
+			class:wide
+			role={content ? 'dialog' : 'tooltip'}
 			style="left: {pos.left}px; top: {pos.top}px"
 			style:max-height={maxHeight ? `${maxHeight}px` : undefined}
+			onclick={(event) => event.stopPropagation()}
 		>
 			<span class="ptext">
-				{#each detailLines as line}
+				{#if content}
+					{@render content()}
+				{/if}
+				{#each content ? [] : detailLines as line}
 					{#if typeof line === 'string'}
 						<span class="prow">{line}</span>
 					{:else}
@@ -165,6 +222,7 @@
 				aria-label={t('web.common.close')}
 				onclick={(event) => {
 					event.stopPropagation();
+					event.preventDefault();
 					open = false;
 				}}
 			>
@@ -180,6 +238,28 @@
 		display: inline-flex;
 		align-items: center;
 		min-width: 0;
+
+		// shrinks with a clipping cell; the underline sits below the text box, so
+		// the trigger gets room for it before its overflow is hidden
+		&.truncate {
+			max-width: 100%;
+			vertical-align: bottom;
+
+			> button {
+				@include ellipsis;
+
+				padding-bottom: 0.125rem;
+				margin-bottom: -0.125rem;
+			}
+		}
+	}
+
+	.info-trigger.inherit {
+		color: inherit;
+
+		&:hover {
+			color: var(--text-heading);
+		}
 	}
 
 	.pop {
@@ -189,12 +269,18 @@
 		align-items: flex-start;
 		gap: 0.75rem;
 		width: 20rem;
+		max-width: calc(100vw - 1rem);
 		padding: 0.75rem 0.75rem 0.75rem 1rem;
 		background: var(--bg-dropdown);
 		border: 0.1rem solid var(--border);
 		border-radius: 0.5rem;
 		box-shadow: var(--shadow-dropdown);
 		color: var(--text);
+		// the card often sits inside a heading (a page title's "Info"); its text is body text
+		font-size: 0.875rem;
+		font-weight: 400;
+		line-height: 1.25rem;
+		letter-spacing: normal;
 		white-space: normal;
 		overflow-y: auto;
 		z-index: var(--z-popover);
@@ -203,6 +289,10 @@
 	// opening upwards is the default, so the card is pulled up by its own height
 	.pop.below {
 		transform: none;
+	}
+
+	.pop.wide {
+		width: 28rem;
 	}
 
 	.ptext {
@@ -236,7 +326,7 @@
 		flex-direction: column;
 
 		// a label is a heading only over its own detail line; a list of plain
-		// rows reads as body text
+		// rows (health reasons) reads as body text
 		.rlabel {
 			color: var(--text-heading);
 
@@ -261,6 +351,24 @@
 
 		&:hover {
 			color: var(--link);
+		}
+	}
+
+	// the page header's "Info": a blue chrome link (PageHeader's `.info`), not dashed text
+	.link-trigger {
+		@include bare-button;
+
+		color: var(--link);
+		font-size: 0.75rem;
+		font-weight: 700;
+		cursor: pointer;
+
+		&:hover {
+			color: var(--link-hover);
+		}
+
+		&:focus-visible {
+			@include focus-ring;
 		}
 	}
 </style>

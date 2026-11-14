@@ -8,6 +8,7 @@
 	import { downloadUrl, fileIconOf, previewable, triggerDownload, type FileKind } from '$lib/files';
 	import Btn from './Btn.svelte';
 	import Icon from './Icon.svelte';
+	import DateTime from './DateTime.svelte';
 
 	/**
 	 * What the browser can show of a file that is not text: an image, a video,
@@ -82,7 +83,7 @@
 			<Icon name={fileIconOf(kind)} size="2.5rem" style="light" />
 			<h3 class="mono">{name}</h3>
 			<p class="dim">
-				{fmtBytes(size)} · {fmtDateTime(modified)}
+				{fmtBytes(size)} · <DateTime at={modified} text={fmtDateTime(modified)} />
 			</p>
 			{#if failed}
 				<p class="dim">{t('web.instanceFiles.previewFailed')}</p>

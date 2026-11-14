@@ -30,6 +30,7 @@
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column } from '$lib/components/table';
 	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -639,7 +640,7 @@
 						: null
 			},
 			{ label: t('web.packDetail.namespaces'), value: manifest.namespaces.join(', ') || null },
-			{ label: t('web.packDetail.modified'), value: detail.modifiedAt ? fmtDateTime(detail.modifiedAt) : null },
+			{ label: t('web.packDetail.modified'), value: detail.modifiedAt ? fmtDateTime(detail.modifiedAt) : null, time: detail.modifiedAt || null },
 			{ id: 'source', label: t('web.packDetail.source') },
 			{ label: t('web.packDetail.version'), value: pack.versionNumber ?? null, style: 'mono' },
 			{
@@ -658,7 +659,8 @@
 			{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
 			{
 				label: t('web.resourceMeta.createdAt'),
-				value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null
+				value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null,
+				time: ownerMeta?.createdAt || null
 			},
 			{
 				label: t('web.packDetail.description'),
@@ -1053,7 +1055,7 @@
 										/>
 									{/if}
 									{#if measured}
-										<span class="dim when">{measured}</span>
+										<span class="dim when"><DateTime at={detail.reachability?.at} text={measured} /></span>
 									{/if}
 									<Btn
 										icon="rotate"
@@ -1270,7 +1272,7 @@
 						{/if}
 						<div class="stat">
 							<span class="sv">
-								{detail.traffic.lastAt ? fmtDateTime(detail.traffic.lastAt) : '—'}
+								<DateTime at={detail.traffic.lastAt || null} text={detail.traffic.lastAt ? fmtDateTime(detail.traffic.lastAt) : undefined} empty="—" />
 							</span>
 							<span class="sl dim">{t('web.packDetail.lastDownload')}</span>
 						</div>
@@ -1282,9 +1284,10 @@
 
 					<p class="dim note">
 						Read from {detail.traffic.sources.length} log file(s){#if detail.traffic.windowFrom}, covering
-							{fmtDateTime(detail.traffic.windowFrom)} to {fmtDateTime(
-								detail.traffic.windowTo
-							)}{/if}. Clients cache packs by hash, so a quiet log means players already have
+							<DateTime at={detail.traffic.windowFrom} text={fmtDateTime(detail.traffic.windowFrom)} /> to <DateTime
+								at={detail.traffic.windowTo}
+								text={fmtDateTime(detail.traffic.windowTo)}
+							/>{/if}. Clients cache packs by hash, so a quiet log means players already have
 						{t('web.packDetail.thisOneNotThat')}
 					</p>
 				</Panel>
@@ -1295,7 +1298,7 @@
 					<DataTable columns={trafficCols} rows={trafficRows} getId={(row) => row.id}>
 						{#snippet cell(row, col)}
 							{#if col === 'at'}
-								{fmtDateTime(row.at)}
+								<DateTime at={row.at} text={fmtDateTime(row.at)} />
 							{:else if col === 'ip'}
 								<span class="mono">{row.ip}</span>
 							{:else if col === 'status'}

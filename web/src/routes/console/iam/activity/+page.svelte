@@ -13,6 +13,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import { Notify } from '$lib/notifications.svelte';
 	import {
@@ -120,7 +121,7 @@
 	>
 		{#snippet cell(row, col)}
 			{#if col === 'when'}
-				<span class="dim">{fmtDateTime(row.t)}</span>
+				<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
 			{:else if col === 'action'}
 				<StatusBadge state={iamAuditTone(row.action)} label={iamAuditLabel(row.action)} />
 			{:else if col === 'actor'}

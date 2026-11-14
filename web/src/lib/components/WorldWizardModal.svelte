@@ -294,7 +294,8 @@
 					},
 					{
 						label: t('web.worldWizard.lastPlayed'),
-						value: info?.lastPlayed ? new Date(info.lastPlayed).toLocaleString() : '–'
+						value: info?.lastPlayed ? new Date(info.lastPlayed).toLocaleString() : '–',
+						time: info?.lastPlayed || null
 					}
 				]}
 			/>

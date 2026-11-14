@@ -9,7 +9,7 @@
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
 	import { PING_FAIR, PING_POOR, pingClass } from '$lib/players';
-	import { fmtDuration, fmtDateTime, fmtTime } from '$lib/format';
+	import { fmtDuration, fmtTime } from '$lib/format';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
@@ -23,6 +23,7 @@
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
@@ -506,9 +507,7 @@
 				{:else if col === 'server'}
 					<a href="/instances/{player.server}">{player.server}</a>
 				{:else if col === 'session'}
-					<span title={fmtDateTime(player.connectedAtEpochMillis)}>
-						{fmtDuration(player.sessionMillis)}
-					</span>
+					<DateTime at={player.connectedAtEpochMillis} text={fmtDuration(player.sessionMillis)} />
 				{:else if col === 'ping'}
 					<span class="ping {pingClass(player.pingMillis)}">{player.pingMillis} ms</span>
 				{:else if col === 'client'}
@@ -554,8 +553,8 @@
 		>
 			{#snippet cell(event, col)}
 				{#if col === 'time'}
-					<span class="mono dim" title={fmtDateTime(event.atEpochMillis)}>
-						{fmtTime(event.atEpochMillis)}
+					<span class="mono dim">
+						<DateTime at={event.atEpochMillis} text={fmtTime(event.atEpochMillis)} />
 					</span>
 				{:else if col === 'type'}
 					<StatusBadge

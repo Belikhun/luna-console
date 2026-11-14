@@ -39,6 +39,7 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
@@ -271,10 +272,10 @@
 			},
 			{ label: t('web.instancePlayer.client'), value: live?.clientVersion ?? data.profile?.lastClientVersion ?? null },
 			{ label: t('web.instancePlayer.address'), value: live?.remoteAddress ?? null, style: 'mono' },
-			{ label: t('web.instancePlayer.savedAt'), value: saved ? fmtDateTime(saved.savedAt) : null },
-			{ label: t('web.instancePlayer.firstPlayedHere'), value: saved?.firstPlayed ? fmtDateTime(saved.firstPlayed) : null },
-			{ label: t('web.instancePlayer.lastPlayedHere'), value: saved?.lastPlayed ? fmtDateTime(saved.lastPlayed) : null },
-			{ label: t('web.instancePlayer.lastLoginHere'), value: saved?.lastLogin ? fmtDateTime(saved.lastLogin) : null },
+			{ label: t('web.instancePlayer.savedAt'), value: saved ? fmtDateTime(saved.savedAt) : null, time: saved?.savedAt || null },
+			{ label: t('web.instancePlayer.firstPlayedHere'), value: saved?.firstPlayed ? fmtDateTime(saved.firstPlayed) : null, time: saved?.firstPlayed || null },
+			{ label: t('web.instancePlayer.lastPlayedHere'), value: saved?.lastPlayed ? fmtDateTime(saved.lastPlayed) : null, time: saved?.lastPlayed || null },
+			{ label: t('web.instancePlayer.lastLoginHere'), value: saved?.lastLogin ? fmtDateTime(saved.lastLogin) : null, time: saved?.lastLogin || null },
 			{
 				label: t('web.instancePlayer.playtimeHere'),
 				value: playtimeHere ? fmtDuration(playtimeHere.playMillis) : null,
@@ -971,7 +972,7 @@
 							{:else if col === 'criteria'}
 								{entry.criteria.length}
 							{:else if col === 'at'}
-								<span class="dim">{entry.at ? fmtDateTime(entry.at) : '–'}</span>
+								<span class="dim"><DateTime at={entry.at || null} text={entry.at ? fmtDateTime(entry.at) : undefined} /></span>
 							{/if}
 						{/snippet}
 					</ResourceTable>
@@ -1039,7 +1040,7 @@
 				>
 					{#snippet cell(session, col)}
 						{#if col === 'connected'}
-							{fmtDateTime(session.connectedAtEpochMillis)}
+							<DateTime at={session.connectedAtEpochMillis} text={fmtDateTime(session.connectedAtEpochMillis)} />
 						{:else if col === 'duration'}
 							{#if session.open}
 								<StatusBadge state="ok" label={t('web.instancePlayer.ongoing')} />
@@ -1047,7 +1048,11 @@
 								{fmtDuration(session.durationMillis)}
 							{/if}
 						{:else if col === 'ended'}
-							{session.open ? '–' : fmtDateTime(session.disconnectedAtEpochMillis)}
+							{#if session.open}
+								–
+							{:else}
+								<DateTime at={session.disconnectedAtEpochMillis} text={fmtDateTime(session.disconnectedAtEpochMillis)} />
+							{/if}
 						{/if}
 					{/snippet}
 				</ResourceTable>
@@ -1080,7 +1085,7 @@
 				>
 					{#snippet cell(entry, col)}
 						{#if col === 'time'}
-							<span class="mono dim">{fmtDateTime(entry.atEpochMillis)}</span>
+							<span class="mono dim"><DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} /></span>
 						{:else if col === 'action'}
 							<StatusBadge
 								state={/ban|kick/.test(entry.action) ? 'failed' : /pardon|remove|deop/.test(entry.action) ? 'warning' : 'info'}

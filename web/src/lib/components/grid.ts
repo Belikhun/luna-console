@@ -16,4 +16,9 @@ export interface InfoCell {
 	help?: string;
 	/** renders the value as a navigating link */
 	href?: string;
+	/**
+	 * the value is this moment: rendered by `DateTime`, so the card with every
+	 * reading of it opens on click; `value` (if any) is the text it shows
+	 */
+	time?: number | string | Date | null;
 }

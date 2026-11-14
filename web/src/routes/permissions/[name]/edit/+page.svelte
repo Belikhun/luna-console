@@ -17,6 +17,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import PlayerSkin from '$lib/components/PlayerSkin.svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import type { Column } from '$lib/components/table';
 	import { menuGroups } from '$lib/components/contextmenu';
 	import type { ContextMenuItem } from '$lib/components/contextmenu';
@@ -475,7 +476,11 @@
 							<span class="dim">{t('web.permEdit.global')}</span>
 						{/if}
 					{:else if col === 'expiry'}
-						{node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : 'never'}
+						<DateTime
+							at={node.expiryEpochMillis || null}
+							text={node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : undefined}
+							empty="never"
+						/>
 					{/if}
 				{/snippet}
 			</DataTable>
