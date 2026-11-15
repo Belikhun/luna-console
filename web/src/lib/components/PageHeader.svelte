@@ -27,7 +27,7 @@
 <div class="ph">
 	<div class="left">
 		<h1>
-			{title}
+			<span class="title">{title}</span>
 			{#if count !== undefined}<span class="counter">({count})</span>{/if}
 			{#if info}<a class="info" href="#info" onclick={(event) => event.preventDefault()}>Info</a>{/if}
 			{#if extra}{@render extra()}{/if}
@@ -63,11 +63,22 @@
 		min-width: 0;
 	}
 
+	// the title is the part that gives: a long one (an error group's URL) ends in an
+	// ellipsis on one line, and the counter, Info link and badges stay beside it
 	h1 {
 		display: flex;
 		align-items: center;
 		gap: 0.625rem;
-		flex-wrap: wrap;
+		min-width: 0;
+
+		> :global(*) {
+			flex: none;
+		}
+
+		> .title {
+			flex: 0 1 auto;
+			@include ellipsis;
+		}
 	}
 
 	// chrome link, so it opts out of the global in-content underline
