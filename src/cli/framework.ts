@@ -210,7 +210,9 @@ export async function dispatch(argv: string[]): Promise<void> {
 	if (!match) {
 		console.error(pc.red(t("cli.framework.unknownCommand", { command: argv.join(" ") })));
 		console.error(pc.dim(t("cli.framework.helpHint")));
-		process.exit(1);
+		process.exitCode = 1;
+
+		return;
 	}
 
 	try {
