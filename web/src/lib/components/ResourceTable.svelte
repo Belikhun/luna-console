@@ -60,6 +60,7 @@
 		maxHeight,
 		emptyTitle = t('web.table.emptyTitle'),
 		emptyText = '',
+		emptyAction,
 		defaultSort,
 		noun = 'resource',
 		loading = false,
@@ -113,6 +114,8 @@
 		maxHeight?: string;
 		emptyTitle?: string;
 		emptyText?: string;
+		/** a way out of an empty table the screen filtered on the server ("Clear filters"); replaces the table's own */
+		emptyAction?: Snippet;
 		/** the order the screen's author considers natural, until the reader sorts
 		 *  it themselves; their choice is stored per table and wins after that */
 		defaultSort?: { col: string; dir?: 'asc' | 'desc' };
@@ -208,7 +211,9 @@
 {/snippet}
 
 {#snippet clearer()}
-	{#if filtering}
+	{#if emptyAction}
+		{@render emptyAction()}
+	{:else if filtering}
 		<Btn icon="close" onclick={clearAll}>{t('web.table.clearFilters')}</Btn>
 	{/if}
 {/snippet}

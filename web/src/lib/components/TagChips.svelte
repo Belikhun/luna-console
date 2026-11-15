@@ -10,16 +10,25 @@
 	/**
 	 * A resource's tags as read-only `key=value` pills, dense enough for a table
 	 * cell. `limit` caps how many are drawn; the rest become a "+N" pill whose
-	 * tooltip lists them.
+	 * tooltip lists them. With `onpick` each pill is a button that hands its
+	 * tag to the screen (the Resources screen filters by it).
 	 */
 
 	let {
 		tags,
-		limit
+		limit,
+		onpick
 	}: {
 		tags: TagMap;
 		limit?: number;
+		onpick?: (key: string, value: string) => void;
 	} = $props();
+
+	function pick(event: MouseEvent, key: string, value: string): void {
+		// the chip sits in a table row, which would take the click as a selection
+		event.stopPropagation();
+		onpick?.(key, value);
+	}
 
 	const entries = $derived(tagEntries(tags));
 	const drawn = $derived(limit === undefined ? entries : entries.slice(0, limit));
@@ -37,12 +46,26 @@
 {:else}
 	<span class="chips">
 		{#each drawn as entry (entry.key)}
-			<span class="chip mono" use:tooltip={{ content: `${entry.key}=${entry.value}` }}>
-				<span class="k">{entry.key}</span>
-				{#if entry.value !== ''}
-					<span class="v">={entry.value}</span>
-				{/if}
-			</span>
+			{#if onpick}
+				<button
+					type="button"
+					class="chip pick mono"
+					use:tooltip={{ content: t('web.tagSearch.filterByTag', { tag: `${entry.key}=${entry.value}` }) }}
+					onclick={(event) => pick(event, entry.key, entry.value)}
+				>
+					<span class="k">{entry.key}</span>
+					{#if entry.value !== ''}
+						<span class="v">={entry.value}</span>
+					{/if}
+				</button>
+			{:else}
+				<span class="chip mono" use:tooltip={{ content: `${entry.key}=${entry.value}` }}>
+					<span class="k">{entry.key}</span>
+					{#if entry.value !== ''}
+						<span class="v">={entry.value}</span>
+					{/if}
+				</span>
+			{/if}
 		{/each}
 
 		{#if rest.length > 0}
@@ -82,6 +105,26 @@
 
 		&.more {
 			color: var(--text-secondary);
+		}
+
+		// a button keeps the pill's look: bare-button resets font, border and padding
+		&.pick {
+			@include bare-button;
+
+			font-family: var(--font-mono);
+			font-size: 0.6875rem;
+			line-height: 1rem;
+			border: 0.1rem solid var(--border-divider);
+			border-radius: 0.75rem;
+			padding: 0.0625rem 0.5rem;
+
+			&:hover {
+				background: var(--bg-hover);
+			}
+
+			&:focus-visible {
+				@include focus-ring;
+			}
 		}
 	}
 </style>

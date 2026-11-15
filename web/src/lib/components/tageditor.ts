@@ -2,7 +2,7 @@
 // Proprietary software: use, copying, modification and distribution are
 // prohibited without written permission. See LICENSE at the repository root.
 
-import { MAX_TAGS, TAG_KEY_PATTERN, TAG_VALUE_PATTERN } from '$shared/iam/resources';
+import { TAG_KEY_PATTERN, TAG_VALUE_PATTERN } from '$shared/iam/resources';
 
 /** A resource's tags, as the store keeps them. */
 export type TagMap = Record<string, string>;
@@ -20,42 +20,17 @@ export function tagEntries(tags: TagMap): TagEntry[] {
 		.map((key) => ({ key, value: tags[key] ?? '' }));
 }
 
-/**
- * Why a tag could not be added, as a language key, or null when it can. The
- * daemon validates again; this is what lets the form say so before the round
- * trip.
- */
-export function tagAddFault(key: string, value: string, existing: TagMap, max: number = MAX_TAGS): string | null {
-	if (key === '') {
-		return 'web.tagEditor.keyRequired';
-	}
-
-	if (!TAG_KEY_PATTERN.test(key)) {
-		return 'web.tagEditor.badKey';
-	}
-
-	if (key.toLowerCase().startsWith('luna:')) {
-		return 'web.tagEditor.reservedKey';
-	}
-
-	if (!TAG_VALUE_PATTERN.test(value)) {
-		return 'web.tagEditor.badValue';
-	}
-
-	const replaces = key in existing;
-
-	if (!replaces && Object.keys(existing).length >= max) {
-		return 'web.tagEditor.tooMany';
-	}
-
-	return null;
-}
-
 /** One editable row of the tag editor; `uid` keys it while its key is being typed. */
 export interface TagDraftRow {
 	uid: number;
 	key: string;
 	value: string;
+	/** the key this row was opened with; null for a row the operator added */
+	original: string | null;
+	/** the value it was opened with ('' for an added row or a mixed bulk row) */
+	originalValue: string;
+	/** marked for removal; only a row with an `original` can be */
+	removed: boolean;
 }
 
 /** What the row editor reads of a row; the bulk editor's rows add the `mixed` state. */
@@ -63,6 +38,9 @@ export interface TagEditorRow extends TagDraftRow {
 	mixed?: boolean;
 	edited?: boolean;
 }
+
+/** Where a row stands against what it was opened with. */
+export type TagRowState = 'blank' | 'same' | 'new' | 'changed' | 'removed';
 
 /** What is wrong with one row, as language keys, per field. */
 export interface TagRowFault {
@@ -76,17 +54,229 @@ let draftUid = 0;
 export function blankTagRow(): TagDraftRow {
 	draftUid += 1;
 
-	return { uid: draftUid, key: '', value: '' };
+	return {
+		uid: draftUid,
+		key: '',
+		value: '',
+		original: null,
+		originalValue: '',
+		removed: false
+	};
 }
 
 /** A tag map as editable rows, in key order. */
 export function draftRows(tags: TagMap): TagDraftRow[] {
-	return tagEntries(tags).map((entry) => ({ ...blankTagRow(), key: entry.key, value: entry.value }));
+	return tagEntries(tags).map((entry) => ({
+		...blankTagRow(),
+		key: entry.key,
+		value: entry.value,
+		original: entry.key,
+		originalValue: entry.value
+	}));
 }
 
 /** Whether a row is untouched blank space, which saving ignores rather than refuses. */
 export function isBlankRow(row: { key: string; value: string }): boolean {
 	return row.key.trim() === '' && row.value.trim() === '';
+}
+
+/** Where a row stands: added, changed, marked for removal, untouched or blank. */
+export function rowState(row: TagEditorRow): TagRowState {
+	if (row.removed) {
+		return 'removed';
+	}
+
+	if (row.original === null) {
+		return isBlankRow(row)
+			? 'blank'
+			: 'new';
+	}
+
+	if (row.key.trim() !== row.original) {
+		return 'changed';
+	}
+
+	if (row.mixed) {
+		return row.edited
+			? 'changed'
+			: 'same';
+	}
+
+	return row.value.trim() !== row.originalValue
+		? 'changed'
+		: 'same';
+}
+
+/** Put a row back as it was opened; only for a row with an `original`. */
+export function revertRow(row: TagEditorRow): void {
+	row.key = row.original ?? row.key;
+	row.value = row.originalValue;
+	row.removed = false;
+
+	if (row.mixed) {
+		row.edited = false;
+	}
+}
+
+/** How many rows would add, change and remove a tag. */
+export function changeCounts(rows: TagEditorRow[]): { add: number; change: number; remove: number } {
+	const counts = { add: 0, change: 0, remove: 0 };
+
+	for (const row of rows) {
+		const state = rowState(row);
+
+		if (state === 'new') {
+			counts.add += 1;
+		} else if (state === 'changed') {
+			counts.change += 1;
+		} else if (state === 'removed') {
+			counts.remove += 1;
+		}
+	}
+
+	return counts;
+}
+
+/**
+ * The rows measured against the record after a save that landed in part: what
+ * was written loses its mark, what was not keeps it. A removed row whose key is
+ * gone is dropped; a key of the record no row stands for is appended.
+ */
+export function rebaseRows(rows: TagDraftRow[], tags: TagMap): TagDraftRow[] {
+	const out: TagDraftRow[] = [];
+
+	for (const row of rows) {
+		const key = row.key.trim();
+		let original: string | null = null;
+
+		if (row.original !== null && row.original in tags) {
+			original = row.original;
+		} else if (key in tags) {
+			original = key;
+		}
+
+		if (original === null && row.removed) {
+			continue;
+		}
+
+		out.push({
+			...row,
+			original,
+			originalValue: original === null
+				? ''
+				: tags[original] ?? '',
+			removed: original === null
+				? false
+				: row.removed
+		});
+	}
+
+	// a key counts as represented by the row opened with it, or by a live row now carrying it
+	const represented = new Set<string>();
+
+	for (const row of out) {
+		if (row.original !== null) {
+			represented.add(row.original);
+		}
+
+		if (!row.removed && !isBlankRow(row)) {
+			represented.add(row.key.trim());
+		}
+	}
+
+	for (const entry of tagEntries(tags)) {
+		if (represented.has(entry.key)) {
+			continue;
+		}
+
+		out.push({
+			...blankTagRow(),
+			key: entry.key,
+			value: entry.value,
+			original: entry.key,
+			originalValue: entry.value
+		});
+	}
+
+	return out;
+}
+
+/**
+ * Keys that differ from another row's only in case (`Env` beside `env`), per
+ * row uid: the other key. Only valid keys typed once count, so a row already
+ * showing a fault gets no second remark.
+ */
+export function caseTwins(rows: TagDraftRow[]): Record<number, string> {
+	const out: Record<number, string> = {};
+	const live = rows.filter((row) => !row.removed && !isBlankRow(row));
+	const counts = new Map<string, number>();
+
+	for (const row of live) {
+		const key = row.key.trim();
+
+		counts.set(key, (counts.get(key) ?? 0) + 1);
+	}
+
+	for (const row of live) {
+		const key = row.key.trim();
+
+		if (tagKeyFault(key) || (counts.get(key) ?? 0) > 1) {
+			continue;
+		}
+
+		const folded = key.toLowerCase();
+		const twin = live.find((other) => {
+			const otherKey = other.key.trim();
+
+			return other.uid !== row.uid && otherKey !== key && otherKey.toLowerCase() === folded;
+		});
+
+		if (twin) {
+			out[row.uid] = twin.key.trim();
+		}
+	}
+
+	return out;
+}
+
+/**
+ * Tags pasted as lines of `key=value` or two spreadsheet columns, or null when
+ * the text is a single plain line (an ordinary paste into the field). A line
+ * splits at its first tab, else its first `=`, else is a key alone.
+ */
+export function parsePastedTags(text: string): TagEntry[] | null {
+	if (!/[\n\t]/.test(text)) {
+		return null;
+	}
+
+	const out: TagEntry[] = [];
+
+	for (const line of text.split(/\r?\n/)) {
+		if (line.trim() === '') {
+			continue;
+		}
+
+		const tab = line.indexOf('\t');
+		const eq = line.indexOf('=');
+		const at = tab >= 0
+			? tab
+			: eq;
+
+		if (at < 0) {
+			out.push({ key: line.trim(), value: '' });
+
+			continue;
+		}
+
+		out.push({
+			key: line.slice(0, at).trim(),
+			value: line.slice(at + 1).trim()
+		});
+	}
+
+	return out.length > 0
+		? out
+		: null;
 }
 
 /** The fault of one key, or undefined when it is a valid tag key. */
@@ -119,14 +309,14 @@ export function tagValueFault(value: string): string | undefined {
  * row still showing "multiple values").
  */
 export function draftFaults(
-	rows: Array<{ uid: number; key: string; value: string }>,
+	rows: Array<{ uid: number; key: string; value: string; removed?: boolean }>,
 	skipValue: (uid: number) => boolean = () => false
 ): Record<number, TagRowFault> {
 	const out: Record<number, TagRowFault> = {};
 	const seen = new Map<string, number>();
 
 	for (const row of rows) {
-		if (isBlankRow(row)) {
+		if (row.removed || isBlankRow(row)) {
 			continue;
 		}
 
@@ -158,12 +348,12 @@ export function draftFaults(
 	return out;
 }
 
-/** The rows as a tag map, trimmed, blank rows left out. */
+/** The rows as a tag map, trimmed, blank rows and rows marked for removal left out. */
 export function draftTags(rows: TagDraftRow[]): TagMap {
 	const out: TagMap = {};
 
 	for (const row of rows) {
-		if (!isBlankRow(row)) {
+		if (!row.removed && !isBlankRow(row)) {
 			out[row.key.trim()] = row.value.trim();
 		}
 	}
@@ -209,9 +399,10 @@ export function diffIsEmpty(diff: TagDiff): boolean {
  * row leaves every resource's own value alone.
  */
 export interface BulkTagRow extends TagDraftRow {
-	original: string | null;
 	mixed: boolean;
 	edited: boolean;
+	/** each distinct value across the selection (null: resources without the key), most common first */
+	spread: Array<{ value: string | null; count: number }>;
 }
 
 /** One change the bulk editor would make to one resource. */
@@ -239,33 +430,65 @@ export function bulkRows(selection: Array<{ tags: TagMap }>): BulkTagRow[] {
 			const values = new Set(carriers.map((item) => item.tags[key]));
 			const mixed = values.size > 1 || carriers.length < selection.length;
 			const first = selection[0]?.tags[key] ?? '';
+			const shared = mixed
+				? ''
+				: first;
 
 			return {
 				...blankTagRow(),
 				key,
-				value: mixed ? '' : first,
+				value: shared,
 				original: key,
+				originalValue: shared,
 				mixed,
-				edited: false
+				edited: false,
+				spread: spreadOf(selection, key)
 			};
 		});
 }
 
+/** How one key's values spread across the selection, most common first. */
+function spreadOf(selection: Array<{ tags: TagMap }>, key: string): BulkTagRow['spread'] {
+	const counts = new Map<string | null, number>();
+
+	for (const item of selection) {
+		const value = key in item.tags
+			? item.tags[key] ?? ''
+			: null;
+
+		counts.set(value, (counts.get(value) ?? 0) + 1);
+	}
+
+	return [...counts.entries()]
+		.map(([value, count]) => ({ value, count }))
+		.sort((a, b) => b.count - a.count);
+}
+
 /** A blank row the operator added to the bulk editor. */
 export function blankBulkRow(): BulkTagRow {
-	return { ...blankTagRow(), original: null, mixed: false, edited: true };
+	return {
+		...blankTagRow(),
+		mixed: false,
+		edited: true,
+		spread: []
+	};
 }
 
 /** One resource's tags after the bulk editor's rows are applied to them. */
-export function applyBulkRows(tags: TagMap, rows: BulkTagRow[], removed: string[]): TagMap {
+export function applyBulkRows(tags: TagMap, rows: BulkTagRow[]): TagMap {
 	const after: TagMap = { ...tags };
+	const removed = rows.flatMap((row) => (
+		row.removed && row.original !== null
+			? [row.original]
+			: []
+	));
 
 	for (const key of removed) {
 		delete after[key];
 	}
 
 	for (const row of rows) {
-		if (isBlankRow(row)) {
+		if (row.removed || isBlankRow(row)) {
 			continue;
 		}
 

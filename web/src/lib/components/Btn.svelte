@@ -24,6 +24,7 @@
 		external = false,
 		title,
 		type = 'button',
+		pressed,
 		onclick,
 		children
 	}: {
@@ -37,6 +38,8 @@
 		external?: boolean;
 		title?: string;
 		type?: 'button' | 'submit';
+		/** A toggle (a filter preset): its state is announced and drawn as a tint */
+		pressed?: boolean;
 		onclick?: (event: MouseEvent) => void;
 		children?: Snippet;
 	} = $props();
@@ -50,7 +53,7 @@
 			{#if caret}<Icon name="caretDown" size="0.75rem" />{/if}
 		</a>
 	{:else}
-		<button class="btn {variant}" disabled={disabled || loading} aria-label={children ? undefined : title} {type} {onclick}>
+		<button class="btn {variant}" class:pressed disabled={disabled || loading} aria-pressed={pressed} aria-label={children ? undefined : title} {type} {onclick}>
 			{#if loading}<Icon name="rotate" spin />{:else if icon}<Icon name={icon} />{/if}
 			{#if children}<span>{@render children()}</span>{/if}
 			{#if caret}<Icon name="caretDown" size="0.75rem" />{/if}
@@ -178,6 +181,11 @@
 		&:disabled {
 			color: var(--text-disabled);
 		}
+	}
+
+	// a toggle that is on: the outline button filled with a tint of its colour
+	.btn.pressed:not(:disabled) {
+		background: color-mix(in srgb, var(--link) 20%, transparent);
 	}
 
 	// bordered icon-only pill (the refresh button)

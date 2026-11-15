@@ -4,31 +4,20 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
-	import { api, put } from '$lib/api';
 	import { fmtDateTime } from '$lib/format';
 	import { Authz } from '$lib/authz.svelte';
 	import { Notify } from '$lib/notifications.svelte';
 	import { loadResourceMeta } from '$lib/resourcemeta.svelte';
-	import { MAX_TAGS } from '$shared/iam/resources';
+	import { parseResourceId } from '$shared/iam/resources';
 	import type { ResourceView } from '$core/resources';
 	import Panel from './Panel.svelte';
 	import InfoGrid from './InfoGrid.svelte';
 	import CopyValue from './CopyValue.svelte';
 	import DataTable from './DataTable.svelte';
-	import Modal from './Modal.svelte';
 	import Btn from './Btn.svelte';
 	import OwnerCell from './OwnerCell.svelte';
-	import TagEditor from './TagEditor.svelte';
-	import {
-		diffIsEmpty,
-		diffTags,
-		draftFaults,
-		draftRows,
-		draftTags,
-		tagEntries,
-		type TagDraftRow,
-		type TagEntry
-	} from './tageditor';
+	import TagsModal from './TagsModal.svelte';
+	import { tagEntries, type TagEntry } from './tageditor';
 	import type { InfoCell } from './grid';
 	import type { Column } from './table';
 
@@ -58,9 +47,8 @@
 	let failed = $state(false);
 
 	let editOpen = $state(false);
-	let editRows = $state<TagDraftRow[]>([]);
-	let saving = $state(false);
-	let editor: { touchAll: () => void } | undefined = $state();
+
+	const parsed = $derived(parseResourceId(id));
 
 	const facts = $derived(resource ? { tags: resource.tags, createdBy: resource.createdBy } : null);
 
@@ -122,78 +110,18 @@
 	});
 
 	function openEditor(): void {
-		if (!resource || manageBlocked) {
+		if (!resource || manageBlocked || !parsed) {
 			return;
 		}
 
-		editRows = draftRows(resource.tags);
 		editOpen = true;
 	}
 
-	const editFaults = $derived(draftFaults(editRows));
-	const editDiff = $derived(diffTags(resource?.tags ?? {}, draftTags(editRows)));
-
-	/** Why Save cannot go ahead, or empty when it can. */
-	const saveBlocked = $derived.by(() => {
-		if (Object.keys(draftTags(editRows)).length > MAX_TAGS) {
-			return t('web.tagEditor.tooMany', { max: MAX_TAGS });
-		}
-
-		if (Object.keys(editDiff.set).length > 0 && !canTag) {
-			return t('web.resourceMeta.mayNotTag');
-		}
-
-		if (editDiff.remove.length > 0 && !canUntag) {
-			return t('web.resourceMeta.mayNotUntag');
-		}
-
-		return '';
-	});
-
-	async function save(): Promise<void> {
-		if (Object.keys(editFaults).length > 0) {
-			editor?.touchAll();
-
-			return;
-		}
-
-		if (saveBlocked) {
-			return;
-		}
-
-		if (diffIsEmpty(editDiff)) {
-			editOpen = false;
-
-			return;
-		}
-
-		saving = true;
-
-		try {
-			if (Object.keys(editDiff.set).length > 0) {
-				const result = await put<{ resource: ResourceView }>('/resources/tags', { id, tags: editDiff.set });
-
-				resource = result.resource;
-			}
-
-			if (editDiff.remove.length > 0) {
-				const result = await api<{ resource: ResourceView }>('/resources/tags', {
-					method: 'DELETE',
-					body: JSON.stringify({ id, keys: editDiff.remove })
-				});
-
-				resource = result.resource;
-			}
-
-			Notify.success(t('web.resourceMeta.saved'));
-			editOpen = false;
-		} catch (err) {
-			Notify.error(t('web.resourceMeta.tagFailed'), { detail: (err as Error).message });
-
-			// whatever half landed is what the table should show
-			await load(id);
-		} finally {
-			saving = false;
+	function saved(view: ResourceView | null): void {
+		if (view) {
+			resource = view;
+		} else {
+			void load(id);
 		}
 	}
 
@@ -278,20 +206,9 @@
 	</Panel>
 </div>
 
-<Modal title={t('web.resourceMeta.manageTitle')} bind:open={editOpen} wide dismissable={!saving}>
-	<p class="note dim">{t('web.resourceMeta.manageHint')}</p>
-	<p class="note mono">{id}</p>
-
-	<TagEditor bind:this={editor} bind:rows={editRows} faults={editFaults} disabled={saving} />
-
-	{#snippet footer()}
-		<span class="reason dim">{saveBlocked}</span>
-		<Btn disabled={saving} onclick={() => (editOpen = false)}>{t('web.common.cancel')}</Btn>
-		<Btn variant="primary" disabled={!!saveBlocked} loading={saving} onclick={() => void save()}>
-			{t('web.resourceMeta.saveChanges')}
-		</Btn>
-	{/snippet}
-</Modal>
+{#if parsed}
+	<TagsModal bind:open={editOpen} type={parsed.type} name={parsed.name} {resource} onsaved={saved} />
+{/if}
 
 <style lang="scss">
 	.resmeta {
@@ -304,15 +221,5 @@
 	.none {
 		margin: 0;
 		font-size: 0.8125rem;
-	}
-
-	.note {
-		margin: 0 0 0.75rem;
-		font-size: 0.8125rem;
-	}
-
-	.reason {
-		flex: 1;
-		font-size: 0.75rem;
 	}
 </style>
