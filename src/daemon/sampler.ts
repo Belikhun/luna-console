@@ -326,6 +326,10 @@ export function setLunaTelemetry(cards: BackendCard[], issue?: string): void {
 
 /** Record one metrics sample per instance and emit state-change events. */
 async function sampleOnce(): Promise<void> {
+	// a pass that only primed some process's CPU baseline published nothing for
+	// it, so its resident size is still missing from instanceRssMb()
+	let primedAny = false;
+
 	try {
 		const cfg = await loadCluster();
 
@@ -426,6 +430,7 @@ async function sampleOnce(): Promise<void> {
 			// stopped process drops its baseline. One interval later the sample
 			// is complete, so the honest move is to wait for it.
 			if (priming) {
+				primedAny = true;
 				continue;
 			}
 
@@ -454,8 +459,12 @@ async function sampleOnce(): Promise<void> {
 		// whatever a pass found, it has now looked; the health sampler waits on
 		// this before it will publish a machine's total instance memory. A pass
 		// that found nothing is still an answer (a follower with no cluster.json
-		// owns no instances), so this is not gated on the pass succeeding.
-		sampled = true;
+		// owns no instances), so this is not gated on the pass succeeding. A pass
+		// that only primed is not: the instances it primed have no sample yet, and
+		// the total would come out as a zero (or a partial sum) for one interval.
+		if (!primedAny) {
+			sampled = true;
+		}
 	}
 }
 
