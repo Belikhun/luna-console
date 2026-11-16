@@ -23,7 +23,8 @@
 		kind,
 		size,
 		modified,
-		note = ''
+		note = '',
+		version = null
 	}: {
 		instance: string;
 		path: string;
@@ -33,9 +34,13 @@
 		modified: number;
 		/** why the editor did not take it, when that is the reason it is here */
 		note?: string;
+		/** Changes the address when the file changes on disk, so the browser fetches it again */
+		version?: number | null;
 	} = $props();
 
-	const src = $derived(downloadUrl(instance, path, { inline: true }));
+	const src = $derived(version === null
+		? downloadUrl(instance, path, { inline: true })
+		: `${downloadUrl(instance, path, { inline: true })}&v=${version}`);
 	const canShow = $derived(previewable(kind));
 
 	let failed = $state(false);

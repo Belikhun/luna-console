@@ -19,6 +19,7 @@
 		disabled = false,
 		shape = 'check',
 		label,
+		name,
 		onchange
 	}: {
 		checked?: boolean;
@@ -28,6 +29,8 @@
 		shape?: 'check' | 'radio';
 		/** accessible name; required when the checkbox has no visible text */
 		label?: string;
+		/** radios of one choice share a name, so the browser groups them */
+		name?: string;
 		onchange?: (checked: boolean, event: Event) => void;
 	} = $props();
 
@@ -46,6 +49,7 @@
 >
 	<input
 		type={shape === 'radio' ? 'radio' : 'checkbox'}
+		{name}
 		{checked}
 		{disabled}
 		indeterminate={shape === 'check' && indeterminate}

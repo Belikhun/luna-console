@@ -20,6 +20,10 @@ export interface ContextMenuItem {
 	separator?: boolean;
 	/** renders a non-interactive section title */
 	header?: boolean;
+	/** key hint drawn at the row's right edge (`Ctrl+C`, `F2`); display only,
+	 *  the screen owns the handler. Written the portable way: the menu shows
+	 *  it through `shortcutLabel`, so macOS reads ⌘ for Ctrl. */
+	shortcut?: string;
 	/** nested menu, opened on hover/right arrow */
 	submenu?: ContextMenuItem[];
 	/** async actions keep the row in a spinner state until they settle */

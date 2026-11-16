@@ -479,10 +479,10 @@
 						<span class="who">
 							<AccountAvatar account={row} size="1.5rem" />
 							<a href={detailHref(row)}><b>{row.username}</b></a>
+							{#if row.id === self}
+								<span class="you">{t('web.accounts.you')}</span>
+							{/if}
 						</span>
-						{#if row.id === self}
-							<span class="you">{t('web.accounts.you')}</span>
-						{/if}
 					{:else if col === 'state'}
 						<StatusBadge
 							state={accountState(row)}
@@ -634,5 +634,11 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
+
+		// inside the row the badge is centred on the avatar; outside it, it sat on
+		// the row's baseline, which is the avatar's bottom edge
+		.you {
+			margin-left: 0;
+		}
 	}
 </style>

@@ -5,7 +5,8 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
 	import Icon from './Icon.svelte';
-	import { tooltip } from '$lib/tooltip.svelte';
+	import { hideTooltip, tooltip } from '$lib/tooltip.svelte';
+	import { shortcutLabel } from '$lib/keys';
 	import BrandIcon from './BrandIcon.svelte';
 	import Spinner from './Spinner.svelte';
 	import {
@@ -80,6 +81,8 @@
 
 	/** Open at viewport coordinates (used for right-click). */
 	export async function openAt(x: number, y: number, corner: MenuAnchor = 'topLeft'): Promise<void> {
+		// a hover tooltip on what was right-clicked would sit over the menu
+		hideTooltip();
 		anchor = corner;
 		top = y;
 		left = x;
@@ -338,6 +341,9 @@
 					<span class="ico"><Icon name={item.icon} size="0.875rem" /></span>
 				{/if}
 				<span class="label">{item.label}</span>
+				{#if item.shortcut}
+					<span class="shortcut">{shortcutLabel(item.shortcut)}</span>
+				{/if}
 				{#if item.submenu}
 					<span class="arrow"><Icon name="arrowRight" size="0.75rem" /></span>
 				{/if}
@@ -525,6 +531,21 @@
 		line-height: 1.25rem;
 		white-space: nowrap;
 		color: var(--tint);
+	}
+
+	// pushed to the row's right edge; dimmed further on a disabled row
+	.shortcut {
+		margin-left: auto;
+		padding-left: 1.5rem;
+		font-family: var(--font);
+		font-size: 0.75rem;
+		line-height: 1.25rem;
+		white-space: nowrap;
+		color: var(--text-secondary);
+
+		.item:disabled & {
+			color: var(--text-disabled);
+		}
 	}
 
 	.separator {
