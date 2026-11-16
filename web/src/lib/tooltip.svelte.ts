@@ -139,22 +139,44 @@ export function refreshTooltip(): void {
  * rendered size, since the anchor point alone can push it off-screen.
  */
 export function clampTooltip(width: number, height: number): void {
-	const vertical = TooltipState.position === 'top' || TooltipState.position === 'bottom';
-	const halfWidth = vertical ? width / 2 : width;
-	const halfHeight = vertical ? height : height / 2;
+	const position = TooltipState.position;
+	// how far the card reaches each way from its anchor point: a side card grows away
+	// from the element, a top or bottom card is centred on it
+	const reach = {
+		left: position === 'left'
+			? width
+			: position === 'right'
+				? 0
+				: width / 2,
+		right: position === 'right'
+			? width
+			: position === 'left'
+				? 0
+				: width / 2,
+		up: position === 'top'
+			? height
+			: position === 'bottom'
+				? 0
+				: height / 2,
+		down: position === 'bottom'
+			? height
+			: position === 'top'
+				? 0
+				: height / 2
+	};
 
 	let { x, y } = TooltipState;
 
-	if (x + halfWidth > window.innerWidth - EDGE_MARGIN) {
-		x = window.innerWidth - halfWidth - EDGE_MARGIN;
-	} else if (x - halfWidth < 0) {
-		x = halfWidth + EDGE_MARGIN;
+	if (x + reach.right > window.innerWidth - EDGE_MARGIN) {
+		x = window.innerWidth - reach.right - EDGE_MARGIN;
+	} else if (x - reach.left < EDGE_MARGIN) {
+		x = reach.left + EDGE_MARGIN;
 	}
 
-	if (y + halfHeight > window.innerHeight - EDGE_MARGIN) {
-		y = window.innerHeight - halfHeight - EDGE_MARGIN;
-	} else if (y - halfHeight < 0) {
-		y = halfHeight + EDGE_MARGIN;
+	if (y + reach.down > window.innerHeight - EDGE_MARGIN) {
+		y = window.innerHeight - reach.down - EDGE_MARGIN;
+	} else if (y - reach.up < EDGE_MARGIN) {
+		y = reach.up + EDGE_MARGIN;
 	}
 
 	if (x !== TooltipState.x) {
