@@ -1907,6 +1907,13 @@
 		background-color: var(--bg-table-header);
 	}
 
+	// a pinned cell is a stacking context under the header, so a card opened in it
+	// (a time's details) would open behind the header: the cell rises while it is open
+	td.sticky:has(:global([aria-expanded='true'])),
+	td.sticky-last:has(:global([aria-expanded='true'])) {
+		z-index: 4;
+	}
+
 	tbody tr:hover > td.sticky,
 	tbody tr:hover > td.sticky-last {
 		background-color: var(--bg-hover);
