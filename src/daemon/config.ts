@@ -67,6 +67,11 @@ export interface DaemonConfig {
 	/** Accept bash commands from MCP tokens holding the `host-shell` group on
 	 *  this machine (default false); each machine opts in on its own */
 	mcpHostShell?: boolean;
+	/** The Chromium-family executable Mèo Béo's browser runs; the first Chromium on PATH otherwise */
+	browser?: string;
+	/** `host:port` pairs Mèo Béo's browser may reach although they are local (a stand-in page
+	 *  server); honoured only from the config file */
+	browserAllowLocal?: string[];
 	/** Where the config came from, for `daemon status` */
 	configFile?: string;
 }
@@ -293,6 +298,10 @@ export async function resolveDaemonConfig(): Promise<DaemonConfig> {
 		mcpHostShell: process.env.LUNA_MCP_HOST_SHELL !== undefined
 			? ["1", "true", "yes", "on"].includes(process.env.LUNA_MCP_HOST_SHELL.toLowerCase())
 			: file.mcpHostShell === true,
+		browser: process.env.LUNA_BROWSER?.trim() || file.browser?.trim() || undefined,
+		browserAllowLocal: Array.isArray(file.browserAllowLocal)
+			? file.browserAllowLocal.filter((entry): entry is string => typeof entry === "string" && /^[\w.\-\[\]:]+:\d+$/.test(entry))
+			: [],
 		configFile,
 	};
 

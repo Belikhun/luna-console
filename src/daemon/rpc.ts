@@ -52,6 +52,7 @@ import * as lunaCore from "../core/luna";
 import * as mcpCore from "../core/mcp";
 import * as modpackCore from "../core/modpack";
 import * as agentCore from "../core/agent";
+import * as browserCore from "../core/browser";
 import * as claudeCodeCore from "../core/claudecode";
 import * as jarinstallCore from "../core/jarinstall";
 import * as mcassetsCore from "../core/mcassets";
@@ -1699,6 +1700,13 @@ export const OPS: Record<string, OpSpec> = {
 		resource: { type: "knowledge", name: { result: "id" }, on: "delete" },
 	},
 	"mcp.searchMemories": { fn: mcpCore.searchMemories },
+
+	// -- Mèo Béo's open-web browser (primary-local; see core/browser.ts) ---------------
+	// The owner is the account (or token) the console names; sessions live in this daemon.
+	"browser.open": { fn: browserCore.openBrowser },
+	"browser.act": { fn: browserCore.browserAct },
+	"browser.close": { fn: browserCore.closeBrowser },
+	"browser.list": { fn: browserCore.listBrowsers },
 
 	// -- Mèo Béo, the console's chat agent (primary-local; see core/agent.ts) ----------
 	// The credential is write-only: agent.launch is the one op that returns it, and

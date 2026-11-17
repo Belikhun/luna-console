@@ -22,6 +22,8 @@ export interface ToolContext {
 	 * Mèo Béo run); its IAM policies bound the call and its listings
 	 */
 	account?: string;
+	/** The Mèo Béo conversation whose run made the call; set only for a run's own bearer */
+	conversation?: string;
 }
 
 export type ToolArgs = Record<string, unknown>;
@@ -30,3 +32,17 @@ export type ToolHandler = (args: ToolArgs, ctx: ToolContext) => Promise<unknown>
 
 /** A failure the model should read as-is, rather than as an internal error. */
 export class ToolError extends Error {}
+
+/** One block of a tool result as MCP carries it. */
+export type ToolContentBlock =
+	| { type: 'text'; text: string }
+	| { type: 'image'; data: string; mimeType: string };
+
+/**
+ * A result that is more than text (a screenshot), returned by an adapter in
+ * place of a plain value. The endpoint sends its blocks as they are; text
+ * blocks are still cut at the result limit.
+ */
+export class ToolContent {
+	constructor(readonly blocks: ToolContentBlock[]) {}
+}

@@ -242,6 +242,9 @@ export const IAM_ACTIONS: IamActionSpec[] = [
 	...service("event", null, [["Read", "read"]]),
 	...service("job", null, [["Describe", "read"]]),
 	...service("journal", null, [["Read", "read"]]),
+	// Mèo Béo's open-web browser: any public address, as a visitor from this
+	// machine. Not a read, so ReadOnlyAccess leaves it out
+	...service("browser", null, [["Browse", "write"]]),
 	...service("shell", null, [["Execute", "destructive"]]),
 	...service("account", "account", [
 		["List", "read"],

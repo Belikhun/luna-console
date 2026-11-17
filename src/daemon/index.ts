@@ -19,6 +19,8 @@ import { ensureIamSeeded } from "../core/iam";
 import { sweepResources } from "../core/resources";
 import { starterCluster } from "../shared/bootstrap";
 import { appendJournal, setJournalMachine, type JournalLevel } from "../core/journal";
+import { closeAllBrowsers, setBrowserAllowLocal } from "../core/browser";
+import { setBrowserExecutable } from "../core/devtools";
 import { setHostShellEnabled } from "../core/hostshell";
 import { configureProviders } from "../core/services/providers";
 import {
@@ -122,6 +124,10 @@ export async function runDaemon(): Promise<void> {
 
 	// arbitrary commands over MCP are a per-machine decision; core only learns it here
 	setHostShellEnabled(!!dcfg.mcpHostShell);
+
+	// Mèo Béo's browser: which Chromium, and the local pages a development stand-in may serve
+	setBrowserExecutable(dcfg.browser ?? null);
+	setBrowserAllowLocal(dcfg.configFile ? dcfg.browserAllowLocal ?? [] : []);
 
 	if (!existsSync(dcfg.root)) {
 		if (dcfg.mode !== "follower") {
@@ -280,6 +286,9 @@ export async function runDaemon(): Promise<void> {
 
 		local.stop(true);
 		cluster?.stop(true);
+
+		// each open browser is a Chromium process and a profile folder of its own
+		await closeAllBrowsers().catch(() => {});
 
 		// the uptime store only reaches disk on a timer, so an orderly exit is the
 		// one chance to keep the minutes since the last flush

@@ -20,7 +20,7 @@
 import { knowledgeFor, mcpInstructions, mcpServerVersion, recordMcpCall } from '$core/mcp';
 import type { KnowledgeItem, KnowledgeKind, McpOnBehalfOf, McpPrincipal } from '$core/mcp';
 import { allowedTools, mcpTool, scopeCoversInstance, validateMcpArgs } from '$shared/mcptools';
-import { TOOL_HANDLERS, ToolError } from './handlers';
+import { TOOL_HANDLERS, ToolContent, ToolError } from './handlers';
 import { knowledgeVisible, refuseFor, toolChecks, toolLiveChecks, toolPossible } from './iam';
 import { withActor } from '$client/actor';
 import { hiddenInstances, scrubInstanceRefs } from '$lib/server/fleetscope';
@@ -60,6 +60,8 @@ export interface RequestContext {
 	client?: string;
 	/** The console account the call runs for (a Mèo Béo run); its policies bound every tool */
 	account?: string;
+	/** The Mèo Béo conversation whose run made the call; a run's own bearer names it */
+	conversation?: string;
 	/** That account's policies, for deciding which tools to offer */
 	iam?: PrincipalContext | null;
 }
@@ -89,7 +91,21 @@ export function isJsonRpcMessage(value: unknown): value is JsonRpcRequest {
 	return record.jsonrpc === '2.0' && typeof record.method === 'string';
 }
 
+function clipText(text: string): string {
+	return text.length > MAX_RESULT_CHARS
+		? `${text.slice(0, MAX_RESULT_CHARS)}\n… [truncated: ${text.length - MAX_RESULT_CHARS} more characters]`
+		: text;
+}
+
 function textResult(payload: unknown, isError = false): Record<string, unknown> {
+	if (payload instanceof ToolContent) {
+		const content = payload.blocks.map((block) => block.type === 'text'
+			? { type: 'text', text: clipText(block.text) }
+			: block);
+
+		return { content, isError };
+	}
+
 	let text = typeof payload === 'string'
 		? payload
 		: JSON.stringify(payload, null, 1);
@@ -271,7 +287,8 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 			principal: ctx.principal,
 			actor: ctx.account ?? `mcp:${ctx.principal.name}`,
 			onBehalfOf: ctx.onBehalfOf ?? onBehalfOf(request.params),
-			account: ctx.account
+			account: ctx.account,
+			conversation: ctx.conversation
 		};
 
 		// what the agent creates for an account is that account's: the daemon
@@ -282,7 +299,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 
 		// an addon's targets, a pack's servers and the like name other people's
 		// servers; the account sees only its own
-		const scoped = ctx.account
+		const scoped = ctx.account && !(payload instanceof ToolContent)
 			? scrubInstanceRefs(payload, await hiddenInstances(ctx.account))
 			: payload;
 

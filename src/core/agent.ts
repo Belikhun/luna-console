@@ -32,11 +32,11 @@ import { join } from "node:path";
 
 import type { AgentReview } from "../shared/agent";
 import { t } from "../shared/i18n";
-import { MCP_DEFAULT_GROUPS, type McpScope } from "../shared/mcptools";
+import { MCP_DEFAULT_GROUPS, type McpScope, type McpToolGroup } from "../shared/mcptools";
 import { dataDir, statePath } from "./config";
 import { getAccount } from "./accounts";
 import { appendJournal } from "./journal";
-import { createMcpToken, getMcpToken, type McpTokenSummary } from "./mcp";
+import { createMcpToken, getMcpToken, updateMcpToken, type McpTokenSummary } from "./mcp";
 import { newId } from "./secrets";
 
 const STORE_FILE = "agent.json";
@@ -236,6 +236,8 @@ interface AgentStore {
 	/** When `apiModels` was fetched */
 	apiModelsAt?: number;
 	tokenId?: string;
+	/** Every group `AGENT_SCOPE` has granted the token so far; see `FIRST_AGENT_GROUPS` */
+	grantedGroups?: McpToolGroup[];
 	conversations: AgentConversation[];
 }
 
@@ -366,13 +368,31 @@ export interface AgentSettingsPatch {
 	subagents?: AgentSubagent[];
 }
 
-/** The token a fresh agent gets: it reads, operates instances, manages addons and remembers. Files, shells and config stay off. */
+/** The token a fresh agent gets: it reads, operates instances, manages addons, remembers and browses the web. Files, shells and config stay off. */
 const AGENT_SCOPE: McpScope = {
-	groups: [...new Set([...MCP_DEFAULT_GROUPS, "control" as const, "addons" as const, "addons-write" as const, "network" as const, "network-write" as const, "packs" as const, "packs-write" as const, "knowledge-write" as const])],
+	groups: [...new Set([...MCP_DEFAULT_GROUPS, "control" as const, "addons" as const, "addons-write" as const, "network" as const, "network-write" as const, "packs" as const, "packs-write" as const, "knowledge-write" as const, "browser" as const, "browser-write" as const])],
 	allow: [],
 	deny: [],
 	instances: null,
 };
+
+/**
+ * The groups the first agent tokens were made with. A store that predates
+ * `grantedGroups` had exactly these, so a group added to `AGENT_SCOPE` since is
+ * granted to its token once (`grantNewGroups`); one an operator removes later
+ * stays removed.
+ */
+const FIRST_AGENT_GROUPS: McpToolGroup[] = [...new Set<McpToolGroup>([
+	...MCP_DEFAULT_GROUPS,
+	"control",
+	"addons",
+	"addons-write",
+	"network",
+	"network-write",
+	"packs",
+	"packs-write",
+	"knowledge-write",
+])];
 
 const MAX_TURNS_CEILING = 100;
 
@@ -886,22 +906,55 @@ export async function ensureAgentToken(actor?: string): Promise<McpTokenSummary>
 		const existing = await agentToken(store);
 
 		if (existing) {
-			return existing;
+			return await grantNewGroups(store, existing, actor);
 		}
 
 		// a token of that name left behind by an older store is adopted rather than duplicated
 		const named = await getMcpToken(AGENT_TOKEN_NAME);
-		const token = named ?? (await createMcpToken({
+
+		if (named) {
+			store.tokenId = named.id;
+
+			return await grantNewGroups(store, named, actor);
+		}
+
+		const token = (await createMcpToken({
 			name: AGENT_TOKEN_NAME,
 			description: "Mèo Béo, the console's chat agent",
 			scope: AGENT_SCOPE,
 		}, actor)).token;
 
 		store.tokenId = token.id;
+		store.grantedGroups = [...AGENT_SCOPE.groups];
 		await saveStore(store);
 
 		return token;
 	});
+}
+
+/**
+ * Add to the agent's token the groups `AGENT_SCOPE` gained since it was made,
+ * once each: a release that gives the agent new hands (the browser) reaches a
+ * token minted before it, and a group an operator takes away afterwards is
+ * never granted again.
+ */
+async function grantNewGroups(store: AgentStore, token: McpTokenSummary, actor?: string): Promise<McpTokenSummary> {
+	const granted = store.grantedGroups ?? FIRST_AGENT_GROUPS;
+	const added = AGENT_SCOPE.groups.filter((group) => !granted.includes(group));
+
+	if (added.length === 0 && store.grantedGroups) {
+		return token;
+	}
+
+	const missing = added.filter((group) => !token.scope.groups.includes(group));
+	const updated = missing.length > 0
+		? await updateMcpToken(token.id, { scope: { groups: [...token.scope.groups, ...missing] } }, actor ?? "root")
+		: token;
+
+	store.grantedGroups = [...new Set([...granted, ...added])];
+	await saveStore(store);
+
+	return updated;
 }
 
 /**

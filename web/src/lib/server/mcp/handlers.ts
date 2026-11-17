@@ -70,12 +70,13 @@ import { DOMAIN_HANDLERS } from './domains';
 import { PACK_HANDLERS } from './packs';
 import { MODPACK_HANDLERS } from './modpacks';
 import { IAM_HANDLERS } from './iamtools';
+import { BROWSER_HANDLERS } from './browser';
 import { iamVisible, knowledgeVisible } from './iam';
 import { scopeDetail } from '$lib/server/fleetscope';
 import { noteChatRead, readableChat } from '$lib/server/chataudit';
 import { resourceId } from '$shared/iam/resources';
 
-export { ToolError } from './errors';
+export { ToolContent, ToolError } from './errors';
 export type { ToolArgs, ToolContext, ToolHandler } from './errors';
 
 /** How long a lifecycle tool waits for the instance to settle before answering. */
@@ -557,6 +558,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	...PACK_HANDLERS,
 	...MODPACK_HANDLERS,
 	...IAM_HANDLERS,
+	...BROWSER_HANDLERS,
 
 	// -- observe ---------------------------------------------------------------
 	async cluster_status(_args, ctx) {

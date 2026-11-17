@@ -9,6 +9,7 @@
     "dev": "bun run src/cli/index.ts",
     "build": "bun run scripts/genversion.ts && bun build --compile --minify src/cli/index.ts --outfile dist/luna && bun run scripts/genversion.ts --restore",
     "typecheck": "bunx tsc --noEmit",
+    "test": "bun test tests/unit",
     "release": "bun run scripts/release.ts"
   },
   "devDependencies": {

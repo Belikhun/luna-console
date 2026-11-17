@@ -4590,7 +4590,9 @@
 			"packs-write": "Manage packs",
 			"iam": "Read access management",
 			"iam-write": "Manage access",
-			"moderation": "Moderation"
+			"moderation": "Moderation",
+			"browser": "Browse the web",
+			"browser-write": "Act on websites"
 		},
 		"groupHint": {
 			"observe": "status, logs, players, machines, events; reads only",
@@ -4613,6 +4615,8 @@
 			"packs-write": "install, upload, configure, update, push and remove resource packs and data packs",
 			"iam": "IAM policies, groups, an account's permissions, the simulator, the IAM trail and resource tags; never credentials",
 			"iam-write": "create, edit and delete policies and groups, change members, attach and detach, inline policies and resource tags; a token acting for no console account cannot grant iam, account or shell permissions",
+			"browser": "open public web pages in a headless browser, read them, scroll, screenshot; private and local addresses are refused, and a console account needs browser:Browse",
+			"browser-write": "click, type, press keys, choose options and run scripts on those pages, as a visitor would",
 			"moderation": "kick, ban and IP-ban players across the whole network"
 		}
 	},
@@ -5606,6 +5610,7 @@
 		"event": "Cluster events",
 		"job": "Jobs",
 		"journal": "Console journal",
+		"browser": "Web browser",
 		"shell": "Terminal",
 		"account": "Accounts",
 		"iam": "Access management",

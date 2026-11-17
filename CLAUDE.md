@@ -24,7 +24,9 @@ streaming (never WebSockets to a browser; daemons talk to each other over WebSoc
 streaming) · HTTP over a unix socket between clients and the local daemon · the addon providers
 (Modrinth, CurseForge, Hangar, Smithed, behind `core/services/providers.ts`) + PaperMC Fill v3 as
 the only external APIs for the cluster; Mèo Béo adds Anthropic's (the Models API, the Claude Code
-release bucket) and npm's registry, each only on an operator's request.
+release bucket) and npm's registry, each only on an operator's request, and its browser reaches any
+public web page an agent run opens, through an egress proxy that refuses private addresses
+(`core/browser.ts`, `core/egress.ts`, `core/netguard.ts`).
 
 ## Layout
 

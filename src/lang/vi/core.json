@@ -1116,6 +1116,9 @@
 			"job": {
 				"Describe": "Theo dõi một tác vụ đang chạy"
 			},
+			"browser": {
+				"Browse": "Duyệt web công khai bằng trình duyệt của Mèo Béo"
+			},
 			"journal": {
 				"Read": "Đọc nhật ký console"
 			},
@@ -1193,5 +1196,47 @@
 		"badTagKey": "khoá thẻ \"{tag}\" không hợp lệ (tối đa 128 ký tự chữ, số, dấu cách và _ . : / = + @ -)",
 		"badTagValue": "giá trị của thẻ \"{tag}\" không hợp lệ (tối đa 256 ký tự)",
 		"reservedTagKey": "khoá thẻ bắt đầu bằng luna: được dành riêng"
+	},
+	"browser": {
+		"authCancelled": "{url} đòi tên đăng nhập và mật khẩu; hộp thoại đã bị huỷ",
+		"badScheme": "{url} không phải http(s); trình duyệt chỉ mở trang web",
+		"badUrl": "{url} không phải một địa chỉ; hãy đưa địa chỉ http(s) đầy đủ",
+		"blockedScheme": "bị chặn: không phải địa chỉ http(s)",
+		"browserFailed": "trình duyệt không khởi động được: {message}",
+		"busy": "máy này đã mở {max} trình duyệt; đóng bớt một cái bằng browser_close, hoặc chờ một cái tự đóng khi rảnh",
+		"crashed": "thẻ bị sập; lần gọi sau nó mở lại ở địa chỉ cuối",
+		"dialogDismissed": "trang hiện một hộp thoại {type} và đã bị bỏ qua: {message}",
+		"downloadFolder": "thư mục downloads trong thư mục nháp không phải thư mục thường; xoá nó rồi thử lại",
+		"downloadNoScratch": "tệp tải về được lưu vào thư mục nháp của cuộc trò chuyện, mà trình duyệt này thuộc về một token, không có thư mục đó",
+		"downloadTooLarge": "tệp tải về lớn hơn {max} MB nên đã bị huỷ",
+		"fileChooserRefused": "trang đòi chọn tệp để tải lên; trình duyệt không đưa tệp nào",
+		"gone": "trình duyệt đã đóng; mở lại bằng browser_open",
+		"navigateFailed": "không mở được {url}: {message}",
+		"noBrowser": "máy chủ chưa có Chromium: cài một bản, hoặc ghi đường dẫn vào hosting.browser trong cấu hình daemon",
+		"noHistory": "không có trang nào để đi {direction}",
+		"noOrigin": "chưa có trang nào đang mở để lấy đường dẫn đó; hãy đưa địa chỉ đầy đủ",
+		"noPath": "cho một đường dẫn, hoặc một thao tác: back, forward hoặc reload",
+		"noTarget": "chỉ ra một phần tử (ref, selector hoặc text) hoặc một điểm (x và y)",
+		"notOpen": "cuộc trò chuyện này chưa mở trình duyệt nào; mở bằng browser_open",
+		"nothingToWaitFor": "cho một selector, một đoạn chữ, hoặc networkIdle",
+		"popupClosed": "trang mở một cửa sổ mới; cửa sổ đó đã bị đóng",
+		"popupClosedAt": "trang đã mở một cửa sổ mới tới {url}; cửa sổ đó đã bị đóng, cần thì vào bằng browser_navigate",
+		"scriptFailed": "script báo lỗi: {message}",
+		"timedOut": "trình duyệt chưa xong sau {seconds} giây",
+		"unknownAction": "không rõ thao tác trình duyệt",
+		"unknownKey": "không rõ phím: {key}"
+	},
+	"netguard": {
+		"badHost": "{host} không phải tên máy hay địa chỉ",
+		"unresolved": "{host} không phân giải được",
+		"port": "{host} cổng {port} bị từ chối: chỉ dùng 80, 443 và các cổng từ 1024 trở lên",
+		"private": "{host} trỏ tới địa chỉ nội bộ, cục bộ hoặc dành riêng, trình duyệt không bao giờ vào",
+		"ownHost": "{host} là chính máy này; chỉ vào được cổng web 80 và 443, không phải {port}"
+	},
+	"egress": {
+		"allowance": "phiên trình duyệt này đã dùng hết lưu lượng cho phép",
+		"notHostPort": "không phải tên máy và cổng",
+		"fullAddress": "yêu cầu qua proxy phải ghi địa chỉ http:// đầy đủ",
+		"httpOnly": "chỉ http:// mới đi qua dạng yêu cầu thường"
 	}
 }

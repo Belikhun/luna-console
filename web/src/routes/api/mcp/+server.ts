@@ -104,6 +104,8 @@ interface Caller {
 	onBehalfOf?: McpOnBehalfOf;
 	/** The console account a run belongs to; its IAM policies bound every call */
 	account?: string;
+	/** The conversation a run belongs to; what the agent's browser is keyed by */
+	conversation?: string;
 }
 
 async function authorize(request: Request): Promise<Caller | null> {
@@ -187,6 +189,7 @@ export async function POST({ request, url, getClientAddress }) {
 		principal,
 		onBehalfOf: caller.onBehalfOf,
 		account: caller.account,
+		conversation: caller.conversation,
 		iam,
 		ip: clientIp(request, address),
 		client: request.headers.get('user-agent')?.slice(0, 120) ?? undefined

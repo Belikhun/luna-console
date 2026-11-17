@@ -1116,6 +1116,9 @@
 			"job": {
 				"Describe": "Follow a running job"
 			},
+			"browser": {
+				"Browse": "Browse the public web with Mèo Béo's browser"
+			},
 			"journal": {
 				"Read": "Read the console journal"
 			},
@@ -1193,5 +1196,47 @@
 		"badTagKey": "tag key \"{tag}\" is not valid (up to 128 letters, digits, spaces and _ . : / = + @ -)",
 		"badTagValue": "the value of tag \"{tag}\" is not valid (up to 256 characters)",
 		"reservedTagKey": "tag keys starting with luna: are reserved"
+	},
+	"browser": {
+		"authCancelled": "{url} asked for a user name and password; the prompt was cancelled",
+		"badScheme": "{url} is not http(s); the browser only opens web pages",
+		"badUrl": "{url} is not an address; give a full http(s) address",
+		"blockedScheme": "refused: not an http(s) address",
+		"browserFailed": "the browser did not start: {message}",
+		"busy": "{max} browsers are already open on this machine; close one with browser_close, or wait for one to go idle",
+		"crashed": "the tab crashed; it reopens on the last address at the next call",
+		"dialogDismissed": "the page showed a {type} dialog and it was dismissed: {message}",
+		"downloadFolder": "the scratch folder's downloads folder is not a plain folder; remove it and try again",
+		"downloadNoScratch": "downloads go to a conversation's scratch folder, and this browser belongs to a token, which has none",
+		"downloadTooLarge": "the download is over {max} MB and was cancelled",
+		"fileChooserRefused": "the page asked for a file to upload; the browser offers none",
+		"gone": "the browser is gone; open it again with browser_open",
+		"navigateFailed": "{url} could not be opened: {message}",
+		"noBrowser": "no Chromium on this host: install one, or name it as hosting.browser in the daemon config",
+		"noHistory": "there is no page to go {direction} to",
+		"noOrigin": "there is no page open to take that path from; give a full address",
+		"noPath": "give a path, or an action: back, forward or reload",
+		"noTarget": "name an element (ref, selector or text) or a point (x and y)",
+		"notOpen": "no browser is open for this conversation; open one with browser_open",
+		"nothingToWaitFor": "give a selector, a text, or networkIdle",
+		"popupClosed": "the page opened a new window; it was closed",
+		"popupClosedAt": "the page opened a new window at {url}; it was closed, so go there with browser_navigate if you need it",
+		"scriptFailed": "the script threw: {message}",
+		"timedOut": "the browser did not finish within {seconds} seconds",
+		"unknownAction": "unknown browser action",
+		"unknownKey": "unknown key: {key}"
+	},
+	"netguard": {
+		"badHost": "{host} is not a host name or address",
+		"unresolved": "{host} does not resolve",
+		"port": "{host} on port {port} is refused: only 80, 443 and ports from 1024 up are reached",
+		"private": "{host} resolves to a private, local or reserved address, which the browser never reaches",
+		"ownHost": "{host} is this host; only its web ports 80 and 443 are reached, not {port}"
+	},
+	"egress": {
+		"allowance": "this browser session has used its traffic allowance",
+		"notHostPort": "not a host and port",
+		"fullAddress": "a proxy request names a full http:// address",
+		"httpOnly": "only http:// goes through as a plain request"
 	}
 }

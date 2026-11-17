@@ -70,7 +70,7 @@ export function isRunBearer(bearer: string): boolean {
  */
 export async function authorizeRunBearer(
 	bearer: string
-): Promise<{ principal: McpPrincipal; onBehalfOf: McpOnBehalfOf; account?: string } | null> {
+): Promise<{ principal: McpPrincipal; onBehalfOf: McpOnBehalfOf; account?: string; conversation?: string } | null> {
 	const match = /^agent_([0-9a-f]{16})\.([0-9a-f]{64})$/.exec(bearer.trim());
 
 	if (!match) {
@@ -96,9 +96,15 @@ export async function authorizeRunBearer(
 		? grant.onBehalfOf.account
 		: undefined;
 
+	// the conversation is the console's own record too: what the agent's browser is keyed by
+	const conversation = typeof grant.onBehalfOf.conversation === 'string' && grant.onBehalfOf.conversation !== ''
+		? grant.onBehalfOf.conversation
+		: undefined;
+
 	return {
 		principal: { id: token.id, name: token.name, scope: token.scope, tools: token.tools },
 		onBehalfOf: grant.onBehalfOf,
-		account
+		account,
+		...(conversation ? { conversation } : {})
 	};
 }

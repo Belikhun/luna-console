@@ -1976,6 +1976,10 @@ async function drive(
 	let costUsd = 0;
 	let failed = false;
 
+	// the open web is browser:Browse, which the account may lack though the token has the tools
+	const browses = launch.token.tools.includes('browser_open')
+		&& await refuseFor(input.actor, [{ action: 'browser:Browse', resource: null }]) === null;
+
 	try {
 		const stream = query({
 			prompt: run.input,
@@ -1988,7 +1992,8 @@ async function drive(
 					locale: input.locale,
 					mode: input.mode,
 					scratch: run.scratch,
-					instanceFiles: launch.token.tools.includes('file_read')
+					instanceFiles: launch.token.tools.includes('file_read'),
+					browser: browses
 				}),
 				model: run.model,
 				effort: run.effort as AgentEffort,

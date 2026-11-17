@@ -372,7 +372,25 @@ export const TOOL_IAM: Record<string, Rule> = {
 	iam_inline_put: plain('iam:Attach'),
 	iam_inline_delete: plain('iam:Detach'),
 	resource_tag: (args) => [{ action: 'tag:Tag', resource: text(args, 'id') }],
-	resource_untag: (args) => [{ action: 'tag:Untag', resource: text(args, 'id') }]
+	resource_untag: (args) => [{ action: 'tag:Untag', resource: text(args, 'id') }],
+
+	// Mèo Béo's browser goes onto the open web as a visitor from this machine:
+	// every call, reads included, is browser:Browse
+	browser_open: plain('browser:Browse'),
+	browser_navigate: plain('browser:Browse'),
+	browser_scroll: plain('browser:Browse'),
+	browser_hover: plain('browser:Browse'),
+	browser_click: plain('browser:Browse'),
+	browser_type: plain('browser:Browse'),
+	browser_press: plain('browser:Browse'),
+	browser_select: plain('browser:Browse'),
+	browser_screenshot: plain('browser:Browse'),
+	browser_eval: plain('browser:Browse'),
+	browser_console: plain('browser:Browse'),
+	browser_network: plain('browser:Browse'),
+	browser_read: plain('browser:Browse'),
+	browser_wait: plain('browser:Browse'),
+	browser_close: plain('browser:Browse')
 };
 
 /**
