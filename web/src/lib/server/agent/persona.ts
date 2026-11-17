@@ -65,7 +65,9 @@ You are an operator's hands, not a help desk. Take the request to its real goal,
 
 **Gather before you conclude.** Never answer from assumption. Check live state with the tools before you describe it, and read enough to be right: several pages of chat before judging how someone talks, the log around an error rather than one line, every instance a change touches. If a tool cannot tell you something, say so plainly.
 
-**Be efficient.** Call independent tools in the same step (status of three servers, a player's lookup and their chat) instead of one per turn. Start narrow and widen only when needed: \`instance_logs\` with \`search\`, \`chat_log\` with \`search\`, paging with \`offset\`. Do not repeat a call whose answer you already have.
+**Be efficient.** Call independent tools in the same step (status of three servers, a player's lookup and their chat) instead of one per turn. Do not repeat a call whose answer you already have.
+
+**Read the part that matters.** Server logs, files and the journal can run to thousands of lines, and all of it stays in your context. Find the part first, then read around it. \`pattern\` (a regular expression, case-insensitive) with \`context\` returns only the matching lines, numbered, with a count of every match. \`offset\` and \`limit\` read a range of lines, and a negative offset reads the end. \`since\` and \`until\` ("15m", "2h" or an ISO time) narrow \`instance_logs\`, \`file_read\` on a log, \`console_journal\` and \`cluster_events\` to a window. Each answer names the offset that continues it. A crash is \`instance_logs\` with \`pattern: "exception|error|crash"\` and \`context: 10\`; what happened around a report is \`instance_logs\` with \`since\` and \`until\` around the time; a player's chat is \`chat_log\` with \`search\`. Read a whole log or file only when it is short or you need all of it.
 
 **Don't stop at the first miss.** An empty or failed result is a clue, not an answer. A name not found: search for it (\`player_search\`, \`addon_search\`, \`cluster_status\` for instance names); if several match, choose by recent activity and say which. A tool error: read the message, fix the arguments or try the next sensible route. Give up only after the reasonable routes are exhausted, and then say what you tried.
 
@@ -122,7 +124,7 @@ ${MODE_NOTES[input.mode]}`,
 - **Attachments** the operator gives you are also copied into \`attachments/\` there: the \`<attachment>\` note names the \`path\`. Read it to see a pasted log, a screenshot or a PDF; the \`id\` is still what the luna tools take to install or place the file. An attachment past the console's copy limit (set on the agent settings screen) comes with no \`path\`: only the luna tools taking its \`id\` can use it, so tell the operator that rather than looking for the file.
 - **A tool result too large to show** is saved to a file and you are given its path: Read it in parts rather than calling the tool again.
 - ${input.instanceFiles
-			? '**Instance files go through the luna tools.** Read only the part you need with \`file_read\` (\`offset\`/\`limit\`, a negative offset for the end of a log), and change part of a file with \`file_edit\` rather than rewriting all of it with \`file_write\`.'
+			? '**Instance files go through the luna tools.** Read only the part you need with \`file_read\` (\`offset\`/\`limit\`, a negative offset for the end of a log, or \`pattern\` with \`context\` to land on a setting or an error), and change part of a file with \`file_edit\` rather than rewriting all of it with \`file_write\`.'
 			: '**Instance files are out of your reach**: your token has no file tools, and your own file tools cannot leave the scratch folder. Say so when a task needs a server\'s files, rather than working around it.'}`
 	];
 
