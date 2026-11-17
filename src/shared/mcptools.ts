@@ -136,6 +136,26 @@ const INSTANCE = {
 	description: "Instance name, as listed by cluster_status (e.g. \"survival\", \"lobby\", \"proxy\").",
 } as const satisfies McpSchema;
 
+/**
+ * How a tool that returns long text lets a model read only part of it (see
+ * `shared/textwindow.ts`): a window of lines, or the lines matching a pattern
+ * with context around them, continued from the offset the answer names.
+ */
+const WINDOW = {
+	offset: { type: "integer", description: "First line to read or search from, 1-based (default 1); negative counts from the end (-200 is the last 200 lines). Each answer names the offset that continues it." },
+	limit: { type: "integer", description: "Most lines to return; with pattern, most matching lines.", minimum: 1, maximum: 5000 },
+	pattern: { type: "string", description: "A regular expression (JavaScript syntax, case-insensitive unless matchCase): only matching lines come back, numbered, with a count of every match so you know what is left. Use it to find the part you need before reading around it, e.g. \"error|warn\", \"TypeError: .*undefined\".", maxLength: 1000 },
+	matchCase: { type: "boolean", description: "Match pattern's upper and lower case exactly." },
+	invert: { type: "boolean", description: "Return the lines that do not match pattern (drop noise such as health checks)." },
+	context: { type: "integer", description: "Lines shown before and after each match (default 0). A match is then numbered \"<n>:\", a context line \"<n>-\", and groups apart are parted by \"--\".", minimum: 0, maximum: 50 },
+} as const satisfies Record<string, McpSchema>;
+
+/** A time window over lines that carry their own timestamps. */
+const TIME_WINDOW = {
+	since: { type: "string", description: "Only what came at or after this time: an ISO 8601 timestamp (\"2026-11-17T08:30:00Z\"), epoch seconds or milliseconds, or a span back from now (\"15m\", \"2h\", \"3d\").", maxLength: 40 },
+	until: { type: "string", description: "Only what came before this time, in the same forms as since.", maxLength: 40 },
+} as const satisfies Record<string, McpSchema>;
+
 const READ: McpToolAnnotations = { readOnlyHint: true, openWorldHint: false };
 
 const FAMILY = {
@@ -246,12 +266,14 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		name: "instance_logs",
 		group: "observe",
 		description:
-			"Read the tail of an instance's live server log (latest.log). Use `search` to keep only lines containing a substring (case-insensitive).",
+			"Read an instance's live server log (latest.log, since the server last started). With only `lines` and `search` it returns the tail, keeping lines containing a substring. Read part of a long log instead with `pattern` (a regular expression, with `context` lines around each match), `since`/`until` (by the log's [HH:MM:SS] stamps, dated back across midnights) and `offset`/`limit` (by line number, negative from the end); lines then come back numbered, with a count of every match and the offset that continues. E.g. {pattern: \"exception|error\", context: 5, since: \"30m\"}.",
 		inputSchema: object(
 			{
 				instance: INSTANCE,
-				lines: { type: "integer", description: "How many trailing lines to read (default 100).", minimum: 1, maximum: 1000 },
-				search: { type: "string", description: "Only return lines containing this text.", maxLength: 200 },
+				lines: { type: "integer", description: "How many trailing lines to read (default 100), when no pattern, time or offset is given.", minimum: 1, maximum: 1000 },
+				search: { type: "string", description: "Only return lines containing this text (case-insensitive), from the tail.", maxLength: 200 },
+				...WINDOW,
+				...TIME_WINDOW,
 			},
 			["instance"],
 		),
@@ -345,9 +367,12 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		name: "cluster_events",
 		group: "observe",
 		description:
-			"Recent cluster events (starts, stops, crashes, errors, operator actions), newest first, optionally for one instance.",
+			"Recent cluster events (starts, stops, crashes, errors, operator actions), newest first, optionally for one instance, a time window or a pattern over the kind and message.",
 		inputSchema: object({
 			instance: { type: "string", description: "Only events for this instance." },
+			pattern: { ...WINDOW.pattern, description: "Only events whose kind or message matches this regular expression (JavaScript syntax, case-insensitive unless matchCase), e.g. \"crash|error\"." },
+			matchCase: WINDOW.matchCase,
+			...TIME_WINDOW,
 			limit: { type: "integer", description: "Maximum events (default 30).", minimum: 1, maximum: 200 },
 		}),
 		annotations: READ,
@@ -379,10 +404,13 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		name: "console_journal",
 		group: "observe",
 		description:
-			"The luna console's own journal (what the control plane did: deploys, sign-ins, daemon events), newest first.",
+			"The luna console's own journal (what the control plane did: deploys, sign-ins, daemon events), newest first. Narrow it with a time window (since, until) and a substring or a regular expression over the message, detail and actor; `truncated` says more entries matched than were returned.",
 		inputSchema: object({
 			limit: { type: "integer", description: "Maximum entries (default 50).", minimum: 1, maximum: 500 },
 			search: { type: "string", description: "Substring filter.", maxLength: 200 },
+			pattern: { ...WINDOW.pattern, description: "Only entries whose message, detail or actor matches this regular expression (JavaScript syntax, case-insensitive unless matchCase), e.g. \"deploy.*(fail|error)\"." },
+			matchCase: WINDOW.matchCase,
+			...TIME_WINDOW,
 			level: { type: "string", enum: ["debug", "info", "warn", "error"], description: "This level and above." },
 		}),
 		annotations: READ,
@@ -636,13 +664,14 @@ export const MCP_TOOLS: McpToolSpec[] = [
 	{
 		name: "file_read",
 		group: "files",
-		description: "Read a range of lines from a text file inside an instance (configs, logs, scripts), without loading the rest, so a file of any size can be read; binary files are refused. Lines come back numbered as \"<n>\\t<text>\"; the number and tab are not part of the file, so leave them out when quoting text to file_edit. Lines longer than 2000 characters are cut. Read the part you need: a narrow offset/limit for a big config, a negative offset for the end of a log (-100 is the last hundred lines). A file luna manages as a template reads as the template by default, which is what file_edit changes.",
+		description: "Read a range of lines from a text file inside an instance (configs, logs, scripts), without loading the rest, so a file of any size can be read; binary files are refused. Lines come back numbered as \"<n>\\t<text>\"; the number and tab are not part of the file, so leave them out when quoting text to file_edit. Lines longer than 2000 characters are cut. Read the part you need: a narrow offset/limit for a big config, a negative offset for the end of a log (-100 is the last hundred lines). A file luna manages as a template reads as the template by default, which is what file_edit changes. To find something in a big file or a log, give `pattern` (a regular expression) and `context`: only matching lines come back, numbered (a match \"<n>:\", a context line \"<n>-\"), with a count of every match and the offset that continues; `since`/`until` keep the lines of a log stamped in that window (an ISO timestamp, or a server log's [HH:MM:SS]). The file is streamed, so this works on a log of any size.",
 		inputSchema: object(
 			{
 				instance: INSTANCE,
 				path: { type: "string", description: "File path relative to the instance root.", maxLength: 1024 },
-				offset: { type: "integer", description: "First line to return, 1-based (default 1); negative counts from the end." },
-				limit: { type: "integer", description: "Most lines to return (default 400).", minimum: 1, maximum: 5000 },
+				...WINDOW,
+				limit: { type: "integer", description: "Most lines to return (default 400); with pattern or a time window, most matching lines.", minimum: 1, maximum: 5000 },
+				...TIME_WINDOW,
 				source: { type: "string", enum: ["template", "disk"], description: "For a managed file: its template (default) or the rendered file on disk." },
 			},
 			["instance", "path"],

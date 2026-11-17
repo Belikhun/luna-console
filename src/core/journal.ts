@@ -29,6 +29,7 @@ import { appendFile, mkdir, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { root } from "./config";
+import { compilePattern } from "../shared/textwindow";
 
 /** Which part of luna wrote the entry. */
 export type JournalSource = "daemon" | "web" | "cli" | "auth" | "job" | "scheduler" | "mcp" | "agent";
@@ -147,8 +148,14 @@ export interface JournalQuery {
 	minLevel?: JournalLevel;
 	/** Only entries at or after this epoch millis */
 	since?: number;
+	/** Only entries before this epoch millis */
+	until?: number;
 	/** Substring match over the message, detail and actor */
 	search?: string;
+	/** A JavaScript regular expression over the message, detail and actor */
+	pattern?: string;
+	/** Match `pattern`'s upper and lower case exactly */
+	matchCase?: boolean;
 }
 
 export interface JournalPage {
@@ -201,7 +208,7 @@ async function readMonth(path: string): Promise<JournalEntry[]> {
 	return entries;
 }
 
-function passes(entry: JournalEntry, query: JournalQuery, minRank: number): boolean {
+function passes(entry: JournalEntry, query: JournalQuery, minRank: number, regex: RegExp | null): boolean {
 	if (query.sources?.length && !query.sources.includes(entry.source)) {
 		return false;
 	}
@@ -214,6 +221,10 @@ function passes(entry: JournalEntry, query: JournalQuery, minRank: number): bool
 		return false;
 	}
 
+	if (query.until !== undefined && entry.t >= query.until) {
+		return false;
+	}
+
 	if (query.search) {
 		const needle = query.search.toLowerCase();
 		const haystack = `${entry.message} ${entry.detail ?? ""} ${entry.actor ?? ""}`.toLowerCase();
@@ -221,6 +232,10 @@ function passes(entry: JournalEntry, query: JournalQuery, minRank: number): bool
 		if (!haystack.includes(needle)) {
 			return false;
 		}
+	}
+
+	if (regex && !regex.test(`${entry.message} ${entry.detail ?? ""} ${entry.actor ?? ""}`)) {
+		return false;
 	}
 
 	return true;
@@ -235,6 +250,9 @@ export async function readJournal(query: JournalQuery = {}): Promise<JournalPage
 	const dir = journalDir();
 	const wanted = Math.min(Math.max(1, query.limit ?? DEFAULT_JOURNAL_LINES), MAX_JOURNAL_LINES);
 	const minRank = Math.max(0, JOURNAL_LEVELS.indexOf(query.minLevel ?? "debug"));
+	const regex = query.pattern
+		? compilePattern(query.pattern, query.matchCase === true)
+		: null;
 
 	if (!existsSync(dir)) {
 		return { entries: [], files: [], truncated: false };
@@ -244,6 +262,8 @@ export async function readJournal(query: JournalQuery = {}): Promise<JournalPage
 	const files: JournalPage["files"] = [];
 	const entries: JournalEntry[] = [];
 	let truncated = false;
+	// entries are written in time order, so the walk back is over once it passes `since`
+	let past = false;
 
 	for (const name of names) {
 		const path = join(dir, name);
@@ -253,8 +273,8 @@ export async function readJournal(query: JournalQuery = {}): Promise<JournalPage
 
 		// the file list is part of the answer, so the walk keeps stat-ing months it
 		// no longer needs to read
-		if (entries.length >= wanted) {
-			truncated = true;
+		if (entries.length >= wanted || past) {
+			truncated ||= !past;
 
 			continue;
 		}
@@ -264,7 +284,13 @@ export async function readJournal(query: JournalQuery = {}): Promise<JournalPage
 		for (let i = month.length - 1; i >= 0; i--) {
 			const entry = month[i]!;
 
-			if (!passes(entry, query, minRank)) {
+			if (query.since !== undefined && entry.t < query.since) {
+				past = true;
+
+				break;
+			}
+
+			if (!passes(entry, query, minRank, regex)) {
 				continue;
 			}
 

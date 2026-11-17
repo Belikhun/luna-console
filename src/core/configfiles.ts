@@ -51,6 +51,7 @@ import {
 	type ScopeTarget,
 } from "./environment";
 import type { ProgressReporter } from "./progress";
+import { compilePattern, lineStamp, TEXT_WINDOW_MAX_CONTEXT } from "../shared/textwindow";
 
 const STORE_FILE = "configfiles.json";
 
@@ -521,6 +522,39 @@ export interface FileLines {
 	lines: string[];
 	/** How many of the returned lines were cut at `READ_LINE_MAX_CHARS` */
 	cutLines: number;
+	/** With a query: the lines it kept, in order; `match` is false on a context line */
+	hits?: LineHit[];
+	/** With a query: every line from the offset on that passed it, returned or not */
+	matches?: number;
+	/** With a query: the offset that continues after the last match returned */
+	next?: number;
+}
+
+/** One line a query kept. */
+export interface LineHit {
+	line: number;
+	text: string;
+	match: boolean;
+}
+
+/**
+ * What a ranged read keeps besides its window: lines matching a pattern, with
+ * context around them, and a time window over lines that carry a timestamp
+ * (an ISO 8601 one, or a server log's `[HH:MM:SS]`, dated back from the file's
+ * modification time across midnights). `limit` then counts matching lines.
+ */
+export interface LineQuery {
+	/** A JavaScript regular expression */
+	pattern?: string;
+	matchCase?: boolean;
+	/** Keep the lines that do not match */
+	invert?: boolean;
+	/** Lines kept before and after each match */
+	context?: number;
+	/** Epoch ms; only lines stamped at or after it */
+	since?: number;
+	/** Epoch ms; only lines stamped before it */
+	until?: number;
 }
 
 /**
@@ -534,7 +568,7 @@ export async function readInstanceLines(
 	cfg: ClusterConfig,
 	instance: string,
 	relPath: string,
-	opts: { offset?: number; limit?: number; source?: "disk" | "template" } = {},
+	opts: { offset?: number; limit?: number; source?: "disk" | "template"; query?: LineQuery } = {},
 ): Promise<FileLines> {
 	const { path, rel } = resolveInstancePath(cfg, instance, relPath);
 	const store = await loadConfigFiles();
@@ -550,6 +584,18 @@ export async function readInstanceLines(
 		if (all.length > 1 && all[all.length - 1] === "") {
 			all.pop();
 		}
+
+		if (isQuery(opts.query)) {
+			return {
+				path: rel,
+				size: Buffer.byteLength(text),
+				modified: entry!.updatedAt ? Date.parse(entry!.updatedAt) : 0,
+				managed: true,
+				source: "template",
+				...(await queryLines(arrayLines(all), all.length, offset, limit, opts.query!, null)),
+			};
+		}
+
 		const start = offset < 0
 			? Math.max(1, all.length + offset + 1)
 			: offset;
@@ -579,6 +625,17 @@ export async function readInstanceLines(
 
 	if (await looksBinary(path)) {
 		throw new Error(t("core.configfiles.notText", { path: rel }));
+	}
+
+	if (isQuery(opts.query)) {
+		return {
+			path: rel,
+			size: info.size,
+			modified: info.mtimeMs,
+			managed: !!entry,
+			source: "disk",
+			...(await queryLines(() => streamLines(path), null, offset, limit, opts.query!, info.mtimeMs)),
+		};
 	}
 
 	const scanned = await scanLines(path, offset, limit);
@@ -652,6 +709,242 @@ async function scanLines(
 		: offset;
 
 	return { kept, total, firstKept };
+}
+
+/** Whether a query asks for anything a plain window does not do. */
+function isQuery(query: LineQuery | undefined): boolean {
+	return !!query && (!!query.pattern || query.since !== undefined || query.until !== undefined);
+}
+
+/** A file's lines, streamed; a final newline ends the last line rather than starting an empty one. */
+async function* streamLines(path: string): AsyncGenerator<string> {
+	const decoder = new TextDecoder();
+	let pending = "";
+	let any = false;
+
+	for await (const chunk of Bun.file(path).stream()) {
+		pending += decoder.decode(chunk, { stream: true });
+
+		const parts = pending.split("\n");
+
+		pending = parts.pop() ?? "";
+
+		for (const line of parts) {
+			any = true;
+
+			yield line;
+		}
+	}
+
+	pending += decoder.decode();
+
+	if (pending !== "" || !any) {
+		yield pending;
+	}
+}
+
+function arrayLines(lines: string[]): () => AsyncGenerator<string> {
+	return async function* () {
+		yield* lines;
+	};
+}
+
+/** A server log's time of day at the start of a line (`[12:34:56]`, `[12:34:56 INFO]`), in ms since midnight. */
+const TIME_OF_DAY = /^\[(\d{1,2}):(\d{2}):(\d{2})[\] ]/;
+
+/** A day back counts when a time of day falls this far below the line before it. */
+const ROLLOVER_MS = 3_600_000;
+
+function timeOfDay(line: string): number | null {
+	const match = TIME_OF_DAY.exec(line);
+
+	return match
+		? ((Number(match[1]) * 60 + Number(match[2])) * 60 + Number(match[3])) * 1000
+		: null;
+}
+
+/**
+ * Works out each line's time as the lines go by: an ISO 8601 stamp as it
+ * stands, a time of day on the day it falls on (counted forward from `base`,
+ * a day further at each midnight), and a line with neither the time of the
+ * line before it.
+ */
+function stampClock(base: number | null): (line: string) => number | null {
+	let day = 0;
+	let previous: number | null = null;
+	let last: number | null = null;
+
+	return (line: string): number | null => {
+		const iso = lineStamp(line);
+
+		if (iso !== null) {
+			last = iso;
+
+			return last;
+		}
+
+		const tod = timeOfDay(line);
+
+		if (tod !== null && base !== null) {
+			if (previous !== null && tod < previous - ROLLOVER_MS) {
+				day += 1;
+			}
+
+			previous = tod;
+			last = base + day * 86_400_000 + tod;
+		}
+
+		return last;
+	};
+}
+
+/**
+ * Run a query over lines from `source`. A negative offset, or a time window
+ * over time-of-day stamps, needs one counting pass first: for the total, and
+ * for the midnights the log crosses, so its first day can be dated back from
+ * `modified`.
+ */
+async function queryLines(
+	source: () => AsyncGenerator<string>,
+	knownTotal: number | null,
+	offset: number,
+	limit: number,
+	query: LineQuery,
+	modified: number | null,
+): Promise<Pick<FileLines, "totalLines" | "fromLine" | "toLine" | "lines" | "cutLines" | "hits" | "matches" | "next">> {
+	const timed = query.since !== undefined || query.until !== undefined;
+	let total = knownTotal;
+	let base: number | null = null;
+
+	if (total === null && (offset < 0 || timed)) {
+		let count = 0;
+		let days = 0;
+		let previous: number | null = null;
+
+		for await (const line of source()) {
+			count += 1;
+
+			const tod = timeOfDay(line);
+
+			if (tod !== null) {
+				if (previous !== null && tod < previous - ROLLOVER_MS) {
+					days += 1;
+				}
+
+				previous = tod;
+			}
+		}
+
+		total = count;
+
+		if (modified !== null) {
+			const midnight = new Date(modified);
+
+			midnight.setHours(0, 0, 0, 0);
+			midnight.setDate(midnight.getDate() - days);
+			base = midnight.getTime();
+		}
+	}
+
+	const start = offset < 0
+		? Math.max(1, (total ?? 0) + offset + 1)
+		: offset;
+	const regex = query.pattern
+		? compilePattern(query.pattern, query.matchCase === true)
+		: null;
+	const context = Math.max(0, Math.min(Math.trunc(query.context ?? 0), TEXT_WINDOW_MAX_CONTEXT));
+	const clock = stampClock(base);
+	const hits: LineHit[] = [];
+	const before: Array<{ line: number; text: string }> = [];
+	let shown = 0;
+	let matched = 0;
+	let returned = 0;
+	let after = 0;
+	let next: number | undefined;
+	let cutLines = 0;
+	let number = 0;
+
+	const keep = (line: number, text: string, match: boolean): void => {
+		const bare = text.endsWith("\r")
+			? text.slice(0, -1)
+			: text;
+		const cut = bare.length > READ_LINE_MAX_CHARS;
+
+		if (cut) {
+			cutLines += 1;
+		}
+
+		hits.push({
+			line,
+			text: cut
+				? `${bare.slice(0, READ_LINE_MAX_CHARS)}…`
+				: bare,
+			match,
+		});
+		shown = line;
+	};
+
+	for await (const text of source()) {
+		number += 1;
+
+		const stamp = timed
+			? clock(text)
+			: null;
+
+		if (number < start) {
+			continue;
+		}
+
+		const inTime = !timed || (stamp === null
+			? query.since === undefined
+			: (query.since === undefined || stamp >= query.since) && (query.until === undefined || stamp < query.until));
+		const passes = inTime && (!regex || regex.test(text) !== (query.invert === true));
+
+		if (passes) {
+			matched += 1;
+
+			if (returned < limit) {
+				for (const held of before) {
+					if (held.line > shown) {
+						keep(held.line, held.text, false);
+					}
+				}
+
+				before.length = 0;
+				keep(number, text, true);
+				returned += 1;
+				after = context;
+
+				continue;
+			}
+
+			next ??= number;
+		} else if (after > 0 && next === undefined) {
+			keep(number, text, false);
+			after -= 1;
+
+			continue;
+		}
+
+		if (context > 0 && next === undefined) {
+			before.push({ line: number, text });
+
+			if (before.length > context) {
+				before.shift();
+			}
+		}
+	}
+
+	return {
+		totalLines: total ?? number,
+		fromLine: hits.length ? hits[0]!.line : 0,
+		toLine: hits.length ? hits[hits.length - 1]!.line : 0,
+		lines: hits.map((hit) => hit.text),
+		cutLines,
+		hits,
+		matches: matched,
+		next,
+	};
 }
 
 /** Trim a range of lines that starts at line `start` of a file `total` lines long. */

@@ -46,7 +46,8 @@ import { awaitJob } from './jobs';
 import type { JobView } from '$lib/jobs';
 import { lunaShellRefusal, scopeCoversInstance } from '$shared/mcptools';
 import { browseInstance, editInstanceFile, readInstanceLines, writeInstanceFile, MAX_EDIT_BYTES } from '$core/configfiles';
-import type { FileEdit } from '$core/configfiles';
+import type { FileEdit, LineQuery } from '$core/configfiles';
+import { compilePattern, parseInstant, renderLines } from '$shared/textwindow';
 import {
 	copyInstancePath,
 	copyAcrossInstances,
@@ -113,6 +114,116 @@ function num(args: ToolArgs, key: string, fallback: number): number {
 	return typeof value === 'number'
 		? value
 		: fallback;
+}
+
+/** A time argument (since, until) as epoch ms; undefined when absent, refused when unreadable. */
+function instantArg(args: ToolArgs, key: string): number | undefined {
+	const value = optStr(args, key);
+
+	if (value === undefined) {
+		return undefined;
+	}
+
+	const at = parseInstant(value);
+
+	if (at === null) {
+		throw new ToolError(`${key} "${value}" is not a time: give an ISO 8601 timestamp, epoch seconds or milliseconds, or a span back from now such as "15m" or "2h"`);
+	}
+
+	return at;
+}
+
+/** A regex argument, compiled; null when absent, refused with the reason when it does not compile. */
+function patternArg(args: ToolArgs): RegExp | null {
+	const pattern = optStr(args, 'pattern');
+
+	if (pattern === undefined) {
+		return null;
+	}
+
+	try {
+		return compilePattern(pattern, args.matchCase === true);
+	} catch (error) {
+		throw new ToolError((error as Error).message);
+	}
+}
+
+/** The line query a reading tool's arguments ask for; undefined when they ask for a plain window. */
+function lineQueryOf(args: ToolArgs): LineQuery | undefined {
+	patternArg(args);
+
+	const query: LineQuery = {
+		pattern: optStr(args, 'pattern'),
+		matchCase: args.matchCase === true || undefined,
+		invert: args.invert === true || undefined,
+		context: typeof args.context === 'number' ? args.context : undefined,
+		since: instantArg(args, 'since'),
+		until: instantArg(args, 'until')
+	};
+
+	return query.pattern || query.since !== undefined || query.until !== undefined
+		? query
+		: undefined;
+}
+
+/** Whether an entry stamped `t` falls inside the since/until window the arguments ask for. */
+function inWindow(t: number, since: number | undefined, until: number | undefined): boolean {
+	return (since === undefined || t >= since) && (until === undefined || t < until);
+}
+
+/**
+ * Read lines of an instance file for a tool: a window, or what a query keeps,
+ * numbered like cat -n, with notes on what is left and where to continue.
+ */
+async function readLinesFor(
+	cfg: ClusterConfig,
+	name: string,
+	path: string,
+	args: ToolArgs,
+	source?: 'disk' | 'template'
+): Promise<Record<string, unknown>> {
+	const query = lineQueryOf(args);
+	const file = await readInstanceLines(cfg, name, path, {
+		offset: num(args, 'offset', 1),
+		limit: num(args, 'limit', FILE_READ_DEFAULT_LINES),
+		source,
+		query
+	});
+	const content = file.hits
+		? renderLines(file.hits, (query?.context ?? 0) > 0, 6)
+		: file.lines
+			.map((line, index) => `${String(file.fromLine + index).padStart(6)}\t${line}`)
+			.join('\n');
+	const more = !file.hits && file.toLine > 0 && file.toLine < file.totalLines;
+	const found = file.hits
+		? (file.matches ?? 0) === 0
+			? 'no line passed the query'
+			: `${file.hits.filter((hit) => hit.match).length} of ${file.matches} matching line(s) returned`
+		: '';
+
+	return {
+		instance: name,
+		path: file.path,
+		size: file.size,
+		totalLines: file.totalLines,
+		fromLine: file.fromLine,
+		toLine: file.toLine,
+		matches: file.matches,
+		managed: file.managed || undefined,
+		source: file.managed ? file.source : undefined,
+		note: [
+			file.managed
+				? file.source === 'template'
+					? 'luna renders this file from this template on every start; file_edit and file_write change the template'
+					: 'this is the rendered file; luna rewrites it from its template on every start, and file_edit changes the template'
+				: '',
+			found,
+			file.cutLines ? `${file.cutLines} line(s) were longer than 2000 characters and are cut` : '',
+			more ? `more lines follow; continue with offset ${file.toLine + 1}` : '',
+			file.next ? `more matches follow; continue with offset ${file.next}` : ''
+		].filter(Boolean).join('; ') || undefined,
+		content
+	};
 }
 
 /** Load the registry and refuse a name it does not manage. */
@@ -469,6 +580,17 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	async instance_logs(args) {
 		const name = str(args, 'instance');
 		const cfg = await requireInstance(name);
+
+		// a pattern, a time window or a line range reads latest.log the way file_read does
+		if (['pattern', 'since', 'until', 'offset', 'limit'].some((key) => args[key] !== undefined)) {
+			// a bare limit on a log means its last lines, as `lines` does
+			const plain = args.offset === undefined && !optStr(args, 'pattern') && args.since === undefined && args.until === undefined;
+
+			return await readLinesFor(cfg, name, 'logs/latest.log', plain
+				? { ...args, offset: -num(args, 'limit', FILE_READ_DEFAULT_LINES) }
+				: args, 'disk');
+		}
+
 		const search = optStr(args, 'search')?.toLowerCase();
 		const wanted = num(args, 'lines', 100);
 
@@ -697,8 +819,13 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		const events = await getEvents(instance);
 		// daemon events (`daemon:<name>`) name a machine, not an instance, so the
 		// instance allowlist has nothing to say about them
+		const regex = patternArg(args);
+		const since = instantArg(args, 'since');
+		const until = instantArg(args, 'until');
 		const visible = events.filter(
-			(event) => event.instance.startsWith('daemon:') || scopeCoversInstance(ctx.principal.scope, event.instance)
+			(event) => (event.instance.startsWith('daemon:') || scopeCoversInstance(ctx.principal.scope, event.instance))
+				&& inWindow(event.t, since, until)
+				&& (!regex || regex.test(`${event.kind} ${event.message}`))
 		);
 
 		return visible.slice(0, num(args, 'limit', 30)).map(eventLine);
@@ -757,19 +884,28 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 	},
 
 	async console_journal(args) {
+		patternArg(args);
+
 		const page = await readJournal({
 			limit: num(args, 'limit', 50),
 			search: optStr(args, 'search'),
+			pattern: optStr(args, 'pattern'),
+			matchCase: args.matchCase === true || undefined,
+			since: instantArg(args, 'since'),
+			until: instantArg(args, 'until'),
 			minLevel: optStr(args, 'level') as JournalLevel | undefined
 		});
-
-		return page.entries.map((entry) => ({
+		const entries = page.entries.map((entry) => ({
 			at: new Date(entry.t).toISOString(),
 			level: entry.level,
 			source: entry.source,
 			message: entry.message,
 			actor: entry.actor
 		}));
+
+		return page.truncated
+			? { entries, truncated: true, note: 'more entries matched; to read older ones, set until to the oldest `at` shown' }
+			: { entries };
 	},
 
 	// -- control ---------------------------------------------------------------
@@ -1138,37 +1274,8 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		const source = args.source === 'disk' || args.source === 'template'
 			? args.source
 			: undefined;
-		const file = await readInstanceLines(cfg, name, str(args, 'path'), {
-			offset: num(args, 'offset', 1),
-			limit: num(args, 'limit', FILE_READ_DEFAULT_LINES),
-			source
-		});
-		// numbered like cat -n, as Claude Code's Read shows them
-		const content = file.lines
-			.map((line, index) => `${String(file.fromLine + index).padStart(6)}\t${line}`)
-			.join('\n');
-		const more = file.toLine > 0 && file.toLine < file.totalLines;
 
-		return {
-			instance: name,
-			path: file.path,
-			size: file.size,
-			totalLines: file.totalLines,
-			fromLine: file.fromLine,
-			toLine: file.toLine,
-			managed: file.managed || undefined,
-			source: file.managed ? file.source : undefined,
-			note: [
-				file.managed
-					? file.source === 'template'
-						? 'luna renders this file from this template on every start; file_edit and file_write change the template'
-						: 'this is the rendered file; luna rewrites it from its template on every start, and file_edit changes the template'
-					: '',
-				file.cutLines ? `${file.cutLines} line(s) were longer than 2000 characters and are cut` : '',
-				more ? `more lines follow; continue with offset ${file.toLine + 1}` : ''
-			].filter(Boolean).join('; ') || undefined,
-			content
-		};
+		return await readLinesFor(cfg, name, str(args, 'path'), args, source);
 	},
 
 	async file_stat(args) {

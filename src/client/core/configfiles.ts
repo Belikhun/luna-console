@@ -21,6 +21,8 @@ export type {
 	FileContent,
 	FileEdit,
 	FileLines,
+	LineHit,
+	LineQuery,
 	ManagedConfigFile,
 	ManagedFileRow,
 	PlaceholderResult,
