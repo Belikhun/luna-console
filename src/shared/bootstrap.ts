@@ -17,24 +17,33 @@
 
 import type { ClusterConfig } from "../core/types";
 
-/** Aikar's flags; the default profile every instance starts from. */
+/**
+ * Aikar's G1 tuning, the default profile every instance starts from, kept to the
+ * flags that still change something on a modern JDK. ParallelRefProcEnabled and
+ * the adaptive IHOP that overrides InitiatingHeapOccupancyPercent are JDK
+ * defaults since 17. UseCompactObjectHeaders is left out on purpose: it is
+ * worth having on Java 25, but a JDK 21 refuses to start with it, and a fresh
+ * cluster may well be serving 1.21.
+ */
 const AIKAR_FLAGS = [
 	"-XX:+UseG1GC",
-	"-XX:+ParallelRefProcEnabled",
 	"-XX:MaxGCPauseMillis=200",
 	"-XX:+UnlockExperimentalVMOptions",
-	"-XX:+DisableExplicitGC",
-	"-XX:+AlwaysPreTouch",
+	// the young generation is the point: Minecraft allocates hundreds of MB/s
+	// of short-lived objects, and G1's default 5% new size promotes them early
+	"-XX:G1NewSizePercent=30",
+	"-XX:G1MaxNewSizePercent=40",
+	"-XX:G1HeapRegionSize=8M",
+	"-XX:G1ReservePercent=20",
 	"-XX:G1HeapWastePercent=5",
 	"-XX:G1MixedGCCountTarget=4",
-	"-XX:InitiatingHeapOccupancyPercent=15",
 	"-XX:G1MixedGCLiveThresholdPercent=90",
 	"-XX:G1RSetUpdatingPauseTimePercent=5",
 	"-XX:SurvivorRatio=32",
-	"-XX:+PerfDisableSharedMem",
 	"-XX:MaxTenuringThreshold=1",
-	"-Dusing.aikars.flags=https://mcflags.emc.gs",
-	"-Daikars.new.flags=true",
+	"-XX:+DisableExplicitGC",
+	"-XX:+AlwaysPreTouch",
+	"-XX:+PerfDisableSharedMem",
 ];
 
 export interface StarterOptions {
