@@ -15,6 +15,7 @@ import {
 } from "../../client/core/modpack";
 import { ProgressReporter } from "../../client/core/progress";
 import { t } from "../../shared/i18n";
+import { daemonOption } from "../machines";
 
 command({
 	path: ["modpack", "search"],
@@ -162,7 +163,7 @@ command({
 				port,
 				profile: opts.profile as string | undefined,
 				runtime: opts.runtime as string | undefined,
-				daemon: opts.daemon as string | undefined,
+				daemon: await daemonOption(opts.daemon as string | undefined),
 				register,
 				skipOptional: !!opts["skip-optional"],
 				test: !!opts.test,

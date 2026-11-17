@@ -827,7 +827,6 @@
 			"optMemory": "override the detected heap size, e.g. 8G",
 			"optJava": "pin a java binary; modpacks often need an older JDK",
 			"optDryRun": "show what was detected, registering nothing",
-			"unknownDaemon": "unknown daemon: {name}; see `luna daemon list`",
 			"mcVersion": "mc version",
 			"loader": "loader",
 			"bindAddress": "bind address",

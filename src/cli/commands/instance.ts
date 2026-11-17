@@ -5,6 +5,7 @@
 import { command, UsageError, Bail } from "../framework";
 import { pc, Sym, ok, warn, info, printTable, fmtDuration, Spinner, ProgressView } from "../ui";
 import { instanceNames, runtimeIds } from "../completers";
+import { daemonOption } from "../machines";
 import { loadCluster, saveCluster, managedInstances, loadLock, saveLock } from "../../client/core/config";
 import type { ClusterConfig, Software } from "../../client/core/types";
 import * as inst from "../../client/core/instances";
@@ -446,7 +447,7 @@ command({
 				javaArgs,
 				runtime: opts.runtime as string | undefined,
 				addonGroups: groups,
-				daemon: opts.daemon as string | undefined,
+				daemon: await daemonOption(opts.daemon as string | undefined),
 				test: !!opts.test,
 				reporter: files,
 			});
@@ -643,12 +644,8 @@ command({
 	handler: async (args, opts) => {
 		const cfg = await loadCluster();
 		const name = args[0]!;
-		const daemon = opts.daemon as string | undefined;
+		const daemon = await daemonOption(opts.daemon as string | undefined);
 		const dir = (opts.dir as string | undefined) ?? cfg.instances[name]?.dir ?? name;
-
-		if (daemon && !cfg.daemons?.[daemon]) {
-			throw new UsageError(t("cli.instance.adopt.unknownDaemon", { name: daemon }));
-		}
 
 		if (opts["dry-run"]) {
 			// a bare name resolves against the executing daemon's own cluster root

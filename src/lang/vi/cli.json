@@ -827,7 +827,6 @@
 			"optMemory": "ghi đè heap đã dò được, ví dụ 8G",
 			"optJava": "ghim một binary java; modpack thường cần JDK cũ hơn",
 			"optDryRun": "hiện những gì dò được, không đăng ký gì",
-			"unknownDaemon": "không biết daemon: {name}; xem `luna daemon list`",
 			"mcVersion": "phiên bản mc",
 			"loader": "loader",
 			"bindAddress": "địa chỉ bind",
