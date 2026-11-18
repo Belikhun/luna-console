@@ -825,7 +825,7 @@
 						{#if !record || record.pct === null}
 							<span class="dim">–</span>
 						{:else}
-							<span class="chartcell">
+							<span class="chartcell left">
 								<span class="mono uptime-pct" class:warn={record.pct < 99}>{`${Number(record.pct.toFixed(2))}%`}</span>
 								<span class="strip">
 									<UptimeTimeline days={record.days} count={14} compact height="0.875rem" label={t('web.instances.detail.uptime30')} />
@@ -962,6 +962,10 @@
 		justify-content: flex-end;
 		gap: 0.5rem;
 		max-width: 100%;
+
+		&.left {
+			justify-content: flex-start;
+		}
 
 		.strip {
 			width: 4.5rem;

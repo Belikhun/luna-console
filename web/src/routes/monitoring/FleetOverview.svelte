@@ -569,6 +569,7 @@
 			})}
 			{@render chart(t('web.fleet.cpuChart'), cpuSeries, {
 				info: t('web.monitor.cpuInfo'),
+				mode: 'stacked',
 				format: fmtCpuPct
 			})}
 			{@render chart(t('web.fleet.memoryChart'), memorySeries, {
@@ -750,8 +751,10 @@
 			justify-content: flex-start;
 		}
 
+		// widest value is "99.99%"; a fixed slot, right-aligned, keeps every strip on one edge
 		.figure {
-			min-width: 3.75rem;
+			min-width: 6ch;
+			text-align: right;
 		}
 
 		.strip {
