@@ -4,29 +4,31 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { copyText } from '$lib/clipboard';
-	import { moderatePlayers, targetNames } from '$lib/playeractions';
-	import type { ModerationAction, PlayerTarget } from '$lib/playeractions';
-	import { fmtDuration, fmtDateTime, fmtTime } from '$lib/format';
+	import { playerVerbGroups } from '$lib/playeractions';
+	import type { PlayerActionTarget, PlayerDialogKind } from '$lib/playeractions';
+	import { fmtDuration, fmtDateTime } from '$lib/format';
+	import { WEEK_MS, accessFlagsOf, blockCoords, gameModeState } from '$lib/players';
+	import type { AccessIndex } from '$lib/players';
 	import { GAME_MODES, dimensionLabel } from '$core/playerdata';
 	import type { KnownPlayer } from '$core/playerdata';
 	import Panel from './Panel.svelte';
-	import Btn from './Btn.svelte';
+	import CellStack from './CellStack.svelte';
 	import Dropdown from './Dropdown.svelte';
-	import ConfirmModal from './ConfirmModal.svelte';
 	import DateTime from './DateTime.svelte';
 	import Flash from './Flash.svelte';
 	import StatusBadge from './StatusBadge.svelte';
 	import CopyValue from './CopyValue.svelte';
+	import PlayerAccessBadges from './PlayerAccessBadges.svelte';
+	import PlayerActionDialogs from './PlayerActionDialogs.svelte';
 	import PlayerName from './PlayerName.svelte';
 	import PlayerVitals from './PlayerVitals.svelte';
 	import ResourceTable from './ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from './table';
 	import { menuGroups, type ContextMenuItem } from './contextmenu';
-	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 
 	/**
@@ -34,12 +36,30 @@
 	 *
 	 * The instance's own player saves are the record, because every server
 	 * software writes one for every player who joins; the proxy only says which of
-	 * them are here now. Each row is as of that player's last save, and the verbs
-	 * are the ones that work on somebody who is not connected: access lists and a
-	 * ban on this server. Disconnecting, messaging and moving belong to the online
-	 * table above.
+	 * them are here now. Each row is as of that player's last save. The verbs are
+	 * the same as the online table's: the access lists and a ban work on anybody,
+	 * and the ones that need a connection act on whoever of the selection is here.
 	 */
-	let { instance }: { instance: string } = $props();
+	let {
+		instance,
+		access = null,
+		refreshKey = 0,
+		count = $bindable(null),
+		recent = $bindable(null),
+		onchanged
+	}: {
+		instance: string;
+		/** This server's access lists, which the Access column reads */
+		access?: AccessIndex | null;
+		/** How many players the server holds a save for, once known */
+		count?: number | null;
+		/** How many of them were here within the last week */
+		recent?: number | null;
+		/** Bumped by the screen on each refresh tick and each roster change it follows */
+		refreshKey?: number;
+		/** A verb here changed an access list */
+		onchanged?: () => void;
+	} = $props();
 
 	interface Row extends KnownPlayer {
 		online: boolean;
@@ -50,10 +70,12 @@
 
 	let rows: Row[] = $state([]);
 	let problem = $state('');
+	let instState = $state('unknown');
 	let loaded = $state(false);
-	let lastUpdated: number | null = $state(null);
+	let servers: string[] = $state([]);
 
 	let selected: Set<string> = $state(new Set());
+	let dialogs: PlayerActionDialogs | undefined = $state();
 
 	const selection = $derived(rows.filter((row) => selected.has(row.uuid)));
 	const onlineCount = $derived(rows.filter((row) => row.online).length);
@@ -64,7 +86,8 @@
 
 			problem = data.problem ?? '';
 			rows = data.players ?? [];
-			lastUpdated = Date.now();
+			count = rows.length;
+			recent = rows.filter((row) => Date.now() - lastSeen(row) < WEEK_MS).length;
 		} catch (err) {
 			problem = (err as Error).message;
 		}
@@ -72,28 +95,51 @@
 		loaded = true;
 	}
 
+	/** A verb settled: presence may have changed, and so may the lists. */
+	async function settled(): Promise<void> {
+		onchanged?.();
+
+		await refresh();
+	}
+
 	onMount(() => {
 		void refresh();
 
-		// a join is what moves somebody to "online", and a first join is what adds a row
-		const stream = new EventSource('/api/luna/stream?stream=players');
-
-		stream.onmessage = () => void refresh();
-
-		return () => stream.close();
+		void api('/instances').then((data) => {
+			instState = data.instances.find((inst: any) => inst.name === instance)?.state ?? 'unknown';
+			servers = [
+				...data.instances
+					.filter((inst: any) => inst.name !== 'proxy' && inst.name !== instance)
+					.map((inst: any) => inst.name),
+				...data.externals.map((inst: any) => inst.name)
+			].sort();
+		});
 	});
+
+	// the first read is onMount's, so the key the table mounted with is not a tick
+	let seenKey = untrack(() => refreshKey);
+
+	$effect(() => {
+		if (refreshKey === seenKey) {
+			return;
+		}
+
+		seenKey = refreshKey;
+		untrack(() => void refresh());
+	});
+
 
 	const columns: Column[] = $derived([
 		{ id: 'username', label: t('web.instancePlayers.colPlayer'), sortable: true, minWidth: 180 },
-		{ id: 'status', label: t('web.instanceKnownPlayers.colStatus'), sortable: true, width: 120 },
-		{ id: 'lastSeen', label: t('web.instanceKnownPlayers.colLastSeen'), sortable: true, width: 180 },
+		{ id: 'access', label: t('web.playerActions.colAccess'), minWidth: 170 },
+		{ id: 'lastSeen', label: t('web.instanceKnownPlayers.colLastSeen'), sortable: true, width: 190 },
 		{ id: 'firstJoined', label: t('web.instanceKnownPlayers.colFirstJoined'), sortable: true, width: 180 },
 		{ id: 'playTime', label: t('web.instanceKnownPlayers.colPlayTime'), sortable: true, width: 140, align: 'right' },
-		{ id: 'health', label: t('web.instancePlayers.colHealth'), sortable: true, width: 160 },
-		{ id: 'xp', label: t('web.instancePlayers.colXp'), sortable: true, width: 160 },
 		{ id: 'gamemode', label: t('web.instancePlayers.colGameMode'), sortable: true, width: 130 },
 		{ id: 'location', label: t('web.instancePlayers.colLocation'), sortable: true, minWidth: 200 },
 		{ id: 'advancements', label: t('web.instancePlayers.colAdvancements'), sortable: true, width: 140 },
+		{ id: 'health', label: t('web.instancePlayers.colHealth'), sortable: true, width: 160, hidden: true },
+		{ id: 'xp', label: t('web.instancePlayers.colXp'), sortable: true, width: 160, hidden: true },
 		{ id: 'uuid', label: 'UUID', width: 320, hidden: true },
 		{ id: 'saved', label: t('web.instancePlayers.colSavedAt'), sortable: true, hidden: true }
 	]);
@@ -113,6 +159,11 @@
 					value: 'offline',
 					label: t('web.instanceKnownPlayers.offline'),
 					match: (row: Row) => !row.online
+				},
+				{
+					value: 'week',
+					label: t('web.players.seenThisWeek'),
+					match: (row: Row) => Date.now() - lastSeen(row) < WEEK_MS
 				}
 			]
 		},
@@ -152,9 +203,6 @@
 			case 'username':
 				return displayName(row).toLowerCase();
 
-			case 'status':
-				return row.online ? 1 : 0;
-
 			case 'lastSeen':
 				return lastSeen(row);
 
@@ -187,142 +235,50 @@
 		}
 	}
 
-	function coords(row: Row): string {
-		const pos = row.vitals?.position;
-
-		if (!pos) {
-			return '';
-		}
-
-		return `${Math.round(pos.x)}, ${Math.round(pos.y)}, ${Math.round(pos.z)}`;
-	}
-
 	function detailPath(row: Row): string {
 		return `/instances/${encodeURIComponent(instance)}/players/${row.uuid}`;
 	}
 
 	// -- verbs --------------------------------------------------------------------
 
-	let banOpen = $state(false);
-	let banReason = $state('');
-	let pending: Row[] = $state([]);
-
-	function targetsOf(rows: Row[]): PlayerTarget[] {
-		return rows.map((row) => ({ uuid: row.uuid, username: displayName(row) }));
+	function targetsOf(list: Row[]): PlayerActionTarget[] {
+		return list.map((row) => ({
+			uuid: row.uuid,
+			username: displayName(row),
+			online: row.online,
+			server: instance
+		}));
 	}
 
-	function names(targets: Row[]): string {
-		return targetNames(targetsOf(targets));
-	}
+	/** The verbs over a set of rows, in the shared order and wording. */
+	function verbs(list: Row[]): ReturnType<typeof playerVerbGroups> {
+		const single = list.length === 1
+			? list[0]
+			: undefined;
 
-	/**
-	 * Access-list verbs go through the moderation route, the same door the online
-	 * table and the directory screen use, so each lands in the player's
-	 * moderation log whether or not they are connected.
-	 */
-	async function moderate(action: ModerationAction, targets: Row[], reason = ''): Promise<void> {
-		const busy = t('web.instancePlayers.updatingLists');
-		const note = Notify.loading(busy);
-
-		try {
-			const summary = await moderatePlayers(action, targetsOf(targets), [instance], reason);
-
-			if (summary.unconfirmed.length > 0) {
-				Notify.warning(t('web.instancePlayers.unconfirmed', { targets: summary.unconfirmed.join(', ') }));
-			}
-
-			note.set({
-				level: 'success',
-				message: t('web.instancePlayers.applied', {
-					action: t(`web.instancePlayers.verb.${action}`),
-					targets: names(targets)
-				}),
-				closeable: true
-			});
-		} catch (err) {
-			note.set({ level: 'error', message: busy, detail: (err as Error).message, closeable: true });
-		}
-	}
-
-	async function doBan(): Promise<void> {
-		const targets = pending;
-		const reason = banReason.trim();
-
-		banOpen = false;
-
-		if (targets.length === 0) {
-			return;
-		}
-
-		await moderate('ban', targets, reason);
-
-		banReason = '';
-	}
-
-	/** The selection's verbs by group, so a row's menu can put its own links and copies between them. */
-	function selectionGroups(targets: Row[]): { change: ContextMenuItem[]; remove: ContextMenuItem[] } {
-		const none = targets.length === 0;
-		const noneHint = none ? t('web.instancePlayers.selectFirst') : undefined;
-
-		const change: ContextMenuItem[] = [
-			{
-				label: t('web.instancePlayers.addToWhitelist'),
-				icon: 'userTick',
-				disabled: none,
-				hint: noneHint,
-				action: () => void moderate('whitelist-add', targets)
-			},
-			{
-				label: t('web.instancePlayers.removeFromWhitelist'),
-				icon: 'userMinus',
-				disabled: none,
-				hint: noneHint,
-				action: () => void moderate('whitelist-remove', targets)
-			},
-			{
-				label: t('web.instancePlayers.grantOperator'),
-				icon: 'userCog',
-				disabled: none,
-				hint: noneHint,
-				action: () => void moderate('op', targets)
-			},
-			{
-				label: t('web.instancePlayers.revokeOperator'),
-				icon: 'userLock',
-				disabled: none,
-				hint: noneHint,
-				action: () => void moderate('deop', targets)
-			}
-		];
-
-		const remove: ContextMenuItem[] = [
-			{
-				label: t('web.instancePlayers.banHere'),
-				icon: 'gavel',
-				color: 'danger',
-				disabled: none,
-				hint: noneHint,
-				action: () => {
-					pending = targets;
-					banOpen = true;
-				}
-			}
-		];
-
-		return { change, remove };
+		return playerVerbGroups({
+			targets: targetsOf(list),
+			instance,
+			running: instState === 'running',
+			servers,
+			gameModes: GAME_MODES,
+			flags: single ? accessFlagsOf(access, { uuid: single.uuid, name: single.name }) : null,
+			open: (kind: PlayerDialogKind, targets) => dialogs?.open(kind, targets),
+			setGameMode: (targets, mode) => dialogs?.setGameMode(targets, mode)
+		});
 	}
 
 	/** Verbs over a selection; the panel's Actions dropdown and each row's menu share these. */
-	function selectionActions(targets: Row[]): ContextMenuItem[] {
-		const groups = selectionGroups(targets);
+	function selectionActions(list: Row[]): ContextMenuItem[] {
+		const groups = verbs(list);
 
-		return menuGroups(groups.change, groups.remove);
+		return menuGroups(groups.live, groups.access, groups.remove);
 	}
 
 	/** A row's menu: the row's own links and copies around the verbs over the selection it is in. */
 	function rowActions(row: Row): ContextMenuItem[] {
-		const targets = selected.has(row.uuid) && selection.length > 1 ? selection : [row];
-		const groups = selectionGroups(targets);
+		const list = selected.has(row.uuid) && selection.length > 1 ? selection : [row];
+		const groups = verbs(list);
 
 		return menuGroups(
 			[
@@ -342,20 +298,29 @@
 					action: () => goto(`${detailPath(row)}?tab=chat`)
 				}
 			],
-			groups.change,
+			groups.live,
+			groups.access,
 			[
 				{
-					id: 'copy-uuid',
-					label: t('web.instancePlayers.copyUuid'),
+					id: 'copy-menu',
+					label: t('web.common.copy'),
 					icon: 'copy',
-					action: () => void copyText(row.uuid)
-				},
-				{
-					id: 'copy-name',
-					label: t('web.instancePlayers.copyName'),
-					icon: 'copy',
-					disabled: !row.name,
-					action: () => void copyText(displayName(row))
+					submenu: [
+						{
+							id: 'copy-uuid',
+							label: t('web.instancePlayers.copyUuid'),
+							icon: 'copy',
+							action: () => void copyText(row.uuid)
+						},
+						{
+							id: 'copy-name',
+							label: t('web.instancePlayers.copyName'),
+							icon: 'copy',
+							disabled: !row.name,
+							hint: row.name ? undefined : t('web.playerActions.noNameOnRecord'),
+							action: () => void copyText(displayName(row))
+						}
+					]
 				}
 			],
 			groups.remove
@@ -371,9 +336,6 @@
 >
 	{#snippet actions()}
 		<Dropdown label={t('web.common.actions')} disabled={selection.length === 0} menu={selectionActions(selection)} />
-		<Btn icon="rotate" onclick={refresh} title={lastUpdated ? fmtTime(lastUpdated) : ''}>
-			{t('web.common.refresh')}
-		</Btn>
 	{/snippet}
 
 	{#if problem && loaded}
@@ -414,14 +376,15 @@
 		{#snippet cell(row, col)}
 			{#if col === 'username'}
 				<PlayerName player={row.uuid} name={displayName(row)} href={detailPath(row)} />
-			{:else if col === 'status'}
-				<StatusBadge
-					state={row.online ? 'ok' : 'stopped'}
-					label={row.online ? t('web.instanceKnownPlayers.online') : t('web.instanceKnownPlayers.offline')}
+			{:else if col === 'access'}
+				<PlayerAccessBadges
+					flags={accessFlagsOf(access, { uuid: row.uuid, name: row.name })}
+					whitelistEnabled={access?.whitelistEnabled ?? false}
+					dash
 				/>
 			{:else if col === 'lastSeen'}
 				{#if row.online}
-					{t('web.instanceKnownPlayers.now')}
+					<StatusBadge state="ok" label={t('web.instanceKnownPlayers.online')} />
 				{:else}
 					<span class="dim"><DateTime at={lastSeen(row)} text={fmtDateTime(lastSeen(row))} /></span>
 				{/if}
@@ -452,13 +415,7 @@
 			{:else if col === 'gamemode'}
 				{#if row.vitals}
 					<StatusBadge
-						state={row.vitals.gameMode === 'survival'
-							? 'ok'
-							: row.vitals.gameMode === 'creative'
-								? 'warning'
-								: row.vitals.gameMode === 'spectator'
-									? 'stopped'
-									: 'info'}
+						state={gameModeState(row.vitals.gameMode)}
 						label={t(`web.instancePlayers.mode.${row.vitals.gameMode}`)}
 					/>
 				{:else}
@@ -466,10 +423,15 @@
 				{/if}
 			{:else if col === 'location'}
 				{#if row.vitals}
-					<span class="loc">
-						<span class="dim-label">{dimensionLabel(row.vitals.position.dimension)}</span>
-						<span class="mono">{coords(row)}</span>
-					</span>
+					{@const position = row.vitals.position}
+					<CellStack>
+						{#snippet main()}
+							<span class="mono">{blockCoords(position)}</span>
+						{/snippet}
+						{#snippet sub()}
+							{dimensionLabel(position.dimension)}
+						{/snippet}
+					</CellStack>
 				{:else}
 					<span class="dim">–</span>
 				{/if}
@@ -488,19 +450,7 @@
 	</ResourceTable>
 </Panel>
 
-<ConfirmModal
-	bind:open={banOpen}
-	title={t('web.instancePlayers.banTitle', { targets: names(pending) })}
-	lead={t('web.instancePlayers.banLead', { instance })}
-	notes={[t('web.instancePlayers.banNote')]}
-	confirmLabel={t('web.instancePlayers.ban')}
-	onconfirm={doBan}
->
-	<label class="field">
-		<span class="lbl">{t('web.instancePlayers.reason')}</span>
-		<input class="input" bind:value={banReason} placeholder={t('web.instancePlayers.reasonOptional')} />
-	</label>
-</ConfirmModal>
+<PlayerActionDialogs bind:this={dialogs} {instance} {servers} ondone={settled} />
 
 <style lang="scss">
 	.pad {
@@ -509,20 +459,5 @@
 
 	.num {
 		font-variant-numeric: tabular-nums;
-	}
-
-	.loc {
-		display: inline-flex;
-		flex-direction: column;
-		line-height: 1.25;
-	}
-
-	.dim-label {
-		font-size: 0.75rem;
-		color: var(--text-secondary);
-	}
-
-	.field {
-		margin-top: 0.75rem;
 	}
 </style>

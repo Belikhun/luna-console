@@ -8,20 +8,25 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { api, post } from '$lib/api';
+	import { api } from '$lib/api';
+	import { copyText } from '$lib/clipboard';
+	import { playerVerbGroups } from '$lib/playeractions';
+	import type { PlayerActionTarget } from '$lib/playeractions';
+	import { MONTH_MS, WEEK_MS, backendColor } from '$lib/players';
 	import { fmtDuration, fmtDateTime } from '$lib/format';
+	import ScreenLink from '$lib/components/ScreenLink.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
-	import MultiSelect from '$lib/components/MultiSelect.svelte';
+	import CellStack from '$lib/components/CellStack.svelte';
+	import PlayerActionDialogs from '$lib/components/PlayerActionDialogs.svelte';
+	import StatGrid from '$lib/components/StatGrid.svelte';
+	import StatTile from '$lib/components/StatTile.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
-	import OverviewBar from '$lib/components/OverviewBar.svelte';
-	import OverviewCell from '$lib/components/OverviewCell.svelte';
-	import Modal from '$lib/components/Modal.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
 	import { resourceId } from '$shared/iam/resources';
@@ -34,7 +39,6 @@
 	import type { InfoCell } from '$lib/components/grid';
 	import DistributionBar from '$lib/components/DistributionBar.svelte';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
-	import { Notify } from '$lib/notifications.svelte';
 
 	/**
 	 * The player directory: every player the network has ever recorded, from
@@ -70,17 +74,18 @@
 	let available = $state(true);
 	let problem = $state('');
 	let loading = $state(true);
+
+	/** True once the first read settled; the table's skeleton shows only before it */
+	let loaded = $state(false);
 	let lastUpdated: number | null = $state(null);
 	let instances: string[] = $state([]);
+	let servers: string[] = $state([]);
+	let dialogs: PlayerActionDialogs | undefined = $state();
+
+	/** Bumped on every refresh, so the split panel re-reads the player it shows */
+	let refreshKey = $state(0);
 
 	let selected: Set<string> = $state(new Set());
-
-	/** The bulk-moderation dialog: one verb applied to the selection. */
-	let moderateOpen = $state(false);
-	let moderateAction = $state('');
-	let moderateTargets: Array<{ name: string; uuid: string }> = $state([]);
-	let moderateInstances: string[] = $state([]);
-	let moderateReason = $state('');
 
 	const selection = $derived(players.filter((player) => selected.has(player.uuid)));
 
@@ -89,6 +94,10 @@
 	// does: the directory row already carries the profile's headline facts, and
 	// the panel enriches them with the full detail as it arrives.
 	const one = $derived(selection.length === 1 ? selection[0] : undefined);
+
+	// the row is a new object on every refresh; the skin is redrawn when its
+	// player changes, so it is handed the id alone, which does not
+	const oneUuid = $derived(one?.uuid ?? '');
 
 	let detailTab = $state('details');
 	let panelLocation: 'bottom' | 'right' = $state('bottom');
@@ -118,19 +127,27 @@
 	/** How many recent sessions the panel lists; the full history is the profile's. */
 	const PANEL_SESSIONS = 8;
 
+	/** The player the panel's data belongs to; a refresh of the same one keeps what is shown */
+	let panelFor = '';
+
 	$effect(() => {
 		const uuid = one?.uuid;
 
-		panelDetail = null;
-		panelSessions = [];
+		// read so the panel follows the screen's refresh as well as the selection
+		void refreshKey;
+
+		if (uuid !== panelFor) {
+			panelFor = uuid ?? '';
+			panelDetail = null;
+			panelSessions = [];
+			panelLoading = !!uuid;
+		}
 
 		if (!uuid) {
 			return;
 		}
 
 		let cancelled = false;
-
-		panelLoading = true;
 
 		void (async () => {
 			try {
@@ -171,7 +188,7 @@
 			{ label: t('web.players.uuid'), value: one.uuid, copyable: true, style: 'mono' },
 			{
 				label: t('web.players.auth'),
-				value: one.onlineMode ? 'Premium' : 'Offline'
+				value: one.onlineMode ? t('web.players.premium') : t('web.players.offlineAccount')
 			},
 			{
 				label: t('web.players.firstSeen'),
@@ -194,7 +211,8 @@
 				value: one.online ? one.server : one.lastServer || null,
 				href: (one.online ? one.server : one.lastServer)
 					? `/instances/${one.online ? one.server : one.lastServer}`
-					: undefined
+					: undefined,
+				leaves: true
 			},
 			{ label: t('web.playerDetail.totalPlaytime'), value: fmtDuration(one.totalPlayMillis) },
 			{ label: t('web.players.sessions'), value: one.sessionCount },
@@ -214,24 +232,17 @@
 		];
 	});
 
-	/** The design tokens the per-backend playtime segments cycle through. */
-	const SEGMENT_COLORS = [
-		'var(--link)',
-		'var(--success)',
-		'var(--warning)',
-		'var(--info)',
-		'var(--error)'
-	];
-
 	const playtimeSegments = $derived(
 		(panelDetail?.playtimeByServer ?? []).map((entry, index) => ({
 			key: entry.server,
 			count: entry.playMillis,
-			color: SEGMENT_COLORS[index % SEGMENT_COLORS.length]!
+			color: backendColor(index)
 		}))
 	);
 
 	async function refresh(): Promise<void> {
+		loading = true;
+
 		try {
 			const collected: Player[] = [];
 			let offset = 0;
@@ -244,8 +255,9 @@
 
 				if (data.available === false) {
 					available = false;
-					problem = data.error ?? 'LunaCore is unreachable';
+					problem = data.error ?? t('web.playerDetail.noAnswer');
 					loading = false;
+					loaded = true;
 					return;
 				}
 
@@ -264,12 +276,14 @@
 			players = collected;
 			total = reported;
 			lastUpdated = Date.now();
+			refreshKey++;
 		} catch (err) {
 			available = false;
 			problem = (err as Error).message;
 		}
 
 		loading = false;
+		loaded = true;
 	}
 
 	onMount(() => {
@@ -281,6 +295,10 @@
 				.filter((inst: any) => !traitsOf(inst.software).isProxy && inst.name !== 'proxy')
 				.map((inst: any) => inst.name)
 				.sort();
+			servers = [
+				...instances,
+				...data.externals.map((inst: any) => inst.name)
+			].sort();
 		});
 	});
 
@@ -290,8 +308,8 @@
 		{ id: 'lastSeen', label: t('web.players.lastSeen'), sortable: true },
 		{ id: 'playtime', label: t('web.players.playtime'), sortable: true },
 		{ id: 'sessions', label: t('web.players.sessions'), sortable: true, width: 110, align: 'right' },
-		{ id: 'firstSeen', label: t('web.players.firstSeen'), sortable: true, hidden: true },
-		{ id: 'mode', label: t('web.players.auth') },
+		{ id: 'firstSeen', label: t('web.players.firstSeen'), sortable: true },
+		{ id: 'mode', label: t('web.players.auth'), hidden: true },
 		{ id: 'client', label: t('web.players.client'), hidden: true },
 		{ id: 'address', label: t('web.players.lastAddress'), hidden: true },
 		{ id: 'uuid', label: t('web.players.uuid'), width: 300, hidden: true }
@@ -299,14 +317,58 @@
 
 	const onlineCount = $derived(players.filter((player) => player.online).length);
 
+	/** When a player was last here; a connected one is here now. */
+	function lastSeen(player: Player): number {
+		return player.online
+			? Date.now()
+			: player.lastSeenAtEpochMillis;
+	}
+
+	const activeCount = $derived(players.filter((player) => Date.now() - lastSeen(player) < WEEK_MS).length);
+
+	const newCount = $derived(
+		players.filter((player) => Date.now() - player.firstSeenAtEpochMillis < WEEK_MS).length
+	);
+
+	const totalPlayMillis = $derived(players.reduce((sum, player) => sum + player.totalPlayMillis, 0));
+	const totalSessions = $derived(players.reduce((sum, player) => sum + player.sessionCount, 0));
+
 	const filters: TableFilterGroup<Player>[] = $derived([
 		{
 			id: 'status',
 			label: t('web.players.filterStatus'),
 			options: [
 				{ value: 'any', label: t('web.players.anyStatus') },
-				{ value: 'online', label: `Online (${onlineCount})`, match: (player: Player) => player.online },
-				{ value: 'offline', label: t('web.players.offline'), match: (player: Player) => !player.online }
+				{ value: 'online', label: t('web.players.online'), match: (player: Player) => player.online },
+				{ value: 'offline', label: t('web.players.offline'), match: (player: Player) => !player.online },
+				{
+					value: 'week',
+					label: t('web.players.seenThisWeek'),
+					match: (player: Player) => Date.now() - lastSeen(player) < WEEK_MS
+				},
+				{
+					value: 'away',
+					label: t('web.players.awayAMonth'),
+					match: (player: Player) => Date.now() - lastSeen(player) >= MONTH_MS
+				},
+				{
+					value: 'new',
+					label: t('web.players.joinedThisWeek'),
+					match: (player: Player) => Date.now() - player.firstSeenAtEpochMillis < WEEK_MS
+				}
+			]
+		},
+		{
+			id: 'mode',
+			label: t('web.players.filterAccount'),
+			options: [
+				{ value: 'any', label: t('web.players.anyAccount') },
+				{ value: 'premium', label: t('web.players.premium'), match: (player: Player) => player.onlineMode },
+				{
+					value: 'offline',
+					label: t('web.players.offlineAccount'),
+					match: (player: Player) => !player.onlineMode
+				}
 			]
 		},
 		{
@@ -335,7 +397,7 @@
 				return player.online ? 0 : 1;
 
 			case 'lastSeen':
-				return player.online ? Date.now() : player.lastSeenAtEpochMillis;
+				return lastSeen(player);
 
 			case 'playtime':
 				return player.totalPlayMillis;
@@ -351,87 +413,38 @@
 		}
 	}
 
-	/** Open the moderation dialog for one verb over a set of players. */
-	function openModerate(action: string, targets: Player[]): void {
-		moderateAction = action;
-		moderateTargets = targets.map((player) => ({ name: player.username, uuid: player.uuid }));
-		moderateInstances = action === 'kick' ? [] : [...instances];
-		moderateReason = '';
-		moderateOpen = true;
+	function targetsOf(rows: Player[]): PlayerActionTarget[] {
+		return rows.map((player) => ({
+			uuid: player.uuid,
+			username: player.username,
+			online: player.online,
+			server: player.server,
+			...(player.lastAddress ? { address: player.lastAddress } : {})
+		}));
 	}
 
-	/** The selection's verbs by group: state, change and removal (DESIGN.md §5.4). */
-	function bulkGroups(rows: Player[]): { state: ContextMenuItem[]; change: ContextMenuItem[]; remove: ContextMenuItem[] } {
-		const none = rows.length === 0;
-		const anyOnline = rows.some((player) => player.online);
-
-		return {
-			state: [
-				{
-					label: t('web.players.pardon'),
-					icon: 'handshake',
-					disabled: none,
-					action: () => openModerate('pardon', rows)
-				}
-			],
-			change: [
-				{
-					label: t('web.players.addToWhitelist'),
-					icon: 'userTick',
-					disabled: none,
-					action: () => openModerate('whitelist-add', rows)
-				},
-				{
-					label: t('web.players.removeFromWhitelist'),
-					icon: 'userMinus',
-					disabled: none,
-					action: () => openModerate('whitelist-remove', rows)
-				},
-				{
-					label: t('web.players.grantOperator'),
-					icon: 'userCog',
-					disabled: none,
-					action: () => openModerate('op', rows)
-				},
-				{
-					label: t('web.players.revokeOperator'),
-					icon: 'userLock',
-					disabled: none,
-					action: () => openModerate('deop', rows)
-				}
-			],
-			remove: [
-				{
-					label: t('web.players.kickFromTheNetwork'),
-					icon: 'userSlash',
-					color: 'danger',
-					disabled: none || !anyOnline,
-					hint: none ? 'select players first' : anyOnline ? undefined : 'nobody selected is online',
-					action: () => openModerate('kick', rows.filter((player) => player.online))
-				},
-				{
-					label: t('web.players.ban'),
-					icon: 'gavel',
-					color: 'danger',
-					disabled: none,
-					action: () => openModerate('ban', rows)
-				}
-			]
-		};
+	/** The verbs over a set of players, in the shared order and wording. */
+	function verbs(rows: Player[]): ReturnType<typeof playerVerbGroups> {
+		return playerVerbGroups({
+			targets: targetsOf(rows),
+			servers,
+			open: (kind, targets) => dialogs?.open(kind, targets)
+		});
 	}
 
 	/** Verbs over a selection; the Actions dropdown and each row's menu share these. */
 	function bulkActions(rows: Player[]): ContextMenuItem[] {
-		const groups = bulkGroups(rows);
+		const groups = verbs(rows);
 
-		return menuGroups(groups.state, groups.change, groups.remove);
+		return menuGroups(groups.live, groups.access, groups.remove);
 	}
 
-	/** A row's menu: the profile, then the bulk verbs over the selection, the UUID copy among them. */
+	/** A row's menu: the profile, then the verbs over the selection the row is in. */
 	function rowActions(player: Player): ContextMenuItem[] {
 		// right-clicking inside the selection acts on all of it, outside on the row
 		const rows = selected.has(player.uuid) && selection.length > 1 ? selection : [player];
-		const groups = bulkGroups(rows);
+		const groups = verbs(rows);
+		const backend = player.online ? player.server : player.lastServer;
 
 		return menuGroups(
 			[
@@ -439,96 +452,35 @@
 					label: t('web.players.viewProfile'),
 					icon: 'user',
 					action: () => goto(`/players/${player.uuid}`)
+				},
+				{
+					label: t('web.players.viewOnBackend', { server: backend || '–' }),
+					icon: 'userPortrait',
+					disabled: !backend,
+					hint: backend ? undefined : t('web.players.neverOnABackend'),
+					action: () => goto(`/instances/${backend}/players/${player.uuid}`)
 				}
 			],
-			groups.state,
-			groups.change,
+			groups.live,
+			groups.access,
 			[
 				{
 					id: 'copy-uuid',
 					label: t('web.players.copyUuid'),
 					icon: 'copy',
-					action: () => void copy(player.uuid)
+					action: () => void copyText(player.uuid)
+				},
+				{
+					id: 'copy-name',
+					label: t('web.instancePlayers.copyName'),
+					icon: 'copy',
+					action: () => void copyText(player.username)
 				}
 			],
 			groups.remove
 		);
 	}
 
-	async function copy(text: string): Promise<void> {
-		const { copyText } = await import('$lib/clipboard');
-
-		await copyText(text);
-	}
-
-	const ACTION_LABELS: Record<string, string> = $derived({
-		kick: t('web.players.actionKick'),
-		'whitelist-add': t('web.players.actionWhitelistAdd'),
-		'whitelist-remove': t('web.players.actionWhitelistRemove'),
-		op: t('web.players.actionOp'),
-		deop: t('web.players.actionDeop'),
-		ban: t('web.players.actionBan'),
-		pardon: t('web.players.actionPardon')
-	});
-
-	const needsInstances = $derived(moderateAction !== 'kick');
-	const needsReason = $derived(['kick', 'ban'].includes(moderateAction));
-
-	async function doModerate(): Promise<void> {
-		moderateOpen = false;
-
-		const label = ACTION_LABELS[moderateAction] ?? moderateAction;
-		const note = Notify.loading(t('web.players.applyingTo', { label, count: moderateTargets.length }));
-
-		try {
-			const result = await post('/players/moderate', {
-				action: moderateAction,
-				targets: moderateTargets,
-				instances: moderateInstances,
-				reason: moderateReason
-			});
-
-			const outcomes: Array<{
-				ok: boolean;
-				verified?: boolean;
-				target: string;
-				instance: string;
-				error?: string;
-			}> = result.outcomes ?? [];
-			const failed = outcomes.filter((outcome) => !outcome.ok);
-			const unconfirmed = outcomes.filter((outcome) => outcome.ok && outcome.verified === false);
-
-			if (failed.length === 0 && unconfirmed.length > 0) {
-				note.set({
-					level: 'warning',
-					message: t('web.players.someUnconfirmed', { label, count: unconfirmed.length }),
-					detail: unconfirmed
-						.map((outcome) => `${outcome.target}${outcome.instance ? ` @ ${outcome.instance}` : ''}`)
-						.join('\n'),
-					closeable: true
-				});
-			} else if (failed.length === 0) {
-				note.set({
-					level: 'success',
-					message: t('web.players.appliedTo', { label, count: moderateTargets.length }),
-					closeable: true
-				});
-			} else {
-				note.set({
-					level: 'warning',
-					message: t('web.players.partialSucceeded', { label, ok: outcomes.length - failed.length, total: outcomes.length }),
-					detail: failed
-						.map((outcome) => `${outcome.target}${outcome.instance ? ` @ ${outcome.instance}` : ''}: ${outcome.error}`)
-						.join('\n'),
-					closeable: true
-				});
-			}
-
-			await refresh();
-		} catch (err) {
-			note.set({ level: 'error', message: label, detail: (err as Error).message, closeable: true });
-		}
-	}
 </script>
 
 <svelte:head><title>{t('web.nav.playersList')} | Luna Console</title></svelte:head>
@@ -542,39 +494,56 @@
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players-directory" />
 		<Dropdown label={t('web.players.actions')} disabled={selection.length === 0} menu={withCopyResourceId(bulkActions(selection), selection.map((player) => resourceId('player', player.username)))} />
-		<Btn icon="userPortrait" onclick={() => goto('/players/online')}>Online players</Btn>
+		<Btn icon="userPortrait" href="/players/online">{t('web.playersOnline.onlinePlayers')}</Btn>
 	{/snippet}
 </PageHeader>
 
 {#if !available}
 	<Flash kind="warning">
-		<b>LunaCore is not answering:</b> {problem}. The proxy may be stopped, or running a build
-		without the player directory.
+		<b>{t('web.playerDetail.lunacoreIsNotAnswering')}</b>
+		{t('web.playerDetail.lunacoreDownDetail', { problem })}
 	</Flash>
 {/if}
 
-<OverviewBar title={t('web.players.directoryOverview')}>
-	<OverviewCell label={t('web.players.registeredPlayers')}>
-		{total}
-	</OverviewCell>
-	<OverviewCell label={t('web.players.onlineNow')}>
-		{onlineCount}
-	</OverviewCell>
-	<OverviewCell label={t('web.players.totalPlaytime')}>
-		{players.length
-			? fmtDuration(players.reduce((sum, player) => sum + player.totalPlayMillis, 0))
-			: '–'}
-	</OverviewCell>
-	<OverviewCell label={t('web.players.sessionsRecorded')}>
-		{players.reduce((sum, player) => sum + player.sessionCount, 0)}
-	</OverviewCell>
-</OverviewBar>
+<StatGrid min={10}>
+	<StatTile label={t('web.players.registeredPlayers')} value={loaded && available ? total : null} loading={!loaded} />
+	<StatTile
+		label={t('web.players.onlineNow')}
+		value={loaded && available ? onlineCount : null}
+		loading={!loaded}
+		href="/players/online"
+	/>
+	<StatTile
+		label={t('web.players.activeThisWeek')}
+		value={loaded && available ? activeCount : null}
+		secondary={players.length > 0
+			? t('web.players.ofRegistered', { percent: Math.round((activeCount / players.length) * 100) })
+			: undefined}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.players.newThisWeek')}
+		value={loaded && available ? newCount : null}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.players.totalPlaytime')}
+		value={loaded && available && players.length > 0 ? totalPlayMillis : null}
+		formatValue={fmtDuration}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.players.sessionsRecorded')}
+		value={loaded && available ? totalSessions : null}
+		loading={!loaded}
+	/>
+</StatGrid>
 
 <div class="body">
 	<Panel flush>
 		<ResourceTable
 			tableId="players-directory"
-			{loading}
+			loading={!loaded}
 			initialSearch={page.url.searchParams.get('q') ?? ''}
 			{columns}
 			rows={players}
@@ -591,6 +560,7 @@
 			{sortValue}
 			{filters}
 			pageSize={25}
+			defaultSort={{ col: 'lastSeen', dir: 'desc' }}
 			emptyTitle={t('web.players.noPlayersRecordedYet')}
 			emptyText={t('web.players.profilesAppearHereAfterThe')}
 		>
@@ -598,17 +568,23 @@
 				{#if col === 'username'}
 					<PlayerName player={player.uuid} name={player.username} />
 				{:else if col === 'status'}
-					{#if player.online}
-						<span class="status">
-							<StatusBadge state="ok" label={t('web.players.online')} />
-							<a href="/instances/{player.server}" class="dim">{player.server}</a>
-						</span>
-					{:else}
-						<StatusBadge state="stopped" label={t('web.players.offline')} />
-					{/if}
+					{@const backend = player.online ? player.server : player.lastServer}
+					<CellStack>
+						{#snippet main()}
+							<StatusBadge
+								state={player.online ? 'ok' : 'stopped'}
+								label={player.online ? t('web.players.online') : t('web.players.offline')}
+							/>
+						{/snippet}
+						{#snippet sub()}
+							{#if backend}
+								<ScreenLink href="/instances/{backend}/players/{player.uuid}">{backend}</ScreenLink>
+							{/if}
+						{/snippet}
+					</CellStack>
 				{:else if col === 'lastSeen'}
 					{#if player.online}
-						<span class="dim">now; on for {fmtDuration(player.sessionMillis)}</span>
+						{t('web.players.onFor', { duration: fmtDuration(player.sessionMillis) })}
 					{:else if player.lastSeenAtEpochMillis}
 						<DateTime at={player.lastSeenAtEpochMillis} text={fmtDateTime(player.lastSeenAtEpochMillis)} />
 					{:else}
@@ -626,7 +602,7 @@
 				{:else if col === 'mode'}
 					<StatusBadge
 						state={player.onlineMode ? 'passed' : 'warning'}
-						label={player.onlineMode ? 'Premium' : 'Offline'}
+						label={player.onlineMode ? t('web.players.premium') : t('web.players.offlineAccount')}
 					/>
 				{:else if col === 'client'}
 					<span class="dim">{player.lastClientVersion || '–'}</span>
@@ -674,7 +650,7 @@
 				<div class="pcard">
 					<!-- the profile page owns the full 3D viewer; the panel's render is
 					     the lighter flat body, enough to recognise a skin at a glance -->
-					<div class="pskin"><PlayerSkin player={one.uuid} view="body" px={5} /></div>
+					<div class="pskin"><PlayerSkin player={oneUuid} view="body" px={5} /></div>
 					<div class="pfacts">
 						<InfoGrid
 							cells={detailCells}
@@ -707,8 +683,8 @@
 					<div class="ptrows">
 						{#each panelDetail?.playtimeByServer ?? [] as entry, index}
 							<div class="ptrow">
-								<i class="swatch" style:background={SEGMENT_COLORS[index % SEGMENT_COLORS.length]}></i>
-								<a href="/instances/{entry.server}">{entry.server}</a>
+								<i class="swatch" style:background={backendColor(index)}></i>
+								<ScreenLink href="/instances/{entry.server}/players/{one.uuid}">{entry.server}</ScreenLink>
 								<span class="dim">{fmtDuration(entry.playMillis)}</span>
 								<span class="dim stints">×{entry.stints}</span>
 							</div>
@@ -728,7 +704,7 @@
 							{:else}
 								<StatusBadge state="stopped" label={t('web.playerDetail.disconnected')} />
 							{/if}
-							<a href="/instances/{session.server}">{session.server}</a>
+							<ScreenLink href="/instances/{session.server}">{session.server}</ScreenLink>
 							<span class="dim"><DateTime at={session.connectedAtEpochMillis} text={fmtDateTime(session.connectedAtEpochMillis)} /></span>
 							<span class="dim">{fmtDuration(session.durationMillis)}</span>
 						</div>
@@ -743,42 +719,7 @@
 	</DetailPanel>
 {/if}
 
-<Modal title={t('web.players.modalTitle', { label: ACTION_LABELS[moderateAction] ?? moderateAction, count: moderateTargets.length })} bind:open={moderateOpen}>
-	<p class="targets">
-		{moderateTargets.map((target) => target.name).join(', ')}
-	</p>
-
-	{#if needsInstances}
-		<div class="field">
-			<span class="lbl">{t('web.nav.instancesList')}</span>
-			<span class="hint">{t('web.players.instancesHint')}</span>
-			<MultiSelect
-				bind:value={moderateInstances}
-				width="100%"
-				options={instances.map((name) => ({ value: name, label: name }))}
-			/>
-		</div>
-	{/if}
-
-	{#if needsReason}
-		<label class="field">
-			<span class="lbl">{t('web.access.colReason')}</span>
-			<span class="hint">{t('web.players.reasonHint')}{moderateAction === 'ban' ? t('web.players.reasonShown') : ''}</span>
-			<input class="input" bind:value={moderateReason} placeholder={t('web.players.eGGriefingOnSurvival')} />
-		</label>
-	{/if}
-
-	{#snippet footer()}
-		<Btn onclick={() => (moderateOpen = false)}>{t('web.common.cancel')}</Btn>
-		<Btn
-			variant={moderateAction === 'ban' || moderateAction === 'kick' ? 'danger' : 'primary'}
-			disabled={needsInstances && moderateInstances.length === 0}
-			onclick={doModerate}
-		>
-			{ACTION_LABELS[moderateAction] ?? t('web.common.apply')}
-		</Btn>
-	{/snippet}
-</Modal>
+<PlayerActionDialogs bind:this={dialogs} {servers} {instances} ondone={refresh} />
 
 <style lang="scss">
 	.body {
@@ -846,10 +787,5 @@
 
 	.stints {
 		font-variant-numeric: tabular-nums;
-	}
-
-	.targets {
-		color: var(--text-secondary);
-		word-break: break-word;
 	}
 </style>

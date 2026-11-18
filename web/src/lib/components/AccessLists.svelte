@@ -4,14 +4,16 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
+	import type { AccessSnapshot } from '$lib/players';
 	import Panel from './Panel.svelte';
 	import Btn from './Btn.svelte';
 	import Select from './Select.svelte';
 	import Toggle from './Toggle.svelte';
 	import Checkbox from './Checkbox.svelte';
+	import DateTime from './DateTime.svelte';
 	import Flash from './Flash.svelte';
 	import Modal from './Modal.svelte';
 	import PlayerPicker from './PlayerPicker.svelte';
@@ -32,7 +34,20 @@
 	 * directly when it is stopped; the state note above the lists says which.
 	 */
 
-	let { instance }: { instance: string } = $props();
+	let {
+		instance,
+		view = 'all',
+		refreshKey = 0,
+		lists = $bindable(null)
+	}: {
+		instance: string;
+		/** Which lists to draw; the instance's Players tab shows one at a time */
+		view?: 'all' | 'whitelist' | 'ops' | 'bans';
+		/** Bumped by the screen on each refresh tick */
+		refreshKey?: number;
+		/** The lists as last read, for whoever wants their sizes or to look a player up */
+		lists?: AccessSnapshot | null;
+	} = $props();
 
 	interface WhitelistEntry {
 		uuid: string;
@@ -95,7 +110,8 @@
 	let editLevel = $state('4');
 	let editBypass = $state(false);
 
-	async function refresh(): Promise<void> {
+	/** Read the lists again; a sibling table calls this after it changed one. */
+	export async function refresh(): Promise<void> {
 		try {
 			const data = await api(`/instances/${instance}/access`);
 
@@ -107,6 +123,7 @@
 			bans = data.bans ?? [];
 			ipBans = data.ipBans ?? [];
 			problem = '';
+			lists = { state: instState, whitelistEnabled, enforceWhitelist, whitelist, ops, bans, ipBans };
 		} catch (err) {
 			problem = (err as Error).message;
 		}
@@ -116,6 +133,18 @@
 
 	onMount(() => {
 		void refresh();
+	});
+
+	// the first read is onMount's, so the key the lists mounted with is not a tick
+	let seenKey = untrack(() => refreshKey);
+
+	$effect(() => {
+		if (refreshKey === seenKey) {
+			return;
+		}
+
+		seenKey = refreshKey;
+		untrack(() => void refresh());
 	});
 
 	interface ChangeFields {
@@ -425,6 +454,7 @@
 {#if problem}
 	<Flash kind="error"><b>{t('web.access.unavailable')}</b> {problem}</Flash>
 {:else}
+	{#if view === 'all' || view === 'whitelist'}
 	<Panel
 		title={t('web.access.whitelist')}
 		count={loaded ? whitelist.length : undefined}
@@ -490,9 +520,13 @@
 			{/snippet}
 		</ResourceTable>
 	</Panel>
+	{/if}
 
-	<div class="gap"></div>
+	{#if view === 'all'}
+		<div class="gap"></div>
+	{/if}
 
+	{#if view === 'all' || view === 'ops'}
 	<Panel title={t('web.access.operators')} count={loaded ? ops.length : undefined} flush>
 		{#snippet actions()}
 			<Btn variant="primary" icon="plus" disabled={!loaded} onclick={() => openAdd('ops')}>
@@ -537,9 +571,13 @@
 			{/snippet}
 		</ResourceTable>
 	</Panel>
+	{/if}
 
-	<div class="gap"></div>
+	{#if view === 'all'}
+		<div class="gap"></div>
+	{/if}
 
+	{#if view === 'all' || view === 'bans'}
 	<Panel title={t('web.access.playerBans')} count={loaded ? bans.length : undefined} flush>
 		{#snippet actions()}
 			<Btn variant="primary" icon="plus" disabled={!loaded} onclick={() => openAdd('bans')}>
@@ -572,11 +610,15 @@
 				{#if col === 'name'}
 					<PlayerName player={entry.uuid || entry.name} name={entry.name} href={playerPath(entry)} />
 				{:else if col === 'created'}
-					<span class="dim">{entry.created}</span>
+					<span class="dim"><DateTime at={entry.created} text={entry.created} empty={entry.created || '–'} /></span>
 				{:else if col === 'source'}
 					{entry.source}
 				{:else if col === 'expires'}
-					{entry.expires === 'forever' ? t('web.access.never') : entry.expires}
+					{#if entry.expires === 'forever'}
+						{t('web.access.never')}
+					{:else}
+						<DateTime at={entry.expires} text={entry.expires} empty={entry.expires || '–'} />
+					{/if}
 				{:else if col === 'reason'}
 					{entry.reason || '–'}
 				{/if}
@@ -586,7 +628,12 @@
 
 	<div class="gap"></div>
 
-	<Panel title={t('web.access.ipBans')} count={loaded ? ipBans.length : undefined} flush>
+	<Panel
+		title={t('web.access.ipBans')}
+		count={loaded ? ipBans.length : undefined}
+		description={t('web.access.ipBansScope')}
+		flush
+	>
 		{#snippet actions()}
 			<Btn variant="primary" icon="plus" disabled={!loaded} onclick={() => openAdd('ban-ips')}>
 				{t('web.access.banAddress')}
@@ -613,7 +660,7 @@
 				{#if col === 'ip'}
 					<span class="mono"><b>{entry.ip}</b></span>
 				{:else if col === 'created'}
-					<span class="dim">{entry.created}</span>
+					<span class="dim"><DateTime at={entry.created} text={entry.created} empty={entry.created || '–'} /></span>
 				{:else if col === 'source'}
 					{entry.source}
 				{:else if col === 'reason'}
@@ -622,6 +669,7 @@
 			{/snippet}
 		</ResourceTable>
 	</Panel>
+	{/if}
 {/if}
 
 <Modal title={addTitles[addFor]} bind:open={addOpen}>

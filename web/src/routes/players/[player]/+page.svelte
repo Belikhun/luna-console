@@ -3,212 +3,62 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
-	import { t, tSplit } from '$lib/i18n.svelte';
+	import { onMount } from 'svelte';
+	import { page } from '$app/state';
+	import { t } from '$lib/i18n.svelte';
 	import { Authz } from '$lib/authz.svelte';
 	import { resourceId } from '$shared/iam/resources';
 	import { traitsOf } from '$core/software';
-	import { page } from '$app/state';
-	import { onMount } from 'svelte';
-	import { api, post } from '$lib/api';
-	import { LOG_PAGE, LOG_LIMIT, restOfLog } from '$lib/log';
+	import { api } from '$lib/api';
+	import { copyText } from '$lib/clipboard';
 	import { fmtDuration, fmtDateTime } from '$lib/format';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import Panel from '$lib/components/Panel.svelte';
-	import Btn from '$lib/components/Btn.svelte';
+	import { playerVerbGroups } from '$lib/playeractions';
+	import type { PlayerActionTarget } from '$lib/playeractions';
+	import ScreenLink from '$lib/components/ScreenLink.svelte';
+	import DateTime from '$lib/components/DateTime.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
-	import Select from '$lib/components/Select.svelte';
-	import MultiSelect from '$lib/components/MultiSelect.svelte';
-	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import ResourceTable from '$lib/components/ResourceTable.svelte';
-	import CalendarGraph from '$lib/components/CalendarGraph.svelte';
-	import type { CalendarDay, CalendarPoint } from '$lib/components/calendargraph';
-	import type { OverviewDetail } from '$lib/components/nodeoverview';
-	import type { Column } from '$lib/components/table';
-	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import Flash from '$lib/components/Flash.svelte';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
-	import InfoGrid from '$lib/components/InfoGrid.svelte';
-	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
-	import type { InfoCell } from '$lib/components/grid';
-	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import PlayerActionDialogs from '$lib/components/PlayerActionDialogs.svelte';
+	import RefreshControl from '$lib/components/RefreshControl.svelte';
+	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
-	import Modal from '$lib/components/Modal.svelte';
-	import Checkbox from '$lib/components/Checkbox.svelte';
-	import DateTime from '$lib/components/DateTime.svelte';
-	import Flash from '$lib/components/Flash.svelte';
-	import Toggle from '$lib/components/Toggle.svelte';
-	import PlayerSkin3D from '$lib/components/PlayerSkin3D.svelte';
-	import PlayerName from '$lib/components/PlayerName.svelte';
-	import FileDrop from '$lib/components/FileDrop.svelte';
-	import NodeEditorModal from '$lib/components/NodeEditorModal.svelte';
-	import type { NodeSpec } from '$lib/components/nodes';
-	import type { ContextMenuItem } from '$lib/components/contextmenu';
-	import { copyText } from '$lib/clipboard';
-	import { Notify } from '$lib/notifications.svelte';
+	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
+	import AccountSecurity from './AccountSecurity.svelte';
+	import ChatTab from './ChatTab.svelte';
+	import EconomyTab from './EconomyTab.svelte';
+	import HistoryTab from './HistoryTab.svelte';
+	import ModerationTab from './ModerationTab.svelte';
+	import OverviewTab from './OverviewTab.svelte';
+	import PermissionsTab from './PermissionsTab.svelte';
+	import SkinDialog from './SkinDialog.svelte';
+	import { PLAYER_TABS } from './player';
+	import type {
+		AccessStanding,
+		AuthInfo,
+		Detail,
+		LiveOnInstance,
+		ModEntry,
+		PlayerTab,
+		Session,
+		VaultInfo
+	} from './player';
 
 	/**
 	 * One player, in full: identity, skin, play history and statistics,
 	 * permissions, chat/command log and moderation history; everything LunaCore
 	 * has recorded about them, with the administration verbs in the header.
+	 *
+	 * The screen owns what its header and overview bar read (the profile, the
+	 * account and the wallet). Each tab reads its own table, the first time it is
+	 * opened and again on every refresh while it is the one on screen; a tab left
+	 * behind keeps its rows, search and page, and catches up when it is reopened.
 	 */
 
-	interface Detail {
-		uuid: string;
-		username: string;
-		firstSeenAtEpochMillis: number;
-		lastSeenAtEpochMillis: number;
-		lastServer: string;
-		lastAddress: string;
-		lastClientVersion: string;
-		onlineMode: boolean;
-		sessionCount: number;
-		online: boolean;
-		server: string;
-		pingMillis: number;
-		sessionMillis: number;
-		totalPlayMillis: number;
-		skinTexture: string | null;
-		playtimeByServer: Array<{ server: string; playMillis: number; stints: number }>;
-		sessionTotal: number;
-		chatTotal: number;
-		commandTotal: number;
-		moderationTotal: number;
-		permissions: {
-			available: boolean;
-			primaryGroup?: string;
-			primaryGroupDisplay?: string;
-			prefix?: string;
-			suffix?: string;
-		};
-	}
-
-	interface Session {
-		id: number;
-		server: string;
-		connectedAtEpochMillis: number;
-		disconnectedAtEpochMillis: number;
-		durationMillis: number;
-		open: boolean;
-	}
-
-	interface ChatEntry {
-		id: number;
-		server: string;
-		type: string;
-		content: string;
-		atEpochMillis: number;
-	}
-
-	interface ModEntry {
-		id: number;
-		action: string;
-		actor: string;
-		reason: string;
-		server: string;
-		details: string;
-		atEpochMillis: number;
-	}
-
-	interface PermNode {
-		key: string;
-		value: boolean;
-		type: string;
-		expiryEpochMillis: number;
-		contexts: Array<{ key: string; value: string }>;
-	}
-
-	interface AuthInfo {
-		uuid: string;
-		username: string;
-		online: boolean;
-		authenticated: boolean;
-		registered: boolean;
-		locked: boolean;
-		lockedUntilEpochMillis: number;
-		failedAttempts: number;
-		lastIp: string;
-		lastLoginAtEpochMillis: number;
-		createdAtEpochMillis: number;
-		temporaryPassword: boolean;
-		temporaryPasswordUntilEpochMillis: number;
-		temporaryPasswordExpired: boolean;
-		session: {
-			hasSession: boolean;
-			connected: boolean;
-			createdAtEpochMillis: number;
-			expiresAtEpochMillis: number;
-			ip: string;
-		};
-		/** Absent on luna-auth builds that predate login-mode reporting */
-		loginMode?: LoginModeInfo;
-	}
-
-	/** Which login mode (Mojang or luna-auth password) the player is on and will get next. */
-	interface LoginModeInfo {
-		proxyOnlineMode: boolean;
-		mixedMode: boolean;
-		current: '' | 'online' | 'offline';
-		preference: { mode: 'online' | 'offline'; rememberForever: boolean; expiresAtEpochMillis: number } | null;
-		premium: {
-			status: 'premium' | 'not_premium' | 'unknown';
-			onlineUuid: string;
-			source: string;
-			checkedAtEpochMillis: number;
-			error: string;
-		};
-		next: 'online' | 'offline' | 'ask' | 'online-if-premium';
-		preferenceHours: number;
-	}
-
-	interface VaultInfo {
-		uuid: string;
-		username: string;
-		online: boolean;
-		hasAccount: boolean;
-		balanceMinor: number;
-		balance: number;
-		balanceFormatted: string;
-		rank: number;
-		accountCount: number;
-		currency: { symbol: string; grouping: boolean; scale: number };
-		summary: {
-			transactionCount: number;
-			receivedMinor: number;
-			receivedFormatted: string;
-			sentMinor: number;
-			sentFormatted: string;
-			netMinor: number;
-			netFormatted: string;
-			firstAtEpochMillis: number;
-			lastAtEpochMillis: number;
-		};
-	}
-
-	interface VaultTx {
-		id: string;
-		direction: 'in' | 'out' | 'self';
-		counterpartyUuid: string;
-		counterpartyName: string;
-		system: boolean;
-		amountMinor: number;
-		amountFormatted: string;
-		source: string;
-		details: string;
-		atEpochMillis: number;
-	}
-
-	/** Default lifetime offered for a temporary password, in minutes. */
-	const DEFAULT_TEMP_MINUTES = 1440;
-
-	/** Lifetimes the dialog offers, matching what luna-auth accepts. */
-	const TEMP_LIFETIMES = [
-		{ value: '15', label: t('web.playerDetail.15Minutes') },
-		{ value: '60', label: t('web.playerDetail.1Hour') },
-		{ value: '360', label: t('web.playerDetail.6Hours') },
-		{ value: '1440', label: t('web.playerDetail.24Hours') },
-		{ value: '10080', label: t('web.playerDetail.7Days') },
-		{ value: '43200', label: t('web.playerDetail.30Days') }
-	];
+	/** How many of the newest sessions and moderation entries the overview shows. */
+	const GLANCE_ROWS = 5;
 
 	const ref = $derived(page.params.player ?? '');
 
@@ -218,97 +68,105 @@
 	let problem = $state('');
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
-	let tab = $state('overview');
 
-	let sessions: Session[] = $state([]);
-	let sessionsTotal = $state(0);
-	let chat: ChatEntry[] = $state([]);
-	let chatTotal = $state(0);
-	let chatType = $state('');
-	let moderation: ModEntry[] = $state([]);
-	let moderationTotal = $state(0);
+	/** Bumped on every refresh; the tabs reload on it */
+	let refreshKey = $state(0);
 
-	let permsAvailable = $state(true);
-	let permsProblem = $state('');
-	let userGroups: string[] = $state([]);
-	let primaryGroup = $state('');
-	let userNodes: PermNode[] = $state([]);
-	let allGroups: Array<{ name: string; displayName: string }> = $state([]);
-	let permsLoaded = $state(false);
-	let tabLoaded: Record<string, boolean> = $state({});
+	let auth: AuthInfo | undefined = $state();
+	let authAvailable = $state(true);
+	let authProblem = $state('');
+
+	let vault: VaultInfo | undefined = $state();
+	let vaultAvailable = $state(true);
+	let vaultProblem = $state('');
+
+	let recentSessions: Session[] = $state([]);
+	let recentModeration: ModEntry[] = $state([]);
+	let standing = $state<AccessStanding | null>(null);
+
+	/** The player on the backend they are connected to; null while offline, or when that backend is not the account's to see */
+	let here = $state<LiveOnInstance | null>(null);
 
 	let instances: string[] = $state([]);
 	let servers: string[] = $state([]);
 
-	// header verb dialogs
-	let kickOpen = $state(false);
-	let kickReason = $state('');
-	let kickForce = $state(false);
-	let messageOpen = $state(false);
-	let messageText = $state('');
-	let transferOpen = $state(false);
-	let transferTo = $state('');
-	let moderateOpen = $state(false);
-	let moderateAction = $state('');
-	let moderateInstances: string[] = $state([]);
-	let moderateReason = $state('');
-	let noteOpen = $state(false);
-	let noteText = $state('');
-
-	// change-skin dialog
-	let skinOpen = $state(false);
-	let skinMode = $state('upload');
-	let skinFile: File | null = $state(null);
-	let skinUrl = $state('');
-	let skinName = $state('');
-	let skinVariant = $state('');
-	let skinBusy = $state(false);
-	/** Bumped after a change so the canvases re-fetch the proxied PNG. */
+	/** Bumped after a skin change so the viewer fetches the new one. */
 	let skinEpoch = $state(0);
 
-	// account & password administration
-	let authInfo: AuthInfo | undefined = $state();
-	let authAvailable = $state(true);
-	let authProblem = $state('');
-	let resetOpen = $state(false);
-	let tempOpen = $state(false);
-	let tempPassword = $state('');
-	let tempMinutes = $state(String(DEFAULT_TEMP_MINUTES));
-	let tempBusy = $state(false);
-	/** The plaintext of a freshly issued password; shown once, then forgotten. */
-	let issuedPassword = $state('');
-	let issuedOpen = $state(false);
-	let modeOpen = $state(false);
-	let modeChoice = $state('online');
-	let modeForever = $state(false);
-	let modeBusy = $state(false);
-	let premiumBusy = $state(false);
+	let dialogs: PlayerActionDialogs | undefined = $state();
+	let account: AccountSecurity | undefined = $state();
+	let moderationTab: ModerationTab | undefined = $state();
+	let skinDialog: SkinDialog | undefined = $state();
 
-	// economy; balance and transactions, held by LunaVault on the proxy
-	let vaultInfo: VaultInfo | undefined = $state();
-	let vaultAvailable = $state(true);
-	let vaultProblem = $state('');
-	let vaultTx: VaultTx[] = $state([]);
-	let vaultTotal = $state(0);
+	// chat is the most private thing the profile holds: the tab exists only for
+	// an account allowed to read this player's, and the route checks it again
+	const mayReadChat = $derived(Authz.can('chat:ReadPlayer', resourceId('player', ref)));
 
-	// permissions editor state
-	let groupPick = $state('');
-	let nodeKey = $state('');
-	let nodeGrant = $state(true);
-	let nodeServer = $state('');
-	let nodeEditorOpen = $state(false);
-	let nodeBeingEdited: PermNode | null = $state(null);
+	// the tab lives in the address, so a reload, a shared link and the back button all land on it
+	const tab = $derived.by((): PlayerTab => {
+		const wanted = page.url.searchParams.get('tab') ?? '';
+
+		if (!(PLAYER_TABS as readonly string[]).includes(wanted)) {
+			return 'overview';
+		}
+
+		return wanted === 'chat' && !mayReadChat
+			? 'overview'
+			: (wanted as PlayerTab);
+	});
+
+	/** Tabs opened so far; each stays mounted so it keeps its rows, search and page. */
+	let visited: Set<PlayerTab> = $state(new Set());
+
+	$effect(() => {
+		if (!visited.has(tab)) {
+			visited = new Set([...visited, tab]);
+		}
+	});
+
+	function tabHref(id: PlayerTab): string {
+		const url = new URL(page.url);
+
+		if (id === 'overview') {
+			url.searchParams.delete('tab');
+		} else {
+			url.searchParams.set('tab', id);
+		}
+
+		return `${url.pathname}${url.search}`;
+	}
+
+	const TAB_LABELS: Record<PlayerTab, string> = {
+		overview: 'web.playerDetail.overview',
+		account: 'web.playerDetail.account',
+		economy: 'web.playerDetail.economy',
+		sessions: 'web.playerDetail.playHistory',
+		chat: 'web.playerDetail.chatCommands',
+		permissions: 'web.playerDetail.permissions',
+		moderation: 'web.playerDetail.moderation'
+	};
+
+	const tabs = $derived(
+		PLAYER_TABS.filter((id) => id !== 'chat' || mayReadChat).map((id) => ({
+			id,
+			label: t(TAB_LABELS[id]),
+			href: tabHref(id)
+		}))
+	);
 
 	async function refresh(): Promise<void> {
+		loading = true;
+
 		try {
 			const data = await api(`/players/${encodeURIComponent(ref)}`);
 
 			if (data.available === false) {
 				available = false;
 				notFound = false;
-				problem = data.error ?? 'LunaCore is unreachable';
+				problem = data.error ?? t('web.playerDetail.noAnswer');
 			} else {
 				available = true;
+				notFound = false;
 				detail = data as Detail;
 				lastUpdated = Date.now();
 			}
@@ -320,15 +178,12 @@
 
 		loading = false;
 
-		// the account state is loaded eagerly rather than with its tab: the header
-		// verbs need to know whether the account is locked or has a password.
-		// The balance is eager for the same reason; it sits in the overview bar.
-		await Promise.all([
-			loadAuth(),
-			loadVault(),
-			loadTab(tab, true),
-			permsLoaded ? loadPermissions() : Promise.resolve()
-		]);
+		// the tabs follow the same tick: the one on screen reloads now, the others when reopened
+		refreshKey++;
+
+		// the account and the balance are read with the profile rather than with
+		// their tabs: the header and the overview bar show them on every tab
+		await Promise.all([loadAuth(), loadVault(), loadGlance(), loadStanding(), loadHere()]);
 	}
 
 	async function loadAuth(): Promise<void> {
@@ -337,12 +192,12 @@
 
 			if (data.available === false) {
 				authAvailable = false;
-				authProblem = data.error ?? 'luna-auth is unavailable';
+				authProblem = data.error ?? t('web.playerDetail.noAnswer');
 				return;
 			}
 
 			authAvailable = true;
-			authInfo = data as AuthInfo;
+			auth = data as AuthInfo;
 		} catch (err) {
 			authAvailable = false;
 			authProblem = (err as Error).message;
@@ -355,161 +210,89 @@
 
 			if (data.available === false) {
 				vaultAvailable = false;
-				vaultProblem = data.error ?? 'LunaVault is unavailable';
+				vaultProblem = data.error ?? t('web.playerDetail.noAnswer');
 				return;
 			}
 
 			vaultAvailable = true;
-			vaultInfo = data as VaultInfo;
+			vault = data as VaultInfo;
 		} catch (err) {
 			vaultAvailable = false;
 			vaultProblem = (err as Error).message;
 		}
 	}
 
-	async function loadVaultTransactions(): Promise<void> {
-		const data = await api(
-			`/players/${encodeURIComponent(ref)}/vault/transactions?page=0&pageSize=${LOG_PAGE}`
-		);
+	/**
+	 * The connected player as their backend sees them, which is what that
+	 * backend's own player screen reads. Only asked for a backend the account may
+	 * describe; an external server, which luna holds no saves for, answers nothing.
+	 */
+	async function loadHere(): Promise<void> {
+		const server = detail?.online
+			? detail.server
+			: '';
 
-		if (data.available === false) {
+		if (!detail || !server || !Authz.can('instance:Describe', resourceId('instance', server))) {
+			here = null;
 			return;
 		}
 
-		vaultTotal = data.totalCount ?? 0;
-
-		// LunaVault pages this log by page index rather than by row offset
-		const lastPage = Math.min(data.maxPage ?? 0, Math.ceil(LOG_LIMIT / LOG_PAGE) - 1);
-		const pages: number[] = [];
-
-		for (let index = 1; index <= lastPage; index++) {
-			pages.push(index);
-		}
-
-		const rest = await Promise.all(
-			pages.map(async (index): Promise<VaultTx[]> => {
-				const more = await api(
-					`/players/${encodeURIComponent(ref)}/vault/transactions?page=${index}&pageSize=${LOG_PAGE}`
-				);
-
-				return more.available === false ? [] : (more.entries ?? []);
-			})
-		);
-
-		vaultTx = [...(data.entries ?? []), ...rest.flat()];
-	}
-
-	async function loadSessions(): Promise<void> {
-		const data = await api(`/players/${encodeURIComponent(ref)}/sessions?limit=${LOG_PAGE}&offset=0`);
-
-		if (data.available === false) {
-			return;
-		}
-
-		sessionsTotal = data.total ?? 0;
-
-		const first: Session[] = data.sessions ?? [];
-		const rest = await restOfLog<Session>(sessionsTotal, first.length, async (offset) => {
-			const more = await api(
-				`/players/${encodeURIComponent(ref)}/sessions?limit=${LOG_PAGE}&offset=${offset}`
-			);
-
-			return more.available === false ? [] : (more.sessions ?? []);
-		});
-
-		sessions = [...first, ...rest];
-	}
-
-	async function loadChat(): Promise<void> {
-		const type = chatType ? `&type=${chatType}` : '';
-		const data = await api(`/players/${encodeURIComponent(ref)}/chat?limit=${LOG_PAGE}&offset=0${type}`);
-
-		if (data.available === false) {
-			return;
-		}
-
-		chatTotal = data.total ?? 0;
-
-		const first: ChatEntry[] = data.entries ?? [];
-		const rest = await restOfLog<ChatEntry>(chatTotal, first.length, async (offset) => {
-			const more = await api(
-				`/players/${encodeURIComponent(ref)}/chat?limit=${LOG_PAGE}&offset=${offset}${type}`
-			);
-
-			return more.available === false ? [] : (more.entries ?? []);
-		});
-
-		chat = [...first, ...rest];
-	}
-
-	async function loadModeration(): Promise<void> {
-		const data = await api(`/players/${encodeURIComponent(ref)}/moderation?limit=${LOG_PAGE}&offset=0`);
-
-		if (data.available === false) {
-			return;
-		}
-
-		moderationTotal = data.total ?? 0;
-
-		const first: ModEntry[] = data.entries ?? [];
-		const rest = await restOfLog<ModEntry>(moderationTotal, first.length, async (offset) => {
-			const more = await api(
-				`/players/${encodeURIComponent(ref)}/moderation?limit=${LOG_PAGE}&offset=${offset}`
-			);
-
-			return more.available === false ? [] : (more.entries ?? []);
-		});
-
-		moderation = [...first, ...rest];
-	}
-
-	async function loadPermissions(): Promise<void> {
-		permsLoaded = true;
-
-		const [user, groups] = await Promise.all([
-			api(`/players/${encodeURIComponent(ref)}/permissions`),
-			api('/permissions/groups')
-		]);
-
-		if (user.available === false) {
-			permsAvailable = false;
-			permsProblem = user.error ?? 'LuckPerms is unavailable';
-			return;
-		}
-
-		permsAvailable = true;
-		primaryGroup = user.primaryGroup ?? '';
-		userGroups = user.groups ?? [];
-		userNodes = user.nodes ?? [];
-		allGroups = groups.available === false ? [] : (groups.groups ?? []);
-
-		if (!groupPick && allGroups.length > 0) {
-			groupPick = allGroups[0]?.name ?? '';
-		}
-	}
-
-	/** Fetch the data a tab renders, the first time it is opened. */
-	async function loadTab(id: string, force = false): Promise<void> {
 		try {
-			if (id === 'sessions' && (force || sessions.length === 0)) {
-				await loadSessions();
-			} else if (id === 'chat' && (force || chat.length === 0)) {
-				await loadChat();
-			} else if (id === 'moderation' && (force || moderation.length === 0)) {
-				await loadModeration();
-			} else if (id === 'permissions' && (force || !permsLoaded)) {
-				await loadPermissions();
-			} else if (id === 'economy' && (force || vaultTx.length === 0)) {
-				await loadVaultTransactions();
-			}
-		} finally {
-			tabLoaded[id] = true;
+			const data: LiveOnInstance = await api(
+				`/instances/${encodeURIComponent(server)}/players/${encodeURIComponent(detail.uuid)}`
+			);
+
+			here = data.online ? data : null;
+		} catch {
+			here = null;
 		}
 	}
 
-	$effect(() => {
-		void loadTab(tab);
-	});
+	/** The newest few sessions and moderation entries, for the overview. */
+	async function loadGlance(): Promise<void> {
+		try {
+			const [sessions, moderation] = await Promise.all([
+				api(`/players/${encodeURIComponent(ref)}/sessions?limit=${GLANCE_ROWS}&offset=0`),
+				api(`/players/${encodeURIComponent(ref)}/moderation?limit=${GLANCE_ROWS}&offset=0`)
+			]);
+
+			recentSessions = (sessions.sessions ?? []).slice(0, GLANCE_ROWS);
+			recentModeration = (moderation.entries ?? []).slice(0, GLANCE_ROWS);
+		} catch {
+			// the overview keeps what it had; the tabs report their own trouble
+		}
+	}
+
+	/**
+	 * Where the player stands on the backends' access lists. Best-effort: an
+	 * account that may not list them simply does not get the panel.
+	 */
+	async function loadStanding(): Promise<void> {
+		if (!detail) {
+			return;
+		}
+
+		const uuid = detail.uuid.toLowerCase();
+		const name = detail.username.toLowerCase();
+
+		const mine = (rows: Array<{ uuid?: string; name?: string; instances: string[] }> | undefined): string[] =>
+			(rows ?? [])
+				.filter((row) => (row.uuid ? row.uuid.toLowerCase() === uuid : (row.name ?? '').toLowerCase() === name))
+				.flatMap((row) => row.instances)
+				.sort();
+
+		try {
+			const lists = await api('/moderation');
+
+			standing = {
+				banned: mine(lists.bans),
+				operator: mine(lists.ops),
+				whitelisted: mine(lists.whitelist)
+			};
+		} catch {
+			standing = null;
+		}
+	}
 
 	onMount(() => {
 		void refresh();
@@ -523,1031 +306,102 @@
 				...instances,
 				...data.externals.map((inst: any) => inst.name)
 			].sort();
-			transferTo = servers[0] ?? '';
 		});
 	});
 
-	const identityCells: InfoCell[] = $derived(
-		detail
-			? [
-					// no `id`: an identified cell is handed to the `custom` snippet below
-					{ label: t('web.playerDetail.uuid'), value: detail.uuid, style: 'mono', copyable: true },
-					{ id: 'resourceId', label: t('web.resourceId.label') },
-					{
-						label: t('web.playerDetail.accountType'),
-						value: detail.onlineMode ? 'Premium (Mojang)' : 'Offline / proxy-authenticated'
-					},
-					{
-						label: t('web.playerDetail.firstSeen'),
-						value: detail.firstSeenAtEpochMillis ? fmtDateTime(detail.firstSeenAtEpochMillis) : '–',
-						time: detail.firstSeenAtEpochMillis || null
-					},
-					{
-						label: t('web.playerDetail.lastSeen'),
-						value: detail.online ? 'online now' : detail.lastSeenAtEpochMillis ? fmtDateTime(detail.lastSeenAtEpochMillis) : '–',
-						time: detail.online
-							? undefined
-							: detail.lastSeenAtEpochMillis || null
-					},
-					{
-						label: detail.online ? 'Current backend' : 'Last backend',
-						value: (detail.online ? detail.server : detail.lastServer) || '–',
-						...(detail.online || detail.lastServer
-							? { href: `/instances/${detail.online ? detail.server : detail.lastServer}` }
-							: {})
-					},
-					{ label: t('web.playerDetail.lastAddress'), value: detail.lastAddress || '–', style: 'mono' },
-					{ label: t('web.playerDetail.clientVersion'), value: detail.lastClientVersion || '–' },
-					{
-						label: t('web.playerDetail.permissionGroup'),
-						value: detail.permissions.available
-							? detail.permissions.primaryGroupDisplay || detail.permissions.primaryGroup || '–'
-							: 'LuckPerms unavailable',
-						// the display name is what LuckPerms shows; the group's own name
-						// is what its detail screen is keyed by
-						...(detail.permissions.available && detail.permissions.primaryGroup
-							? { href: `/permissions/${encodeURIComponent(detail.permissions.primaryGroup)}` }
-							: {})
-					}
-				]
-			: []
-	);
-
-	/** Administration verbs in the header; live ones first, then the lists. */
-	/**
-	 * Re-offer this player their resource packs. luna-pack sends a client its
-	 * whole applicable set rather than one pack, so there is nothing to pick
-	 * here; it is the fix for a pack that failed to download or a prompt that
-	 * was declined. Needs them online, since the proxy sends it to a connection.
-	 */
-	async function resendPacks(): Promise<void> {
-		const player = detail?.username ?? '';
-		const note = Notify.loading(t('web.playerDetail.resendingPacks', { player }));
-
-		try {
-			const result = await post('/respacks/resend', { players: [player] });
-
-			if (!result.available) {
-				throw new Error(result.problem ?? t('web.playerDetail.resendUnavailable'));
-			}
-
-			const target = result.targets?.[0];
-
-			if (!target?.sent) {
-				throw new Error(target?.problem ?? t('web.playerDetail.resendUnavailable'));
-			}
-
-			note.set({
-				level: 'success',
-				message: t('web.playerDetail.resentPacks', { player }),
-				detail: t('web.playerDetail.resendWholeSet'),
-				closeable: true
-			});
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: t('web.playerDetail.resendFailed', { player }),
-				detail: (err as Error).message,
-				closeable: true
-			});
+	const target = $derived.by((): PlayerActionTarget | null => {
+		if (!detail) {
+			return null;
 		}
-	}
 
+		return {
+			username: detail.username,
+			uuid: detail.uuid,
+			online: detail.online,
+			server: detail.server,
+			...(detail.lastAddress ? { address: detail.lastAddress } : {})
+		};
+	});
+
+	/** The header's verbs: live ones, the lists, the account, then the removals. */
 	function headerActions(): ContextMenuItem[] {
-		const offline = !detail?.online;
+		if (!target) {
+			return [];
+		}
 
-		return [
-			{
-				label: t('web.playerDetail.sendAMessage'),
-				icon: 'paperPlane',
-				disabled: offline,
-				hint: offline ? 'player is offline' : undefined,
-				action: () => {
-					messageOpen = true;
+		const groups = playerVerbGroups({
+			targets: [target],
+			servers,
+			open: (kind, targets) => dialogs?.open(kind, targets)
+		});
+
+		return menuGroups(
+			groups.live,
+			[
+				...groups.access,
+				{
+					label: t('web.playerDetail.accountActions'),
+					icon: 'key',
+					submenu: account?.menu() ?? []
+				},
+				{
+					label: t('web.playerDetail.changeSkin'),
+					icon: 'wandMagicSparkles',
+					action: () => skinDialog?.show()
+				},
+				{
+					label: t('web.playerDetail.recordAModerationNote'),
+					icon: 'note',
+					action: () => moderationTab?.openNote()
 				}
-			},
-			{
-				label: t('web.playerDetail.moveToAnotherBackend'),
-				icon: 'rightLeft',
-				disabled: offline,
-				hint: offline ? 'player is offline' : undefined,
-				action: () => {
-					transferOpen = true;
+			],
+			[
+				{
+					id: 'copy-uuid',
+					label: t('web.players.copyUuid'),
+					icon: 'copy',
+					action: () => void copyText(detail?.uuid ?? '')
+				},
+				{
+					id: 'copy-name',
+					label: t('web.instancePlayers.copyName'),
+					icon: 'copy',
+					action: () => void copyText(detail?.username ?? '')
 				}
-			},
-			{
-				label: t('web.playerDetail.resendPacks'),
-				icon: 'image',
-				disabled: offline,
-				hint: offline ? 'player is offline' : t('web.playerDetail.resendWholeSet'),
-				action: () => void resendPacks()
-			},
-			{
-				label: t('web.playerDetail.disconnectFromTheNetwork'),
-				icon: 'userSlash',
-				color: 'danger',
-				disabled: offline,
-				hint: offline ? 'player is offline' : undefined,
-				action: () => {
-					kickForce = false;
-					kickOpen = true;
-				}
-			},
-			{
-				label: t('web.instancePlayers.forceDisconnect'),
-				icon: 'unlink',
-				color: 'danger',
-				disabled: offline,
-				hint: offline ? 'player is offline' : undefined,
-				action: () => {
-					kickForce = true;
-					kickOpen = true;
-				}
-			},
-			{ separator: true },
-			{ label: t('web.playerDetail.addToWhitelist'), icon: 'userTick', action: () => openModerate('whitelist-add') },
-			{ label: t('web.playerDetail.removeFromWhitelist'), icon: 'userMinus', action: () => openModerate('whitelist-remove') },
-			{ label: t('web.playerDetail.grantOperator'), icon: 'userCog', action: () => openModerate('op') },
-			{ label: t('web.playerDetail.revokeOperator'), icon: 'userLock', action: () => openModerate('deop') },
-			{ separator: true },
-			{
-				label: t('web.playerDetail.changeSkin'),
-				icon: 'wandMagicSparkles',
-				action: () => {
-					skinMode = 'upload';
-					skinFile = null;
-					skinUrl = '';
-					skinName = '';
-					skinVariant = '';
-					skinOpen = true;
-				}
-			},
-			{ separator: true },
-			...passwordActions(),
-			{ separator: true },
-			{ label: t('web.playerDetail.ban'), icon: 'gavel', color: 'danger', action: () => openModerate('ban') },
-			{ label: t('web.playerDetail.pardon'), icon: 'handshake', action: () => openModerate('pardon') },
-			{ separator: true },
-			{
-				label: t('web.playerDetail.recordAModerationNote'),
-				icon: 'note',
-				action: () => {
-					noteOpen = true;
-				}
-			}
-		];
-	}
-
-	/**
-	 * The password verbs. Each unavailable one keeps its place and says why -
-	 * "unlock" on an account that is not locked is information, not clutter.
-	 */
-	function passwordActions(): ContextMenuItem[] {
-		const gone = !authAvailable;
-		const reason = gone ? 'luna-auth is unavailable' : undefined;
-
-		return [
-			{
-				label: t('web.playerDetail.issueATemporaryPassword'),
-				icon: 'key',
-				disabled: gone,
-				hint: reason,
-				action: () => {
-					tempPassword = '';
-					tempMinutes = String(DEFAULT_TEMP_MINUTES);
-					tempOpen = true;
-				}
-			},
-			{
-				label: t('web.playerDetail.resetPassword'),
-				icon: 'rotate',
-				color: 'danger',
-				disabled: gone || !authInfo?.registered,
-				hint: reason ?? (authInfo?.registered ? undefined : 'the player has no password'),
-				action: () => {
-					resetOpen = true;
-				}
-			},
-			{
-				label: t('web.playerDetail.unlockAccount'),
-				icon: 'lockOpen',
-				disabled: gone || !authInfo?.locked,
-				hint: reason ?? (authInfo?.locked ? undefined : 'the account is not locked'),
-				action: () => void doAuth('unlock', 'Unlocking account…', 'Account unlocked')
-			},
-			{
-				label: t('web.playerDetail.endAuthenticatedSession'),
-				icon: 'userLock',
-				disabled: gone || !(authInfo?.authenticated || authInfo?.session.hasSession),
-				hint: reason ?? (authInfo?.authenticated || authInfo?.session.hasSession ? undefined : 'no session to end'),
-				action: () => void doAuth('logout', 'Ending session…', 'Session ended; the player must log in again')
-			},
-			{
-				label: t('web.playerDetail.forceLogin'),
-				icon: 'rightToBracket',
-				disabled: gone || !authInfo?.online || !authInfo?.registered || authInfo?.authenticated,
-				hint: reason ?? forceLoginBlocker(),
-				action: () =>
-					void doAuth(
-						'forcelogin',
-						t('web.playerDetail.forcingLogin', { name: detail?.username ?? '' }),
-						t('web.playerDetail.forcedLogin', { name: detail?.username ?? '' })
-					)
-			},
-			{
-				label: t('web.playerDetail.changeLoginMode'),
-				icon: 'userShield',
-				disabled: gone || !authInfo?.loginMode,
-				hint: reason ?? (authInfo?.loginMode ? undefined : t('web.playerDetail.loginModeUnavailable')),
-				action: openLoginMode
-			}
-		];
-	}
-
-	/** Why force-login cannot run right now, or undefined when it can. */
-	function forceLoginBlocker(): string | undefined {
-		if (!authInfo?.online) {
-			return t('web.playerDetail.forceLoginNotConnected');
-		}
-
-		if (!authInfo.registered) {
-			return t('web.playerDetail.forceLoginNoPassword');
-		}
-
-		if (authInfo.authenticated) {
-			return t('web.playerDetail.forceLoginAlreadyIn');
-		}
-
-		return undefined;
-	}
-
-	const ACTION_LABELS: Record<string, string> = {
-		'whitelist-add': 'Add to whitelist',
-		'whitelist-remove': 'Remove from whitelist',
-		op: 'Grant operator',
-		deop: 'Revoke operator',
-		ban: 'Ban',
-		pardon: 'Pardon'
-	};
-
-	function openModerate(action: string): void {
-		moderateAction = action;
-		moderateInstances = [...instances];
-		moderateReason = '';
-		moderateOpen = true;
-	}
-
-	async function act(run: () => Promise<any>, pending: string, done: string): Promise<void> {
-		const note = Notify.loading(pending);
-
-		try {
-			const result = await run();
-
-			if (result?.ok === false) {
-				throw new Error(result.error ?? 'the action failed');
-			}
-
-			note.set({ level: 'success', message: done, closeable: true });
-
-			await refresh();
-		} catch (err) {
-			note.set({ level: 'error', message: pending, detail: (err as Error).message, closeable: true });
-		}
-	}
-
-	async function doKick(): Promise<void> {
-		kickOpen = false;
-
-		await act(
-			() =>
-				post('/luna/admin', {
-					action: kickForce ? 'disconnect' : 'kick',
-					player: detail?.uuid ?? detail?.username,
-					reason: kickReason
-				}),
-			`Disconnecting ${detail?.username}…`,
-			`${detail?.username} disconnected`
-		);
-
-		kickReason = '';
-	}
-
-	async function doMessage(): Promise<void> {
-		const text = messageText.trim();
-
-		messageOpen = false;
-
-		if (!text) {
-			return;
-		}
-
-		await act(
-			() => post('/luna/admin', { action: 'message', player: detail?.uuid ?? detail?.username, message: text }),
-			`Sending a message to ${detail?.username}…`,
-			`Message delivered to ${detail?.username}`
-		);
-
-		messageText = '';
-	}
-
-	async function doTransfer(): Promise<void> {
-		transferOpen = false;
-
-		await act(
-			() =>
-				post('/luna/admin', {
-					action: 'transfer',
-					// resolve by profile id; two profiles can share the name
-					player: detail?.uuid ?? detail?.username,
-					server: transferTo
-				}),
-			`Moving ${detail?.username} to ${transferTo}…`,
-			`${detail?.username} moved to ${transferTo}`
+			],
+			groups.remove
 		);
 	}
 
-	async function doModerate(): Promise<void> {
-		moderateOpen = false;
+	async function skinChanged(): Promise<void> {
+		skinEpoch = Date.now();
 
-		const label = ACTION_LABELS[moderateAction] ?? moderateAction;
-
-		let unconfirmed: string[] = [];
-
-		await act(
-			async () => {
-				const result = await post('/players/moderate', {
-					action: moderateAction,
-					targets: [{ name: detail?.username, uuid: detail?.uuid }],
-					instances: moderateInstances,
-					reason: moderateReason
-				});
-
-				const outcomes: any[] = result.outcomes ?? [];
-				const failed = outcomes.filter((outcome) => !outcome.ok);
-
-				if (failed.length > 0) {
-					throw new Error(failed.map((outcome: any) => `${outcome.instance}: ${outcome.error}`).join('; '));
-				}
-
-				unconfirmed = outcomes
-					.filter((outcome) => outcome.verified === false)
-					.map((outcome) => String(outcome.instance));
-
-				return result;
-			},
-			`${label} ${detail?.username}…`,
-			`${label} applied on ${moderateInstances.length} instance(s)`
-		);
-
-		if (unconfirmed.length > 0) {
-			Notify.warning(t('web.players.someUnconfirmed', { label, count: unconfirmed.length }), {
-				detail: unconfirmed.join(', '),
-				closeable: true
-			});
-		}
-
-		await loadModeration();
-	}
-
-	const skinModeValid = $derived.by(() => {
-		if (skinMode === 'upload') {
-			return skinFile !== null;
-		}
-
-		if (skinMode === 'url') {
-			return /^https?:\/\/.+/.test(skinUrl.trim());
-		}
-
-		if (skinMode === 'name') {
-			return /^[A-Za-z0-9_]{1,16}$/.test(skinName.trim());
-		}
-
-		return true;
-	});
-
-	async function doChangeSkin(): Promise<void> {
-		skinBusy = true;
-
-		const note = Notify.loading(
-			skinMode === 'reset'
-				? `Resetting ${detail?.username}'s skin…`
-				: `Changing ${detail?.username}'s skin…`
-		);
-
-		try {
-			const body: Record<string, unknown> = { mode: skinMode };
-
-			if (skinMode === 'upload') {
-				const { fileToBase64 } = await import('$lib/api');
-
-				body.fileBase64 = await fileToBase64(skinFile!);
-			} else if (skinMode === 'url') {
-				body.url = skinUrl.trim();
-			} else if (skinMode === 'name') {
-				body.skin = skinName.trim();
-			}
-
-			if (skinVariant && (skinMode === 'upload' || skinMode === 'url')) {
-				body.variant = skinVariant;
-			}
-
-			const result = await post(`/players/${encodeURIComponent(ref)}/skin`, body);
-
-			if (result.ok === false) {
-				throw new Error(result.error ?? 'the skin change was refused');
-			}
-
-			skinOpen = false;
-			skinEpoch = Date.now();
-
-			note.set({
-				level: 'success',
-				message:
-					skinMode === 'reset'
-						? `${detail?.username}'s skin reset; their own skin applies again`
-						: `${detail?.username}'s skin changed${detail?.online ? ' and applied live' : '; it applies on their next login'}`,
-				closeable: true
-			});
-
-			await refresh();
-			await loadModeration();
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: t('web.playerDetail.skinChangeFailed'),
-				detail: (err as Error).message,
-				closeable: true
-			});
-		}
-
-		skinBusy = false;
-	}
-
-	async function doNote(): Promise<void> {
-		const text = noteText.trim();
-
-		noteOpen = false;
-
-		if (!text) {
-			return;
-		}
-
-		await act(
-			() => post(`/players/${encodeURIComponent(ref)}/moderation`, { action: 'note', reason: text }),
-			'Recording note…',
-			'Moderation note recorded'
-		);
-
-		noteText = '';
-		await loadModeration();
-	}
-
-	// --------------------------------------------------------- account security
-
-	/** Run a password verb that needs no dialog and carries no secret back. */
-	async function doAuth(action: string, pending: string, done: string): Promise<void> {
-		await act(() => post(`/players/${encodeURIComponent(ref)}/auth`, { action }), pending, done);
-
-		await loadAuth();
-	}
-
-	async function doReset(): Promise<void> {
-		resetOpen = false;
-
-		await doAuth(
-			'reset',
-			`Resetting ${detail?.username}'s password…`,
-			`Password cleared; ${detail?.username} registers a new one with /register`
-		);
-
-		await loadModeration();
-	}
-
-	/**
-	 * Issue a temporary password. The plaintext only exists in this response, so
-	 * it goes straight into a dialog for the operator to pass on; reloading the
-	 * page cannot bring it back.
-	 */
-	async function doTemporary(): Promise<void> {
-		tempBusy = true;
-
-		const note = Notify.loading(t('web.playerDetail.issuingTempPassword', { name: detail?.username ?? '' }));
-
-		try {
-			const chosen = tempPassword.trim();
-			const result = await post(`/players/${encodeURIComponent(ref)}/auth`, {
-				action: 'temporary',
-				expiresInMinutes: Number(tempMinutes),
-				...(chosen ? { password: chosen } : {})
-			});
-
-			if (result.ok === false) {
-				throw new Error(result.error ?? 'the proxy refused the change');
-			}
-
-			tempOpen = false;
-			issuedPassword = result.data?.password ?? chosen;
-			issuedOpen = true;
-
-			note.set({
-				level: 'success',
-				message: t('web.playerDetail.tempPasswordIssued', { name: detail?.username ?? '' }),
-				closeable: true
-			});
-
-			await loadAuth();
-			await loadModeration();
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: t('web.playerDetail.couldNotIssueATemporary'),
-				detail: (err as Error).message,
-				closeable: true
-			});
-		}
-
-		tempBusy = false;
-	}
-
-	const authCells: InfoCell[] = $derived(
-		authInfo
-			? [
-					{
-						id: 'password',
-						label: t('web.playerDetail.password'),
-						value: !authInfo.registered
-							? 'None; not registered'
-							: authInfo.temporaryPassword
-								? `Temporary, expires ${fmtDateTime(authInfo.temporaryPasswordUntilEpochMillis)}`
-								: 'Set by the player'
-					},
-					{ label: t('web.playerDetail.signedIn'), value: authInfo.authenticated ? 'Yes' : 'No' },
-					{
-						id: 'lock',
-						label: t('web.playerDetail.accountLock'),
-						value: authInfo.locked
-							? `Locked until ${fmtDateTime(authInfo.lockedUntilEpochMillis)}`
-							: 'Not locked'
-					},
-					{ label: t('web.playerDetail.failedAttempts'), value: authInfo.failedAttempts },
-					{
-						label: t('web.playerDetail.lastLogin'),
-						value: authInfo.lastLoginAtEpochMillis ? fmtDateTime(authInfo.lastLoginAtEpochMillis) : '–',
-						time: authInfo.lastLoginAtEpochMillis || null
-					},
-					{ label: t('web.playerDetail.lastAddress'), value: authInfo.lastIp || '–', style: 'mono' },
-					{
-						label: t('web.playerDetail.registeredOn'),
-						value: authInfo.createdAtEpochMillis ? fmtDateTime(authInfo.createdAtEpochMillis) : '–',
-						time: authInfo.createdAtEpochMillis || null
-					},
-					{
-						id: 'session',
-						label: t('web.playerDetail.resumableSession'),
-						value: authInfo.session.hasSession
-							? `Until ${fmtDateTime(authInfo.session.expiresAtEpochMillis)}`
-							: 'None'
-					}
-				]
-			: []
-	);
-
-	// --------------------------------------------------------------- login mode
-
-	function modeLabel(mode: string): string {
-		if (mode === 'online') {
-			return t('web.playerDetail.loginModeOnline');
-		}
-
-		if (mode === 'offline') {
-			return t('web.playerDetail.loginModeOffline');
-		}
-
-		if (mode === 'ask') {
-			return t('web.playerDetail.loginModeAsk');
-		}
-
-		if (mode === 'online-if-premium') {
-			return t('web.playerDetail.loginModeOnlineIfPremium');
-		}
-
-		return '–';
-	}
-
-	/** Keys for where a premium verdict came from, as luna-auth names the sources. */
-	const PREMIUM_SOURCES: Record<string, string> = {
-		mojang: 'web.playerDetail.premiumSourceMojang',
-		cache: 'web.playerDetail.premiumSourceCache',
-		verified: 'web.playerDetail.premiumSourceVerified',
-		known: 'web.playerDetail.premiumSourceKnown',
-		failed: 'web.playerDetail.premiumSourceFailed',
-		unchecked: 'web.playerDetail.premiumSourceUnchecked'
-	};
-
-	/** The sources whose sentence holds `{date}`, drawn with a clickable date. */
-	const DATED_PREMIUM_SOURCES = new Set(['mojang', 'cache', 'verified']);
-
-	/** Whether the player owns a Mojang account, in a word. */
-	function premiumVerdict(info: LoginModeInfo): string {
-		return info.premium.status === 'premium'
-			? t('web.playerDetail.premiumYes')
-			: info.premium.status === 'not_premium'
-				? t('web.playerDetail.premiumNo')
-				: t('web.playerDetail.premiumUnknown');
-	}
-
-	/** The premium verdict plus where it came from, in one line. */
-	function premiumLabel(info: LoginModeInfo): string {
-		const premium = info.premium;
-		const verdict = premiumVerdict(info);
-		const date = premium.checkedAtEpochMillis
-			? fmtDateTime(premium.checkedAtEpochMillis)
-			: '';
-		const sourceKey = PREMIUM_SOURCES[premium.source];
-
-		if (!sourceKey) {
-			return verdict;
-		}
-
-		return `${verdict} · ${t(sourceKey, { date, error: premium.error })}`;
-	}
-
-	const loginModeCells: InfoCell[] = $derived(
-		authInfo?.loginMode
-			? [
-					{
-						label: t('web.playerDetail.loginModeCurrent'),
-						value: authInfo.loginMode.current
-							? modeLabel(authInfo.loginMode.current)
-							: t('web.playerDetail.loginModeNotConnected')
-					},
-					{
-						label: t('web.playerDetail.loginModeNext'),
-						value: modeLabel(authInfo.loginMode.next)
-					},
-					{
-						id: 'preference',
-						label: t('web.playerDetail.loginModePreference'),
-						value: !authInfo.loginMode.preference
-							? t('web.playerDetail.loginModeNone')
-							: authInfo.loginMode.preference.rememberForever
-								? t('web.playerDetail.loginModeForever', { mode: modeLabel(authInfo.loginMode.preference.mode) })
-								: t('web.playerDetail.loginModeUntil', {
-										mode: modeLabel(authInfo.loginMode.preference.mode),
-										date: fmtDateTime(authInfo.loginMode.preference.expiresAtEpochMillis)
-									})
-					},
-					{
-						id: 'premium',
-						label: t('web.playerDetail.loginModePremium'),
-						value: premiumLabel(authInfo.loginMode),
-						copyable: false,
-						colSpan: 'all'
-					}
-				]
-			: []
-	);
-
-	function openLoginMode(): void {
-		const preference = authInfo?.loginMode?.preference;
-
-		modeChoice = preference?.mode ?? 'online';
-		modeForever = preference?.rememberForever ?? false;
-		modeOpen = true;
-	}
-
-	/** True when applying the chosen mode disconnects the player, because their live mode differs. */
-	const modeReconnects = $derived(
-		!!authInfo?.loginMode?.current &&
-			modeChoice !== 'unset' &&
-			authInfo.loginMode.current !== modeChoice
-	);
-
-	async function doLoginMode(): Promise<void> {
-		modeBusy = true;
-
-		const name = detail?.username ?? '';
-		const note = Notify.loading(t('web.playerDetail.settingLoginMode', { name }));
-
-		try {
-			const result = await post(`/players/${encodeURIComponent(ref)}/auth`, {
-				action: 'mode',
-				mode: modeChoice,
-				forever: modeChoice !== 'unset' && modeForever
-			});
-
-			if (result.ok === false) {
-				throw new Error(result.error ?? 'the proxy refused the change');
-			}
-
-			modeOpen = false;
-
-			const message = result.data?.disconnected
-				? t('web.playerDetail.loginModeSetDisconnected', { name })
-				: t('web.playerDetail.loginModeSet', { name });
-
-			note.set({ level: 'success', message, closeable: true });
-
-			await loadAuth();
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: t('web.playerDetail.couldNotSetLoginMode'),
-				detail: (err as Error).message,
-				closeable: true
-			});
-		}
-
-		modeBusy = false;
-	}
-
-	/** Have luna-auth forget its cached verdict on the name and ask Mojang now. */
-	async function doPremiumCheck(): Promise<void> {
-		premiumBusy = true;
-
-		const name = detail?.username ?? '';
-		const note = Notify.loading(t('web.playerDetail.checkingWithMojang', { name }));
-
-		try {
-			const result = await post(`/players/${encodeURIComponent(ref)}/auth`, { action: 'premium-check' });
-
-			if (result.ok === false) {
-				throw new Error(result.error ?? 'the proxy refused the request');
-			}
-
-			if (authInfo && result.data?.loginMode) {
-				authInfo = { ...authInfo, loginMode: result.data.loginMode };
-			}
-
-			note.set({
-				level: 'success',
-				message: t('web.playerDetail.checkedWithMojang', { name }),
-				closeable: true
-			});
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: t('web.playerDetail.couldNotCheckWithMojang'),
-				detail: (err as Error).message,
-				closeable: true
-			});
-		}
-
-		premiumBusy = false;
-	}
-
-	const modeChoices = $derived([
-		{ value: 'online', label: t('web.playerDetail.loginModeOnline') },
-		{ value: 'offline', label: t('web.playerDetail.loginModeOffline') },
-		{ value: 'unset', label: t('web.playerDetail.loginModeUnset') }
-	]);
-
-	// ------------------------------------------------------------------ economy
-
-	const vaultCells: InfoCell[] = $derived(
-		vaultInfo
-			? [
-					{ label: t('web.playerDetail.balance'), value: vaultInfo.balanceFormatted },
-					{
-						label: t('web.playerDetail.leaderboardRank'),
-						value: vaultInfo.rank ? `#${vaultInfo.rank} of ${vaultInfo.accountCount}` : '–'
-					},
-					{ label: t('web.playerDetail.transactions'), value: vaultInfo.summary.transactionCount },
-					{ label: t('web.playerDetail.totalReceived'), value: vaultInfo.summary.receivedFormatted },
-					{ label: t('web.playerDetail.totalSpent'), value: vaultInfo.summary.sentFormatted },
-					{
-						label: t('web.playerDetail.firstTransaction'),
-						value: vaultInfo.summary.firstAtEpochMillis
-							? fmtDateTime(vaultInfo.summary.firstAtEpochMillis)
-							: '–',
-						time: vaultInfo.summary.firstAtEpochMillis || null
-					},
-					{
-						label: t('web.playerDetail.lastTransaction'),
-						value: vaultInfo.summary.lastAtEpochMillis
-							? fmtDateTime(vaultInfo.summary.lastAtEpochMillis)
-							: '–',
-						time: vaultInfo.summary.lastAtEpochMillis || null
-					}
-				]
-			: []
-	);
-
-	const txCols: Column[] = $derived([
-		{ id: 'time', label: t('web.playerDetail.time'), width: 180, sortable: true },
-		{ id: 'direction', label: t('web.playerDetail.direction'), width: 120 },
-		{ id: 'amount', label: t('web.playerDetail.amount'), width: 150, sortable: true },
-		{ id: 'counterparty', label: t('web.playerDetail.counterparty'), minWidth: 160 },
-		{ id: 'source', label: t('web.playerDetail.source'), width: 140 },
-		{ id: 'details', label: t('web.playerDetail.details') }
-	]);
-
-	// ------------------------------------------------------------- permissions
-
-	async function editGroups(action: 'add' | 'remove' | 'set', group: string): Promise<void> {
-		await act(
-			() => post(`/players/${encodeURIComponent(ref)}/permissions`, { op: 'group', action, group }),
-			`Updating groups…`,
-			`Group ${group} ${action === 'add' ? 'added' : action === 'remove' ? 'removed' : 'set as the only group'}`
-		);
-
-		await loadPermissions();
-	}
-
-	async function addNode(): Promise<void> {
-		const key = nodeKey.trim();
-
-		if (!key) {
-			return;
-		}
-
-		await act(
-			() =>
-				post(`/players/${encodeURIComponent(ref)}/permissions`, {
-					op: 'node',
-					action: 'add',
-					key,
-					value: nodeGrant,
-					...(nodeServer ? { contexts: { server: nodeServer } } : {})
-				}),
-			`Adding ${key}…`,
-			`Node ${key} added`
-		);
-
-		nodeKey = '';
-		await loadPermissions();
-	}
-
-	async function removeNode(node: PermNode): Promise<void> {
-		const contexts: Record<string, string> = {};
-
-		for (const pair of node.contexts) {
-			contexts[pair.key] = pair.value;
-		}
-
-		await act(
-			() =>
-				post(`/players/${encodeURIComponent(ref)}/permissions`, {
-					op: 'node',
-					action: 'remove',
-					key: node.key,
-					contexts
-				}),
-			`Removing ${node.key}…`,
-			`Node ${node.key} removed`
-		);
-
-		await loadPermissions();
-	}
-
-	function openNodeEditor(node: PermNode | null): void {
-		nodeBeingEdited = node;
-		nodeEditorOpen = true;
-	}
-
-	/** Apply the node editor's result to the user: an edit removes the original first. */
-	async function saveUserNode(spec: NodeSpec): Promise<void> {
-		const original = nodeBeingEdited;
-		const userPath = `/players/${encodeURIComponent(ref)}/permissions`;
-
-		await act(
-			async () => {
-				if (original) {
-					const originalContexts: Record<string, string> = {};
-
-					for (const pair of original.contexts) {
-						originalContexts[pair.key] = pair.value;
-					}
-
-					await post(userPath, {
-						op: 'node',
-						action: 'remove',
-						key: original.key,
-						contexts: originalContexts
-					});
-				}
-
-				return await post(userPath, {
-					op: 'node',
-					action: 'add',
-					key: spec.key,
-					value: spec.value,
-					...(spec.expirySeconds > 0 ? { expirySeconds: spec.expirySeconds } : {}),
-					...(Object.keys(spec.contexts).length > 0 ? { contexts: spec.contexts } : {})
-				});
-			},
-			original ? `Saving ${spec.key}…` : `Adding ${spec.key}…`,
-			original ? `Node ${spec.key} saved` : `Node ${spec.key} added`
-		);
-
-		await loadPermissions();
-	}
-
-	// GitHub-style ramp for the play calendar: an empty day has to read as empty,
-	// so the low stop is the panel's own hover tint rather than the lighter track.
-	const PLAY_RAMP = ['var(--bg-hover)', 'var(--success)'];
-
-	/**
-	 * Play sessions as one reading per day each session touched, so the calendar
-	 * shades a day by the time actually played on it: a session running past
-	 * midnight is split at the boundary instead of being credited whole to the day
-	 * it started in, which is what a long night would otherwise look like.
-	 */
-	const playPoints: CalendarPoint[] = $derived.by(() => {
-		const points: CalendarPoint[] = [];
-
-		for (const session of sessions) {
-			const startAt = session.connectedAtEpochMillis;
-
-			// an open session is still running, so it counts up to now; a closed one
-			// with no disconnect timestamp falls back to its own recorded duration
-			const endAt = session.open
-				? Date.now()
-				: session.disconnectedAtEpochMillis > startAt
-					? session.disconnectedAtEpochMillis
-					: startAt + Math.max(0, session.durationMillis);
-
-			if (endAt <= startAt) {
-				// a session with nothing on the clock still says the player was here
-				points.push({ at: startAt, value: 0 });
-				continue;
-			}
-
-			let cursor = startAt;
-
-			while (cursor < endAt) {
-				const date = new Date(cursor);
-				const midnight = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime();
-				const until = Math.min(endAt, midnight);
-
-				points.push({ at: cursor, value: until - cursor });
-				cursor = until;
-			}
-		}
-
-		return points;
-	});
-
-	// the range ends today rather than at the last session, so a player who
-	// stopped playing shows the gap since instead of ending on their last day
-	const playRangeEnd = $derived(sessions.length > 0 ? Date.now() : null);
-
-	// how many sessions made up the day's total, which the duration alone hides
-	const playDayDetails = $derived((day: CalendarDay): OverviewDetail[] => [
-		{ key: t('web.playerDetail.sessions'), value: String(day.count), mono: true }
-	]);
-
-	const sessionCols: Column[] = $derived([
-		{ id: 'connected', label: t('web.playerDetail.connected'), sortable: true },
-		{ id: 'server', label: t('web.playerDetail.backend'), sortable: true },
-		{ id: 'duration', label: t('web.playerDetail.duration'), sortable: true },
-		{ id: 'ended', label: t('web.playerDetail.disconnected') }
-	]);
-
-	const chatCols: Column[] = $derived([
-		{ id: 'time', label: t('web.playerDetail.time'), width: 180, sortable: true },
-		{ id: 'type', label: t('web.playerDetail.type'), width: 140 },
-		{ id: 'server', label: t('web.playerDetail.backend'), width: 130 },
-		{ id: 'content', label: t('web.playerDetail.content') }
-	]);
-
-	const modCols: Column[] = $derived([
-		{ id: 'time', label: t('web.playerDetail.time'), width: 180, sortable: true },
-		{ id: 'action', label: t('web.playerDetail.action'), width: 150 },
-		{ id: 'actor', label: t('web.playerDetail.by'), width: 130 },
-		{ id: 'server', label: t('web.playerDetail.where'), width: 140 },
-		{ id: 'reason', label: t('web.playerDetail.reason') }
-	]);
-
-	const nodeCols: Column[] = $derived([
-		{ id: 'key', label: t('web.playerDetail.node2'), minWidth: 240 },
-		{ id: 'value', label: t('web.playerDetail.value'), width: 110 },
-		{ id: 'type', label: t('web.playerDetail.type'), width: 130 },
-		{ id: 'contexts', label: t('web.playerDetail.contexts') },
-		{ id: 'expiry', label: t('web.playerDetail.expires') }
-	]);
-
-	function nodeActions(node: PermNode): ContextMenuItem[] {
-		return [
-			{
-				label: t('web.playerDetail.editNode'),
-				icon: 'pen',
-				action: () => openNodeEditor(node)
-			},
-			{ separator: true },
-			{
-				label: t('web.playerDetail.removeNode'),
-				icon: 'trash',
-				color: 'danger',
-				action: () => void removeNode(node)
-			}
-		];
+		await refresh();
 	}
 </script>
 
-<svelte:head><title>{detail?.username ?? 'Player'} | Luna Console</title></svelte:head>
+<svelte:head><title>{detail?.username ?? ref} | Luna Console</title></svelte:head>
 
 <PageHeader title={detail?.username ?? ref} info={t('web.guide.player')} description={detail?.uuid ?? ''}>
+	{#snippet extra()}
+		{#if detail}
+			{#if detail.online}
+				<StatusBadge state="ok" label={t('web.playerDetail.onlineOn', { server: detail.server })} />
+			{:else}
+				<StatusBadge state="stopped" label={t('web.playerDetail.offline')} />
+			{/if}
+			{#if standing && standing.banned.length > 0}
+				<StatusBadge
+					state="failed"
+					label={t('web.playerDetail.bannedOnCount', { count: standing.banned.length })}
+					detail={standing.banned}
+				/>
+			{/if}
+			{#if auth?.locked}
+				<StatusBadge state="warning" label={t('web.playerDetail.locked')} />
+			{/if}
+		{/if}
+	{/snippet}
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="player-detail" />
 		<Dropdown label={t('web.playerDetail.actions')} disabled={!detail} menu={headerActions()} />
@@ -1556,26 +410,36 @@
 
 {#if notFound}
 	<Flash kind="error">
-		<b>{t('web.playerDetail.unknownPlayer')}</b> {t('web.playerDetail.theDirectoryHasNo')} <code>{ref}</code>. Profiles are
-		{t('web.playerDetail.createdOnAPlayer')}
+		<b>{t('web.playerDetail.unknownPlayer')}</b>
+		{t('web.playerDetail.unknownPlayerDetail', { player: ref })}
 	</Flash>
-{:else if !available}
+{:else if !available && !detail}
 	<Flash kind="warning">
-		<b>{t('web.playerDetail.lunacoreIsNotAnswering')}</b> {problem}. The proxy may be stopped, or running a build
-		{t('web.playerDetail.withoutThePlayerDirectory')}
+		<b>{t('web.playerDetail.lunacoreIsNotAnswering')}</b>
+		{t('web.playerDetail.lunacoreDownDetail', { problem })}
 	</Flash>
 {:else if detail}
+	{#if !available}
+		<Flash kind="warning">
+			<b>{t('web.playerDetail.lunacoreIsNotAnswering')}</b>
+			{t('web.playerDetail.lunacoreDownDetail', { problem })}
+		</Flash>
+	{/if}
+
 	<OverviewBar title={t('web.playerDetail.playerOverview')}>
 		<OverviewCell label={t('web.playerDetail.status')}>
 			{#if detail.online}
-				<StatusBadge state="ok" label="Online; {detail.server}" />
+				<StatusBadge state="ok" label={t('web.players.online')} />
+				<ScreenLink href="/instances/{detail.server}/players/{detail.uuid}">{detail.server}</ScreenLink>
 			{:else}
 				<StatusBadge state="stopped" label={t('web.playerDetail.offline')} />
 			{/if}
 		</OverviewCell>
-		<OverviewCell label={t('web.playerDetail.balance')}>
-			{#if vaultAvailable && vaultInfo}
-				<span class="balance">{vaultInfo.balanceFormatted}</span>
+		<OverviewCell label={detail.online ? t('web.playerDetail.thisSession') : t('web.playerDetail.lastSeen')}>
+			{#if detail.online}
+				{fmtDuration(detail.sessionMillis)}
+			{:else if detail.lastSeenAtEpochMillis}
+				<DateTime at={detail.lastSeenAtEpochMillis} text={fmtDateTime(detail.lastSeenAtEpochMillis)} />
 			{:else}
 				<span class="dim">–</span>
 			{/if}
@@ -1584,986 +448,132 @@
 			{detail.totalPlayMillis ? fmtDuration(detail.totalPlayMillis) : '–'}
 		</OverviewCell>
 		<OverviewCell label={t('web.playerDetail.sessions')}>
-			{detail.sessionCount}
+			<a href={tabHref('sessions')}>{detail.sessionCount.toLocaleString()}</a>
 		</OverviewCell>
-		<OverviewCell label={t('web.playerDetail.chatMessages')}>
-			{detail.chatTotal}
+		<OverviewCell label={t('web.playerDetail.balance')}>
+			{#if vaultAvailable && vault}
+				<a class="balance" href={tabHref('economy')}>{vault.balanceFormatted}</a>
+			{:else}
+				<span class="dim">–</span>
+			{/if}
 		</OverviewCell>
-		<OverviewCell label={t('web.playerDetail.commands')}>
-			{detail.commandTotal}
+		<OverviewCell label={t('web.playerDetail.permissionGroup')}>
+			{#if detail.permissions.available && detail.permissions.primaryGroup}
+				<a href={tabHref('permissions')}>
+					{detail.permissions.primaryGroupDisplay || detail.permissions.primaryGroup}
+				</a>
+			{:else}
+				<span class="dim">–</span>
+			{/if}
 		</OverviewCell>
 		<OverviewCell label={t('web.playerDetail.moderationEntries')}>
-			{detail.moderationTotal}
+			<a href={tabHref('moderation')}>{detail.moderationTotal.toLocaleString()}</a>
 		</OverviewCell>
 	</OverviewBar>
 
-	<div class="columns">
-		<Panel title={t('web.playerDetail.skin')} description={t('web.playerDetail.pickAPoseDragThe')}>
-			<div class="skin">
-				<PlayerSkin3D player={detail.uuid} bust={skinEpoch} />
-			</div>
-		</Panel>
+	<Tabs {tabs} active={tab} />
 
-		<Panel title={t('web.playerDetail.identity')}>
-			<InfoGrid cells={identityCells} columns={[2, 2, 1]}>
-				{#snippet custom(cell)}
-					{#if cell.id === 'resourceId'}
-						<ResourceIdValue value={resourceId('player', detail!.username)} label={cell.label} />
-					{/if}
-				{/snippet}
-			</InfoGrid>
-		</Panel>
+	<div class="tabbody" class:off={tab !== 'overview'}>
+		<OverviewTab
+			{detail}
+			{skinEpoch}
+			{standing}
+			{here}
+			sessions={recentSessions}
+			moderation={recentModeration}
+			{tabHref}
+		/>
 	</div>
 
-	<Tabs
-		tabs={[
-			{ id: 'overview', label: t('web.playerDetail.overview') },
-			{ id: 'account', label: t('web.playerDetail.account') },
-			{ id: 'economy', label: t('web.playerDetail.economy') },
-			{ id: 'sessions', label: t('web.playerDetail.playHistory') },
-			...(Authz.can('chat:ReadPlayer', resourceId('player', page.params.player ?? ''))
-				? [{ id: 'chat', label: t('web.playerDetail.chatCommands') }]
-				: []),
-			{ id: 'permissions', label: t('web.playerDetail.permissions') },
-			{ id: 'moderation', label: t('web.playerDetail.moderation') }
-		]}
-		bind:active={tab}
+	<div class="tabbody" class:bare={tab !== 'account'}>
+		<AccountSecurity
+			bind:this={account}
+			player={ref}
+			username={detail.username}
+			show={tab === 'account'}
+			{auth}
+			available={authAvailable}
+			problem={authProblem}
+			onchanged={refresh}
+		/>
+	</div>
+
+	{#if visited.has('economy')}
+		<div class="tabbody" class:off={tab !== 'economy'}>
+			<EconomyTab
+				player={ref}
+				active={tab === 'economy'}
+				{refreshKey}
+				{vault}
+				available={vaultAvailable}
+				problem={vaultProblem}
+			/>
+		</div>
+	{/if}
+
+	{#if visited.has('sessions')}
+		<div class="tabbody" class:off={tab !== 'sessions'}>
+			<HistoryTab player={ref} active={tab === 'sessions'} {refreshKey} />
+		</div>
+	{/if}
+
+	{#if mayReadChat && visited.has('chat')}
+		<div class="tabbody" class:off={tab !== 'chat'}>
+			<ChatTab player={ref} active={tab === 'chat'} {refreshKey} />
+		</div>
+	{/if}
+
+	{#if visited.has('permissions')}
+		<div class="tabbody" class:off={tab !== 'permissions'}>
+			<PermissionsTab player={ref} active={tab === 'permissions'} {refreshKey} {servers} />
+		</div>
+	{/if}
+
+	<div class="tabbody" class:bare={tab !== 'moderation'}>
+		<ModerationTab
+			bind:this={moderationTab}
+			player={ref}
+			active={tab === 'moderation'}
+			{refreshKey}
+			onchanged={refresh}
+		/>
+	</div>
+
+	<SkinDialog
+		bind:this={skinDialog}
+		player={ref}
+		username={detail.username}
+		online={detail.online}
+		onchanged={skinChanged}
 	/>
-
-	<div class="tabbody">
-		{#if tab === 'overview'}
-			<Panel
-				title={t('web.playerDetail.playtimeByBackend')}
-				description={t('web.playerDetail.closedPlaySessionsOnlyThe')}
-			>
-				{#if detail.playtimeByServer.length > 0}
-					{@const maxPlay = Math.max(...detail.playtimeByServer.map((entry) => entry.playMillis))}
-					<div class="playtimes">
-						{#each detail.playtimeByServer as entry}
-							<div class="playrow">
-								<a class="server" href="/instances/{entry.server}">{entry.server || 'unknown'}</a>
-								<ProgressBar
-									compact
-									value={entry.playMillis}
-									max={maxPlay}
-									color="success"
-									right="{fmtDuration(entry.playMillis)} · {entry.stints} session(s)"
-								/>
-							</div>
-						{/each}
-					</div>
-				{:else}
-					<p class="dim">{t('web.playerDetail.noCompletedPlaySessions')}</p>
-				{/if}
-			</Panel>
-		{:else if tab === 'account'}
-			{#if !authAvailable}
-				<Flash kind="warning">
-					<b>{t('web.playerDetail.lunaAuthIsNot')}</b> {authProblem}. Password administration needs the
-					{t('web.playerDetail.pluginRunningOnThe')}
-				</Flash>
-			{:else if authInfo}
-				{#if authInfo.temporaryPasswordExpired}
-					<Flash kind="warning">
-						This player's temporary password has <b>{t('web.playerDetail.expired')}</b>. Their account has no password
-						{t('web.playerDetail.untilTheyRegisterA')}
-					</Flash>
-				{:else if authInfo.temporaryPassword}
-					<Flash kind="info">
-						This player is using a <b>{t('web.playerDetail.temporaryPassword')}</b>, issued by an administrator. It stops
-						working on {fmtDateTime(authInfo.temporaryPasswordUntilEpochMillis)}, after which the
-						{t('web.playerDetail.accountHasNoPassword')}
-					</Flash>
-				{:else if !authInfo.registered}
-					<Flash kind="info">
-						{t('web.playerDetail.thisPlayerHasNever')}
-						<code>{t('web.playerDetail.register')}</code>, or you can issue a temporary one for them.
-					</Flash>
-				{/if}
-
-				<Panel
-					title={t('web.playerDetail.authentication')}
-					description={t('web.playerDetail.heldByLunaAuthOn')}
-				>
-					<InfoGrid cells={authCells} columns={[4, 2, 1]}>
-						{#snippet custom(cell)}
-							{#if cell.id === 'password' && authInfo?.registered && authInfo.temporaryPassword}
-								Temporary, expires <DateTime
-									at={authInfo.temporaryPasswordUntilEpochMillis}
-									text={fmtDateTime(authInfo.temporaryPasswordUntilEpochMillis)}
-								/>
-							{:else if cell.id === 'lock' && authInfo?.locked}
-								Locked until <DateTime
-									at={authInfo.lockedUntilEpochMillis}
-									text={fmtDateTime(authInfo.lockedUntilEpochMillis)}
-								/>
-							{:else if cell.id === 'session' && authInfo?.session.hasSession}
-								Until <DateTime
-									at={authInfo.session.expiresAtEpochMillis}
-									text={fmtDateTime(authInfo.session.expiresAtEpochMillis)}
-								/>
-							{:else}
-								{cell.value}
-							{/if}
-						{/snippet}
-					</InfoGrid>
-				</Panel>
-
-				<div class="gap"></div>
-
-				{#if authInfo.loginMode}
-					{#if authInfo.loginMode.proxyOnlineMode}
-						<Flash kind="info">{t('web.playerDetail.loginModeProxyOnline')}</Flash>
-					{:else if !authInfo.loginMode.mixedMode}
-						<Flash kind="info">{t('web.playerDetail.loginModeMixedOff')}</Flash>
-					{/if}
-
-					<Panel
-						title={t('web.playerDetail.loginMode')}
-						description={t('web.playerDetail.loginModeDesc')}
-					>
-						{#snippet actions()}
-							<Btn icon="rotate" loading={premiumBusy} disabled={premiumBusy} onclick={doPremiumCheck}>
-								{t('web.playerDetail.checkWithMojang')}
-							</Btn>
-							<Btn
-								variant="primary"
-								icon="userShield"
-								disabled={authInfo?.loginMode?.proxyOnlineMode || !authInfo?.loginMode?.mixedMode}
-								onclick={openLoginMode}
-							>
-								{t('web.playerDetail.changeLoginMode')}
-							</Btn>
-						{/snippet}
-
-						<InfoGrid cells={loginModeCells} columns={[4, 2, 1]}>
-							{#snippet custom(cell)}
-								{#if cell.id === 'preference' && authInfo?.loginMode?.preference && !authInfo.loginMode.preference.rememberForever}
-									{@const preference = authInfo.loginMode.preference}
-									{@const split = tSplit('web.playerDetail.loginModeUntil', 'date', { mode: modeLabel(preference.mode) })}
-									{split.before}<DateTime
-										at={preference.expiresAtEpochMillis}
-										text={fmtDateTime(preference.expiresAtEpochMillis)}
-									/>{split.after}
-								{:else if cell.id === 'premium' && authInfo?.loginMode && authInfo.loginMode.premium.checkedAtEpochMillis && DATED_PREMIUM_SOURCES.has(authInfo.loginMode.premium.source)}
-									{@const premium = authInfo.loginMode.premium}
-									{@const split = tSplit(PREMIUM_SOURCES[premium.source] ?? '', 'date', { error: premium.error })}
-									{premiumVerdict(authInfo.loginMode)} · {split.before}<DateTime
-										at={premium.checkedAtEpochMillis}
-										text={fmtDateTime(premium.checkedAtEpochMillis)}
-									/>{split.after}
-								{:else}
-									{cell.value}
-								{/if}
-							{/snippet}
-						</InfoGrid>
-					</Panel>
-				{:else}
-					<Flash kind="info">{t('web.playerDetail.loginModeUnavailable')}</Flash>
-				{/if}
-			{/if}
-		{:else if tab === 'economy'}
-			{#if !vaultAvailable}
-				<Flash kind="warning">
-					<b>{t('web.playerDetail.lunavaultIsNotAnswering')}</b> {vaultProblem}. Balances and transactions come from
-					{t('web.playerDetail.thePluginOnThe')}
-				</Flash>
-			{:else}
-				{#if vaultInfo && !vaultInfo.hasAccount}
-					<Flash kind="info">
-						{t('web.playerDetail.thisPlayerHasNo')}
-					</Flash>
-				{/if}
-
-				<Panel
-					title={t('web.playerDetail.wallet')}
-					description={t('web.playerDetail.heldByLunavaultOnThe')}
-				>
-					<InfoGrid cells={vaultCells} columns={[4, 2, 1]} />
-				</Panel>
-
-				<div class="gap"></div>
-
-				<Panel flush>
-					<ResourceTable
-						tableId="player-transactions"
-						loading={!tabLoaded.economy}
-						columns={txCols}
-						rows={vaultTx}
-						getId={(entry) => entry.id}
-						searchValue={(entry) => `${entry.counterpartyName} ${entry.source} ${entry.details}`}
-						searchPlaceholder={t('web.playerDetail.findInTransactions')}
-						noun={t('web.playerDetail.transaction')}
-						pageSize={25}
-						sortValue={(entry, col) =>
-							col === 'time'
-								? entry.atEpochMillis
-								: col === 'amount'
-									? entry.amountMinor
-									: null}
-						emptyTitle={t('web.playerDetail.noTransactions')}
-						emptyText={t('web.playerDetail.everyPaymentRewardAndAdmin')}
-					>
-						{#snippet cell(entry, col)}
-							{#if col === 'time'}
-								<span class="mono dim"><DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} /></span>
-							{:else if col === 'direction'}
-								<StatusBadge
-									state={entry.direction === 'in'
-										? 'passed'
-										: entry.direction === 'out'
-											? 'warning'
-											: 'stopped'}
-									label={entry.direction === 'in'
-										? 'received'
-										: entry.direction === 'out'
-											? 'paid'
-											: 'adjusted'}
-								/>
-							{:else if col === 'amount'}
-								<span class="amount {entry.direction}">
-									{entry.direction === 'in' ? '+' : entry.direction === 'out' ? '−' : '±'}{entry
-										.amountFormatted}
-								</span>
-							{:else if col === 'counterparty'}
-								{#if entry.system}
-									<span class="dim">{t('web.playerDetail.system')}</span>
-								{:else if entry.counterpartyUuid}
-									<PlayerName
-										player={entry.counterpartyUuid}
-										name={entry.counterpartyName}
-									/>
-								{:else}
-									{entry.counterpartyName}
-								{/if}
-							{:else if col === 'source'}
-								<span class="mono">{entry.source || '–'}</span>
-							{:else if col === 'details'}
-								{entry.details || '–'}
-							{/if}
-						{/snippet}
-					</ResourceTable>
-					{#if vaultTx.length < vaultTotal}
-						<p class="capped dim">
-							{t('web.playerDetail.newestRecordsShown', {
-								shown: vaultTx.length,
-								total: vaultTotal
-							})}
-						</p>
-					{/if}
-				</Panel>
-			{/if}
-		{:else if tab === 'sessions'}
-			<Panel
-				title={t('web.playerDetail.playCalendar')}
-				description={t('web.playerDetail.playCalendarHint')}
-			>
-				<CalendarGraph
-					points={playPoints}
-					to={playRangeEnd}
-					ramp={PLAY_RAMP}
-					valueFormat={(value) => (value > 0 ? fmtDuration(value) : '0s')}
-					dayDetails={playDayDetails}
-					empty={t('web.playerDetail.noPlayDays')}
-				/>
-			</Panel>
-			<div class="gap"></div>
-			<Panel flush>
-				<ResourceTable
-					tableId="player-sessions"
-					loading={!tabLoaded.sessions}
-					columns={sessionCols}
-					rows={sessions}
-					getId={(session) => String(session.id)}
-					searchValue={(session) => session.server}
-					searchPlaceholder={t('web.playerDetail.findBackend')}
-					noun={t('web.playerDetail.session')}
-					pageSize={25}
-					sortValue={(session, col) =>
-						col === 'connected'
-							? session.connectedAtEpochMillis
-							: col === 'server'
-								? session.server
-								: col === 'duration'
-									? session.durationMillis
-									: null}
-					emptyTitle={t('web.playerDetail.noSessionsRecorded')}
-					emptyText={t('web.playerDetail.playSessionsAreRecordedFrom')}
-				>
-					{#snippet cell(session, col)}
-						{#if col === 'connected'}
-							<DateTime at={session.connectedAtEpochMillis} text={fmtDateTime(session.connectedAtEpochMillis)} />
-						{:else if col === 'server'}
-							<a href="/instances/{session.server}">{session.server}</a>
-						{:else if col === 'duration'}
-							{#if session.open}
-								<StatusBadge state="ok" label={t('web.playerDetail.ongoing')} />
-							{:else}
-								{fmtDuration(session.durationMillis)}
-							{/if}
-						{:else if col === 'ended'}
-							{#if session.open}
-								–
-							{:else}
-								<DateTime at={session.disconnectedAtEpochMillis} text={fmtDateTime(session.disconnectedAtEpochMillis)} />
-							{/if}
-						{/if}
-					{/snippet}
-				</ResourceTable>
-				{#if sessions.length < sessionsTotal}
-					<p class="capped dim">
-						{t('web.playerDetail.newestRecordsShown', {
-							shown: sessions.length,
-							total: sessionsTotal
-						})}
-					</p>
-				{/if}
-			</Panel>
-		{:else if tab === 'chat'}
-			<Panel flush>
-				<ResourceTable
-					tableId="player-chat"
-					loading={!tabLoaded.chat}
-					columns={chatCols}
-					rows={chat}
-					getId={(entry) => String(entry.id)}
-					searchValue={(entry) => `${entry.content} ${entry.server} ${entry.type}`}
-					searchPlaceholder={t('web.playerDetail.findInMessages')}
-					noun={t('web.playerDetail.entry')}
-					pageSize={50}
-					sortValue={(entry, col) => (col === 'time' ? entry.atEpochMillis : null)}
-					emptyTitle={t('web.playerDetail.nothingRecorded')}
-					emptyText={t('web.playerDetail.chatAndCommandsAreRecorded')}
-				>
-					{#snippet toolbar()}
-						<Select
-							label={t('web.playerDetail.filterType')}
-							bind:value={chatType}
-							width="14rem"
-							options={[
-								{ value: '', label: t('web.playerDetail.chatAndCommands') },
-								{ value: 'chat', label: t('web.playerDetail.chatOnly') },
-								{ value: 'command', label: t('web.playerDetail.commandsOnly') }
-							]}
-							onchange={() => void loadChat()}
-						/>
-					{/snippet}
-					{#snippet cell(entry, col)}
-						{#if col === 'time'}
-							<span class="mono dim"><DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} /></span>
-						{:else if col === 'type'}
-							<StatusBadge
-								state={entry.type === 'command' ? 'warning' : 'passed'}
-								label={entry.type}
-							/>
-						{:else if col === 'server'}
-							{entry.server || '–'}
-						{:else if col === 'content'}
-							<span class="mono content">{entry.type === 'command' ? '/' : ''}{entry.content}</span>
-						{/if}
-					{/snippet}
-				</ResourceTable>
-				{#if chat.length < chatTotal}
-					<p class="capped dim">
-						{t('web.playerDetail.newestRecordsShown', { shown: chat.length, total: chatTotal })}
-					</p>
-				{/if}
-			</Panel>
-		{:else if tab === 'permissions'}
-			{#if !permsAvailable}
-				<Flash kind="warning">
-					<b>{t('web.playerDetail.luckpermsIsNotAnswering')}</b> {permsProblem}
-				</Flash>
-			{:else}
-				<Panel
-					title={t('web.playerDetail.groups')}
-					description={t('web.playerDetail.primaryGroupIsTheOne')}
-				>
-					<div class="groups">
-						{#each userGroups as group}
-							<span class="group" class:primary={group === primaryGroup}>
-								<a href="/permissions/{encodeURIComponent(group)}">{group}</a>
-								{#if group === primaryGroup}
-									<span class="tagnote">{t('web.playerDetail.primary')}</span>
-								{/if}
-								<button
-									class="chipbtn"
-									title="Remove from {group}"
-									onclick={() => void editGroups('remove', group)}
-								>×</button>
-							</span>
-						{:else}
-							<span class="dim">{t('web.playerDetail.noGroupMembershipsLuckperms')}</span>
-						{/each}
-					</div>
-					<div class="groupadd">
-						<Select
-							bind:value={groupPick}
-							options={allGroups.map((group) => ({ value: group.name, label: group.name }))}
-							width="14rem"
-						/>
-						<Btn icon="plus" onclick={() => void editGroups('add', groupPick)} disabled={!groupPick}>
-							{t('web.playerDetail.addGroup')}
-						</Btn>
-						<Btn onclick={() => void editGroups('set', groupPick)} disabled={!groupPick}>
-							{t('web.playerDetail.setAsOnlyGroup')}
-						</Btn>
-					</div>
-				</Panel>
-				<div class="gap"></div>
-				<Panel flush title={t('web.playerDetail.permissionNodes')} count={userNodes.length}>
-					<div class="nodeadd">
-						<input class="input" bind:value={nodeKey} placeholder={t('web.playerDetail.permissionNodeKey')} />
-						<label class="grant">
-							<Toggle checked={nodeGrant} onchange={(checked) => (nodeGrant = checked)} />
-							<span>{nodeGrant ? 'granted' : 'negated'}</span>
-						</label>
-						<Select
-							bind:value={nodeServer}
-							options={[
-								{ value: '', label: t('web.playerDetail.everyServer') },
-								...servers.map((name) => ({ value: name, label: `server=${name}` }))
-							]}
-							width="13rem"
-						/>
-						<Btn variant="primary" icon="plus" onclick={addNode} disabled={!nodeKey.trim()}>{t('web.playerDetail.addNode')}</Btn>
-					</div>
-					<ResourceTable
-						tableId="player-nodes"
-						loading={!tabLoaded.permissions}
-						columns={nodeCols}
-						rows={userNodes}
-						getId={(node) => `${node.key}|${node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(',')}`}
-						searchValue={(node) => node.key}
-						searchPlaceholder={t('web.playerDetail.findNode')}
-						noun={t('web.playerDetail.node')}
-						pageSize={25}
-						rowActions={nodeActions}
-						rowLabel={(node) => node.key}
-						emptyTitle={t('web.playerDetail.noNodesOnThisUser')}
-						emptyText={t('web.playerDetail.directNodesOnlyPermissionsInherited')}
-					>
-						{#snippet cell(node, col)}
-							{#if col === 'key'}
-								<span class="mono">{node.key}</span>
-							{:else if col === 'value'}
-								<StatusBadge state={node.value ? 'passed' : 'failed'} label={node.value ? 'true' : 'false'} />
-							{:else if col === 'type'}
-								<span class="dim">{node.type}</span>
-							{:else if col === 'contexts'}
-								{#if node.contexts.length > 0}
-									<span class="mono dim">
-										{node.contexts.map((pair) => `${pair.key}=${pair.value}`).join(', ')}
-									</span>
-								{:else}
-									<span class="dim">{t('web.playerDetail.global')}</span>
-								{/if}
-							{:else if col === 'expiry'}
-								<DateTime
-									at={node.expiryEpochMillis || null}
-									text={node.expiryEpochMillis ? fmtDateTime(node.expiryEpochMillis) : undefined}
-									empty="never"
-								/>
-							{/if}
-						{/snippet}
-					</ResourceTable>
-				</Panel>
-			{/if}
-		{:else if tab === 'moderation'}
-			<Panel flush>
-				<ResourceTable
-					tableId="player-moderation"
-					loading={!tabLoaded.moderation}
-					columns={modCols}
-					rows={moderation}
-					getId={(entry) => String(entry.id)}
-					searchValue={(entry) => `${entry.action} ${entry.actor} ${entry.reason} ${entry.server}`}
-					searchPlaceholder={t('web.playerDetail.findEntry')}
-					noun={t('web.playerDetail.entry')}
-					pageSize={25}
-					sortValue={(entry, col) => (col === 'time' ? entry.atEpochMillis : null)}
-					emptyTitle={t('web.playerDetail.aCleanRecord')}
-					emptyText={t('web.playerDetail.kicksBansWhitelistAndOperator')}
-				>
-					{#snippet cell(entry, col)}
-						{#if col === 'time'}
-							<span class="mono dim"><DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} /></span>
-						{:else if col === 'action'}
-							<StatusBadge
-								state={['ban', 'kick', 'ban-ip', 'bans-add'].includes(entry.action) ? 'failed' : 'passed'}
-								label={entry.action}
-							/>
-						{:else if col === 'actor'}
-							{entry.actor || '–'}
-						{:else if col === 'server'}
-							{entry.server || 'network'}
-						{:else if col === 'reason'}
-							{entry.reason || entry.details || '–'}
-						{/if}
-					{/snippet}
-				</ResourceTable>
-				{#if moderation.length < moderationTotal}
-					<p class="capped dim">
-						{t('web.playerDetail.newestRecordsShown', {
-							shown: moderation.length,
-							total: moderationTotal
-						})}
-					</p>
-				{/if}
-			</Panel>
-		{/if}
-	</div>
 {/if}
 
-<Modal title="Disconnect {detail?.username ?? 'player'}" bind:open={kickOpen}>
-	<p>{t('web.playerDetail.theyAreRemovedFrom')}</p>
-	<label class="field">
-		<span class="lbl">{t('web.playerDetail.reasonShownToThe')}</span>
-		<input class="input" bind:value={kickReason} placeholder={t('web.playerDetail.eGRestartingTheLobby')} />
-	</label>
-	<label class="force">
-		<Checkbox checked={kickForce} label={t('web.instancePlayers.force')} onchange={(on) => (kickForce = on)} />
-		<span>
-			{t('web.instancePlayers.force')}
-			<span class="dim">{t('web.instancePlayers.forceHint')}</span>
-		</span>
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (kickOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
-		<Btn variant="danger" onclick={doKick}>{t('web.playerDetail.disconnect')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title="Message {detail?.username ?? 'player'}" bind:open={messageOpen}>
-	<label class="field">
-		<span class="lbl">{t('web.playerDetail.message')}</span>
-		<input class="input" bind:value={messageText} placeholder={t('web.playerDetail.typeAMessage')} />
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (messageOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
-		<Btn variant="primary" disabled={!messageText.trim()} onclick={doMessage}>{t('web.playerDetail.send')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title="Move {detail?.username ?? 'player'}" bind:open={transferOpen}>
-	<div class="field">
-		<span class="lbl">{t('web.playerDetail.destinationBackend')}</span>
-		<Select
-			bind:value={transferTo}
-			width="100%"
-			options={servers
-				.filter((name) => name !== detail?.server)
-				.map((name) => ({ value: name, label: name }))}
-		/>
-	</div>
-	{#snippet footer()}
-		<Btn onclick={() => (transferOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
-		<Btn variant="primary" disabled={!transferTo} onclick={doTransfer}>{t('web.playerDetail.move')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title="{ACTION_LABELS[moderateAction] ?? moderateAction}: {detail?.username ?? ref}" bind:open={moderateOpen}>
-	<div class="field">
-		<span class="lbl">{t('web.playerDetail.instances')}</span>
-		<span class="hint">{t('web.playerDetail.theChangeIsApplied')}</span>
-		<MultiSelect
-			bind:value={moderateInstances}
-			width="100%"
-			options={instances.map((name) => ({ value: name, label: name }))}
-		/>
-	</div>
-	{#if moderateAction === 'ban'}
-		<label class="field">
-			<span class="lbl">{t('web.playerDetail.reason')}</span>
-			<span class="hint">{t('web.playerDetail.recordedInTheModeration')}</span>
-			<input class="input" bind:value={moderateReason} placeholder={t('web.playerDetail.eGGriefingOnSurvival')} />
-		</label>
-	{/if}
-	{#snippet footer()}
-		<Btn onclick={() => (moderateOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
-		<Btn
-			variant={moderateAction === 'ban' ? 'danger' : 'primary'}
-			disabled={moderateInstances.length === 0}
-			onclick={doModerate}
-		>
-			{ACTION_LABELS[moderateAction] ?? 'Apply'}
-		</Btn>
-	{/snippet}
-</Modal>
-
-<NodeEditorModal
-	bind:open={nodeEditorOpen}
-	node={nodeBeingEdited}
-	{servers}
-	onsubmit={(spec) => void saveUserNode(spec)}
-/>
-
-<Modal title="Change {detail?.username ?? 'player'}'s skin" bind:open={skinOpen}>
-	<div class="field">
-		<span class="lbl">{t('web.playerDetail.source')}</span>
-		<Select
-			bind:value={skinMode}
-			width="100%"
-			options={[
-				{ value: 'upload', label: t('web.playerDetail.uploadASkinFilePng') },
-				{ value: 'url', label: t('web.playerDetail.imageUrl') },
-				{ value: 'name', label: t('web.playerDetail.mirrorAMojangAccount') },
-				{ value: 'reset', label: t('web.playerDetail.resetBackToTheirOwn') }
-			]}
-		/>
-	</div>
-
-	{#if skinMode === 'upload'}
-		<div class="field">
-			<span class="lbl">{t('web.playerDetail.skinFile')}</span>
-			<span class="hint">
-				{t('web.playerDetail.a6464Or')}
-			</span>
-			<FileDrop bind:file={skinFile} accept=".png" hint={t('web.playerDetail.dropASkinPngHere')} />
-		</div>
-	{:else if skinMode === 'url'}
-		<label class="field">
-			<span class="lbl">{t('web.playerDetail.imageUrl')}</span>
-			<span class="hint">{t('web.playerDetail.mustBePubliclyReachable')}</span>
-			<input class="input mono" bind:value={skinUrl} placeholder={t('web.playerDetail.httpsSkinPng')} />
-		</label>
-	{:else if skinMode === 'name'}
-		<label class="field">
-			<span class="lbl">{t('web.playerDetail.mojangAccount')}</span>
-			<span class="hint">{t('web.playerDetail.thePlayerGetsThis')}</span>
-			<input class="input" bind:value={skinName} placeholder={t('web.playerDetail.eGNotch')} />
-		</label>
-	{:else}
-		<p>
-			{t('web.playerDetail.skinsrestorerForgetsTheStored')}
-		</p>
-	{/if}
-
-	{#if skinMode === 'upload' || skinMode === 'url'}
-		<div class="field">
-			<span class="lbl">{t('web.playerDetail.armModel')}</span>
-			<Select
-				bind:value={skinVariant}
-				width="100%"
-				options={[
-					{ value: '', label: t('web.playerDetail.detectAutomatically') },
-					{ value: 'classic', label: t('web.playerDetail.classic4PxArms') },
-					{ value: 'slim', label: t('web.playerDetail.slim3PxArms') }
-				]}
-			/>
-		</div>
-	{/if}
-
-	{#snippet footer()}
-		<Btn onclick={() => (skinOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
-		<Btn
-			variant={skinMode === 'reset' ? 'danger' : 'primary'}
-			disabled={!skinModeValid || skinBusy}
-			loading={skinBusy}
-			onclick={doChangeSkin}
-		>
-			{skinMode === 'reset' ? 'Reset skin' : 'Change skin'}
-		</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title="Reset {detail?.username ?? 'player'}'s password" bind:open={resetOpen}>
-	<p>
-		The password on file is cleared. {detail?.username} keeps their profile, playtime and
-		permissions, but cannot log in until they set a new password with <code>{t('web.playerDetail.register')}</code>.
-	</p>
-	<p class="dim">
-		{t('web.playerDetail.ifTheyNeedTo')}
-	</p>
-	{#snippet footer()}
-		<Btn onclick={() => (resetOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
-		<Btn variant="danger" onclick={doReset}>{t('web.playerDetail.resetPassword')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title="Temporary password for {detail?.username ?? 'player'}" bind:open={tempOpen}>
-	<label class="field">
-		<span class="lbl">{t('web.playerDetail.password')}</span>
-		<span class="hint">
-			{t('web.playerDetail.leaveEmptyAndThe')}
-		</span>
-		<input class="input mono" bind:value={tempPassword} placeholder={t('web.playerDetail.generateOneForMe')} />
-	</label>
-
-	<div class="field">
-		<span class="lbl">{t('web.playerDetail.validFor')}</span>
-		<span class="hint">
-			{t('web.playerDetail.whenItExpiresThe')}
-		</span>
-		<Select bind:value={tempMinutes} width="100%" options={TEMP_LIFETIMES} />
-	</div>
-
-	{#if authInfo?.online}
-		<p class="dim">
-			{detail?.username} is online and will be disconnected, so the new password applies on their
-			{t('web.playerDetail.nextLogin')}
-		</p>
-	{/if}
-
-	{#snippet footer()}
-		<Btn onclick={() => (tempOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
-		<Btn
-			variant="primary"
-			disabled={tempBusy || (tempPassword.trim().length > 0 && tempPassword.trim().length < 6)}
-			loading={tempBusy}
-			onclick={doTemporary}
-		>
-			{t('web.playerDetail.issuePassword')}
-		</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title={t('web.playerDetail.loginModeDialogTitle', { name: detail?.username ?? '' })} bind:open={modeOpen}>
-	<div class="field">
-		<span class="lbl">{t('web.playerDetail.loginModeField')}</span>
-		<span class="hint">{t('web.playerDetail.loginModeFieldHint')}</span>
-		<Select bind:value={modeChoice} width="100%" options={modeChoices} />
-	</div>
-
-	{#if modeChoice !== 'unset'}
-		<label class="force">
-			<Checkbox
-				checked={modeForever}
-				label={t('web.playerDetail.loginModeKeep')}
-				onchange={(value: boolean) => (modeForever = value)}
-			/>
-			<span>
-				{t('web.playerDetail.loginModeKeep')}
-				<span class="dim">
-					{t('web.playerDetail.loginModeKeepHint', { hours: String(authInfo?.loginMode?.preferenceHours ?? 24) })}
-				</span>
-			</span>
-		</label>
-	{/if}
-
-	{#if modeReconnects}
-		<p class="dim">
-			{t('web.playerDetail.loginModeReconnectNote', {
-				name: detail?.username ?? '',
-				current: modeLabel(authInfo?.loginMode?.current ?? '')
-			})}
-		</p>
-	{/if}
-
-	{#snippet footer()}
-		<Btn onclick={() => (modeOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
-		<Btn variant="primary" disabled={modeBusy} loading={modeBusy} onclick={doLoginMode}>
-			{t('web.playerDetail.loginModeApply')}
-		</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title={t('web.playerDetail.temporaryPasswordIssued')} bind:open={issuedOpen}>
-	<p>
-		Give this to {detail?.username}. Only its hash is stored, so this is the one and only time it
-		{t('web.playerDetail.canBeReadReopening')}
-	</p>
-	<div class="issued">
-		<code>{issuedPassword}</code>
-		<Btn icon="copy" onclick={() => void copyText(issuedPassword)}>{t('web.playerDetail.copy')}</Btn>
-	</div>
-	{#snippet footer()}
-		<Btn variant="primary" onclick={() => (issuedOpen = false)}>{t('web.playerDetail.done')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title={t('web.playerDetail.recordAModerationNote')} bind:open={noteOpen}>
-	<label class="field">
-		<span class="lbl">{t('web.playerDetail.note')}</span>
-		<span class="hint">{t('web.playerDetail.storedInThePlayer')}</span>
-		<input class="input" bind:value={noteText} placeholder={t('web.playerDetail.eGWarnedAboutChat')} />
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (noteOpen = false)}>{t('web.playerDetail.cancel')}</Btn>
-		<Btn variant="primary" disabled={!noteText.trim()} onclick={doNote}>{t('web.playerDetail.record')}</Btn>
-	{/snippet}
-</Modal>
+<PlayerActionDialogs bind:this={dialogs} {servers} {instances} ondone={refresh} />
 
 <style lang="scss">
-	.force {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		margin-top: 0.75rem;
-		font-size: 0.875rem;
-
-		.dim {
-			display: block;
-			margin-top: 0.125rem;
-			font-size: 0.8125rem;
-		}
-	}
-
-	.columns {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 1rem;
-		margin: 1rem 0;
-		align-items: stretch;
-
-		@include below($bp-medium) {
-			grid-template-columns: 1fr;
-		}
-	}
-
-	.skin {
-		display: flex;
-		justify-content: center;
-		padding: 0.5rem 1.5rem;
-	}
-
+	// one column of panels per tab; the gap is the only spacing between them
 	.tabbody {
-		margin-top: 1rem;
-	}
-
-	// the one moment the password is readable, so it is given the room to be read
-	.issued {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-top: 1rem;
-
-		code {
-			flex: 1;
-			background: var(--bg-terminal);
-			border-radius: 0.375rem;
-			padding: 0.75rem 1rem;
-			font-family: var(--font-mono);
-			font-size: 1.25rem;
-			letter-spacing: 0.125rem;
-			user-select: all;
-		}
-	}
-
-	.playtimes {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	.playrow {
-		display: grid;
-		grid-template-columns: 10rem 1fr;
-		align-items: center;
 		gap: 1rem;
+		margin-top: 1rem;
 
-		@include below($bp-narrow) {
-			grid-template-columns: 1fr;
-			gap: 0.25rem;
+		&.off {
+			display: none;
 		}
-	}
 
-	.gap {
-		height: 1rem;
-	}
+		// a tab that owns dialogs the header opens: its panels are gone while
+		// another tab shows, but the box must not hide the dialogs with them
+		&.bare {
+			display: contents;
+		}
 
-	// the cap is a fact about the table above it, not an invitation to click
-	.capped {
-		margin: 0;
-		padding: 0.75rem 1.25rem;
-		font-size: 0.8125rem;
-		border-top: 0.1rem solid var(--border-divider);
-	}
-
-	.content {
-		word-break: break-word;
+		:global(.flash) {
+			margin-bottom: 0;
+		}
 	}
 
 	.balance {
 		font-weight: 700;
-		color: var(--text-heading);
-	}
-
-	// the sign already says which way the money went; the colour is there so a
-	// column of transactions reads at a glance, not to carry the meaning alone
-	.amount {
-		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
-
-		&.in {
-			color: var(--success);
-		}
-
-		&.out {
-			color: var(--warning);
-		}
-
-		// an admin adjusting their own balance: no direction to colour
-		&.self {
-			color: var(--text-secondary);
-		}
-	}
-
-	.groups {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
-	}
-
-	.group {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.25rem 0.75rem;
-		background: var(--bg-panel-raised);
-		border: 0.1rem solid var(--border-divider);
-		border-radius: var(--radius-button);
-
-		&.primary {
-			border-color: var(--link);
-		}
-	}
-
-	.tagnote {
-		font-size: 0.75rem;
-		color: var(--link);
-	}
-
-	.chipbtn {
-		border: none;
-		background: none;
-		color: var(--text-secondary);
-		font-size: 1rem;
-		line-height: 1;
-		cursor: pointer;
-		padding: 0 0.125rem;
-
-		&:hover {
-			color: var(--error);
-		}
-	}
-
-	.groupadd {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-	}
-
-	.nodeadd {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-		padding: 0.75rem 1rem;
-		border-bottom: 0.1rem solid var(--border-divider);
-
-		.input {
-			flex: 1;
-			min-width: 14rem;
-		}
-	}
-
-	.grant {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		color: var(--text-secondary);
 	}
 </style>

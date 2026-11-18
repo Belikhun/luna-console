@@ -7,6 +7,7 @@
 	import type { Snippet } from 'svelte';
 	import DateTime from './DateTime.svelte';
 	import Icon from './Icon.svelte';
+	import ScreenLink from './ScreenLink.svelte';
 	import type { InfoCell } from './grid';
 	import { tooltip, refreshTooltip } from '$lib/tooltip.svelte';
 	import { copyText } from '$lib/clipboard';
@@ -110,6 +111,8 @@
 						<DateTime at={cellItem.time} text={cellItem.value == null || cellItem.value === '' ? undefined : String(cellItem.value)} />
 					{:else if cellItem.value === null || cellItem.value === undefined || cellItem.value === ''}
 						<span class="none">–</span>
+					{:else if cellItem.href && cellItem.leaves}
+						<ScreenLink href={cellItem.href}>{cellItem.value}</ScreenLink>
 					{:else if cellItem.href}
 						<a href={cellItem.href}>{cellItem.value}</a>
 					{:else}

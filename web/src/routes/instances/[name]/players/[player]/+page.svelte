@@ -4,24 +4,23 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { copyText } from '$lib/clipboard';
 	import { fmtDuration, fmtDateTime } from '$lib/format';
 	import { LOG_PAGE, loadWholeLog } from '$lib/log';
-	import { pingClass } from '$lib/players';
 	import {
-		disconnectPlayers,
-		kickPlayers,
-		messagePlayers,
-		moderatePlayers,
-		resendPacks,
-		setGameMode,
-		transferPlayers
-	} from '$lib/playeractions';
-	import type { ModerationAction } from '$lib/playeractions';
+		accessFlagsOf,
+		accessIndexOf,
+		blockCoords,
+		gameModeState,
+		pingClass,
+		playPointsOf
+	} from '$lib/players';
+	import type { AccessIndex, PlaySessionRow } from '$lib/players';
+	import { playerVerbGroups } from '$lib/playeractions';
+	import type { PlayerActionTarget } from '$lib/playeractions';
 	import {
 		GAME_MODES,
 		advancementGroup,
@@ -29,16 +28,17 @@
 		idLabel,
 		ticksToMillis
 	} from '$core/playerdata';
-	import type { GameMode, PlayerAdvancement, PlayerDetail, PlayerPosition } from '$core/playerdata';
+	import type { PlayerAdvancement, PlayerDetail, PlayerPosition } from '$core/playerdata';
 	import type { LunaPlayer, RegisteredPlayerDetail, VaultAccountInfo } from '$core/services/luna';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
-	import Select from '$lib/components/Select.svelte';
-	import Modal from '$lib/components/Modal.svelte';
-	import Checkbox from '$lib/components/Checkbox.svelte';
-	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import CalendarGraph from '$lib/components/CalendarGraph.svelte';
+	import type { CalendarDay } from '$lib/components/calendargraph';
+	import type { OverviewDetail } from '$lib/components/nodeoverview';
+	import PlayerAccessBadges from '$lib/components/PlayerAccessBadges.svelte';
+	import PlayerActionDialogs from '$lib/components/PlayerActionDialogs.svelte';
 	import DateTime from '$lib/components/DateTime.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -52,10 +52,8 @@
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import PlayerSkin3D from '$lib/components/PlayerSkin3D.svelte';
-	import PlayerVitals from '$lib/components/PlayerVitals.svelte';
 	import PlayerInventory from '$lib/components/PlayerInventory.svelte';
 	import InstanceChatLog from '$lib/components/InstanceChatLog.svelte';
-	import { Notify } from '$lib/notifications.svelte';
 
 	/**
 	 * One player on one backend: what the backend last saved about them (vitals,
@@ -81,14 +79,7 @@
 		detail: PlayerDetail;
 	}
 
-	interface Session {
-		id: number;
-		server: string;
-		connectedAtEpochMillis: number;
-		disconnectedAtEpochMillis: number;
-		durationMillis: number;
-		open: boolean;
-	}
+	type Session = PlaySessionRow;
 
 	interface ModEntry {
 		id: number;
@@ -118,7 +109,15 @@
 	let problem = $state('');
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
-	let tab: string = $state(pickInitialTab());
+
+	// the tab lives in the address, so a reload, a shared link and the back button all land on it
+	const tab = $derived.by((): Tab => {
+		const wanted = page.url.searchParams.get('tab');
+
+		return (TABS as readonly string[]).includes(wanted ?? '')
+			? (wanted as Tab)
+			: 'overview';
+	});
 
 	let sessions: Session[] = $state([]);
 	let sessionsTotal = $state(0);
@@ -127,14 +126,29 @@
 	let moderationLoaded = $state(false);
 	let servers: string[] = $state([]);
 
-	function pickInitialTab(): Tab {
-		const wanted = page.url.searchParams.get('tab');
-
-		return (TABS as readonly string[]).includes(wanted ?? '') ? (wanted as Tab) : 'overview';
-	}
-
 	const snapshot = $derived(data?.detail.snapshot ?? null);
-	const target = $derived(data ? { username: data.username, uuid: data.uuid } : null);
+
+	// the payload is a new object on every refresh; the skin viewer rebuilds
+	// when its player changes, so it is handed the id alone, which does not
+	const skinOf = $derived(data?.uuid ?? '');
+
+	/** This server's access lists; where the player stands on them rides in the header */
+	let access = $state<AccessIndex | null>(null);
+	let dialogs: PlayerActionDialogs | undefined = $state();
+
+	const flags = $derived(data ? accessFlagsOf(access, { uuid: data.uuid, name: data.username }) : null);
+
+	function tabHref(id: Tab): string {
+		const url = new URL(page.url);
+
+		if (id === 'overview') {
+			url.searchParams.delete('tab');
+		} else {
+			url.searchParams.set('tab', id);
+		}
+
+		return `${url.pathname}${url.search}`;
+	}
 
 	/** Bumped per refresh while the chat tab is open, which re-reads its log */
 	let chatRefreshKey = $state(0);
@@ -154,6 +168,8 @@
 
 		loading = false;
 
+		void loadAccess();
+
 		if (data) {
 			void loadTab(tab);
 
@@ -161,6 +177,15 @@
 			if (tab === 'chat') {
 				chatRefreshKey++;
 			}
+		}
+	}
+
+	/** Best-effort: without the lists the header simply says nothing about them. */
+	async function loadAccess(): Promise<void> {
+		try {
+			access = accessIndexOf(await api(`/instances/${encodeURIComponent(instance)}/access`));
+		} catch {
+			access = null;
 		}
 	}
 
@@ -222,8 +247,12 @@
 		}
 	}
 
+	// a tab's table is read when the tab opens; the refresh reads it again itself,
+	// so the profile arriving must not count as a second reason to
 	$effect(() => {
-		loadTab(tab);
+		const id = tab;
+
+		untrack(() => loadTab(id));
 	});
 
 	onMount(() => {
@@ -236,8 +265,6 @@
 					.map((inst: any) => inst.name),
 				...list.externals.map((inst: any) => inst.name)
 			].sort();
-
-			transferTo = servers[0] ?? '';
 		});
 	});
 
@@ -248,7 +275,7 @@
 			return '–';
 		}
 
-		return `${dimensionLabel(position.dimension)} · ${Math.round(position.x)}, ${Math.round(position.y)}, ${Math.round(position.z)}`;
+		return `${dimensionLabel(position.dimension)} · ${blockCoords(position)}`;
 	}
 
 	const playtimeHere = $derived(
@@ -475,273 +502,90 @@
 
 	// -- verbs --------------------------------------------------------------------
 
-	let messageOpen = $state(false);
-	let messageText = $state('');
-	let transferOpen = $state(false);
-	let transferTo = $state('');
-	let kickOpen = $state(false);
-	let kickReason = $state('');
-	let kickForce = $state(false);
-	let banOpen = $state(false);
-	let banReason = $state('');
-
-	async function act(work: () => Promise<string>, busy: string): Promise<void> {
-		const note = Notify.loading(busy);
-
-		try {
-			const done = await work();
-
-			note.set({ level: 'success', message: done, closeable: true });
-
-			await refresh();
-		} catch (err) {
-			note.set({ level: 'error', message: busy, detail: (err as Error).message, closeable: true });
-		}
-	}
-
-	async function moderate(action: ModerationAction, reason = ''): Promise<void> {
-		if (!target) {
-			return;
+	const target = $derived.by((): PlayerActionTarget | null => {
+		if (!data) {
+			return null;
 		}
 
-		const who = target;
-
-		await act(async () => {
-			const summary = await moderatePlayers(action, [who], [instance], reason);
-
-			if (summary.unconfirmed.length > 0) {
-				Notify.warning(t('web.instancePlayers.unconfirmed', { targets: summary.unconfirmed.join(', ') }));
-			}
-
-			return t('web.instancePlayers.applied', { action: t(`web.instancePlayers.verb.${action}`), targets: who.username });
-		}, t('web.instancePlayers.updatingLists'));
-	}
-
-	async function doMessage(): Promise<void> {
-		const text = messageText.trim();
-
-		messageOpen = false;
-
-		if (!target || !text) {
-			return;
-		}
-
-		const who = target;
-
-		await act(async () => {
-			await messagePlayers([who], text);
-
-			return t('web.instancePlayers.messageDelivered', { targets: who.username });
-		}, t('web.instancePlayers.sendingMessage', { targets: who.username }));
-
-		messageText = '';
-	}
-
-	async function doTransfer(): Promise<void> {
-		const to = transferTo;
-
-		transferOpen = false;
-
-		if (!target || !to) {
-			return;
-		}
-
-		const who = target;
-
-		await act(async () => {
-			await transferPlayers([who], to);
-
-			return t('web.instancePlayers.moved', { targets: who.username, server: to });
-		}, t('web.instancePlayers.moving', { targets: who.username, server: to }));
-	}
-
-	async function doKick(): Promise<void> {
-		const reason = kickReason.trim();
-
-		kickOpen = false;
-
-		if (!target) {
-			return;
-		}
-
-		const who = target;
-		const force = kickForce;
-
-		await act(async () => {
-			if (force) {
-				await disconnectPlayers([who], reason);
-			} else {
-				await kickPlayers([who], reason);
-			}
-
-			return t('web.instancePlayers.disconnected', { targets: who.username });
-		}, t('web.instancePlayers.disconnecting', { targets: who.username }));
-
-		kickReason = '';
-	}
-
-	async function doBan(): Promise<void> {
-		const reason = banReason.trim();
-
-		banOpen = false;
-		await moderate('ban', reason);
-		banReason = '';
-	}
-
-	async function doGameMode(mode: GameMode): Promise<void> {
-		if (!target) {
-			return;
-		}
-
-		const who = target;
-
-		await act(async () => {
-			await setGameMode(instance, [who], mode);
-
-			return t('web.instancePlayers.gameModeSet', { targets: who.username, mode: t(`web.instancePlayers.mode.${mode}`) });
-		}, t('web.instancePlayers.settingGameMode', { targets: who.username }));
-	}
-
-	async function doResend(): Promise<void> {
-		if (!target) {
-			return;
-		}
-
-		const who = target;
-
-		await act(async () => {
-			await resendPacks([who]);
-
-			return t('web.instancePlayers.resentPacks', { targets: who.username });
-		}, t('web.instancePlayers.resendingPacks', { targets: who.username }));
-	}
+		return {
+			username: data.username,
+			uuid: data.uuid,
+			online: data.online,
+			server: instance,
+			...(data.live?.remoteAddress ? { address: data.live.remoteAddress } : {})
+		};
+	});
 
 	function headerActions(): ContextMenuItem[] {
-		if (!data) {
+		if (!data || !target) {
 			return [];
 		}
 
-		const online = data.online;
-		const offlineHint = online ? undefined : t('web.instancePlayer.notOnlineHere');
+		const groups = playerVerbGroups({
+			targets: [target],
+			instance,
+			servers,
+			gameModes: GAME_MODES,
+			flags,
+			open: (kind, targets) => dialogs?.open(kind, targets),
+			setGameMode: (targets, mode) => dialogs?.setGameMode(targets, mode)
+		});
 
 		return menuGroups(
-			[
-				{
-					label: t('web.instancePlayers.viewNetworkProfile'),
-					icon: 'user',
-					action: () => goto(`/players/${data?.uuid}`)
-				}
-			],
-			[
-				{
-					label: t('web.instancePlayers.sendAMessage'),
-					icon: 'paperPlane',
-					disabled: !online,
-					hint: offlineHint,
-					action: () => {
-						messageOpen = true;
-					}
-				},
-				{
-					label: t('web.instancePlayers.moveToAnotherBackend'),
-					icon: 'rightLeft',
-					disabled: !online || servers.length === 0,
-					hint: offlineHint ?? (servers.length === 0 ? t('web.instancePlayers.noOtherBackend') : undefined),
-					action: () => {
-						transferOpen = true;
-					}
-				},
-				{
-					label: t('web.instancePlayers.resendPacks'),
-					icon: 'image',
-					disabled: !online,
-					hint: offlineHint,
-					action: () => void doResend()
-				},
-				{
-					label: t('web.instancePlayers.setGameMode'),
-					icon: 'joystick',
-					disabled: !online,
-					hint: offlineHint,
-					submenu: GAME_MODES.map((mode) => ({
-						label: t(`web.instancePlayers.mode.${mode}`),
-						action: () => void doGameMode(mode)
-					}))
-				}
-			],
-			[
-				{
-					label: t('web.instancePlayers.accessLists'),
-					icon: 'userShield',
-					submenu: [
-						{ label: t('web.instancePlayers.addToWhitelist'), icon: 'userTick', action: () => void moderate('whitelist-add') },
-						{ label: t('web.instancePlayers.removeFromWhitelist'), icon: 'userMinus', action: () => void moderate('whitelist-remove') },
-						{ label: t('web.instancePlayers.grantOperator'), icon: 'userCog', action: () => void moderate('op') },
-						{ label: t('web.instancePlayers.revokeOperator'), icon: 'userLock', action: () => void moderate('deop') },
-						{ label: t('web.instancePlayer.pardonHere'), icon: 'handshake', action: () => void moderate('pardon') }
-					]
-				}
-			],
+			groups.live,
+			groups.access,
 			[
 				{
 					id: 'copy-uuid',
 					label: t('web.instancePlayers.copyUuid'),
 					icon: 'copy',
 					action: () => void copyText(data?.uuid ?? '')
+				},
+				{
+					id: 'copy-name',
+					label: t('web.instancePlayers.copyName'),
+					icon: 'copy',
+					action: () => void copyText(data?.username ?? '')
 				}
 			],
-			[
-				{
-					label: t('web.instancePlayers.disconnect'),
-					icon: 'userSlash',
-					color: 'danger',
-					disabled: !online,
-					hint: offlineHint,
-					action: () => {
-						kickForce = false;
-						kickOpen = true;
-					}
-				},
-				{
-					label: t('web.instancePlayers.forceDisconnect'),
-					icon: 'unlink',
-					color: 'danger',
-					disabled: !online,
-					hint: offlineHint,
-					action: () => {
-						kickForce = true;
-						kickOpen = true;
-					}
-				},
-				{
-					label: t('web.instancePlayers.banHere'),
-					icon: 'gavel',
-					color: 'danger',
-					action: () => {
-						banOpen = true;
-					}
-				}
-			]
+			groups.remove
 		);
 	}
 
-	const gameModeState = $derived(
-		snapshot?.gameMode === 'survival'
-			? 'ok'
-			: snapshot?.gameMode === 'creative'
-				? 'warning'
-				: snapshot?.gameMode === 'spectator'
-					? 'stopped'
-					: 'info'
-	);
+	// GitHub-style ramp for the play calendar: an empty day has to read as empty
+	const PLAY_RAMP = ['var(--bg-hover)', 'var(--success)'];
+
+	const playPoints = $derived(playPointsOf(sessions));
+
+	const playDayDetails = $derived((day: CalendarDay): OverviewDetail[] => [
+		{ key: t('web.playerDetail.sessions'), value: String(day.count), mono: true }
+	]);
+
 </script>
 
 <svelte:head><title>{data?.username ?? ref} · {instance} | Luna Console</title></svelte:head>
 
-<PageHeader title={data?.username ?? ref} info={t('web.guide.instancePlayer')} description={data ? `${data.uuid} · ${instance}` : instance}>
+<PageHeader
+	title={data?.username ?? ref}
+	info={t('web.guide.instancePlayer')}
+	description={data ? t('web.instancePlayer.subtitle', { instance, uuid: data.uuid }) : instance}
+>
+	{#snippet extra()}
+		{#if data}
+			{#if data.online}
+				<StatusBadge state="ok" label={t('web.instancePlayer.onlineHere')} />
+			{:else if data.live}
+				<StatusBadge state="warning" label={t('web.instancePlayer.onlineElsewhere', { server: data.live.server })} />
+			{:else}
+				<StatusBadge state="stopped" label={t('web.instancePlayer.offline')} />
+			{/if}
+			<PlayerAccessBadges {flags} whitelistEnabled={access?.whitelistEnabled ?? false} />
+		{/if}
+	{/snippet}
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="instance-player" />
 		<Dropdown label={t('web.common.actions')} disabled={!data} menu={headerActions()} />
+		<Btn icon="user" href="/players/{data?.uuid ?? ref}">{t('web.instancePlayer.networkProfile')}</Btn>
 	{/snippet}
 </PageHeader>
 
@@ -761,39 +605,74 @@
 	{/each}
 
 	<OverviewBar title={t('web.instancePlayer.overviewTitle', { instance })}>
-		<OverviewCell label={t('web.instancePlayer.status')}>
-			{#if data.online}
-				<StatusBadge state="ok" label={t('web.instancePlayer.onlineHere')} />
-			{:else if data.live}
-				<StatusBadge state="warning" label={t('web.instancePlayer.onlineElsewhere', { server: data.live.server })} />
-			{:else}
-				<StatusBadge state="stopped" label={t('web.instancePlayer.offline')} />
-			{/if}
-		</OverviewCell>
 		<OverviewCell label={t('web.instancePlayer.gameMode')}>
 			{#if snapshot}
-				<StatusBadge state={gameModeState} label={t(`web.instancePlayers.mode.${snapshot.gameMode}`)} />
+				<StatusBadge state={gameModeState(snapshot.gameMode)} label={t(`web.instancePlayers.mode.${snapshot.gameMode}`)} />
 			{:else}
 				<span class="dim">–</span>
 			{/if}
 		</OverviewCell>
-		<OverviewCell label={t('web.vitals.health')}>
+		<OverviewCell
+			label={t('web.vitals.health')}
+			progress={snapshot ? Math.min(1, snapshot.health / (snapshot.maxHealth || 20)) : undefined}
+			progressColor="var(--error)"
+		>
 			{#if snapshot}
-				{Math.round(snapshot.health * 10) / 10} / {snapshot.maxHealth}
+				{#if snapshot.absorption > 0}
+					{t('web.vitals.healthWithAbsorption', {
+						base: `${Math.round(snapshot.health * 10) / 10} / ${snapshot.maxHealth}`,
+						extra: Math.round(snapshot.absorption * 10) / 10
+					})}
+				{:else}
+					{Math.round(snapshot.health * 10) / 10} / {snapshot.maxHealth}
+				{/if}
 			{:else}
 				<span class="dim">–</span>
 			{/if}
 		</OverviewCell>
-		<OverviewCell label={t('web.vitals.food')}>
+		<OverviewCell
+			label={t('web.vitals.food')}
+			progress={snapshot ? Math.min(1, snapshot.food / 20) : undefined}
+			progressColor="var(--warning)"
+		>
 			{#if snapshot}
 				{snapshot.food} / 20
 			{:else}
 				<span class="dim">–</span>
 			{/if}
 		</OverviewCell>
-		<OverviewCell label={t('web.instancePlayer.level')}>
+		<OverviewCell label={t('web.instancePlayer.level')} progress={snapshot ? snapshot.xpProgress : undefined}>
 			{#if snapshot}
 				{snapshot.xpLevel}
+				<span class="dim">{snapshot.xpTotal.toLocaleString()} xp</span>
+			{:else}
+				<span class="dim">–</span>
+			{/if}
+		</OverviewCell>
+		<OverviewCell label={t('web.instancePlayer.position')} wide>
+			{#if snapshot}
+				<span class="mono">{blockCoords(snapshot.position)}</span>
+				<span class="dim">{dimensionLabel(snapshot.position.dimension)}</span>
+			{:else}
+				<span class="dim">–</span>
+			{/if}
+		</OverviewCell>
+		<OverviewCell label={t('web.instancePlayer.playtimeHere')}>
+			{#if playtimeHere}
+				{fmtDuration(playtimeHere.playMillis)}
+			{:else}
+				<span class="dim">–</span>
+			{/if}
+		</OverviewCell>
+		<OverviewCell
+			label={t('web.instancePlayer.advancements')}
+			progress={data.detail.advancements && data.detail.advancements.total > 0
+				? data.detail.advancements.done / data.detail.advancements.total
+				: undefined}
+			progressColor="var(--link)"
+		>
+			{#if data.detail.advancements}
+				{data.detail.advancements.done} / {data.detail.advancements.total}
 			{:else}
 				<span class="dim">–</span>
 			{/if}
@@ -801,13 +680,6 @@
 		<OverviewCell label={t('web.instancePlayer.balance')}>
 			{#if data.vault}
 				<span class="balance">{data.vault.balanceFormatted}</span>
-			{:else}
-				<span class="dim">–</span>
-			{/if}
-		</OverviewCell>
-		<OverviewCell label={t('web.instancePlayer.advancements')}>
-			{#if data.detail.advancements}
-				{data.detail.advancements.done} / {data.detail.advancements.total}
 			{:else}
 				<span class="dim">–</span>
 			{/if}
@@ -821,101 +693,99 @@
 		</OverviewCell>
 	</OverviewBar>
 
-	<div class="columns">
-		<Panel title={t('web.instancePlayer.skin')} description={t('web.instancePlayer.skinHint')}>
-			<div class="skin">
-				<PlayerSkin3D player={data.uuid} />
-			</div>
-		</Panel>
-
-		<Panel title={t('web.instancePlayer.identity')}>
-			<InfoGrid cells={identityCells} columns={[2, 2, 1]} />
-		</Panel>
-	</div>
-
 	<Tabs
 		tabs={[
-			{ id: 'overview', label: t('web.instancePlayer.tabOverview') },
-			{ id: 'inventory', label: t('web.instancePlayer.tabInventory') },
-			{ id: 'advancements', label: t('web.instancePlayer.tabAdvancements') },
-			{ id: 'stats', label: t('web.instancePlayer.tabStats') },
-			{ id: 'sessions', label: t('web.instancePlayer.tabSessions') },
-			{ id: 'chat', label: t('web.instancePlayer.tabChat') },
-			{ id: 'moderation', label: t('web.instancePlayer.tabModeration') }
+			{ id: 'overview', label: t('web.instancePlayer.tabOverview'), href: tabHref('overview') },
+			{ id: 'inventory', label: t('web.instancePlayer.tabInventory'), href: tabHref('inventory') },
+			{ id: 'advancements', label: t('web.instancePlayer.tabAdvancements'), href: tabHref('advancements') },
+			{ id: 'stats', label: t('web.instancePlayer.tabStats'), href: tabHref('stats') },
+			{ id: 'sessions', label: t('web.instancePlayer.tabSessions'), href: tabHref('sessions') },
+			{ id: 'chat', label: t('web.instancePlayer.tabChat'), href: tabHref('chat') },
+			{ id: 'moderation', label: t('web.instancePlayer.tabModeration'), href: tabHref('moderation') }
 		]}
-		bind:active={tab}
+		active={tab}
 	/>
 
 	<div class="tabbody">
 		{#if tab === 'overview'}
-			{#if snapshot}
-				<Panel title={t('web.instancePlayer.vitals')} description={t('web.instancePlayer.savedNote', { when: fmtDateTime(snapshot.savedAt) })}>
-					<div class="vitals">
-						<PlayerVitals kind="health" value={snapshot.health} max={snapshot.maxHealth} extra={snapshot.absorption} />
-						<PlayerVitals kind="food" value={snapshot.food} />
-						<PlayerVitals kind="xp" value={snapshot.xpProgress} level={snapshot.xpLevel} />
+			<div class="top">
+				<Panel title={t('web.instancePlayer.skin')} description={t('web.instancePlayer.skinHint')}>
+					<div class="skin">
+						<PlayerSkin3D player={skinOf} />
 					</div>
 				</Panel>
-				<div class="gap"></div>
-				<Panel title={t('web.instancePlayer.state')}>
-					<InfoGrid cells={stateCells} columns={[4, 2, 1]} />
+
+				<Panel
+					title={t('web.instancePlayer.identity')}
+					description={snapshot ? t('web.instancePlayer.savedNote', { when: fmtDateTime(snapshot.savedAt) }) : undefined}
+				>
+					<InfoGrid cells={identityCells} columns={[3, 2, 1]} />
 				</Panel>
-				<div class="gap"></div>
-				<Panel title={t('web.instancePlayer.effects')} count={snapshot.effects.length} flush>
-					<ResourceTable
-						tableId="instance-player-effects"
-						columns={effectCols}
-						rows={snapshot.effects}
-						getId={(effect) => effect.id}
-						searchValue={(effect) => effect.id}
-						searchPlaceholder={t('web.instancePlayer.findEffect')}
-						searchWidth="18rem"
-						noun={t('web.instancePlayer.nounEffect')}
-						paging={false}
-						emptyTitle={t('web.instancePlayer.noEffects')}
-						emptyText={t('web.instancePlayer.noEffectsHint')}
-					>
-						{#snippet cell(effect, col)}
-							{#if col === 'effect'}
-								{idLabel(effect.id)}
-							{:else if col === 'amplifier'}
-								{effect.amplifier + 1}
-							{:else if col === 'duration'}
-								{effect.duration < 0 ? t('web.instancePlayer.infinite') : fmtDuration(ticksToMillis(effect.duration))}
-							{:else if col === 'ambient'}
-								{effect.ambient ? t('web.common.yes') : t('web.common.no')}
-							{/if}
-						{/snippet}
-					</ResourceTable>
-				</Panel>
-				<div class="gap"></div>
-				<Panel title={t('web.instancePlayer.attributes')} count={attributeRows.length} flush>
-					<ResourceTable
-						tableId="instance-player-attributes"
-						columns={attributeCols}
-						rows={attributeRows}
-						getId={(row) => row.id}
-						searchValue={(row) => row.id}
-						searchPlaceholder={t('web.instancePlayer.findAttribute')}
-						searchWidth="18rem"
-						noun={t('web.instancePlayer.nounAttribute')}
-						pageSize={15}
-						sortValue={(row, col) => (col === 'attribute' ? row.id : row.base)}
-						emptyTitle={t('web.instancePlayer.noAttributes')}
-					>
-						{#snippet cell(row, col)}
-							{#if col === 'attribute'}
-								<span class="mono">{row.id}</span>
-							{:else if col === 'base'}
-								<span class="mono">{Math.round(row.base * 1000) / 1000}</span>
-							{/if}
-						{/snippet}
-					</ResourceTable>
-				</Panel>
-			{:else}
+			</div>
+
+			{#if !snapshot}
 				<Flash kind="info">
 					<b>{t('web.instancePlayer.noSave')}</b> {t('web.instancePlayer.noSaveHint', { instance })}
 				</Flash>
+			{/if}
+
+			{#if snapshot}
+				<Panel title={t('web.instancePlayer.state')}>
+					<InfoGrid cells={stateCells} columns={[4, 2, 1]} />
+				</Panel>
+
+				<div class="pair">
+					<Panel title={t('web.instancePlayer.effects')} count={snapshot.effects.length} flush>
+						<ResourceTable
+							tableId="instance-player-effects"
+							columns={effectCols}
+							rows={snapshot.effects}
+							getId={(effect) => effect.id}
+							searchValue={(effect) => effect.id}
+							searchPlaceholder={t('web.instancePlayer.findEffect')}
+							searchWidth="18rem"
+							noun={t('web.instancePlayer.nounEffect')}
+							paging={false}
+							emptyTitle={t('web.instancePlayer.noEffects')}
+							emptyText={t('web.instancePlayer.noEffectsHint')}
+						>
+							{#snippet cell(effect, col)}
+								{#if col === 'effect'}
+									{idLabel(effect.id)}
+								{:else if col === 'amplifier'}
+									{effect.amplifier + 1}
+								{:else if col === 'duration'}
+									{effect.duration < 0 ? t('web.instancePlayer.infinite') : fmtDuration(ticksToMillis(effect.duration))}
+								{:else if col === 'ambient'}
+									{effect.ambient ? t('web.common.yes') : t('web.common.no')}
+								{/if}
+							{/snippet}
+						</ResourceTable>
+					</Panel>
+					<Panel title={t('web.instancePlayer.attributes')} count={attributeRows.length} flush>
+						<ResourceTable
+							tableId="instance-player-attributes"
+							columns={attributeCols}
+							rows={attributeRows}
+							getId={(row) => row.id}
+							searchValue={(row) => row.id}
+							searchPlaceholder={t('web.instancePlayer.findAttribute')}
+							searchWidth="18rem"
+							noun={t('web.instancePlayer.nounAttribute')}
+							pageSize={15}
+							sortValue={(row, col) => (col === 'attribute' ? row.id : row.base)}
+							emptyTitle={t('web.instancePlayer.noAttributes')}
+						>
+							{#snippet cell(row, col)}
+								{#if col === 'attribute'}
+									<span class="mono">{row.id}</span>
+								{:else if col === 'base'}
+									<span class="mono">{Math.round(row.base * 1000) / 1000}</span>
+								{/if}
+							{/snippet}
+						</ResourceTable>
+					</Panel>
+				</div>
 			{/if}
 		{:else if tab === 'inventory'}
 			{#if snapshot}
@@ -995,7 +865,6 @@
 				<Panel title={t('web.instancePlayer.statsOverview')}>
 					<InfoGrid cells={statCells} columns={[4, 2, 1]} />
 				</Panel>
-				<div class="gap"></div>
 				<Panel flush title={t('web.instancePlayer.allStats')} count={statRows.length}>
 					<ResourceTable
 						tableId="instance-player-stats"
@@ -1031,6 +900,19 @@
 				</Flash>
 			{/if}
 		{:else if tab === 'sessions'}
+			<Panel
+				title={t('web.playerDetail.playCalendar')}
+				description={t('web.instancePlayer.playCalendarHint', { instance })}
+			>
+				<CalendarGraph
+					points={playPoints}
+					to={sessions.length > 0 ? Date.now() : null}
+					ramp={PLAY_RAMP}
+					valueFormat={(value) => (value > 0 ? fmtDuration(value) : '0s')}
+					dayDetails={playDayDetails}
+					empty={t('web.playerDetail.noPlayDays')}
+				/>
+			</Panel>
 			<Panel flush title={t('web.instancePlayer.sessionsHere')} count={sessions.length}>
 				<ResourceTable
 					tableId="instance-player-sessions"
@@ -1111,87 +993,41 @@
 	</div>
 {/if}
 
-<Modal title={t('web.instancePlayers.messageTitle', { targets: data?.username ?? '' })} bind:open={messageOpen}>
-	<label class="field">
-		<span class="lbl">{t('web.instancePlayers.message')}</span>
-		<span class="hint">{t('web.instancePlayers.messageHint')}</span>
-		<input class="input" bind:value={messageText} placeholder={t('web.instancePlayers.typeAMessage')} />
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (messageOpen = false)}>{t('web.common.cancel')}</Btn>
-		<Btn variant="primary" disabled={!messageText.trim()} onclick={doMessage}>{t('web.instancePlayers.send')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title={t('web.instancePlayers.moveTitle', { targets: data?.username ?? '' })} bind:open={transferOpen}>
-	<p>{t('web.instancePlayers.moveHint')}</p>
-	<div class="field">
-		<span class="lbl">{t('web.instancePlayers.destination')}</span>
-		<Select bind:value={transferTo} width="100%" options={servers.map((name) => ({ value: name, label: name }))} />
-	</div>
-	{#snippet footer()}
-		<Btn onclick={() => (transferOpen = false)}>{t('web.common.cancel')}</Btn>
-		<Btn variant="primary" disabled={!transferTo} onclick={doTransfer}>{t('web.instancePlayers.move')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title={t('web.instancePlayers.disconnectTitle', { targets: data?.username ?? '' })} bind:open={kickOpen}>
-	<p>{t('web.instancePlayers.disconnectHint')}</p>
-	<label class="field">
-		<span class="lbl">{t('web.instancePlayers.reasonShown')}</span>
-		<input class="input" bind:value={kickReason} placeholder={t('web.instancePlayers.reasonOptional')} />
-	</label>
-	<label class="force">
-		<Checkbox checked={kickForce} label={t('web.instancePlayers.force')} onchange={(on) => (kickForce = on)} />
-		<span>
-			{t('web.instancePlayers.force')}
-			<span class="dim">{t('web.instancePlayers.forceHint')}</span>
-		</span>
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (kickOpen = false)}>{t('web.common.cancel')}</Btn>
-		<Btn variant="danger" onclick={doKick}>{t('web.instancePlayers.disconnect')}</Btn>
-	{/snippet}
-</Modal>
-
-<ConfirmModal
-	bind:open={banOpen}
-	title={t('web.instancePlayers.banTitle', { targets: data?.username ?? '' })}
-	lead={t('web.instancePlayers.banLead', { instance })}
-	notes={[t('web.instancePlayers.banNote')]}
-	confirmLabel={t('web.instancePlayers.ban')}
-	onconfirm={doBan}
->
-	<label class="field">
-		<span class="lbl">{t('web.instancePlayers.reason')}</span>
-		<input class="input" bind:value={banReason} placeholder={t('web.instancePlayers.reasonOptional')} />
-	</label>
-</ConfirmModal>
+<PlayerActionDialogs bind:this={dialogs} {instance} {servers} ondone={refresh} />
 
 <style lang="scss">
-	.force {
+	// one column of panels; the gap is the only spacing between them
+	.tabbody {
 		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		margin-top: 0.75rem;
-		font-size: 0.875rem;
+		flex-direction: column;
+		gap: 1rem;
+		margin-top: 1rem;
 
-		.dim {
-			display: block;
-			margin-top: 0.125rem;
-			font-size: 0.8125rem;
+		:global(.flash) {
+			margin-bottom: 0;
 		}
 	}
 
-	.columns {
+	// the skin keeps its own width; what the server saved fills the rest
+	.top {
 		display: grid;
-		grid-template-columns: auto 1fr;
+		grid-template-columns: auto minmax(0, 1fr);
 		gap: 1rem;
-		margin: 1rem 0;
 		align-items: stretch;
 
 		@include below($bp-medium) {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+
+	.pair {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 1rem;
+		align-items: start;
+
+		@include below($bp-medium) {
+			grid-template-columns: minmax(0, 1fr);
 		}
 	}
 
@@ -1199,21 +1035,6 @@
 		display: flex;
 		justify-content: center;
 		padding: 0.5rem 1.5rem;
-	}
-
-	.tabbody {
-		margin-top: 1rem;
-	}
-
-	.gap {
-		height: 1rem;
-	}
-
-	.vitals {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		max-width: 40rem;
 	}
 
 	.balance {
@@ -1256,7 +1077,4 @@
 		border-top: 0.1rem solid var(--border-divider);
 	}
 
-	.field {
-		margin-top: 0.75rem;
-	}
 </style>

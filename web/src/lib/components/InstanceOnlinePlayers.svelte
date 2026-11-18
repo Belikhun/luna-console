@@ -4,44 +4,31 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { copyText } from '$lib/clipboard';
-	import {
-		banAddressOnNetwork,
-		bareAddress,
-		disconnectPlayers,
-		kickPlayers,
-		messagePlayers,
-		moderatePlayers,
-		resendPacks as resendPacksTo,
-		setGameMode as setGameModeOn,
-		targetNames,
-		transferPlayers
-	} from '$lib/playeractions';
-	import type { ModerationAction } from '$lib/playeractions';
-	import { fmtDuration, fmtDateTime, fmtTime } from '$lib/format';
-	import { PING_FAIR, PING_POOR, pingClass } from '$lib/players';
+	import { playerVerbGroups } from '$lib/playeractions';
+	import type { PlayerActionTarget, PlayerDialogKind } from '$lib/playeractions';
+	import { fmtDuration, fmtDateTime } from '$lib/format';
+	import { PING_FAIR, PING_POOR, accessFlagsOf, blockCoords, gameModeState, pingClass } from '$lib/players';
+	import type { AccessIndex } from '$lib/players';
 	import { GAME_MODES, dimensionLabel } from '$core/playerdata';
-	import type { GameMode, PlayerRosterEntry } from '$core/playerdata';
+	import type { PlayerRosterEntry } from '$core/playerdata';
 	import Panel from './Panel.svelte';
-	import Btn from './Btn.svelte';
+	import CellStack from './CellStack.svelte';
 	import Dropdown from './Dropdown.svelte';
-	import Select from './Select.svelte';
-	import Modal from './Modal.svelte';
-	import Checkbox from './Checkbox.svelte';
-	import ConfirmModal from './ConfirmModal.svelte';
 	import DateTime from './DateTime.svelte';
 	import Flash from './Flash.svelte';
 	import StatusBadge from './StatusBadge.svelte';
 	import CopyValue from './CopyValue.svelte';
+	import PlayerAccessBadges from './PlayerAccessBadges.svelte';
+	import PlayerActionDialogs from './PlayerActionDialogs.svelte';
 	import PlayerName from './PlayerName.svelte';
 	import PlayerVitals from './PlayerVitals.svelte';
 	import ResourceTable from './ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from './table';
 	import { menuGroups, type ContextMenuItem } from './contextmenu';
-	import { Notify } from '$lib/notifications.svelte';
 	import { resourceId } from '$shared/iam/resources';
 
 	/**
@@ -55,7 +42,23 @@
 	 * dressing those columns up as live. Joins and leaves refresh the table through
 	 * the proxy's player stream, the same way the network-wide page does.
 	 */
-	let { instance }: { instance: string } = $props();
+	let {
+		instance,
+		access = null,
+		refreshKey = 0,
+		count = $bindable(null),
+		onchanged
+	}: {
+		instance: string;
+		/** This server's access lists, which the Access column reads */
+		access?: AccessIndex | null;
+		/** How many are online, once known; the tab's summary reads it */
+		count?: number | null;
+		/** Bumped by the screen on each refresh tick and each roster change it follows */
+		refreshKey?: number;
+		/** A verb here changed an access list */
+		onchanged?: () => void;
+	} = $props();
 
 	interface Row {
 		uuid: string;
@@ -82,10 +85,10 @@
 	let savedProblem = $state('');
 	let instState = $state('stopped');
 	let loaded = $state(false);
-	let lastUpdated: number | null = $state(null);
 	let servers: string[] = $state([]);
 
 	let selected: Set<string> = $state(new Set());
+	let dialogs: PlayerActionDialogs | undefined = $state();
 
 	const selection = $derived(rows.filter((row) => selected.has(row.uuid)));
 
@@ -103,13 +106,20 @@
 			savedProblem = data.savedProblem ?? '';
 			instState = data.state ?? 'stopped';
 			rows = data.players ?? [];
-			lastUpdated = Date.now();
+			count = available ? rows.length : null;
 		} catch (err) {
 			available = false;
 			problem = (err as Error).message;
 		}
 
 		loaded = true;
+	}
+
+	/** A verb settled: the roster may have changed, and so may the lists. */
+	async function settled(): Promise<void> {
+		onchanged?.();
+
+		await refresh();
 	}
 
 	onMount(() => {
@@ -122,31 +132,39 @@
 					.map((inst: any) => inst.name),
 				...data.externals.map((inst: any) => inst.name)
 			].sort();
-
-			transferTo = servers[0] ?? '';
 		});
-
-		const stream = new EventSource('/api/luna/stream?stream=players');
-
-		stream.onmessage = () => void refresh();
-
-		return () => stream.close();
 	});
 
+	// the first read is onMount's, so the key the table mounted with is not a tick
+	let seenKey = untrack(() => refreshKey);
+
+	$effect(() => {
+		if (refreshKey === seenKey) {
+			return;
+		}
+
+		seenKey = refreshKey;
+		untrack(() => void refresh());
+	});
+
+
+	// the game facts lead: who, where they stand, how they are doing and where
+	// they are. The connection facts and the counters wait in the preferences.
 	const columns: Column[] = $derived([
 		{ id: 'username', label: t('web.instancePlayers.colPlayer'), sortable: true, minWidth: 180 },
-		{ id: 'client', label: t('web.instancePlayers.colClient'), sortable: true, width: 130 },
-		{ id: 'ping', label: t('web.instancePlayers.colPing'), sortable: true, width: 100, align: 'right' },
+		{ id: 'access', label: t('web.playerActions.colAccess'), minWidth: 170 },
+		{ id: 'gamemode', label: t('web.instancePlayers.colGameMode'), sortable: true, width: 130 },
 		{ id: 'health', label: t('web.instancePlayers.colHealth'), sortable: true, width: 160 },
 		{ id: 'food', label: t('web.instancePlayers.colFood'), sortable: true, width: 160 },
 		{ id: 'xp', label: t('web.instancePlayers.colXp'), sortable: true, width: 160 },
-		{ id: 'score', label: t('web.instancePlayers.colScore'), sortable: true, width: 120, align: 'right' },
 		{ id: 'location', label: t('web.instancePlayers.colLocation'), sortable: true, minWidth: 200 },
 		{ id: 'stint', label: t('web.instancePlayers.colStint'), sortable: true, width: 130 },
-		{ id: 'balance', label: t('web.instancePlayers.colBalance'), sortable: true, width: 130, align: 'right' },
-		{ id: 'gamemode', label: t('web.instancePlayers.colGameMode'), sortable: true, width: 130 },
-		{ id: 'advancements', label: t('web.instancePlayers.colAdvancements'), sortable: true, width: 140 },
-		{ id: 'uuid', label: 'UUID', width: 320 },
+		{ id: 'ping', label: t('web.instancePlayers.colPing'), sortable: true, width: 110, align: 'right' },
+		{ id: 'client', label: t('web.instancePlayers.colClient'), sortable: true, width: 130, hidden: true },
+		{ id: 'score', label: t('web.instancePlayers.colScore'), sortable: true, width: 120, align: 'right', hidden: true },
+		{ id: 'balance', label: t('web.instancePlayers.colBalance'), sortable: true, width: 130, align: 'right', hidden: true },
+		{ id: 'advancements', label: t('web.instancePlayers.colAdvancements'), sortable: true, width: 140, hidden: true },
+		{ id: 'uuid', label: 'UUID', width: 320, hidden: true },
 		{ id: 'session', label: t('web.instancePlayers.colNetworkSession'), sortable: true, hidden: true },
 		{ id: 'saved', label: t('web.instancePlayers.colSavedAt'), sortable: true, hidden: true },
 		{ id: 'address', label: t('web.instancePlayers.colAddress'), hidden: true }
@@ -233,322 +251,51 @@
 		}
 	}
 
-	function coords(row: Row): string {
-		const pos = row.vitals?.position;
-
-		if (!pos) {
-			return '';
-		}
-
-		return `${Math.round(pos.x)}, ${Math.round(pos.y)}, ${Math.round(pos.z)}`;
-	}
-
 	function detailPath(row: Row): string {
 		return `/instances/${encodeURIComponent(instance)}/players/${row.uuid}`;
 	}
 
 	// -- verbs --------------------------------------------------------------------
 
-	let messageOpen = $state(false);
-	let messageText = $state('');
-	let transferOpen = $state(false);
-	let transferTo = $state('');
-	let kickOpen = $state(false);
-	let kickReason = $state('');
-	let kickForce = $state(false);
-	let banOpen = $state(false);
-	let banReason = $state('');
-	let ipBanOpen = $state(false);
-	let ipBanReason = $state('');
-	let pending: Row[] = $state([]);
-
-	function names(targets: Row[]): string {
-		return targetNames(targets);
+	function targetsOf(list: Row[]): PlayerActionTarget[] {
+		return list.map((row) => ({
+			uuid: row.uuid,
+			username: row.username,
+			online: true,
+			server: instance,
+			address: row.remoteAddress
+		}));
 	}
 
-	/** Run an action and report it; failures name the verb they belong to. */
-	async function act(work: () => Promise<string>, busy: string): Promise<void> {
-		const note = Notify.loading(busy);
+	/** The verbs over a set of rows, in the shared order and wording. */
+	function verbs(list: Row[]): ReturnType<typeof playerVerbGroups> {
+		const single = list.length === 1
+			? list[0]
+			: undefined;
 
-		try {
-			const done = await work();
-
-			note.set({ level: 'success', message: done, closeable: true });
-
-			await refresh();
-		} catch (err) {
-			note.set({ level: 'error', message: busy, detail: (err as Error).message, closeable: true });
-		}
-	}
-
-	/**
-	 * Access-list verbs go through the moderation route, which fans one verb out
-	 * over every target on this instance and records each in the player's
-	 * moderation log; the same door the directory screen uses.
-	 */
-	async function moderate(action: ModerationAction, targets: Row[], reason = ''): Promise<string> {
-		const summary = await moderatePlayers(action, targets, [instance], reason);
-
-		if (summary.unconfirmed.length > 0) {
-			Notify.warning(t('web.instancePlayers.unconfirmed', { targets: summary.unconfirmed.join(', ') }));
-		}
-
-		return t('web.instancePlayers.applied', { action: t(`web.instancePlayers.verb.${action}`), targets: names(targets) });
-	}
-
-	async function doMessage(): Promise<void> {
-		const targets = pending;
-		const text = messageText.trim();
-
-		messageOpen = false;
-
-		if (targets.length === 0 || !text) {
-			return;
-		}
-
-		await act(async () => {
-			await messagePlayers(targets, text);
-
-			return t('web.instancePlayers.messageDelivered', { targets: names(targets) });
-		}, t('web.instancePlayers.sendingMessage', { targets: names(targets) }));
-
-		messageText = '';
-	}
-
-	async function doTransfer(): Promise<void> {
-		const targets = pending;
-		const to = transferTo;
-
-		transferOpen = false;
-
-		if (targets.length === 0 || !to) {
-			return;
-		}
-
-		await act(async () => {
-			await transferPlayers(targets, to);
-
-			return t('web.instancePlayers.moved', { targets: names(targets), server: to });
-		}, t('web.instancePlayers.moving', { targets: names(targets), server: to }));
-	}
-
-	async function doKick(): Promise<void> {
-		const targets = pending;
-		const reason = kickReason.trim();
-		const force = kickForce;
-
-		kickOpen = false;
-
-		if (targets.length === 0) {
-			return;
-		}
-
-		await act(async () => {
-			if (force) {
-				await disconnectPlayers(targets, reason);
-			} else {
-				await kickPlayers(targets, reason);
-			}
-
-			return t('web.instancePlayers.disconnected', { targets: names(targets) });
-		}, t('web.instancePlayers.disconnecting', { targets: names(targets) }));
-
-		kickReason = '';
-	}
-
-	async function doBan(): Promise<void> {
-		const targets = pending;
-		const reason = banReason.trim();
-
-		banOpen = false;
-
-		if (targets.length === 0) {
-			return;
-		}
-
-		await act(() => moderate('ban', targets, reason), t('web.instancePlayers.banning', { targets: names(targets) }));
-
-		banReason = '';
-	}
-
-	/**
-	 * A network-level ban of the player's address: the proxy refuses it at
-	 * pre-login, so the same connection cannot come back as another account.
-	 */
-	async function doIpBan(): Promise<void> {
-		const targets = pending;
-		const reason = ipBanReason.trim();
-
-		ipBanOpen = false;
-
-		if (targets.length === 0) {
-			return;
-		}
-
-		await act(async () => {
-			for (const row of targets) {
-				await banAddressOnNetwork(bareAddress(row.remoteAddress), reason);
-			}
-
-			return t('web.instancePlayers.ipBanned', { targets: names(targets) });
-		}, t('web.instancePlayers.ipBanning', { targets: names(targets) }));
-
-		ipBanReason = '';
-	}
-
-	async function setGameMode(targets: Row[], mode: GameMode): Promise<void> {
-		await act(async () => {
-			await setGameModeOn(instance, targets, mode);
-
-			return t('web.instancePlayers.gameModeSet', { targets: names(targets), mode: t(`web.instancePlayers.mode.${mode}`) });
-		}, t('web.instancePlayers.settingGameMode', { targets: names(targets) }));
-	}
-
-	async function resendPacks(targets: Row[]): Promise<void> {
-		await act(async () => {
-			await resendPacksTo(targets);
-
-			return t('web.instancePlayers.resentPacks', { targets: names(targets) });
-		}, t('web.instancePlayers.resendingPacks', { targets: names(targets) }));
-	}
-
-	function open(dialog: 'message' | 'transfer' | 'kick' | 'force' | 'ban' | 'ipban', targets: Row[]): void {
-		pending = targets;
-		kickForce = dialog === 'force';
-
-		if (dialog === 'message') {
-			messageOpen = true;
-		} else if (dialog === 'transfer') {
-			transferOpen = true;
-		} else if (dialog === 'kick' || dialog === 'force') {
-			kickOpen = true;
-		} else if (dialog === 'ban') {
-			banOpen = true;
-		} else {
-			ipBanOpen = true;
-		}
-	}
-
-	/** The selection's verbs by group, so a row's menu can put its own links and copies between them. */
-	function selectionGroups(targets: Row[]): { state: ContextMenuItem[]; change: ContextMenuItem[]; remove: ContextMenuItem[] } {
-		const none = targets.length === 0;
-		const noneHint = none ? t('web.instancePlayers.selectFirst') : undefined;
-		const running = instState === 'running';
-
-		const state: ContextMenuItem[] = [
-			{
-				label: t('web.instancePlayers.sendAMessage'),
-				icon: 'paperPlane',
-				disabled: none,
-				hint: noneHint,
-				action: () => open('message', targets)
-			},
-			{
-				label: t('web.instancePlayers.moveToAnotherBackend'),
-				icon: 'rightLeft',
-				disabled: none || servers.length === 0,
-				hint: noneHint ?? (servers.length === 0 ? t('web.instancePlayers.noOtherBackend') : undefined),
-				action: () => open('transfer', targets)
-			},
-			{
-				label: t('web.instancePlayers.resendPacks'),
-				icon: 'image',
-				disabled: none,
-				hint: noneHint,
-				action: () => void resendPacks(targets)
-			},
-			{
-				label: t('web.instancePlayers.setGameMode'),
-				icon: 'joystick',
-				disabled: none || !running,
-				hint: noneHint ?? (running ? undefined : t('web.instancePlayers.needsRunning')),
-				submenu: GAME_MODES.map((mode) => ({
-					label: t(`web.instancePlayers.mode.${mode}`),
-					action: () => void setGameMode(targets, mode)
-				}))
-			}
-		];
-
-		const change: ContextMenuItem[] = [
-			{
-				label: t('web.instancePlayers.accessLists'),
-				icon: 'userShield',
-				disabled: none,
-				hint: noneHint,
-				submenu: [
-					{
-						label: t('web.instancePlayers.addToWhitelist'),
-						icon: 'userTick',
-						action: () => void act(() => moderate('whitelist-add', targets), t('web.instancePlayers.updatingLists'))
-					},
-					{
-						label: t('web.instancePlayers.removeFromWhitelist'),
-						icon: 'userMinus',
-						action: () => void act(() => moderate('whitelist-remove', targets), t('web.instancePlayers.updatingLists'))
-					},
-					{
-						label: t('web.instancePlayers.grantOperator'),
-						icon: 'userCog',
-						action: () => void act(() => moderate('op', targets), t('web.instancePlayers.updatingLists'))
-					},
-					{
-						label: t('web.instancePlayers.revokeOperator'),
-						icon: 'userLock',
-						action: () => void act(() => moderate('deop', targets), t('web.instancePlayers.updatingLists'))
-					}
-				]
-			}
-		];
-
-		const remove: ContextMenuItem[] = [
-			{
-				label: t('web.instancePlayers.disconnect'),
-				icon: 'userSlash',
-				color: 'danger',
-				disabled: none,
-				hint: noneHint,
-				action: () => open('kick', targets)
-			},
-			{
-				label: t('web.instancePlayers.forceDisconnect'),
-				icon: 'unlink',
-				color: 'danger',
-				disabled: none,
-				hint: noneHint,
-				action: () => open('force', targets)
-			},
-			{
-				label: t('web.instancePlayers.banHere'),
-				icon: 'gavel',
-				color: 'danger',
-				disabled: none,
-				hint: noneHint,
-				action: () => open('ban', targets)
-			},
-			{
-				label: t('web.instancePlayers.banAddressOnNetwork'),
-				icon: 'ban',
-				color: 'danger',
-				disabled: none,
-				hint: noneHint,
-				action: () => open('ipban', targets)
-			}
-		];
-
-		return { state, change, remove };
+		return playerVerbGroups({
+			targets: targetsOf(list),
+			instance,
+			running: instState === 'running',
+			servers,
+			gameModes: GAME_MODES,
+			flags: single ? accessFlagsOf(access, { uuid: single.uuid, name: single.username }) : null,
+			open: (kind: PlayerDialogKind, targets) => dialogs?.open(kind, targets),
+			setGameMode: (targets, mode) => dialogs?.setGameMode(targets, mode)
+		});
 	}
 
 	/** Verbs over a selection; the panel's Actions dropdown and each row's menu share these. */
-	function selectionActions(targets: Row[]): ContextMenuItem[] {
-		const groups = selectionGroups(targets);
+	function selectionActions(list: Row[]): ContextMenuItem[] {
+		const groups = verbs(list);
 
-		return menuGroups(groups.state, groups.change, groups.remove);
+		return menuGroups(groups.live, groups.access, groups.remove);
 	}
 
 	/** A row's menu: the row's own links and copies around the verbs over the selection it is in. */
 	function rowActions(row: Row): ContextMenuItem[] {
-		const targets = selected.has(row.uuid) && selection.length > 1 ? selection : [row];
-		const groups = selectionGroups(targets);
+		const list = selected.has(row.uuid) && selection.length > 1 ? selection : [row];
+		const groups = verbs(list);
 
 		return menuGroups(
 			[
@@ -568,8 +315,8 @@
 					action: () => goto(`${detailPath(row)}?tab=chat`)
 				}
 			],
-			groups.state,
-			groups.change,
+			groups.live,
+			groups.access,
 			[
 				{
 					id: 'copy-menu',
@@ -606,9 +353,6 @@
 >
 	{#snippet actions()}
 		<Dropdown label={t('web.common.actions')} disabled={selection.length === 0} menu={selectionActions(selection)} />
-		<Btn icon="rotate" onclick={refresh} title={lastUpdated ? fmtTime(lastUpdated) : ''}>
-			{t('web.common.refresh')}
-		</Btn>
 	{/snippet}
 
 	{#if !available && loaded}
@@ -657,12 +401,25 @@
 		{#snippet cell(row, col)}
 			{#if col === 'username'}
 				<PlayerName player={row.uuid} name={row.username} href={detailPath(row)} />
+			{:else if col === 'access'}
+				<PlayerAccessBadges
+					flags={accessFlagsOf(access, { uuid: row.uuid, name: row.username })}
+					whitelistEnabled={access?.whitelistEnabled ?? false}
+					dash
+				/>
 			{:else if col === 'client'}
 				<span title={t('web.instancePlayers.protocol', { protocol: row.protocolVersion })}>
 					{row.clientVersion}
 				</span>
 			{:else if col === 'ping'}
-				<span class="ping {pingClass(row.pingMillis)}">{row.pingMillis} ms</span>
+				<CellStack align="right">
+					{#snippet main()}
+						<span class="ping {pingClass(row.pingMillis)}">{row.pingMillis} ms</span>
+					{/snippet}
+					{#snippet sub()}
+						{row.clientVersion}
+					{/snippet}
+				</CellStack>
 			{:else if col === 'health'}
 				{#if row.vitals}
 					<PlayerVitals kind="health" value={row.vitals.health} max={row.vitals.maxHealth} extra={row.vitals.absorption} compact />
@@ -689,10 +446,15 @@
 				{/if}
 			{:else if col === 'location'}
 				{#if row.vitals}
-					<span class="loc">
-						<span class="dim-label">{dimensionLabel(row.vitals.position.dimension)}</span>
-						<span class="mono">{coords(row)}</span>
-					</span>
+					{@const position = row.vitals.position}
+					<CellStack>
+						{#snippet main()}
+							<span class="mono">{blockCoords(position)}</span>
+						{/snippet}
+						{#snippet sub()}
+							{dimensionLabel(position.dimension)}
+						{/snippet}
+					</CellStack>
 				{:else}
 					<span class="dim">–</span>
 				{/if}
@@ -711,13 +473,7 @@
 			{:else if col === 'gamemode'}
 				{#if row.vitals}
 					<StatusBadge
-						state={row.vitals.gameMode === 'survival'
-							? 'ok'
-							: row.vitals.gameMode === 'creative'
-								? 'warning'
-								: row.vitals.gameMode === 'spectator'
-									? 'stopped'
-									: 'info'}
+						state={gameModeState(row.vitals.gameMode)}
 						label={t(`web.instancePlayers.mode.${row.vitals.gameMode}`)}
 					/>
 				{:else}
@@ -746,92 +502,9 @@
 	</ResourceTable>
 </Panel>
 
-<Modal title={t('web.instancePlayers.messageTitle', { targets: names(pending) })} bind:open={messageOpen}>
-	<label class="field">
-		<span class="lbl">{t('web.instancePlayers.message')}</span>
-		<span class="hint">{t('web.instancePlayers.messageHint')}</span>
-		<input class="input" bind:value={messageText} placeholder={t('web.instancePlayers.typeAMessage')} />
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (messageOpen = false)}>{t('web.common.cancel')}</Btn>
-		<Btn variant="primary" disabled={!messageText.trim()} onclick={doMessage}>{t('web.instancePlayers.send')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title={t('web.instancePlayers.moveTitle', { targets: names(pending) })} bind:open={transferOpen}>
-	<p>{t('web.instancePlayers.moveHint')}</p>
-	<div class="field">
-		<span class="lbl">{t('web.instancePlayers.destination')}</span>
-		<Select bind:value={transferTo} width="100%" options={servers.map((name) => ({ value: name, label: name }))} />
-	</div>
-	{#snippet footer()}
-		<Btn onclick={() => (transferOpen = false)}>{t('web.common.cancel')}</Btn>
-		<Btn variant="primary" disabled={!transferTo} onclick={doTransfer}>{t('web.instancePlayers.move')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title={t('web.instancePlayers.disconnectTitle', { targets: names(pending) })} bind:open={kickOpen}>
-	<p>{t('web.instancePlayers.disconnectHint')}</p>
-	<label class="field">
-		<span class="lbl">{t('web.instancePlayers.reasonShown')}</span>
-		<input class="input" bind:value={kickReason} placeholder={t('web.instancePlayers.reasonOptional')} />
-	</label>
-	<label class="force">
-		<Checkbox checked={kickForce} label={t('web.instancePlayers.force')} onchange={(on) => (kickForce = on)} />
-		<span>
-			{t('web.instancePlayers.force')}
-			<span class="dim">{t('web.instancePlayers.forceHint')}</span>
-		</span>
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (kickOpen = false)}>{t('web.common.cancel')}</Btn>
-		<Btn variant="danger" onclick={doKick}>{t('web.instancePlayers.disconnect')}</Btn>
-	{/snippet}
-</Modal>
-
-<ConfirmModal
-	bind:open={banOpen}
-	title={t('web.instancePlayers.banTitle', { targets: names(pending) })}
-	lead={t('web.instancePlayers.banLead', { instance })}
-	notes={[t('web.instancePlayers.banNote')]}
-	confirmLabel={t('web.instancePlayers.ban')}
-	onconfirm={doBan}
->
-	<label class="field">
-		<span class="lbl">{t('web.instancePlayers.reason')}</span>
-		<input class="input" bind:value={banReason} placeholder={t('web.instancePlayers.reasonOptional')} />
-	</label>
-</ConfirmModal>
-
-<ConfirmModal
-	bind:open={ipBanOpen}
-	title={t('web.instancePlayers.ipBanTitle', { targets: names(pending) })}
-	lead={t('web.instancePlayers.ipBanLead', { addresses: pending.map((row) => row.remoteAddress).join(', ') })}
-	notes={[t('web.instancePlayers.ipBanNote')]}
-	confirmLabel={t('web.instancePlayers.banAddress')}
-	onconfirm={doIpBan}
->
-	<label class="field">
-		<span class="lbl">{t('web.instancePlayers.reason')}</span>
-		<input class="input" bind:value={ipBanReason} placeholder={t('web.instancePlayers.reasonOptional')} />
-	</label>
-</ConfirmModal>
+<PlayerActionDialogs bind:this={dialogs} {instance} {servers} ondone={settled} />
 
 <style lang="scss">
-	.force {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		margin-top: 0.75rem;
-		font-size: 0.875rem;
-
-		.dim {
-			display: block;
-			margin-top: 0.125rem;
-			font-size: 0.8125rem;
-		}
-	}
-
 	.pad {
 		padding: 1rem 1.25rem 0;
 	}
@@ -855,20 +528,5 @@
 
 	.num {
 		font-variant-numeric: tabular-nums;
-	}
-
-	.loc {
-		display: inline-flex;
-		flex-direction: column;
-		line-height: 1.25;
-	}
-
-	.dim-label {
-		font-size: 0.75rem;
-		color: var(--text-secondary);
-	}
-
-	.field {
-		margin-top: 0.75rem;
 	}
 </style>

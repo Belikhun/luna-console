@@ -7,9 +7,13 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { api, post } from '$lib/api';
+	import { api } from '$lib/api';
+	import { copyText } from '$lib/clipboard';
+	import { lunaAdmin, playerVerbGroups } from '$lib/playeractions';
+	import type { PlayerActionTarget } from '$lib/playeractions';
 	import { PING_FAIR, PING_POOR, pingClass } from '$lib/players';
 	import { fmtDuration, fmtTime } from '$lib/format';
+	import ScreenLink from '$lib/components/ScreenLink.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
@@ -19,10 +23,12 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
-	import OverviewBar from '$lib/components/OverviewBar.svelte';
-	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import Modal from '$lib/components/Modal.svelte';
-	import Checkbox from '$lib/components/Checkbox.svelte';
+	import CellStack from '$lib/components/CellStack.svelte';
+	import PlayerActionDialogs from '$lib/components/PlayerActionDialogs.svelte';
+	import StatGrid from '$lib/components/StatGrid.svelte';
+	import StatTile from '$lib/components/StatTile.svelte';
+	import { loadInterval } from '$lib/components/refresh';
 	import DateTime from '$lib/components/DateTime.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
@@ -38,6 +44,8 @@
 	 * subscribes to LunaCore's players stream: joins and leaves are exactly the events
 	 * a poll interval feels slow for, and the stream only speaks when something
 	 * actually happened, so reacting to it costs nothing while the network is idle.
+	 * A stream event is still a reload, so it follows the refresh control: with
+	 * auto-refresh switched off, the roster changes only when the operator asks.
 	 */
 
 	interface Player {
@@ -70,32 +78,35 @@
 	let available = $state(true);
 	let problem = $state('');
 	let servers: string[] = $state([]);
+
+	/** Backends luna manages, which the access-list verbs can target */
+	let instances: string[] = $state([]);
 	let loading = $state(true);
+
+	/** True once the first read settled; the tables' skeletons show only before it */
+	let loaded = $state(false);
+
+	/** The refresh control's storage key, which the stream reads the setting through */
+	const REFRESH_KEY = 'players';
 	let lastUpdated: number | null = $state(null);
 
 	let selected: Set<string> = $state(new Set());
 
-	let kickOpen = $state(false);
-	let kickReason = $state('');
-	let kickForce = $state(false);
-	let messageOpen = $state(false);
-	let messageText = $state('');
-	let transferOpen = $state(false);
-	let transferTo = $state('');
+	let dialogs: PlayerActionDialogs | undefined = $state();
 	let broadcastOpen = $state(false);
 	let broadcastText = $state('');
 	let broadcastServer = $state('');
 
-	const one = $derived(
-		selected.size === 1 ? players.find((player) => selected.has(player.uuid)) : undefined
-	);
+	const selection = $derived(players.filter((player) => selected.has(player.uuid)));
 
 	async function refresh(): Promise<void> {
+		loading = true;
+
 		try {
 			const data = await api('/luna/players');
 
 			available = data.available !== false;
-			problem = available ? '' : (data.error ?? 'LunaCore is unreachable');
+			problem = available ? '' : (data.error ?? t('web.playerDetail.noAnswer'));
 			players = data.players ?? [];
 			activity = data.activity ?? [];
 			byServer = data.byServer ?? {};
@@ -106,6 +117,7 @@
 		}
 
 		loading = false;
+		loaded = true;
 	}
 
 	onMount(() => {
@@ -113,21 +125,27 @@
 
 		// the backend list is only needed to offer transfer targets
 		void api('/instances').then((data) => {
+			instances = data.instances
+				.filter((inst: any) => inst.name !== 'proxy')
+				.map((inst: any) => inst.name)
+				.sort();
 			servers = [
 				...data.instances
 					.filter((inst: any) => inst.name !== 'proxy')
 					.map((inst: any) => inst.name),
 				...data.externals.map((inst: any) => inst.name)
 			].sort();
-
-			transferTo = servers[0] ?? '';
 		});
 
 		// any event on the stream means the roster changed; the payload is LunaCore's
 		// own event shape, and re-reading /players is cheaper than mirroring it here
 		const stream = new EventSource('/api/luna/stream?stream=players');
 
-		stream.onmessage = () => void refresh();
+		stream.onmessage = () => {
+			if (loadInterval(REFRESH_KEY) > 0) {
+				void refresh();
+			}
+		};
 
 		return () => stream.close();
 	});
@@ -137,7 +155,7 @@
 		{ id: 'server', label: t('web.playersOnline.backend'), sortable: true },
 		{ id: 'session', label: t('web.playersOnline.session'), sortable: true },
 		{ id: 'ping', label: t('web.playersOnline.ping'), sortable: true, width: 110, align: 'right' },
-		{ id: 'client', label: t('web.playersOnline.client'), sortable: true },
+		{ id: 'client', label: t('web.playersOnline.client'), sortable: true, hidden: true },
 		{ id: 'mode', label: t('web.playersOnline.auth') },
 		{ id: 'address', label: t('web.playersOnline.address'), hidden: true },
 		{ id: 'host', label: t('web.playersOnline.connectedVia'), hidden: true },
@@ -164,10 +182,14 @@
 			label: t('web.playersOnline.filterLatency'),
 			options: [
 				{ value: 'any', label: t('web.playersOnline.anyLatency') },
-				{ value: 'good', label: `Under ${PING_FAIR} ms`, match: (player) => player.pingMillis < PING_FAIR },
+				{
+					value: 'good',
+					label: t('web.instancePlayers.under', { ms: PING_FAIR }),
+					match: (player) => player.pingMillis < PING_FAIR
+				},
 				{
 					value: 'poor',
-					label: `Over ${PING_POOR} ms`,
+					label: t('web.instancePlayers.over', { ms: PING_POOR }),
 					match: (player) => player.pingMillis >= PING_POOR
 				}
 			]
@@ -196,6 +218,13 @@
 		}
 	}
 
+	/** The backend with the most players on it, as `[name, count]`. */
+	const busiest = $derived(
+		Object.entries(byServer).sort((left, right) => right[1] - left[1])[0]
+	);
+
+	const slowCount = $derived(players.filter((player) => player.pingMillis >= PING_POOR).length);
+
 	const longestSession = $derived(
 		players.length ? Math.max(...players.map((player) => player.sessionMillis)) : 0
 	);
@@ -213,87 +242,6 @@
 		).length
 	);
 
-	/** Run an admin action against LunaCore and report what it did. */
-	async function act(
-		body: Record<string, unknown>,
-		pending: string,
-		done: (result: any) => string
-	): Promise<void> {
-		const note = Notify.loading(pending);
-
-		try {
-			const result = await post('/luna/admin', body);
-
-			if (result.ok === false) {
-				throw new Error(result.error ?? 'LunaCore refused the action');
-			}
-
-			note.set({ level: 'success', message: done(result.data ?? {}), closeable: true });
-
-			await refresh();
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: pending,
-				detail: (err as Error).message,
-				closeable: true
-			});
-		}
-	}
-
-	async function doKick(): Promise<void> {
-		const player = one;
-
-		kickOpen = false;
-
-		if (!player) {
-			return;
-		}
-
-		await act(
-			{ action: kickForce ? 'disconnect' : 'kick', player: player.uuid, reason: kickReason },
-			`Disconnecting ${player.username}…`,
-			() => `${player.username} disconnected`
-		);
-
-		kickReason = '';
-	}
-
-	async function doMessage(): Promise<void> {
-		const player = one;
-		const text = messageText.trim();
-
-		messageOpen = false;
-
-		if (!player || !text) {
-			return;
-		}
-
-		await act(
-			{ action: 'message', player: player.uuid, message: text },
-			`Sending a message to ${player.username}…`,
-			() => `Message delivered to ${player.username}`
-		);
-
-		messageText = '';
-	}
-
-	async function doTransfer(): Promise<void> {
-		const player = one;
-
-		transferOpen = false;
-
-		if (!player || !transferTo) {
-			return;
-		}
-
-		await act(
-			{ action: 'transfer', player: player.uuid, server: transferTo },
-			`Moving ${player.username} to ${transferTo}…`,
-			(data) => `${player.username} moved to ${data.server ?? transferTo}`
-		);
-	}
-
 	async function doBroadcast(): Promise<void> {
 		const text = broadcastText.trim();
 
@@ -303,59 +251,59 @@
 			return;
 		}
 
-		await act(
-			{
+		const busy = t('web.playersOnline.broadcasting');
+		const note = Notify.loading(busy);
+
+		try {
+			const data = await lunaAdmin({
 				action: 'broadcast',
 				message: text,
 				server: broadcastServer || undefined
-			},
-			'Broadcasting…',
-			(data) => `Broadcast reached ${data.reached ?? 0} player(s)`
-		);
+			});
+
+			note.set({
+				level: 'success',
+				message: t('web.playersOnline.broadcastReached', { count: Number(data.reached ?? 0) }),
+				closeable: true
+			});
+		} catch (err) {
+			note.set({ level: 'error', message: busy, detail: (err as Error).message, closeable: true });
+		}
 
 		broadcastText = '';
 	}
 
-	/**
-	 * Re-offer this player their resource packs. luna-pack sends a client its
-	 * whole applicable set rather than one pack, so this is the player-shaped
-	 * form of the same verb the pack screens carry: the fix for somebody whose
-	 * pack failed to download or who declined the prompt.
-	 */
-	async function resendPacks(player: Player): Promise<void> {
-		const note = Notify.loading(t('web.playersOnline.resendingPacks', { player: player.username }));
-
-		try {
-			const result = await post('/respacks/resend', { players: [player.username] });
-
-			if (!result.available) {
-				throw new Error(result.problem ?? t('web.playersOnline.resendUnavailable'));
-			}
-
-			const target = result.targets?.[0];
-
-			if (!target?.sent) {
-				throw new Error(target?.problem ?? t('web.playersOnline.resendUnavailable'));
-			}
-
-			note.set({
-				level: 'success',
-				message: t('web.playersOnline.resentPacks', { player: player.username }),
-				detail: t('web.playersOnline.resendWholeSet'),
-				closeable: true
-			});
-		} catch (err) {
-			note.set({
-				level: 'error',
-				message: t('web.playersOnline.resendFailed', { player: player.username }),
-				detail: (err as Error).message,
-				closeable: true
-			});
-		}
+	function targetsOf(rows: Player[]): PlayerActionTarget[] {
+		return rows.map((player) => ({
+			uuid: player.uuid,
+			username: player.username,
+			online: true,
+			server: player.server,
+			address: player.remoteAddress
+		}));
 	}
 
-	/** A player's verbs; the row menu and the toolbar's Actions button. */
+	/** The verbs over a set of players, in the shared order and wording. */
+	function verbs(rows: Player[]): ReturnType<typeof playerVerbGroups> {
+		return playerVerbGroups({
+			targets: targetsOf(rows),
+			servers,
+			open: (kind, targets) => dialogs?.open(kind, targets)
+		});
+	}
+
+	/** Verbs over a selection; the Actions dropdown and each row's menu share these. */
+	function selectionActions(rows: Player[]): ContextMenuItem[] {
+		const groups = verbs(rows);
+
+		return menuGroups(groups.live, groups.access, groups.remove);
+	}
+
+	/** A row's menu: its links and copies around the verbs over the selection it is in. */
 	function rowActions(player: Player): ContextMenuItem[] {
+		const rows = selected.has(player.uuid) && selection.length > 1 ? selection : [player];
+		const groups = verbs(rows);
+
 		return menuGroups(
 			[
 				{
@@ -364,74 +312,36 @@
 					action: () => goto(`/players/${player.uuid}`)
 				},
 				{
-					label: `Open ${player.server}`,
-					icon: 'server',
-					action: () => goto(`/instances/${player.server}`)
+					label: t('web.players.viewOnBackend', { server: player.server }),
+					icon: 'userPortrait',
+					action: () => goto(`/instances/${player.server}/players/${player.uuid}`)
 				}
 			],
-			[
-				{
-					label: t('web.playersOnline.sendAMessage'),
-					icon: 'paperPlane',
-					action: () => {
-						selected = new Set([player.uuid]);
-						messageOpen = true;
-					}
-				},
-				{
-					label: t('web.playersOnline.moveToAnotherBackend'),
-					icon: 'rightLeft',
-					action: () => {
-						selected = new Set([player.uuid]);
-						transferOpen = true;
-					}
-				},
-				{
-					label: t('web.playersOnline.resendPacks'),
-					icon: 'image',
-					hint: t('web.playersOnline.resendWholeSet'),
-					action: () => void resendPacks(player)
-				}
-			],
+			groups.live,
+			groups.access,
 			[
 				{
 					id: 'copy-uuid',
 					label: t('web.playersOnline.copyUuid'),
 					icon: 'copy',
-					action: () => void copy(player.uuid)
-				}
-			],
-			[
-				{
-					label: t('web.playersOnline.disconnectPlayer'),
-					icon: 'userSlash',
-					color: 'danger',
-					action: () => {
-						selected = new Set([player.uuid]);
-						kickForce = false;
-						kickOpen = true;
-					}
+					action: () => void copyText(player.uuid)
 				},
 				{
-					label: t('web.instancePlayers.forceDisconnect'),
-					icon: 'unlink',
-					color: 'danger',
-					action: () => {
-						selected = new Set([player.uuid]);
-						kickForce = true;
-						kickOpen = true;
-					}
+					id: 'copy-name',
+					label: t('web.instancePlayers.copyName'),
+					icon: 'copy',
+					action: () => void copyText(player.username)
 				}
-			]
+			],
+			groups.remove
 		);
 	}
 
-	/** The console runs on plain HTTP, where navigator.clipboard does not exist. */
-	async function copy(text: string): Promise<void> {
-		const { copyText } = await import('$lib/clipboard');
-
-		await copyText(text);
-	}
+	const ACTIVITY: Record<string, { state: string; label: string }> = {
+		join: { state: 'ok', label: 'web.playersOnline.eventJoin' },
+		leave: { state: 'stopped', label: 'web.playersOnline.eventLeave' },
+		switch: { state: 'warning', label: 'web.playersOnline.eventSwitch' }
+	};
 
 	const activityCols: Column[] = $derived([
 		{ id: 'time', label: t('web.playersOnline.time'), width: 170, sortable: true },
@@ -444,44 +354,65 @@
 
 <svelte:head><title>{t('web.playersOnline.onlinePlayersLunaConsole')}</title></svelte:head>
 
-<PageHeader title={t('web.playersOnline.onlinePlayers')} count="{selected.size ? `${selected.size}/` : ''}{players.length}" info={t('web.guide.playersOnline')}>
+<PageHeader
+	title={t('web.playersOnline.onlinePlayers')}
+	count="{selected.size ? `${selected.size}/` : ''}{players.length}"
+	info={t('web.guide.playersOnline')}
+	description={t('web.playersOnline.description')}
+>
 	{#snippet actions()}
-		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players" />
-		<Dropdown label={t('web.playersOnline.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), [resourceId('player', one.username)]) : []} />
+		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey={REFRESH_KEY} />
+		<Dropdown
+			label={t('web.playersOnline.actions')}
+			disabled={selection.length === 0}
+			menu={withCopyResourceId(selectionActions(selection), selection.map((player) => resourceId('player', player.username)))}
+		/>
+		<Btn icon="users" href="/players">{t('web.playersOnline.allPlayers')}</Btn>
 		<Btn icon="bullhorn" onclick={() => (broadcastOpen = true)}>{t('web.playersOnline.broadcast')}</Btn>
 	{/snippet}
 </PageHeader>
 
 {#if !available}
 	<Flash kind="warning">
-		<b>{t('web.playersOnline.lunacoreIsNotAnswering')}</b> {problem}. The proxy may be stopped, or running a
-		{t('web.playersOnline.buildWithoutThePlayers')}
+		<b>{t('web.playersOnline.lunacoreIsNotAnswering')}</b>
+		{t('web.playerDetail.lunacoreDownDetail', { problem })}
 	</Flash>
 {/if}
 
-<OverviewBar title={t('web.playersOnline.networkOverview')}>
-	<OverviewCell label={t('web.playersOnline.onlineNow')}>
-		{players.length}
-	</OverviewCell>
-	<OverviewCell label={t('web.playersOnline.backendsOccupied')}>
-		{Object.keys(byServer).length || '–'}
-	</OverviewCell>
-	<OverviewCell label={t('web.playersOnline.averagePing')}>
-		{players.length ? `${averagePing} ms` : '–'}
-	</OverviewCell>
-	<OverviewCell label={t('web.playersOnline.longestSession')}>
-		{players.length ? fmtDuration(longestSession) : '–'}
-	</OverviewCell>
-	<OverviewCell label={t('web.playersOnline.joinsInTheLastHour')}>
-		{recentJoins}
-	</OverviewCell>
-</OverviewBar>
+<StatGrid min={10}>
+	<StatTile label={t('web.playersOnline.onlineNow')} value={loaded && available ? players.length : null} loading={!loaded} />
+	<StatTile
+		label={t('web.playersOnline.backendsOccupied')}
+		value={loaded && available ? Object.keys(byServer).length : null}
+		secondary={busiest ? t('web.playersOnline.busiest', { server: busiest[0], count: busiest[1] }) : undefined}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.playersOnline.averagePing')}
+		value={players.length > 0 ? averagePing : null}
+		unit="ms"
+		tone={players.length > 0 && averagePing >= PING_POOR ? 'critical' : players.length > 0 && averagePing >= PING_FAIR ? 'warning' : 'default'}
+		secondary={slowCount > 0 ? t('web.playersOnline.slowCount', { count: slowCount, ms: PING_POOR }) : undefined}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.playersOnline.longestSession')}
+		value={players.length > 0 ? longestSession : null}
+		formatValue={fmtDuration}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.playersOnline.joinsInTheLastHour')}
+		value={loaded && available ? recentJoins : null}
+		loading={!loaded}
+	/>
+</StatGrid>
 
 <div class="body">
 	<Panel flush>
 		<ResourceTable
 			tableId="players"
-			{loading}
+			loading={!loaded}
 			initialSearch={page.url.searchParams.get('q') ?? ''}
 			{columns}
 			rows={players}
@@ -489,7 +420,7 @@
 			searchValue={(player) =>
 				`${player.username} ${player.server} ${player.uuid} ${player.clientVersion} ${player.remoteAddress} ${player.virtualHost}`}
 			searchPlaceholder={t('web.playersOnline.findPlayerByNameBackend')}
-			selectable="single"
+			selectable="multi"
 			bind:selected
 			{rowActions}
 			rowLabel={(player) => player.username}
@@ -498,6 +429,7 @@
 			{sortValue}
 			{filters}
 			pageSize={25}
+			defaultSort={{ col: 'session', dir: 'desc' }}
 			emptyTitle={t('web.playersOnline.nobodyIsOnline')}
 			emptyText={t('web.playersOnline.joinsAppearHereAsThey')}
 		>
@@ -505,17 +437,24 @@
 				{#if col === 'username'}
 					<PlayerName player={player.uuid} name={player.username} />
 				{:else if col === 'server'}
-					<a href="/instances/{player.server}">{player.server}</a>
+					<ScreenLink href="/instances/{player.server}/access">{player.server}</ScreenLink>
 				{:else if col === 'session'}
 					<DateTime at={player.connectedAtEpochMillis} text={fmtDuration(player.sessionMillis)} />
 				{:else if col === 'ping'}
-					<span class="ping {pingClass(player.pingMillis)}">{player.pingMillis} ms</span>
+					<CellStack align="right">
+						{#snippet main()}
+							<span class="ping {pingClass(player.pingMillis)}">{player.pingMillis} ms</span>
+						{/snippet}
+						{#snippet sub()}
+							{player.clientVersion}
+						{/snippet}
+					</CellStack>
 				{:else if col === 'client'}
 					<span class="dim">{player.clientVersion}</span>
 				{:else if col === 'mode'}
 					<StatusBadge
 						state={player.onlineMode ? 'passed' : 'warning'}
-						label={player.onlineMode ? 'Premium' : 'Offline'}
+						label={player.onlineMode ? t('web.players.premium') : t('web.players.offlineAccount')}
 					/>
 				{:else if col === 'address'}
 					<span class="mono dim">{player.remoteAddress}</span>
@@ -536,7 +475,7 @@
 	>
 		<ResourceTable
 			tableId="player-activity"
-			{loading}
+			loading={!loaded}
 			columns={activityCols}
 			rows={activity}
 			getId={(event) => `${event.atEpochMillis}-${event.uuid}-${event.type}`}
@@ -558,11 +497,11 @@
 					</span>
 				{:else if col === 'type'}
 					<StatusBadge
-						state={event.type === 'join' ? 'ok' : event.type === 'leave' ? 'stopped' : 'warning'}
-						label={event.type}
+						state={ACTIVITY[event.type]?.state ?? 'info'}
+						label={ACTIVITY[event.type] ? t(ACTIVITY[event.type]!.label) : event.type}
 					/>
 				{:else if col === 'username'}
-					{event.username}
+					<PlayerName player={event.uuid} name={event.username} />
 				{:else if col === 'where'}
 					<!-- a switch is the only event with both ends, and the pair is the point -->
 					{#if event.type === 'switch' && event.previousServer}
@@ -580,57 +519,7 @@
 	</Panel>
 </div>
 
-<Modal title="Disconnect {one?.username ?? 'player'}" bind:open={kickOpen}>
-	<p>{t('web.playersOnline.theyAreRemovedFrom')}</p>
-	<label class="field">
-		<span class="lbl">{t('web.playersOnline.reasonShownToThe')}</span>
-		<span class="hint">{t('web.playersOnline.optionalLunacoreSendsIts')}</span>
-		<input class="input" bind:value={kickReason} placeholder={t('web.playersOnline.eGRestartingTheLobby')} />
-	</label>
-	<label class="force">
-		<Checkbox checked={kickForce} label={t('web.instancePlayers.force')} onchange={(on) => (kickForce = on)} />
-		<span>
-			{t('web.instancePlayers.force')}
-			<span class="dim">{t('web.instancePlayers.forceHint')}</span>
-		</span>
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (kickOpen = false)}>{t('web.playersOnline.cancel')}</Btn>
-		<Btn variant="danger" onclick={doKick}>{t('web.playersOnline.disconnect')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title="Message {one?.username ?? 'player'}" bind:open={messageOpen}>
-	<label class="field">
-		<span class="lbl">{t('web.playersOnline.message')}</span>
-		<span class="hint">{t('web.playersOnline.deliveredInChatVisible')}</span>
-		<input class="input" bind:value={messageText} placeholder={t('web.playersOnline.typeAMessage')} />
-	</label>
-	{#snippet footer()}
-		<Btn onclick={() => (messageOpen = false)}>{t('web.playersOnline.cancel')}</Btn>
-		<Btn variant="primary" disabled={!messageText.trim()} onclick={doMessage}>{t('web.playersOnline.send')}</Btn>
-	{/snippet}
-</Modal>
-
-<Modal title="Move {one?.username ?? 'player'}" bind:open={transferOpen}>
-	<p>
-		{t('web.playersOnline.theProxyMovesThem')}
-	</p>
-	<div class="field">
-		<span class="lbl">{t('web.playersOnline.destinationBackend')}</span>
-		<Select
-			bind:value={transferTo}
-			width="100%"
-			options={servers
-				.filter((name) => name !== one?.server)
-				.map((name) => ({ value: name, label: name }))}
-		/>
-	</div>
-	{#snippet footer()}
-		<Btn onclick={() => (transferOpen = false)}>{t('web.playersOnline.cancel')}</Btn>
-		<Btn variant="primary" disabled={!transferTo} onclick={doTransfer}>{t('web.playersOnline.move')}</Btn>
-	{/snippet}
-</Modal>
+<PlayerActionDialogs bind:this={dialogs} {servers} {instances} ondone={refresh} />
 
 <Modal title={t('web.playersOnline.broadcastAMessage')} bind:open={broadcastOpen}>
 	<label class="field">
@@ -645,7 +534,7 @@
 			width="100%"
 			options={[
 				{ value: '', label: t('web.playersOnline.everyoneOnTheNetwork') },
-				...servers.map((name) => ({ value: name, label: `Only ${name}` }))
+				...servers.map((name) => ({ value: name, label: t('web.playersOnline.onlyOn', { server: name }) }))
 			]}
 		/>
 	</div>
@@ -656,20 +545,6 @@
 </Modal>
 
 <style lang="scss">
-	.force {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		margin-top: 0.75rem;
-		font-size: 0.875rem;
-
-		.dim {
-			display: block;
-			margin-top: 0.125rem;
-			font-size: 0.8125rem;
-		}
-	}
-
 	.body {
 		display: flex;
 		flex-direction: column;

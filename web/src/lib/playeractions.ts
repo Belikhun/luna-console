@@ -11,7 +11,9 @@
  */
 
 import { post } from '$lib/api';
+import { t } from '$lib/i18n.svelte';
 import type { GameMode } from '$core/playerdata';
+import type { ContextMenuItem } from '$lib/components/contextmenu';
 
 /** A player as the verbs address one: the name for commands, the uuid for the proxy. */
 export interface PlayerTarget {
@@ -164,4 +166,228 @@ export function bareAddress(remoteAddress: string): string {
 /** Targets as a readable list, for notices. */
 export function targetNames(targets: PlayerTarget[]): string {
 	return targets.map((target) => target.username).join(', ');
+}
+
+/** The dialogs and one-shot verbs `PlayerActionDialogs` runs. */
+export type PlayerDialogKind =
+	| 'message'
+	| 'transfer'
+	| 'kick'
+	| 'force'
+	| 'resend'
+	| 'ipban'
+	| 'ban'
+	| 'pardon'
+	| 'whitelist-add'
+	| 'whitelist-remove'
+	| 'op'
+	| 'deop';
+
+/** A player a menu acts on, with what the menu needs to know to offer each verb. */
+export interface PlayerActionTarget extends PlayerTarget {
+	/** False for a player who is not connected; the live verbs skip them */
+	online?: boolean;
+	/** The backend they are on, which a move leaves out of its destinations */
+	server?: string;
+	/** Their address as the proxy reports it; absent, an address ban is not offered */
+	address?: string;
+}
+
+/** What a screen tells the menu builder about where its verbs run. */
+export interface PlayerVerbContext {
+	/** The players the verbs act on: the selection, or the one row */
+	targets: PlayerActionTarget[];
+	/** Set on an instance's screens: access verbs then act on this server alone */
+	instance?: string;
+	/** Instance screens only: whether that server is running, which game mode needs */
+	running?: boolean;
+	/** Backends a player can be moved to */
+	servers: string[];
+	/** Opens a dialog, or runs the verb when it needs none */
+	open: (kind: PlayerDialogKind, targets: PlayerActionTarget[]) => void;
+	/** Instance screens only: the game mode verb */
+	setGameMode?: (targets: PlayerActionTarget[], mode: GameMode) => void;
+	/** Game modes offered under the game mode verb */
+	gameModes?: readonly GameMode[];
+	/** Where the one player stands on this server's lists, which disables the verbs that would change nothing */
+	flags?: { operator: boolean; whitelisted: boolean; banned: boolean } | null;
+}
+
+/** The verbs over a set of players, in the groups a menu puts dividers between. */
+export interface PlayerVerbGroups {
+	/** Verbs on a live connection: message, move, packs, game mode */
+	live: ContextMenuItem[];
+	/** The access-list submenu */
+	access: ContextMenuItem[];
+	/** Disconnecting and banning */
+	remove: ContextMenuItem[];
+}
+
+/**
+ * The player verbs every screen offers, in one order with one set of labels and
+ * one reason per disabled verb. A live verb acts on the connected targets only,
+ * so a mixed selection still gets it; nobody connected disables it and says so.
+ *
+ * @param ctx the targets and where the verbs run
+ * @returns the verbs by group, for `menuGroups` to join
+ */
+export function playerVerbGroups(ctx: PlayerVerbContext): PlayerVerbGroups {
+	const none = ctx.targets.length === 0;
+	const connected = ctx.targets.filter((target) => target.online !== false);
+	const addressed = ctx.targets.filter((target) => !!target.address);
+	const scoped = ctx.instance !== undefined;
+
+	const noneHint = none
+		? t('web.instancePlayers.selectFirst')
+		: undefined;
+
+	const offlineHint = connected.length > 0
+		? undefined
+		: ctx.targets.length === 1
+			? t('web.playerActions.playerOffline')
+			: t('web.playerActions.nobodyOnline');
+
+	const liveHint = noneHint ?? offlineHint;
+	const liveOff = none || connected.length === 0;
+
+	const live: ContextMenuItem[] = [
+		{
+			label: t('web.instancePlayers.sendAMessage'),
+			icon: 'paperPlane',
+			disabled: liveOff,
+			hint: liveHint,
+			action: () => ctx.open('message', connected)
+		},
+		{
+			label: t('web.instancePlayers.moveToAnotherBackend'),
+			icon: 'rightLeft',
+			disabled: liveOff || ctx.servers.length === 0,
+			hint: liveHint ?? (ctx.servers.length === 0 ? t('web.instancePlayers.noOtherBackend') : undefined),
+			action: () => ctx.open('transfer', connected)
+		},
+		{
+			label: t('web.instancePlayers.resendPacks'),
+			icon: 'image',
+			disabled: liveOff,
+			hint: liveHint ?? t('web.playersOnline.resendWholeSet'),
+			action: () => ctx.open('resend', connected)
+		}
+	];
+
+	if (scoped && ctx.setGameMode) {
+		const setGameMode = ctx.setGameMode;
+		const stopped = ctx.running === false;
+
+		live.push({
+			label: t('web.instancePlayers.setGameMode'),
+			icon: 'joystick',
+			disabled: liveOff || stopped,
+			hint: liveHint ?? (stopped ? t('web.instancePlayers.needsRunning') : undefined),
+			submenu: (ctx.gameModes ?? []).map((mode) => ({
+				label: t(`web.instancePlayers.mode.${mode}`),
+				action: () => setGameMode(connected, mode)
+			}))
+		});
+	}
+
+	// on a network screen each of these asks which servers first, hence the ellipsis
+	const suffix = scoped
+		? ''
+		: '…';
+
+	const flags = ctx.targets.length === 1
+		? ctx.flags
+		: null;
+
+	const access: ContextMenuItem[] = [
+		{
+			label: t('web.instancePlayers.accessLists'),
+			icon: 'userShield',
+			disabled: none,
+			hint: noneHint,
+			submenu: [
+				{
+					label: `${t('web.instancePlayers.addToWhitelist')}${suffix}`,
+					icon: 'userTick',
+					disabled: flags?.whitelisted === true,
+					hint: flags?.whitelisted ? t('web.playerActions.alreadyWhitelisted') : undefined,
+					action: () => ctx.open('whitelist-add', ctx.targets)
+				},
+				{
+					label: `${t('web.instancePlayers.removeFromWhitelist')}${suffix}`,
+					icon: 'userMinus',
+					disabled: flags?.whitelisted === false,
+					hint: flags?.whitelisted === false ? t('web.playerActions.notWhitelisted') : undefined,
+					action: () => ctx.open('whitelist-remove', ctx.targets)
+				},
+				{ separator: true },
+				{
+					label: `${t('web.instancePlayers.grantOperator')}${suffix}`,
+					icon: 'userCog',
+					disabled: flags?.operator === true,
+					hint: flags?.operator ? t('web.playerActions.alreadyOperator') : undefined,
+					action: () => ctx.open('op', ctx.targets)
+				},
+				{
+					label: `${t('web.instancePlayers.revokeOperator')}${suffix}`,
+					icon: 'userLock',
+					disabled: flags?.operator === false,
+					hint: flags?.operator === false ? t('web.playerActions.notOperator') : undefined,
+					action: () => ctx.open('deop', ctx.targets)
+				},
+				{ separator: true },
+				{
+					label: scoped ? t('web.instancePlayer.pardonHere') : t('web.players.pardon'),
+					icon: 'handshake',
+					disabled: flags?.banned === false,
+					hint: flags?.banned === false ? t('web.playerActions.notBanned') : undefined,
+					action: () => ctx.open('pardon', ctx.targets)
+				}
+			]
+		}
+	];
+
+	const remove: ContextMenuItem[] = [
+		{
+			label: t('web.instancePlayers.disconnect'),
+			icon: 'userSlash',
+			color: 'danger',
+			disabled: liveOff,
+			hint: liveHint,
+			action: () => ctx.open('kick', connected)
+		},
+		{
+			label: t('web.instancePlayers.forceDisconnect'),
+			icon: 'unlink',
+			color: 'danger',
+			disabled: liveOff,
+			hint: liveHint,
+			action: () => ctx.open('force', connected)
+		},
+		{
+			label: scoped ? t('web.instancePlayers.banHere') : t('web.players.ban'),
+			icon: 'gavel',
+			color: 'danger',
+			disabled: none || flags?.banned === true,
+			hint: noneHint ?? (flags?.banned ? t('web.playerActions.alreadyBanned') : undefined),
+			action: () => ctx.open('ban', ctx.targets)
+		},
+		{
+			label: t('web.instancePlayers.banAddressOnNetwork'),
+			icon: 'ban',
+			color: 'danger',
+			disabled: none || addressed.length === 0,
+			hint: noneHint ?? (addressed.length === 0 ? t('web.playerActions.noKnownAddress') : undefined),
+			action: () => ctx.open('ipban', addressed)
+		}
+	];
+
+	return { live, access, remove };
+}
+
+/** A few targets by name, a crowd by its size: what a dialog title and a notice can hold. */
+export function targetSummary(targets: PlayerTarget[]): string {
+	return targets.length <= 3
+		? targetNames(targets)
+		: t('web.playerActions.nPlayers', { count: targets.length });
 }

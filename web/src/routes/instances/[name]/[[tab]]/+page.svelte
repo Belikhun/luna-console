@@ -16,9 +16,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
-	import AccessLists from '$lib/components/AccessLists.svelte';
-	import InstanceOnlinePlayers from '$lib/components/InstanceOnlinePlayers.svelte';
-	import InstanceKnownPlayers from '$lib/components/InstanceKnownPlayers.svelte';
+	import PlayersTab from '../PlayersTab.svelte';
 	import InstanceChatLog from '$lib/components/InstanceChatLog.svelte';
 	import Btn from '$lib/components/Btn.svelte';
 	import Icon from '$lib/components/Icon.svelte';
@@ -553,6 +551,10 @@
 
 	/** The chat tab reads its own log; this tells it the refresh control fired */
 	let chatRefreshKey = $state(0);
+
+	/** The same for the players tab, whose tables read their own data */
+	let playersRefreshKey = $state(0);
+
 	/** name of the primary daemon; the machine an ownerless instance runs on */
 	let hostName = $state('');
 
@@ -668,6 +670,10 @@
 			// so only the refresh control's ticks are passed on
 			if (opts.tabData && tab === 'chat') {
 				chatRefreshKey++;
+			}
+
+			if (opts.tabData && tab === 'access') {
+				playersRefreshKey++;
 			}
 
 			lastUpdated = Date.now();
@@ -3577,11 +3583,7 @@
 				match <b>{name}</b>, stacked by priority.
 			</p>
 		{:else if tab === 'access'}
-			<InstanceOnlinePlayers instance={name ?? ''} />
-			<div class="gap"></div>
-			<InstanceKnownPlayers instance={name ?? ''} />
-			<div class="gap"></div>
-			<AccessLists instance={name ?? ''} />
+			<PlayersTab instance={name ?? ''} refreshKey={playersRefreshKey} refreshStorageKey="instance" />
 		{:else if tab === 'chat'}
 			<InstanceChatLog instance={name ?? ''} refreshKey={chatRefreshKey} />
 		{:else if tab === 'network'}
