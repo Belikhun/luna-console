@@ -6,8 +6,11 @@
 	import { t } from '$lib/i18n.svelte';
 	import { post } from '$lib/api';
 	import {
+		MOB_EFFECTS,
 		banAddressOnNetwork,
 		bareAddress,
+		effectLabel,
+		giveEffect,
 		lunaAdmin,
 		resendPacks,
 		setGameMode as setGameModeOn,
@@ -66,6 +69,39 @@
 	let banReason = $state('');
 	let ipBanOpen = $state(false);
 	let ipBanReason = $state('');
+
+	// the picker's value; OTHER_EFFECT swaps in the free-text id field
+	const OTHER_EFFECT = '__other';
+
+	let effectOpen = $state(false);
+	let effectPick = $state('minecraft:speed');
+	let effectCustom = $state('');
+	let effectLevel = $state(1);
+	let effectSeconds = $state(60);
+	let effectForever = $state(false);
+	let effectHide = $state(false);
+
+	const effectOptions = $derived([
+		...MOB_EFFECTS
+			.map((id) => ({ value: `minecraft:${id}`, label: effectLabel(id) }))
+			.sort((a, b) => a.label.localeCompare(b.label)),
+		{ value: OTHER_EFFECT, label: t('web.instancePlayers.effectOther') }
+	]);
+
+	const effectId = $derived(
+		effectPick === OTHER_EFFECT
+			? effectCustom.trim().toLowerCase()
+			: effectPick
+	);
+
+	// a namespaced id the command parser takes: letters, digits, `_ - . /`, one optional namespace
+	const effectValid = $derived(/^([a-z0-9_.-]+:)?[a-z0-9_./-]+$/.test(effectId));
+
+	const effectReady = $derived(
+		effectValid
+		&& Number.isInteger(effectLevel) && effectLevel >= 1 && effectLevel <= 256
+		&& (effectForever || (Number.isFinite(effectSeconds) && effectSeconds >= 1))
+	);
 	let moderateOpen = $state(false);
 	let moderateAction: ModerationAction = $state('ban');
 	let moderateInstances: string[] = $state([]);
@@ -116,6 +152,10 @@
 
 			case 'resend':
 				void doResend(targets);
+				break;
+
+			case 'effect':
+				effectOpen = true;
 				break;
 
 			case 'ipban':
@@ -180,6 +220,40 @@
 	 * players answers with the ones it failed for, so a partial result names them
 	 * instead of reading as a success or as a total failure.
 	 */
+	function doEffect(): void {
+		const server = instance;
+		const targets = pending;
+
+		if (!server || targets.length === 0 || !effectReady) {
+			return;
+		}
+
+		effectOpen = false;
+
+		const names = targetSummary(targets);
+		const effect = effectLabel(effectId);
+
+		const grant = {
+			effect: effectId,
+			level: effectLevel,
+			seconds: effectForever
+				? null
+				: effectSeconds,
+			hideParticles: effectHide
+		};
+
+		void report(
+			t('web.instancePlayers.givingEffect', { effect, targets: names }),
+			t('web.instancePlayers.effectGiven', { effect, targets: names }),
+			targets.length,
+			async () => {
+				await giveEffect(server, targets, grant);
+
+				return [];
+			}
+		);
+	}
+
 	async function report(
 		busy: string,
 		done: string,
@@ -448,6 +522,49 @@
 	{/snippet}
 </Modal>
 
+<Modal title={t('web.instancePlayers.giveEffectTitle', { targets: who })} bind:open={effectOpen}>
+	<p>{t('web.instancePlayers.giveEffectLead')}</p>
+	<div class="field">
+		<span class="lbl">{t('web.instancePlayers.effect')}</span>
+		<Select bind:value={effectPick} width="100%" searchable options={effectOptions} />
+	</div>
+	{#if effectPick === OTHER_EFFECT}
+		<label class="field">
+			<span class="lbl">{t('web.instancePlayers.effectId')}</span>
+			<span class="hint">{t('web.instancePlayers.effectIdHint')}</span>
+			<input class="input mono" bind:value={effectCustom} placeholder="farmersdelight:comfort" />
+		</label>
+	{/if}
+	<div class="pair">
+		<label class="field">
+			<span class="lbl">{t('web.instancePlayers.effectLevel')}</span>
+			<input class="input" type="number" min="1" max="256" step="1" bind:value={effectLevel} />
+		</label>
+		<label class="field">
+			<span class="lbl">{t('web.instancePlayers.effectSeconds')}</span>
+			<input class="input" type="number" min="1" max="1000000" step="1" disabled={effectForever} bind:value={effectSeconds} />
+		</label>
+	</div>
+	<label class="force">
+		<Checkbox checked={effectForever} label={t('web.instancePlayers.effectForever')} onchange={(on) => (effectForever = on)} />
+		<span>
+			{t('web.instancePlayers.effectForever')}
+			<span class="dim">{t('web.instancePlayers.effectForeverHint')}</span>
+		</span>
+	</label>
+	<label class="force">
+		<Checkbox checked={effectHide} label={t('web.instancePlayers.hideParticles')} onchange={(on) => (effectHide = on)} />
+		<span>
+			{t('web.instancePlayers.hideParticles')}
+			<span class="dim">{t('web.instancePlayers.hideParticlesHint')}</span>
+		</span>
+	</label>
+	{#snippet footer()}
+		<Btn onclick={() => (effectOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn variant="primary" icon="flaskVial" disabled={!effectReady} onclick={doEffect}>{t('web.instancePlayers.give')}</Btn>
+	{/snippet}
+</Modal>
+
 <ConfirmModal
 	bind:open={banOpen}
 	title={t('web.instancePlayers.banTitle', { targets: who })}
@@ -533,5 +650,12 @@
 
 	.field {
 		margin-top: 0.75rem;
+	}
+
+	// level and duration side by side
+	.pair {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0 1rem;
 	}
 </style>

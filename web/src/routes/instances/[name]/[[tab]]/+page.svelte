@@ -11,7 +11,7 @@
 	import { goto } from '$app/navigation';
 	import { api, post, patch, del } from '$lib/api';
 	import { lineBatcher } from '$lib/linebatch';
-	import { fmtDuration, fmtBytes, fmtDateTime, cpuCeiling, fmtCpuPct } from '$lib/format';
+	import { fmtDuration, fmtBytes, fmtDateTime, fmtCpuPct } from '$lib/format';
 	import SoftwareLabel from '$lib/components/SoftwareLabel.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -27,11 +27,9 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import ResourceMeta from '$lib/components/ResourceMeta.svelte';
-	import OwnerCell from '$lib/components/OwnerCell.svelte';
 	import { loadOneResourceMeta } from '$lib/resourcemeta.svelte';
 	import type { ResourceView } from '$core/resources';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
-	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import type { OverviewDetail, OverviewNode } from '$lib/components/nodeoverview';
 	import type { ThreadReport, ThreadSample } from '$client/daemon';
@@ -61,6 +59,7 @@
 	import type { UnmanagedAddonRow } from '$core/pluginstate';
 	import { channelOf } from '$lib/components/software';
 	import type { Software } from '$core/types';
+	import DetailsTab from '../DetailsTab.svelte';
 	import MonitoringOverview from '../MonitoringOverview.svelte';
 	import { monitoringViews, type MonitoringView } from '../monitoring';
 	import { METRICS_RANGES, type MetricsRange } from '$shared/metricsrange';
@@ -114,7 +113,7 @@
 	 * a plugin report scans the instance's jars and its boot session, which is
 	 * not something to do every four seconds.
 	 */
-	const REFRESHED_TABS = ['plugins', 'datapacks', 'respacks', 'monitoring', 'checks', 'logs', 'environment', 'world'];
+	const REFRESHED_TABS = ['details', 'plugins', 'datapacks', 'respacks', 'monitoring', 'checks', 'logs', 'environment', 'world'];
 
 	const LOG_LINE_CHOICES = [100, 200, 500, 1000];
 
@@ -828,9 +827,9 @@
 			}
 		}
 
-		if (which === 'checks') {
+		if (which === 'checks' || which === 'details') {
 			try {
-				// the checks tab only needs the live hour
+				// the summary and the checks tab only need the live hour
 				metrics = await api(`/instances/${name}/metrics?range=1h`);
 				metricsError = undefined;
 				metricsQuery = 'range=1h';
@@ -1880,60 +1879,6 @@
 		return threads.threads.filter((thread) => thread.cpu >= THREAD_BUSY_PCT);
 	});
 
-	/** Full CPU of the machine this instance runs on; see cpuCeiling(). */
-	const cpuMax = $derived(cpuCeiling(inst?.cpuCores));
-
-	const summaryCells: InfoCell[] = $derived.by(() => {
-		if (!inst) {
-			return [];
-		}
-
-		return [
-			{ id: 'state', label: t('web.instanceDetail.instanceState') },
-			{ id: 'software', label: t('web.instanceDetail.software') },
-			{ id: 'resourceId', label: t('web.resourceId.label') },
-			// chat is permitted on its own, so a policy reading this server's chat names this id
-			{ id: 'chatResourceId', label: t('web.resourceId.chatLabel'), help: t('web.resourceId.chatHint') },
-			{ label: t('web.instanceDetail.pingVersion'), value: inst.pingVersion },
-			{ label: t('web.instanceDetail.gameAddress'), value: inst.address, copyable: true, style: 'mono' },
-			{ label: t('web.instanceDetail.memoryHeap'), value: inst.memory },
-			...(usesJava ? [{ label: t('web.instanceDetail.javaProfile'), value: inst.profile }] : []),
-			{
-				label: t('web.instanceDetail.machine'),
-				value: inst.daemon ?? (hostName || 'primary'),
-				href:
-					(inst.daemon ?? hostName)
-						? `/machines/${inst.daemon ?? hostName}`
-						: undefined
-			},
-			{ id: 'createdBy', label: t('web.resourceMeta.createdBy') },
-			{
-				label: t('web.resourceMeta.createdAt'),
-				value: ownerMeta?.createdAt ? fmtDateTime(ownerMeta.createdAt) : null,
-				time: ownerMeta?.createdAt || null
-			},
-			{ label: t('web.instanceDetail.javaPid'), value: inst.javaPid },
-			{ id: 'cpu', label: t('web.instanceDetail.cpuUtilization') },
-			{ id: 'rss', label: t('web.instanceDetail.residentMemory') },
-			// heartbeat-only figures: the server's own tick rate and heap, which the
-			// host-side /proc sampling above cannot see
-			{ id: 'tps', label: t('web.instanceDetail.tickRate') },
-			{ id: 'heap', label: t('web.instanceDetail.jvmHeap') },
-			{ label: t('web.instanceDetail.uptime'), value: fmtDuration(inst.uptimeMs) },
-			{
-				label: t('web.instanceDetail.players'),
-				value: inst.players ? `${inst.players.online}/${inst.players.max}` : null
-			},
-			{
-				label: t('web.instanceDetail.directory'),
-				value: inst.dir,
-				copyable: true,
-				style: 'mono',
-				href: `/instances/${name}/files`
-			}
-		];
-	});
-
 	const portCells: InfoCell[] = $derived.by(() => {
 		if (!inst) {
 			return [];
@@ -2794,88 +2739,18 @@
 
 	<div class="tabbody">
 		{#if tab === 'details'}
-			<Panel title={t('web.instanceDetail.instanceSummary')}>
-				<InfoGrid cells={summaryCells}>
-					{#snippet custom(cell)}
-						{#if cell.id === 'state'}
-							<StatusBadge state={displayState} />
-						{:else if cell.id === 'software'}
-							<SoftwareLabel
-								software={inst.software}
-								version={inst.mcVersion}
-								channel={channelOf(inst.mcVersion)}
-							/>
-						{:else if cell.id === 'createdBy'}
-							<OwnerCell name={ownerMeta?.createdBy} />
-						{:else if cell.id === 'resourceId'}
-							<ResourceIdValue value={resourceId('instance', name ?? '')} label={cell.label} />
-						{:else if cell.id === 'chatResourceId'}
-							<ResourceIdValue value={resourceId('chat', name ?? '')} label={cell.label} />
-						{:else if cell.id === 'cpu'}
-							{#if inst.cpu == null}
-								<span class="dim">–</span>
-							{:else}
-								<ProgressBar
-									compact
-									value={inst.cpu}
-									max={cpuMax}
-									color="auto"
-									right={fmtCpuPct(inst.cpu)}
-									width="10rem"
-								/>
-							{/if}
-						{:else if cell.id === 'rss'}
-							{#if inst.rssMb == null}
-								<span class="dim">–</span>
-							{:else}
-								<ProgressBar
-									compact
-									value={inst.rssMb}
-									max={hostMemMb || inst.rssMb}
-									color="auto"
-									right="{(inst.rssMb / 1024).toFixed(1)} GB"
-									width="10rem"
-								/>
-							{/if}
-						{:else if cell.id === 'tps'}
-							{#if inst.tps == null}
-								<span class="dim" title={t('web.instanceDetail.lunacoreIsNotReportingFor')}>–</span>
-							{:else}
-								<!-- an explicit tone: color="auto" reads a full bar as danger, which is
-								     backwards for TPS, where full is healthy -->
-								<ProgressBar
-									compact
-									value={inst.tps}
-									max={20}
-									color={inst.tps >= 19 ? 'success' : inst.tps >= 15 ? 'warning' : 'danger'}
-									right="{inst.tps.toFixed(2)} TPS"
-									width="10rem"
-								/>
-							{/if}
-						{:else if cell.id === 'heap'}
-							{#if inst.heapUsedMb == null || inst.heapMaxMb == null}
-								<span class="dim">–</span>
-							{:else}
-								<ProgressBar
-									compact
-									value={inst.heapUsedMb}
-									max={inst.heapMaxMb}
-									color="auto"
-									right="{inst.heapUsedMb} / {inst.heapMaxMb} MB"
-									width="10rem"
-								/>
-							{/if}
-						{/if}
-					{/snippet}
-				</InfoGrid>
-			</Panel>
-			<div class="gap"></div>
-			<Panel
-				title={t('web.instanceDetail.launchCommand')}
-				description={t('web.instanceDetail.generatedFromClusterJsonProfile')}
-			>
-				<code class="cmd mono">{inst.javaCommand}</code>
-			</Panel>
+			<DetailsTab
+				{inst}
+				{displayState}
+				history={metrics.history}
+				events={metrics.events}
+				uptimeDays={uptime?.days ?? null}
+				loaded={metricsLoaded}
+				meta={ownerMeta}
+				{hostName}
+				{usesJava}
+				tabs={instanceTabs.map((entry) => entry.id)}
+			/>
 		{:else if tab === 'checks'}
 			<Panel title={t('web.instanceDetail.statusChecks')}>
 				{#each inst.checks as check}
@@ -4321,17 +4196,6 @@
 		margin-top: 0.625rem;
 	}
 
-	.cmd {
-		display: block;
-		white-space: pre-wrap;
-		word-break: break-all;
-		padding: 0.75rem 1rem;
-		background: var(--bg-terminal);
-		border: 0.1rem solid var(--border-divider);
-		border-radius: 0.5rem;
-		font-size: 0.75rem;
-		line-height: 1.6;
-	}
 	// the toggle reads as one control with its word, and lines up with the
 	// buttons beside it in the panel's action row
 	.follow {

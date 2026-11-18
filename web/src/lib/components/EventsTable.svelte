@@ -23,6 +23,7 @@
 		instanceColumn = false,
 		maxHeight = '22rem',
 		loading = false,
+		brief = false,
 		emptyTitle,
 		emptyText
 	}: {
@@ -31,6 +32,8 @@
 		instanceColumn?: boolean;
 		maxHeight?: string;
 		loading?: boolean;
+		/** A short list on a summary: no search, no kind filter, and no reason column */
+		brief?: boolean;
 		emptyTitle?: string;
 		emptyText?: string;
 	} = $props();
@@ -41,10 +44,11 @@
 	const columns: Column[] = $derived([
 		{ id: 't', label: t('web.events.col.when'), width: 130, sortable: true },
 		...(instanceColumn ? [{ id: 'instance', label: t('web.events.col.instance'), width: 130, sortable: true }] : []),
-		{ id: 'event', label: t('web.events.col.event'), width: 300 },
+		// without the reason column the event is the one that takes the room left
+		{ id: 'event', label: t('web.events.col.event'), ...(brief ? { minWidth: 200 } : { width: 300 }) },
 		{ id: 'actor', label: t('web.events.col.actor'), width: 160, sortable: true },
 		// no width of its own: the reason takes whatever the table has left
-		{ id: 'detail', label: t('web.events.col.detail'), minWidth: 240 }
+		...(brief ? [] : [{ id: 'detail', label: t('web.events.col.detail'), minWidth: 240 }])
 	]);
 
 	const filters: TableFilterGroup<InstanceEvent>[] = $derived([
@@ -73,13 +77,15 @@
 	{tableId}
 	{columns}
 	rows={rows}
-	{filters}
+	filters={brief ? undefined : filters}
+	searchable={!brief}
 	getId={(event) => `${event.instance ?? ''}:${event.t}:${event.message}`}
 	selectable="none"
 	paging={false}
 	{maxHeight}
 	{loading}
-	snug
+	// a brief list sits beside ordinary tables on a summary, so it keeps their row padding
+	snug={!brief}
 	defaultSort={{ col: 't', dir: 'desc' }}
 	sortValue={(event, col) =>
 		col === 't'

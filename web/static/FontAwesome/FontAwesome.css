@@ -1490,3 +1490,11 @@ icon[data-icon="messagePen"]::after {
 icon[data-icon="brainCircuit"]::after {
 	content: "\e0c6";
 }
+
+icon[data-icon="chevronRight"]::after {
+	content: "\f054";
+}
+
+icon[data-icon="chevronDown"]::after {
+	content: "\f078";
+}

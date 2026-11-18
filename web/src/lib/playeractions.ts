@@ -181,7 +181,76 @@ export type PlayerDialogKind =
 	| 'whitelist-add'
 	| 'whitelist-remove'
 	| 'op'
-	| 'deop';
+	| 'deop'
+	| 'effect';
+
+/**
+ * The status effects vanilla Minecraft registers, as of 1.21. A modded or
+ * datapack effect is given by typing its id instead.
+ */
+export const MOB_EFFECTS = [
+	'absorption', 'bad_omen', 'blindness', 'conduit_power', 'darkness', 'dolphins_grace',
+	'fire_resistance', 'glowing', 'haste', 'health_boost', 'hero_of_the_village', 'hunger',
+	'infested', 'instant_damage', 'instant_health', 'invisibility', 'jump_boost', 'levitation',
+	'luck', 'mining_fatigue', 'nausea', 'night_vision', 'oozing', 'poison', 'raid_omen',
+	'regeneration', 'resistance', 'saturation', 'slow_falling', 'slowness', 'speed', 'strength',
+	'trial_omen', 'unluck', 'water_breathing', 'weakness', 'weaving', 'wind_charged', 'wither'
+] as const;
+
+/** What `effect give` is told: the effect, how strong, how long, and whether it shows. */
+export interface EffectGrant {
+	/** A namespaced id; a bare one is read as `minecraft:` */
+	effect: string;
+	/** The level a player sees, 1 and up; the command takes it less one */
+	level: number;
+	/** Seconds, or null for no time limit */
+	seconds: number | null;
+	hideParticles: boolean;
+}
+
+/**
+ * An effect id as a reader would name it: `minecraft:jump_boost` reads
+ * "Jump Boost", a modded one keeps its namespace.
+ *
+ * @param id the effect's id
+ * @returns its display name
+ */
+export function effectLabel(id: string): string {
+	const [namespace, path] = id.includes(':')
+		? id.split(':', 2) as [string, string]
+		: ['minecraft', id];
+
+	const words = path
+		.split('_')
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(' ');
+
+	return namespace === 'minecraft'
+		? words
+		: `${words} (${namespace})`;
+}
+
+/**
+ * `effect give` through the instance's console, once per target. Vanilla since
+ * 1.13, so it needs no plugin; an unlimited duration (`infinite`) needs 1.19.4.
+ *
+ * @param instance the server the targets are on
+ * @param targets the connected players to affect
+ * @param grant the effect and its settings
+ */
+export async function giveEffect(instance: string, targets: PlayerTarget[], grant: EffectGrant): Promise<void> {
+	const amplifier = Math.max(0, Math.min(255, Math.round(grant.level) - 1));
+
+	const duration = grant.seconds === null
+		? 'infinite'
+		: String(Math.max(1, Math.min(1_000_000, Math.round(grant.seconds))));
+
+	for (const target of targets) {
+		await post(`/instances/${encodeURIComponent(instance)}/console`, {
+			command: `effect give ${target.username} ${grant.effect} ${duration} ${amplifier} ${grant.hideParticles}`
+		});
+	}
+}
 
 /** A player a menu acts on, with what the menu needs to know to offer each verb. */
 export interface PlayerActionTarget extends PlayerTarget {
@@ -287,6 +356,18 @@ export function playerVerbGroups(ctx: PlayerVerbContext): PlayerVerbGroups {
 				label: t(`web.instancePlayers.mode.${mode}`),
 				action: () => setGameMode(connected, mode)
 			}))
+		});
+	}
+
+	if (scoped) {
+		const stopped = ctx.running === false;
+
+		live.push({
+			label: t('web.instancePlayers.giveEffect'),
+			icon: 'flaskVial',
+			disabled: liveOff || stopped,
+			hint: liveHint ?? (stopped ? t('web.instancePlayers.needsRunning') : undefined),
+			action: () => ctx.open('effect', connected)
 		});
 	}
 

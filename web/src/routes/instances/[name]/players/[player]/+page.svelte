@@ -736,6 +736,17 @@
 
 				<div class="pair">
 					<Panel title={t('web.instancePlayer.effects')} count={snapshot.effects.length} flush>
+						{#snippet actions()}
+							<Btn
+								icon="flaskVial"
+								disabled={!data?.online || !target}
+								title={data?.online ? undefined : t('web.playerActions.playerOffline')}
+								onclick={() => target && dialogs?.open('effect', [target])}
+							>
+								{t('web.instancePlayers.giveEffect')}
+							</Btn>
+						{/snippet}
+
 						<ResourceTable
 							tableId="instance-player-effects"
 							columns={effectCols}
