@@ -46,7 +46,7 @@ export async function applyRestartChoice(
 			await stopInstance(cfg, name);
 			await startInstance(cfg, name);
 			restarted.push(name);
-			pushEvent(name, 'action', `restarted: ${reason}`);
+			pushEvent(name, 'action', 'restarted', { reason });
 		}
 
 		return { restarted, scheduled: null };

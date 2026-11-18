@@ -800,7 +800,7 @@
 	<Btn icon="close" onclick={clearFilters}>{t('web.tagSearch.clear')}</Btn>
 {/snippet}
 
-<PageHeader title={t('web.tagSearch.title')} description={t('web.tagSearch.pageDescription')} info>
+<PageHeader title={t('web.tagSearch.title')} description={t('web.tagSearch.pageDescription')} info={t('web.guide.resources')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-resources" />
 		<Dropdown label={t('web.common.actions')} disabled={picked.length === 0} menu={withCopyResourceId(resourceActions(picked), picked.map((row) => row.id))} />

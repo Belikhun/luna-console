@@ -535,7 +535,7 @@
 <svelte:head><title>{name} | {kindLabel} | Luna Console</title></svelte:head>
 
 {#if data}
-	<PageHeader title={data.plugin} info>
+	<PageHeader title={data.plugin} info={t('web.guide.plugin')}>
 		{#snippet extra()}
 			{#each data.families as family (family.key)}
 				<StatusBadge state="ok" label={family.family} />

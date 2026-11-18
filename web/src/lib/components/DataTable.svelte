@@ -53,6 +53,7 @@
 		filters,
 		initialFilters,
 		onfilterchange,
+		onsortchange,
 		selectable = 'none',
 		selected = $bindable(new Set<string>()),
 		sortValue: baseSortValue,
@@ -70,6 +71,7 @@
 		paging = false,
 		pageSize = 25,
 		maxHeight,
+		snug = false,
 		emptyTitle = t('web.table.emptyTitle'),
 		emptyText = '',
 		emptyExtra,
@@ -95,6 +97,8 @@
 		initialFilters?: Record<string, string>;
 		/** told the filter values whenever one changes, so a screen can keep them in its address */
 		onfilterchange?: (values: Record<string, string>) => void;
+		/** told the active sort (column and direction) whenever it changes, and once at the start */
+		onsortchange?: (column: string | null, direction: 'asc' | 'desc') => void;
 		selectable?: 'none' | 'single' | 'multi';
 		selected?: Set<string>;
 		sortValue?: (row: T, columnId: string) => string | number | null;
@@ -130,6 +134,8 @@
 		paging?: boolean;
 		pageSize?: number;
 		maxHeight?: string;
+		/** a narrower inset on both sides of every cell, for a table with many columns to fit */
+		snug?: boolean;
 		emptyTitle?: string;
 		emptyText?: string;
 		/** rendered under the empty state; e.g. "clear the search" */
@@ -352,6 +358,13 @@
 	const activeSort = $derived(
 		columns.some((col) => col.id === sortCol && col.sortable) ? sortCol : null
 	);
+
+	$effect(() => {
+		const column = activeSort;
+		const direction = sortDir;
+
+		untrack(() => onsortchange?.(column, direction));
+	});
 
 	const sorted = $derived.by(() => {
 		if (!activeSort || !sortValue) {
@@ -1008,6 +1021,10 @@
 		{ value: false, label: t('web.table.stickyNone') },
 		{ value: true, label: t('web.table.stickyLast') }
 	];
+
+	// the toolbar row is drawn only when it holds something besides the gear
+	const toolbarRow = $derived(!!toolbar || !!paging || (filters?.length ?? 0) > 0);
+	const gearInHead = $derived(!toolbarRow && !!tableId);
 </script>
 
 <svelte:window onpointermove={onMove} onpointerup={endResize} />
@@ -1018,8 +1035,9 @@
 	class:wrap-lines={wrapLines}
 	class:striped
 	class:compact
+	class:snug
 >
-	{#if toolbar || paging || tableId || filters}
+	{#if toolbarRow}
 		<div class="tb">
 			<div class="tb-left">
 				{#if toolbar}{@render toolbar()}{/if}
@@ -1099,6 +1117,7 @@
 							data-align={col.align ?? 'left'}
 							class:sticky={index < stickyCount}
 							class:sticky-last={stickyLast && overflowing && ci === visibleCols.length - 1}
+							class:gear-room={gearInHead && ci === visibleCols.length - 1}
 							style={stickyStyle(index)}
 							bind:this={headCells[index]}
 						>
@@ -1127,7 +1146,17 @@
 							</span>
 						</th>
 					{/each}
-					<th class="filler" aria-hidden="true"></th>
+					{#if gearInHead}
+						<!-- nothing else would fill a toolbar row, so the gear sits at the header's end
+						     rather than costing the table a whole empty row above it -->
+						<th class="filler head-gear">
+							<button class="gear" aria-label={t('web.table.preferences')} use:tooltip={{ content: t('web.table.preferences') }} onclick={openPrefs}>
+								<Icon name="gear" size="1rem" style="solid" />
+							</button>
+						</th>
+					{:else}
+						<th class="filler" aria-hidden="true"></th>
+					{/if}
 				</tr>
 			</thead>
 			<tbody>
@@ -1143,7 +1172,7 @@
 								<td class="exp"><div class="cell chk"></div></td>
 							{/if}
 							{#each visibleCols as col, ci (col.id)}
-								<td data-align={col.align ?? 'left'}>
+								<td data-align={col.align ?? 'left'} class:gear-room={gearInHead && ci === visibleCols.length - 1}>
 									<div class="cell">
 										<span class="ghost" style:width="{ghostWidth(ghost, ci)}%"></span>
 									</div>
@@ -1217,6 +1246,7 @@
 								data-align={col.align ?? 'left'}
 								class:sticky={index < stickyCount}
 								class:sticky-last={stickyLast && overflowing && ci === visibleCols.length - 1}
+								class:gear-room={gearInHead && ci === visibleCols.length - 1}
 								style={stickyStyle(index)}
 							>
 								<div class="cell">{#if resourceId && col.id === RESOURCE_ID_COLUMN}<ResourceIdValue value={resourceId(row)} />{:else}{@render cell(row, col.id)}{/if}</div>
@@ -1499,12 +1529,18 @@
 			}
 		}
 
+		// the caret goes before a right-aligned label, so the label ends where
+		// the numbers below it end
 		&[data-align='right'] .hcell {
 			justify-content: flex-end;
 
 			.name {
 				flex: 0 1 auto;
 				text-align: right;
+			}
+
+			.sort {
+				order: -1;
 			}
 		}
 
@@ -1733,6 +1769,16 @@
 		padding: 0.125rem 0.875rem;
 	}
 
+	// a table with many columns gives up some of each cell's side inset; the
+	// header labels take the same, so labels and values stay on one axis
+	.dt.snug {
+		th .hcell,
+		td .cell {
+			padding-left: 0.5rem;
+			padding-right: 0.5rem;
+		}
+	}
+
 	.dt.wrap-lines td {
 		white-space: normal;
 
@@ -1872,8 +1918,27 @@
 	// still reach the right edge without a real column being stretched. It shares
 	// the row's stripe and hover, but stays outside the selection block; those
 	// edges belong to the last real column.
+	//
+	// The last column leaves room for the header's gear, in every row so its
+	// header and values keep one edge.
+	th.gear-room,
+	td.gear-room {
+		padding-right: 2.25rem;
+	}
+
 	.filler {
 		padding: 0;
+		min-width: 0.125rem;
+
+		// the gear is laid over the end of the header, not inside the cell's flow:
+		// the width pass hands the filler whatever it measures, so content here
+		// would come back as an empty column (the last column reserves the room)
+		&.head-gear .gear {
+			position: absolute;
+			top: 50%;
+			right: 0.5rem;
+			transform: translateY(-50%);
+		}
 	}
 
 	tbody tr.selected > td.filler,

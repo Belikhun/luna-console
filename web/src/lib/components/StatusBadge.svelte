@@ -3,6 +3,8 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import { t } from '$lib/i18n.svelte';
+
 	import Icon from './Icon.svelte';
 	import InfoPopover from './InfoPopover.svelte';
 	import { stateStyle, type StatusDetailRow } from './statusbadge';
@@ -35,7 +37,17 @@
 	} = $props();
 
 	const style = $derived(stateStyle(kind));
-	const text = $derived(label ?? kind.charAt(0).toUpperCase() + kind.slice(1));
+	/** The state's own word in the reader's language; a word nobody declared reads as itself. */
+	function stateWord(state: string): string {
+		const key = `web.status.${state}`;
+		const word = t(key);
+
+		return word === key
+			? state.charAt(0).toUpperCase() + state.slice(1)
+			: word;
+	}
+
+	const text = $derived(label ?? stateWord(kind));
 </script>
 
 <span class="badge" style="color: {style.color}">

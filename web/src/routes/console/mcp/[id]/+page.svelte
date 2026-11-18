@@ -442,7 +442,7 @@
 		<a href="/console/mcp">{t('web.mcpDetail.back')}</a>
 	</Flash>
 {:else if token}
-	<PageHeader title={token.name} description={token.description || t('web.mcpDetail.kind')} info>
+	<PageHeader title={token.name} description={token.description || t('web.mcpDetail.kind')} info={t('web.guide.mcpToken')}>
 		{#snippet extra()}
 			<StatusBadge state={tokenState(token!)} label={tokenStateLabel(token!)} />
 		{/snippet}

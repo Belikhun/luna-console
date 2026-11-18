@@ -168,7 +168,7 @@
 
 <svelte:head><title>{t('web.iamList.groupsTitle')} | Luna Console</title></svelte:head>
 
-<PageHeader title={t('web.iamList.groupsTitle')} count={groups.length} description={t('web.iamList.groupsDescription')} info>
+<PageHeader title={t('web.iamList.groupsTitle')} count={groups.length} description={t('web.iamList.groupsDescription')} info={t('web.guide.iamGroups')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="iam-groups" />
 		<Dropdown label={t('web.common.actions')} disabled={picked.length === 0} menu={headerMenu} />

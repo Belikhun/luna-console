@@ -108,7 +108,7 @@
 	title={t('web.nav.addonGroups')}
 	count={groups.length}
 	description={t('web.addonGroups.pageDescription')}
-	info
+	info={t('web.guide.addonGroups')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="addon-groups" />

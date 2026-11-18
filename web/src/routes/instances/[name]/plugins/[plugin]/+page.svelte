@@ -198,7 +198,7 @@
 <svelte:head><title>{plugin} on {instance} | Luna Console</title></svelte:head>
 
 {#if data}
-	<PageHeader title={plugin ?? ''} info>
+	<PageHeader title={plugin ?? ''} info={t('web.guide.instancePlugin')}>
 		{#snippet extra()}
 			<span class="crumb dim">{t('web.instancePlugin.on')} <a href={instanceTabPath(instance ?? '', 'plugins')}>{instance}</a></span>
 			<StatusBadge state={badge.state} label={badge.label} />

@@ -4,7 +4,7 @@
 
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { api } from '$lib/api';
 	import { fmtDateTime } from '$lib/format';
 	import { LOG_PAGE, loadWholeLog } from '$lib/log';
@@ -33,13 +33,16 @@
 	let {
 		instance,
 		player,
-		compact = false
+		compact = false,
+		refreshKey = 0
 	}: {
 		instance: string;
 		/** Narrow to one player's lines, by uuid; the instance-scoped player screen */
 		player?: string;
 		/** Skip the panel chrome; the caller provides it */
 		compact?: boolean;
+		/** Bumped by the screen's refresh control; each change re-reads the log in place */
+		refreshKey?: number;
 	} = $props();
 
 	interface Entry {
@@ -63,7 +66,16 @@
 
 	const network = $derived(instance === 'proxy');
 
+	/**
+	 * Numbers each read, so only the newest one lands: a refresh tick still in
+	 * flight when the type filter changes would otherwise paint the old filter's
+	 * rows over the new ones.
+	 */
+	let readSeq = 0;
+
 	async function refresh(): Promise<void> {
+		const seq = ++readSeq;
+
 		loading = true;
 
 		const typeParam = type ? `&type=${type}` : '';
@@ -77,6 +89,10 @@
 					: await api(
 							`/instances/${encodeURIComponent(instance)}/chat?limit=${LOG_PAGE}&offset=${offset}${typeParam}`
 						);
+
+				if (seq !== readSeq) {
+					return { total: 0, rows: [] };
+				}
 
 				if (data.available === false) {
 					available = false;
@@ -93,6 +109,10 @@
 				return { total: data.total ?? 0, rows: data.entries ?? [] };
 			});
 
+			if (seq !== readSeq) {
+				return;
+			}
+
 			total = result.total;
 			// a per-player log from an older proxy ignores the server filter, so the
 			// rows are held to it again here
@@ -100,6 +120,10 @@
 				? result.rows.filter((entry) => entry.server.toLowerCase() === instance.toLowerCase())
 				: result.rows;
 		} catch (err) {
+			if (seq !== readSeq) {
+				return;
+			}
+
 			available = false;
 			problem = (err as Error).message;
 		}
@@ -110,6 +134,18 @@
 
 	onMount(() => {
 		void refresh();
+	});
+
+	// the first read is onMount's, so the key the log mounted with is not a tick
+	let seenKey = untrack(() => refreshKey);
+
+	$effect(() => {
+		if (refreshKey === seenKey) {
+			return;
+		}
+
+		seenKey = refreshKey;
+		untrack(() => void refresh());
 	});
 
 	const columns: Column[] = $derived([

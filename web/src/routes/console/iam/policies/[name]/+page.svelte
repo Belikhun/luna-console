@@ -368,7 +368,7 @@
 		<a href="/console/iam/policies">{t('web.iamList.backToPolicies')}</a>
 	</Flash>
 {:else if policy}
-	<PageHeader title={policy.name} description={policy.description || t('web.iamPolicy.kind')} info>
+	<PageHeader title={policy.name} description={policy.description || t('web.iamPolicy.kind')} info={t('web.guide.iamPolicy')}>
 		{#snippet extra()}
 			<StatusBadge state={policy!.builtin ? 'info' : 'ok'} label={policyKindLabel(policyKind(policy!))} />
 		{/snippet}

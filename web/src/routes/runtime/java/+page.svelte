@@ -378,7 +378,7 @@
 	title={t('web.nav.javaRuntimes')}
 	count={runtimeCount}
 	description={t('web.runtimes.pageDescription')}
-	info
+	info={t('web.guide.javaRuntimes')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="runtimes" />

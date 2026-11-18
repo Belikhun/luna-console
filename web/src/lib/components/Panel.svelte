@@ -5,17 +5,26 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
+	import Icon from './Icon.svelte';
+	import InfoPopover from './InfoPopover.svelte';
+	import type { PopoverDetail } from './statusbadge';
+
 	/** Content container: rounded panel with optional header row and flush body. */
 	let {
 		title,
+		info,
 		count,
 		description,
 		flush = false,
 		fill = false,
+		collapsible = false,
+		open = $bindable(true),
 		actions,
 		children
 	}: {
 		title?: string;
+		/** The title becomes a dashed info trigger opening this (a chart panel's "how is this measured") */
+		info?: PopoverDetail;
 		count?: string | number;
 		description?: string;
 		/** flush = no body padding (tables) */
@@ -27,6 +36,10 @@
 		 * The caller owns the height; this only stops the panel shrinking to fit.
 		 */
 		fill?: boolean;
+		/** A chevron before the title folds the body away (a section read on demand) */
+		collapsible?: boolean;
+		/** Whether a collapsible panel's body shows */
+		open?: boolean;
 		actions?: Snippet;
 		children: Snippet;
 	} = $props();
@@ -34,11 +47,20 @@
 
 <div class="panel" class:fill>
 	{#if title || actions}
-		<div class="hd">
+		<div class="hd" class:folded={collapsible && !open}>
 			<div class="ht">
 				{#if title}
 					<h2>
-						{title}
+						{#if collapsible}
+							<button class="fold" type="button" aria-expanded={open} onclick={() => (open = !open)}>
+								<Icon name={open ? 'chevronDown' : 'chevronRight'} />
+								<span>{title}</span>
+							</button>
+						{:else if info}
+							<InfoPopover detail={info}>{title}</InfoPopover>
+						{:else}
+							{title}
+						{/if}
 						{#if count !== undefined}<span class="counter">({count})</span>{/if}
 					</h2>
 				{/if}
@@ -47,7 +69,9 @@
 			{#if actions}<div class="acts">{@render actions()}</div>{/if}
 		</div>
 	{/if}
-	<div class="bd" class:flush class:fill>{@render children()}</div>
+	{#if !collapsible || open}
+		<div class="bd" class:flush class:fill>{@render children()}</div>
+	{/if}
 </div>
 
 <style lang="scss">
@@ -87,11 +111,32 @@
 		@include below($bp-medium) {
 			flex-wrap: wrap;
 		}
+
+		&.folded {
+			border-bottom: none;
+		}
 	}
 
 	.ht {
 		flex: 1 1 12rem;
 		min-width: 0;
+	}
+
+	.fold {
+		@include bare-button;
+
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+
+		:global(icon) {
+			font-size: 0.75rem;
+			color: var(--text-secondary);
+		}
+
+		&:focus-visible {
+			@include focus-ring;
+		}
 	}
 
 	.desc {

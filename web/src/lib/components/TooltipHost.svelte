@@ -105,10 +105,10 @@
 		// its text, not to the room left between the anchor and the viewport edge:
 		// near the right edge that room is a sliver, and a shrink-to-fit card wrapped
 		// a short hint into a column a few words wide. `clampTooltip` then moves the
-		// card back inside the viewport.
+		// card back inside the viewport. `pre-line` keeps a hint's own line breaks.
 		width: max-content;
 		max-width: min(22rem, calc(100vw - 2rem));
-		white-space: normal;
+		white-space: pre-line;
 
 		opacity: 0;
 		box-shadow: rgba(0, 7, 22, 0.1) 0 0 0;

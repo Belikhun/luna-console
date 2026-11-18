@@ -20,7 +20,8 @@ import { loadPacksLock, savePacksLock } from '$core/packslock';
 import { applyAddonGroups } from '$core/addons';
 import { SOFTWARE_IDS, hasProvider } from '$core/software';
 import type { Software } from '$core/types';
-import { listStatuses, pushEvent } from '$lib/server/luna';
+import { uptimeSeries } from '$core/publicsite';
+import { getHistory, listStatuses, pushEvent, type MetricSample } from '$lib/server/luna';
 import { listJobs, startJob } from '$lib/server/jobs';
 import { errorMessage } from '$lib/server/http';
 import { filterAllowed } from '$lib/server/authz';
@@ -66,12 +67,79 @@ function ghostRow(
 	};
 }
 
+/** How many points a row's trend has, and how far apart: the last hour in two-minute steps. */
+const TREND_POINTS = 30;
+const TREND_STEP_MS = 120_000;
+
+/** The figures a table row draws a trend of. */
+const TREND_METRICS = ['cpu', 'rssMb', 'tps', 'players'] as const;
+
+/** One row's trends: the hour as means per step (null where nothing was measured), and its uptime record. */
+interface RowTrends {
+	from: number;
+	step: number;
+	series: Record<(typeof TREND_METRICS)[number], (number | null)[]>;
+	uptime: { pct: number | null; days: Array<{ d: string; up: number; seen: number; stops: number }> } | null;
+}
+
+/** Fold an instance's sampled hour into the trend steps, and read its last 30 days of uptime. */
+async function rowTrends(name: string, now: number): Promise<RowTrends> {
+	const from = Math.floor(now / TREND_STEP_MS) * TREND_STEP_MS - (TREND_POINTS - 1) * TREND_STEP_MS;
+
+	const [history, uptime] = await Promise.all([
+		getHistory(name).catch((): MetricSample[] => []),
+		uptimeSeries(name, 30).catch(() => null)
+	]);
+
+	const sums = Object.fromEntries(TREND_METRICS.map((metric) => [metric, new Array<number>(TREND_POINTS).fill(0)]));
+	const counts = Object.fromEntries(TREND_METRICS.map((metric) => [metric, new Array<number>(TREND_POINTS).fill(0)]));
+
+	for (const sample of history) {
+		const index = Math.floor((sample.t - from) / TREND_STEP_MS);
+
+		if (index < 0 || index >= TREND_POINTS) {
+			continue;
+		}
+
+		for (const metric of TREND_METRICS) {
+			const value = sample[metric];
+
+			if (typeof value === 'number' && Number.isFinite(value)) {
+				sums[metric]![index]! += value;
+				counts[metric]![index]!++;
+			}
+		}
+	}
+
+	const series = Object.fromEntries(
+		TREND_METRICS.map((metric) => [
+			metric,
+			sums[metric]!.map((sum, index) => {
+				const count = counts[metric]![index]!;
+
+				return count === 0
+					? null
+					: Math.round((sum / count) * 100) / 100;
+			})
+		])
+	) as RowTrends['series'];
+
+	return {
+		from,
+		step: TREND_STEP_MS,
+		series,
+		uptime: uptime
+			? { pct: uptime.pct, days: uptime.days }
+			: null
+	};
+}
+
 /**
  * GET → live status of every instance, for the instances table. Rows caught
  * mid-provision or mid-delete are overlaid with that transient state, so every
  * open console sees the transition; not just the browser that started it.
  */
-export async function GET({ locals }) {
+export async function GET({ locals, url }) {
 	const data = (await listStatuses()) as { instances: Array<Record<string, unknown>> };
 
 	const running = (kind: string) => listJobs(kind).filter((job) => job.state === 'running');
@@ -112,6 +180,22 @@ export async function GET({ locals }) {
 	data.instances = await filterAllowed(locals, 'instance:Describe', data.instances, (row) =>
 		resourceId('instance', String(row.name))
 	);
+
+	// `?trends=1`: the hour and the uptime record behind each row's small charts,
+	// asked for separately so a caller that only wants the list does not pay for them
+	if (url.searchParams.get('trends') === '1') {
+		const now = Date.now();
+		const trends: Record<string, RowTrends> = {};
+		const real = data.instances.filter((row) => row.state !== 'provisioning' && row.state !== 'deleting');
+
+		await Promise.all(
+			real.map(async (row) => {
+				trends[String(row.name)] = await rowTrends(String(row.name), now);
+			})
+		);
+
+		return json({ ...data, trends });
+	}
 
 	return json(data);
 }

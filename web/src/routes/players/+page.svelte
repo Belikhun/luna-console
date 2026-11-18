@@ -536,7 +536,7 @@
 <PageHeader
 	title={t('web.players.players')}
 	count="{selected.size ? `${selected.size}/` : ''}{players.length}"
-	info
+	info={t('web.guide.players')}
 	description={t('web.players.everyoneTheNetworkHasEver')}
 >
 	{#snippet actions()}

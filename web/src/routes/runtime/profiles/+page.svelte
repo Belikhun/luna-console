@@ -193,7 +193,7 @@
 	title={t('web.nav.javaProfiles')}
 	count={rows.length}
 	description={t('web.profiles.pageDescription')}
-	info
+	info={t('web.guide.javaProfiles')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="profiles" />

@@ -17,6 +17,7 @@ import { loadavg, networkInterfaces, uptime } from "node:os";
 
 import { diskUsage } from "../core/cleanup";
 import { root } from "../core/config";
+import { HOST_GROUP, recordMetrics } from "../core/metrics";
 
 import { hostCpuCores, instanceCpuPct, instanceRssMb, instanceStates, samplerReady } from "./sampler";
 import { observeStates } from "./uptime";
@@ -229,6 +230,17 @@ async function sampleOnce(): Promise<void> {
 	// are folded in on the primary when its samples arrive on the heartbeat pong;
 	// on a follower this call is inert, since only the primary keeps the store.
 	observeStates(sample.states, sample.t);
+
+	recordMetrics(HOST_GROUP, sample.t, {
+		cpuPct: sample.cpuPct,
+		memUsedMb: sample.memUsedMb,
+		memTotalMb: sample.memTotalMb,
+		...(sample.swapUsedMb === undefined ? {} : { swapUsedMb: sample.swapUsedMb }),
+		diskUsedBytes: sample.diskUsedBytes,
+		load1: sample.load1,
+		load5: sample.load5,
+		load15: sample.load15,
+	});
 }
 
 /** Start the host health sampler once per daemon process. */

@@ -134,6 +134,7 @@ const pages = (): SearchHit[] => [
 	},
 	{ group: 'web.searchGroups.pages', label: t('web.nav.ports'), detail: t('web.searchPages.ports'), href: '/network', icon: 'sitemap' },
 	{ group: 'web.searchGroups.pages', label: t('web.nav.domains'), detail: t('web.searchPages.domains'), href: '/network/domains', icon: 'globe' },
+	{ group: 'web.searchGroups.pages', label: t('web.nav.firewall'), detail: t('web.searchPages.firewall'), href: '/network/firewall', icon: 'shieldCheck' },
 	{ group: 'web.searchGroups.pages', label: t('web.nav.proxyRouting'), detail: t('web.searchPages.proxy'), href: '/proxy', icon: 'route' },
 	{ group: 'web.searchGroups.pages', label: t('web.nav.schedules'), detail: t('web.searchPages.schedules'), href: '/schedules', icon: 'clock' },
 	{

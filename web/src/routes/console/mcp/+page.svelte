@@ -379,7 +379,7 @@
 
 <svelte:head><title>{t('web.nav.mcp')} | Luna Console</title></svelte:head>
 
-<PageHeader title={t('web.nav.mcp')} count={tokens.length} description={t('web.mcp.pageDescription')} info>
+<PageHeader title={t('web.nav.mcp')} count={tokens.length} description={t('web.mcp.pageDescription')} info={t('web.guide.mcpTokens')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-mcp" />
 		<Dropdown label={t('web.common.actions')} disabled={headerDisabled} menu={withCopyResourceId(tokenActions(picked), picked.map((row) => resourceId('mcp-token', row.name)))} />

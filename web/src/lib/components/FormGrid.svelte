@@ -25,7 +25,8 @@
 <div
 	class="form-grid"
 	class:aligned
-	style:grid-template-columns={cols ? `repeat(${cols}, 1fr)` : undefined}
+	class:fixed={cols !== undefined}
+	style:--cols={cols}
 >
 	{@render children()}
 </div>
@@ -35,6 +36,16 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
 		gap: 1rem 2rem;
+
+		// a fixed column count holds until the fields would be too narrow to
+		// read, then every field takes a row of its own
+		&.fixed {
+			grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+
+			@include below($bp-narrow) {
+				grid-template-columns: minmax(0, 1fr);
+			}
+		}
 
 		// every field spans four rows of the grid and takes them as its own, so
 		// a hint that wraps to two lines pushes the whole row's controls down

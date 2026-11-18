@@ -637,7 +637,7 @@
 
 <svelte:head><title>{t(spec.label)} | Luna Console</title></svelte:head>
 
-<PageHeader title={t(spec.label)} count={addons.length} info>
+<PageHeader title={t(spec.label)} count={addons.length} info={t(kind === 'mods' ? 'web.guide.mods' : 'web.guide.plugins')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey={kind} />
 		<Dropdown label={t('web.common.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), familyIds(one)) : []} />

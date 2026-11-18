@@ -410,7 +410,7 @@
 
 <svelte:head><title>{t('web.nav.accounts')} | Luna Console</title></svelte:head>
 
-<PageHeader title={t('web.nav.accounts')} count={accounts.length} description={t('web.accounts.pageDescription')} info>
+<PageHeader title={t('web.nav.accounts')} count={accounts.length} description={t('web.accounts.pageDescription')} info={t('web.guide.accounts')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-accounts" />
 		<Dropdown label={t('web.common.actions')} disabled={headerDisabled} menu={headerMenu} />

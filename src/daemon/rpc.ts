@@ -44,11 +44,13 @@ import * as environmentCore from "../core/environment";
 import * as instancesCore from "../core/instances";
 import * as instancefilesCore from "../core/instancefiles";
 import * as domainsCore from "../core/domains";
+import * as firewallCore from "../core/firewall";
 import * as hostshellCore from "../core/hostshell";
 import * as journalCore from "../core/journal";
 import * as lifecycleCore from "../core/lifecycle";
 import * as logsCore from "../core/logs";
 import * as lunaCore from "../core/luna";
+import * as metricsCore from "../core/metrics";
 import * as mcpCore from "../core/mcp";
 import * as modpackCore from "../core/modpack";
 import * as agentCore from "../core/agent";
@@ -2156,6 +2158,20 @@ export const OPS: Record<string, OpSpec> = {
 	"daemon.lunaProblem": { fn: sampler.lunaProblem },
 	"daemon.pushEvent": { fn: events.pushEvent },
 	"daemon.getEvents": { fn: events.getEvents },
+	// the long record: figures where they were measured (the owner), events on
+	// the primary, which logs every machine's as followers forward them up
+	"metrics.read": { fn: metricsCore.readMetrics, instance: 0 },
+	"metrics.events": { fn: metricsCore.readEvents },
+	"firewall.firewallOverview": { fn: firewallCore.firewallOverview },
+	"firewall.updateFirewallSettings": { fn: firewallCore.updateFirewallSettings },
+	"firewall.saveFirewallRule": { fn: firewallCore.saveFirewallRule },
+	"firewall.setFirewallRuleEnabled": { fn: firewallCore.setFirewallRuleEnabled },
+	"firewall.removeFirewallRule": { fn: firewallCore.removeFirewallRule },
+	"firewall.firewallActivity": { fn: firewallCore.firewallActivity },
+	"firewall.checkFirewallAddress": { fn: firewallCore.checkFirewallAddress },
+	"firewall.ipBanHistory": { fn: firewallCore.ipBanHistory },
+	"firewall.addressCountries": { fn: firewallCore.addressCountries },
+	"firewall.syncCountries": { fn: firewallCore.syncCountries },
 	// -- the public page ------------------------------------------------------
 	// No cfg/lock echo and no instance routing: the snapshot is read-only, and it
 	// is assembled where the whole fleet is visible, which is only ever here.
@@ -2421,6 +2437,12 @@ export async function runOp(
 
 	if (!spec) {
 		throw new Error(t("daemon.unknownOp", { op }));
+	}
+
+	// who asked an instance to start or stop, so the state change it causes
+	// (seen later by a sampler, here or on a follower) can say so
+	if (spec.instance !== undefined) {
+		events.noteRequest(op, args[spec.instance], actor);
 	}
 
 	if (resolveRemote && forwardOp) {

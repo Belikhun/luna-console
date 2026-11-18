@@ -133,6 +133,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.75rem;
+		min-width: 0;
+		max-width: 100%;
 	}
 
 	.stamp {
@@ -143,6 +145,15 @@
 		line-height: 1.125rem;
 		color: var(--text-secondary);
 		white-space: nowrap;
+		min-width: 0;
+
+		// on a narrow window the long date would run off the bar's left edge:
+		// it may wrap inside its column instead
+		@include below($bp-medium) {
+			white-space: normal;
+			text-align: right;
+			max-width: 11rem;
+		}
 
 		// fixed-width digits: a stamp that grows by a few pixels as the minute
 		// turns must not wrap the whole header onto a second row

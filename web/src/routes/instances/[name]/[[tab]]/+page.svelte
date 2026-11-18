@@ -6,7 +6,7 @@
 	import { t, tSplit } from '$lib/i18n.svelte';
 	import { Authz } from '$lib/authz.svelte';
 	import { resourceId } from '$shared/iam/resources';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, post, patch, del } from '$lib/api';
@@ -63,7 +63,9 @@
 	import type { UnmanagedAddonRow } from '$core/pluginstate';
 	import { channelOf } from '$lib/components/software';
 	import type { Software } from '$core/types';
-	import Sparkline from '$lib/components/Sparkline.svelte';
+	import MonitoringOverview from '../MonitoringOverview.svelte';
+	import { monitoringViews, type MonitoringView } from '../monitoring';
+	import { METRICS_RANGES, type MetricsRange } from '$shared/metricsrange';
 	import NodeOverview from '$lib/components/NodeOverview.svelte';
 	import UptimeTimeline from '$lib/components/UptimeTimeline.svelte';
 	import type { UptimeSeries } from '$core/uptime';
@@ -72,6 +74,7 @@
 	import DateTime from '$lib/components/DateTime.svelte';
 	import OverviewCell from '$lib/components/OverviewCell.svelte';
 	import type { DistributionSegment } from '$lib/components/distribution';
+	import EventsTable from '$lib/components/EventsTable.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import BrandLink from '$lib/components/BrandLink.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
@@ -510,11 +513,17 @@
 
 	/** Pack key whose per-instance rule edit is in flight, for the row's button. */
 	let respackBusy = $state('');
-	let metrics: { history: any[]; events: any[]; uptime?: UptimeSeries; runtime?: any } = $state({
+	let metrics: { history: any[]; events: any[]; uptime?: UptimeSeries; runtime?: any; from?: number; to?: number; step?: number | null } = $state({
 		history: [],
 		events: []
 	});
 	let metricsLoaded = $state(false);
+	/** Why the Monitoring tab's last read failed; the charts say it in place, with a retry */
+	let metricsError: string | undefined = $state(undefined);
+	/** The window `metrics` holds, as the query that read it */
+	let metricsQuery = $state('');
+	/** Counts the metrics reads, so an answer overtaken by a newer question is dropped */
+	let metricsSeq = 0;
 	/**
 	 * Per-thread CPU of the running process; null until the first report lands.
 	 *
@@ -541,6 +550,9 @@
 
 	let loading = $state(true);
 	let lastUpdated: number | null = $state(null);
+
+	/** The chat tab reads its own log; this tells it the refresh control fired */
+	let chatRefreshKey = $state(0);
 	/** name of the primary daemon; the machine an ownerless instance runs on */
 	let hostName = $state('');
 
@@ -549,6 +561,93 @@
 	 * what the refresh control asks for, so the plugins table and the charts are
 	 * as current as the header above them; the fast poll leaves them alone.
 	 */
+	/** The Monitoring tab's window, from the address so a link keeps it; the live hour by default. */
+	const monitorRange: MetricsRange = $derived.by(() => {
+		const asked = page.url.searchParams.get('range') ?? '1h';
+
+		return (METRICS_RANGES as readonly string[]).includes(asked)
+			? (asked as MetricsRange)
+			: '1h';
+	});
+
+	const monitorViews = $derived(monitoringViews(!!inst && traitsOf(inst.software as Software).isProxy));
+
+	/** The Monitoring tab's open view, from the address; the overview by default. */
+	const monitorView: MonitoringView = $derived.by(() => {
+		const asked = page.url.searchParams.get('view') ?? '';
+
+		return (monitorViews as readonly string[]).includes(asked)
+			? (asked as MonitoringView)
+			: 'overview';
+	});
+
+	/** The exact window a drag across a chart picked (`?from=&to=`), or null. */
+	const monitorZoom: { from: number; to: number } | null = $derived.by(() => {
+		const from = Number(page.url.searchParams.get('from') ?? NaN);
+		const to = Number(page.url.searchParams.get('to') ?? NaN);
+
+		return Number.isFinite(from) && Number.isFinite(to) && to > from
+			? { from, to }
+			: null;
+	});
+
+	/** What the Monitoring tab asks the metrics route for: the range, or the exact window of a zoom. */
+	const monitorQuery = $derived(
+		monitorZoom
+			? `range=${monitorRange}&from=${monitorZoom.from}&to=${monitorZoom.to}`
+			: `range=${monitorRange}`
+	);
+
+	/** The address names a window whose figures have not landed yet; the drawing dims until they do. */
+	const metricsPending = $derived(metricsLoaded && metricsQuery !== monitorQuery);
+
+	/**
+	 * Move the Monitoring tab to another window. The tab's load effect reads the
+	 * window off the address, so the navigation is the whole request, and Back
+	 * and Forward re-read the window they return to.
+	 */
+	async function showWindow(next: URL): Promise<void> {
+		await goto(next, { noScroll: true, keepFocus: true });
+	}
+
+	/** Show another window: a new entry in the history, so Back returns to the last one. */
+	async function pickRange(range: MetricsRange): Promise<void> {
+		const next = new URL(page.url);
+
+		next.searchParams.delete('from');
+		next.searchParams.delete('to');
+
+		if (range === '1h') {
+			next.searchParams.delete('range');
+		} else {
+			next.searchParams.set('range', range);
+		}
+
+		await showWindow(next);
+	}
+
+	/** Zoom to the span dragged across a chart; never tighter than a minute, which is one point of the record. */
+	async function zoomMonitor(from: number, to: number): Promise<void> {
+		const middle = (from + to) / 2;
+		const half = Math.max(30_000, (to - from) / 2);
+		const next = new URL(page.url);
+
+		next.searchParams.set('from', String(Math.floor(middle - half)));
+		next.searchParams.set('to', String(Math.ceil(middle + half)));
+
+		await showWindow(next);
+	}
+
+	/** Leave the zoom for the range it was dragged out of. */
+	async function resetZoom(): Promise<void> {
+		const next = new URL(page.url);
+
+		next.searchParams.delete('from');
+		next.searchParams.delete('to');
+
+		await showWindow(next);
+	}
+
 	async function refresh(opts: { tabData?: boolean } = {}): Promise<void> {
 		// the poll can outlive the route by a tick during a client-side navigation,
 		// at which point page.params.name is already gone
@@ -563,6 +662,12 @@
 
 			if (opts.tabData && REFRESHED_TABS.includes(tab)) {
 				await loadTab(tab);
+			}
+
+			// the chat tab reads its own log; opening the tab already reads it once,
+			// so only the refresh control's ticks are passed on
+			if (opts.tabData && tab === 'chat') {
+				chatRefreshKey++;
 			}
 
 			lastUpdated = Date.now();
@@ -717,9 +822,36 @@
 			}
 		}
 
-		if (which === 'monitoring' || which === 'checks') {
+		if (which === 'checks') {
 			try {
-				metrics = await api(`/instances/${name}/metrics`);
+				// the checks tab only needs the live hour
+				metrics = await api(`/instances/${name}/metrics?range=1h`);
+				metricsError = undefined;
+				metricsQuery = 'range=1h';
+			} finally {
+				metricsLoaded = true;
+			}
+		}
+
+		if (which === 'monitoring') {
+			const seq = ++metricsSeq;
+			const query = monitorQuery;
+
+			// a failed read is said where the charts are, with a retry, rather than
+			// as a toast on every tick of the refresh control
+			try {
+				const data = await api(`/instances/${name}/metrics?${query}`);
+
+				if (seq === metricsSeq) {
+					metrics = data;
+					metricsError = undefined;
+					metricsQuery = query;
+				}
+			} catch (err) {
+				if (seq === metricsSeq) {
+					metricsError = err instanceof Error ? err.message : String(err);
+					metricsQuery = query;
+				}
 			} finally {
 				metricsLoaded = true;
 			}
@@ -727,8 +859,8 @@
 
 		// deliberately not awaited: the thread report is measured over a window, so it
 		// lands about a second after everything else on the tab, and the charts have
-		// no reason to hold for it
-		if (which === 'monitoring') {
+		// no reason to hold for it. Only the Resources view draws it.
+		if (which === 'monitoring' && monitorView === 'resources') {
 			void loadThreads();
 		}
 
@@ -969,6 +1101,13 @@
 	$effect(() => {
 		void tab;
 		void loadTab(tab);
+	});
+
+	// the thread report belongs to one view of the Monitoring tab; opening it reads one
+	$effect(() => {
+		if (tab === 'monitoring' && monitorView === 'resources') {
+			untrack(() => void loadThreads());
+		}
 	});
 
 	async function stateAction(action: StateAction): Promise<void> {
@@ -2529,18 +2668,12 @@
 			]
 		);
 	}
-
-	const eventCols: Column[] = $derived([
-		{ id: 'time', label: t('web.instanceDetail.time'), width: 190 },
-		{ id: 'kind', label: t('web.instanceDetail.type'), width: 120 },
-		{ id: 'message', label: t('web.instanceDetail.event2') }
-	]);
 </script>
 
 <svelte:head><title>{name} | Luna Console</title></svelte:head>
 
 {#if inst}
-	<PageHeader title={name ?? ''} info>
+	<PageHeader title={name ?? ''} info={t('web.guide.instance')}>
 		{#snippet extra()}<StatusBadge state={displayState} />{/snippet}
 		{#snippet actions()}
 			<RefreshControl
@@ -2756,257 +2889,201 @@
 				description={t('web.instanceDetail.stateTransitionsAndActionsRecorded')}
 				flush
 			>
-				<ResourceTable
+				<EventsTable
 					tableId="instance-events"
-					columns={eventCols}
-					rows={metrics.events}
+					events={metrics.events}
 					loading={!metricsLoaded}
-					getId={(event) => String(event.t) + event.message}
-					searchValue={(event) => `${event.kind} ${event.message}`}
-					searchPlaceholder={t('web.instanceDetail.findAnEvent')}
-					searchWidth="20rem"
-					noun={t('web.instanceDetail.event')}
-					pageSize={20}
 					emptyTitle={t('web.instanceDetail.noRecordedEventsThisSession')}
+					emptyText={t('web.instances.events.noneHint')}
 					maxHeight="40vh"
-				>
-					{#snippet cell(event, col)}
-						{#if col === 'time'}
-							<span class="mono dim"><DateTime at={event.t} text={fmtDateTime(event.t)} /></span>
-						{:else if col === 'kind'}
-							<StatusBadge
-								state={event.kind === 'error'
-									? 'failed'
-									: event.kind === 'state'
-										? 'warning'
-										: 'ok'}
-								label={event.kind}
-							/>
-						{:else}
-							{event.message}
-						{/if}
-					{/snippet}
-				</ResourceTable>
+				/>
 			</Panel>
 		{:else if tab === 'monitoring'}
-			<!-- the charts below are one hour and die with the daemon; this is the
-			     long record, and the only thing that can answer "was it up on
-			     Tuesday" -->
-			<Panel
-				title={t('web.instanceDetail.uptimeHistory')}
-				description={t('web.instanceDetail.uptimeHistoryDesc')}
+			<MonitoringOverview
+				{inst}
+				history={metrics.history}
+				events={metrics.events}
+				uptimeDays={uptime?.days ?? null}
+				range={monitorRange}
+				from={metrics.from}
+				to={metrics.to}
+				step={metrics.step ?? null}
+				view={monitorView}
+				views={monitorViews}
+				loaded={metricsLoaded}
+				pending={metricsPending}
+				error={metricsError}
+				zoomed={monitorZoom !== null}
+				onrange={(range) => void pickRange(range)}
+				onzoom={(from, to) => void zoomMonitor(from, to)}
+				onreset={() => void resetZoom()}
+				onretry={() => void loadTab('monitoring')}
 			>
-				{#if uptime}
-					<UptimeTimeline days={uptime.days} pct={uptime.pct} height="2rem" />
-				{:else}
-					<p class="dim">{t('web.instanceDetail.uptimeLoading')}</p>
-				{/if}
-			</Panel>
-			<div class="gap"></div>
-			<div class="charts">
-				<Sparkline points={cpuPoints} label={t('web.instanceDetail.cpuUtilization')} unit="%" color="#42b4ff" />
-				<Sparkline points={memPoints} label={t('web.instanceDetail.memoryRss')} unit=" MB" color="#bf7edb" />
-				<Sparkline
-					points={playerPoints}
-					label={t('web.instanceDetail.playersOnline')}
-					color="#2bb534"
-					maxY={playerMax}
-				/>
-				{#if hasTpsSeries}
-					<Sparkline points={tpsPoints} label={t('web.instanceDetail.tickRate')} unit=" TPS" color="#e0ca57" maxY={20} />
-				{/if}
-				{#if hasHeapSeries}
-					<Sparkline
-						points={heapPoints}
-						label={t('web.instanceDetail.jvmHeap')}
-						unit=" MB"
-						color="#ff9d5c"
-						maxY={heapMax}
-					/>
-				{/if}
-				{#if hasNonHeapSeries}
-					<Sparkline points={nonHeapPoints} label={t('web.instanceDetail.jvmNonHeap')} unit=" MB" color="#d98cb3" />
-				{/if}
-				{#if hasGcSeries}
-					<!-- per sample, not cumulative: a pause storm shows as a spike where it
-					     happened rather than as a slope that is always rising -->
-					<Sparkline points={gcPoints} label={t('web.instanceDetail.gcTime')} unit=" ms" color="#9fd36b" />
-				{/if}
-				{#if hasThreadSeries}
-					<Sparkline points={threadPoints} label={t('web.instanceDetail.threadCount')} color="#8fa8ff" />
-				{/if}
-				{#if hasTickSeries}
-					<Sparkline points={msptPoints} label={t('web.instanceDetail.tickDuration')} unit=" ms" color="#ff7a7a" />
-				{/if}
-				{#if hasWorldSeries}
-					<Sparkline points={chunkPoints} label={t('web.instanceDetail.loadedChunks')} color="#7ec8e3" />
-					<Sparkline points={entityPoints} label={t('web.instanceDetail.entities')} color="#c9a227" />
-				{/if}
-			</div>
-
-			{#if jvm}
-				<div class="gap"></div>
-				<Panel title={t('web.instanceDetail.jvmRuntime')} description={t('web.instanceDetail.jvmRuntimeDesc')}>
-					<InfoGrid cells={jvmCells} />
-					{#if jvm.memoryPools?.length}
-						<div class="pools">
-							{#each jvm.memoryPools as pool (pool.name)}
-								<!-- against the ceiling where there is one, else against what is
-								     reserved: metaspace and the code heap often have no max -->
-								{@const ceiling = pool.maxBytes ?? pool.committedBytes}
-								<div class="poolrow">
-									<span class="tname">{pool.name}</span>
-									<span class="dim">{pool.type === 'HEAP' ? t('web.instanceDetail.jvmHeapPool') : t('web.instanceDetail.jvmNonHeapPool')}</span>
-									<ProgressBar
-										compact
-										value={pool.usedBytes}
-										max={Math.max(1, ceiling)}
-										color={pool.maxBytes == null ? 'accent' : 'auto'}
-										right="{fmtBytes(pool.usedBytes)} / {pool.maxBytes == null ? fmtBytes(pool.committedBytes) : fmtBytes(pool.maxBytes)}"
-									/>
+				{#snippet resources()}
+					{#if jvm}
+						<Panel title={t('web.instanceDetail.jvmRuntime')} description={t('web.instanceDetail.jvmRuntimeDesc')}>
+							<InfoGrid cells={jvmCells} />
+							{#if jvm.memoryPools?.length}
+								<div class="pools">
+									{#each jvm.memoryPools as pool (pool.name)}
+										<!-- against the ceiling where there is one, else against what is
+										     reserved: metaspace and the code heap often have no max -->
+										{@const ceiling = pool.maxBytes ?? pool.committedBytes}
+										<div class="poolrow">
+											<span class="tname">{pool.name}</span>
+											<span class="dim">{pool.type === 'HEAP' ? t('web.instanceDetail.jvmHeapPool') : t('web.instanceDetail.jvmNonHeapPool')}</span>
+											<ProgressBar
+												compact
+												value={pool.usedBytes}
+												max={Math.max(1, ceiling)}
+												color={pool.maxBytes == null ? 'accent' : 'auto'}
+												right="{fmtBytes(pool.usedBytes)} / {pool.maxBytes == null ? fmtBytes(pool.committedBytes) : fmtBytes(pool.maxBytes)}"
+											/>
+										</div>
+									{/each}
 								</div>
-							{/each}
-						</div>
+							{/if}
+						</Panel>
 					{/if}
-				</Panel>
-			{/if}
 
-			<!-- the whole-process CPU above says how much; this says what is spending it,
-			     which is the difference between a busy server and a broken one -->
-			{#if !inst.external}
-				<div class="gap"></div>
-				<Panel title={t('web.threads.title')} description={t('web.threads.description')}>
-					{#if threads}
-						<div class="threadbar">
-							<span class="stat">
-								<b>{threads.threadCount}</b>
-								{t('web.threads.threadsWord')}
-							</span>
-							<span class="sep">·</span>
-							<span class="stat">
-								<b>{fmtCpuPct(threads.totalCpu)}</b>
-								{t('web.threads.ofCeiling', { ceiling: fmtCpuPct(threads.cores * 100) })}
-							</span>
-							<span class="sep">·</span>
-							<span class="stat">
-								<b>{busiestThreads.length}</b>
-								{t('web.threads.abovePct', { pct: String(THREAD_BUSY_PCT) })}
-							</span>
-							<span class="sep">·</span>
-							<span class="stat dim">
-								{t('web.threads.sampledOver', { ms: String(threads.windowMs) })}
-							</span>
-						</div>
-						<NodeOverview
-							nodes={threadNodes}
-							min={0}
-							max={100}
-							ramp={THREAD_RAMP}
-							legendFormat={(value) => `${value}%`}
-							empty={t('web.threads.none')}
-						/>
-						{#if busiestThreads.length > 0}
-							<div class="busiest">
-								<div class="busiesthead">{t('web.threads.busiest')}</div>
-								{#each busiestThreads as thread (thread.tid)}
-									<div class="busiestrow">
-										<span class="tname">{thread.name}</span>
-										<span class="tid mono dim">#{thread.tid}</span>
-										<ProgressBar
-											compact
-											value={thread.cpu}
-											max={100}
-											color="auto"
-											right={fmtCpuPct(thread.cpu)}
-										/>
+					<!-- the whole-process CPU above says how much; this says what is spending it,
+					     which is the difference between a busy server and a broken one -->
+					{#if !inst.external}
+						<Panel title={t('web.threads.title')} description={t('web.threads.description')}>
+							{#if threads}
+								<div class="threadbar">
+									<span class="stat">
+										<b>{threads.threadCount}</b>
+										{t('web.threads.threadsWord')}
+									</span>
+									<span class="sep">·</span>
+									<span class="stat">
+										<b>{fmtCpuPct(threads.totalCpu)}</b>
+										{t('web.threads.ofCeiling', { ceiling: fmtCpuPct(threads.cores * 100) })}
+									</span>
+									<span class="sep">·</span>
+									<span class="stat">
+										<b>{busiestThreads.length}</b>
+										{t('web.threads.abovePct', { pct: String(THREAD_BUSY_PCT) })}
+									</span>
+									<span class="sep">·</span>
+									<span class="stat dim">
+										{t('web.threads.sampledOver', { ms: String(threads.windowMs) })}
+									</span>
+								</div>
+								<NodeOverview
+									nodes={threadNodes}
+									min={0}
+									max={100}
+									ramp={THREAD_RAMP}
+									legendFormat={(value) => `${value}%`}
+									empty={t('web.threads.none')}
+								/>
+								{#if busiestThreads.length > 0}
+									<div class="busiest">
+										<div class="busiesthead">{t('web.threads.busiest')}</div>
+										{#each busiestThreads as thread (thread.tid)}
+											<div class="busiestrow">
+												<span class="tname">{thread.name}</span>
+												<span class="tid mono dim">#{thread.tid}</span>
+												<ProgressBar
+													compact
+													value={thread.cpu}
+													max={100}
+													color="auto"
+													right={fmtCpuPct(thread.cpu)}
+												/>
+											</div>
+										{/each}
 									</div>
-								{/each}
-							</div>
-						{/if}
-						<p class="dim hint">{t('web.threads.nameHint')}</p>
-					{:else if threadsPending}
-						<p class="dim">{t('web.threads.sampling')}</p>
-					{:else}
-						<p class="dim">{t('web.threads.unavailable')}</p>
-						{#if threadsReason}
-							<!-- the owner's own words: on a fleet mid-upgrade this is what says
-							     which machine still needs the new build -->
-							<p class="dim hint mono">{threadsReason}</p>
-						{/if}
-					{/if}
-				</Panel>
-			{/if}
-
-			{#if hasTickSeries || worlds.length}
-				<div class="gap"></div>
-				<Panel
-					title={t('web.instanceDetail.serverLoad')}
-					description={t('web.instanceDetail.serverLoadDesc')}
-				>
-					{#if apdexPct !== null || miseryPct !== null}
-						<div class="indices">
-							{#if apdexPct !== null}
-								<div class="index">
-									<ProgressBar
-										value={apdexPct}
-										left={t('web.instanceDetail.apdex')}
-										right={(apdexPct / 100).toFixed(3)}
-										segmented
-										height="2rem"
-										color={apdexPct >= 95 ? 'success' : apdexPct >= 85 ? 'warning' : 'danger'}
-									/>
-									<p class="dim">{t('web.instanceDetail.apdexHint')}</p>
-								</div>
-							{/if}
-							{#if miseryPct !== null}
-								<div class="index">
-									<!-- the one bar on this page where full is bad, so the tone runs
-									     the other way rather than through `auto` -->
-									<ProgressBar
-										value={miseryPct}
-										left={t('web.instanceDetail.misery')}
-										right={`${miseryPct.toFixed(1)}%`}
-										segmented
-										height="2rem"
-										color={miseryPct <= 2 ? 'success' : miseryPct <= 10 ? 'warning' : 'danger'}
-									/>
-									<p class="dim">{t('web.instanceDetail.miseryHint')}</p>
-								</div>
-							{/if}
-						</div>
-					{/if}
-
-					{#if worlds.length}
-						<DataTable columns={worldCols} rows={worlds} getId={(world: any) => String(world.name)}>
-							{#snippet cell(world: any, col: string)}
-								{#if col === 'name'}
-									{world.name}
-								{:else if world[col] === null || world[col] === undefined}
-									<span class="dim">–</span>
-								{:else if col === 'tickingEntities' || col === 'nonTickingEntities'}
-									<!-- against this world's own entities, not the fleet's: the
-									     question the column answers is how much of what this world
-									     is holding actually costs tick time -->
-									{@const total = worldEntities(world)}
-									{#if total > 0}
-										<ProgressBar
-											compact
-											value={world[col]}
-											max={total}
-											left={world[col].toLocaleString()}
-											color={col === 'tickingEntities' ? 'accent' : 'success'}
-										/>
-									{:else}
-										{world[col].toLocaleString()}
-									{/if}
-								{:else}
-									{world[col].toLocaleString()}
 								{/if}
-							{/snippet}
-						</DataTable>
+								<p class="dim hint">{t('web.threads.nameHint')}</p>
+							{:else if threadsPending}
+								<p class="dim">{t('web.threads.sampling')}</p>
+							{:else}
+								<p class="dim">{t('web.threads.unavailable')}</p>
+								{#if threadsReason}
+									<!-- the owner's own words: on a fleet mid-upgrade this is what says
+									     which machine still needs the new build -->
+									<p class="dim hint mono">{threadsReason}</p>
+								{/if}
+							{/if}
+						</Panel>
 					{/if}
-				</Panel>
-			{/if}
+
+				{/snippet}
+				{#snippet performance()}
+					{#if hasTickSeries || worlds.length}
+						<Panel
+							title={t('web.instanceDetail.serverLoad')}
+							description={t('web.instanceDetail.serverLoadDesc')}
+						>
+							{#if apdexPct !== null || miseryPct !== null}
+								<div class="indices">
+									{#if apdexPct !== null}
+										<div class="index">
+											<ProgressBar
+												value={apdexPct}
+												left={t('web.instanceDetail.apdex')}
+												right={(apdexPct / 100).toFixed(3)}
+												segmented
+												height="2rem"
+												color={apdexPct >= 95 ? 'success' : apdexPct >= 85 ? 'warning' : 'danger'}
+											/>
+											<p class="dim">{t('web.instanceDetail.apdexHint')}</p>
+										</div>
+									{/if}
+									{#if miseryPct !== null}
+										<div class="index">
+											<!-- the one bar on this page where full is bad, so the tone runs
+											     the other way rather than through `auto` -->
+											<ProgressBar
+												value={miseryPct}
+												left={t('web.instanceDetail.misery')}
+												right={`${miseryPct.toFixed(1)}%`}
+												segmented
+												height="2rem"
+												color={miseryPct <= 2 ? 'success' : miseryPct <= 10 ? 'warning' : 'danger'}
+											/>
+											<p class="dim">{t('web.instanceDetail.miseryHint')}</p>
+										</div>
+									{/if}
+								</div>
+							{/if}
+
+							{#if worlds.length}
+								<DataTable columns={worldCols} rows={worlds} getId={(world: any) => String(world.name)}>
+									{#snippet cell(world: any, col: string)}
+										{#if col === 'name'}
+											{world.name}
+										{:else if world[col] === null || world[col] === undefined}
+											<span class="dim">–</span>
+										{:else if col === 'tickingEntities' || col === 'nonTickingEntities'}
+											<!-- against this world's own entities, not the fleet's: the
+											     question the column answers is how much of what this world
+											     is holding actually costs tick time -->
+											{@const total = worldEntities(world)}
+											{#if total > 0}
+												<ProgressBar
+													compact
+													value={world[col]}
+													max={total}
+													left={world[col].toLocaleString()}
+													color={col === 'tickingEntities' ? 'accent' : 'success'}
+												/>
+											{:else}
+												{world[col].toLocaleString()}
+											{/if}
+										{:else}
+											{world[col].toLocaleString()}
+										{/if}
+									{/snippet}
+								</DataTable>
+							{/if}
+						</Panel>
+					{/if}
+				{/snippet}
+			</MonitoringOverview>
 			<p class="dim note">
 				{t('web.instanceDetail.sampledEvery5sBy')}
 				{#if jvm}
@@ -3506,7 +3583,7 @@
 			<div class="gap"></div>
 			<AccessLists instance={name ?? ''} />
 		{:else if tab === 'chat'}
-			<InstanceChatLog instance={name ?? ''} />
+			<InstanceChatLog instance={name ?? ''} refreshKey={chatRefreshKey} />
 		{:else if tab === 'network'}
 			<Panel title={t('web.instanceDetail.ports')}>
 				<InfoGrid cells={portCells} />

@@ -131,6 +131,48 @@
 	--nav-w: 13.75rem;
 	--split-bottom: 0rem;
 	--split-right: 0rem;
+
+	// charts. The categorical slots are the dataviz method's dark steps, in the
+	// order that keeps adjacent series apart under colour blindness; validated
+	// against --bg-panel (worst adjacent CVD ΔE 8.4, every slot above 3:1). A
+	// series keeps its slot when others are filtered out: colour follows the
+	// series, never its rank
+	--chart-1: #3987e5;
+	--chart-2: #d95926;
+	--chart-3: #199e70;
+	--chart-4: #c98500;
+	--chart-5: #d55181;
+	--chart-6: #008300;
+	--chart-7: #9085e9;
+	--chart-8: #e66767;
+
+	// an ordered set (p50, p95, p99): one hue, darker to lighter, so the eye
+	// reads the order without a legend; the darkest still clears 3:1
+	--chart-ordinal-1: #2a78d6;
+	--chart-ordinal-2: #6da7ec;
+	--chart-ordinal-3: #b7d3f6;
+
+	// what a value *means* (a 5xx, a down day) wears the console's status
+	// colours; 3xx and "other" are the de-emphasis grey
+	--chart-good: var(--success);
+	--chart-warning: var(--warning);
+	--chart-serious: #ec835a;
+	--chart-critical: var(--error);
+	--chart-muted: #5f6b7a;
+
+	// magnitude on a grid (calendar cells): one hue from the empty cell up
+	--chart-seq-low: var(--bg-hover);
+	--chart-seq-high: #3987e5;
+
+	// furniture: recessive hairlines one step off the panel
+	--chart-surface: var(--bg-panel);
+	--chart-grid: #232b37;
+	--chart-axis: #414d5c;
+	--chart-ink: var(--text-secondary);
+	// luna's hazard tape for a stretch nobody measured
+	--chart-gap: color-mix(in srgb, var(--warning) 30%, transparent);
+	--chart-gap-alt: color-mix(in srgb, var(--bg-nav) 55%, transparent);
+	--chart-selection: rgba(66, 180, 255, 0.14);
 }
 
 * {

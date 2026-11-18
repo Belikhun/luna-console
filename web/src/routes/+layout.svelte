@@ -174,6 +174,10 @@
 			]
 		},
 		{
+			section: t('web.nav.observability'),
+			items: [{ label: t('web.nav.monitoring'), href: '/monitoring', icon: 'chartLine' }]
+		},
+		{
 			section: t('web.nav.players'),
 			items: [
 				{ label: t('web.nav.playersList'), href: '/players', icon: 'users' },
@@ -204,6 +208,7 @@
 			items: [
 				{ label: t('web.nav.ports'), href: '/network', icon: 'sitemap' },
 				{ label: t('web.nav.domains'), href: '/network/domains', icon: 'globe' },
+				{ label: t('web.nav.firewall'), href: '/network/firewall', icon: 'shieldCheck' },
 				{ label: t('web.nav.proxyRouting'), href: '/proxy', icon: 'route' }
 			]
 		},
@@ -368,6 +373,7 @@
 		'/mods',
 		'/network',
 		'/network/domains',
+		'/network/firewall',
 		'/network/pools',
 		'/packs',
 		'/packs/[key]',
@@ -425,9 +431,11 @@
 		'/instances/[name]/players': t('web.nav.players'),
 		'/instances/[name]/plugins': t(INSTANCE_TAB_LABELS.plugins),
 		'/machines': t('web.nav.machines'),
+		'/monitoring': t('web.nav.monitoring'),
 		'/mods': t('web.nav.mods'),
 		'/network': t('web.crumbs.network'),
 		'/network/domains': t('web.nav.domains'),
+		'/network/firewall': t('web.nav.firewall'),
 		'/network/pools': t('web.crumbs.pools'),
 		'/packs': t('web.nav.resourcePacks'),
 		'/permissions': t('web.nav.permissionGroups'),

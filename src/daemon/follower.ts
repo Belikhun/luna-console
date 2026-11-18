@@ -670,7 +670,16 @@ export function startFollower(config: DaemonConfig, processStartedAt: number): v
 	});
 
 	installEventForwarder((event) => {
-		send({ t: "event", instance: event.instance, kind: event.kind, message: event.message });
+		send({
+			t: "event",
+			instance: event.instance,
+			kind: event.kind,
+			message: event.message,
+			actor: event.actor,
+			reasonKey: event.reasonKey,
+			reason: event.reason,
+			facts: event.facts,
+		});
 	});
 
 	// an upload lands on the primary, because that is where the console runs; a

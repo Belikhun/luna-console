@@ -258,7 +258,7 @@
 
 <svelte:head><title>{t('web.iamSimulator.title')} | Luna Console</title></svelte:head>
 
-<PageHeader title={t('web.iamSimulator.title')} description={t('web.iamSimulator.description')} info>
+<PageHeader title={t('web.iamSimulator.title')} description={t('web.iamSimulator.description')} info={t('web.guide.iamSimulator')}>
 	{#snippet actions()}
 		<Btn icon="close" disabled={results.length === 0} onclick={() => (results = [])}>
 			{t('web.iamSimulator.clear')}

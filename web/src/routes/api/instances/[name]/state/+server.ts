@@ -126,7 +126,7 @@ export async function POST({ params, request }) {
 
 			return result;
 		} catch (err) {
-			pushEvent(name, 'error', `${action} failed: ${errorMessage(err)}`);
+			pushEvent(name, 'error', `${action} failed`, { reason: errorMessage(err) });
 
 			throw err;
 		} finally {

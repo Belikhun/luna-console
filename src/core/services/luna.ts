@@ -1002,6 +1002,10 @@ export interface NetworkIpBan {
 	ip: string;
 	reason: string;
 	actor: string;
+	/** `manual`, or the firewall detector that placed it (LunaCore 2026-11-18 and later) */
+	source?: string;
+	/** How many times this address has been banned, this one included */
+	strikes?: number;
 	createdAtEpochMillis: number;
 	/** 0 = permanent */
 	expiresAtEpochMillis: number;

@@ -412,6 +412,21 @@ export interface InstanceConfig {}
   MCP groups (writes closed to instance-limited tokens). Mèo Béo's persona gives a modded server its
   own hostname after creating it.
 
+### Network firewall
+- **The proxy enforces; luna drives it.** LunaCore's `VelocityFirewall` answers every login and
+  server-list ping first (ban, then protected ranges, then allow rules, then deny rules, then the
+  detectors that ban on their own), so nothing it refuses reaches a backend. Backends are not
+  reachable from outside, which is why there is no kernel layer. `core/firewall.ts` reads and changes
+  it over LunaCore's HTTP API, and sends the proxy the DB-IP prefixes of every country a rule names
+  (after each rule change and daily on the primary), since the proxy holds no GeoIP database.
+- **Address bans belong to the firewall; moderation keeps people.** One list, one screen:
+  `/network/firewall`'s Bans tab. Moderation shows only a count linking there, and its "Promote to
+  network" opens the same `FirewallBanModal`. Banning or lifting an address is `player:Moderate`
+  everywhere (the firewall screen, the players screens, the `ip_ban` MCP tool); `firewall:Configure`
+  is rules, detectors and the protected list. Only bans a person placed are written to the moderation
+  log; a detector's bans live in the firewall's ban history and activity, or a scanner wave would
+  bury every human entry. `/api/moderation/network-ip-bans` is an alias kept for one release.
+
 ### Console accounts
 - **The console is gated; the CLI is not.** Every web route goes through
   `web/src/hooks.server.ts`, which resolves the session cookie once and hangs the account on
@@ -815,6 +830,23 @@ export interface InstanceConfig {}
   running instance's port; a healthy WebSocket link says nothing about whether velocity can reach
   the backends. Follower-owned instances are therefore created with `server-ip=0.0.0.0`, and only
   the primary's own backends bind loopback.
+- **What an instance measured and what happened to it is kept, for auditing** (`core/metrics.ts`).
+  The sampler's hour in memory is the live view; every sample is also folded into minute rollups
+  (`logs/.monitoring/metrics/minute/<UTC day>/<instance>.ndjson`, read 48 hours back) and hour
+  rollups built from them (kept `METRICS_KEEP_DAYS`, 400), on the machine whose daemon measured it,
+  never mirrored. A rollup is `[avg, max, n]`, so buckets merge exactly; a peak metric (`msptMax`,
+  `gcMs`) reads its max. Every `pushEvent` is appended to `events/<instance>.ndjson` there too, so
+  the primary holds every machine's events (followers forward theirs up). Deleting an instance
+  leaves its record to age out. `metrics.read` routes to the owner, `metrics.events` stays on the
+  primary; `/api/instances/<name>/metrics?range=` serves `1h` from memory and the longer windows
+  (`shared/metricsrange.ts`) from the record. The machine's own figures are the `_host` group.
+- **An event says who caused it and why** (`EventExtra` in `daemon/events.ts`): `actor`, a
+  `reasonKey` under `web.events.reason`, free-text `reason` and `facts` (players online, how long the
+  run lasted). The console's `pushEvent` stamps the request's account; `runOp` notes every
+  start/stop/restart op's actor (`noteRequest`, CLI, MCP and schedules alike), and a state change
+  logged within five minutes is attributed to that request, otherwise read as a crash or a stop
+  nobody asked for. Followers forward the fields up. `EventsTable` pairs older events the same way
+  in the browser (`enrichEvents`), so history written before the fields existed reads the same.
 - Daemon events go into the shared cluster log under the pseudo-instance `daemon:<name>`
   (`daemonEventKey`), never a second log.
 - **Build version ≠ protocol version.** The build version (generated `src/version.ts`: package

@@ -87,7 +87,7 @@
 
 <svelte:head><title>{t('web.iamActivity.title')} | Luna Console</title></svelte:head>
 
-<PageHeader title={t('web.iamActivity.title')} count={audit.length} description={t('web.iamActivity.description')} info>
+<PageHeader title={t('web.iamActivity.title')} count={audit.length} description={t('web.iamActivity.description')} info={t('web.guide.iamActivity')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="iam-activity" />
 	{/snippet}

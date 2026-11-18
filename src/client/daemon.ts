@@ -8,7 +8,7 @@
  * management view. These have no core counterpart; they are the daemon's own.
  */
 
-import type { ClusterEvent } from "../daemon/events";
+import type { ClusterEvent, EventExtra } from "../daemon/events";
 import type { HealthSample } from "../daemon/health";
 import type { DaemonCheck, DaemonDetail, DaemonRow, ReachResult } from "../daemon/hub";
 import type {
@@ -30,6 +30,7 @@ import { followSse } from "./socket";
 export type {
 	BinaryMeta,
 	ClusterEvent,
+	EventExtra,
 	DaemonCheck,
 	DaemonDetail,
 	DaemonRow,
@@ -88,6 +89,7 @@ export const pushEvent = call("daemon.pushEvent") as (
 	instance: string,
 	kind: ClusterEvent["kind"],
 	message: string,
+	extra?: EventExtra,
 ) => Promise<void>;
 
 export const getEvents = call("daemon.getEvents") as (

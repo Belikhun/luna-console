@@ -215,7 +215,7 @@
 	title={t('web.iamList.policiesTitle')}
 	count={policies.length}
 	description={t('web.iamList.policiesDescription')}
-	info
+	info={t('web.guide.iamPolicies')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="iam-policies" />

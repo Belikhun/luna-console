@@ -217,7 +217,7 @@
 <PageHeader
 	title={t('web.perms.permissionGroups')}
 	count={groups.length}
-	info
+	info={t('web.guide.permissionGroups')}
 	description={t('web.perms.luckpermsGroupsAcrossTheWhole')}
 >
 	{#snippet actions()}

@@ -1187,6 +1187,10 @@
 			},
 			"code": {
 				"Deploy": "Put executable code on a server or into the shared pool from anywhere but the addon catalog: uploaded jars, scripts, modpack files and JVM flags"
+			},
+			"firewall": {
+				"Describe": "Read the firewall's rules, bans and activity",
+				"Configure": "Change the firewall's rules and automatic bans"
 			}
 		}
 	},
@@ -1238,5 +1242,14 @@
 		"notHostPort": "not a host and port",
 		"fullAddress": "a proxy request names a full http:// address",
 		"httpOnly": "only http:// goes through as a plain request"
+	},
+	"firewall": {
+		"geoEmpty": "The GeoIP download held no rows.",
+		"geoHttp": "The GeoIP download answered HTTP {status}.",
+		"geoTooLarge": "The GeoIP download is larger than expected; refused.",
+		"geoNotFound": "No GeoIP database is published for {release} or the month before.",
+		"badCountry": "\"{code}\" is not a two-letter country code.",
+		"unavailable": "The proxy's firewall is not reachable.",
+		"countryFailed": "The proxy did not store the prefixes for {code}."
 	}
 }

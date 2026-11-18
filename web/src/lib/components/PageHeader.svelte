@@ -5,6 +5,10 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
+	import { t } from '$lib/i18n.svelte';
+
+	import InfoPopover from './InfoPopover.svelte';
+
 	/** Page header: `Title (count) Info` + right-aligned action bar. */
 	let {
 		title,
@@ -16,7 +20,8 @@
 	}: {
 		title: string;
 		count?: string | number;
-		info?: boolean;
+		/** The "Info" link, opening this guide to the screen in a popover; without it the header has no Info link */
+		info?: string;
 		/** a snippet when the line holds markup (a clickable date) */
 		description?: string | Snippet;
 		extra?: Snippet;
@@ -29,7 +34,9 @@
 		<h1>
 			<span class="title">{title}</span>
 			{#if count !== undefined}<span class="counter">({count})</span>{/if}
-			{#if info}<a class="info" href="#info" onclick={(event) => event.preventDefault()}>Info</a>{/if}
+			{#if info}
+				<span class="info-pop"><InfoPopover detail={info} trigger="link">{t('web.pageHeader.info')}</InfoPopover></span>
+			{/if}
 			{#if extra}{@render extra()}{/if}
 		</h1>
 		{#if typeof description === 'function'}
@@ -79,13 +86,6 @@
 			flex: 0 1 auto;
 			@include ellipsis;
 		}
-	}
-
-	// chrome link, so it opts out of the global in-content underline
-	.info {
-		font-size: 0.75rem;
-		font-weight: 700;
-		text-decoration: none;
 	}
 
 	.desc {

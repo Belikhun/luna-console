@@ -474,7 +474,7 @@
 
 <svelte:head><title>{t('web.nav.domains')} | Luna Console</title></svelte:head>
 
-<PageHeader title={t('web.nav.domains')} count={hostnames.length} description={t('web.domains.pageDescription')} info>
+<PageHeader title={t('web.nav.domains')} count={hostnames.length} description={t('web.domains.pageDescription')} info={t('web.guide.domains')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="network-domains" />
 		<Dropdown label={t('web.common.actions')} disabled={tab !== 'hostnames' || picked.length === 0} menu={withCopyResourceId(hostnameActions(picked), picked.map((row) => resourceId('domain', row.label)))} />

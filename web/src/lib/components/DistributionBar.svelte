@@ -17,12 +17,15 @@
 	let {
 		segments,
 		legend = true,
-		empty = 'nothing to show'
+		empty = 'nothing to show',
+		formatCount = (count: number) => String(count)
 	}: {
 		segments: DistributionSegment[];
 		legend?: boolean;
 		/** shown in place of the bar when every segment is zero */
 		empty?: string;
+		/** how a segment's count is written (bytes, a duration); the plain number when absent */
+		formatCount?: (count: number) => string;
 	} = $props();
 
 	const shown = $derived(segments.filter((segment) => segment.count > 0));
@@ -32,13 +35,13 @@
 {#if total === 0}
 	<div class="empty">{empty}</div>
 {:else}
-	<div class="track" role="img" aria-label={shown.map((s) => `${s.count} ${s.label ?? s.key}`).join(', ')}>
+	<div class="track" role="img" aria-label={shown.map((s) => `${formatCount(s.count)} ${s.label ?? s.key}`).join(', ')}>
 		{#each shown as segment (segment.key)}
 			<div
 				class="slice"
 				style:width="{(segment.count / total) * 100}%"
 				style:background={segment.color}
-				use:tooltip={{ content: `${segment.count} ${segment.label ?? segment.key}` }}
+				use:tooltip={{ content: `${formatCount(segment.count)} ${segment.label ?? segment.key}` }}
 			></div>
 		{/each}
 	</div>
@@ -48,7 +51,7 @@
 			{#each shown as segment (segment.key)}
 				<span class="item">
 					<span class="dot" style:background={segment.color}></span>
-					<span class="count">{segment.count}</span>
+					<span class="count">{formatCount(segment.count)}</span>
 					<span class="name">{segment.label ?? segment.key}</span>
 				</span>
 			{/each}

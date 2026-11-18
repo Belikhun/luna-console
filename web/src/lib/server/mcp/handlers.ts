@@ -390,17 +390,17 @@ async function lifecycle(action: keyof typeof LIFECYCLE, args: ToolArgs, ctx: To
 		markTransition(name, action === 'stop' ? 'stopping' : 'restarting');
 	}
 
-	pushEvent(name, 'action', `${action} requested by ${ctx.actor}`);
+	pushEvent(name, 'action', `${action} requested`, { actor: ctx.actor });
 
 	const job = startJob(`instance-${action}`, name, `${action} ${name}`, async (reporter) => {
 		try {
 			const result = await run(cfg, name, reporter);
 
-			pushEvent(name, 'action', `${action} finished`);
+			pushEvent(name, 'action', `${action} finished`, { actor: ctx.actor });
 
 			return result;
 		} catch (err) {
-			pushEvent(name, 'error', `${action} failed: ${err instanceof Error ? err.message : String(err)}`);
+			pushEvent(name, 'error', `${action} failed`, { actor: ctx.actor, reason: err instanceof Error ? err.message : String(err) });
 
 			throw err;
 		} finally {

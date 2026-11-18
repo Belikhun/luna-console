@@ -333,7 +333,7 @@
 	title={t('web.nav.environment')}
 	count={nameCount}
 	description={t('web.env.pageDescription')}
-	info
+	info={t('web.guide.environment')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="environment" />

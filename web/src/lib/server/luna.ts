@@ -37,10 +37,11 @@ export {
 	getEvents
 } from '$client/daemon';
 
-export type { UiState, MetricSample, ClusterEvent, StatusCheck, ThreadReport, ThreadSample } from '$client/daemon';
+export type { UiState, MetricSample, ClusterEvent, EventExtra, StatusCheck, ThreadReport, ThreadSample } from '$client/daemon';
 
 import * as daemon from '$client/daemon';
-import type { ClusterEvent } from '$client/daemon';
+import type { ClusterEvent, EventExtra } from '$client/daemon';
+import { currentActor } from '$client/actor';
 import { dfetch } from '$client/socket';
 
 /**
@@ -61,8 +62,12 @@ export async function daemonFetch(path: string, init?: RequestInit): Promise<Res
  * process, and their call sites treat them as statements. A daemon hiccup must
  * not become an unhandled rejection in a route.
  */
-export function pushEvent(instance: string, kind: ClusterEvent['kind'], message: string): void {
-	void daemon.pushEvent(instance, kind, message).catch(() => {});
+export function pushEvent(instance: string, kind: ClusterEvent['kind'], message: string, extra: EventExtra = {}): void {
+	// the account the request runs for; a job keeps its request's scope, so an
+	// event it pushes when it finishes is still the account's
+	const actor = extra.actor ?? currentActor();
+
+	void daemon.pushEvent(instance, kind, message, { ...extra, actor }).catch(() => {});
 }
 
 /** Mark an instance as mid-transition, so the UI can show it before core catches up. */

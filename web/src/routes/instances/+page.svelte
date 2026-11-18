@@ -5,11 +5,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
 	import { Authz } from '$lib/authz.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { instanceTabPath } from '$lib/components/instancetabs';
 	import { api, type InstanceRow } from '$lib/api';
-	import type { DistributionSegment } from '$lib/components/distribution';
 	import { fmtDuration, cpuCeiling, fmtCpuPct } from '$lib/format';
 	import { SOFTWARE_IDS, traitsOf } from '$core/software';
 	import { parseMemoryMb } from '$core/memory';
@@ -26,12 +25,9 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import SplitButton from '$lib/components/SplitButton.svelte';
 	import DetailPanel from '$lib/components/DetailPanel.svelte';
-	import InfoGrid from '$lib/components/InfoGrid.svelte';
-	import type { InfoCell } from '$lib/components/grid';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
-	import DistributionBar from '$lib/components/DistributionBar.svelte';
 	import ScheduleQuickModal from '$lib/components/ScheduleQuickModal.svelte';
 	import DeleteInstanceModal from '$lib/components/DeleteInstanceModal.svelte';
 	import { Notify } from '$lib/notifications.svelte';
@@ -40,6 +36,15 @@
 	import { ResourceMetaIndex, resourceMetaColumns } from '$lib/resourcemeta.svelte';
 	import ResourceMetaCell from '$lib/components/ResourceMetaCell.svelte';
 	import { selectedResourceIds, withCopyResourceId } from '$lib/resourceid';
+	import type { UptimeDayPoint } from '$lib/components/uptime';
+	import InstanceDetails from './InstanceDetails.svelte';
+	import EventsTable from '$lib/components/EventsTable.svelte';
+	import InstanceGlance from './InstanceGlance.svelte';
+	import { MB, trendSeries, type InstanceEvent, type InstanceHistory, type RowTrends } from './details';
+	import CellStack from '$lib/components/CellStack.svelte';
+	import MiniSpark from '$lib/components/MiniSpark.svelte';
+	import UptimeTimeline from '$lib/components/UptimeTimeline.svelte';
+	import type { SeriesUnit } from '$lib/components/chart';
 
 	type Row = InstanceRow & { externalOnly?: boolean };
 
@@ -61,6 +66,8 @@
 		uptimeMs: number | null;
 	}> = $state([]);
 	let hostMemMb = $state(0);
+	/** Each row's last hour and uptime record, for the table's small charts */
+	let trends = $state.raw<Record<string, RowTrends>>({});
 	let selected: Set<string> = $state(new Set());
 	let loading = $state(true);
 
@@ -209,14 +216,15 @@
 		// the configured heap is static and the RSS column beside it shows what the
 		// server really uses; hidden to make room for the owner
 		{ id: 'memory', label: t('web.instances.colMemory'), hidden: true },
-		{ id: 'cpu', label: 'CPU', sortable: true },
-		{ id: 'rss', label: t('web.instances.colRss'), sortable: true },
-		{ id: 'tps', label: 'TPS', sortable: true, width: 80, align: 'right' },
+		{ id: 'cpu', label: 'CPU', sortable: true, width: 140, align: 'right' },
+		{ id: 'rss', label: t('web.instances.colRss'), sortable: true, width: 140, align: 'right' },
+		{ id: 'tps', label: 'TPS', sortable: true, width: 120, align: 'right' },
 		// heap duplicates what Mem (RSS) already conveys at a glance, and thirteen
 		// visible columns overflow the table; it is one gear-click away instead
 		{ id: 'heap', label: t('web.instances.colHeap'), sortable: true, hidden: true },
-		{ id: 'uptime', label: t('web.instances.colUptime'), sortable: true },
-		{ id: 'players', label: t('web.instances.colPlayers'), sortable: true },
+		{ id: 'uptime', label: t('web.instances.colUptime'), sortable: true, hidden: true },
+		{ id: 'uptime30', label: t('web.instances.detail.uptime30'), sortable: true },
+		{ id: 'players', label: t('web.instances.colPlayers'), sortable: true, width: 110, align: 'right' },
 		{ id: 'profile', label: t('web.instances.colProfile'), hidden: true },
 		{ id: 'pid', label: t('web.instances.colPid'), hidden: true },
 		...resourceMetaColumns().filter((column) => column.id !== 'createdBy')
@@ -259,6 +267,9 @@
 			case 'uptime':
 				return row.uptimeMs ?? -1;
 
+			case 'uptime30':
+				return trends[row.name]?.uptime?.pct ?? -1;
+
 			case 'players':
 				return row.players?.online ?? -1;
 
@@ -269,9 +280,10 @@
 
 	async function refresh(): Promise<void> {
 		try {
-			const data = await api('/instances');
+			const data = await api('/instances?trends=1');
 
 			rows = data.instances;
+			trends = data.trends ?? {};
 			externals = data.externals;
 			hostMemMb = data.hostMemMb ?? 0;
 			lastUpdated = Date.now();
@@ -505,143 +517,75 @@
 		return instanceActions(targets);
 	}
 
-	/**
-	 * A tick's budget at 20 TPS. The bar is scaled to it rather than to the worst
-	 * sample, so a healthy server reads as a quarter-full bar every time instead of
-	 * as whatever its own peak happened to be.
-	 */
-	const TICK_BUDGET_MS = 50;
+	/** The selected instance's sampled hour, events and uptime record, for the split panel. */
+	let panelMetrics = $state.raw<{
+		name: string;
+		history: InstanceHistory;
+		events: InstanceEvent[];
+		uptime: UptimeDayPoint[] | null;
+	} | null>(null);
+	let panelMetricsFailed = $state<string | null>(null);
+	let metricsTicket = 0;
 
-	/**
-	 * Entities split by whether they are ticked.
-	 *
-	 * The split is the useful part: non-ticking entities are nearly free, so a total
-	 * on its own cannot tell a heavy farm from a warehouse full of item frames.
-	 */
-	const entitySegments: DistributionSegment[] = $derived.by(() => {
-		if (!one) {
-			return [];
+	async function loadPanelMetrics(name: string): Promise<void> {
+		const ticket = ++metricsTicket;
+
+		try {
+			const data = (await api(`/instances/${encodeURIComponent(name)}/metrics`)) as {
+				history: InstanceHistory;
+				events: InstanceEvent[];
+				uptime?: { days: UptimeDayPoint[] } | null;
+			};
+
+			if (ticket !== metricsTicket) {
+				return;
+			}
+
+			panelMetrics = {
+				name,
+				history: data.history,
+				events: data.events,
+				uptime: data.uptime?.days ?? null
+			};
+			panelMetricsFailed = null;
+		} catch (err) {
+			// the panel's figures keep what the list knows; the charts say why they are missing
+			if (ticket === metricsTicket) {
+				panelMetricsFailed = (err as Error).message;
+			}
 		}
+	}
 
-		const segments: DistributionSegment[] = [];
+	// read again on every list refresh, so the panel's hour moves with the table
+	$effect(() => {
+		const name = one?.external
+			? null
+			: one?.name;
 
-		if (one.tickingEntities != null) {
-			segments.push({
-				key: 'ticking',
-				label: t('web.instances.tickingEntities'),
-				count: one.tickingEntities,
-				color: 'var(--warning)'
-			});
+		void lastUpdated;
+
+		if (name) {
+			untrack(() => void loadPanelMetrics(name));
 		}
-
-		if (one.nonTickingEntities != null) {
-			segments.push({
-				key: 'nonticking',
-				label: t('web.instances.nonTickingEntities'),
-				count: one.nonTickingEntities,
-				color: 'var(--link)'
-			});
-		}
-
-		return segments;
-	});
-
-	/**
-	 * How stale the heartbeat figures are, ms.
-	 *
-	 * Null when the plugin has never reported: an absent heartbeat and a very old
-	 * one mean different things, and both differ from "reported a second ago".
-	 */
-	const telemetryAge = $derived(one?.lastHeartbeatMs ? Date.now() - one.lastHeartbeatMs : null);
-
-	const detailCells: InfoCell[] = $derived.by(() => {
-		if (!one) {
-			return [];
-		}
-
-		return [
-			{ id: 'state', label: t('web.instances.colState') },
-			// what the proxy thinks, which is what a player actually meets; a running
-			// backend held in maintenance is invisible in the state above
-			{
-				label: t('web.instances.networkStatus'),
-				value: one.lunaStatus || t('web.instances.notReporting')
-			},
-			{ label: t('web.instances.colSoftware'), value: `${one.software} ${one.mcVersion ?? ''}` },
-			{
-				label: t('web.instances.colMachine'),
-				value: one.daemon ?? hostName,
-				href: (one.daemon ?? hostName) ? `/machines/${one.daemon ?? hostName}` : undefined
-			},
-			{ label: t('web.instances.gameAddress'), value: one.address, copyable: true, style: 'mono' },
-			{
-				label: t('web.instances.colPlayers'),
-				value: one.players ? `${one.players.online}/${one.players.max}` : null
-			},
-			{ label: t('web.instances.colUptime'), value: fmtDuration(one.uptimeMs) },
-			{ label: t('web.instances.memoryHeap'), value: one.memory },
-			{ label: t('web.instances.colProfile'), value: one.profile },
-			{
-				label: t('web.instances.cpuCores'),
-				value: one.cpuCores === null ? null : String(one.cpuCores)
-			},
-			{ label: t('web.instances.colPid'), value: one.javaPid },
-			// how old the figures below are: a stale heartbeat is why a panel shows a
-			// healthy 20 TPS for a server that stopped answering minutes ago
-			{
-				label: t('web.instances.telemetry'),
-				value:
-					telemetryAge === null
-						? t('web.instances.notReporting')
-						: t('web.instances.agoOf', { age: fmtDuration(telemetryAge) }),
-				time: telemetryAge === null
-					? undefined
-					: one.lastHeartbeatMs
-			},
-			{
-				label: t('web.instances.protocol'),
-				value: one.pingVersion
-			},
-			{ label: t('web.instances.directory'), value: one.dir, copyable: true, style: 'mono' }
-		];
-	});
-
-	const networkCells: InfoCell[] = $derived.by(() => {
-		if (!one) {
-			return [];
-		}
-
-		const registration = one.proxy?.register
-			? t('web.instances.registered')
-			: one.name === 'proxy'
-				? t('web.instances.isTheProxy')
-				: t('web.instances.notRegistered');
-
-		const forcedHosts = one.proxy?.forcedHosts?.length
-			? [{ label: t('web.instances.forcedHosts'), value: one.proxy.forcedHosts.join(', ') }]
-			: [];
-
-		return [
-			{ label: t('web.instances.gamePort'), value: `tcp/${one.port}`, style: 'mono' },
-			...Object.entries(one.ports).map(([key, port]) => ({
-				label: key,
-				value: String(port),
-				style: 'mono' as const
-			})),
-			{ label: t('web.instances.proxyRegistration'), value: registration },
-			...forcedHosts
-		];
 	});
 </script>
 
 <svelte:head><title>{t('web.nav.instancesList')} | Luna Console</title></svelte:head>
+
+<!-- a row's last hour beside its figure; nothing when the hour measured nothing -->
+{#snippet trend(name: string, metric: 'cpu' | 'rssMb' | 'tps' | 'players', unit: SeriesUnit, label: string, scale: number = 1)}
+	{@const series = trendSeries(trends[name], metric, unit, scale)}
+	{#if series}
+		<MiniSpark {series} {label} width={3} height={1.5} />
+	{/if}
+{/snippet}
 
 <div class="split-view">
 	<div class="main-col">
 		<PageHeader
 			title={t('web.nav.instancesList')}
 			count="{selected.size ? `${selected.size}/` : ''}{allRows.length}"
-			info
+			info={t('web.guide.instances')}
 		>
 			{#snippet actions()}
 				<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="instances" />
@@ -785,7 +729,16 @@
 					{:else if col === 'state'}
 						<!-- paused refines running rather than replacing it: verbs and
 						     filters still treat the instance as up -->
-						<StatusBadge state={row.paused && row.state === 'running' ? 'paused' : row.state} />
+						<CellStack>
+							{#snippet main()}
+								<StatusBadge state={row.paused && row.state === 'running' ? 'paused' : row.state} />
+							{/snippet}
+							{#snippet sub()}
+								{#if row.state === 'running' && row.uptimeMs}
+									{t('web.instances.detail.upFor', { span: fmtDuration(row.uptimeMs) })}
+								{/if}
+							{/snippet}
+						</CellStack>
 					{:else if col === 'checks'}
 						{#if row.state === 'stopped'}
 							<span class="dim">–</span>
@@ -825,31 +778,59 @@
 						{#if row.cpu == null}
 							<span class="dim">–</span>
 						{:else}
-							<ProgressBar
-								compact
-								value={row.cpu}
-								max={cpuCeiling(row.cpuCores)}
-								color="auto"
-								right={fmtCpuPct(row.cpu)}
-							/>
+							{@const ceiling = cpuCeiling(row.cpuCores)}
+							<span class="chartcell">
+								<CellStack align="right">
+									{#snippet main()}
+										<span class="mono" class:hot={row.cpu! / ceiling >= 0.7}>{fmtCpuPct(row.cpu!)}</span>
+									{/snippet}
+									{#snippet sub()}
+										{#if row.cpuCores}
+											{t('web.instances.detail.ofCores', { cores: String(row.cpuCores) })}
+										{/if}
+									{/snippet}
+								</CellStack>
+								{@render trend(row.name, 'cpu', 'percent', t('web.instances.cpuUtilization'))}
+							</span>
 						{/if}
 					{:else if col === 'rss'}
 						{#if row.rssMb == null}
 							<span class="dim">–</span>
 						{:else}
-							<ProgressBar
-								compact
-								value={row.rssMb}
-								max={hostMemMb || heapMb(row.memory) || row.rssMb}
-								color="auto"
-								right="{(row.rssMb / 1024).toFixed(1)} GB"
-							/>
+							<span class="chartcell">
+								<CellStack align="right">
+									{#snippet main()}
+										<span class="mono">{(row.rssMb! / 1024).toFixed(1)} GB</span>
+									{/snippet}
+									{#snippet sub()}
+										{#if row.memory}
+											{t('web.instances.heapSetting', { memory: row.memory })}
+										{/if}
+									{/snippet}
+								</CellStack>
+								{@render trend(row.name, 'rssMb', 'bytes', t('web.instances.residentMemory'), MB)}
+							</span>
 						{/if}
 					{:else if col === 'tps'}
 						{#if row.tps == null}
 							<span class="dim">–</span>
 						{:else}
-							<span class="tps {tpsClass(row.tps)}">{row.tps.toFixed(2)}</span>
+							<span class="chartcell">
+								<span class="tps {tpsClass(row.tps)}">{row.tps.toFixed(2)}</span>
+								{@render trend(row.name, 'tps', 'count', t('web.instances.tickRate'))}
+							</span>
+						{/if}
+					{:else if col === 'uptime30'}
+						{@const record = trends[row.name]?.uptime}
+						{#if !record || record.pct === null}
+							<span class="dim">–</span>
+						{:else}
+							<span class="chartcell">
+								<span class="mono uptime-pct" class:warn={record.pct < 99}>{`${Number(record.pct.toFixed(2))}%`}</span>
+								<span class="strip">
+									<UptimeTimeline days={record.days} count={14} compact height="0.875rem" label={t('web.instances.detail.uptime30')} />
+								</span>
+							</span>
 						{/if}
 					{:else if col === 'heap'}
 						{#if row.heapUsedMb == null || row.heapMaxMb == null}
@@ -866,7 +847,14 @@
 					{:else if col === 'uptime'}
 						{fmtDuration(row.uptimeMs)}
 					{:else if col === 'players'}
-						{row.players ? `${row.players.online}/${row.players.max}` : '–'}
+						{#if !row.players}
+							<span class="dim">–</span>
+						{:else}
+							<span class="chartcell">
+								<span class="mono">{row.players.online}/{row.players.max}</span>
+								{@render trend(row.name, 'players', 'count', t('web.instances.colPlayers'))}
+							</span>
+						{/if}
 					{:else if col === 'profile'}
 						{row.profile}
 					{:else if col === 'pid'}
@@ -891,102 +879,50 @@
 			onclose={() => (selected = new Set())}
 		>
 			{#snippet actions()}
-				<StatusBadge state={one.state} />
+				<StatusBadge state={one.paused ? 'paused' : one.state} />
+				{#if panelLocation === 'right'}
+					<!-- the side dock has no room for a labelled button; its name moves to the tooltip -->
+					<Btn variant="icon" icon="chartLine" href={instanceTabPath(one.name, 'monitoring')} title={t('web.instances.glance.open')} />
+				{:else}
+					<Btn icon="chartLine" href={instanceTabPath(one.name, 'monitoring')}>{t('web.instances.glance.open')}</Btn>
+				{/if}
 			{/snippet}
 			<Tabs
 				tabs={[
 					{ id: 'details', label: t('web.instances.details') },
+					{ id: 'monitoring', label: t('web.instances.glance.tab') },
 					{ id: 'checks', label: t('web.instances.statusChecks') },
-					{ id: 'network', label: t('web.instances.networking') }
+					{ id: 'events', label: t('web.instances.events.tab') }
 				]}
 				bind:active={detailTab}
 			/>
 			<div class="detailbody">
 				{#if detailTab === 'details'}
-					{#if one.state === 'running'}
-						<div class="meters">
-							<ProgressBar
-								left={t('web.instances.cpuUtilization')}
-								value={one.cpu ?? 0}
-								max={cpuCeiling(one.cpuCores)}
-								color="auto"
-								right={fmtCpuPct(one.cpu ?? 0)}
-							/>
-							<ProgressBar
-								left={t('web.instances.residentMemory')}
-								value={one.rssMb ?? 0}
-								max={hostMemMb || heapMb(one.memory) || one.rssMb || 1}
-								color="auto"
-								right={t('web.instances.gbOfGb', { used: ((one.rssMb ?? 0) / 1024).toFixed(1), total: ((hostMemMb || 0) / 1024).toFixed(0) })}
-							/>
-							{#if one.tps != null}
-								<ProgressBar
-									left={t('web.instances.tickRate')}
-									value={one.tps}
-									max={20}
-									color={tpsTone(one.tps)}
-									right={t('web.instances.tpsOf20', { tps: one.tps.toFixed(2) })}
-								/>
-							{/if}
-							{#if one.heapUsedMb != null && one.heapMaxMb != null}
-								<ProgressBar
-									left={t('web.instances.jvmHeap')}
-									value={one.heapUsedMb}
-									max={one.heapMaxMb}
-									color="auto"
-									right={t('web.instances.gbOfGb', { used: (one.heapUsedMb / 1024).toFixed(1), total: (one.heapMaxMb / 1024).toFixed(1) })}
-								/>
-							{/if}
-							<!-- the figure TPS stops being able to express: TPS floors at 20 while
-							     tick duration keeps climbing, so a server at 20 TPS and 45 ms is
-							     already one bad chunk away from stuttering -->
-							{#if one.msptMean != null}
-								<ProgressBar
-									left={t('web.instances.tickDuration')}
-									value={one.msptMean}
-									max={TICK_BUDGET_MS}
-									color={one.msptMean <= 25 ? 'success' : one.msptMean <= 40 ? 'warning' : 'danger'}
-									right={t('web.instances.msMeanMax', {
-										mean: one.msptMean.toFixed(1),
-										max: one.msptMax == null ? '–' : one.msptMax.toFixed(1)
-									})}
-								/>
-							{/if}
-						</div>
-
-						{#if entitySegments.length > 0 || one.chunks != null}
-							<div class="worldload">
-								<div class="loadhead">
-									{t('web.instances.worldLoad')}
-									{#if one.chunks != null}
-										<span class="dim">
-											{t('web.instances.chunksLoaded', { count: one.chunks.toLocaleString() })}
-										</span>
-									{/if}
-									{#if one.worlds.length > 0}
-										<span class="dim">
-											{t('web.instances.worldCount', { count: String(one.worlds.length) })}
-										</span>
-									{/if}
-								</div>
-								{#if entitySegments.length > 0}
-									<DistributionBar
-										segments={entitySegments}
-										empty={t('web.instances.noEntities')}
-									/>
-								{/if}
-							</div>
-						{/if}
-					{/if}
-					<InfoGrid
-						cells={detailCells}
-						columns={panelLocation === 'right' ? [2, 2, 1] : [4, 3, 2]}
-					>
-						{#snippet custom(cell)}
-							{#if cell.id === 'state'}<StatusBadge state={one.state} />{/if}
-						{/snippet}
-					</InfoGrid>
-				{:else if detailTab === 'checks'}
+					<InstanceDetails
+						row={one}
+						history={panelMetrics?.name === one.name ? panelMetrics.history : null}
+						uptimeDays={panelMetrics?.name === one.name ? panelMetrics.uptime : null}
+						{hostMemMb}
+						{hostName}
+						{meta}
+					/>
+				{:else if detailTab === 'monitoring'}
+					<InstanceGlance
+						row={one}
+						history={panelMetrics?.name === one.name ? panelMetrics.history : null}
+						failed={panelMetricsFailed}
+						dock={panelLocation}
+					/>
+				{:else if detailTab === 'events'}
+					<EventsTable
+						tableId="instances-panel-events"
+						events={panelMetrics?.name === one.name ? panelMetrics.events : []}
+						loading={panelMetrics?.name !== one.name && !panelMetricsFailed}
+						emptyTitle={panelMetricsFailed ?? undefined}
+						emptyText={panelMetricsFailed ? undefined : t('web.instances.events.noneHint')}
+						maxHeight="16rem"
+					/>
+				{:else}
 					{#each one.checks as check}
 						<div class="checkrow">
 							<StatusBadge
@@ -996,11 +932,6 @@
 							<span class="dim">{check.detail}</span>
 						</div>
 					{/each}
-				{:else}
-					<InfoGrid
-						cells={networkCells}
-						columns={panelLocation === 'right' ? [2, 2, 1] : [4, 3, 2]}
-					/>
 				{/if}
 			</div>
 		</DetailPanel>
@@ -1023,41 +954,29 @@
 />
 
 <style lang="scss">
-	// first in the tab: the live figures are what changes and what the panel is
-	// opened for, so the identity grid sits under them rather than above
-	.meters {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(14rem, 20rem));
-		gap: 1rem 2rem;
-		margin-bottom: 1.25rem;
-	}
+	// a figure and its hour's small chart side by side, the figure's edge kept
+	// where the column's other figures end
+	.chartcell {
+		display: inline-flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 0.5rem;
+		max-width: 100%;
 
-	.worldload {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-		margin-bottom: 1.25rem;
-		padding-bottom: 1.25rem;
-		border-bottom: 0.1rem solid var(--border-divider);
-	}
-
-	.loadhead {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 0.75rem;
-		font-size: 0.75rem;
-		font-weight: 700;
-		color: var(--text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.05rem;
-
-		// the counts beside the heading are data, not part of the label
-		.dim {
-			font-weight: 400;
-			text-transform: none;
-			letter-spacing: normal;
+		.strip {
+			width: 4.5rem;
 		}
+
+		// widest value is "99.99%"; a fixed slot keeps every strip on one edge
+		.uptime-pct {
+			min-width: 6ch;
+			text-align: right;
+		}
+	}
+
+	.hot,
+	.warn {
+		color: var(--warning);
 	}
 
 	.hint {

@@ -220,6 +220,22 @@ export async function runDaemon(): Promise<void> {
 		await ensureUptimeRecorder();
 	}
 
+	// the proxy's firewall holds no GeoIP database: once a day the countries its
+	// rules name are re-sent when a newer month's prefixes are out
+	if (dcfg.mode === "primary") {
+		const { syncCountries } = await import("../core/firewall");
+
+		setInterval(() => {
+			void syncCountries().catch(() => null);
+		}, 24 * 3_600_000).unref();
+	}
+
+	// the long record of every owned instance's figures and events: hours a
+	// stopped daemon left open are closed before the samplers add more
+	const { startMetricsRecord, flushMetricsRecord } = await import("../core/metrics");
+
+	await startMetricsRecord();
+
 	// both roles report their own machine's health; a follower's rides the
 	// heartbeat up to the primary, which is where the console reads the fleet
 	ensureHealthSampler();
@@ -297,6 +313,9 @@ export async function runDaemon(): Promise<void> {
 
 			await flushUptime();
 		}
+
+		// the minute in progress is only in memory until it closes
+		await flushMetricsRecord();
 
 		try {
 			await unlink(dcfg.socket);

@@ -10,6 +10,9 @@ import { pushEvent } from '$lib/server/luna';
  * Network-level IP bans: enforced by the proxy at pre-login, so a banned
  * address never reaches a backend, the player directory or the chat relay.
  * LunaCore records each change in the moderation log itself.
+ *
+ * Kept for one release as an alias of `/api/firewall/bans`, which owns the
+ * list now, so a moderation page left open across the upgrade keeps working.
  */
 
 /** GET → every address the proxy refuses, newest first. */
@@ -35,10 +38,11 @@ interface NetworkBanOutcome {
 }
 
 /** POST { action: add|remove, ips[], reason? } → change bans, one outcome per address. */
-export async function POST({ request }) {
+export async function POST({ request, locals }) {
 	const body = await request.json();
 	const action = String(body.action ?? '');
 	const reason = String(body.reason ?? '');
+	const actor = locals.account?.username ?? 'console';
 	const ips: string[] = Array.isArray(body.ips)
 		? body.ips.map(String).filter((ip: string) => ip.trim().length > 0)
 		: [];
@@ -56,8 +60,8 @@ export async function POST({ request }) {
 	for (const ip of ips) {
 		try {
 			const result = action === 'add'
-				? await luna.addNetworkIpBan(ip, { reason, actor: 'console' })
-				: await luna.removeNetworkIpBan(ip, { actor: 'console' });
+				? await luna.addNetworkIpBan(ip, { reason, actor })
+				: await luna.removeNetworkIpBan(ip, { actor });
 
 			outcomes.push({
 				ip,

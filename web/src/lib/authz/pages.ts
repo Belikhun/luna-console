@@ -32,6 +32,7 @@ const instance = (params: Record<string, string>): string => resourceId('instanc
 
 export const PAGE_RULES: Record<string, PageRule> = {
 	'/instances': { action: 'instance:List' },
+	'/monitoring': { action: 'instance:List' },
 	'/instances/launch': { action: 'instance:Create' },
 	'/instances/selector': { action: 'network:Describe' },
 	'/instances/[name]/[[tab]]': { action: 'instance:Describe', resource: instance },
@@ -81,6 +82,7 @@ export const PAGE_RULES: Record<string, PageRule> = {
 
 	'/network': { action: 'network:Describe' },
 	'/network/domains': { action: 'domain:List' },
+	'/network/firewall': { action: 'firewall:Describe' },
 	'/network/pools': { action: 'port-pool:List' },
 	'/proxy': { action: 'network:Describe' },
 

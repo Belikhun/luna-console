@@ -148,10 +148,11 @@ export async function resendPacks(targets: PlayerTarget[]): Promise<void> {
 
 /** Ban an address at the network level: the proxy refuses it at pre-login. */
 export async function banAddressOnNetwork(ip: string, reason = ''): Promise<void> {
-	const result = await post('/moderation/network-ip-bans', { action: 'add', ip, reason });
+	const result = await post('/firewall/bans', { action: 'add', ips: [ip], reason });
+	const outcome = result.outcomes?.[0];
 
-	if (result.ok === false) {
-		throw new Error(result.error ?? 'LunaCore refused the ban');
+	if (!outcome?.ok) {
+		throw new Error(outcome?.error ?? 'LunaCore refused the ban');
 	}
 }
 

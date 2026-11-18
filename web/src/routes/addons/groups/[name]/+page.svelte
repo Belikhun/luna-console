@@ -378,7 +378,7 @@
 <svelte:head><title>{name} | Addon groups | Luna Console</title></svelte:head>
 
 {#if data}
-	<PageHeader title={name ?? ''} info>
+	<PageHeader title={name ?? ''} info={t('web.guide.addonGroup')}>
 		{#snippet extra()}
 			{#if data.builtin}<StatusBadge state="ok" label={t('web.groupDetail.builtin')} />{/if}
 		{/snippet}

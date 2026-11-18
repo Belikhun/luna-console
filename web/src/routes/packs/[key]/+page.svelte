@@ -887,7 +887,7 @@
 <svelte:head><title>{key} | Luna Console</title></svelte:head>
 
 {#if detail}
-	<PageHeader title={pack.key} info>
+	<PageHeader title={pack.key} info={t('web.guide.respack')}>
 		{#snippet extra()}
 			<span class="crumb dim">{t('web.packDetail.resourcePackOn')} <a href="/packs">{t('web.packDetail.theProxy')}</a></span>
 			<StatusBadge state={stateBadge.state} label={stateBadge.label} detail={stateBadge.detail} />

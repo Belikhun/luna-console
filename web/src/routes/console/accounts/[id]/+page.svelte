@@ -814,7 +814,7 @@
 	<PageHeader
 		title={detail.account.username}
 		description={detail.account.description || t('web.accountDetail.consoleAccount')}
-		info
+		info={t('web.guide.account')}
 	>
 		{#snippet extra()}
 			<StatusBadge state={accountState(detail!.account)} label={stateLabel(detail!.account)} />

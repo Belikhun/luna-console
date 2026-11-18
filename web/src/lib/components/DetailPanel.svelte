@@ -309,6 +309,8 @@
 		align-items: baseline;
 		gap: 0.75rem;
 		min-width: 0;
+		// a narrow dock gives the actions their room; the title side clips rather than running under them
+		overflow: hidden;
 
 		h2 {
 			font-size: 1rem;
@@ -317,8 +319,9 @@
 	}
 
 	.sub {
+		@include ellipsis;
+
 		color: var(--text-secondary);
-		white-space: nowrap;
 	}
 
 	.lnk {

@@ -241,7 +241,7 @@
 
 <svelte:head><title>{t('web.nav.knowledge')} | Luna Console</title></svelte:head>
 
-<PageHeader title={t('web.nav.knowledge')} count={items.length} description={t('web.knowledge.pageDescription')} info>
+<PageHeader title={t('web.nav.knowledge')} count={items.length} description={t('web.knowledge.pageDescription')} info={t('web.guide.knowledge')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-knowledge" />
 		<Dropdown label={t('web.common.actions')} disabled={picked.length === 0} menu={withCopyResourceId(itemActions(picked), picked.map((row) => resourceId('knowledge', row.id)))} />

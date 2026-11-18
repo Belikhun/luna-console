@@ -242,7 +242,7 @@
 	title={t('web.nav.schedules')}
 	count={schedules.length}
 	description={t('web.schedules.pageDescription')}
-	info
+	info={t('web.guide.schedules')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="schedules" />

@@ -359,7 +359,7 @@
 		description={detail.description ||
 			(detail.builtin ? 'A builtin; computed per instance rather than stored'
 				: 'Environment variable')}
-		info
+		info={t('web.guide.variable')}
 	>
 		{#snippet extra()}
 			{#if detail!.secret}

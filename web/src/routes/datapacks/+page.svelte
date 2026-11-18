@@ -447,7 +447,7 @@
 	title={t('web.datapacks.dataPacks')}
 	count={packs.length}
 	description={t('web.datapacks.aSharedPoolInRoot')}
-	info
+	info={t('web.guide.datapacks')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="datapacks" />

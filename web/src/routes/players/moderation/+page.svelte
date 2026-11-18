@@ -8,7 +8,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, post } from '$lib/api';
-	import { fmtDateTime } from '$lib/format';
+	import { firewallHref } from '$lib/firewall';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import Btn from '$lib/components/Btn.svelte';
@@ -20,16 +20,35 @@
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
-	import OverviewBar from '$lib/components/OverviewBar.svelte';
-	import OverviewCell from '$lib/components/OverviewCell.svelte';
+	import StatGrid from '$lib/components/StatGrid.svelte';
+	import StatTile from '$lib/components/StatTile.svelte';
+	import DetailPanel from '$lib/components/DetailPanel.svelte';
+	import InfoGrid from '$lib/components/InfoGrid.svelte';
+	import InfoPopover from '$lib/components/InfoPopover.svelte';
+	import type { InfoCell } from '$lib/components/grid';
 	import Modal from '$lib/components/Modal.svelte';
-	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import FirewallBanModal from '$lib/components/FirewallBanModal.svelte';
 	import DateTime from '$lib/components/DateTime.svelte';
 	import Flash from '$lib/components/Flash.svelte';
 	import PlayerName from '$lib/components/PlayerName.svelte';
 	import PlayerPicker from '$lib/components/PlayerPicker.svelte';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
+
+	import LogTab from './LogTab.svelte';
+	import {
+		MODERATION_TABS,
+		moderationHref,
+		targetHref,
+		targetIsAddress,
+		type BanRow,
+		type InstanceSummary,
+		type IpBanRow,
+		type LogEntry,
+		type ModerationTab,
+		type OpRow,
+		type WhitelistRow
+	} from './moderation';
 
 	/**
 	 * Network-wide moderation: the whole cluster's moderation history from
@@ -39,73 +58,16 @@
 	 * fan-out the players screen uses (POST /api/players/moderate).
 	 */
 
-	interface InstanceSummary {
-		name: string;
-		state: string;
-		whitelistEnabled: boolean;
-		enforceWhitelist: boolean;
-		error?: string;
-	}
-
-	interface BanRow {
-		name: string;
-		uuid: string;
-		reason: string;
-		source: string;
-		created: string;
-		expires: string;
-		instances: string[];
-	}
-
-	interface IpBanRow {
-		ip: string;
-		reason: string;
-		source: string;
-		created: string;
-		expires: string;
-		instances: string[];
-	}
-
-	interface WhitelistRow {
-		name: string;
-		uuid: string;
-		instances: string[];
-	}
-
-	interface OpRow {
-		name: string;
-		uuid: string;
-		level: number;
-		bypassesPlayerLimit: boolean;
-		instances: string[];
-	}
-
-	interface NetBanRow {
-		ip: string;
-		reason: string;
-		actor: string;
-		createdAtEpochMillis: number;
-		expiresAtEpochMillis: number;
-		hits: number;
-		lastHitAtEpochMillis: number;
-	}
-
-	interface LogEntry {
-		id: number;
-		action: string;
-		actor: string;
-		reason: string;
-		server: string;
-		details: string;
-		targetUuid: string;
-		targetName: string;
-		atEpochMillis: number;
-	}
-
 	/** LunaCore pages at 200 max; older entries load on demand. */
 	const LOG_PAGE = 200;
 
-	let tab = $state('logs');
+	const tab: ModerationTab = $derived.by(() => {
+		const wanted = page.url.searchParams.get('tab') as ModerationTab | null;
+
+		return wanted && MODERATION_TABS.includes(wanted)
+			? wanted
+			: 'logs';
+	});
 
 	let summaries: InstanceSummary[] = $state([]);
 	let bans: BanRow[] = $state([]);
@@ -114,7 +76,7 @@
 	let ops: OpRow[] = $state([]);
 	let listsProblem = $state('');
 
-	let netBans: NetBanRow[] = $state([]);
+	let netBanCount = $state(0);
 	let netAvailable = $state(true);
 	let netProblem = $state('');
 
@@ -133,7 +95,6 @@
 	let selectedWhitelist: Set<string> = $state(new Set());
 	let selectedOps: Set<string> = $state(new Set());
 	let selectedIpBans: Set<string> = $state(new Set());
-	let selectedNetBans: Set<string> = $state(new Set());
 
 	/** Backends whose lists actually arrived; the coverage denominator. */
 	const reporting = $derived(summaries.filter((inst) => !inst.error).map((inst) => inst.name));
@@ -147,7 +108,6 @@
 	const whitelistSelection = $derived(whitelist.filter((row) => selectedWhitelist.has(rowKey(row))));
 	const opSelection = $derived(ops.filter((row) => selectedOps.has(rowKey(row))));
 	const ipBanSelection = $derived(ipBans.filter((row) => selectedIpBans.has(row.ip)));
-	const netBanSelection = $derived(netBans.filter((row) => selectedNetBans.has(row.ip)));
 
 	async function refreshLists(): Promise<void> {
 		try {
@@ -166,7 +126,8 @@
 
 	async function refreshNetBans(): Promise<void> {
 		try {
-			const data = await api('/moderation/network-ip-bans');
+			// the list lives on the firewall screen; moderation only counts it
+			const data = await api('/firewall/bans');
 
 			if (data.available === false) {
 				netAvailable = false;
@@ -176,7 +137,7 @@
 
 			netAvailable = true;
 			netProblem = '';
-			netBans = data.bans ?? [];
+			netBanCount = (data.bans ?? []).length;
 		} catch (err) {
 			netAvailable = false;
 			netProblem = (err as Error).message;
@@ -353,92 +314,17 @@
 
 	// -- network-level IP bans; enforced by the proxy at pre-login --------------
 
-	let netBanOpen = $state(false);
-	let netBanIp = $state('');
-	let netBanReason = $state('');
 	let promoteOpen = $state(false);
-	let promoteRows: IpBanRow[] = $state([]);
-
-	async function doNetworkChange(action: 'add' | 'remove', ips: string[], reason = ''): Promise<void> {
-		const label = action === 'add'
-			? t('web.moderation.actionNetBan')
-			: t('web.moderation.actionNetPardon');
-		const note = Notify.loading(t('web.moderation.applyingTo', { label, count: ips.length }));
-
-		try {
-			const result = await post('/moderation/network-ip-bans', { action, ips, reason });
-
-			const outcomes: Array<{ ip: string; ok: boolean; error?: string }> = result.outcomes ?? [];
-			const failed = outcomes.filter((outcome) => !outcome.ok);
-
-			if (failed.length === 0) {
-				note.set({
-					level: 'success',
-					message: t('web.moderation.appliedTo', { label, count: ips.length }),
-					closeable: true
-				});
-			} else {
-				note.set({
-					level: 'warning',
-					message: t('web.players.partialSucceeded', { label, ok: outcomes.length - failed.length, total: outcomes.length }),
-					detail: failed.map((outcome) => `${outcome.ip}: ${outcome.error}`).join('\n'),
-					closeable: true
-				});
-			}
-
-			await refreshNetBans();
-		} catch (err) {
-			note.set({ level: 'error', message: label, detail: (err as Error).message, closeable: true });
-		}
-	}
-
-	function openNetBan(): void {
-		netBanIp = '';
-		netBanReason = '';
-		netBanOpen = true;
-	}
-
-	function submitNetBan(): void {
-		const ip = netBanIp.trim();
-
-		netBanOpen = false;
-
-		if (!ip) {
-			return;
-		}
-
-		void doNetworkChange('add', [ip], netBanReason.trim());
-	}
+	let promoteIps: string[] = $state([]);
+	let promoteReason = $state('');
 
 	function openPromote(rows: IpBanRow[]): void {
-		promoteRows = rows;
-		promoteOpen = true;
-	}
-
-	function submitPromote(): void {
+		promoteIps = rows.map((row) => row.ip);
 		// a lone row carries its reason up; a mixed selection would misattribute one
-		const reason = promoteRows.length === 1 ? (promoteRows[0]?.reason ?? '') : '';
-
-		void doNetworkChange('add', promoteRows.map((row) => row.ip), reason);
-	}
-
-	function netBanActions(rows: NetBanRow[]): ContextMenuItem[] {
-		const none = rows.length === 0;
-
-		return [
-			{
-				label: t('web.moderation.pardonOnNetwork'),
-				icon: 'handshake',
-				disabled: none,
-				action: () => void doNetworkChange('remove', rows.map((row) => row.ip))
-			}
-		];
-	}
-
-	function netBanRowActions(row: NetBanRow): ContextMenuItem[] {
-		const rows = pick(row, netBanSelection, selectedNetBans.has(row.ip));
-
-		return netBanActions(rows);
+		promoteReason = rows.length === 1
+			? (rows[0]?.reason ?? '')
+			: '';
+		promoteOpen = true;
 	}
 
 	async function toggleWhitelistFor(instance: string, enabled: boolean): Promise<void> {
@@ -657,6 +543,27 @@
 			return [];
 		}
 
+		// an address has no profile; the firewall is where it can be looked up
+		if (targetIsAddress(entry)) {
+			return menuGroups(
+				[
+					{
+						label: t('web.moderation.log.checkAddress'),
+						icon: 'magnifyingGlass',
+						action: () => goto(targetHref(entry) ?? firewallHref('check'))
+					}
+				],
+				[
+					{
+						id: 'copy-address',
+						label: t('web.moderation.log.copyAddress'),
+						icon: 'copy',
+						action: () => void copy(entry.targetName)
+					}
+				]
+			);
+		}
+
 		const profile = profileVerbs(entry.targetUuid, entry.targetName);
 
 		return menuGroups(profile.open, profile.copy);
@@ -664,24 +571,19 @@
 
 	// -- tables -----------------------------------------------------------------
 
-	const tabs = $derived([
-		{ id: 'logs', label: t('web.moderation.tabLogs') },
-		{ id: 'bans', label: t('web.moderation.tabBans') },
-		{ id: 'whitelist', label: t('web.moderation.tabWhitelist') },
-		{ id: 'ops', label: t('web.moderation.tabOps') },
-		{ id: 'netbans', label: t('web.moderation.tabNetBans') },
-		{ id: 'ipbans', label: t('web.moderation.tabIpBans') }
-	]);
+	const TAB_LABELS: Record<ModerationTab, string> = {
+		logs: 'web.moderation.tabLogs',
+		bans: 'web.moderation.tabBans',
+		whitelist: 'web.moderation.tabWhitelist',
+		ops: 'web.moderation.tabOps',
+		ipbans: 'web.moderation.tabIpBans'
+	};
 
-	const logColumns: Column[] = $derived([
-		{ id: 'time', label: t('web.moderation.colTime'), sortable: true, minWidth: 170 },
-		{ id: 'action', label: t('web.moderation.colAction'), sortable: true },
-		{ id: 'target', label: t('web.moderation.colTarget'), sortable: true, minWidth: 160 },
-		{ id: 'actor', label: t('web.moderation.colActor'), sortable: true },
-		{ id: 'server', label: t('web.moderation.colServer') },
-		{ id: 'reason', label: t('web.access.colReason') },
-		{ id: 'details', label: t('web.moderation.colDetails'), hidden: true }
-	]);
+	const tabs = $derived(MODERATION_TABS.map((id) => ({
+		id,
+		label: t(TAB_LABELS[id]),
+		href: moderationHref(id)
+	})));
 
 	const banColumns: Column[] = $derived([
 		{ id: 'name', label: t('web.access.colPlayer'), sortable: true, minWidth: 180 },
@@ -706,36 +608,12 @@
 		{ id: 'uuid', label: 'UUID', hidden: true }
 	]);
 
-	const netBanColumns: Column[] = $derived([
-		{ id: 'ip', label: t('web.access.colAddress'), sortable: true, minWidth: 160 },
-		{ id: 'reason', label: t('web.access.colReason') },
-		{ id: 'actor', label: t('web.moderation.colActor') },
-		{ id: 'created', label: t('web.access.colBanned'), sortable: true },
-		{ id: 'hits', label: t('web.moderation.colHits'), sortable: true, width: 150, align: 'right' },
-		{ id: 'lastHit', label: t('web.moderation.colLastHit'), sortable: true }
-	]);
-
 	const ipBanColumns: Column[] = $derived([
 		{ id: 'ip', label: t('web.access.colAddress'), sortable: true, minWidth: 160 },
 		{ id: 'coverage', label: t('web.moderation.colBackends'), sortable: true },
 		{ id: 'reason', label: t('web.access.colReason') },
 		{ id: 'source', label: t('web.access.colBy') },
 		{ id: 'created', label: t('web.access.colBanned'), sortable: true }
-	]);
-
-	const logFilters: TableFilterGroup<LogEntry>[] = $derived([
-		{
-			id: 'action',
-			label: t('web.moderation.filterAction'),
-			options: [
-				{ value: 'any', label: t('web.moderation.anyAction') },
-				...logActions.map((action) => ({
-					value: action,
-					label: action,
-					match: (entry: LogEntry) => entry.action === action
-				}))
-			]
-		}
 	]);
 
 	const banFilters: TableFilterGroup<BanRow>[] = $derived([
@@ -757,25 +635,6 @@
 			]
 		}
 	]);
-
-	function logSortValue(entry: LogEntry, col: string): string | number | null {
-		switch (col) {
-			case 'time':
-				return entry.atEpochMillis;
-
-			case 'action':
-				return entry.action;
-
-			case 'target':
-				return entry.targetName.toLowerCase();
-
-			case 'actor':
-				return entry.actor.toLowerCase();
-
-			default:
-				return null;
-		}
-	}
 
 	function coverageSort(row: { instances: string[] }): number {
 		return row.instances.length;
@@ -826,25 +685,6 @@
 		}
 	}
 
-	function netBanSortValue(row: NetBanRow, col: string): string | number | null {
-		switch (col) {
-			case 'ip':
-				return row.ip;
-
-			case 'created':
-				return row.createdAtEpochMillis;
-
-			case 'hits':
-				return row.hits;
-
-			case 'lastHit':
-				return row.lastHitAtEpochMillis;
-
-			default:
-				return null;
-		}
-	}
-
 	function ipBanSortValue(row: IpBanRow, col: string): string | number | null {
 		switch (col) {
 			case 'ip':
@@ -875,15 +715,152 @@
 			case 'ops':
 				return `${selectedOps.size ? `${selectedOps.size}/` : ''}${ops.length}`;
 
-			case 'netbans':
-				return `${selectedNetBans.size ? `${selectedNetBans.size}/` : ''}${netBans.length}`;
-
 			case 'ipbans':
 				return `${selectedIpBans.size ? `${selectedIpBans.size}/` : ''}${ipBans.length}`;
 
 			default:
 				return '';
 		}
+	});
+
+	// -- the figures above the tabs ----------------------------------------------
+
+	const WEEK_MS = 7 * 86_400_000;
+
+	const permanentBans = $derived(bans.filter((row) => row.expires === 'forever').length);
+	const whitelistOn = $derived(summaries.filter((inst) => !inst.error && inst.whitelistEnabled).length);
+
+	/** Entries of the last seven days; null while the loaded page may not reach that far back. */
+	const logThisWeek: number | null = $derived.by(() => {
+		const since = Date.now() - WEEK_MS;
+		const recent = logEntries.filter((entry) => entry.atEpochMillis >= since).length;
+
+		return recent < logEntries.length || logEntries.length >= logTotal
+			? recent
+			: null;
+	});
+
+	// -- one selected row, read in full ------------------------------------------
+
+	let panelLocation = $state<'bottom' | 'right'>('bottom');
+	let panelSize = $state(34);
+
+	interface RowDetail {
+		title: string;
+		subtitle: string;
+		/** A player's profile; an address has none */
+		href?: string;
+		cells: InfoCell[];
+		instances: string[];
+		close: () => void;
+	}
+
+	function banCells(row: BanRow | IpBanRow): InfoCell[] {
+		return [
+			{ label: t('web.access.colReason'), value: row.reason || '–', colSpan: 2 },
+			{ label: t('web.access.colBy'), value: row.source || '–' },
+			{ label: t('web.access.colBanned'), value: row.created || '–', time: row.created || null },
+			row.expires === 'forever' || !row.expires
+				? { label: t('web.access.colExpires'), value: t('web.access.never') }
+				: { label: t('web.access.colExpires'), value: row.expires, time: row.expires }
+		];
+	}
+
+	function uuidCell(uuid: string): InfoCell[] {
+		return uuid
+			? [{ label: 'UUID', value: uuid, style: 'mono', copyable: true, colSpan: 2 }]
+			: [];
+	}
+
+	function profileHref(row: { uuid: string; name: string }): string {
+		return `/players/${row.uuid || row.name}`;
+	}
+
+	const detail: RowDetail | null = $derived.by(() => {
+		if (tab === 'bans' && banSelection.length === 1) {
+			const row = banSelection[0]!;
+
+			return {
+				title: row.name,
+				subtitle: t('web.moderation.detail.ban'),
+				href: profileHref(row),
+				cells: [...banCells(row), ...uuidCell(row.uuid)],
+				instances: row.instances,
+				close: () => (selectedBans = new Set())
+			};
+		}
+
+		if (tab === 'whitelist' && whitelistSelection.length === 1) {
+			const row = whitelistSelection[0]!;
+
+			return {
+				title: row.name,
+				subtitle: t('web.moderation.detail.whitelist'),
+				href: profileHref(row),
+				cells: uuidCell(row.uuid),
+				instances: row.instances,
+				close: () => (selectedWhitelist = new Set())
+			};
+		}
+
+		if (tab === 'ops' && opSelection.length === 1) {
+			const row = opSelection[0]!;
+
+			return {
+				title: row.name,
+				subtitle: t('web.moderation.detail.op'),
+				href: profileHref(row),
+				cells: [
+					{ label: t('web.access.colLevel'), value: row.level },
+					{
+						label: t('web.moderation.detail.bypassesLimit'),
+						value: row.bypassesPlayerLimit ? t('web.common.yes') : t('web.common.no')
+					},
+					...uuidCell(row.uuid)
+				],
+				instances: row.instances,
+				close: () => (selectedOps = new Set())
+			};
+		}
+
+		if (tab === 'ipbans' && ipBanSelection.length === 1) {
+			const row = ipBanSelection[0]!;
+
+			return {
+				title: row.ip,
+				subtitle: t('web.moderation.detail.ipBan'),
+				cells: banCells(row),
+				instances: row.instances,
+				close: () => (selectedIpBans = new Set())
+			};
+		}
+
+		return null;
+	});
+
+	const detailMissing = $derived(
+		detail
+			? reporting.filter((name) => !detail.instances.includes(name))
+			: []
+	);
+
+	/** The detail's cells, then where the entry applies and where it does not. */
+	const detailCells: InfoCell[] = $derived.by(() => {
+		if (!detail) {
+			return [];
+		}
+
+		return [
+			...detail.cells,
+			{
+				id: 'applies',
+				label: t('web.moderation.detail.appliesOn', { count: detail.instances.length }),
+				colSpan: 'all'
+			},
+			...(detailMissing.length > 0
+				? [{ id: 'missing', label: t('web.moderation.detail.missingOn', { count: detailMissing.length }), colSpan: 'all' as const }]
+				: [])
+		];
 	});
 </script>
 
@@ -892,7 +869,7 @@
 <PageHeader
 	title={t('web.moderation.title')}
 	count={headerCount}
-	info
+	info={t('web.guide.moderation')}
 	description={t('web.moderation.description')}
 >
 	{#snippet actions()}
@@ -907,9 +884,6 @@
 		{:else if tab === 'ops'}
 			<Dropdown label={t('web.players.actions')} disabled={opSelection.length === 0} menu={opActions(opSelection)} />
 			<Btn variant="primary" icon="plus" onclick={() => openAdd('op')}>{t('web.access.addOperator')}</Btn>
-		{:else if tab === 'netbans'}
-			<Dropdown label={t('web.players.actions')} disabled={netBanSelection.length === 0} menu={netBanActions(netBanSelection)} />
-			<Btn variant="primary" icon="gavel" onclick={openNetBan}>{t('web.moderation.banOnNetwork')}</Btn>
 		{:else if tab === 'ipbans'}
 			<Dropdown label={t('web.players.actions')} disabled={ipBanSelection.length === 0} menu={ipBanActions(ipBanSelection)} />
 			<Btn variant="primary" icon="gavel" onclick={() => openAdd('ban-ip')}>{t('web.access.banAddress')}</Btn>
@@ -926,105 +900,88 @@
 	</Flash>
 {/if}
 
-<OverviewBar title={t('web.moderation.overview')}>
-	<OverviewCell label={t('web.moderation.backendsReporting')}>
-		{reporting.length}/{summaries.length}
-	</OverviewCell>
-	<OverviewCell label={t('web.moderation.bannedPlayers')}>
-		{bans.length}
-	</OverviewCell>
-	<OverviewCell label={t('web.moderation.tabNetBans')}>
-		{#if netAvailable}
-			{netBans.length}
-		{:else}
-			<span class="dim">–</span>
-		{/if}
-	</OverviewCell>
-	<OverviewCell label={t('web.moderation.ipBans')}>
-		{ipBans.length}
-	</OverviewCell>
-	<OverviewCell label={t('web.moderation.whitelisted')}>
-		{whitelist.length}
-	</OverviewCell>
-	<OverviewCell label={t('web.moderation.operators')}>
-		{ops.length}
-	</OverviewCell>
-	<OverviewCell label={t('web.moderation.logEntries')}>
-		{#if logAvailable}
-			{logTotal}
-		{:else}
-			<span class="dim">–</span>
-		{/if}
-	</OverviewCell>
-</OverviewBar>
+<StatGrid min={10}>
+	<StatTile
+		label={t('web.moderation.tile.bans')}
+		value={loaded && !listsProblem ? bans.length : null}
+		secondary={permanentBans > 0 ? t('web.moderation.tile.permanent', { count: permanentBans }) : undefined}
+		href={moderationHref('bans')}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.moderation.tile.netBans')}
+		value={loaded && netAvailable ? netBanCount : null}
+		secondary={netAvailable ? t('web.moderation.tile.netBansWhere') : t('web.moderation.tile.proxyOffline')}
+		href={firewallHref('bans')}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.moderation.tile.ipBans')}
+		value={loaded && !listsProblem ? ipBans.length : null}
+		href={moderationHref('ipbans')}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.moderation.tile.whitelisted')}
+		value={loaded && !listsProblem ? whitelist.length : null}
+		secondary={reporting.length > 0
+			? t('web.moderation.tile.whitelistOn', { on: whitelistOn, total: reporting.length })
+			: undefined}
+		href={moderationHref('whitelist')}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.moderation.tile.operators')}
+		value={loaded && !listsProblem ? ops.length : null}
+		href={moderationHref('ops')}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.moderation.tile.logEntries')}
+		value={loaded && logAvailable ? logTotal : null}
+		secondary={!logAvailable
+			? t('web.moderation.tile.proxyOffline')
+			: loaded && logThisWeek !== null
+				? t('web.moderation.tile.thisWeek', { count: logThisWeek })
+				: undefined}
+		href={moderationHref('logs')}
+		loading={!loaded}
+	/>
+	<StatTile
+		label={t('web.moderation.tile.backends')}
+		value={loaded && !listsProblem ? reporting.length : null}
+		secondary={loaded ? t('web.moderation.tile.backendsOf', { total: summaries.length }) : undefined}
+		tone={unreachable.length > 0 ? 'warning' : 'default'}
+		info={t('web.moderation.tile.backendsInfo')}
+		loading={!loaded}
+	/>
+</StatGrid>
+
+<div class="tabs">
+	<Tabs {tabs} active={tab} />
+</div>
 
 <div class="body">
-	<Tabs {tabs} bind:active={tab} />
-
 	{#if tab === 'logs'}
-		{#if !logAvailable}
-			<Flash kind="warning">
-				<b>{t('web.moderation.logUnavailable')}</b>
-				{logProblem}. {t('web.moderation.logNeedsBuild')}
-			</Flash>
-		{/if}
-
-		<Panel flush>
-			<ResourceTable
-				tableId="moderation-log"
-				loading={!loaded}
-				initialSearch={page.url.searchParams.get('q') ?? ''}
-				columns={logColumns}
-				rows={logEntries}
-				getId={(entry) => String(entry.id)}
-				searchValue={(entry) =>
-					`${entry.targetName} ${entry.targetUuid} ${entry.actor} ${entry.action} ${entry.server} ${entry.reason}`}
-				searchPlaceholder={t('web.moderation.findLogEntry')}
-				noun={t('web.moderation.nounEntry')}
-				sortValue={logSortValue}
-				filters={logFilters}
-				rowActions={logRowActions}
-				rowLabel={(entry) => entry.targetName || entry.action}
-				pageSize={25}
-				emptyTitle={t('web.moderation.noLogEntries')}
-				emptyText={t('web.moderation.logHint')}
-			>
-				{#snippet cell(entry, col)}
-					{#if col === 'time'}
-						<DateTime at={entry.atEpochMillis} text={fmtDateTime(entry.atEpochMillis)} />
-					{:else if col === 'action'}
-						<b>{entry.action}</b>
-					{:else if col === 'target'}
-						{#if entry.targetUuid || entry.targetName}
-							<PlayerName player={entry.targetUuid || entry.targetName} name={entry.targetName || entry.targetUuid} />
-						{:else}
-							<span class="dim">–</span>
-						{/if}
-					{:else if col === 'actor'}
-						{entry.actor || '–'}
-					{:else if col === 'server'}
-						<span class="dim">{entry.server || '–'}</span>
-					{:else if col === 'reason'}
-						{entry.reason || '–'}
-					{:else if col === 'details'}
-						<span class="dim">{entry.details || '–'}</span>
-					{/if}
-				{/snippet}
-			</ResourceTable>
-
-			{#if logAvailable && logEntries.length < logTotal}
-				<div class="more">
-					<span class="dim">
-						{t('web.moderation.loadedOf', { loaded: logEntries.length, total: logTotal })}
-					</span>
-					<Btn icon="arrowDown" disabled={logLoadingMore} onclick={() => void loadOlderLog()}>
-						{t('web.moderation.loadOlder')}
-					</Btn>
-				</div>
-			{/if}
-		</Panel>
+		<LogTab
+			entries={logEntries}
+			total={logTotal}
+			actions={logActions}
+			available={logAvailable}
+			problem={logProblem}
+			{loaded}
+			loadingMore={logLoadingMore}
+			initialSearch={page.url.searchParams.get('q') ?? ''}
+			rowActions={logRowActions}
+			onloadolder={() => void loadOlderLog()}
+		/>
 	{:else if tab === 'bans'}
-		<Panel flush>
+		<Panel
+			title={t('web.moderation.tabBans')}
+			count={loaded ? bans.length : undefined}
+			description={t('web.moderation.bansHint')}
+			flush
+		>
 			<ResourceTable
 				tableId="moderation-bans"
 				loading={!loaded}
@@ -1039,10 +996,11 @@
 				rowLabel={(row) => row.name}
 				noun={t('web.access.nounBan')}
 				sortValue={banSortValue}
+				defaultSort={{ col: 'created', dir: 'desc' }}
 				filters={banFilters}
 				pageSize={25}
 				emptyTitle={t('web.moderation.noBans')}
-				emptyText={t('web.moderation.bansHint')}
+				emptyAction={bans.length === 0 ? banFirst : undefined}
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'name'}
@@ -1070,26 +1028,36 @@
 	{:else if tab === 'whitelist'}
 		<Panel
 			title={t('web.moderation.whitelistState')}
+			count={loaded ? t('web.moderation.whitelistOnCount', { on: whitelistOn, total: reporting.length }) : undefined}
 			description={t('web.moderation.whitelistStateHint')}
 		>
-			<div class="wlgrid">
-				{#each summaries.filter((inst) => !inst.error) as inst (inst.name)}
-					<span class="wlrow">
-						<Toggle
-							checked={inst.whitelistEnabled}
-							label={inst.name}
-							onchange={(checked) => void toggleWhitelistFor(inst.name, checked)}
-						/>
-						<a href="/instances/{inst.name}">{inst.name}</a>
-						{#if inst.whitelistEnabled && inst.enforceWhitelist}
-							<StatusBadge state="warning" label={t('web.access.enforced')} />
-						{/if}
-					</span>
-				{/each}
-			</div>
+			{#if reporting.length === 0}
+				<span class="dim">{loaded ? t('web.moderation.noBackends') : t('web.common.loading')}</span>
+			{:else}
+				<div class="switches">
+					{#each summaries.filter((inst) => !inst.error) as inst (inst.name)}
+						<span class="switch">
+							<Toggle
+								checked={inst.whitelistEnabled}
+								label={inst.name}
+								onchange={(checked) => void toggleWhitelistFor(inst.name, checked)}
+							/>
+							<a href="/instances/{inst.name}">{inst.name}</a>
+							{#if inst.whitelistEnabled && inst.enforceWhitelist}
+								<StatusBadge state="warning" label={t('web.access.enforced')} />
+							{/if}
+						</span>
+					{/each}
+				</div>
+			{/if}
 		</Panel>
 
-		<Panel flush>
+		<Panel
+			title={t('web.moderation.tabWhitelist')}
+			count={loaded ? whitelist.length : undefined}
+			description={t('web.moderation.whitelistHint')}
+			flush
+		>
 			<ResourceTable
 				tableId="moderation-whitelist"
 				loading={!loaded}
@@ -1104,9 +1072,10 @@
 				rowLabel={(row) => row.name}
 				noun={t('web.access.nounPlayer')}
 				sortValue={whitelistSortValue}
+				defaultSort={{ col: 'name', dir: 'asc' }}
 				pageSize={25}
 				emptyTitle={t('web.moderation.noWhitelist')}
-				emptyText={t('web.moderation.whitelistHint')}
+				emptyAction={whitelist.length === 0 ? whitelistFirst : undefined}
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'name'}
@@ -1120,7 +1089,12 @@
 			</ResourceTable>
 		</Panel>
 	{:else if tab === 'ops'}
-		<Panel flush>
+		<Panel
+			title={t('web.moderation.tabOps')}
+			count={loaded ? ops.length : undefined}
+			description={t('web.access.operatorsHint')}
+			flush
+		>
 			<ResourceTable
 				tableId="moderation-ops"
 				loading={!loaded}
@@ -1135,9 +1109,10 @@
 				rowLabel={(row) => row.name}
 				noun={t('web.access.nounOperator')}
 				sortValue={opSortValue}
+				defaultSort={{ col: 'name', dir: 'asc' }}
 				pageSize={25}
 				emptyTitle={t('web.moderation.noOps')}
-				emptyText={t('web.access.operatorsHint')}
+				emptyAction={ops.length === 0 ? opFirst : undefined}
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'name'}
@@ -1152,61 +1127,13 @@
 				{/snippet}
 			</ResourceTable>
 		</Panel>
-	{:else if tab === 'netbans'}
-		{#if !netAvailable}
-			<Flash kind="warning">
-				<b>{t('web.moderation.netUnavailable')}</b>
-				{netProblem}. {t('web.moderation.netNeedsBuild')}
-			</Flash>
-		{/if}
-
-		<Panel flush>
-			<ResourceTable
-				tableId="moderation-netbans"
-				loading={!loaded}
-				columns={netBanColumns}
-				rows={netBans}
-				getId={(row) => row.ip}
-				searchValue={(row) => `${row.ip} ${row.reason} ${row.actor}`}
-				searchPlaceholder={t('web.access.findAddress')}
-				selectable="multi"
-				bind:selected={selectedNetBans}
-				rowActions={netBanRowActions}
-				rowLabel={(row) => row.ip}
-				noun={t('web.access.nounIpBan')}
-				sortValue={netBanSortValue}
-				pageSize={25}
-				emptyTitle={t('web.moderation.noNetBans')}
-				emptyText={t('web.moderation.netBansHint')}
-			>
-				{#snippet cell(row, col)}
-					{#if col === 'ip'}
-						<span class="mono"><b>{row.ip}</b></span>
-					{:else if col === 'reason'}
-						{row.reason || '–'}
-					{:else if col === 'actor'}
-						{row.actor || '–'}
-					{:else if col === 'created'}
-						<span class="dim">
-							<DateTime
-								at={row.createdAtEpochMillis || null}
-								text={row.createdAtEpochMillis ? fmtDateTime(row.createdAtEpochMillis) : undefined}
-							/>
-						</span>
-					{:else if col === 'hits'}
-						{row.hits || '–'}
-					{:else if col === 'lastHit'}
-						{#if row.lastHitAtEpochMillis}
-							<DateTime at={row.lastHitAtEpochMillis} text={fmtDateTime(row.lastHitAtEpochMillis)} />
-						{:else}
-							<span class="dim">–</span>
-						{/if}
-					{/if}
-				{/snippet}
-			</ResourceTable>
-		</Panel>
 	{:else if tab === 'ipbans'}
-		<Panel flush>
+		<Panel
+			title={t('web.moderation.tabIpBans')}
+			count={loaded ? ipBans.length : undefined}
+			description={t('web.moderation.ipBansScope')}
+			flush
+		>
 			<ResourceTable
 				tableId="moderation-ipbans"
 				loading={!loaded}
@@ -1221,13 +1148,14 @@
 				rowLabel={(row) => row.ip}
 				noun={t('web.access.nounIpBan')}
 				sortValue={ipBanSortValue}
+				defaultSort={{ col: 'created', dir: 'desc' }}
 				pageSize={25}
 				emptyTitle={t('web.moderation.noIpBans')}
-				emptyText={t('web.moderation.ipBansHint')}
+				emptyAction={ipBans.length === 0 ? ipBanFirst : undefined}
 			>
 				{#snippet cell(row, col)}
 					{#if col === 'ip'}
-						<span class="mono"><b>{row.ip}</b></span>
+						<b class="mono">{row.ip}</b>
 					{:else if col === 'coverage'}
 						{@render coverage(row.instances)}
 					{:else if col === 'reason'}
@@ -1243,48 +1171,63 @@
 	{/if}
 </div>
 
+{#snippet banFirst()}
+	<Btn icon="gavel" onclick={() => openAdd('ban')}>{t('web.access.banPlayer')}</Btn>
+{/snippet}
+
+{#snippet whitelistFirst()}
+	<Btn icon="plus" onclick={() => openAdd('whitelist-add')}>{t('web.access.addPlayer')}</Btn>
+{/snippet}
+
+{#snippet opFirst()}
+	<Btn icon="plus" onclick={() => openAdd('op')}>{t('web.access.addOperator')}</Btn>
+{/snippet}
+
+{#snippet ipBanFirst()}
+	<Btn icon="gavel" onclick={() => openAdd('ban-ip')}>{t('web.access.banAddress')}</Btn>
+{/snippet}
+
 {#snippet coverage(instances: string[])}
 	{#if instances.length >= reporting.length && reporting.length > 0}
-		<span class="dim">{t('web.moderation.everywhere')} ({instances.length})</span>
+		<span class="dim">{t('web.moderation.allBackends', { count: instances.length })}</span>
 	{:else}
-		<span class="info-trigger" title={instances.join(', ')}>
-			{instances.length}/{reporting.length}
-		</span>
+		<InfoPopover detail={instances}>
+			{t('web.moderation.someBackends', { count: instances.length, total: reporting.length })}
+		</InfoPopover>
 	{/if}
 {/snippet}
 
-<Modal title={t('web.moderation.netBanTitle')} bind:open={netBanOpen}>
-	<div class="stack">
-		<label class="field">
-			<span class="lbl">{t('web.access.colAddress')}</span>
-			<span class="hint">{t('web.moderation.netBansHint')}</span>
-			<input class="input" bind:value={netBanIp} placeholder={t('web.access.ipAddress')} />
-		</label>
+{#snippet backendLinks(names: string[])}
+	<span class="backends">
+		{#each names as name (name)}
+			<a href="/instances/{name}">{name}</a>
+		{/each}
+	</span>
+{/snippet}
 
-		<label class="field">
-			<span class="lbl">{t('web.access.colReason')}</span>
-			<input class="input" bind:value={netBanReason} placeholder={t('web.access.reasonOptional')} />
-		</label>
-	</div>
+{#if detail}
+	<DetailPanel
+		title={detail.title}
+		subtitle={detail.subtitle}
+		href={detail.href}
+		hrefLabel={t('web.players.viewProfile')}
+		bind:location={panelLocation}
+		bind:size={panelSize}
+		onclose={detail.close}
+	>
+		<InfoGrid cells={detailCells} columns={[4, 2, 1]}>
+			{#snippet custom(info)}
+				{#if info.id === 'applies'}
+					{@render backendLinks(detail.instances)}
+				{:else if info.id === 'missing'}
+					{@render backendLinks(detailMissing)}
+				{/if}
+			{/snippet}
+		</InfoGrid>
+	</DetailPanel>
+{/if}
 
-	{#snippet footer()}
-		<Btn onclick={() => (netBanOpen = false)}>{t('web.common.cancel')}</Btn>
-		<Btn variant="danger" icon="gavel" disabled={!netBanIp.trim()} onclick={submitNetBan}>
-			{t('web.moderation.actionNetBan')}
-		</Btn>
-	{/snippet}
-</Modal>
-
-<ConfirmModal
-	bind:open={promoteOpen}
-	title={t('web.moderation.promoteTitle')}
-	lead={t('web.moderation.promoteLead', { count: promoteRows.length })}
-	notes={[t('web.moderation.promoteNote')]}
-	confirmLabel={t('web.moderation.actionNetBan')}
-	onconfirm={submitPromote}
->
-	<p class="targets">{promoteRows.map((row) => row.ip).join(', ')}</p>
-</ConfirmModal>
+<FirewallBanModal bind:open={promoteOpen} addresses={promoteIps} reason={promoteReason} onbanned={refreshNetBans} />
 
 <Modal
 	title={t('web.moderation.modalTargets', {
@@ -1298,7 +1241,7 @@
 			{#if targetsIp}
 				<label class="field">
 					<span class="lbl">{t('web.access.colAddress')}</span>
-					<input class="input" bind:value={addTarget} placeholder={t('web.access.ipAddress')} />
+					<input class="input mono" bind:value={addTarget} placeholder={t('web.access.ipAddress')} spellcheck="false" autocomplete="off" />
 				</label>
 			{:else}
 				<div class="field">
@@ -1314,9 +1257,14 @@
 				</div>
 			{/if}
 		{:else}
-			<p class="targets">
-				{moderateTargets.map((target) => target.name).join(', ')}
-			</p>
+			<div class="field">
+				<span class="lbl">{t(targetsIp ? 'web.moderation.modalAddresses' : 'web.moderation.modalPlayers')}</span>
+				<div class="targets">
+					{#each moderateTargets as target (target.uuid ?? target.name)}
+						<span class="target" class:mono={targetsIp}>{target.name}</span>
+					{/each}
+				</div>
+			</div>
 		{/if}
 
 		<div class="field">
@@ -1351,6 +1299,10 @@
 </Modal>
 
 <style lang="scss">
+	.tabs {
+		margin-top: 1rem;
+	}
+
 	.body {
 		display: flex;
 		flex-direction: column;
@@ -1358,25 +1310,24 @@
 		margin-top: 1rem;
 	}
 
-	.more {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-		padding: 0.75rem 1rem;
-		border-top: 0.1rem solid var(--border);
-	}
-
-	.wlgrid {
-		display: flex;
-		flex-wrap: wrap;
+	// one switch per backend, in columns so the names line up
+	.switches {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
 		gap: 0.75rem 1.5rem;
 	}
 
-	.wlrow {
+	.switch {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
+		min-width: 0;
+	}
+
+	.backends {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 1rem;
 	}
 
 	.stack {
@@ -1385,8 +1336,20 @@
 		gap: 1rem;
 	}
 
+	// who the verb applies to, as chips: a long selection wraps instead of running on
 	.targets {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+		max-height: 8rem;
+		overflow-y: auto;
+	}
+
+	.target {
+		padding: 0.125rem 0.5rem;
+		border: var(--hairline) solid var(--border);
+		border-radius: 0.25rem;
 		color: var(--text-secondary);
-		word-break: break-word;
+		font-size: 0.875rem;
 	}
 </style>

@@ -16,6 +16,7 @@ import { t } from "../shared/i18n";
 import { instanceDir, loadCluster, managedInstances } from "../core/config";
 import { instanceAddress } from "../core/ports";
 import * as instances from "../core/instances";
+import { recordMetrics } from "../core/metrics";
 import * as luna from "../core/services/luna";
 import type { BackendCard, ProxyRuntimeSnapshot } from "../core/services/luna";
 import { traitsOf } from "../core/software";
@@ -324,6 +325,36 @@ export function setLunaTelemetry(cards: BackendCard[], issue?: string): void {
 	lunaIssue = issue;
 }
 
+/**
+ * What was true just before a state change: who was playing, how long the run
+ * had lasted, how the server was ticking. A crash with eight people online
+ * reads differently from one on an empty server.
+ */
+function transitionFacts(rec: InstanceRuntime, previous: CoreStatus | undefined): Record<string, number> {
+	const facts: Record<string, number> = {};
+	const last = rec.history.at(-1);
+
+	if (previous?.players) {
+		facts.players = previous.players.online;
+	} else if (last?.players !== undefined) {
+		facts.players = last.players;
+	}
+
+	if (previous?.uptimeMs) {
+		facts.ranForMs = previous.uptimeMs;
+	}
+
+	if (last?.tps !== undefined) {
+		facts.tps = last.tps;
+	}
+
+	if (last?.rssMb !== undefined) {
+		facts.rssMb = last.rssMb;
+	}
+
+	return facts;
+}
+
 /** Record one metrics sample per instance and emit state-change events. */
 async function sampleOnce(): Promise<void> {
 	// a pass that only primed some process's CPU baseline published nothing for
@@ -355,12 +386,14 @@ async function sampleOnce(): Promise<void> {
 		for (const status of statuses) {
 			const rec = rt(status.name);
 
+			const previous = lastStatuses.get(status.name);
+
 			lastStatuses.set(status.name, status);
 
 			const uiState = effectiveState(status.name, status.state);
 
 			if (rec.lastState && rec.lastState !== uiState) {
-				pushEvent(status.name, "state", `${rec.lastState} → ${uiState}`);
+				pushEvent(status.name, "state", `${rec.lastState} → ${uiState}`, { facts: transitionFacts(rec, previous) });
 			}
 
 			rec.lastState = uiState;
@@ -435,6 +468,10 @@ async function sampleOnce(): Promise<void> {
 			}
 
 			rec.history.push(sample);
+
+			const { t: at, ...figures } = sample;
+
+			recordMetrics(status.name, at, figures as Record<string, number>);
 
 			if (rec.history.length > MAX_SAMPLES) {
 				rec.history.splice(0, rec.history.length - MAX_SAMPLES);

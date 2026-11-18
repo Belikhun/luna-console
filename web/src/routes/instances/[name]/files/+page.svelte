@@ -1587,7 +1587,7 @@
 <PageHeader
 	title={t('web.instanceFiles.title')}
 	description={t('web.instanceFiles.description', { name })}
-	info
+	info={t('web.guide.instanceFiles')}
 >
 	{#snippet extra()}
 		{#if current?.managed}

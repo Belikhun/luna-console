@@ -570,7 +570,7 @@
 
 <PageHeader
 	title={name}
-	info
+	info={t('web.guide.permissionGroup')}
 	description={displayName && displayName !== name
 		? `${displayName}; LuckPerms group`
 		: 'LuckPerms group'}

@@ -444,7 +444,7 @@
 
 <svelte:head><title>{t('web.playersOnline.onlinePlayersLunaConsole')}</title></svelte:head>
 
-<PageHeader title={t('web.playersOnline.onlinePlayers')} count="{selected.size ? `${selected.size}/` : ''}{players.length}" info>
+<PageHeader title={t('web.playersOnline.onlinePlayers')} count="{selected.size ? `${selected.size}/` : ''}{players.length}" info={t('web.guide.playersOnline')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="players" />
 		<Dropdown label={t('web.playersOnline.actions')} disabled={!one} menu={one ? withCopyResourceId(rowActions(one), [resourceId('player', one.username)]) : []} />

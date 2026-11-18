@@ -136,6 +136,9 @@
 	const snapshot = $derived(data?.detail.snapshot ?? null);
 	const target = $derived(data ? { username: data.username, uuid: data.uuid } : null);
 
+	/** Bumped per refresh while the chat tab is open, which re-reads its log */
+	let chatRefreshKey = $state(0);
+
 	async function refresh(): Promise<void> {
 		loading = true;
 
@@ -153,6 +156,11 @@
 
 		if (data) {
 			void loadTab(tab);
+
+			// the chat tab reads its own log; a refresh only has to tell it to
+			if (tab === 'chat') {
+				chatRefreshKey++;
+			}
 		}
 	}
 
@@ -730,7 +738,7 @@
 
 <svelte:head><title>{data?.username ?? ref} · {instance} | Luna Console</title></svelte:head>
 
-<PageHeader title={data?.username ?? ref} info description={data ? `${data.uuid} · ${instance}` : instance}>
+<PageHeader title={data?.username ?? ref} info={t('web.guide.instancePlayer')} description={data ? `${data.uuid} · ${instance}` : instance}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="instance-player" />
 		<Dropdown label={t('web.common.actions')} disabled={!data} menu={headerActions()} />
@@ -1063,7 +1071,7 @@
 		{:else if tab === 'chat'}
 			<Panel flush title={t('web.instancePlayer.chatHere')} description={t('web.instancePlayer.chatHereHint')}>
 				{#key data.uuid}
-					<InstanceChatLog {instance} player={data.uuid} compact />
+					<InstanceChatLog {instance} player={data.uuid} compact refreshKey={chatRefreshKey} />
 				{/key}
 			</Panel>
 		{:else if tab === 'moderation'}

@@ -37,9 +37,11 @@
 		initialSearch = '',
 		searchPlaceholder = t('web.common.findResources'),
 		searchWidth = '26rem',
+		searchable = true,
 		filters,
 		initialFilters,
 		onfilterchange,
+		onsortchange,
 		rowActions,
 		rowLabel,
 		toolbar: toolbarExtra,
@@ -58,6 +60,7 @@
 		paging = true,
 		pageSize = 25,
 		maxHeight,
+		snug = false,
 		emptyTitle = t('web.table.emptyTitle'),
 		emptyText = '',
 		emptyAction,
@@ -81,11 +84,15 @@
 		initialSearch?: string;
 		searchPlaceholder?: string;
 		searchWidth?: string;
+		/** false leaves the search box out, for a short fixed list (a view's newest events) */
+		searchable?: boolean;
 		filters?: TableFilterGroup<T>[];
 		/** the option each filter group starts on, by group id */
 		initialFilters?: Record<string, string>;
 		/** told the filter values whenever one changes */
 		onfilterchange?: (values: Record<string, string>) => void;
+		/** told the active sort (column and direction) whenever it changes, and once at the start */
+		onsortchange?: (column: string | null, direction: 'asc' | 'desc') => void;
 		/** the row's verbs; its right-click menu, and the screen's Actions dropdown */
 		rowActions?: (row: T) => ContextMenuItem[];
 		/** heading of the row's context menu (defaults to its id) */
@@ -112,6 +119,8 @@
 		paging?: boolean;
 		pageSize?: number;
 		maxHeight?: string;
+		/** a narrower inset on both sides of every cell, for a table with many columns to fit */
+		snug?: boolean;
 		emptyTitle?: string;
 		emptyText?: string;
 		/** a way out of an empty table the screen filtered on the server ("Clear filters"); replaces the table's own */
@@ -206,7 +215,9 @@
 </script>
 
 {#snippet tools()}
-	<SearchInput bind:value={search} placeholder={searchPlaceholder} width={searchWidth} />
+	{#if searchable}
+		<SearchInput bind:value={search} placeholder={searchPlaceholder} width={searchWidth} />
+	{/if}
 	{#if toolbarExtra}{@render toolbarExtra()}{/if}
 {/snippet}
 
@@ -227,12 +238,13 @@
 	rows={visible}
 	{getId}
 	cell={cellBody}
-	toolbar={tools}
+	toolbar={searchable || toolbarExtra ? tools : undefined}
 	emptyExtra={clearer}
 	{defaultSort}
 	{filters}
 	{initialFilters}
 	{onfilterchange}
+	{onsortchange}
 	{selectable}
 	bind:selected
 	{sortValue}
@@ -247,6 +259,7 @@
 	{paging}
 	{pageSize}
 	{maxHeight}
+	{snug}
 	{rowActions}
 	{rowLabel}
 	{expanded}

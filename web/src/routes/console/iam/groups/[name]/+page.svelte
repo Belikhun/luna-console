@@ -318,7 +318,7 @@
 		<a href="/console/iam/groups">{t('web.iamList.backToGroups')}</a>
 	</Flash>
 {:else if group}
-	<PageHeader title={group.name} description={group.description || t('web.iamGroup.kind')} info>
+	<PageHeader title={group.name} description={group.description || t('web.iamGroup.kind')} info={t('web.guide.iamGroup')}>
 		{#snippet actions()}
 			<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="iam-group-detail" />
 			<Btn

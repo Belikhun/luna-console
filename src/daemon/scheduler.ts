@@ -15,7 +15,7 @@
 import { loadCluster } from "../core/config";
 import { loadSchedules, runDue, saveSchedules, type ScheduleAction } from "../core/schedule";
 
-import { pushEvent } from "./events";
+import { noteRequest, pushEvent } from "./events";
 import { runOp } from "./rpc";
 
 const TICK_MS = 20_000;
@@ -24,6 +24,9 @@ let timer: ReturnType<typeof setInterval> | undefined;
 
 /** a tick can outlast the interval (graceful stops are slow); never overlap */
 let running = false;
+
+/** Who a schedule's runs are recorded as: nobody typed them. */
+const SCHEDULE_ACTOR = "schedule";
 
 /**
  * Execute one action against one instance, returning the outcome line.
@@ -41,11 +44,11 @@ export async function executeScheduleAction(
 	const cfg = await loadCluster();
 
 	if (action === "start") {
-		return (await runOp("instances.startInstance", [cfg, instance])).result as string;
+		return (await runOp("instances.startInstance", [cfg, instance], undefined, SCHEDULE_ACTOR)).result as string;
 	}
 
 	if (action === "stop") {
-		const stopped = await runOp("instances.stopInstance", [cfg, instance]);
+		const stopped = await runOp("instances.stopInstance", [cfg, instance], undefined, SCHEDULE_ACTOR);
 
 		return (stopped.result as { outcome: string }).outcome;
 	}
@@ -63,9 +66,12 @@ export async function executeScheduleAction(
 		return `backed up (${(entry.result as { label?: string }).label ?? "ok"})`;
 	}
 
-	const stopped = await runOp("instances.stopInstance", [cfg, instance]);
+	const stopped = await runOp("instances.stopInstance", [cfg, instance], undefined, SCHEDULE_ACTOR);
 
-	await runOp("instances.startInstance", [cfg, instance]);
+	await runOp("instances.startInstance", [cfg, instance], undefined, SCHEDULE_ACTOR);
+
+	// the start above noted itself as the request; the run is a restart
+	noteRequest("lifecycle.restartTracked", instance, SCHEDULE_ACTOR);
 
 	return (stopped.result as { outcome: string }).outcome === "not-running"
 		? "started (was stopped)"
@@ -104,6 +110,7 @@ async function tick(): Promise<void> {
 				"schedule",
 				event.outcome === "ok" ? "action" : "error",
 				`${event.name}: ${event.detail}`,
+				{ actor: SCHEDULE_ACTOR },
 			);
 		}
 	} catch (err) {

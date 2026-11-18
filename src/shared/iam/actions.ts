@@ -172,6 +172,12 @@ export const IAM_ACTIONS: IamActionSpec[] = [
 		["Describe", "read"],
 		["ManageProxy", "write"],
 	]),
+	// the proxy's firewall; banning an address is `player:Moderate`, as every
+	// other network ban is, so a moderator bans without rewriting the rules
+	...service("firewall", null, [
+		["Describe", "read"],
+		["Configure", "write"],
+	]),
 	...service("port-pool", "port-pool", [
 		["List", "read"],
 		["Create", "write"],

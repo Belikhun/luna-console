@@ -1547,7 +1547,7 @@
 
 <svelte:head><title>{detail?.username ?? 'Player'} | Luna Console</title></svelte:head>
 
-<PageHeader title={detail?.username ?? ref} info description={detail?.uuid ?? ''}>
+<PageHeader title={detail?.username ?? ref} info={t('web.guide.player')} description={detail?.uuid ?? ''}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="player-detail" />
 		<Dropdown label={t('web.playerDetail.actions')} disabled={!detail} menu={headerActions()} />

@@ -1187,6 +1187,10 @@
 			},
 			"code": {
 				"Deploy": "Đưa mã thực thi lên máy chủ hoặc vào kho dùng chung từ bất kỳ nguồn nào ngoài danh mục addon: jar tải lên, script, tệp modpack và cờ JVM"
+			},
+			"firewall": {
+				"Describe": "Xem quy tắc, lệnh cấm và hoạt động của tường lửa",
+				"Configure": "Sửa quy tắc và lệnh cấm tự động của tường lửa"
 			}
 		}
 	},
@@ -1238,5 +1242,14 @@
 		"notHostPort": "không phải tên máy và cổng",
 		"fullAddress": "yêu cầu qua proxy phải ghi địa chỉ http:// đầy đủ",
 		"httpOnly": "chỉ http:// mới đi qua dạng yêu cầu thường"
+	},
+	"firewall": {
+		"geoEmpty": "Bản tải GeoIP không có dòng nào.",
+		"geoHttp": "Bản tải GeoIP trả về HTTP {status}.",
+		"geoTooLarge": "Bản tải GeoIP lớn hơn dự kiến nên bị từ chối.",
+		"geoNotFound": "Chưa có cơ sở dữ liệu GeoIP cho {release} hay tháng trước đó.",
+		"badCountry": "\"{code}\" không phải mã quốc gia hai chữ cái.",
+		"unavailable": "Không liên lạc được với tường lửa của proxy.",
+		"countryFailed": "Proxy không lưu được dải địa chỉ của {code}."
 	}
 }

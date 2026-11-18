@@ -1140,6 +1140,11 @@ interface FollowerFrame {
 	instance?: string;
 	kind?: ClusterEvent["kind"];
 	message?: string;
+	/** An event's detail: who caused it, why, the figures at the moment (absent from an older follower) */
+	actor?: string;
+	reasonKey?: string;
+	reason?: string;
+	facts?: Record<string, number | string>;
 	file?: "cluster" | "lock";
 	data?: unknown;
 	line?: string;
@@ -1325,7 +1330,12 @@ async function onFrame(ws: Bun.ServerWebSocket<{ kind: string; name?: string }>,
 	}
 
 	if (frame.t === "event" && frame.instance && frame.kind && frame.message) {
-		pushEvent(frame.instance, frame.kind, frame.message);
+		pushEvent(frame.instance, frame.kind, frame.message, {
+			actor: frame.actor,
+			reasonKey: frame.reasonKey,
+			reason: frame.reason,
+			facts: frame.facts,
+		});
 
 		return;
 	}

@@ -687,7 +687,7 @@
 	title={t('web.packs.resourcePacks')}
 	count="{selected.size ? `${selected.size}/` : ''}{packs.length}"
 	description={t('web.packs.zipsInRootPacksServed')}
-	info
+	info={t('web.guide.respacks')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="respacks" />

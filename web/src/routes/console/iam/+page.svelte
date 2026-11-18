@@ -222,7 +222,7 @@
 
 <svelte:head><title>{t('web.iamDashboard.title')} | Luna Console</title></svelte:head>
 
-<PageHeader title={t('web.iamDashboard.title')} description={t('web.iamDashboard.description')} info>
+<PageHeader title={t('web.iamDashboard.title')} description={t('web.iamDashboard.description')} info={t('web.guide.iamDashboard')}>
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="iam-dashboard" />
 		<Btn

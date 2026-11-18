@@ -218,7 +218,7 @@
 	title={t('web.nav.consoleLogs')}
 	count={rows.length}
 	description={t('web.consoleLogs.pageDescription')}
-	info
+	info={t('web.guide.consoleLogs')}
 >
 	{#snippet actions()}
 		<RefreshControl onrefresh={refresh} {lastUpdated} {loading} storageKey="console-logs" />
