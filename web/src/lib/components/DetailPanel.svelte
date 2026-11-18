@@ -5,6 +5,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n.svelte';
 	import type { Snippet } from 'svelte';
+	import Btn from './Btn.svelte';
 	import Icon from './Icon.svelte';
 
 	/**
@@ -153,14 +154,11 @@
 		<div class="ttl">
 			<h2>{title}</h2>
 			{#if subtitle}<span class="sub">{subtitle}</span>{/if}
-			{#if href}
-				<a class="lnk" {href}>
-					<span class="lt">{hrefLabel}</span>
-					<Icon name="arrowRight" size="0.75rem" />
-				</a>
-			{/if}
 		</div>
 		<div class="acts">
+			{#if href}
+				<Btn icon="arrowUpRightFromSquare" {href}>{hrefLabel}</Btn>
+			{/if}
 			{#if actions && !collapsed}{@render actions()}{/if}
 			<button
 				class="tool"
@@ -322,14 +320,6 @@
 		@include ellipsis;
 
 		color: var(--text-secondary);
-	}
-
-	.lnk {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		font-size: 0.875rem;
-		white-space: nowrap;
 	}
 
 	.acts {

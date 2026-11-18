@@ -8,6 +8,7 @@
  * two pages would otherwise duplicate lives here.
  */
 
+import { t } from '$lib/i18n.svelte';
 import type { DaemonRow, HealthSample } from '$client/daemon';
 
 /** Memory utilization of a health sample, percent; null when not measured. */
@@ -82,18 +83,18 @@ export function latencyTone(ms: number | null): 'accent' | 'warning' | 'danger' 
  */
 export function linkBadge(row: DaemonRow): { state: string; label: string } {
 	if (row.state === 'offline') {
-		return { state: 'stopped', label: 'Offline' };
+		return { state: 'stopped', label: t('web.fleet.machineState.offline') };
 	}
 
 	if (row.state === 'quarantined') {
-		return { state: 'error', label: 'Quarantined' };
+		return { state: 'error', label: t('web.fleet.machineState.quarantined') };
 	}
 
 	if (checksFailed(row) > 0) {
-		return { state: 'warning', label: 'Degraded' };
+		return { state: 'warning', label: t('web.machines.degraded') };
 	}
 
-	return { state: 'ok', label: 'Online' };
+	return { state: 'ok', label: t('web.fleet.machineState.online') };
 }
 
 /** How many of a daemon's checks passed (checks that do not apply do not count). */
