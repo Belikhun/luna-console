@@ -914,6 +914,7 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/auth/bootstrap': { POST: 'session' },
 	'/api/host': { GET: 'session' },
 	'/api/avatar/[...path]': { GET: 'session' },
+	'/api/accounts/avatars': { GET: 'session' },
 	'/api/accounts/[id]/avatar': { GET: 'session', PUT: { action: 'account:Update', resource: account } },
 
 	'/api/accounts': { GET: { action: 'account:List' }, POST: { action: 'account:Create' } },

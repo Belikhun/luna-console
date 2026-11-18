@@ -5,6 +5,8 @@
 	import { t } from '$lib/i18n.svelte';
 
 	import DateTime from './DateTime.svelte';
+	import { accountPerson } from '$lib/accountpeople.svelte';
+	import AccountAvatar from './AccountAvatar.svelte';
 	import Icon from './Icon.svelte';
 	import ResourceTable from './ResourceTable.svelte';
 	import StatusBadge from './StatusBadge.svelte';
@@ -134,8 +136,13 @@
 			{/if}
 		{:else if col === 'actor'}
 			{@const actor = actorOf(event)}
+			{@const person = actor.kind === 'account' ? accountPerson(actor.label) : null}
 			<span class="actor {actor.kind}">
-				<Icon name={actor.icon} />
+				{#if person}
+					<AccountAvatar account={person} size="1.25rem" />
+				{:else}
+					<Icon name={actor.icon} />
+				{/if}
 				{#if actor.href}
 					<a href={actor.href}>{actor.label}</a>
 				{:else}

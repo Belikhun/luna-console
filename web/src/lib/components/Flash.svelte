@@ -12,10 +12,13 @@
 	let {
 		kind = 'info',
 		dismiss,
+		actions,
 		children
 	}: {
 		kind?: 'info' | 'success' | 'warning' | 'error';
 		dismiss?: () => void;
+		/** Buttons on the right edge, centred on the whole message ("open the tab that says more") */
+		actions?: Snippet;
 		children: Snippet;
 	} = $props();
 
@@ -30,6 +33,9 @@
 <div class="flash {kind}">
 	<span class="fi"><Icon name={icons[kind]} size="1rem" /></span>
 	<div class="msg">{@render children()}</div>
+	{#if actions}
+		<div class="acts">{@render actions()}</div>
+	{/if}
 	{#if dismiss}
 		<Btn variant="icon" icon="close" title={t('web.common.dismiss')} onclick={dismiss} />
 	{/if}
@@ -38,18 +44,32 @@
 <style lang="scss">
 	.flash {
 		border-radius: 0.75rem;
-		padding: 0.375rem 0.5rem 0.375rem 1rem;
+		padding: 0.375rem 0.75rem 0.375rem 1rem;
 		display: flex;
 		gap: 0.75rem;
-		align-items: center;
+		// the icon sits on the first line, so a message of several lines still reads from its mark
+		align-items: flex-start;
 		font-size: 0.875rem;
 		border: 0.125rem solid;
 		margin-bottom: 0.75rem;
 		animation: fadein 0.12s ease-out;
 	}
+	// as tall as the message's first line with its padding, so the icon centres on that line
 	.fi {
 		display: inline-flex;
-		margin-top: 0.1rem;
+		align-items: center;
+		height: 1.75rem;
+	}
+
+	.acts {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		align-self: center;
+	}
+
+	.flash > :global(.btn) {
+		align-self: center;
 	}
 
 	.msg {

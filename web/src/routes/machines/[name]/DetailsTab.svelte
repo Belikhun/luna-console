@@ -347,6 +347,10 @@
 	<Flash kind="warning">{t('web.machineDetail.offline')}</Flash>
 {:else if failing.length > 0}
 	<Flash kind="warning">
+		{#snippet actions()}
+			<Btn icon="listCheck" href={machineHref(row.name, 'checks')}>{t('web.machineDetail.tab.checks')}</Btn>
+		{/snippet}
+
 		<div class="attention">
 			<b>{t('web.monitor.attention')}</b>
 			<ul>
@@ -357,7 +361,6 @@
 					</li>
 				{/each}
 			</ul>
-			<a href={machineHref(row.name, 'checks')}>{t('web.machineDetail.tab.checks')}</a>
 		</div>
 	</Flash>
 {/if}

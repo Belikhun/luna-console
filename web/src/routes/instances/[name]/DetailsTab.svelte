@@ -459,6 +459,12 @@
 
 {#if reasons.length > 0}
 	<Flash kind={critical ? 'error' : 'warning'}>
+		{#snippet actions()}
+			{#if hasTab('monitoring')}
+				<Btn icon="chartLine" href={tabHref('monitoring')}>{t(INSTANCE_TAB_LABELS.monitoring)}</Btn>
+			{/if}
+		{/snippet}
+
 		<div class="attention">
 			<b>{t('web.monitor.attention')}</b>
 			<ul>
@@ -471,9 +477,6 @@
 					</li>
 				{/each}
 			</ul>
-			{#if hasTab('monitoring')}
-				<a href={tabHref('monitoring')}>{t(INSTANCE_TAB_LABELS.monitoring)}</a>
-			{/if}
 		</div>
 	</Flash>
 {/if}
