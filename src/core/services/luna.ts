@@ -391,6 +391,19 @@ export async function backend(name: string): Promise<LunaResult<BackendDetail>> 
 	return await call<BackendDetail>(`/dashboard/backends/${encodeURIComponent(name)}`);
 }
 
+/** A chat channel as luna-messenger routes it. */
+export type ChatChannelType = "network" | "server" | "direct";
+
+/** The chat channel a connected player's next message goes to. */
+export interface PlayerChatChannel {
+	type: ChatChannelType;
+	/** The other side of a direct channel; null otherwise, or when withheld from the reader */
+	targetUuid: string | null;
+	targetName: string | null;
+	/** The player's backend keeps chat to itself, so its network channel reaches that backend only */
+	isolated: boolean;
+}
+
 export interface LunaPlayer {
 	uuid: string;
 	username: string;
@@ -403,6 +416,11 @@ export interface LunaPlayer {
 	protocolVersion: number;
 	clientVersion: string;
 	onlineMode: boolean;
+	/**
+	 * Their chat channel. Null when the proxy runs no chat router, absent from a
+	 * LunaCore build that predates channels; both mean unknown, never network.
+	 */
+	chatChannel?: PlayerChatChannel | null;
 }
 
 export interface PlayerList {
@@ -601,6 +619,47 @@ export async function transfer(player: string, server: string): Promise<LunaResu
 	);
 }
 
+export interface ChatChannelChange {
+	username: string;
+	uuid: string;
+	/** False when the player was already in that channel; nothing was sent to them */
+	changed: boolean;
+	previous: PlayerChatChannel | null;
+	channel: PlayerChatChannel | null;
+}
+
+/**
+ * Put a connected player in a chat channel; the proxy tells them in game.
+ *
+ * @param player the player's name or uuid
+ * @param channel the channel to put them in
+ * @param target the other player of a direct channel, by name or uuid
+ * @param actor who asked, for the proxy's audit line
+ * @returns the channel before and after; 503 from a proxy without luna-messenger,
+ *          404 from a LunaCore build that predates the route
+ */
+export async function setChatChannel(
+	player: string,
+	channel: ChatChannelType,
+	target = "",
+	actor = "",
+): Promise<LunaResult<ChatChannelChange>> {
+	const form: Record<string, string> = { channel };
+
+	if (target) {
+		form.target = target;
+	}
+
+	if (actor) {
+		form.actor = actor;
+	}
+
+	return await call<ChatChannelChange>(
+		`/admin/players/${encodeURIComponent(player)}/channel`,
+		{ form },
+	);
+}
+
 // ---------------------------------------------------------------------------
 // Player directory; profiles LunaCore persists in the shared database
 // ---------------------------------------------------------------------------
@@ -624,6 +683,8 @@ export interface RegisteredPlayer {
 	sessionMillis: number;
 	/** Closed playtime plus the open session when online */
 	totalPlayMillis: number;
+	/** Their chat channel when online; null or absent means unknown (see `LunaPlayer.chatChannel`) */
+	chatChannel?: PlayerChatChannel | null;
 }
 
 export interface RegisteredPlayerList {
@@ -759,7 +820,19 @@ export interface PlayerChatEntry {
 	type: string;
 	content: string;
 	atEpochMillis: number;
+	/**
+	 * The chat channel the line was sent in. Null for a command, for a line
+	 * recorded before channels were, and when no chat router was running; absent
+	 * from an older LunaCore. Unknown either way, never a guess.
+	 */
+	channel?: ChatChannelType | null;
+	/** The recipient of a line sent in a direct channel */
+	channelTargetUuid?: string | null;
+	channelTargetName?: string | null;
 }
+
+/** A chat log's channel filter: one channel, or the lines recorded without one. */
+export type ChatChannelFilter = ChatChannelType | "unknown";
 
 export interface PlayerChatPage {
 	total: number;
@@ -774,9 +847,19 @@ export interface PlayerChatPage {
  */
 export async function playerChat(
 	player: string,
-	opts: { type?: "chat" | "command"; server?: string; limit?: number; offset?: number } = {},
+	opts: {
+		type?: "chat" | "command";
+		server?: string;
+		channel?: ChatChannelFilter;
+		limit?: number;
+		offset?: number;
+	} = {},
 ): Promise<LunaResult<PlayerChatPage>> {
 	const params = new URLSearchParams();
+
+	if (opts.channel) {
+		params.set("channel", opts.channel);
+	}
 
 	if (opts.type) {
 		params.set("type", opts.type);
@@ -820,6 +903,7 @@ export interface ServerChatQuery {
 	/** Backend name; omit for every backend */
 	server?: string;
 	type?: "chat" | "command";
+	channel?: ChatChannelFilter;
 	/** Matches content and username */
 	search?: string;
 	limit?: number;
@@ -845,6 +929,10 @@ export async function serverChat(query: ServerChatQuery = {}): Promise<LunaResul
 
 	if (query.search) {
 		params.set("search", query.search);
+	}
+
+	if (query.channel) {
+		params.set("channel", query.channel);
 	}
 
 	if (query.limit !== undefined) {

@@ -13,6 +13,7 @@
 import { post } from '$lib/api';
 import { t } from '$lib/i18n.svelte';
 import type { GameMode } from '$core/playerdata';
+import type { ChatChannelType } from '$core/services/luna';
 import type { ContextMenuItem } from '$lib/components/contextmenu';
 
 /** A player as the verbs address one: the name for commands, the uuid for the proxy. */
@@ -94,6 +95,33 @@ export async function messagePlayers(targets: PlayerTarget[], message: string): 
 export async function transferPlayers(targets: PlayerTarget[], server: string): Promise<void> {
 	for (const target of targets) {
 		await lunaAdmin({ action: 'transfer', player: target.uuid, server });
+	}
+}
+
+/**
+ * Put one connected player in a chat channel. The proxy changes it and tells
+ * them in game; it refuses a direct channel whose recipient is not connected.
+ *
+ * @param target the player to move
+ * @param channel the channel to put them in
+ * @param recipient the other player of a direct channel, by uuid or name
+ */
+export async function setChatChannel(
+	target: PlayerTarget,
+	channel: ChatChannelType,
+	recipient = ''
+): Promise<void> {
+	const result = await post(`/players/${encodeURIComponent(target.uuid)}/channel`, {
+		channel,
+		...(recipient ? { target: recipient } : {})
+	});
+
+	if (result.ok === false) {
+		throw new Error(
+			result.supported === false
+				? t('web.chatChannel.needsNewerBuild')
+				: result.error ?? 'LunaCore refused the change'
+		);
 	}
 }
 
@@ -182,7 +210,10 @@ export type PlayerDialogKind =
 	| 'whitelist-remove'
 	| 'op'
 	| 'deop'
-	| 'effect';
+	| 'effect'
+	| 'channel-network'
+	| 'channel-server'
+	| 'channel-direct';
 
 /**
  * The status effects vanilla Minecraft registers, as of 1.21. A modded or
@@ -284,7 +315,7 @@ export interface PlayerVerbContext {
 
 /** The verbs over a set of players, in the groups a menu puts dividers between. */
 export interface PlayerVerbGroups {
-	/** Verbs on a live connection: message, move, packs, game mode */
+	/** Verbs on a live connection: message, move, packs, chat channel, game mode */
 	live: ContextMenuItem[];
 	/** The access-list submenu */
 	access: ContextMenuItem[];
@@ -342,6 +373,33 @@ export function playerVerbGroups(ctx: PlayerVerbContext): PlayerVerbGroups {
 			action: () => ctx.open('resend', connected)
 		}
 	];
+
+	// a direct channel is between two people, so it is set for one player at a time
+	live.push({
+		label: t('web.chatChannel.set'),
+		icon: 'comment',
+		disabled: liveOff,
+		hint: liveHint,
+		submenu: [
+			{
+				label: t('web.chatChannel.network'),
+				icon: 'globe',
+				action: () => ctx.open('channel-network', connected)
+			},
+			{
+				label: t('web.chatChannel.server'),
+				icon: 'server',
+				action: () => ctx.open('channel-server', connected)
+			},
+			{
+				label: t('web.chatChannel.setDirect'),
+				icon: 'envelope',
+				disabled: connected.length !== 1,
+				hint: connected.length !== 1 ? t('web.chatChannel.singleOnly') : undefined,
+				action: () => ctx.open('channel-direct', connected)
+			}
+		]
+	});
 
 	if (scoped && ctx.setGameMode) {
 		const setGameMode = ctx.setGameMode;

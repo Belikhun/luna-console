@@ -6,10 +6,10 @@ import { json, error } from '@sveltejs/kit';
 
 import { allInstances, loadCluster } from '$core/config';
 import * as luna from '$core/services/luna';
-import { noteChatRead, readableChat } from '$lib/server/chataudit';
+import { channelFilterOf, noteChatRead, readableChat } from '$lib/server/chataudit';
 
 /**
- * GET ?type=&search=&limit=&offset= → a page of this backend's chat and command
+ * GET ?type=&search=&channel=&limit=&offset= → a page of this backend's chat and command
  * log across every player, newest first. On the proxy the page is the whole
  * network's, since the proxy is where every line passes through. An external
  * backend has a log too: the proxy records chat on the way, whoever runs the
@@ -26,11 +26,13 @@ export async function GET({ params, url, locals }) {
 
 	const type = url.searchParams.get('type');
 	const search = url.searchParams.get('search') ?? '';
+	const channel = channelFilterOf(url.searchParams.get('channel'));
 
 	const result = await luna.serverChat({
 		...(name === 'proxy' ? {} : { server: name }),
 		...(type === 'chat' || type === 'command' ? { type } : {}),
 		...(search ? { search } : {}),
+		...(channel ? { channel } : {}),
 		limit: Number(url.searchParams.get('limit') ?? 25),
 		offset: Number(url.searchParams.get('offset') ?? 0)
 	});

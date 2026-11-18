@@ -43,6 +43,7 @@
 	import Flash from '$lib/components/Flash.svelte';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import ChatChannel from '$lib/components/ChatChannel.svelte';
 	import InfoGrid from '$lib/components/InfoGrid.svelte';
 	import type { InfoCell } from '$lib/components/grid';
 	import OverviewBar from '$lib/components/OverviewBar.svelte';
@@ -687,6 +688,13 @@
 		<OverviewCell label={t('web.instancePlayer.ping')}>
 			{#if data.online && data.live}
 				<span class="ping {pingClass(data.live.pingMillis)}">{data.live.pingMillis} ms</span>
+			{:else}
+				<span class="dim">–</span>
+			{/if}
+		</OverviewCell>
+		<OverviewCell label={t('web.chatChannel.label')}>
+			{#if data.online && data.live}
+				<ChatChannel type={data.live.chatChannel?.type} isolated={data.live.chatChannel?.isolated} />
 			{:else}
 				<span class="dim">–</span>
 			{/if}

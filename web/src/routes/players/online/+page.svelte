@@ -20,6 +20,8 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import ChatChannel from '$lib/components/ChatChannel.svelte';
+	import type { PlayerChatChannel } from '$core/services/luna';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
 	import type { Column, TableFilterGroup } from '$lib/components/table';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
@@ -60,6 +62,7 @@
 		protocolVersion: number;
 		clientVersion: string;
 		onlineMode: boolean;
+		chatChannel?: PlayerChatChannel | null;
 	}
 
 	interface Activity {
@@ -155,6 +158,7 @@
 		{ id: 'server', label: t('web.playersOnline.backend'), sortable: true },
 		{ id: 'session', label: t('web.playersOnline.session'), sortable: true },
 		{ id: 'ping', label: t('web.playersOnline.ping'), sortable: true, width: 110, align: 'right' },
+		{ id: 'channel', label: t('web.chatChannel.label'), sortable: true, width: 170, hidden: true },
 		{ id: 'client', label: t('web.playersOnline.client'), sortable: true, hidden: true },
 		{ id: 'mode', label: t('web.playersOnline.auth') },
 		{ id: 'address', label: t('web.playersOnline.address'), hidden: true },
@@ -212,6 +216,9 @@
 
 			case 'client':
 				return player.protocolVersion;
+
+			case 'channel':
+				return player.chatChannel?.type ?? '';
 
 			default:
 				return null;
@@ -449,6 +456,11 @@
 							{player.clientVersion}
 						{/snippet}
 					</CellStack>
+				{:else if col === 'channel'}
+					<ChatChannel
+						type={player.chatChannel?.type}
+						isolated={player.chatChannel?.isolated}
+					/>
 				{:else if col === 'client'}
 					<span class="dim">{player.clientVersion}</span>
 				{:else if col === 'mode'}

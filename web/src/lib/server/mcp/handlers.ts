@@ -283,6 +283,22 @@ async function envTarget(
 	return { scope: {}, label: 'global' };
 }
 
+/**
+ * The chat channel of a logged line, for the chat tools. A chat line nobody
+ * recorded a channel for says `unknown`, so the model never reads silence as
+ * the network channel; a command has no channel and gets no field.
+ */
+function chatChannelFields(entry: luna.PlayerChatEntry): { channel?: string; directTo?: string } {
+	if (entry.type !== 'chat') {
+		return {};
+	}
+
+	return {
+		channel: entry.channel ?? 'unknown',
+		...(entry.channel === 'direct' && entry.channelTargetName ? { directTo: entry.channelTargetName } : {})
+	};
+}
+
 /** How long file_transfer waits on its job before answering that it is still going. */
 const FILE_TRANSFER_WAIT_MS = 10 * 60 * 1000;
 
@@ -699,6 +715,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 				at: new Date(entry.atEpochMillis).toISOString(),
 				server: entry.server,
 				type: entry.type,
+				...chatChannelFields(entry),
 				content: entry.content
 			}))
 		};
@@ -743,6 +760,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 				player: entry.username,
 				server: entry.server,
 				type: entry.type,
+				...chatChannelFields(entry),
 				content: entry.content
 			}))
 		};
@@ -1123,6 +1141,39 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 		}
 
 		return { kicked: true, player: result.data.username };
+	},
+
+	async player_set_chat_channel(args, ctx) {
+		requireWholeCluster(ctx, 'network moderation');
+
+		const channel = str(args, 'channel').trim().toLowerCase();
+		const target = optStr(args, 'target')?.trim() ?? '';
+
+		if (channel !== 'network' && channel !== 'server' && channel !== 'direct') {
+			throw new ToolError('channel must be network, server or direct');
+		}
+
+		if (channel === 'direct' && !target) {
+			throw new ToolError('a direct channel needs target: the other online player');
+		}
+
+		const result = await luna.setChatChannel(
+			str(args, 'player').trim(),
+			channel,
+			channel === 'direct' ? target : '',
+			ctx.account ?? ctx.actor
+		);
+
+		if (!result.ok || !result.data) {
+			throw new ToolError(result.error ?? 'the proxy did not answer');
+		}
+
+		return {
+			player: result.data.username,
+			changed: result.data.changed,
+			previous: result.data.previous,
+			channel: result.data.channel
+		};
 	},
 
 	async player_ban(args, ctx) {

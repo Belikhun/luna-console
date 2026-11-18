@@ -21,6 +21,8 @@
 	import type { RankedRow } from '$lib/components/ranked';
 	import ResourceIdValue from '$lib/components/ResourceIdValue.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import ChatChannel from '$lib/components/ChatChannel.svelte';
+	import type { PlayerChatChannel } from '$core/services/luna';
 	import type { Column } from '$lib/components/table';
 	import { moderationState } from './player';
 	import type { AccessStanding, Detail, LiveOnInstance, ModEntry, PlayerTab, Session } from './player';
@@ -35,6 +37,7 @@
 		skinEpoch,
 		standing,
 		here,
+		chatChannel,
 		sessions,
 		moderation,
 		tabHref
@@ -46,6 +49,8 @@
 		standing: AccessStanding | null;
 		/** The player on the backend they are on right now; null when offline or out of the account's sight */
 		here: LiveOnInstance | null;
+		/** The channel their next chat line goes to; null when the proxy cannot say */
+		chatChannel: PlayerChatChannel | null;
 		/** The newest few sessions */
 		sessions: Session[];
 		/** The newest few moderation entries */
@@ -120,6 +125,7 @@
 			{ id: 'gamemode', label: t('web.instancePlayer.gameMode') },
 			{ id: 'position', label: t('web.instancePlayer.position') },
 			{ id: 'ping', label: t('web.instancePlayer.ping') },
+			{ id: 'channel', label: t('web.chatChannel.label') },
 			{
 				label: t('web.playerDetail.thisSession'),
 				value: here.live ? fmtDuration(here.live.sessionMillis) : null
@@ -220,6 +226,13 @@
 						{:else}
 							<span class="dim">–</span>
 						{/if}
+					{:else if cell.id === 'channel'}
+						<ChatChannel
+							type={chatChannel?.type}
+							targetName={chatChannel?.targetName}
+							targetUuid={chatChannel?.targetUuid}
+							isolated={chatChannel?.isolated}
+						/>
 					{:else if cell.id === 'ping'}
 						{#if here.live}
 							<span class="ping {pingClass(here.live.pingMillis)}">{here.live.pingMillis} ms</span>

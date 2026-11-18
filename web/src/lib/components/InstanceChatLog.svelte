@@ -8,6 +8,9 @@
 	import { api } from '$lib/api';
 	import { fmtDateTime } from '$lib/format';
 	import { LOG_PAGE, loadWholeLog } from '$lib/log';
+	import { CHAT_CHANNELS, CHAT_CHANNEL_LABEL, matchesChannelFilter } from '$lib/chatchannel';
+	import type { ChatChannelFilter } from '$core/services/luna';
+	import ChatChannel from './ChatChannel.svelte';
 	import Panel from './Panel.svelte';
 	import Btn from './Btn.svelte';
 	import DateTime from './DateTime.svelte';
@@ -53,6 +56,9 @@
 		type: string;
 		content: string;
 		atEpochMillis: number;
+		channel?: string | null;
+		channelTargetUuid?: string | null;
+		channelTargetName?: string | null;
 	}
 
 	let entries: Entry[] = $state([]);
@@ -63,6 +69,7 @@
 	let loading = $state(true);
 	let loaded = $state(false);
 	let type = $state('');
+	let channel: ChatChannelFilter | '' = $state('');
 
 	const network = $derived(instance === 'proxy');
 
@@ -78,7 +85,10 @@
 
 		loading = true;
 
-		const typeParam = type ? `&type=${type}` : '';
+		const wanted = channel;
+
+		const typeParam = (type ? `&type=${type}` : '')
+			+ (wanted ? `&channel=${wanted}` : '');
 
 		try {
 			const result = await loadWholeLog<Entry>(async (offset) => {
@@ -116,9 +126,11 @@
 			total = result.total;
 			// a per-player log from an older proxy ignores the server filter, so the
 			// rows are held to it again here
-			entries = player
-				? result.rows.filter((entry) => entry.server.toLowerCase() === instance.toLowerCase())
-				: result.rows;
+			// the channel filter likewise: an older proxy answers every line
+			entries = result.rows.filter((entry) =>
+				matchesChannelFilter(wanted, entry)
+				&& (!player || entry.server.toLowerCase() === instance.toLowerCase())
+			);
 		} catch (err) {
 			if (seq !== readSeq) {
 				return;
@@ -153,6 +165,7 @@
 		...(player ? [] : [{ id: 'player', label: t('web.instanceChat.colPlayer'), sortable: true, minWidth: 160 }]),
 		{ id: 'type', label: t('web.instanceChat.colType'), width: 130 },
 		...(network ? [{ id: 'server', label: t('web.instanceChat.colBackend'), width: 120, sortable: true }] : []),
+		{ id: 'channel', label: t('web.chatChannel.column'), width: 220 },
 		{ id: 'content', label: t('web.instanceChat.colContent'), minWidth: 320 }
 	]);
 
@@ -238,6 +251,17 @@
 				]}
 				onchange={() => void refresh()}
 			/>
+			<Select
+				label={t('web.chatChannel.filter')}
+				bind:value={channel}
+				width="14rem"
+				options={[
+					{ value: '', label: t('web.chatChannel.anyChannel') },
+					...CHAT_CHANNELS.map((name) => ({ value: name, label: t(CHAT_CHANNEL_LABEL[name]) })),
+					{ value: 'unknown', label: t('web.chatChannel.notRecorded') }
+				]}
+				onchange={() => void refresh()}
+			/>
 		{/snippet}
 		{#snippet cell(entry, col)}
 			{#if col === 'time'}
@@ -252,6 +276,13 @@
 				<StatusBadge state={entry.type === 'command' ? 'warning' : 'passed'} label={t(`web.instanceChat.type.${entry.type}`)} />
 			{:else if col === 'server'}
 				<a href="/instances/{entry.server}">{entry.server || '–'}</a>
+			{:else if col === 'channel'}
+				<ChatChannel
+					type={entry.channel}
+					targetName={entry.channelTargetName}
+					targetUuid={entry.channelTargetUuid}
+					missing={entry.type === 'command' ? 'none' : 'unknown'}
+				/>
 			{:else if col === 'content'}
 				<span class="mono content">{entry.type === 'command' ? '/' : ''}{entry.content}</span>
 			{/if}

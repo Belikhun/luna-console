@@ -21,6 +21,8 @@
 	import DateTime from './DateTime.svelte';
 	import Flash from './Flash.svelte';
 	import StatusBadge from './StatusBadge.svelte';
+	import ChatChannel from './ChatChannel.svelte';
+	import type { PlayerChatChannel } from '$core/services/luna';
 	import CopyValue from './CopyValue.svelte';
 	import PlayerAccessBadges from './PlayerAccessBadges.svelte';
 	import PlayerActionDialogs from './PlayerActionDialogs.svelte';
@@ -72,6 +74,7 @@
 		protocolVersion: number;
 		clientVersion: string;
 		onlineMode: boolean;
+		chatChannel?: PlayerChatChannel | null;
 		stintSince: number | null;
 		stintMillis: number | null;
 		balance: { amount: number; formatted: string } | null;
@@ -160,6 +163,7 @@
 		{ id: 'location', label: t('web.instancePlayers.colLocation'), sortable: true, minWidth: 200 },
 		{ id: 'stint', label: t('web.instancePlayers.colStint'), sortable: true, width: 130 },
 		{ id: 'ping', label: t('web.instancePlayers.colPing'), sortable: true, width: 110, align: 'right' },
+		{ id: 'channel', label: t('web.chatChannel.label'), sortable: true, width: 170, hidden: true },
 		{ id: 'client', label: t('web.instancePlayers.colClient'), sortable: true, width: 130, hidden: true },
 		{ id: 'score', label: t('web.instancePlayers.colScore'), sortable: true, width: 120, align: 'right', hidden: true },
 		{ id: 'balance', label: t('web.instancePlayers.colBalance'), sortable: true, width: 130, align: 'right', hidden: true },
@@ -209,6 +213,9 @@
 
 			case 'client':
 				return row.protocolVersion;
+
+			case 'channel':
+				return row.chatChannel?.type ?? '';
 
 			case 'ping':
 				return row.pingMillis;
@@ -406,6 +413,11 @@
 					flags={accessFlagsOf(access, { uuid: row.uuid, name: row.username })}
 					whitelistEnabled={access?.whitelistEnabled ?? false}
 					dash
+				/>
+			{:else if col === 'channel'}
+				<ChatChannel
+					type={row.chatChannel?.type}
+					isolated={row.chatChannel?.isolated}
 				/>
 			{:else if col === 'client'}
 				<span title={t('web.instancePlayers.protocol', { protocol: row.protocolVersion })}>

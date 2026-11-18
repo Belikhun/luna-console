@@ -16,6 +16,8 @@ import { authorizeMany } from '$core/iam';
 import { ROOT_ACTOR } from '$core/accounts';
 import { resourceId } from '$shared/iam/resources';
 
+import type { ChatChannelFilter } from '$core/services/luna';
+
 import { journal } from './session';
 
 /** How often one account's reads of one scope are journalled. */
@@ -61,4 +63,16 @@ export async function readableChat<T>(
 	const allowed = await authorizeMany(who, 'chat:Read', servers.map((server) => resourceId('chat', server)));
 
 	return entries.filter((entry) => allowed[resourceId('chat', serverOf(entry))]);
+}
+
+/**
+ * A chat log's `channel` query parameter as the proxy takes it.
+ *
+ * @param value the raw parameter
+ * @returns the filter, or undefined for none or for anything that is not one
+ */
+export function channelFilterOf(value: string | null): ChatChannelFilter | undefined {
+	return value === 'network' || value === 'server' || value === 'direct' || value === 'unknown'
+		? value
+		: undefined;
 }

@@ -8,6 +8,9 @@
 	import { api } from '$lib/api';
 	import { LOG_PAGE, loadWholeLog } from '$lib/log';
 	import { fmtDateTime } from '$lib/format';
+	import { CHAT_CHANNELS, CHAT_CHANNEL_LABEL, matchesChannelFilter } from '$lib/chatchannel';
+	import type { ChatChannelFilter } from '$core/services/luna';
+	import ChatChannel from '$lib/components/ChatChannel.svelte';
 	import DateTime from '$lib/components/DateTime.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import ResourceTable from '$lib/components/ResourceTable.svelte';
@@ -37,13 +40,15 @@
 	let entries: ChatEntry[] = $state([]);
 	let total = $state(0);
 	let type = $state('');
+	let channel: ChatChannelFilter | '' = $state('');
 	let loaded = $state(false);
 	let loadedKey = -1;
 
 	async function load(): Promise<void> {
-		const filter = type
-			? `&type=${type}`
-			: '';
+		const wanted = channel;
+
+		const filter = (type ? `&type=${type}` : '')
+			+ (wanted ? `&channel=${wanted}` : '');
 
 		try {
 			const result = await loadWholeLog<ChatEntry>(async (offset) => {
@@ -57,7 +62,7 @@
 			});
 
 			total = result.total;
-			entries = result.rows;
+			entries = result.rows.filter((entry) => matchesChannelFilter(wanted, entry));
 		} catch {
 			// the rows already shown stay; a refused read leaves the table as it was
 		} finally {
@@ -76,6 +81,7 @@
 		{ id: 'time', label: t('web.playerDetail.time'), width: 180, sortable: true },
 		{ id: 'type', label: t('web.playerDetail.type'), width: 140 },
 		{ id: 'server', label: t('web.playerDetail.backend'), width: 130 },
+		{ id: 'channel', label: t('web.chatChannel.column'), width: 220 },
 		{ id: 'content', label: t('web.playerDetail.content') }
 	]);
 </script>
@@ -107,6 +113,17 @@
 				]}
 				onchange={() => void load()}
 			/>
+			<Select
+				label={t('web.chatChannel.filter')}
+				bind:value={channel}
+				width="14rem"
+				options={[
+					{ value: '', label: t('web.chatChannel.anyChannel') },
+					...CHAT_CHANNELS.map((name) => ({ value: name, label: t(CHAT_CHANNEL_LABEL[name]) })),
+					{ value: 'unknown', label: t('web.chatChannel.notRecorded') }
+				]}
+				onchange={() => void load()}
+			/>
 		{/snippet}
 		{#snippet cell(entry, col)}
 			{#if col === 'time'}
@@ -118,6 +135,13 @@
 				/>
 			{:else if col === 'server'}
 				{entry.server || '–'}
+			{:else if col === 'channel'}
+				<ChatChannel
+					type={entry.channel}
+					targetName={entry.channelTargetName}
+					targetUuid={entry.channelTargetUuid}
+					missing={entry.type === 'command' ? 'none' : 'unknown'}
+				/>
 			{:else if col === 'content'}
 				<span class="mono content">{entry.type === 'command' ? '/' : ''}{entry.content}</span>
 			{/if}

@@ -13,23 +13,27 @@
 		giveEffect,
 		lunaAdmin,
 		resendPacks,
+		setChatChannel,
 		setGameMode as setGameModeOn,
 		targetSummary
 	} from '$lib/playeractions';
 	import type { ModerationAction, PlayerActionTarget, PlayerDialogKind } from '$lib/playeractions';
 	import type { GameMode } from '$core/playerdata';
+	import type { ChatChannelType } from '$core/services/luna';
+	import { CHAT_CHANNEL_LABEL } from '$lib/chatchannel';
 	import { Notify } from '$lib/notifications.svelte';
 	import Btn from './Btn.svelte';
 	import Checkbox from './Checkbox.svelte';
 	import ConfirmModal from './ConfirmModal.svelte';
 	import Modal from './Modal.svelte';
 	import MultiSelect from './MultiSelect.svelte';
+	import PlayerPicker from './PlayerPicker.svelte';
 	import Select from './Select.svelte';
 
 	/**
 	 * The dialogs behind the player verbs, and the verbs themselves: message,
-	 * move, disconnect, resend packs, game mode, the access lists and both kinds
-	 * of ban. Every screen with a player menu mounts one and calls `open`, so a
+	 * move, disconnect, resend packs, chat channel, game mode, the access lists
+	 * and both kinds of ban. Every screen with a player menu mounts one and calls `open`, so a
 	 * verb asks the same question and reports the same way wherever it is used.
 	 *
 	 * With `instance` set the access verbs act on that server alone and need no
@@ -69,6 +73,9 @@
 	let banReason = $state('');
 	let ipBanOpen = $state(false);
 	let ipBanReason = $state('');
+	let directOpen = $state(false);
+	let directTo = $state('');
+	let directName = $state('');
 
 	// the picker's value; OTHER_EFFECT swaps in the free-text id field
 	const OTHER_EFFECT = '__other';
@@ -161,6 +168,20 @@
 			case 'ipban':
 				ipBanReason = '';
 				ipBanOpen = true;
+				break;
+
+			case 'channel-network':
+				void doChannel(targets, 'network');
+				break;
+
+			case 'channel-server':
+				void doChannel(targets, 'server');
+				break;
+
+			case 'channel-direct':
+				directTo = '';
+				directName = '';
+				directOpen = true;
 				break;
 
 			default:
@@ -373,6 +394,41 @@
 		);
 	}
 
+	/**
+	 * Put each target in a chat channel. The proxy tells each player in game, and
+	 * a target already in that channel is left alone and still counts as done.
+	 */
+	async function doChannel(
+		targets: PlayerActionTarget[],
+		channel: ChatChannelType,
+		recipient = '',
+		recipientName = ''
+	): Promise<void> {
+		const names = targetSummary(targets);
+		const label = recipientName
+			? `${t(CHAT_CHANNEL_LABEL[channel])} (${recipientName})`
+			: t(CHAT_CHANNEL_LABEL[channel]);
+
+		await report(
+			t('web.chatChannel.setting', { targets: names }),
+			t('web.chatChannel.setDone', { targets: names, channel: label }),
+			targets.length,
+			() => eachTarget(targets, (target) => setChatChannel(target, channel, recipient))
+		);
+	}
+
+	function doDirect(): void {
+		const recipient = directTo.trim();
+
+		directOpen = false;
+
+		if (!recipient) {
+			return;
+		}
+
+		void doChannel(pending, 'direct', recipient, directName || recipient);
+	}
+
 	async function doIpBan(): Promise<void> {
 		const targets = pending;
 		const reason = ipBanReason.trim();
@@ -562,6 +618,29 @@
 	{#snippet footer()}
 		<Btn onclick={() => (effectOpen = false)}>{t('web.common.cancel')}</Btn>
 		<Btn variant="primary" icon="flaskVial" disabled={!effectReady} onclick={doEffect}>{t('web.instancePlayers.give')}</Btn>
+	{/snippet}
+</Modal>
+
+<Modal title={t('web.chatChannel.directTitle', { targets: who })} bind:open={directOpen}>
+	<p>{t('web.chatChannel.directLead')}</p>
+	<div class="field">
+		<span class="lbl">{t('web.chatChannel.recipient')}</span>
+		<span class="hint">{t('web.chatChannel.recipientHint')}</span>
+		{#if directOpen}
+			<PlayerPicker bind:value={directTo} onpick={(player) => (directName = player?.username ?? '')} />
+		{/if}
+	</div>
+	{#snippet footer()}
+		<Btn onclick={() => (directOpen = false)}>{t('web.common.cancel')}</Btn>
+		<Btn
+			variant="primary"
+			icon="envelope"
+			disabled={!directTo.trim()}
+			title={!directTo.trim() ? t('web.chatChannel.pickRecipient') : undefined}
+			onclick={doDirect}
+		>
+			{t('web.chatChannel.confirm')}
+		</Btn>
 	{/snippet}
 </Modal>
 

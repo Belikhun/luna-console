@@ -233,6 +233,7 @@ export const TOOL_IAM: Record<string, Rule> = {
 	// the same actions the console's Moderation page is gated on
 	bans_list: plain('player:List'),
 	player_kick: on('player:Moderate', 'player', 'player'),
+	player_set_chat_channel: on('player:Moderate', 'player', 'player'),
 	player_ban: on('player:Moderate', 'player', 'player'),
 	player_unban: on('player:Moderate', 'player', 'player'),
 	ip_ban: plain('player:Moderate'),

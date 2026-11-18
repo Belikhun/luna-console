@@ -568,6 +568,20 @@ export const MCP_TOOLS: McpToolSpec[] = [
 		annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: false },
 	},
 	{
+		name: "player_set_chat_channel",
+		group: "moderation",
+		description: "Put an online player in a chat channel, overriding the one they chose: network (everyone), server (only the backend they are on) or direct (one other online player, named in target). Their next chat messages go there until they switch back, and they are told in game. Use it only when an operator asks.",
+		inputSchema: object(
+			{
+				player: { type: "string", description: "Exact username or UUID of an online player." },
+				channel: { type: "string", enum: ["network", "server", "direct"], description: "The channel to put them in." },
+				target: { type: "string", description: "For direct: the exact username or UUID of the other online player." },
+			},
+			["player", "channel"],
+		),
+		annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	},
+	{
 		name: "player_ban",
 		group: "moderation",
 		description: "Ban a player from the whole network: an online player, one the player directory knows, or a bare username never seen (a scanner's bot name). Disconnects them if online; refused at every later login. Confirm with the operator unless they asked for it.",

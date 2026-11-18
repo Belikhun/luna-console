@@ -7097,5 +7097,29 @@
 		"whitelistEnforced": "Whitelist is on and enforced",
 		"whitelistInfo": "With the whitelist off anyone may join and the list is only kept. Enforced means players who are not on it are also removed when it is switched on.",
 		"addressesBanned": "{count} address(es) banned"
+	},
+	"chatChannel": {
+		"label": "Chat channel",
+		"column": "Channel",
+		"network": "Network",
+		"server": "Server",
+		"direct": "Direct message",
+		"unknown": "Unknown",
+		"isolatedHint": "This server keeps its chat to itself, so a message in the network channel reaches only the players on it.",
+		"filter": "Filter by channel",
+		"anyChannel": "Every channel",
+		"notRecorded": "Channel not recorded",
+		"set": "Set chat channel",
+		"setDirect": "Direct message…",
+		"singleOnly": "pick a single player",
+		"setting": "Setting the chat channel of {targets}",
+		"setDone": "{targets}: chat channel set to {channel}",
+		"directTitle": "Put {targets} in a direct message",
+		"directLead": "What they type next goes to the player you pick, until they switch channel. They are told in game.",
+		"recipient": "Recipient",
+		"recipientHint": "Must be connected to the network.",
+		"confirm": "Set channel",
+		"needsNewerBuild": "the proxy's LunaCore build cannot set chat channels yet",
+		"pickRecipient": "pick who they will be messaging"
 	}
 }

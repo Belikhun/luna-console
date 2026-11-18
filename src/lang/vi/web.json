@@ -7097,5 +7097,29 @@
 		"whitelistEnforced": "Whitelist đang bật và được thực thi",
 		"whitelistInfo": "Khi whitelist tắt, ai cũng vào được và danh sách chỉ được lưu lại. Thực thi nghĩa là người chơi không có trong danh sách cũng bị mời ra khi bật danh sách.",
 		"addressesBanned": "{count} địa chỉ bị cấm"
+	},
+	"chatChannel": {
+		"label": "Kênh chat",
+		"column": "Kênh",
+		"network": "Mạng",
+		"server": "Máy chủ",
+		"direct": "Tin nhắn trực tiếp",
+		"unknown": "Không rõ",
+		"isolatedHint": "Máy chủ này giữ chat cho riêng mình, nên tin nhắn ở kênh mạng chỉ đến người chơi đang ở trên đó.",
+		"filter": "Lọc theo kênh",
+		"anyChannel": "Mọi kênh",
+		"notRecorded": "Không ghi nhận kênh",
+		"set": "Đặt kênh chat",
+		"setDirect": "Tin nhắn trực tiếp…",
+		"singleOnly": "chỉ chọn một người chơi",
+		"setting": "Đang đặt kênh chat của {targets}",
+		"setDone": "{targets}: đã đặt kênh chat thành {channel}",
+		"directTitle": "Chuyển {targets} sang tin nhắn trực tiếp",
+		"directLead": "Những gì họ gõ tiếp theo sẽ được gửi tới người chơi bạn chọn, cho đến khi họ đổi kênh. Họ được báo trong game.",
+		"recipient": "Người nhận",
+		"recipientHint": "Phải đang kết nối vào mạng.",
+		"confirm": "Đặt kênh",
+		"needsNewerBuild": "bản LunaCore trên proxy chưa hỗ trợ đặt kênh chat",
+		"pickRecipient": "chọn người mà họ sẽ nhắn tin"
 	}
 }

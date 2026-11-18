@@ -1239,6 +1239,8 @@ export const API_RULES: Record<string, MethodRules> = {
 	'/api/players/moderate': { POST: moderation },
 	'/api/players/[player]': { GET: { action: 'player:Describe', resource: player } },
 	'/api/players/[player]/chat': { GET: { action: 'chat:ReadPlayer', resource: player } },
+	// which channel a player talks in is theirs to choose; overriding it is moderation
+	'/api/players/[player]/channel': { POST: { action: 'player:Moderate', resource: player } },
 	'/api/players/[player]/sessions': { GET: { action: 'player:Describe', resource: player } },
 	'/api/players/[player]/vault': { GET: { action: 'player:Describe', resource: player } },
 	'/api/players/[player]/vault/transactions': { GET: { action: 'player:Describe', resource: player } },

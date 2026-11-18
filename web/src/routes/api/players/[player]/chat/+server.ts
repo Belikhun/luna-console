@@ -4,16 +4,18 @@
 
 import { json } from '@sveltejs/kit';
 import * as luna from '$core/services/luna';
-import { noteChatRead, readableChat } from '$lib/server/chataudit';
+import { channelFilterOf, noteChatRead, readableChat } from '$lib/server/chataudit';
 
-/** GET ?type=&server=&limit=&offset= → a page of the player's chat/command log. */
+/** GET ?type=&server=&channel=&limit=&offset= → a page of the player's chat/command log. */
 export async function GET({ params, url, locals }) {
 	const type = url.searchParams.get('type');
 	const server = url.searchParams.get('server') ?? '';
+	const channel = channelFilterOf(url.searchParams.get('channel'));
 
 	const result = await luna.playerChat(params.player, {
 		...(type === 'chat' || type === 'command' ? { type } : {}),
 		...(server ? { server } : {}),
+		...(channel ? { channel } : {}),
 		limit: Number(url.searchParams.get('limit') ?? 25),
 		offset: Number(url.searchParams.get('offset') ?? 0)
 	});

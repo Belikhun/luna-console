@@ -761,7 +761,8 @@
 			"player_ban": "Ban a player",
 			"player_unban": "Unban a player",
 			"ip_ban": "Ban an IP",
-			"ip_unban": "Unban an IP"
+			"ip_unban": "Unban an IP",
+			"player_set_chat_channel": "Set a chat channel"
 		}
 	},
 	"instancefiles": {

@@ -2110,6 +2110,7 @@ export const OPS: Record<string, OpSpec> = {
 	"lunaApi.disconnect": { fn: lunaApi.disconnect },
 	"lunaApi.message": { fn: lunaApi.message },
 	"lunaApi.transfer": { fn: lunaApi.transfer },
+	"lunaApi.setChatChannel": { fn: lunaApi.setChatChannel },
 	"lunaApi.registeredPlayers": { fn: lunaApi.registeredPlayers },
 	"lunaApi.registeredPlayer": { fn: lunaApi.registeredPlayer },
 	"lunaApi.playerSessions": { fn: lunaApi.playerSessions },

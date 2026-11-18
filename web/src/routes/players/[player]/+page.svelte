@@ -24,6 +24,8 @@
 	import PlayerActionDialogs from '$lib/components/PlayerActionDialogs.svelte';
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import ChatChannel from '$lib/components/ChatChannel.svelte';
+	import type { PlayerChatChannel } from '$core/services/luna';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import AccountSecurity from './AccountSecurity.svelte';
@@ -89,6 +91,15 @@
 
 	let instances: string[] = $state([]);
 	let servers: string[] = $state([]);
+
+	/** The player's direct channel with its other side named; see `loadDirectTarget` */
+	let namedChannel = $state<PlayerChatChannel | null>(null);
+
+	const chatChannel = $derived(
+		namedChannel && namedChannel.type === detail?.chatChannel?.type
+			? namedChannel
+			: detail?.chatChannel ?? null
+	);
 
 	/** Bumped after a skin change so the viewer fetches the new one. */
 	let skinEpoch = $state(0);
@@ -183,7 +194,27 @@
 
 		// the account and the balance are read with the profile rather than with
 		// their tabs: the header and the overview bar show them on every tab
-		await Promise.all([loadAuth(), loadVault(), loadGlance(), loadStanding(), loadHere()]);
+		await Promise.all([loadAuth(), loadVault(), loadGlance(), loadStanding(), loadHere(), loadDirectTarget()]);
+	}
+
+	/**
+	 * Who a direct channel is with. The profile says only that the player is in
+	 * one: the other side is chat, so it comes from the chat route, and only for
+	 * an account that may read this player's chat.
+	 */
+	async function loadDirectTarget(): Promise<void> {
+		if (!detail?.online || detail.chatChannel?.type !== 'direct' || !mayReadChat) {
+			namedChannel = null;
+			return;
+		}
+
+		try {
+			const data = await api(`/players/${encodeURIComponent(ref)}/chat?limit=1&offset=0`);
+
+			namedChannel = data.currentChannel ?? null;
+		} catch {
+			namedChannel = null;
+		}
 	}
 
 	async function loadAuth(): Promise<void> {
@@ -444,6 +475,16 @@
 				<span class="dim">–</span>
 			{/if}
 		</OverviewCell>
+		{#if detail.online}
+			<OverviewCell label={t('web.chatChannel.label')}>
+				<ChatChannel
+					type={chatChannel?.type}
+					targetName={chatChannel?.targetName}
+					targetUuid={chatChannel?.targetUuid}
+					isolated={chatChannel?.isolated}
+				/>
+			</OverviewCell>
+		{/if}
 		<OverviewCell label={t('web.playerDetail.totalPlaytime')}>
 			{detail.totalPlayMillis ? fmtDuration(detail.totalPlayMillis) : '–'}
 		</OverviewCell>
@@ -479,6 +520,7 @@
 			{skinEpoch}
 			{standing}
 			{here}
+			{chatChannel}
 			sessions={recentSessions}
 			moderation={recentModeration}
 			{tabHref}

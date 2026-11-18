@@ -6,6 +6,7 @@
 
 import type { PlaySessionRow } from '$lib/players';
 import type { PlayerSnapshot } from '$core/playerdata';
+import type { ChatChannelType, PlayerChatChannel } from '$core/services/luna';
 
 /** A player's profile as the directory answers it. */
 export interface Detail {
@@ -23,6 +24,8 @@ export interface Detail {
 	pingMillis: number;
 	sessionMillis: number;
 	totalPlayMillis: number;
+	/** Their chat channel while online; null or absent when the proxy cannot say */
+	chatChannel?: PlayerChatChannel | null;
 	skinTexture: string | null;
 	playtimeByServer: Array<{ server: string; playMillis: number; stints: number }>;
 	sessionTotal: number;
@@ -46,6 +49,10 @@ export interface ChatEntry {
 	type: string;
 	content: string;
 	atEpochMillis: number;
+	/** The chat channel the line was sent in; null or absent when nobody recorded it */
+	channel?: ChatChannelType | null;
+	channelTargetUuid?: string | null;
+	channelTargetName?: string | null;
 }
 
 export interface ModEntry {

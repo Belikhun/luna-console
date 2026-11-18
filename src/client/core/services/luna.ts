@@ -25,6 +25,10 @@ export type {
 	PackSession,
 	PackSessionList,
 	TransferResult,
+	ChatChannelType,
+	ChatChannelFilter,
+	PlayerChatChannel,
+	ChatChannelChange,
 	DisconnectResult,
 	RegisteredPlayer,
 	RegisteredPlayerList,
@@ -80,6 +84,7 @@ export const kick = call("lunaApi.kick") as typeof core.kick;
 export const disconnect = call("lunaApi.disconnect") as typeof core.disconnect;
 export const message = call("lunaApi.message") as typeof core.message;
 export const transfer = call("lunaApi.transfer") as typeof core.transfer;
+export const setChatChannel = call("lunaApi.setChatChannel") as typeof core.setChatChannel;
 export const registeredPlayers = call("lunaApi.registeredPlayers") as typeof core.registeredPlayers;
 export const registeredPlayer = call("lunaApi.registeredPlayer") as typeof core.registeredPlayer;
 export const playerSessions = call("lunaApi.playerSessions") as typeof core.playerSessions;

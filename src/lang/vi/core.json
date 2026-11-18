@@ -761,7 +761,8 @@
 			"player_ban": "Cấm người chơi",
 			"player_unban": "Gỡ cấm người chơi",
 			"ip_ban": "Cấm IP",
-			"ip_unban": "Gỡ cấm IP"
+			"ip_unban": "Gỡ cấm IP",
+			"player_set_chat_channel": "Đặt kênh chat"
 		}
 	},
 	"instancefiles": {
