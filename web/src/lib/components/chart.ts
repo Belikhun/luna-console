@@ -57,6 +57,8 @@ export interface ChartThreshold {
 	value: number;
 	label: string;
 	tone?: 'warning' | 'critical';
+	/** Shades the plot on that side of the line in its tone, for a range that is bad to be in */
+	zone?: 'below' | 'above';
 }
 
 /** The categorical slots, in their validated order. */

@@ -6334,6 +6334,7 @@
 		"ofBudget": "of a 50 ms budget",
 		"heapCommitted": "Heap reserved",
 		"tickBudget": "50 ms budget",
+		"tpsLag": "Players feel lag below",
 		"worldLoad": "World load",
 		"tickingEntities": "Ticking entities",
 		"idleEntities": "Entities not ticked",

@@ -22,7 +22,7 @@
 	 * drawing at reduced opacity rather than flashing a spinner.
 	 *
 	 * The title row carries the headline figure, the panel's own toggles
-	 * (`actions`), a text link to the view behind the chart (`href`), and, with
+	 * (`actions`), a button to the view behind the chart (`href`), and, with
 	 * a `table` snippet, a switch to the same data as a table.
 	 */
 	let {
@@ -32,6 +32,7 @@
 		headline,
 		href,
 		hrefLabel,
+		hrefIcon = 'arrowRight',
 		status = 'ready',
 		emptyTitle,
 		emptyText,
@@ -57,6 +58,8 @@
 		/** The view behind the chart ("View requests") */
 		href?: string;
 		hrefLabel?: string;
+		/** The button's icon; `arrowUpRightFromSquare` when the view is another screen */
+		hrefIcon?: string;
 		status?: 'ready' | 'loading' | 'empty' | 'error' | 'denied';
 		/** The empty state's first line: why there is nothing */
 		emptyTitle?: string;
@@ -110,7 +113,7 @@
 				/>
 			{/if}
 			{#if href && status !== 'denied'}
-				<a class="view-link" {href}>{hrefLabel ?? t('web.chart.view')}</a>
+				<Btn icon={hrefIcon} {href}>{hrefLabel ?? t('web.chart.view')}</Btn>
 			{/if}
 		{/snippet}
 
@@ -177,11 +180,6 @@
 		font-size: 1rem;
 		font-weight: 700;
 		color: var(--text-heading);
-	}
-
-	.view-link {
-		font-size: 0.8125rem;
-		white-space: nowrap;
 	}
 
 	.placeholder {

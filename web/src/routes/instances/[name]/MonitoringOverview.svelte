@@ -42,6 +42,7 @@
 		downtimeMs,
 		eventMarkers,
 		fmtStep,
+		MONITORING_VIEW_ICONS,
 		stopBreakdown,
 		windowStats,
 		type AttentionInput,
@@ -206,6 +207,7 @@
 	});
 
 	const tickBudget: ChartThreshold = $derived({ value: 50, label: t('web.monitor.tickBudget'), tone: 'warning' });
+	const tpsLag: ChartThreshold = $derived({ value: 15, label: t('web.monitor.tpsLag'), tone: 'critical', zone: 'below' });
 	const heapLimit: ChartThreshold | undefined = $derived(
 		heapMax === null
 			? undefined
@@ -262,7 +264,7 @@
 	}
 
 	const rangeOptions = $derived(METRICS_RANGES.map((id) => ({ id, label: t(`web.monitor.ranges.${id}`) })));
-	const viewOptions = $derived(views.map((id) => ({ id, label: t(`web.monitor.view.${id}`) })));
+	const viewOptions = $derived(views.map((id) => ({ id, label: t(`web.monitor.view.${id}`), icon: MONITORING_VIEW_ICONS[id] })));
 
 	const rangeLabel = $derived(
 		zoomed && bounds.from !== undefined && bounds.to !== undefined
@@ -355,6 +357,7 @@
 		headline={options.headline}
 		href={options.more ? viewHref(options.more) : undefined}
 		hrefLabel={options.more ? t(`web.monitor.view.${options.more}`) : undefined}
+		hrefIcon={options.more ? MONITORING_VIEW_ICONS[options.more] : undefined}
 		status={chartStatus(series)}
 		stale={pending}
 		emptyTitle={t('web.monitoring.empty.noSamples')}
@@ -432,6 +435,7 @@
 		headline={uptime90?.pct == null ? undefined : fmtUptime(uptime90.pct)}
 		href={more ? viewHref('uptime') : undefined}
 		hrefLabel={more ? t('web.monitor.view.uptime') : undefined}
+		hrefIcon={MONITORING_VIEW_ICONS.uptime}
 		status={uptimeStatus}
 		emptyTitle={t('web.monitoring.empty.noSamples')}
 		height={4}
@@ -590,7 +594,7 @@
 
 		<Panel title={t('web.monitor.attention')} count={reasons.length || undefined}>
 			{#snippet actions()}
-				<a class="headlink" href={instanceTabPath(inst.name, 'checks')}>{t(INSTANCE_TAB_LABELS.checks)}</a>
+				<Btn icon="listCheck" href={instanceTabPath(inst.name, 'checks')}>{t(INSTANCE_TAB_LABELS.checks)}</Btn>
 			{/snippet}
 			{#if reasons.length === 0}
 				<p class="calm">
@@ -676,6 +680,7 @@
 				{@render chart(t('web.instanceDetail.tickRate'), tps, { tps: { label: 'TPS' } }, {
 					headline: tpsStats.last === null ? undefined : fmtTps(tpsStats.last),
 					max: 20,
+					threshold: tpsLag,
 					format: fmtTps,
 					info: t('web.monitor.tpsInfo')
 				})}
@@ -827,6 +832,7 @@
 			headline={loaded ? fmtWhole(stopCount) : undefined}
 			href={instanceTabPath(inst.name, 'checks')}
 			hrefLabel={t(INSTANCE_TAB_LABELS.checks)}
+			hrefIcon="listCheck"
 			status={stopsStatus}
 			stale={pending}
 			emptyTitle={t('web.monitor.noStops')}
@@ -934,10 +940,6 @@
 		@include below($bp-medium) {
 			grid-template-columns: minmax(0, 1fr);
 		}
-	}
-
-	.headlink {
-		font-size: 0.875rem;
 	}
 
 	.calm {

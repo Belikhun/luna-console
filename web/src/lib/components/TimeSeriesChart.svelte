@@ -560,6 +560,17 @@
 					<rect class="band" data-tone={band.tone ?? 'critical'} x={band.left} y={PAD_TOP} width={band.width} height={plotHeight} />
 				{/each}
 
+				{#each thresholds.filter((line) => line.zone && line.value <= ceiling) as line, index (index)}
+					<rect
+						class="zone"
+						data-tone={line.tone ?? 'critical'}
+						x={padLeft}
+						y={line.zone === 'above' ? PAD_TOP : y(line.value)}
+						width={plotWidth}
+						height={line.zone === 'above' ? y(line.value) - PAD_TOP : baseline - y(line.value)}
+					/>
+				{/each}
+
 				{#each shapes as shape (shape.key)}
 					{#each shape.paths as path, index (index)}
 						{#if mode !== 'line' && !styles?.[shape.key]?.dashed}
@@ -843,6 +854,16 @@
 		&[data-tone='neutral'] {
 			fill: var(--chart-muted);
 			fill-opacity: 0.2;
+		}
+	}
+
+	// the side of a threshold that is bad to be on, fainter than an incident band
+	.zone {
+		fill: var(--chart-critical);
+		fill-opacity: 0.08;
+
+		&[data-tone='warning'] {
+			fill: var(--chart-warning);
 		}
 	}
 

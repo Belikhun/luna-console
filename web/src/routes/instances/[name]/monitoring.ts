@@ -18,6 +18,14 @@ export const MONITORING_VIEWS = ['overview', 'performance', 'resources', 'uptime
 
 export type MonitoringView = (typeof MONITORING_VIEWS)[number];
 
+/** Each view's icon, on its switcher entry and on the buttons that open it. */
+export const MONITORING_VIEW_ICONS: Record<MonitoringView, string> = {
+	overview: 'chartLine',
+	performance: 'gaugeHigh',
+	resources: 'microchip',
+	uptime: 'heartPulse'
+};
+
 /**
  * The views an instance has. A proxy runs no world, so it measures no ticks,
  * chunks or entities, and a Performance view would hold nothing of its own.

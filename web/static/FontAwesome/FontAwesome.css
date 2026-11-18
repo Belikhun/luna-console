@@ -1498,3 +1498,19 @@ icon[data-icon="chevronRight"]::after {
 icon[data-icon="chevronDown"]::after {
 	content: "\f078";
 }
+
+icon[data-icon="gaugeHigh"]::after {
+	content: "\f625";
+}
+
+icon[data-icon="heartPulse"]::after {
+	content: "\f21e";
+}
+
+icon[data-icon="memory"]::after {
+	content: "\f538";
+}
+
+icon[data-icon="bug"]::after {
+	content: "\f188";
+}

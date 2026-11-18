@@ -6334,6 +6334,7 @@
 		"ofBudget": "trên ngưỡng 50 ms",
 		"heapCommitted": "Heap đã giữ",
 		"tickBudget": "Ngưỡng 50 ms",
+		"tpsLag": "Người chơi thấy lag dưới mức",
 		"worldLoad": "Tải thế giới",
 		"tickingEntities": "Thực thể đang tick",
 		"idleEntities": "Thực thể không tick",
