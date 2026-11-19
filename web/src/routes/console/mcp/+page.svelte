@@ -3,7 +3,9 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts">
+	import McpCalls from './McpCalls.svelte';
 	import { t } from '$lib/i18n.svelte';
+	import type { McpCallRecord } from '$core/mcp';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -30,15 +32,12 @@
 	import { resourceId } from '$shared/iam/resources';
 	import { withCopyResourceId } from '$lib/resourceid';
 	import {
-		behalfLabel,
 		clientSnippet,
-		keyCalls,
 		keyMcpAudit,
 		mcpAuditTone,
 		scopeSummary,
 		tokenState,
 		tokenStateLabel,
-		type CallRow,
 		type McpAuditRow,
 		type TokenRow
 	} from './mcp';
@@ -50,7 +49,7 @@
 	 */
 
 	let tokens: TokenRow[] = $state([]);
-	let calls: CallRow[] = $state([]);
+	let calls: McpCallRecord[] = $state([]);
 	let callsTruncated = $state(false);
 	let audit: McpAuditRow[] = $state([]);
 
@@ -79,7 +78,7 @@
 
 			tokens = data.tokens;
 			audit = keyMcpAudit(data.audit);
-			calls = keyCalls(callPage.calls);
+			calls = callPage.calls;
 			callsTruncated = callPage.truncated;
 			lastUpdated = Date.now();
 		} catch (err) {
@@ -258,29 +257,6 @@
 		return tokenActions(selected.has(row.id) && picked.length > 1 ? picked : [row]);
 	}
 
-	function callActions(row: CallRow): ContextMenuItem[] {
-		return menuGroups(
-			[
-				{
-					label: t('web.mcp.openToken'),
-					icon: 'circleInfo',
-					action: () => goto(`/console/mcp/${row.token}`)
-				}
-			],
-			[
-				{
-					id: 'copy-args',
-					label: t('web.mcp.copyArgs'),
-					icon: 'copy',
-					disabled: !row.args,
-					action: async () => {
-						await copyText(row.args ?? '');
-					}
-				}
-			]
-		);
-	}
-
 	const headerDisabled = $derived(tab !== 'tokens' || picked.length === 0);
 
 	const tokenColumns: Column[] = $derived([
@@ -304,42 +280,6 @@
 				{ value: 'active', label: t('web.mcp.active'), match: (row) => row.enabled && !row.expired },
 				{ value: 'disabled', label: t('web.mcp.disabled'), match: (row) => !row.enabled },
 				{ value: 'expired', label: t('web.mcp.expired'), match: (row) => row.expired }
-			]
-		}
-	]);
-
-	const callColumns: Column[] = $derived([
-		{ id: 'when', label: t('web.mcp.colWhen'), sortable: true, width: 180 },
-		{ id: 'outcome', label: t('web.mcp.colOutcome'), sortable: true, width: 120 },
-		{ id: 'tool', label: t('web.mcp.colTool'), sortable: true, width: 170 },
-		{ id: 'token', label: t('web.mcp.colToken'), sortable: true, width: 150 },
-		{ id: 'behalf', label: t('web.mcp.colOnBehalfOf'), sortable: true, width: 180 },
-		{ id: 'duration', label: t('web.mcp.colDuration'), sortable: true, width: 110 },
-		{ id: 'args', label: t('web.mcp.colArgs') },
-		{ id: 'ip', label: t('web.mcp.colAddress'), sortable: true, width: 140, hidden: true },
-		{ id: 'client', label: t('web.mcp.colClient'), width: 180, hidden: true }
-	]);
-
-	const callFilters: TableFilterGroup<CallRow>[] = $derived([
-		{
-			id: 'outcome',
-			label: t('web.mcp.filterOutcome'),
-			options: [
-				{ value: 'any', label: t('web.mcp.anyOutcome') },
-				{ value: 'ok', label: t('web.mcp.outcomeOk'), match: (row) => row.ok },
-				{ value: 'failed', label: t('web.mcp.outcomeFailed'), match: (row) => !row.ok }
-			]
-		},
-		{
-			id: 'token',
-			label: t('web.mcp.filterToken'),
-			options: [
-				{ value: 'any', label: t('web.mcp.anyToken') },
-				...tokens.map((token) => ({
-					value: token.id,
-					label: token.name,
-					match: (row: CallRow) => row.token === token.id
-				}))
 			]
 		}
 	]);
@@ -488,61 +428,15 @@
 			</ResourceTable>
 		</Panel>
 	{:else if tab === 'calls'}
-		{#if callsTruncated}
-			<Flash kind="info">{t('web.mcp.callsTruncated', { count: calls.length })}</Flash>
-		{/if}
-		<Panel flush>
-			<ResourceTable
-				tableId="console-mcp-calls"
-				loading={!loaded}
-				columns={callColumns}
-				filters={callFilters}
-				rows={calls}
-				getId={(row) => row.key}
-				searchValue={(row) =>
-					`${row.tool} ${row.tokenName} ${row.args ?? ''} ${row.error ?? ''} ${behalfLabel(row)}`}
-				searchPlaceholder={t('web.mcp.searchCalls')}
-				rowActions={callActions}
-				rowLabel={(row) => `${row.tool} · ${row.tokenName}`}
-				noun={t('web.mcp.callNoun')}
-				sortValue={(row, col) =>
-					col === 'when'
-						? row.t
-						: col === 'duration'
-							? row.durationMs
-							: col === 'outcome'
-								? (row.ok ? 1 : 0)
-								: null}
-				emptyTitle={t('web.mcp.noCallsTitle')}
-				emptyText={t('web.mcp.noCallsText')}
-			>
-				{#snippet cell(row, col)}
-					{#if col === 'when'}
-						<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
-					{:else if col === 'outcome'}
-						<StatusBadge
-							state={row.ok ? 'ok' : 'failed'}
-							label={row.ok ? t('web.mcp.outcomeOk') : t('web.mcp.outcomeFailed')}
-							detail={row.error}
-						/>
-					{:else if col === 'tool'}
-						<span class="mono">{row.tool}</span>
-					{:else if col === 'token'}
-						<a href="/console/mcp/{row.token}">{tokenName(row.token)}</a>
-					{:else if col === 'behalf'}
-						<span class:dim={!row.onBehalfOf}>{behalfLabel(row) || '–'}</span>
-					{:else if col === 'duration'}
-						<span class="mono">{row.durationMs} ms</span>
-					{:else if col === 'args'}
-						<span class="mono dim args">{row.args ?? '–'}</span>
-					{:else if col === 'ip'}
-						<span class="mono dim">{row.ip ?? '–'}</span>
-					{:else if col === 'client'}
-						<span class="dim args">{row.client ?? '–'}</span>
-					{/if}
-				{/snippet}
-			</ResourceTable>
-		</Panel>
+		<McpCalls
+			records={calls}
+			truncated={callsTruncated}
+			tokens={tokens.map((token) => ({ id: token.id, name: token.name }))}
+			{loading}
+			{lastUpdated}
+			tableId="console-mcp-calls"
+			emptyText={t('web.mcp.noCallsText')}
+		/>
 	{:else}
 		<Panel flush>
 			<ResourceTable
@@ -612,13 +506,6 @@
 <style lang="scss">
 	.tabbody {
 		margin-top: 1rem;
-	}
-
-	.args {
-		@include ellipsis;
-
-		display: block;
-		font-size: 0.75rem;
 	}
 
 	.modalnote {

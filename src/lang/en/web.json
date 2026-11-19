@@ -4784,6 +4784,7 @@
 		"colAccount": "Account",
 		"copyError": "Copy error",
 		"sameTool": "Only this tool",
+		"sameToken": "Only this token",
 		"sameCaller": "Only this caller",
 		"clearTool": "Show every tool",
 		"clearFilters": "Clear filters",

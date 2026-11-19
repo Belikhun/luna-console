@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { copyText } from '$lib/clipboard';
 	import { fmtDateTime } from '$lib/format';
@@ -49,7 +50,7 @@
 	} from './mcp';
 
 	/**
-	 * One token's calls, newest first: presets and filters over what is loaded,
+	 * Calls newest first, one token's or every token's: presets and filters over what is loaded,
 	 * a histogram of what the table shows, and the selected call in full in the
 	 * split panel. The screen hands in its newest page; a range reaching past it,
 	 * or paging onto the last page, reads further back, and a refresh merges in
@@ -58,6 +59,7 @@
 
 	let {
 		token,
+		tokens,
 		records,
 		truncated,
 		loading = false,
@@ -65,8 +67,10 @@
 		tableId,
 		emptyText
 	}: {
-		/** The token's id, for reading older calls */
-		token: string;
+		/** The token whose calls these are; absent, they are every token's */
+		token?: string;
+		/** Every token, named, when the calls are every token's: adds the token column, filter and links */
+		tokens?: Array<{ id: string; name: string }>;
 		/** The newest calls, as the screen last read them */
 		records: McpCallRecord[];
 		/** Whether older calls exist past `records` */
@@ -169,7 +173,11 @@
 		older = true;
 
 		try {
-			const ask = new URLSearchParams({ token, until: String(oldest.t + 1), limit: String(PAGE) });
+			const ask = new URLSearchParams({ until: String(oldest.t + 1), limit: String(PAGE) });
+
+			if (token) {
+				ask.set('token', token);
+			}
 			const answer = await api<McpCallPage>(`/mcp-calls?${ask}`);
 			const before = held.length;
 
@@ -194,6 +202,7 @@
 	// -- the stretch picked on the chart, then the filters -------------------------------------
 
 	let outcome = $state<'' | CallOutcome>('');
+	let tokenFilter = $state('');
 	let tool = $state('');
 	let group = $state<'' | McpToolGroup>('');
 	let minMs = $state('');
@@ -206,6 +215,10 @@
 
 	function passes(call: CallRow, skip: Partial<Record<'outcome' | 'minMs' | 'caller' | 'changes' | 'shell', boolean>> = {}): boolean {
 		if (!skip.outcome && outcome && callOutcome(call) !== outcome) {
+			return false;
+		}
+
+		if (tokenFilter && call.token !== tokenFilter) {
 			return false;
 		}
 
@@ -245,13 +258,14 @@
 	}
 
 	const narrowed = $derived(windowed.filter((call) => passes(call)));
-	const filtered = $derived(!!(outcome || tool || group || minMs || caller || changesOnly || shellOnly || search.trim()));
+	const filtered = $derived(!!(outcome || tokenFilter || tool || group || minMs || caller || changesOnly || shellOnly || search.trim()));
 
 	/** What the search box and the filters leave, from the table; the chart and the count read it. */
 	let shown: CallRow[] = $state([]);
 
 	function clearFilters(): void {
 		outcome = '';
+		tokenFilter = '';
 		tool = '';
 		group = '';
 		minMs = '';
@@ -332,6 +346,16 @@
 		{ value: 'failed', label: t('web.mcp.outcomeFailed') }
 	]);
 
+	/** A token's name; the id of one removed since it called. */
+	function tokenName(id: string): string {
+		return tokens?.find((entry) => entry.id === id)?.name ?? id;
+	}
+
+	const tokenOptions = $derived([
+		{ value: '', label: t('web.mcp.anyToken') },
+		...tally((call) => call.token).map(([id, count]) => ({ value: id, label: `${tokenName(id)} (${fmtValue(count, 'count')})` }))
+	]);
+
 	const toolOptions = $derived([
 		{ value: '', label: t('web.mcp.anyTool') },
 		...tally((call) => call.tool).map(([name, count]) => ({ value: name, label: `${name} (${fmtValue(count, 'count')})` }))
@@ -376,6 +400,7 @@
 		{ id: 'when', label: t('web.mcp.colWhen'), sortable: true, width: 180 },
 		{ id: 'outcome', label: t('web.mcp.colOutcome'), sortable: true, width: 120 },
 		{ id: 'tool', label: t('web.mcp.colTool'), sortable: true, width: 170 },
+		...(tokens ? [{ id: 'token', label: t('web.mcp.colToken'), sortable: true, width: 150 }] : []),
 		{ id: 'instance', label: t('web.mcp.colInstance'), sortable: true, width: 150 },
 		{ id: 'behalf', label: t('web.mcp.colOnBehalfOf'), sortable: true, width: 180 },
 		{ id: 'duration', label: t('web.mcp.colDuration'), sortable: true, width: 100, align: 'right' },
@@ -394,6 +419,8 @@
 				return callOutcome(row);
 			case 'tool':
 				return row.tool;
+			case 'token':
+				return tokenName(row.token);
 			case 'instance':
 				return callInstance(row) ?? '';
 			case 'behalf':
@@ -414,7 +441,7 @@
 	}
 
 	function searchText(row: CallRow): string {
-		return [row.tool, row.args, row.error, behalfLabel(row), callAccount(row), row.client, row.ip].filter(Boolean).join(' ');
+		return [row.tool, tokens ? tokenName(row.token) : '', row.args, row.error, behalfLabel(row), callAccount(row), row.client, row.ip].filter(Boolean).join(' ');
 	}
 
 	function durationTone(ms: number): string {
@@ -437,11 +464,19 @@
 		const who = callCaller(row);
 
 		return menuGroups(
+			tokens
+				? [{ label: t('web.mcp.openToken'), icon: 'circleInfo', action: () => goto(`/console/mcp/${encodeURIComponent(row.token)}`) }]
+				: [],
 			[
 				{ label: t('web.mcp.copyArgs'), icon: 'copy', disabled: !row.args, action: () => copy(row.args ?? '') },
 				{ label: t('web.mcp.copyError'), icon: 'copy', disabled: !row.error, action: () => copy(row.error ?? '') }
 			],
 			[
+				...(tokens
+					? [{ label: t('web.mcp.sameToken'), icon: 'key', action: () => {
+						tokenFilter = row.token;
+					} }]
+					: []),
 				{ label: t('web.mcp.sameTool'), icon: 'filter', action: () => {
 					tool = row.tool;
 				} },
@@ -487,6 +522,9 @@
 					{ label: t('web.mcp.colDuration'), value: fmtValue(one.durationMs, 'ms') },
 					{ label: t('web.mcp.colWhen'), value: fmtDateTime(one.t), time: one.t },
 					{ label: t('web.mcp.colTool'), value: one.tool, copyable: true, style: 'mono' },
+					...(tokens
+						? [{ label: t('web.mcp.colToken'), value: tokenName(one.token), href: `/console/mcp/${encodeURIComponent(one.token)}` }]
+						: []),
 					{
 						label: t('web.mcp.colGroup'),
 						value: oneGroup
@@ -571,7 +609,7 @@
 		bind:filteredRows={shown}
 		searchValue={searchText}
 		searchPlaceholder={t('web.mcp.searchCalls')}
-		searchWidth="31rem"
+		searchWidth="22rem"
 		selectable="single"
 		bind:selected
 		{sortValue}
@@ -579,7 +617,7 @@
 		loading={loading || older}
 		onpagechange={pageChanged}
 		{rowActions}
-		rowLabel={(row) => row.tool}
+		rowLabel={(row) => (tokens ? `${row.tool} · ${tokenName(row.token)}` : row.tool)}
 		noun={t('web.mcp.callNoun')}
 		emptyTitle={held.length > 0 ? t('web.mcp.noCallsMatch') : t('web.mcp.noCallsTitle')}
 		{emptyText}
@@ -591,6 +629,9 @@
 		{/snippet}
 		{#snippet toolbar()}
 			<Select ariaLabel={t('web.mcp.colOutcome')} value={outcome} options={outcomeOptions} width="11rem" onchange={(value) => (outcome = value as '' | CallOutcome)} />
+			{#if tokens}
+				<Select ariaLabel={t('web.mcp.colToken')} value={tokenFilter} options={tokenOptions} width="13rem" onchange={(value) => (tokenFilter = value)} />
+			{/if}
 			<Select ariaLabel={t('web.mcp.colTool')} value={tool} options={toolOptions} width="14rem" onchange={(value) => (tool = value)} />
 			<Select ariaLabel={t('web.mcp.colGroup')} value={group} options={groupOptions} width="13rem" onchange={(value) => (group = value as '' | McpToolGroup)} />
 			<Select ariaLabel={t('web.mcp.colDuration')} value={minMs} options={durationOptions} width="11rem" onchange={(value) => (minMs = value)} />
@@ -609,6 +650,8 @@
 				<StatusBadge state={badge.state} label={badge.label} detail={row.error} />
 			{:else if col === 'tool'}
 				<span class="mono">{row.tool}</span>
+			{:else if col === 'token'}
+				<a href="/console/mcp/{encodeURIComponent(row.token)}">{tokenName(row.token)}</a>
 			{:else if col === 'instance'}
 				{@const name = callInstance(row)}
 				{@const href = name ? callInstanceHref(name) : null}
