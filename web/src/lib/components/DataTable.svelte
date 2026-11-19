@@ -3,6 +3,7 @@
      prohibited without written permission. See LICENSE at the repository root. -->
 
 <script lang="ts" generics="T = any">
+	import OrderableList from './OrderableList.svelte';
 	import { t } from '$lib/i18n.svelte';
 	import { untrack, type Snippet } from 'svelte';
 	import { tooltip } from '$lib/tooltip.svelte';
@@ -912,7 +913,6 @@
 		order: [] as string[],
 		hidden: new Set<string>()
 	});
-	let dragId: string | null = $state(null);
 
 	function openPrefs(): void {
 		draft = {
@@ -965,17 +965,6 @@
 		}
 
 		draft.hidden = next;
-	}
-
-	function dropOn(targetId: string): void {
-		if (!dragId || dragId === targetId) {
-			return;
-		}
-
-		const next = draft.order.filter((id) => id !== dragId);
-
-		next.splice(next.indexOf(targetId), 0, dragId);
-		draft.order = next;
 	}
 
 	const draftColumns = $derived(
@@ -1389,30 +1378,21 @@
 		<div class="pcol right">
 			<div class="ptitle">{t('web.table.columnPreferences')}</div>
 			<div class="phint">{t('web.table.columnsHint')}</div>
-			<div class="clist">
-				{#each draftColumns as col (col.id)}
-					<div
-						class="crow"
-						class:dragging={dragId === col.id}
-						draggable="true"
-						role="listitem"
-						ondragstart={() => (dragId = col.id)}
-						ondragend={() => (dragId = null)}
-						ondragover={(event) => event.preventDefault()}
-						ondrop={() => dropOn(col.id)}
-					>
-						<span class="grip" use:tooltip={{ content: t('web.table.dragToReorder') }}>
-							<Icon name="gripLines" size="0.875rem" style="solid" />
-						</span>
-						<span class="cname">{col.label}</span>
-						<Toggle
-							checked={!draft.hidden.has(col.id)}
-							label={t('web.table.showColumn', { name: col.label })}
-							onchange={() => toggleDraftColumn(col.id)}
-						/>
-					</div>
-				{/each}
-			</div>
+			<OrderableList
+				items={draftColumns}
+				key={(col) => col.id}
+				label={(col) => col.label}
+				onreorder={(cols) => (draft.order = cols.map((col) => col.id))}
+			>
+				{#snippet item(col)}
+					<span class="cname">{col.label}</span>
+					<Toggle
+						checked={!draft.hidden.has(col.id)}
+						label={t('web.table.showColumn', { name: col.label })}
+						onchange={() => toggleDraftColumn(col.id)}
+					/>
+				{/snippet}
+			</OrderableList>
 		</div>
 	</div>
 	{#snippet footer()}
@@ -2079,29 +2059,6 @@
 			color: var(--text-secondary);
 			font-size: 0.8125rem;
 			display: block;
-		}
-	}
-
-	.clist {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.crow {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.375rem 0.25rem;
-		border-bottom: 0.1rem solid var(--border-divider);
-
-		&.dragging {
-			opacity: 0.4;
-		}
-
-		.grip {
-			color: var(--text-secondary);
-			cursor: grab;
-			display: inline-flex;
 		}
 	}
 

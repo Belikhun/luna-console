@@ -219,6 +219,11 @@
 		"dismiss": "Dismiss",
 		"clear": "Clear"
 	},
+	"orderable": {
+		"move": "Move {name}",
+		"hint": "Drag to reorder, or use the arrow keys",
+		"moved": "{name} moved to position {position} of {count}"
+	},
 	"table": {
 		"emptyTitle": "No resources to display",
 		"selectAll": "Select all resources",
@@ -248,8 +253,7 @@
 		"expandRow": "Show details",
 		"range": "{from}-{to} of {count}",
 		"noMatch": "No {noun} matches your search",
-		"noMatchText": "Nothing here answers the current search and filters.",
-		"dragToReorder": "Drag to reorder"
+		"noMatchText": "Nothing here answers the current search and filters."
 	},
 	"search": {
 		"noMatches": "No matches for “{query}”"

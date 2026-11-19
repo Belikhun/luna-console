@@ -219,6 +219,11 @@
 		"dismiss": "Ẩn thông báo",
 		"clear": "Xoá"
 	},
+	"orderable": {
+		"move": "Di chuyển {name}",
+		"hint": "Kéo để sắp xếp lại, hoặc dùng các phím mũi tên",
+		"moved": "Đã chuyển {name} đến vị trí {position} trên {count}"
+	},
 	"table": {
 		"emptyTitle": "Không có tài nguyên nào để hiển thị",
 		"selectAll": "Chọn tất cả tài nguyên",
@@ -248,8 +253,7 @@
 		"expandRow": "Hiện chi tiết",
 		"range": "{from}-{to} trên {count}",
 		"noMatch": "Không có {noun} nào khớp với tìm kiếm",
-		"noMatchText": "Không có gì khớp với tìm kiếm và bộ lọc hiện tại.",
-		"dragToReorder": "Kéo để sắp xếp lại"
+		"noMatchText": "Không có gì khớp với tìm kiếm và bộ lọc hiện tại."
 	},
 	"search": {
 		"noMatches": "Không có kết quả cho “{query}”"
