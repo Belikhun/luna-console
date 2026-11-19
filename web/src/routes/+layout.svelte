@@ -516,9 +516,10 @@
 			return /^\/players(?!\/online|\/moderation)/.test(page.url.pathname);
 		}
 
-		// "Domains" is its own entry; pools stays under ports, as it always has
+		// "Domains" and "Firewall" are their own entries; pools stays under ports,
+		// as it always has
 		if (href === '/network') {
-			return /^\/network(?!\/domains)/.test(page.url.pathname);
+			return /^\/network(?!\/domains|\/firewall)/.test(page.url.pathname);
 		}
 
 		// every access management screen lives under the dashboard's path, and each
