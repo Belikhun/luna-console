@@ -19,7 +19,7 @@
 
 import { knowledgeFor, mcpInstructions, mcpServerVersion, recordMcpCall } from '$core/mcp';
 import type { KnowledgeItem, KnowledgeKind, McpOnBehalfOf, McpPrincipal } from '$core/mcp';
-import { allowedTools, mcpTool, scopeCoversInstance, validateMcpArgs } from '$shared/mcptools';
+import { MCP_REFUSAL, allowedTools, mcpTool, scopeCoversInstance, validateMcpArgs } from '$shared/mcptools';
 import { TOOL_HANDLERS, ToolContent, ToolError } from './handlers';
 import { knowledgeVisible, refuseFor, toolChecks, toolLiveChecks, toolPossible } from './iam';
 import { withActor } from '$client/actor';
@@ -233,7 +233,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 	// an unknown tool and a tool outside the scope read the same, so the list of
 	// what exists is not discoverable by probing names
 	if (!tool || !toolsOf(ctx.principal).includes(name)) {
-		return await finish(false, `tool "${name}" is not available to this token`, 'not in scope');
+		return await finish(false, `tool "${name}" is not available to this token`, MCP_REFUSAL.notInScope);
 	}
 
 	const problem = validateMcpArgs(tool.inputSchema, args);
@@ -250,7 +250,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 				? `${ctx.account} may not see`
 				: 'this token may not reach';
 
-			return await finish(false, `${who} the instance "${instance}"`, 'instance not in scope');
+			return await finish(false, `${who} the instance "${instance}"`, MCP_REFUSAL.instanceNotInScope);
 		}
 	}
 
@@ -261,7 +261,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 		const checks = toolChecks(name, args);
 
 		if (!checks) {
-			return await finish(false, `tool "${name}" is not available when acting for a console account`, 'no iam rule');
+			return await finish(false, `tool "${name}" is not available when acting for a console account`, MCP_REFUSAL.noIamRule);
 		}
 
 		const refusal = await refuseFor(ctx.account, [...checks, ...await toolLiveChecks(name, args, ctx.account)]);
@@ -272,7 +272,7 @@ async function callTool(request: JsonRpcRequest, ctx: RequestContext): Promise<J
 				: '';
 			const message = `${ctx.account} may not ${refusal.check.action}${where} (${refusal.reason}); ask an administrator to grant it, and do not try another way around it`;
 
-			return await finish(false, message, `iam: ${refusal.check.action}${where}`);
+			return await finish(false, message, `${MCP_REFUSAL.iamPrefix}${refusal.check.action}${where}`);
 		}
 	}
 

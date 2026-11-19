@@ -6,11 +6,12 @@ import { json } from '@sveltejs/kit';
 
 import { readMcpCalls } from '$core/mcp';
 
-/** GET ?token=&tool=&ok=&search=&since=&limit= → the MCP call log, newest first. */
+/** GET ?token=&tool=&ok=&search=&since=&until=&limit= → the MCP call log, newest first. */
 export async function GET({ url }) {
 	const params = url.searchParams;
 	const ok = params.get('ok');
 	const since = params.get('since');
+	const until = params.get('until');
 
 	const page = await readMcpCalls({
 		token: params.get('token') ?? undefined,
@@ -20,6 +21,7 @@ export async function GET({ url }) {
 			: ok === 'true',
 		search: params.get('search') ?? undefined,
 		since: since ? Number(since) : undefined,
+		until: until ? Number(until) : undefined,
 		limit: Number(params.get('limit') ?? 500)
 	});
 

@@ -739,6 +739,8 @@ export interface McpCallQuery {
 	tool?: string;
 	ok?: boolean;
 	since?: number;
+	/** Only calls made before this instant, to page back past the newest ones */
+	until?: number;
 	search?: string;
 	limit?: number;
 }
@@ -780,6 +782,10 @@ function callPasses(record: McpCallRecord, query: McpCallQuery): boolean {
 	}
 
 	if (query.since !== undefined && record.t < query.since) {
+		return false;
+	}
+
+	if (query.until !== undefined && record.t >= query.until) {
 		return false;
 	}
 

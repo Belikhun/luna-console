@@ -54,6 +54,7 @@
 		initialFilters,
 		onfilterchange,
 		onsortchange,
+		onpagechange,
 		selectable = 'none',
 		selected = $bindable(new Set<string>()),
 		sortValue: baseSortValue,
@@ -78,6 +79,7 @@
 		defaultSort,
 		filtersActive = $bindable(false),
 		filteredCount = $bindable(0),
+		filteredRows = $bindable([]),
 		loading = false,
 		expanded,
 		expandable,
@@ -99,6 +101,8 @@
 		onfilterchange?: (values: Record<string, string>) => void;
 		/** told the active sort (column and direction) whenever it changes, and once at the start */
 		onsortchange?: (column: string | null, direction: 'asc' | 'desc') => void;
+		/** told the page shown and how many there are whenever either changes, so a screen can read further when the last one is reached */
+		onpagechange?: (page: number, pages: number) => void;
 		selectable?: 'none' | 'single' | 'multi';
 		selected?: Set<string>;
 		sortValue?: (row: T, columnId: string) => string | number | null;
@@ -150,6 +154,8 @@
 		/** how many rows the filter groups leave, so a wrapper can tell "nothing
 		 *  matches" from "nothing exists" whatever narrowed the rows */
 		filteredCount?: number;
+		/** the rows the filter groups leave, in the order given, for a chart over what the table shows */
+		filteredRows?: T[];
 		/** the rows are still on their way. With none yet, the body shows ghost rows
 		 *  in place of the empty state, which would claim there is nothing; with
 		 *  some, a refresh keeps showing them */
@@ -330,6 +336,7 @@
 	$effect(() => {
 		filtersActive = matchers.length > 0;
 		filteredCount = filtered.length;
+		filteredRows = filtered;
 	});
 
 	// read every value so the effect follows each group; untracked call, so a
@@ -393,6 +400,13 @@
 		if (page > maxPage) {
 			page = maxPage;
 		}
+	});
+
+	$effect(() => {
+		const at = page;
+		const pages = maxPage;
+
+		untrack(() => onpagechange?.(at, pages));
 	});
 
 	const paged = $derived(

@@ -2144,6 +2144,30 @@ export function lunaShellRefusal(args: string[]): string | null {
 	return null;
 }
 
+/**
+ * The reasons the endpoint records when it turns a call away before running it:
+ * the token's scope, its instance allowlist or the account it acts for said no.
+ * A call that ran and went wrong records its own message instead.
+ */
+export const MCP_REFUSAL = {
+	notInScope: "not in scope",
+	instanceNotInScope: "instance not in scope",
+	noIamRule: "no iam rule",
+	iamPrefix: "iam: ",
+} as const;
+
+/** Whether a recorded call error is a refusal rather than a failure. */
+export function isMcpRefusal(error: string | undefined): boolean {
+	if (!error) {
+		return false;
+	}
+
+	return error === MCP_REFUSAL.notInScope
+		|| error === MCP_REFUSAL.instanceNotInScope
+		|| error === MCP_REFUSAL.noIamRule
+		|| error.startsWith(MCP_REFUSAL.iamPrefix);
+}
+
 /** One tool's spec, or undefined for a name the catalog does not know. */
 export function mcpTool(name: string): McpToolSpec | undefined {
 	return MCP_TOOLS.find((tool) => tool.name === name);

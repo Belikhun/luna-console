@@ -88,6 +88,8 @@
 	const BAR_MAX = 24;
 	const GAP = 2;
 	const RADIUS = 4;
+	/** The least a part that counted anything is drawn, so one failure beside a hundred successes still shows */
+	const MIN_SEGMENT = 3;
 
 	const id = `sb-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -211,19 +213,23 @@
 			const drawn = bucket.parts.filter((part) => (part.value ?? 0) > 0);
 
 			let floor = 0;
+			// the foot of the next part; a part grown to its least height pushes the ones above it up
+			let cursor = baseline;
 
 			const segments = drawn.map((part, index) => {
 				const value = part.value ?? 0;
-				const bottom = y(floor);
-				const top = y(floor + value);
+				const bottom = cursor;
 				const gapBelow = index === 0
 					? 0
 					: GAP;
 
 				floor += value;
 
-				const tall = Math.max(0, bottom - top - gapBelow);
+				const top = Math.min(y(floor), bottom - gapBelow - MIN_SEGMENT);
+				const tall = bottom - top - gapBelow;
 				const isTop = index === drawn.length - 1;
+
+				cursor = top;
 
 				return {
 					key: part.key,

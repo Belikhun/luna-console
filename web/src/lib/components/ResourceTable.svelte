@@ -42,6 +42,7 @@
 		initialFilters,
 		onfilterchange,
 		onsortchange,
+		onpagechange,
 		rowActions,
 		rowLabel,
 		toolbar: toolbarExtra,
@@ -55,6 +56,7 @@
 		rowDropTarget,
 		onRowDrop,
 		search = $bindable(initialSearch),
+		filteredRows = $bindable([]),
 		rowDim,
 		rowLocked,
 		paging = true,
@@ -93,6 +95,8 @@
 		onfilterchange?: (values: Record<string, string>) => void;
 		/** told the active sort (column and direction) whenever it changes, and once at the start */
 		onsortchange?: (column: string | null, direction: 'asc' | 'desc') => void;
+		/** told the page shown and how many there are whenever either changes, so a screen can read further when the last one is reached */
+		onpagechange?: (page: number, pages: number) => void;
 		/** the row's verbs; its right-click menu, and the screen's Actions dropdown */
 		rowActions?: (row: T) => ContextMenuItem[];
 		/** heading of the row's context menu (defaults to its id) */
@@ -112,6 +116,8 @@
 		onRowDrop?: (row: T, event: DragEvent) => void;
 		/** the search box's text, for a screen that also searches beyond the rows it holds */
 		search?: string;
+		/** the rows the search and the filter groups leave, for a chart over what the table shows */
+		filteredRows?: T[];
 		/** dimmed rows; de-emphasis only, still selectable */
 		rowDim?: (row: T) => boolean;
 		/** rows no bulk verb can apply to: dimmed *and* kept out of the selection */
@@ -233,6 +239,7 @@
 	bind:this={table}
 	bind:filtersActive
 	bind:filteredCount
+	bind:filteredRows
 	{tableId}
 	{columns}
 	rows={visible}
@@ -245,6 +252,7 @@
 	{initialFilters}
 	{onfilterchange}
 	{onsortchange}
+	{onpagechange}
 	{selectable}
 	bind:selected
 	{sortValue}

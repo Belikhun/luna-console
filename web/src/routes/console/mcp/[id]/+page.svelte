@@ -29,24 +29,22 @@
 	import RefreshControl from '$lib/components/RefreshControl.svelte';
 	import McpScopeEditor from '$lib/components/McpScopeEditor.svelte';
 	import DateTime from '$lib/components/DateTime.svelte';
+	import McpCalls from '../McpCalls.svelte';
 	import type { InfoCell } from '$lib/components/grid';
-	import type { Column, TableFilterGroup } from '$lib/components/table';
+	import type { Column } from '$lib/components/table';
 	import { menuGroups, type ContextMenuItem } from '$lib/components/contextmenu';
 	import { Notify } from '$lib/notifications.svelte';
 	import { clearCrumbLabel, setCrumbLabel } from '$lib/crumbs.svelte';
 	import { allowedTools, type McpScope } from '$shared/mcptools';
 	import { resourceId } from '$shared/iam/resources';
-	import type { KnowledgeItem } from '$core/mcp';
+	import type { KnowledgeItem, McpCallRecord } from '$core/mcp';
 	import {
-		behalfLabel,
 		clientSnippet,
-		keyCalls,
 		keyMcpAudit,
 		mcpAuditTone,
 		scopeSummary,
 		tokenState,
 		tokenStateLabel,
-		type CallRow,
 		type McpAuditRow,
 		type TokenRow
 	} from '../mcp';
@@ -60,7 +58,7 @@
 	const DAY_MS = 24 * 60 * 60 * 1000;
 
 	let token = $state<TokenRow | null>(null);
-	let calls: CallRow[] = $state([]);
+	let calls: McpCallRecord[] = $state([]);
 	let callsTruncated = $state(false);
 	let knowledge: KnowledgeItem[] = $state([]);
 	let audit: McpAuditRow[] = $state([]);
@@ -92,7 +90,7 @@
 			const data = await api(`/mcp-tokens/${encodeURIComponent(id)}`);
 
 			token = data.token;
-			calls = keyCalls(data.calls);
+			calls = data.calls;
 			callsTruncated = data.callsTruncated;
 			knowledge = data.knowledge;
 			audit = keyMcpAudit(data.audit);
@@ -372,28 +370,6 @@
 				]
 	);
 
-	const callColumns: Column[] = $derived([
-		{ id: 'when', label: t('web.mcp.colWhen'), sortable: true, width: 180 },
-		{ id: 'outcome', label: t('web.mcp.colOutcome'), sortable: true, width: 120 },
-		{ id: 'tool', label: t('web.mcp.colTool'), sortable: true, width: 170 },
-		{ id: 'behalf', label: t('web.mcp.colOnBehalfOf'), sortable: true, width: 180 },
-		{ id: 'duration', label: t('web.mcp.colDuration'), sortable: true, width: 110 },
-		{ id: 'args', label: t('web.mcp.colArgs') },
-		{ id: 'ip', label: t('web.mcp.colAddress'), sortable: true, width: 140, hidden: true }
-	]);
-
-	const callFilters: TableFilterGroup<CallRow>[] = $derived([
-		{
-			id: 'outcome',
-			label: t('web.mcp.filterOutcome'),
-			options: [
-				{ value: 'any', label: t('web.mcp.anyOutcome') },
-				{ value: 'ok', label: t('web.mcp.outcomeOk'), match: (row) => row.ok },
-				{ value: 'failed', label: t('web.mcp.outcomeFailed'), match: (row) => !row.ok }
-			]
-		}
-	]);
-
 	const knowledgeColumns: Column[] = $derived([
 		{ id: 'title', label: t('web.knowledge.colTitle'), sortable: true, width: 260 },
 		{ id: 'kind', label: t('web.knowledge.colKind'), sortable: true, width: 130 },
@@ -407,20 +383,6 @@
 		{ id: 'actor', label: t('web.mcp.colActor'), sortable: true, width: 170 },
 		{ id: 'detail', label: t('web.mcp.colDetail') }
 	]);
-
-	function callActions(row: CallRow): ContextMenuItem[] {
-		return [
-			{
-				id: 'copy-args',
-				label: t('web.mcp.copyArgs'),
-				icon: 'copy',
-				disabled: !row.args,
-				action: async () => {
-					await copyText(row.args ?? '');
-				}
-			}
-		];
-	}
 
 	function knowledgeActions(row: KnowledgeItem): ContextMenuItem[] {
 		return [
@@ -517,53 +479,15 @@
 				<McpScopeEditor bind:scope={draft} {instances} />
 			</Panel>
 		{:else if tab === 'calls'}
-			{#if callsTruncated}
-				<Flash kind="info">{t('web.mcp.callsTruncated', { count: calls.length })}</Flash>
-			{/if}
-			<Panel flush>
-				<ResourceTable
-					tableId="mcp-token-calls"
-					columns={callColumns}
-					filters={callFilters}
-					rows={calls}
-					getId={(row) => row.key}
-					searchValue={(row) => `${row.tool} ${row.args ?? ''} ${row.error ?? ''} ${behalfLabel(row)}`}
-					searchPlaceholder={t('web.mcp.searchCalls')}
-					rowActions={callActions}
-					rowLabel={(row) => row.tool}
-					noun={t('web.mcp.callNoun')}
-					sortValue={(row, col) =>
-						col === 'when'
-							? row.t
-							: col === 'duration'
-								? row.durationMs
-								: null}
-					emptyTitle={t('web.mcp.noCallsTitle')}
-					emptyText={t('web.mcpDetail.noCallsText')}
-				>
-					{#snippet cell(row, col)}
-						{#if col === 'when'}
-							<span class="dim"><DateTime at={row.t} text={fmtDateTime(row.t)} /></span>
-						{:else if col === 'outcome'}
-							<StatusBadge
-								state={row.ok ? 'ok' : 'failed'}
-								label={row.ok ? t('web.mcp.outcomeOk') : t('web.mcp.outcomeFailed')}
-								detail={row.error}
-							/>
-						{:else if col === 'tool'}
-							<span class="mono">{row.tool}</span>
-						{:else if col === 'behalf'}
-							<span class:dim={!row.onBehalfOf}>{behalfLabel(row) || '–'}</span>
-						{:else if col === 'duration'}
-							<span class="mono">{row.durationMs} ms</span>
-						{:else if col === 'args'}
-							<span class="mono dim args">{row.args ?? '–'}</span>
-						{:else if col === 'ip'}
-							<span class="mono dim">{row.ip ?? '–'}</span>
-						{/if}
-					{/snippet}
-				</ResourceTable>
-			</Panel>
+			<McpCalls
+				token={token.id}
+				records={calls}
+				truncated={callsTruncated}
+				{loading}
+				{lastUpdated}
+				tableId="mcp-token-calls"
+				emptyText={t('web.mcpDetail.noCallsText')}
+			/>
 		{:else if tab === 'knowledge'}
 			<Flash kind="info">{t('web.mcpDetail.knowledgeNotice')}</Flash>
 			<Panel flush>
