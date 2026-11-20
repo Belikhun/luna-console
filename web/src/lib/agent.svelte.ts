@@ -7,7 +7,8 @@
  *
  * `Agent` is the shell every window shares: whether the docked panel is open
  * and how wide, the agent's status, the conversation list, and the picks this
- * browser last made (mode, model, effort, sharing the page).
+ * browser last made (mode, sharing the page). The model and effort are each
+ * chat's own: see `readPick`.
  *
  * A `ChatSession` is one open chat: which conversation it shows, the messages
  * as they render, its stream and its attachments. The docked panel has one, the
@@ -274,9 +275,56 @@ const OPEN_KEY = 'luna:agent:open';
 const WIDTH_KEY = 'luna:agent:width';
 const CONVERSATION_KEY = 'luna:agent:conversation';
 const MODE_KEY = 'luna:agent:mode';
-const MODEL_KEY = 'luna:agent:model';
-const EFFORT_KEY = 'luna:agent:effort';
 const PAGE_KEY = 'luna:agent:sharePage';
+
+/** Per conversation: the model and effort picked in it (`ChatSession.model`, `.effort`). */
+const PICK_KEY = 'luna:agent:pick:';
+
+interface ChatPick {
+	model: string;
+	effort: string;
+}
+
+/** The model and effort a conversation was last set to in this browser; null when it never was. */
+function readPick(conversation: string): ChatPick | null {
+	try {
+		const raw = localStorage.getItem(`${PICK_KEY}${conversation}`);
+
+		if (!raw) {
+			return null;
+		}
+
+		const pick = JSON.parse(raw) as Partial<ChatPick>;
+
+		return {
+			model: typeof pick.model === 'string' ? pick.model : '',
+			effort: typeof pick.effort === 'string' ? pick.effort : ''
+		};
+	} catch {
+		return null;
+	}
+}
+
+function writePick(conversation: string, pick: ChatPick): void {
+	try {
+		localStorage.setItem(`${PICK_KEY}${conversation}`, JSON.stringify(pick));
+	} catch {
+		// a private window: the pick lasts for this page
+	}
+}
+
+/** The model and effort the conversation's latest message ran on, for a chat this browser has no pick for. */
+function pickFromEntries(entries: StoredEntry[]): ChatPick | null {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index]!;
+
+		if (entry.kind === 'user' && (entry.model || entry.effort)) {
+			return { model: entry.model ?? '', effort: entry.effort ?? '' };
+		}
+	}
+
+	return null;
+}
 
 /** The channel a popped-out chat asks the console windows over; see `startConsoleBridge` */
 const BRIDGE_CHANNEL = 'luna:agent:bridge';
@@ -524,7 +572,11 @@ export class ChatSession {
 	/** How tool calls are approved; see `shared/agent.ts` */
 	mode: AgentMode = $state(DEFAULT_AGENT_MODE);
 
-	/** Overrides of the settings for this chat; empty means "use the settings" */
+	/**
+	 * Overrides of the settings for this chat; empty means "use the settings".
+	 * Each conversation keeps its own: a new chat starts on the settings, and
+	 * the values it is created with stay with it.
+	 */
 	model = $state('');
 	effort = $state('');
 
@@ -574,8 +626,6 @@ export class ChatSession {
 		this.#persist = options.persist ?? false;
 		this.#relay = options.relay ?? false;
 		this.mode = Agent.lastMode;
-		this.model = Agent.lastModel;
-		this.effort = Agent.lastEffort;
 		this.sharePage = Agent.lastSharePage;
 		Agent.register(this);
 	}
@@ -649,14 +699,20 @@ export class ChatSession {
 
 	setModel(model: string): void {
 		this.model = model;
-		Agent.rememberModel(model);
+		this.#rememberPick();
 		void this.#updateRun();
 	}
 
 	setEffort(effort: string): void {
 		this.effort = effort;
-		Agent.rememberEffort(effort);
+		this.#rememberPick();
 		void this.#updateRun();
+	}
+
+	#rememberPick(): void {
+		if (this.conversationId) {
+			writePick(this.conversationId, { model: this.model, effort: this.effort });
+		}
 	}
 
 	setSharePage(share: boolean): void {
@@ -733,6 +789,13 @@ export class ChatSession {
 		this.#unknownPeople.clear();
 		this.suggestion = null;
 
+		// the chat's own model and effort, or the settings for a new one;
+		// a chat picked elsewhere learns its pick from the transcript in `select`
+		const pick = id ? readPick(id) : null;
+
+		this.model = pick?.model ?? '';
+		this.effort = pick?.effort ?? '';
+
 		if (this.#persist) {
 			writeStored(CONVERSATION_KEY, id);
 		}
@@ -790,6 +853,15 @@ export class ChatSession {
 			}
 
 			this.items = itemsFromEntries(data.conversation.entries);
+
+			if (!readPick(id)) {
+				const pick = pickFromEntries(data.conversation.entries);
+
+				if (pick) {
+					this.model = pick.model;
+					this.effort = pick.effort;
+				}
+			}
 			this.context = data.conversation.context ?? null;
 			this.role = data.conversation.role;
 			this.actor = data.actor;
@@ -855,6 +927,14 @@ export class ChatSession {
 
 				id = created.conversation.id;
 				this.conversationId = id;
+
+				// the chat keeps the model it was started on, even when the settings change later
+				const settings = Agent.state?.settings;
+
+				writePick(id, {
+					model: this.model || settings?.model || '',
+					effort: this.effort || settings?.effort || ''
+				});
 
 				if (this.#persist) {
 					writeStored(CONVERSATION_KEY, id);
@@ -1481,8 +1561,6 @@ class AgentShell {
 
 	/** The picks this browser made last; a new chat starts from them */
 	lastMode: AgentMode = DEFAULT_AGENT_MODE;
-	lastModel = '';
-	lastEffort = '';
 	lastSharePage = true;
 
 	#sessions = new Set<ChatSession>();
@@ -1540,24 +1618,12 @@ class AgentShell {
 			this.lastMode = mode;
 		}
 
-		this.lastModel = readStored(MODEL_KEY) ?? '';
-		this.lastEffort = readStored(EFFORT_KEY) ?? '';
 		this.lastSharePage = readStored(PAGE_KEY) !== '0';
 	}
 
 	rememberMode(mode: AgentMode): void {
 		this.lastMode = mode;
 		writeStored(MODE_KEY, mode);
-	}
-
-	rememberModel(model: string): void {
-		this.lastModel = model;
-		writeStored(MODEL_KEY, model || null);
-	}
-
-	rememberEffort(effort: string): void {
-		this.lastEffort = effort;
-		writeStored(EFFORT_KEY, effort || null);
 	}
 
 	rememberSharePage(share: boolean): void {
